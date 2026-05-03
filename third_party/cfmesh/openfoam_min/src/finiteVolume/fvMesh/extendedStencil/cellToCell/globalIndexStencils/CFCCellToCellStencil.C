@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,6 @@ License
 
 #include "CFCCellToCellStencil.H"
 #include "syncTools.H"
-#include "SortableList.H"
 #include "emptyPolyPatch.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -35,8 +36,8 @@ void Foam::CFCCellToCellStencil::calcFaceBoundaryData
     labelList& neiGlobal
 ) const
 {
-    const polyBoundaryMesh& patches = mesh().boundary();
-    const label nBnd = mesh().nFaces()-mesh().nInternalFaces();
+    const polyBoundaryMesh& patches = mesh().boundaryMesh();
+    const label nBnd = mesh().nBoundaryFaces();
     const labelList& own = mesh().faceOwner();
 
     neiGlobal.setSize(nBnd);
@@ -86,7 +87,7 @@ void Foam::CFCCellToCellStencil::calcCellStencil
     labelListList& globalCellCells
 ) const
 {
-    const label nBnd = mesh().nFaces()-mesh().nInternalFaces();
+    const label nBnd = mesh().nBoundaryFaces();
     const labelList& own = mesh().faceOwner();
     const labelList& nei = mesh().faceNeighbour();
 

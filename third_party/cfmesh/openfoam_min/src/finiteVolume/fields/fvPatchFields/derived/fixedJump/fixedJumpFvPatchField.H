@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +27,23 @@ License
 Class
     Foam::fixedJumpFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition provides a jump condition, using the \c cyclic
-    condition as a base. The jump is specified as the difference between the
-    neighbour patch and the owner patch value (i.e., neighbour minus owner).
+    condition as a base.
+
+    The jump is specified as a fixed value field, applied as an offset to the
+    'owner' patch.
 
 Usage
     \table
         Property     | Description             | Required    | Default value
-        patchType    | underlying patch type (should be \c cyclic) | yes |
-        jump         | jump value              | yes         |
+        patchType    | underlying patch type should be \c cyclic| yes |
+        jump         | current jump value      | yes         |
+        relax        | under-relaxation factor | no          |
+        minJump      | Minimum jump value      | no          |
     \endtable
 
     Example of the boundary condition specification:
@@ -45,6 +55,11 @@ Usage
         jump            uniform 10;
     }
     \endverbatim
+
+    The above example shows the use of a fixed jump of '10'.
+
+Note
+     The underlying \c patchType should be set to \c cyclic
 
 See also
     Foam::jumpCyclicFvPatchField
@@ -73,20 +88,24 @@ class fixedJumpFvPatchField
 :
     public jumpCyclicFvPatchField<Type>
 {
+
     // Private data
 
-        //- The "jump" field. Applied to the owner field when transforming
-        //  to the neighbour side. Negated when transforming the other way.
-        //  Only has a valid value on the owner patch.
+        //- "jump" field
         Field<Type> jump_;
 
+        //- "jump" field at old time level
+        Field<Type> jump0_;
 
-protected:
+        //- Minimum allowable jump value
+        Type minJump_;
 
-    // Protected functions
 
-        //- Access the jump to modify it
-        Field<Type>& jumpRef();
+        //- Under-relaxation factor
+        scalar relaxFactor_;
+
+        //- Time index
+        label timeIndex_;
 
 
 public:
@@ -96,13 +115,20 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedJumpFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedJumpFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&,
-            const bool jumpRequired=true
+            const bool needValue = true
         );
 
         //- Construct by mapping given fixedJumpFvPatchField onto a
@@ -111,62 +137,80 @@ public:
         (
             const fixedJumpFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedJumpFvPatchField
         (
             const fixedJumpFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedJumpFvPatchField
         (
             const fixedJumpFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedJumpFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
-            //- Return the "jump"
+            //- Set the jump field
+            virtual void setJump(const Field<Type>& jump);
+
+            //- Set the jump field (uniform value)
+            virtual void setJump(const Type& jump);
+
+            //- Return the "jump" across the patch
             virtual tmp<Field<Type>> jump() const;
+
+            //- Return the old time "jump" across the patch
+            virtual tmp<Field<Type>> jump0() const;
+
+            //- Return the under-relaxation factor
+            virtual scalar relaxFactor() const;
+
+            //- Return the relaxed "jump" across the patch
+            virtual void relax();
 
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using jumpCyclicFvPatchField<Type>::operator=;
 };
 
 

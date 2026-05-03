@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +26,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "fvcFlux.H"
-#include "surfaceInterpolate.H"
+#include "fvMesh.H"
 #include "convectionScheme.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -40,75 +42,33 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<SurfaceField<typename innerProduct<vector, Type>::type>> flux
-(
-    const VolField<Type>& vf
-)
-{
-    return scheme<Type>
-    (
-        vf.mesh(),
-        "flux(" + vf.name() + ')'
-    )().dotInterpolate(vf.mesh().Sf(), vf);
-}
-
-
-template<class Type>
-tmp<SurfaceField<typename innerProduct<vector, Type>::type>>  flux
-(
-    const tmp<VolField<Type>>& tvf
-)
-{
-    tmp<SurfaceField<typename innerProduct<vector, Type>::type>> Flux
-    (
-        fvc::flux(tvf())
-    );
-    tvf.clear();
-    return Flux;
-}
-
-
-template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const surfaceScalarField& phi,
-    const VolField<Type>& vf,
-    Istream& schemeData
+    const GeometricField<Type, fvPatchField, volMesh>& vf,
+    const word& name
 )
 {
     return fv::convectionScheme<Type>::New
     (
         vf.mesh(),
         phi,
-        schemeData
+        vf.mesh().divScheme(name)
     )().flux(phi, vf);
 }
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
-flux
-(
-    const surfaceScalarField& phi,
-    const VolField<Type>& vf,
-    const word& name
-)
-{
-    return fvc::flux(phi, vf, vf.mesh().schemes().div(name));
-}
-
-
-template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const tmp<surfaceScalarField>& tphi,
-    const VolField<Type>& vf,
+    const GeometricField<Type, fvPatchField, volMesh>& vf,
     const word& name
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(tphi(), vf, name)
     );
@@ -118,15 +78,15 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const surfaceScalarField& phi,
-    const tmp<VolField<Type>>& tvf,
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf,
     const word& name
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(phi, tvf(), name)
     );
@@ -136,15 +96,15 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const tmp<surfaceScalarField>& tphi,
-    const tmp<VolField<Type>>& tvf,
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf,
     const word& name
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(tphi(), tvf(), name)
     );
@@ -155,11 +115,11 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const surfaceScalarField& phi,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fvc::flux
@@ -170,14 +130,14 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const tmp<surfaceScalarField>& tphi,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(tphi(), vf)
     );
@@ -187,14 +147,14 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const surfaceScalarField& phi,
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(phi, tvf())
     );
@@ -204,14 +164,14 @@ flux
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 flux
 (
     const tmp<surfaceScalarField>& tphi,
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
-    tmp<SurfaceField<Type>> Flux
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> Flux
     (
         fvc::flux(tphi(), tvf())
     );

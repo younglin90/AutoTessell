@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,27 @@ Class
     Foam::symmetryFvsPatchField
 
 Description
-    Foam::symmetryFvsPatchField
+    This boundary condition enforces a symmetry constraint
+
+    The "value" entry is MUST_READ.
+
+Usage
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type    symmetry;
+        value   ...;
+    }
+    \endverbatim
 
 SourceFiles
     symmetryFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef symmetryFvsPatchField_H
-#define symmetryFvsPatchField_H
+#ifndef Foam_symmetryFvsPatchField_H
+#define Foam_symmetryFvsPatchField_H
 
 #include "fvsPatchField.H"
 #include "symmetryFvPatch.H"
@@ -44,7 +59,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class symmetryFvsPatch Declaration
+                         Class symmetryFvsPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,7 +67,6 @@ class symmetryFvsPatchField
 :
     public fvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -69,6 +83,7 @@ public:
         );
 
         //- Construct from patch, internal field and dictionary
+        //- The "value" entry is MUST_READ.
         symmetryFvsPatchField
         (
             const fvPatch&,
@@ -82,42 +97,42 @@ public:
             const symmetryFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        symmetryFvsPatchField(const symmetryFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        symmetryFvsPatchField
+        (
+            const symmetryFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         symmetryFvsPatchField
         (
             const symmetryFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new symmetryFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        //- Write
+        //- Write includes "value" entry
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvsPatchField<Type>::operator=;
 };
 
 

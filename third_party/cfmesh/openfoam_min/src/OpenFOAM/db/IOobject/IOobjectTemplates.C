@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,74 +27,55 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "IOobject.H"
-#include "fileOperation.H"
-#include "Istream.H"
 #include "IOstreams.H"
-#include "Pstream.H"
+#include "fileOperation.H"  // legacy include
+#include "Istream.H"  // legacy include
+#include "Pstream.H"  // legacy include
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-bool Foam::IOobject::typeHeaderOk(const bool checkType)
+bool Foam::IOobject::typeHeaderOk
+(
+    const bool checkType,
+    const bool search,
+    const bool verbose
+)
 {
-    bool ok = true;
+    return readAndCheckHeader
+    (
+        is_globalIOobject<Type>::value,
+        Type::typeName,
+        checkType,
+        search,
+        verbose
+    );
+}
 
-    // Everyone check or just master
-    const bool masterOnly =
-        typeGlobal<Type>::global
-     && (
-            IOobject::fileModificationChecking == timeStampMaster
-         || IOobject::fileModificationChecking == inotifyMaster
-        );
 
-    const fileOperation& fp = Foam::fileHandler();
-
-    // Determine local status
-    if (!masterOnly || Pstream::master())
-    {
-        const fileName fName(filePath(typeGlobalFile<Type>::global));
-
-        ok = fp.readHeader(*this, fName, Type::typeName);
-        if (ok && checkType && headerClassName_ != Type::typeName)
-        {
-            WarningInFunction
-                << "unexpected class name " << headerClassName_
-                << " expected " << Type::typeName
-                << " when reading " << fName << endl;
-
-            ok = false;
-        }
-    }
-
-    // If masterOnly make sure all processors know about it
-    if (masterOnly)
-    {
-        Pstream::scatter(ok);
-    }
-
-    return ok;
+template<class Type>
+Foam::fileName Foam::IOobject::typeFilePath(const bool search) const
+{
+    return
+    (
+        is_globalIOobject<Type>::value
+      ? this->globalFilePath(Type::typeName, search)
+      : this->localFilePath(Type::typeName, search)
+    );
 }
 
 
 template<class Type>
 void Foam::IOobject::warnNoRereading() const
 {
-    if (readOpt() == IOobject::MUST_READ_IF_MODIFIED)
+    if (readOpt() == IOobjectOption::READ_MODIFIED)
     {
         WarningInFunction
             << Type::typeName << ' ' << name()
-            << " constructed with IOobject::MUST_READ_IF_MODIFIED"
-            " but " << Type::typeName
-            << " does not support automatic rereading."
+            << " constructed with READ_MODIFIED but "
+            << Type::typeName << " does not support automatic rereading."
             << endl;
     }
-}
-
-
-template<class Type>
-bool Foam::typeIOobject<Type>::headerOk()
-{
-    return typeHeaderOk<Type>(true);
 }
 
 

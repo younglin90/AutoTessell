@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,33 @@ Class
     Foam::fixedValueFvsPatchField
 
 Description
-    Foam::fixedValueFvsPatchField
+    This boundary condition supplies a fixed value constraint, and is the base
+    class for a number of other boundary conditions.
+
+    The "value" entry is MUST_READ.
+
+Usage
+    \table
+        Property     | Description             | Required    | Default
+        value        | Patch face values       | yes         |
+    \endtable
+
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type    fixedValue;
+        value   uniform 0;  // Example for scalar field usage
+    }
+    \endverbatim
 
 SourceFiles
     fixedValueFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fixedValueFvsPatchField_H
-#define fixedValueFvsPatchField_H
+#ifndef Foam_fixedValueFvsPatchField_H
+#define Foam_fixedValueFvsPatchField_H
 
 #include "fvsPatchField.H"
 
@@ -43,7 +64,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class fixedValueFvsPatch Declaration
+                   Class fixedValueFvsPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -51,7 +72,6 @@ class fixedValueFvsPatchField
 :
     public fvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -67,65 +87,93 @@ public:
             const DimensionedField<Type, surfaceMesh>&
         );
 
+        //- Construct from patch, internal field and value
+        fixedValueFvsPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, surfaceMesh>&,
+            const Type& value
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedValueFvsPatchField
         (
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const dictionary&
+            const dictionary&,
+            IOobjectOption::readOption requireValue = IOobjectOption::MUST_READ
         );
 
-        //- Construct by mapping the given fixedValueFvsPatchField<Type>
-        //  onto a new patch
+        //- Construct by mapping the given fixedValue patch field
+        //- onto a new patch
         fixedValueFvsPatchField
         (
             const fixedValueFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedValueFvsPatchField
         (
             const fixedValueFvsPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
         fixedValueFvsPatchField
         (
             const fixedValueFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new fixedValueFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Access
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
 
-            //- Return true if this patch field fixes a value.
-            //  Needed to check if a level has to be specified while solving
-            //  Poissons equations.
-            virtual bool fixesValue() const
-            {
-                return true;
-            }
-
-
-        //- Write
+        //- Write includes "value" entry
         virtual void write(Ostream&) const;
+
+
+        // Evaluation Functions
+
+            //- Return the matrix diagonal coefficients corresponding to the
+            //  evaluation of the value of this patchField with given weights
+            virtual tmp<Field<Type>> valueInternalCoeffs
+            (
+                const tmp<scalarField>&
+            ) const;
+
+            //- Return the matrix source coefficients corresponding to the
+            //  evaluation of the value of this patchField with given weights
+            virtual tmp<Field<Type>> valueBoundaryCoeffs
+            (
+                const tmp<scalarField>&
+            ) const;
+
+            //- Return the matrix diagonal coefficients corresponding to the
+            //  evaluation of the gradient of this patchField
+            virtual tmp<Field<Type>> gradientInternalCoeffs() const;
+
+            //- Return the matrix source coefficients corresponding to the
+            //  evaluation of the gradient of this patchField
+            virtual tmp<Field<Type>> gradientBoundaryCoeffs() const;
 
 
     // Member Operators

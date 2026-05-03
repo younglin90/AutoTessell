@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,25 +39,41 @@ SourceFiles
 #ifndef smoothData_H
 #define smoothData_H
 
-#include "scalar.H"
-#include "labelPair.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
-class fvPatch;
-class fvMesh;
-class transformer;
+// Forward Declarations
+class smoothData;
+
+Ostream& operator<<(Ostream&, const smoothData&);
+Istream& operator>>(Istream&, smoothData&);
 
 /*---------------------------------------------------------------------------*\
-                         Class smoothData Declaration
+                       Class smoothData Declaration
 \*---------------------------------------------------------------------------*/
 
 class smoothData
 {
+    // Private Data
+
+        scalar value_;
+
+
+    // Private Member Functions
+
+        //- Update gets information from neighbouring face/cell and
+        //- uses this to update itself (if necessary) and return true
+        template<class TrackingData>
+        inline bool update
+        (
+            const smoothData& svf,
+            const scalar scale,
+            const scalar tol,
+            TrackingData& td
+        );
+
 
 public:
 
@@ -68,30 +87,18 @@ public:
     };
 
 
-private:
+    // Generated Methods
 
-    scalar value_;
+        //- Copy construct
+        smoothData(const smoothData&) = default;
 
-    // Private Member Functions
-
-        //- Update - gets information from neighbouring face/cell and
-        //  uses this to update itself (if necessary) and return true
-        template<class TrackingData>
-        inline bool update
-        (
-            const smoothData& svf,
-            const scalar scale,
-            const scalar tol,
-            TrackingData& td
-        );
-
-
-public:
+        //- Copy assignment
+        smoothData& operator=(const smoothData&) = default;
 
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline smoothData();
 
         //- Construct from inverse field value
@@ -108,32 +115,58 @@ public:
                 return value_;
             }
 
+            //- The value
+            scalar& value()
+            {
+                return value_;
+            }
 
-        // Needed by FvFaceCellWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value
+        // Needed by FaceCellWave
+
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
-            //- Check for identical geometrical data
-            //  Used for cyclics checking
+            //- Check for identical geometrical data (eg, cyclics checking)
             template<class TrackingData>
             inline bool sameGeometry
             (
-                const fvMesh&,
+                const polyMesh&,
                 const smoothData&,
                 const scalar,
                 TrackingData& td
             ) const;
 
-            //- Transform across an interface
+            //- Convert any absolute coordinates into relative to
+            //- (patch)face centre
+            template<class TrackingData>
+            inline void leaveDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Reverse of leaveDomain
+            template<class TrackingData>
+            inline void enterDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Apply rotation matrix to any coordinates
             template<class TrackingData>
             inline void transform
             (
-                const fvPatch& patch,
-                const label patchFacei,
-                const transformer& transform,
+                const polyMesh&,
+                const tensor&,
                 TrackingData& td
             );
 
@@ -141,9 +174,9 @@ public:
             template<class TrackingData>
             inline bool updateCell
             (
-                const fvMesh&,
+                const polyMesh&,
                 const label thisCelli,
-                const labelPair& neighbourPatchAndFacei,
+                const label neighbourFacei,
                 const smoothData& svf,
                 const scalar tol,
                 TrackingData& td
@@ -153,8 +186,8 @@ public:
             template<class TrackingData>
             inline bool updateFace
             (
-                const fvMesh&,
-                const labelPair& thisPatchAndFacei,
+                const polyMesh&,
+                const label thisFacei,
                 const label neighbourCelli,
                 const smoothData& svf,
                 const scalar tol,
@@ -165,47 +198,51 @@ public:
             template<class TrackingData>
             inline bool updateFace
             (
-                const fvMesh&,
-                const labelPair& thisPatchAndFacei,
+                const polyMesh&,
+                const label thisFacei,
                 const smoothData& svf,
                 const scalar tol,
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const smoothData&, TrackingData& td) const;
 
 
-        // Member Operators
+    // Member Operators
 
-            inline void operator=(const scalar value);
+        //- Assign new value
+        void operator=(const scalar value)
+        {
+            value_ = value;
+        }
 
-            inline bool operator==(const smoothData&) const;
+        //- Test for equality
+        inline bool operator==(const smoothData&) const;
 
-            inline bool operator!=(const smoothData&) const;
+        //- Test for inequality
+        inline bool operator!=(const smoothData&) const;
 
 
-        // IOstream Operators
+    // IOstream Operators
 
-            friend Ostream& operator<<(Ostream& os, const smoothData& svf)
-            {
-                return os  << svf.value_;
-            }
+        friend Ostream& operator<<(Ostream& os, const smoothData& rhs)
+        {
+            return os << rhs.value_;
+        }
 
-            friend Istream& operator>>(Istream& is, smoothData& svf)
-            {
-                return is  >> svf.value_;
-            }
+        friend Istream& operator>>(Istream& is, smoothData& rhs)
+        {
+            return is >> rhs.value_;
+        }
 };
 
 
-//- Data associated with smoothData type are contiguous
-template<>
-inline bool contiguous<smoothData>()
-{
-    return true;
-}
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for smoothData
+template<> struct is_contiguous<smoothData> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

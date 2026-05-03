@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::gaussConvectionScheme
+
+Group
+    grpFvConvectionSchemes
 
 Description
     Basic second-order convection using face-gradients and Gauss' theorem.
@@ -48,7 +53,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class gaussConvectionScheme Declaration
+                       Class gaussConvectionScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -56,9 +61,18 @@ class gaussConvectionScheme
 :
     public fv::convectionScheme<Type>
 {
-    // Private Data
+    // Private data
 
         tmp<surfaceInterpolationScheme<Type>> tinterpScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        gaussConvectionScheme(const gaussConvectionScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const gaussConvectionScheme&) = delete;
 
 
 public:
@@ -96,43 +110,34 @@ public:
             )
         {}
 
-        //- Disallow default bitwise copy construction
-        gaussConvectionScheme(const gaussConvectionScheme&) = delete;
-
 
     // Member Functions
 
         const surfaceInterpolationScheme<Type>& interpScheme() const;
 
-        tmp<SurfaceField<Type>> interpolate
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> interpolate
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<SurfaceField<Type>> flux
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> flux
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
         tmp<fvMatrix<Type>> fvmDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<VolField<Type>> fvcDiv
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const gaussConvectionScheme&) = delete;
 };
 
 

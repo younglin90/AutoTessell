@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::cellLimitedGrad
+
+Group
+    grpFvGradSchemes
 
 Description
     cellLimitedGrad gradient scheme applied to a runTime selected base gradient
@@ -83,6 +88,12 @@ class cellLimitedGrad
             Field<tensor>& gIf
         ) const;
 
+        //- No copy construct
+        cellLimitedGrad(const cellLimitedGrad&) = delete;
+
+        //- No copy assignment
+        void operator=(const cellLimitedGrad&) = delete;
+
 
 public:
 
@@ -102,17 +113,12 @@ public:
         {
             if (k_ < 0 || k_ > 1)
             {
-                FatalIOErrorInFunction
-                (
-                    schemeData
-                )   << "coefficient = " << k_
+                FatalIOErrorInFunction(schemeData)
+                    << "coefficient = " << k_
                     << " should be >= 0 and <= 1"
                     << exit(FatalIOError);
             }
         }
-
-        //- Disallow default bitwise copy construction
-        cellLimitedGrad(const cellLimitedGrad&) = delete;
 
 
     // Member Functions
@@ -135,18 +141,15 @@ public:
 
         //- Return the gradient of the given field to the gradScheme::grad
         //  for optional caching
-        virtual tmp<VolField <typename outerProduct<vector, Type>::type>>
-        calcGrad
+        virtual tmp
+        <
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > calcGrad
         (
-            const VolField<Type>& vsf,
+            const GeometricField<Type, fvPatchField, volMesh>& vsf,
             const word& name
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const cellLimitedGrad&) = delete;
 };
 
 
@@ -163,11 +166,11 @@ inline void cellLimitedGrad<Type, Limiter>::limitFaceCmpt
 {
     scalar r = 1;
 
-    if (extrapolate > small)
+    if (extrapolate > SMALL)
     {
         r = maxDelta/extrapolate;
     }
-    else if (extrapolate < -small)
+    else if (extrapolate < -SMALL)
     {
         r = minDelta/extrapolate;
     }
@@ -189,7 +192,7 @@ inline void cellLimitedGrad<Type, Limiter>::limitFace
     const Type& extrapolate
 ) const
 {
-    for (direction cmpt=0; cmpt<pTraits<Type>::nComponents; cmpt++)
+    for (direction cmpt=0; cmpt<pTraits<Type>::nComponents; ++cmpt)
     {
         limitFaceCmpt
         (

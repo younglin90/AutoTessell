@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,7 +25,7 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::sampledSurfaces::patchInternalField
+    Foam::sampledPatchInternalField
 
 Description
     Variation of sampledPatch that samples the internalField (at a given
@@ -31,6 +34,34 @@ Description
     - interpolate=false : get cell value on faces
     - interpolate=true  : interpolate inside cell and interpolate to points
     There is no option to get interpolated value inside the cell on the faces.
+
+    This is often embedded as part of a sampled surfaces function object.
+
+Usage
+    Example of function object partial specification:
+    \verbatim
+    surfaces
+    {
+        surface1
+        {
+            type    patchInternalField;
+            patches (inlet "outlet.*");
+            offsetMode  normal;
+            distance    0.05;
+        }
+    }
+    \endverbatim
+
+    Where the sub-entries comprise:
+    \table
+        Property | Description                             | Required | Default
+        type     | patchInternalField                      | yes      |
+        patches  | patch selection as word/regex list      | yes      |
+        offsetMode | normal/uniform/nonuniform             | no       | normal
+        distance | distance for normal offset              | partly   |
+        offset   | point offset for uniform offset         | partly   |
+        offsets  | point offsets for nonuniform offset     | partly   |
+    \endtable
 
 SourceFiles
     sampledPatchInternalField.C
@@ -41,52 +72,54 @@ SourceFiles
 #define sampledPatchInternalField_H
 
 #include "sampledPatch.H"
-#include "mappedInternalPatchBase.H"
+#include "mappedPatchBase.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace sampledSurfaces
-{
 
 /*---------------------------------------------------------------------------*\
-                     Class patchInternalField Declaration
+                  Class sampledPatchInternalField Declaration
 \*---------------------------------------------------------------------------*/
 
-class patchInternalField
+class sampledPatchInternalField
 :
-    public patch
+    public sampledPatch
 {
-    // Private Data
+    // Private data
 
         //- Mapping engines
-        PtrList<mappedInternalPatchBase> mappers_;
+        PtrList<mappedPatchBase> mappers_;
 
 
     // Private Member Functions
 
-        //- Sample field on faces
+        //- Sample volume field onto surface faces
         template<class Type>
-        tmp<Field<Type>> sampleField
+        tmp<Field<Type>> sampleOnFaces
         (
-            const VolField<Type>& vField
+            const interpolation<Type>& sampler
         ) const;
 
+        //- Interpolate volume field onto surface points
         template<class Type>
-        tmp<Field<Type>> interpolateField(const interpolation<Type>&) const;
+        tmp<Field<Type>> sampleOnPoints
+        (
+            const interpolation<Type>& interpolator
+        ) const;
 
 
 public:
 
     //- Runtime type information
-    TypeName("patchInternalField");
+    TypeName("sampledPatchInternalField");
 
 
     // Constructors
 
         //- Construct from dictionary
-        patchInternalField
+        sampledPatchInternalField
         (
             const word& name,
             const polyMesh& mesh,
@@ -95,37 +128,86 @@ public:
 
 
     //- Destructor
-    virtual ~patchInternalField();
+    virtual ~sampledPatchInternalField() = default;
 
 
     // Member Functions
 
-        //- Sample field on the surface's faces
-        #define DEFINE_SAMPLE(Type, nullArg)                                   \
-            virtual tmp<Field<Type>> sample                                    \
-            (                                                                  \
-                const VolField<Type>&                                          \
-            ) const;
-        FOR_ALL_FIELD_TYPES(DEFINE_SAMPLE);
-        #undef DEFINE_SAMPLE
+    // Sample
 
-        //- Interpolate field to the surface's points
-        #define DEFINE_INTERPOLATE(Type, nullArg)                              \
-            virtual tmp<Field<Type>> interpolate                               \
-            (                                                                  \
-                const interpolation<Type>&                                     \
-            ) const;
-        FOR_ALL_FIELD_TYPES(DEFINE_INTERPOLATE);
-        #undef DEFINE_INTERPOLATE
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<scalarField> sample
+        (
+            const interpolation<scalar>& sampler
+        ) const;
 
-        //- Write
-        virtual void print(Ostream&) const;
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<vectorField> sample
+        (
+            const interpolation<vector>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<sphericalTensorField> sample
+        (
+            const interpolation<sphericalTensor>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<symmTensorField> sample
+        (
+            const interpolation<symmTensor>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<tensorField> sample
+        (
+            const interpolation<tensor>& sampler
+        ) const;
+
+
+    // Interpolate
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<scalarField> interpolate
+        (
+            const interpolation<scalar>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<vectorField> interpolate
+        (
+            const interpolation<vector>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<sphericalTensorField> interpolate
+        (
+            const interpolation<sphericalTensor>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<symmTensorField> interpolate
+        (
+            const interpolation<symmTensor>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<tensorField> interpolate
+        (
+            const interpolation<tensor>& interpolator
+        ) const;
+
+
+    // Output
+
+        //- Print information
+        virtual void print(Ostream& os, int level=0) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace sampledSurfaces
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

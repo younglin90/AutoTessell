@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,7 +34,7 @@ Description
 
 if (adjustTimeStep)
 {
-    if ((runTime.timeIndex() == 0) && (CoNum > small))
+    if ((runTime.timeIndex() == 0) && (CoNum > SMALL))
     {
         runTime.setDeltaT
         (
@@ -44,6 +46,5 @@ if (adjustTimeStep)
         );
     }
 }
-
 
 // ************************************************************************* //

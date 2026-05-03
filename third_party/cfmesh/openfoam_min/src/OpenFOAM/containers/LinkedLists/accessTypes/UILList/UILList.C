@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,38 +33,24 @@ License
 template<class LListBase, class T>
 Foam::UILList<LListBase, T>::UILList(const UILList<LListBase, T>& lst)
 {
-    for (const_iterator iter = lst.begin(); iter != lst.end(); ++iter)
+    for (auto iter = lst.cbegin(); iter != lst.cend(); ++iter)
     {
-        this->append(&iter());
+        this->push_back(&(*iter));
     }
-}
-
-
-template<class LListBase, class T>
-Foam::UILList<LListBase, T>::UILList(UILList<LListBase, T>&& lst)
-{
-    transfer(lst);
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-void Foam::UILList<LListBase, T>::operator=(const UILList<LListBase, T>& rhs)
+void Foam::UILList<LListBase, T>::operator=(const UILList<LListBase, T>& lst)
 {
     LListBase::clear();
 
-    for (const_iterator iter = rhs.begin(); iter != rhs.end(); ++iter)
+    for (auto iter = lst.cbegin(); iter != lst.cend(); ++iter)
     {
-        this->append(&iter());
+        this->push_back(&(*iter));
     }
-}
-
-
-template<class LListBase, class T>
-void Foam::UILList<LListBase, T>::operator=(UILList<LListBase, T>&& rhs)
-{
-    transfer(rhs);
 }
 
 
@@ -76,17 +65,17 @@ bool Foam::UILList<LListBase, T>::operator==
         return false;
     }
 
-    bool equal = true;
+    auto iter2 = rhs.cbegin();
 
-    const_iterator iter1 = this->begin();
-    const_iterator iter2 = rhs.begin();
-
-    for (; iter1 != this->end(); ++iter1, ++iter2)
+    for (auto iter1 = this->cbegin(); iter1 != this->cend(); ++iter1, ++iter2)
     {
-        equal = equal && iter1() == iter2();
+        if (!(*iter1 == *iter2))
+        {
+            return false;
+        }
     }
 
-    return equal;
+    return true;
 }
 
 
@@ -98,11 +87,6 @@ bool Foam::UILList<LListBase, T>::operator!=
 {
     return !operator==(rhs);
 }
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-#include "UILListIO.C"
 
 
 // ************************************************************************* //

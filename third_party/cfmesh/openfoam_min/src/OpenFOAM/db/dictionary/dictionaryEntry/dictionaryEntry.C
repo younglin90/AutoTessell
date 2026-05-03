@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,13 +37,7 @@ Foam::dictionaryEntry::dictionaryEntry
     const dictionary& dict
 )
 :
-    entry
-    (
-        key,
-        &dict != &dictionary::null
-      ? dict.endLineNumber()
-      : -1
-    ),
+    entry(key),
     dictionary(parentDict, dict)
 {}
 
@@ -60,40 +57,47 @@ Foam::dictionaryEntry::dictionaryEntry
 
 Foam::label Foam::dictionaryEntry::startLineNumber() const
 {
-    return entry::startLineNumber();
+    return dictionary::startLineNumber();
 }
 
 
 Foam::label Foam::dictionaryEntry::endLineNumber() const
 {
-    if (size())
-    {
-        return last()->endLineNumber();
-    }
-    else
-    {
-        return startLineNumber();
-    }
+    return dictionary::endLineNumber();
 }
 
 
 Foam::ITstream& Foam::dictionaryEntry::stream() const
 {
     FatalIOErrorInFunction(*this)
-        << "Attempt to return dictionary entry as a primitive"
+        << "Attempt to return stream of primitives from a dictionary entry: "
+        << entry::keyword() << nl
         << abort(FatalIOError);
 
-    return lookup("");
+    // Need to return something - send back an empty stream
+    return ITstream::empty_stream();
 }
 
 
-const Foam::dictionary& Foam::dictionaryEntry::dict() const
+const Foam::dictionary* Foam::dictionaryEntry::dictPtr() const noexcept
+{
+    return this;
+}
+
+
+Foam::dictionary* Foam::dictionaryEntry::dictPtr() noexcept
+{
+    return this;
+}
+
+
+const Foam::dictionary& Foam::dictionaryEntry::dict() const noexcept
 {
     return *this;
 }
 
 
-Foam::dictionary& Foam::dictionaryEntry::dict()
+Foam::dictionary& Foam::dictionaryEntry::dict() noexcept
 {
     return *this;
 }

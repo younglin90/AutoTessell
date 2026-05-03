@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -72,30 +75,22 @@ inline bool Foam::patchEdgeFaceRegion::update
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-// Null constructor
 inline Foam::patchEdgeFaceRegion::patchEdgeFaceRegion()
 :
     region_(-1)
 {}
 
 
-// Construct from origin, distance
 inline Foam::patchEdgeFaceRegion::patchEdgeFaceRegion
 (
-    const label region
+    const label regioni
 )
 :
-    region_(region)
+    region_(regioni)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline Foam::label Foam::patchEdgeFaceRegion::region() const
-{
-    return region_;
-}
-
 
 template<class TrackingData>
 inline bool Foam::patchEdgeFaceRegion::valid(TrackingData& td) const
@@ -121,7 +116,7 @@ inline bool Foam::patchEdgeFaceRegion::updateEdge
 (
     const polyMesh& mesh,
     const indirectPrimitivePatch& patch,
-    const label edgei,
+    const label edgeI,
     const label facei,
     const patchEdgeFaceRegion& faceInfo,
     const scalar tol,
@@ -153,7 +148,7 @@ inline bool Foam::patchEdgeFaceRegion::updateFace
     const polyMesh& mesh,
     const indirectPrimitivePatch& patch,
     const label facei,
-    const label edgei,
+    const label edgeI,
     const patchEdgeFaceRegion& edgeInfo,
     const scalar tol,
     TrackingData& td
@@ -178,41 +173,19 @@ inline bool Foam::patchEdgeFaceRegion::equal
 
 inline bool Foam::patchEdgeFaceRegion::operator==
 (
-    const Foam::patchEdgeFaceRegion& rhs
+    const patchEdgeFaceRegion& rhs
 ) const
 {
-    return region() == rhs.region();
+    return region_ == rhs.region_;
 }
 
 
 inline bool Foam::patchEdgeFaceRegion::operator!=
 (
-    const Foam::patchEdgeFaceRegion& rhs
+    const patchEdgeFaceRegion& rhs
 ) const
 {
     return !(*this == rhs);
-}
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-inline Foam::Ostream& Foam::operator<<
-(
-    Foam::Ostream& os,
-    const Foam::patchEdgeFaceRegion& wDist
-)
-{
-    return os << wDist.region_;
-}
-
-
-inline Foam::Istream& Foam::operator>>
-(
-    Foam::Istream& is,
-    Foam::patchEdgeFaceRegion& wDist
-)
-{
-    return is >> wDist.region_;
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,65 +24,56 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-    Base singly-linked list.
-
 \*---------------------------------------------------------------------------*/
 
 #include "error.H"
+#include "nullObject.H"
 
-// * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
-inline Foam::SLListBase::link::link()
-:
-    next_(0)
-{}
-
-
-inline Foam::SLListBase::link::link(link* p)
-:
-    next_(p)
-{}
+template<class IteratorType>
+inline const IteratorType& Foam::SLListBase::iterator_end()
+{
+    return *reinterpret_cast<const IteratorType*>(nullObjectPtr);
+}
 
 
-inline Foam::SLListBase::SLListBase()
-:
-    last_(0),
-    nElmts_(0)
-{}
+template<class IteratorType>
+inline IteratorType Foam::SLListBase::iterator_first() const
+{
+    SLListBase* list = const_cast<SLListBase*>(this);
+
+    if (size())
+    {
+        return IteratorType(list, const_cast<SLListBase::link*>(last_->next_));
+    }
+
+    // Return an end iterator
+    return IteratorType(list, nullptr);
+}
 
 
-inline Foam::SLListBase::SLListBase(link* a)
-:
-    last_(a->next_ = a),
-    nElmts_(1)
-{}
+template<class IteratorType>
+inline IteratorType Foam::SLListBase::iterator_last() const
+{
+    SLListBase* list = const_cast<SLListBase*>(this);
 
+    if (size())
+    {
+        return IteratorType(list, const_cast<SLListBase::link*>(last_));
+    }
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-inline Foam::SLListBase::~SLListBase()
-{}
+    // Return an end iterator
+    return IteratorType(list, nullptr);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::label Foam::SLListBase::size() const
-{
-    return nElmts_;
-}
-
-
-inline bool Foam::SLListBase::empty() const
-{
-    return !nElmts_;
-}
-
-
 inline Foam::SLListBase::link*
-Foam::SLListBase::first()
+Foam::SLListBase::front()
 {
-    if (!nElmts_)
+    if (!size_)
     {
         FatalErrorInFunction
             << "list is empty"
@@ -90,9 +84,9 @@ Foam::SLListBase::first()
 
 
 inline const Foam::SLListBase::link*
-Foam::SLListBase::first() const
+Foam::SLListBase::front() const
 {
-    if (!nElmts_)
+    if (!size_)
     {
         FatalErrorInFunction
             << "list is empty"
@@ -103,9 +97,9 @@ Foam::SLListBase::first() const
 
 
 inline Foam::SLListBase::link*
-Foam::SLListBase::last()
+Foam::SLListBase::back()
 {
-    if (!nElmts_)
+    if (!size_)
     {
         FatalErrorInFunction
             << "list is empty"
@@ -116,9 +110,9 @@ Foam::SLListBase::last()
 
 
 inline const Foam::SLListBase::link*
-Foam::SLListBase::last() const
+Foam::SLListBase::back() const
 {
-    if (!nElmts_)
+    if (!size_)
     {
         FatalErrorInFunction
             << "list is empty"
@@ -130,15 +124,32 @@ Foam::SLListBase::last() const
 
 inline void Foam::SLListBase::clear()
 {
-    last_ = 0;
-    nElmts_ = 0;
+    last_ = nullptr;
+    size_ = 0;
+}
+
+
+inline void Foam::SLListBase::swap(SLListBase& lst)
+{
+    if (this == &lst)
+    {
+        return;  // Self-swap is a no-op
+    }
+
+    std::swap(last_, lst.last_);
+    std::swap(size_, lst.size_);
 }
 
 
 inline void Foam::SLListBase::transfer(SLListBase& lst)
 {
-    last_   = lst.last_;
-    nElmts_ = lst.nElmts_;
+    if (this == &lst)
+    {
+        return;  // Self-assignment is a no-op
+    }
+
+    last_ = lst.last_;
+    size_ = lst.size_;
 
     lst.clear();
 }
@@ -146,78 +157,79 @@ inline void Foam::SLListBase::transfer(SLListBase& lst)
 
 inline Foam::SLListBase::link* Foam::SLListBase::remove
 (
-    SLListBase::iterator& it
+    SLListBase::iterator& iter
 )
 {
-    return remove(it.curElmt_);
+    return remove(iter.node_);
 }
 
 
 // * * * * * * * * * * * * * * * STL iterator  * * * * * * * * * * * * * * * //
 
-inline Foam::SLListBase::iterator::iterator(SLListBase& s, link* elmt)
+inline Foam::SLListBase::iterator::iterator
+(
+    SLListBase* list,
+    SLListBase::link* item
+)
 :
-    curList_(s),
-    curElmt_(elmt),
-    curLink_(*curElmt_)
-{}
+    node_(item),
+    list_(list),
+    copy_()
+{
+    if (node_ != nullptr)
+    {
+        copy_ = *node_;
+    }
+}
 
 
-inline Foam::SLListBase::iterator::iterator(SLListBase& s)
-:
-    curList_(s),
-    curElmt_(nullptr),
-    curLink_()
-{}
+inline Foam::SLListBase::link*
+Foam::SLListBase::iterator::get_node() const noexcept
+{
+    return node_;
+}
+
+
+inline bool Foam::SLListBase::iterator::good() const noexcept
+{
+    return (node_ != nullptr);
+}
+
+
+inline void Foam::SLListBase::iterator::next()
+{
+    if (list_)
+    {
+        if (node_ == list_->last_ || list_->last_ == nullptr)
+        {
+            node_ = nullptr;
+        }
+        else
+        {
+            node_ = copy_.next_;
+            copy_ = *node_;
+        }
+    }
+}
 
 
 inline void Foam::SLListBase::iterator::operator=(const iterator& iter)
 {
-    curElmt_ = iter.curElmt_;
-    curLink_ = iter.curLink_;
+    node_ = iter.node_;
+    list_ = iter.list_;
+    copy_ = iter.copy_;
 }
 
 
 inline bool Foam::SLListBase::iterator::operator==(const iterator& iter) const
 {
-    return curElmt_ == iter.curElmt_;
+    return node_ == iter.node_;
 }
 
 
 inline bool Foam::SLListBase::iterator::operator!=(const iterator& iter) const
 {
-    return curElmt_ != iter.curElmt_;
-}
-
-
-inline Foam::SLListBase::link& Foam::SLListBase::iterator::operator*() const
-{
-    return *curElmt_;
-}
-
-
-inline Foam::SLListBase::iterator& Foam::SLListBase::iterator::operator++()
-{
-    if (curElmt_ == curList_.last_ || curList_.last_ == 0)
-    {
-        curElmt_ = 0;
-    }
-    else
-    {
-        curElmt_ = curLink_.next_;
-        curLink_ = *curElmt_;
-    }
-
-    return *this;
-}
-
-
-inline Foam::SLListBase::iterator
-Foam::SLListBase::iterator::operator++(int)
-{
-    iterator tmp = *this;
-    ++*this;
-    return tmp;
+    return node_ != iter.node_;
 }
 
 
@@ -226,19 +238,24 @@ Foam::SLListBase::begin()
 {
     if (size())
     {
-        return iterator(*this, first());
+        return iterator_first<iterator>();
     }
-    else
-    {
-        return endIter_;
-    }
+
+    return end();
 }
 
 
 inline const Foam::SLListBase::iterator&
 Foam::SLListBase::end()
 {
-    return endIter_;
+    return iterator_end<SLListBase::iterator>();
+}
+
+
+inline const Foam::SLListBase::const_iterator&
+Foam::SLListBase::cend() const
+{
+    return iterator_end<SLListBase::const_iterator>();
 }
 
 
@@ -246,28 +263,51 @@ Foam::SLListBase::end()
 
 inline Foam::SLListBase::const_iterator::const_iterator
 (
-    const SLListBase& s,
-    const link* elmt
+    const SLListBase* list,
+    const SLListBase::link* item
 )
 :
-    curList_(s),
-    curElmt_(elmt)
+    node_(item),
+    list_(list)
 {}
 
 
-inline Foam::SLListBase::const_iterator::const_iterator(const iterator& iter)
-:
-    curList_(iter.curList_),
-    curElmt_(iter.curElmt_)
-{}
-
-
-inline void Foam::SLListBase::const_iterator::operator=
+inline Foam::SLListBase::const_iterator::const_iterator
 (
-    const const_iterator& iter
+    const SLListBase::iterator& iter
 )
+:
+    node_(iter.node_),
+    list_(iter.list_)
+{}
+
+
+inline const Foam::SLListBase::link*
+Foam::SLListBase::const_iterator::get_node() const noexcept
 {
-    curElmt_ = iter.curElmt_;
+    return node_;
+}
+
+
+inline bool Foam::SLListBase::const_iterator::good() const noexcept
+{
+    return (node_ != nullptr);
+}
+
+
+inline void Foam::SLListBase::const_iterator::next()
+{
+    if (list_)
+    {
+        if (node_ == list_->last_)
+        {
+            node_ = nullptr;
+        }
+        else
+        {
+            node_ = node_->next_;
+        }
+    }
 }
 
 
@@ -276,7 +316,7 @@ inline bool Foam::SLListBase::const_iterator::operator==
     const const_iterator& iter
 ) const
 {
-    return curElmt_ == iter.curElmt_;
+    return node_ == iter.node_;
 }
 
 
@@ -285,39 +325,7 @@ inline bool Foam::SLListBase::const_iterator::operator!=
     const const_iterator& iter
 ) const
 {
-    return curElmt_ != iter.curElmt_;
-}
-
-
-inline const Foam::SLListBase::link&
-Foam::SLListBase::const_iterator::operator*() const
-{
-    return *curElmt_;
-}
-
-
-inline Foam::SLListBase::const_iterator&
-Foam::SLListBase::const_iterator::operator++()
-{
-    if (curElmt_ == curList_.last_)
-    {
-        curElmt_ = 0;
-    }
-    else
-    {
-        curElmt_ = curElmt_->next_;
-    }
-
-    return *this;
-}
-
-
-inline Foam::SLListBase::const_iterator
-Foam::SLListBase::const_iterator::operator++(int)
-{
-    const_iterator tmp = *this;
-    ++*this;
-    return tmp;
+    return node_ != iter.node_;
 }
 
 
@@ -326,33 +334,10 @@ Foam::SLListBase::cbegin() const
 {
     if (size())
     {
-        return const_iterator(*this, first());
+        return iterator_first<const_iterator>();
     }
-    else
-    {
-        return endConstIter_;
-    }
-}
 
-
-inline const Foam::SLListBase::const_iterator&
-Foam::SLListBase::cend() const
-{
-    return endConstIter_;
-}
-
-
-inline Foam::SLListBase::const_iterator
-Foam::SLListBase::begin() const
-{
-    return this->cbegin();
-}
-
-
-inline const Foam::SLListBase::const_iterator&
-Foam::SLListBase::end() const
-{
-    return endConstIter_;
+    return cend();
 }
 
 

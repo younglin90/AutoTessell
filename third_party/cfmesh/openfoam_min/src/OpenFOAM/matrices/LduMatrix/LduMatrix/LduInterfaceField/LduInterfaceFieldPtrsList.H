@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,15 +24,15 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Type
-    lduInterfaceFieldPtrsList
+    LduInterfaceFieldPtrsList
 
 Description
     List of coupled interface fields to be used in coupling.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef LduInterfaceFieldPtrsList_H
-#define LduInterfaceFieldPtrsList_H
+#ifndef Foam_LduInterfaceFieldPtrsList_H
+#define Foam_LduInterfaceFieldPtrsList_H
 
 #include "LduInterfaceField.H"
 #include "UPtrList.H"
@@ -40,25 +42,9 @@ Description
 namespace Foam
 {
 
-/*---------------------------------------------------------------------------*\
-                  Class LduInterfaceFieldPtrsList Declaration
-\*---------------------------------------------------------------------------*/
-
+//- Store lists of LduInterfaceField as a UPtrList
 template<class Type>
-class LduInterfaceFieldPtrsList
-:
-    public UPtrList<const LduInterfaceField<Type>>
-{
-public:
-
-    LduInterfaceFieldPtrsList(label size)
-    :
-        UPtrList<const LduInterfaceField<Type>>(size)
-    {}
-};
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+using LduInterfaceFieldPtrsList = UPtrList<const LduInterfaceField<Type>>;
 
 } // End namespace Foam
 

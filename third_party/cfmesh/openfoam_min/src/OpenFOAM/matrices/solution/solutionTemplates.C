@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,22 +27,21 @@ License
 
 #include "solution.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class FieldType>
 void Foam::solution::cachePrintMessage
 (
     const char* message,
     const word& name,
-    const FieldType& vf
+    const FieldType& fld  // == regIOobject
 )
 {
-    if (solution::debug)
+    if (Foam::solution::debug)
     {
-        Info<< "Cache: " << message << token::SPACE << name
-            << ", originating from " << vf.name()
-            << " event No. " << vf.eventNo()
-            << endl;
+        Info<< "Cache: " << message << ' ' << name
+            << ", originating from " << fld.name()
+            << " event:" << fld.eventNo() << endl;
     }
 }
 

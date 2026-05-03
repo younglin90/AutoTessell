@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +46,7 @@ Foam::pairGAMGAgglomeration::pairGAMGAgglomeration
 )
 :
     GAMGAgglomeration(mesh, controlDict),
-    mergeLevels_(controlDict.lookupOrDefault<label>("mergeLevels", 1))
+    mergeLevels_(controlDict.getOrDefault<label>("mergeLevels", 1))
 {}
 
 

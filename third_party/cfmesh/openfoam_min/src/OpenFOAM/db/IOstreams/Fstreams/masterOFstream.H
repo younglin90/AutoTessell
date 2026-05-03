@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,15 +30,19 @@ Class
 Description
     Master-only drop-in replacement for OFstream.
 
+    Called on all processors (of the provided communicator).
+    Sends files to the master and writes them there.
+
 SourceFiles
     masterOFstream.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef masterOFstream_H
-#define masterOFstream_H
+#ifndef Foam_masterOFstream_H
+#define Foam_masterOFstream_H
 
-#include "OStringStream.H"
+#include "StringStream.H"
+#include "UPstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -52,39 +59,125 @@ class masterOFstream
 {
     // Private Data
 
-        const fileName filePath_;
+        //- The backend file name
+        const fileName pathName_;
 
-        const IOstream::compressionType compression_;
+        //- Atomic file creation (ignored with append)
+        const IOstreamOption::atomicType atomic_;
 
-        const bool append_;
+        //- Output file compression
+        const IOstreamOption::compressionType compression_;
 
-        //- Should file be written
-        const bool write_;
+        //- Open file in append mode
+        const IOstreamOption::appendType append_;
+
+        //- Should file be written (on this processor)
+        const bool writeOnProc_;
+
+        //- Communicator
+        const label comm_;
 
 
     // Private Member Functions
 
-        //- Open file with checking
-        void checkWrite(const fileName& fName, const string& str);
+        //- Open file with checking and write append contents
+        void checkWrite
+        (
+            const fileName& fName,
+            const char* str,
+            std::streamsize len
+        );
+
+        //- Open file with checking and write append contents
+        void checkWrite(const fileName& fName, const std::string& s);
+
+        //- Commit buffered information, including parallel gather as required
+        void commit();
 
 
 public:
 
     // Constructors
 
-        //- Construct and set stream status
+        //- Construct with specified atomic behaviour and communicator
+        //- from pathname, stream option, optional append
         masterOFstream
         (
-            const fileName& filePath,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const compressionType compression = UNCOMPRESSED,
-            const bool append = false,
-            const bool write = true
+            IOstreamOption::atomicType atomic,
+            const label comm,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND,
+            const bool writeOnProc = true
         );
 
+        //- Construct with specified communicator
+        //- from pathname, stream option, optional append
+        masterOFstream
+        (
+            const label comm,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND,
+            const bool writeOnProc = true
+        )
+        :
+            masterOFstream
+            (
+                IOstreamOption::NON_ATOMIC,
+                comm,
+                pathname,
+                streamOpt,
+                append,
+                writeOnProc
+            )
+        {}
 
-    //- Destructor
+        //- Construct with specified atomic behaviour (with worldComm)
+        //- from pathname, stream option, optional append
+        masterOFstream
+        (
+            IOstreamOption::atomicType atomic,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND,
+            const bool writeOnProc = true
+        )
+        :
+            masterOFstream
+            (
+                atomic,
+                UPstream::worldComm,
+                pathname,
+                streamOpt,
+                append,
+                writeOnProc
+            )
+        {}
+
+        //- Construct (with worldComm)
+        //- from pathname, stream option, optional append
+        explicit masterOFstream
+        (
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND,
+            const bool writeOnProc = true
+        )
+        :
+            masterOFstream
+            (
+                IOstreamOption::NON_ATOMIC,
+                UPstream::worldComm,
+                pathname,
+                streamOpt,
+                append,
+                writeOnProc
+            )
+        {}
+
+
+    //- Destructor - commits buffered information to file
     ~masterOFstream();
 };
 

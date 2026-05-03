@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Description
     Class for handling debugging switches.
 
+Note
+    Included by global/globals.C
+
 \*---------------------------------------------------------------------------*/
 
 #include "debug.H"
@@ -32,8 +38,10 @@ Description
 #include "etcFiles.H"
 #include "Ostream.H"
 #include "demandDrivenData.H"
+#include "simpleObjectRegistry.H"
 #include "IOobject.H"
 #include "HashSet.H"
+#include "nullObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -42,66 +50,37 @@ namespace Foam
 namespace debug
 {
 
-dictionary* configDictPtr_(nullptr);
+//! \cond ignoreDocumentation
+//- Skip documentation : local scope only
 
+dictionary* controlDictPtr_(nullptr);
 dictionary* debugSwitchesPtr_(nullptr);
 dictionary* infoSwitchesPtr_(nullptr);
 dictionary* optimisationSwitchesPtr_(nullptr);
 
-dictionary* debugDefaultSwitchesPtr_(nullptr);
-dictionary* infoDefaultSwitchesPtr_(nullptr);
-dictionary* optimisationDefaultSwitchesPtr_(nullptr);
+// Debug switch read and write callback tables.
+simpleObjectRegistry* debugObjectsPtr_(nullptr);
+simpleObjectRegistry* infoObjectsPtr_(nullptr);
+simpleObjectRegistry* optimisationObjectsPtr_(nullptr);
+simpleObjectRegistry* dimensionSetObjectsPtr_(nullptr);
+simpleObjectRegistry* dimensionedConstantObjectsPtr_(nullptr);
 
-dictionary& debugDefaultSwitches()
+
+// To ensure controlDictPtr_ is deleted at the end of the run
+struct deleteControlDictPtr
 {
-    if (!debugDefaultSwitchesPtr_)
-    {
-        debugDefaultSwitchesPtr_ = new dictionary();
-    }
-
-    return *debugDefaultSwitchesPtr_;
-}
-
-dictionary& infoDefaultSwitches()
-{
-    if (!infoDefaultSwitchesPtr_)
-    {
-        infoDefaultSwitchesPtr_ = new dictionary();
-    }
-
-    return *infoDefaultSwitchesPtr_;
-}
-
-dictionary& optimisationDefaultSwitches()
-{
-    if (!optimisationDefaultSwitchesPtr_)
-    {
-        optimisationDefaultSwitchesPtr_ = new dictionary();
-    }
-
-    return *optimisationDefaultSwitchesPtr_;
-}
-
-
-// To ensure configDictPtr_ is deleted at the end of the run
-class deleteControlDictPtr
-{
-public:
-
-    deleteControlDictPtr()
-    {}
-
     ~deleteControlDictPtr()
     {
-        deleteDemandDrivenData(debugDefaultSwitchesPtr_);
-        deleteDemandDrivenData(infoDefaultSwitchesPtr_);
-        deleteDemandDrivenData(optimisationDefaultSwitchesPtr_);
+        deleteDemandDrivenData(debugObjectsPtr_);
+        deleteDemandDrivenData(infoObjectsPtr_);
+        deleteDemandDrivenData(optimisationObjectsPtr_);
+        deleteDemandDrivenData(dimensionSetObjectsPtr_);
+        deleteDemandDrivenData(dimensionedConstantObjectsPtr_);
 
         debugSwitchesPtr_ = nullptr;
         infoSwitchesPtr_ = nullptr;
         optimisationSwitchesPtr_ = nullptr;
-
-        deleteDemandDrivenData(configDictPtr_);
+        deleteDemandDrivenData(controlDictPtr_);
     }
 };
 
@@ -112,83 +91,91 @@ deleteControlDictPtr deleteControlDictPtr_;
 } // End namespace debug
 } // End namespace Foam
 
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Like dictionary getOrAdd with LITERAL, but circumventing
+// writeOptionalEntries to avoid extremely noisy output
+template<class T>
+static inline T getOrAdd
+(
+    dictionary& dict,
+    const char* name,
+    const T deflt
+)
+{
+    const entry* eptr = dict.findEntry(name, keyType::LITERAL);
+
+    if (eptr)
+    {
+        return eptr->get<T>();
+    }
+
+    dict.add(new primitiveEntry(name, deflt));
+    return deflt;
+}
+
+
+// Append object to a registry
+static inline void appendNamedEntry
+(
+    simpleObjectRegistry& obr,
+    const char* name,
+    simpleRegIOobject* obj
+)
+{
+    simpleObjectRegistryEntry* ptr = obr.find(name);
+    if (ptr)
+    {
+        ptr->append(obj);
+    }
+    else
+    {
+        obr.append(name, new simpleObjectRegistryEntry(obj));
+    }
+}
+
+} // End namespace Foam
+
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-Foam::dictionary& Foam::debug::configDict()
+Foam::dictionary& Foam::debug::controlDict()
 {
-    if (!configDictPtr_)
+    if (!controlDictPtr_)
     {
-        string configDictString(getEnv("FOAM_CONFIGDICT"));
-        if (!configDictString.empty())
+        string controlDictString(Foam::getEnv("FOAM_CONTROLDICT"));
+        if (!controlDictString.empty())
         {
             // Read from environment
-            IStringStream is(configDictString);
-            configDictPtr_ = new dictionary(is);
+            IStringStream is(controlDictString);
+            controlDictPtr_ = new dictionary(is);
         }
         else
         {
-            fileNameList configDictFiles = findEtcFiles("configDict", true);
-            configDictPtr_ = new dictionary();
-            forAllReverse(configDictFiles, cdfi)
+            fileNameList controlDictFiles = findEtcFiles("controlDict", true);
+            controlDictPtr_ = new dictionary();
+            forAllReverse(controlDictFiles, i)
             {
-                IFstream ifs(configDictFiles[cdfi]);
+                IFstream is(controlDictFiles[i]);
 
-                if (!ifs.good())
+                if (!is.good())
                 {
                     SafeFatalIOErrorInFunction
                     (
-                        ifs,
-                        "Cannot open configDict"
-                    );
-                }
-                configDictPtr_->merge(dictionary(ifs));
-            }
-
-            // Check for legacy etc controlDict files
-            // for backwards compatibility
-            fileNameList controlDictFiles = findEtcFiles("controlDict", false);
-
-            if (controlDictFiles.size())
-            {
-                cout<< "--> FOAM Warning: legacy controlDict"
-                       " configuration files found:" << std::endl;
-
-                forAll(controlDictFiles, i)
-                {
-                    cout<< "    " << controlDictFiles[i] << std::endl;
-                }
-
-                cout<< "    Please rename these files controlDict -> configDict"
-                    << std::endl;
-            }
-
-            forAllReverse(controlDictFiles, cdfi)
-            {
-                IFstream ifs(controlDictFiles[cdfi]);
-
-                if (!ifs.good())
-                {
-                    SafeFatalIOErrorInFunction
-                    (
-                        ifs,
+                        is,
                         "Cannot open controlDict"
                     );
                 }
-                configDictPtr_->merge(dictionary(ifs));
+                controlDictPtr_->merge(dictionary(is));
             }
-
-
-        }
-
-        IFstream ifs("system/configDict");
-        if (ifs.good())
-        {
-            entry::disableFunctionEntries = true;
-            configDictPtr_->merge(dictionary(ifs));
         }
     }
 
-    return *configDictPtr_;
+    return *controlDictPtr_;
 }
 
 
@@ -200,22 +187,18 @@ Foam::dictionary& Foam::debug::switchSet
 {
     if (!subDictPtr)
     {
-        entry* ePtr = configDict().lookupEntryPtr
-        (
-            subDictName, false, false
-        );
+        subDictPtr = controlDict().findDict(subDictName, keyType::LITERAL);
 
-        if (!ePtr || !ePtr->isDict())
+        if (!subDictPtr)
         {
-            cerr<< "debug::switchSet(const char*, dictionary*&):\n"
+            std::cerr
+                << "debug::switchSet(const char*, dictionary*&):\n"
                 << "    Cannot find " <<  subDictName << " in dictionary "
-                << configDict().name().c_str()
+                << controlDict().name().c_str()
                 << std::endl << std::endl;
 
-            ::exit(1);
+            std::exit(1);
         }
-
-        subDictPtr = &ePtr->dict();
     }
 
     return *subDictPtr;
@@ -240,113 +223,153 @@ Foam::dictionary& Foam::debug::optimisationSwitches()
 }
 
 
-int Foam::debug::debugSwitch(const char* name, const int defaultValue)
+int Foam::debug::debugSwitch(const char* name, const int deflt)
 {
-    if
-    (
-        debugDefaultSwitches().found(name)
-     && debugDefaultSwitches().lookup<int>(name) != defaultValue
-    )
-    {
-        FatalErrorInFunction
-            << "Multiple defaults set for debug switch " << name
-            << exit(FatalError);
-    }
-
-    debugDefaultSwitches().set(name, defaultValue);
-
-    return debugSwitches().lookupOrAddDefault(name, defaultValue);
+    return getOrAdd(debugSwitches(), name, deflt);
 }
 
 
-int Foam::debug::infoSwitch(const char* name, const int defaultValue)
+int Foam::debug::infoSwitch(const char* name, const int deflt)
 {
-    if
-    (
-        infoDefaultSwitches().found(name)
-     && infoDefaultSwitches().lookup<int>(name) != defaultValue
-    )
-    {
-        FatalErrorInFunction
-            << "Multiple defaults set for info switch " << name
-            << exit(FatalError);
-    }
-
-    infoDefaultSwitches().set(name, defaultValue);
-
-    return infoSwitches().lookupOrAddDefault(name, defaultValue);
+    return getOrAdd(infoSwitches(), name, deflt);
 }
 
 
-int Foam::debug::optimisationSwitch(const char* name, const int defaultValue)
+int Foam::debug::optimisationSwitch(const char* name, const int deflt)
 {
-    if
-    (
-        optimisationDefaultSwitches().found(name)
-     && optimisationDefaultSwitches().lookup<int>(name) != defaultValue
-    )
-    {
-        FatalErrorInFunction
-            << "Multiple defaults set for optimisation switch " << name
-            << exit(FatalError);
-    }
-
-    optimisationDefaultSwitches().set(name, defaultValue);
-
-    return optimisationSwitches().lookupOrAddDefault(name, defaultValue);
+    return getOrAdd(optimisationSwitches(), name, deflt);
 }
 
 
-float Foam::debug::floatOptimisationSwitch
+float Foam::debug::floatOptimisationSwitch(const char* name, const float deflt)
+{
+    return getOrAdd(optimisationSwitches(), name, deflt);
+}
+
+
+void Foam::debug::addDebugObject(const char* name, simpleRegIOobject* obj)
+{
+    appendNamedEntry(debugObjects(), name, obj);
+}
+
+
+void Foam::debug::addInfoObject(const char* name, simpleRegIOobject* obj)
+{
+    appendNamedEntry(infoObjects(), name, obj);
+}
+
+
+void Foam::debug::addOptimisationObject
 (
     const char* name,
-    const float defaultValue
+    simpleRegIOobject* obj
 )
 {
-    if
-    (
-        optimisationDefaultSwitches().found(name)
-     && optimisationDefaultSwitches().lookup<float>(name) != defaultValue
-    )
-    {
-        FatalErrorInFunction
-            << exit(FatalError);
-    }
-
-    optimisationDefaultSwitches().set(name, defaultValue);
-
-    return optimisationSwitches().lookupOrAddDefault(name, defaultValue);
+    appendNamedEntry(optimisationObjects(), name, obj);
 }
 
 
-const Foam::word Foam::debug::wordOptimisationSwitch
+void Foam::debug::addDimensionSetObject
 (
     const char* name,
-    const word& defaultValue
+    simpleRegIOobject* obj
 )
 {
-    if
-    (
-        optimisationDefaultSwitches().found(name)
-     && optimisationDefaultSwitches().lookup<word>(name) != defaultValue
-    )
-    {
-        FatalErrorInFunction
-            << exit(FatalError);
-    }
-
-    optimisationDefaultSwitches().set(name, defaultValue);
-
-    return optimisationSwitches().lookupOrAddDefault(name, defaultValue);
+    appendNamedEntry(dimensionSetObjects(), name, obj);
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+void Foam::debug::addDimensionedConstantObject
+(
+    const char* name,
+    simpleRegIOobject* obj
+)
+{
+    appendNamedEntry(dimensionedConstantObjects(), name, obj);
+}
+
+
+Foam::simpleObjectRegistry& Foam::debug::debugObjects()
+{
+    if (!debugObjectsPtr_)
+    {
+        debugObjectsPtr_ = new simpleObjectRegistry(128);
+    }
+
+    return *debugObjectsPtr_;
+}
+
+
+Foam::simpleObjectRegistry& Foam::debug::infoObjects()
+{
+    if (!infoObjectsPtr_)
+    {
+        infoObjectsPtr_ = new simpleObjectRegistry(128);
+    }
+
+    return *infoObjectsPtr_;
+}
+
+
+Foam::simpleObjectRegistry& Foam::debug::optimisationObjects()
+{
+    if (!optimisationObjectsPtr_)
+    {
+        optimisationObjectsPtr_ = new simpleObjectRegistry(128);
+    }
+
+    return *optimisationObjectsPtr_;
+}
+
+
+Foam::simpleObjectRegistry& Foam::debug::dimensionSetObjects()
+{
+    if (!dimensionSetObjectsPtr_)
+    {
+        dimensionSetObjectsPtr_ = new simpleObjectRegistry(128);
+    }
+
+    return *dimensionSetObjectsPtr_;
+}
+
+
+Foam::simpleObjectRegistry& Foam::debug::dimensionedConstantObjects()
+{
+    if (!dimensionedConstantObjectsPtr_)
+    {
+        dimensionedConstantObjectsPtr_ = new simpleObjectRegistry(128);
+    }
+
+    return *dimensionedConstantObjectsPtr_;
+}
+
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-void listSwitches
+// Print the switch status
+static inline void printStatus
+(
+    const char * const message,
+    const wordList& list
+)
+{
+    // Use writeList with length = -1 to ensure we always have newlines,
+    // even for short lists
+
+    Info<< message << nl;
+    list.writeList(Info, -1) << nl;
+}
+
+
+// Write the switch names.
+//
+// Use writeList with -1 for the length to ensure we always have newlines,
+// even if the lists are short
+
+static void listSwitches
 (
     const wordList& debugSwitches,
     const wordList& infoSwitches,
@@ -354,126 +377,66 @@ void listSwitches
     const bool unset
 )
 {
+    IOobject::writeDivider(Info);
+
     if (unset)
     {
-        fileNameList configDictFiles = findEtcFiles("configDict", true);
-        dictionary configDict;
-        forAllReverse(configDictFiles, cdfi)
+        fileNameList controlDictFiles = findEtcFiles("controlDict", true);
+        dictionary controlDict;
+        forAllReverse(controlDictFiles, i)
         {
-            configDict.merge(dictionary(IFstream(configDictFiles[cdfi])()));
+            IFstream is(controlDictFiles[i]);
+
+            controlDict.merge(dictionary(is));
         }
 
-        wordHashSet configDictDebug
-        (
-            configDict.subDict("DebugSwitches").sortedToc()
-        );
+        // HashSet to track switches that have not been set
+        wordHashSet hashed;
 
-        wordHashSet configDictInfo
-        (
-            configDict.subDict("InfoSwitches").sortedToc()
-        );
+        // DebugSwitches
+        if (notNull(debugSwitches))
+        {
+            hashed = debugSwitches;
+            hashed.unset(controlDict.subDict("DebugSwitches").toc());
+            printStatus("Unset DebugSwitches", hashed.sortedToc());
+        }
 
-        wordHashSet configDictOpt
-        (
-            configDict.subDict("OptimisationSwitches").sortedToc()
-        );
+        // InfoSwitches
+        if (notNull(infoSwitches))
+        {
+            hashed = infoSwitches;
+            hashed.unset(controlDict.subDict("InfoSwitches").toc());
+            printStatus("Unset InfoSwitches", hashed.sortedToc());
+        }
 
-
-        IOobject::writeDivider(Info);
-
-        wordHashSet hashset;
-        hashset = debugSwitches;
-        hashset -= configDictDebug;
-        Info<< "Unset DebugSwitches" << hashset.sortedToc() << endl;
-
-        hashset = infoSwitches;
-        hashset -= configDictInfo;
-        Info<< "Unset InfoSwitches" << hashset.sortedToc() << endl;
-
-        hashset = optSwitches;
-        hashset -= configDictOpt;
-        Info<< "Unset OptimisationSwitches" << hashset.sortedToc() << endl;
+        // OptimisationSwitches
+        if (notNull(optSwitches))
+        {
+            hashed = optSwitches;
+            hashed.unset(controlDict.subDict("OptimisationSwitches").toc());
+            printStatus("Unset OptimisationSwitches", hashed.sortedToc());
+        }
     }
     else
     {
-        IOobject::writeDivider(Info);
-        Info<< "DebugSwitches" << debugSwitches << endl;
-        Info<< "InfoSwitches" << infoSwitches << endl;
-        Info<< "OptimisationSwitches" << optSwitches << endl;
-    }
-}
-
-
-void listSwitches
-(
-    const word& name,
-    const dictionary& switches,
-    const dictionary& defaultSwitches
-)
-{
-    wordHashSet defaultSet;
-    wordHashSet nonDefaultSet;
-    wordHashSet noDefaultSet;
-
-    forAllConstIter(dictionary, switches, iter)
-    {
-        const word& name = iter().keyword();
-
-        const bool hasDefault = defaultSwitches.found(name);
-
-        const bool isDefault =
-            hasDefault
-         && defaultSwitches.lookupEntry(name, false, false) == iter();
-
-        if (hasDefault)
+        // DebugSwitches
+        if (notNull(debugSwitches))
         {
-            if (isDefault)
-            {
-                defaultSet.insert(name);
-            }
-            else
-            {
-                nonDefaultSet.insert(name);
-            }
+            printStatus("DebugSwitches", debugSwitches);
         }
-        else
+
+        // InfoSwitches
+        if (notNull(infoSwitches))
         {
-            noDefaultSet.insert(name);
+            printStatus("InfoSwitches", infoSwitches);
+        }
+
+        // OptimisationSwitches
+        if (notNull(optSwitches))
+        {
+            printStatus("OptimisationSwitches", optSwitches);
         }
     }
-
-    auto print = [&](const char* heading, const wordList& names)
-    {
-        Info<< indent << "// " << heading << endl;
-
-        forAll(names, i)
-        {
-            Info<< switches.lookupEntry(names[i], false, false);
-        }
-    };
-
-    Info<< name << endl
-        << token::BEGIN_BLOCK << endl << incrIndent;
-
-    print
-    (
-        "Switches with default values",
-        defaultSet.sortedToc()
-    );
-    Info<< nl;
-    print
-    (
-        "Switches with non-default values",
-        nonDefaultSet.sortedToc()
-    );
-    Info<< nl;
-    print
-    (
-        "Switches without defaults",
-        noDefaultSet.sortedToc()
-    );
-
-    Info<< decrIndent << token::END_BLOCK << endl;
 }
 
 } // End namespace Foam
@@ -481,29 +444,98 @@ void listSwitches
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-void Foam::debug::listSwitches()
+void Foam::debug::listSwitches(const bool unset)
 {
     listSwitches
     (
-        "DebugSwitches",
-        debug::debugSwitches(),
-        debug::debugDefaultSwitches()
+        debug::debugSwitches().sortedToc(),
+        debug::infoSwitches().sortedToc(),
+        debug::optimisationSwitches().sortedToc(),
+        unset
     );
-    Info<< endl;
+}
 
+
+void Foam::debug::listDebugSwitches(const bool unset)
+{
     listSwitches
     (
-        "InfoSwitches",
-        debug::infoSwitches(),
-        debug::infoDefaultSwitches()
+        debug::debugSwitches().sortedToc(),
+        wordList::null(),
+        wordList::null(),
+        unset
     );
-    Info<< endl;
+}
 
+
+void Foam::debug::listInfoSwitches(const bool unset)
+{
     listSwitches
     (
-        "OptimisationSwitches",
-        debug::optimisationSwitches(),
-        debug::optimisationDefaultSwitches()
+        wordList::null(),
+        debug::infoObjects().sortedToc(),
+        wordList::null(),
+        unset
+    );
+}
+
+
+void Foam::debug::listOptimisationSwitches(const bool unset)
+{
+    listSwitches
+    (
+        wordList::null(),
+        wordList::null(),
+        debug::optimisationSwitches().sortedToc(),
+        unset
+    );
+}
+
+
+void Foam::debug::listRegisteredSwitches(const bool unset)
+{
+    listSwitches
+    (
+        debug::debugObjects().sortedToc(),
+        debug::infoObjects().sortedToc(),
+        debug::optimisationObjects().sortedToc(),
+        unset
+    );
+}
+
+
+void Foam::debug::listRegisteredDebugSwitches(const bool unset)
+{
+    listSwitches
+    (
+        debug::debugObjects().sortedToc(),
+        wordList::null(),
+        wordList::null(),
+        unset
+    );
+}
+
+
+void Foam::debug::listRegisteredInfoSwitches(const bool unset)
+{
+    listSwitches
+    (
+        wordList::null(),
+        debug::infoObjects().sortedToc(),
+        wordList::null(),
+        unset
+    );
+}
+
+
+void Foam::debug::listRegisteredOptimisationSwitches(const bool unset)
+{
+    listSwitches
+    (
+        wordList::null(),
+        wordList::null(),
+        debug::optimisationObjects().sortedToc(),
+        unset
     );
 }
 

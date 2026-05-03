@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,26 +40,56 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::cyclicFvPatch::makeWeights(scalarField& w) const
 {
-    coupledFvPatch::makeWeights
-    (
-        w,
-        nbrPatch().Sf(),
-        nbrPatch().coupledFvPatch::delta()
-    );
+    const cyclicFvPatch& nbrPatch = neighbFvPatch();
+
+    const scalarField deltas(nf()&coupledFvPatch::delta());
+    const scalarField nbrDeltas(nbrPatch.nf()&nbrPatch.coupledFvPatch::delta());
+
+    forAll(deltas, facei)
+    {
+        scalar di = deltas[facei];
+        scalar dni = nbrDeltas[facei];
+
+        w[facei] = dni/(di + dni);
+    }
 }
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
 Foam::tmp<Foam::vectorField> Foam::cyclicFvPatch::delta() const
 {
-    return
-        coupledFvPatch::delta()
-      - transform().transform(nbrPatch().coupledFvPatch::delta());
+    const vectorField patchD(coupledFvPatch::delta());
+    const vectorField nbrPatchD(neighbFvPatch().coupledFvPatch::delta());
+
+    auto tpdv = tmp<vectorField>::New(patchD.size());
+    auto& pdv = tpdv.ref();
+
+    // To the transformation if necessary
+    if (parallel())
+    {
+        forAll(patchD, facei)
+        {
+            vector ddi = patchD[facei];
+            vector dni = nbrPatchD[facei];
+
+            pdv[facei] = ddi - dni;
+        }
+    }
+    else
+    {
+        forAll(patchD, facei)
+        {
+            vector ddi = patchD[facei];
+            vector dni = nbrPatchD[facei];
+
+            pdv[facei] = ddi - transform(forwardT()[0], dni);
+        }
+    }
+
+    return tpdv;
 }
 
 
@@ -66,6 +99,18 @@ Foam::tmp<Foam::labelField> Foam::cyclicFvPatch::interfaceInternalField
 ) const
 {
     return patchInternalField(internalData);
+}
+
+
+Foam::tmp<Foam::labelField> Foam::cyclicFvPatch::interfaceInternalField
+(
+    const labelUList& internalData,
+    const labelUList& faceCells
+) const
+{
+    auto tpfld = tmp<labelField>::New();
+    patchInternalField(internalData, faceCells, tpfld.ref());
+    return tpfld;
 }
 
 

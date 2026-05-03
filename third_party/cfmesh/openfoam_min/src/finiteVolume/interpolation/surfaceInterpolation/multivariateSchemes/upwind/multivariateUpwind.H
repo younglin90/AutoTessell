@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +46,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class multivariateUpwind Declaration
+                           Class multivariateUpwind Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,9 +54,18 @@ class multivariateUpwind
 :
     public multivariateSurfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private data
 
         const surfaceScalarField& faceFlux_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        multivariateUpwind(const multivariateUpwind&) = delete;
+
+        //- No copy assignment
+        void operator=(const multivariateUpwind&) = delete;
 
 
 public:
@@ -85,14 +96,8 @@ public:
             faceFlux_(faceFlux)
         {}
 
-        //- Disallow default bitwise copy construction
-        multivariateUpwind(const multivariateUpwind&) = delete;
-
 
     // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const multivariateUpwind&) = delete;
 
         //- surfaceInterpolationScheme sub-class returned by operator(field)
         //  which is used as the interpolation scheme for the field
@@ -100,7 +105,7 @@ public:
         :
             public multivariateSurfaceInterpolationScheme<Type>::fieldScheme
         {
-            // Private Data
+            // Private data
 
                 const surfaceScalarField& faceFlux_;
 
@@ -110,7 +115,7 @@ public:
 
                 fieldScheme
                 (
-                    const VolField<Type>& field,
+                    const GeometricField<Type, fvPatchField, volMesh>& field,
                     const surfaceScalarField& faceFlux
                 )
                 :
@@ -125,7 +130,7 @@ public:
                 //- Return the interpolation weighting factors
                 tmp<surfaceScalarField> weights
                 (
-                    const VolField<Type>&
+                    const GeometricField<Type, fvPatchField, volMesh>&
                 ) const
                 {
                     return pos0(faceFlux_);
@@ -134,7 +139,7 @@ public:
 
         tmp<surfaceInterpolationScheme<Type>> operator()
         (
-            const VolField<Type>& field
+            const GeometricField<Type, fvPatchField, volMesh>& field
         ) const
         {
             return tmp<surfaceInterpolationScheme<Type>>

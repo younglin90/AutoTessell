@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +28,13 @@ Class
     Foam::fileFormats::SMESHsurfaceFormat
 
 Description
-    Provide a means of writing tetgen SMESH format.
+    Write tetgen SMESH format (Tetgen http://tetgen.berlios.de)
 
-    Tetgen http://tetgen.berlios.de
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
 
 See also
     File format information:
@@ -38,8 +45,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SMESHsurfaceFormat_H
-#define SMESHsurfaceFormat_H
+#ifndef Foam_SMESHsurfaceFormat_H
+#define Foam_SMESHsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -53,7 +60,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class SMESHsurfaceFormat Declaration
+               Class fileFormats::SMESHsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -65,34 +72,50 @@ public:
 
     // Constructors
 
-        //- Construct null
-        SMESHsurfaceFormat();
-
-        //- Disallow default bitwise copy construction
-        SMESHsurfaceFormat(const SMESHsurfaceFormat<Face>&) = delete;
+        //- Default construct
+        SMESHsurfaceFormat() = default;
 
 
     //- Destructor
-    virtual ~SMESHsurfaceFormat()
-    {}
+    virtual ~SMESHsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components (by proxy) in SMESH format
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
-        //- Write object
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const SMESHsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

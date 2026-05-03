@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,21 +45,21 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PatchTools_H
-#define PatchTools_H
+#ifndef Foam_PatchTools_H
+#define Foam_PatchTools_H
 
-#include "PrimitivePatch.H"
-#include "HashSet.H"
-#include "globalIndex.H"
 #include "autoPtr.H"
+#include "globalIndex.H"
+#include "primitivePatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class polyMesh;
-class PackedBoolList;
+class bitSet;
 class boundBox;
 
 /*---------------------------------------------------------------------------*\
@@ -158,10 +161,8 @@ public:
     //  p2PointLabels : corresponding points on p2
     template
     <
-        class FaceList1,
-        class PointField1,
-        class FaceList2,
-        class PointField2
+        class FaceList1, class PointField1,
+        class FaceList2, class PointField2
     >
     static void matchPoints
     (
@@ -178,10 +179,8 @@ public:
     //  sameOrientation : same orientation?
     template
     <
-        class FaceList1,
-        class PointField1,
-        class FaceList2,
-        class PointField2
+        class FaceList1, class PointField1,
+        class FaceList2, class PointField2
     >
     static void matchEdges
     (
@@ -190,7 +189,7 @@ public:
 
         labelList& p1EdgeLabels,
         labelList& p2EdgeLabels,
-        PackedBoolList& sameOrientation
+        bitSet& sameOrientation
     );
 
 
@@ -199,7 +198,8 @@ public:
     static tmp<pointField> pointNormals
     (
         const polyMesh&,
-        const PrimitivePatch<FaceList, PointField>&
+        const PrimitivePatch<FaceList, PointField>&,
+        const bitSet& flipMap = bitSet::null()
     );
 
 
@@ -211,33 +211,91 @@ public:
         const polyMesh&,
         const PrimitivePatch<FaceList, PointField>&,
         const labelList& patchEdges,
-        const labelList& coupledEdges
+        const labelList& coupledEdges,
+        const bitSet& flipMap = bitSet::null()
     );
 
 
     //- Gather points and faces onto master and merge into single patch.
-    //  Note: uses faces/points, not localFaces/localPoints.
+    //  Note: Normally uses faces/points (not localFaces/localPoints)
+    //
+    //  \param[in] mergeDist Geometric merge tolerance for Foam::mergePoints
+    //  \param[in] pp The patch to merge
+    //  \param[out] mergedPoints merged points (master only, empty elsewhere)
+    //  \param[out] mergedFaces merged faces (master only, empty elsewhere)
+    //  \param[out] pointAddr Points globalIndex gather addressing
+    //      (master only, empty elsewhere)
+    //  \param[out] faceAddr Faces globalIndex gather addressing
+    //      (master only, empty elsewhere)
+    //  \param[out] pointMergeMap An old-to-new mapping from original
+    //      point index to the index into merged points.
+    //  \param[in]  useLocal  gather/merge patch localFaces/localPoints
+    //      instead of faces/points
+    //
+    //  \note
+    //  - OpenFOAM-v2112 and earlier: geometric merge on all patch points.
+    //  - OpenFOAM-v2206 and later: geometric merge on patch boundary points.
     template<class FaceList, class PointField>
     static void gatherAndMerge
     (
         const scalar mergeDist,
-        const PrimitivePatch<FaceList, PointField>& p,
-        Field<typename PrimitivePatch<FaceList, PointField>::PointType>&
-            mergedPoints,
-        List<typename PrimitivePatch<FaceList, PointField>::FaceType>&
-            mergedFaces,
-        labelList& pointMergeMap
+        const PrimitivePatch<FaceList, PointField>& pp,
+        Field
+        <
+            typename PrimitivePatch<FaceList, PointField>::point_type
+        >& mergedPoints,
+        List
+        <
+            typename PrimitivePatch<FaceList, PointField>::face_type
+        >& mergedFaces,
+        globalIndex& pointAddr,
+        globalIndex& faceAddr,
+        labelList& pointMergeMap = const_cast<labelList&>(labelList::null()),
+        const bool useLocal = false
+    );
+
+    //- Gather points and faces onto master and merge into single patch.
+    //  Note: Normally uses faces/points (not localFaces/localPoints)
+    //
+    //  \param[in] mergeDist Geometric merge tolerance for Foam::mergePoints
+    //  \param[in] pp The patch to merge
+    //  \param[out] mergedPoints merged points (master only, empty elsewhere)
+    //  \param[out] mergedFaces merged faces (master only, empty elsewhere)
+    //  \param[out] pointMergeMap An old-to-new mapping from original
+    //      point index to the index into merged points.
+    //  \param[in] useLocal gather/merge patch localFaces/localPoints
+    //      instead of faces/points
+    //
+    //  \note
+    //  - OpenFOAM-v2112 and earlier: geometric merge on all patch points.
+    //  - OpenFOAM-v2206 and later: geometric merge on patch boundary points.
+    template<class FaceList, class PointField>
+    static void gatherAndMerge
+    (
+        const scalar mergeDist,
+        const PrimitivePatch<FaceList, PointField>& pp,
+        Field
+        <
+            typename PrimitivePatch<FaceList, PointField>::point_type
+        >& mergedPoints,
+        List
+        <
+            typename PrimitivePatch<FaceList, PointField>::face_type
+        >& mergedFaces,
+        labelList& pointMergeMap = const_cast<labelList&>(labelList::null()),
+        const bool useLocal = false
     );
 
     //- Gather (mesh!) points and faces onto master and merge collocated
     //  points into a single patch. Uses coupled point mesh
     //  structure so does not need tolerances.
-    //  On master and slave returns:
+    //  On master and sub-ranks returns:
     //  - pointToGlobal : for every local point index the global point index
     //  - uniqueMeshPointLabels : my local mesh points
     //  - globalPoints : global numbering for the global points
     //  - globalFaces : global numbering for the faces
-    //  On master only:
+    //  .
+    //  On master only returns:
     //  - mergedFaces : the merged faces
     //  - mergedPoints : the merged points
     template<class FaceList>

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,13 +34,13 @@ inline Foam::Roots<N>::Roots()
 {
     forAll(*this, i)
     {
-        type(i, rootType::nan);
+        type(i, roots::nan);
     }
 }
 
 
 template <Foam::direction N>
-inline Foam::Roots<N>::Roots(const rootType t, const scalar x)
+inline Foam::Roots<N>::Roots(const roots::type t, const scalar x)
 :
     types_(0)
 {
@@ -53,7 +55,7 @@ inline Foam::Roots<N>::Roots(const rootType t, const scalar x)
 template <Foam::direction N>
 inline Foam::Roots<N>::Roots
 (
-    const rootType t,
+    const roots::type t,
     const scalar x,
     const Roots<N - 1>& xs
 )
@@ -74,7 +76,7 @@ template <Foam::direction N>
 inline Foam::Roots<N>::Roots
 (
     const Roots<N - 1>& xs,
-    const rootType t,
+    const roots::type t,
     const scalar x
 )
 :
@@ -119,17 +121,17 @@ template <Foam::direction N>
 inline void Foam::Roots<N>::type
 (
     const direction i,
-    const rootType t
+    const roots::type t
 )
 {
-    types_ += (static_cast<int>(t) - static_cast<int>(type(i))) << 3*i;
+    types_ += (t - type(i)) << 3*i;
 }
 
 
 template <Foam::direction N>
-inline Foam::rootType Foam::Roots<N>::type(const direction i) const
+inline Foam::roots::type Foam::Roots<N>::type(const direction i) const
 {
-    return static_cast<rootType>((types_ >> 3*i) & 7);
+    return static_cast<roots::type>((types_ >> 3*i) & 7);
 }
 
 

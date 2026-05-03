@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                Class multivariateIndependentScheme Declaration
+                  Class multivariateIndependentScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -58,10 +60,22 @@ class multivariateIndependentScheme
 :
     public multivariateSurfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private data
 
         dictionary schemes_;
         const surfaceScalarField& faceFlux_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        multivariateIndependentScheme
+        (
+            const multivariateIndependentScheme&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const multivariateIndependentScheme&) = delete;
 
 
 public:
@@ -82,26 +96,17 @@ public:
             Istream& schemeData
         );
 
-        //- Disallow default bitwise copy construction
-        multivariateIndependentScheme
-        (
-            const multivariateIndependentScheme&
-        ) = delete;
-
 
     // Member Operators
 
-        //- Disallow default bitwise assignment
-        void operator=(const multivariateIndependentScheme&) = delete;
-
         tmp<surfaceInterpolationScheme<Type>> operator()
         (
-            const VolField<Type>& field
+            const GeometricField<Type, fvPatchField, volMesh>& field
         ) const
         {
             return surfaceInterpolationScheme<Type>::New
             (
-                faceFlux_.mesh()(),
+                faceFlux_.mesh(),
                 faceFlux_,
                 schemes_.lookup(field.name())
             );

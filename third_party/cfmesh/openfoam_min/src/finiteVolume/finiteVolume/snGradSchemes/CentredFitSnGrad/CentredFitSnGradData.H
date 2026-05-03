@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -58,7 +61,7 @@ class CentredFitSnGradData
         Polynomial
     >
 {
-    // Private Data
+    // Private data
 
         //- For each cell in the mesh store the values which multiply the
         //  values of the stencil to obtain the gradient for each direction
@@ -83,11 +86,10 @@ public:
 
 
     //- Destructor
-    virtual ~CentredFitSnGradData()
-    {}
+    virtual ~CentredFitSnGradData() = default;
 
 
-    // Member Functions
+    // Member functions
 
         //- Return reference to fit coefficients
         const List<scalarList>& coeffs() const

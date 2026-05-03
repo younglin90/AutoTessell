@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,7 +26,6 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "keyType.H"
 #include "dictionaryEntry.H"
 #include "IOstreams.H"
 
@@ -35,33 +37,10 @@ Foam::dictionaryEntry::dictionaryEntry
     Istream& is
 )
 :
-    entry(keyType(is), is.lineNumber()),
-    dictionary(parentDict, is)
+    entry(keyType(is)),
+    dictionary(parentDict, dictionary(is))
 {
-    is.fatalCheck
-    (
-        "dictionaryEntry::dictionaryEntry"
-        "(const dictionary& parentDict, Istream&)"
-    );
-}
-
-
-Foam::dictionaryEntry::dictionaryEntry
-(
-    const keyType& key,
-    const label lineNumber,
-    const dictionary& parentDict,
-    Istream& is
-)
-:
-    entry(key, lineNumber),
-    dictionary(fileName(key), parentDict, is)
-{
-    is.fatalCheck
-    (
-        "dictionaryEntry::dictionaryEntry"
-        "(const keyType&, const dictionary& parentDict, Istream&)"
-    );
+    is.fatalCheck(FUNCTION_NAME);
 }
 
 
@@ -72,26 +51,30 @@ Foam::dictionaryEntry::dictionaryEntry
     Istream& is
 )
 :
-    dictionaryEntry(key, is.lineNumber(), parentDict, is)
-{}
+    entry(key),
+    dictionary(key, parentDict, is)
+{
+    is.fatalCheck(FUNCTION_NAME);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::dictionaryEntry::write(Ostream& os) const
 {
-    // write keyword with indent but without trailing spaces
-    os.indent();
-    os << keyword();
-    dictionary::write(os);
+    dictionary::writeEntry(keyword(), os);
 }
 
 
 // * * * * * * * * * * * * * * Ostream operator  * * * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const dictionaryEntry& de)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const dictionaryEntry& e
+)
 {
-    de.write(os);
+    e.write(os);
     return os;
 }
 
@@ -100,10 +83,10 @@ template<>
 Foam::Ostream& Foam::operator<<
 (
     Ostream& os,
-    const InfoProxy<dictionaryEntry>& ip
+    const InfoProxy<dictionaryEntry>& iproxy
 )
 {
-    const dictionaryEntry& e = ip.t_;
+    const auto& e = *iproxy;
 
     os  << "    dictionaryEntry '" << e.keyword() << "'" << endl;
 

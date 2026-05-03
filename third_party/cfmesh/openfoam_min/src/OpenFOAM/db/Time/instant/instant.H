@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,131 +29,95 @@ Class
 
 Description
     An instant of time. Contains the time value and name.
+    Uses Foam::Time when formatting the name.
 
 SourceFiles
     instant.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef instant_H
-#define instant_H
+#ifndef Foam_instant_H
+#define Foam_instant_H
 
+#include "Instant.H"
 #include "word.H"
-#include "scalar.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
-class instant;
-
-// Friend Operators
-
-bool operator==(const instant&, const instant&);
-bool operator!=(const instant&, const instant&);
-bool operator<(const instant&, const instant&);
-bool operator>(const instant&, const instant&);
-
-// IOstream Operators
-
-Istream& operator>>(Istream&, instant&);
-Ostream& operator<<(Ostream&, const instant&);
-
+// Forward Declarations
+template<class T> class Pair;
+template<class T> class UList;
 
 /*---------------------------------------------------------------------------*\
                            Class instant Declaration
 \*---------------------------------------------------------------------------*/
 
 class instant
+:
+    public Instant<word>
 {
-    // Private Data
-
-        scalar value_;
-        word name_;
-
 public:
-
-    // Public classes
-
-        //- Less function class used in sorting instants
-        class less
-        {
-        public:
-
-            bool operator()(const instant& a, const instant& b) const
-            {
-                return a.value() < b.value();
-            }
-        };
-
 
     // Static Data Members
 
+        //- The type name (eg, for pTraits)
         static const char* const typeName;
+
+
+    // Generated Methods
+
+        //- Default construct, with value = 0 and empty name
+        instant() = default;
+
+        //- Copy construct
+        instant(const instant&) = default;
+
+        //- Move construct
+        instant(instant&&) = default;
+
+        //- Copy assignment
+        instant& operator=(const instant&) = default;
+
+        //- Move assignment
+        instant& operator=(instant&&) = default;
 
 
     // Constructors
 
-        //- Construct null
-        instant();
+        //- Inherit all constructors (eg, copy/move construct from components)
+        using Instant<word>::Instant;
 
-        //- Construct from components
-        instant(const scalar, const word&);
+        //- Construct from timeValue, auto generating the name
+        explicit instant(scalar timeValue);
 
-        //- Construct from time value
-        explicit instant(const scalar);
+        //- Copy construct from timeName, parsing timeName for a value
+        explicit instant(const word& timeName);
 
-        //- Construct from word
-        explicit instant(const word&);
-
-
-    // Member Functions
-
-        // Access
-
-            //- Value (const access)
-            scalar value() const
-            {
-                return value_;
-            }
-
-            //- Value (non-const access)
-            scalar& value()
-            {
-                return value_;
-            }
-
-            //- Name (const access)
-            const word& name() const
-            {
-                return name_;
-            }
-
-            //- Name (non-const access)
-            word& name()
-            {
-                return name_;
-            }
-
-            //- Comparison used for instants to be equal
-            bool equal(const scalar) const;
+        //- Move construct from timeName, parsing timeName for a value
+        explicit instant(word&& timeName);
 
 
-    // Friend Operators
+    // Helper Functions (for searching)
 
-        friend bool operator==(const instant&, const instant&);
-        friend bool operator!=(const instant&, const instant&);
-        friend bool operator<(const instant&, const instant&);
-        friend bool operator>(const instant&, const instant&);
+        //- Find and return index of given start time (linear search)
+        static label findStart
+        (
+            const UList<instant>& times,
+            const scalar timeVal
+        );
 
-
-    // IOstream Operators
-
-        friend Istream& operator>>(Istream&, instant&);
-        friend Ostream& operator<<(Ostream&, const instant&);
+        //- Find lower/upper indices for given time value in list of instances
+        //- (linear search) continuing \em after the given start index.
+        //  \returns the range indices or (-1,-1) if unsuccessful.
+        static Pair<label> findRange
+        (
+            const UList<instant>& times,
+            const scalar timeVal,
+            const label start = -1
+        );
 };
 
 

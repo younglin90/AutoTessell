@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,30 +25,31 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::MeshedSurfaceIOAllocator
+    Foam::Detail::MeshedSurfaceIOAllocator
 
 Description
-    A helper class for storing points, faces and zones with IO capabilities.
+    A helper class for storing points and faces with IO capabilities.
 
 SourceFiles
     MeshedSurfaceIOAllocator.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef MeshedSurfaceIOAllocator_H
-#define MeshedSurfaceIOAllocator_H
+#ifndef Foam_MeshedSurfaceIOAllocator_H
+#define Foam_MeshedSurfaceIOAllocator_H
 
 #include "pointIOField.H"
-#include "faceIOList.H"
-#include "surfZoneIOList.H"
+#include "faceIOList.H"  // faceIOList and faceCompactIOList
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+namespace Detail
+{
 
 /*---------------------------------------------------------------------------*\
-                  Class MeshedSurfaceIOAllocator Declaration
+              Class Detail::MeshedSurfaceIOAllocator Declaration
 \*---------------------------------------------------------------------------*/
 
 class MeshedSurfaceIOAllocator
@@ -58,11 +62,16 @@ class MeshedSurfaceIOAllocator
         //- Faces
         faceCompactIOList faces_;
 
-        //- Surface zones
-        surfZoneIOList zones_;
-
-
 public:
+
+    // Generated Methods
+
+        //- No copy construct
+        MeshedSurfaceIOAllocator(const MeshedSurfaceIOAllocator&) = delete;
+
+        //- No copy assignment
+        void operator=(const MeshedSurfaceIOAllocator&) = delete;
+
 
     // Constructors
 
@@ -70,116 +79,86 @@ public:
         MeshedSurfaceIOAllocator
         (
             const IOobject& ioPoints,
-            const IOobject& ioFaces,
-            const IOobject& ioZones
+            const IOobject& ioFaces
         );
 
         //- Construct from IOobjects, copying components
         MeshedSurfaceIOAllocator
         (
-            const IOobject& ioPoints,
-            const pointField& points,
-            const IOobject& ioFaces,
-            const faceList& faces,
-            const IOobject& ioZones,
-            const surfZoneList& zones
+            const IOobject& ioPoints, const pointField& points,
+            const IOobject& ioFaces,  const faceList& faces
         );
 
-        //- Construct from IOobjects, possibly transferring components
+        //- Construct from IOobjects, moving components
         MeshedSurfaceIOAllocator
         (
-            const IOobject& ioPoints,
-            pointField&& points,
-            const IOobject& ioFaces,
-            faceList&& faces,
-            const IOobject& ioZones,
-            surfZoneList&& zones
+            const IOobject& ioPoints, pointField&& points,
+            const IOobject& ioFaces,  faceList&& faces
         );
 
-        //- Disallow default bitwise copy construction
-        MeshedSurfaceIOAllocator(const MeshedSurfaceIOAllocator&) = delete;
+
+    //- Destructor
+    virtual ~MeshedSurfaceIOAllocator() = default;
 
 
     // Member Functions
 
-        // Access
+    // Database
 
-            //- Non-const access to the points
-            pointIOField& storedIOPoints()
-            {
-                return points_;
-            }
+        //- Set the instance for mesh files
+        void setInstance(const fileName& inst);
 
-            //- Non-const access to the faces
-            faceCompactIOList& storedIOFaces()
-            {
-                return faces_;
-            }
-
-            //- Non-const access to the zones
-            surfZoneIOList& storedIOZones()
-            {
-                return zones_;
-            }
-
-            //- Const access to the points
-            const pointIOField& storedIOPoints() const
-            {
-                return points_;
-            }
-
-            //- Const access to the faces
-            const faceCompactIOList& storedIOFaces() const
-            {
-                return faces_;
-            }
-
-            //- Const access to the zones
-            const surfZoneIOList& storedIOZones() const
-            {
-                return zones_;
-            }
+        //- Adjust the write option for all components
+        void setWriteOption(IOobjectOption::writeOption wOpt);
 
 
-        //  Storage management
+    // Access
 
-            //- Clear primitive data (points, faces and zones)
-            void clear();
+        //- Non-const access to the points
+        pointIOField& storedIOPoints() noexcept
+        {
+            return points_;
+        }
 
-            //- Reset primitive data (points, faces and zones)
-            void resetFaces
-            (
-                faceList&& faces,
-                surfZoneList&& zones
-            );
+        //- Non-const access to the faces
+        faceCompactIOList& storedIOFaces() noexcept
+        {
+            return faces_;
+        }
 
-            //- Reset primitive data (points, faces and zones)
-            void reset
-            (
-                pointField&& points,
-                faceList&& faces,
-                surfZoneList&& zones
-            );
+        //- Const access to the points
+        const pointIOField& storedIOPoints() const noexcept
+        {
+            return points_;
+        }
 
-            //- Reset primitive data (points, faces and zones)
-            //  Note, optimised to avoid overwriting data (with null)
-            void reset
-            (
-                List<point>&& points,
-                faceList&& faces,
-                surfZoneList&& zones
-            );
+        //- Const access to the faces
+        const faceCompactIOList& storedIOFaces() const noexcept
+        {
+            return faces_;
+        }
 
 
-    // Member Operators
+    // Storage Management
 
-        //- Disallow default bitwise assignment
-        void operator=(const MeshedSurfaceIOAllocator&) = delete;
+        //- Clear primitive data (points, faces)
+        void clear();
+
+
+    // Writing
+
+        //- Write using stream options
+        virtual bool writeObject
+        (
+            IOstreamOption streamOpt,
+            const bool writeOnProc
+        ) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+} // End namespace Detail
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

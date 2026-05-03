@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,15 +48,15 @@ scalar line<point2D, const point2D&>::nearestDist
 
     scalar d = u.perp(v);
 
-    if (Foam::mag(d) > vSmall)
+    if (Foam::mag(d) > VSMALL)
     {
         scalar s = v.perp(w) / d;
 
-        if (s <= small)
+        if (s <= SMALL)
         {
             thisPt = start();
         }
-        else if (s >= (1-small))
+        else if (s >= (1-SMALL))
         {
             thisPt = end();
         }
@@ -66,11 +68,11 @@ scalar line<point2D, const point2D&>::nearestDist
 
         scalar t = u.perp(w) / d;
 
-        if (t <= small)
+        if (t <= SMALL)
         {
             edgePt = e.start();
         }
-        else if (t >= (1-small))
+        else if (t >= (1-SMALL))
         {
             edgePt = e.end();
         }
@@ -112,7 +114,7 @@ scalar line<point2D, const point2D&>::nearestDist
         {
             // maxEdge inside interval of *this
             edgePt = maxEdgePt;
-            thisPt = nearestDist(edgePt).rawPoint();
+            thisPt = nearestDist(edgePt).point();
         }
         else
         {
@@ -122,13 +124,13 @@ scalar line<point2D, const point2D&>::nearestDist
                 // Edge completely envelops this. Take any this point and
                 // determine nearest on edge.
                 thisPt = minThisPt;
-                edgePt = e.nearestDist(thisPt).rawPoint();
+                edgePt = e.nearestDist(thisPt).point();
             }
             else if (minEdge < maxThis)
             {
                 // minEdge inside this interval.
                 edgePt = minEdgePt;
-                thisPt = nearestDist(edgePt).rawPoint();
+                thisPt = nearestDist(edgePt).point();
             }
             else
             {

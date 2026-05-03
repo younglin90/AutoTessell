@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,53 +28,21 @@ License
 
 #include "primitiveEntry.H"
 #include "dictionary.H"
-#include "IStringStream.H"
-#include "OStringStream.H"
+#include "SpanStream.H"
+#include "StringStream.H"  // Legacy include, perhaps expected elsewhere
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class T>
-Foam::primitiveEntry::primitiveEntry
-(
-    const keyType& key,
-    const T& t
-)
+Foam::primitiveEntry::primitiveEntry(const keyType& key, const T& val)
 :
-    entry(key, -1),
-    ITstream(key, tokenList(10))
+    entry(key),
+    ITstream(IOstreamOption(), key)
 {
-    OStringStream os;
-    os  << t << token::END_STATEMENT;
-    readEntry(dictionary::null, IStringStream(os.str())());
-}
-
-
-template<class T>
-Foam::primitiveEntry::primitiveEntry
-(
-    const keyType& key,
-    const T& t,
-    const label startLineNumber,
-    const label endLineNumber
-)
-:
-    entry(key, startLineNumber),
-    ITstream(key, tokenList(10))
-{
-    OStringStream os;
-    os  << t << token::END_STATEMENT;
-    IStringStream iss(os.str());
-
-    if (endLineNumber != -1)
-    {
-        iss.lineNumber() = endLineNumber;
-    }
-    else
-    {
-        iss.lineNumber() = startLineNumber;
-    }
-
-    readEntry(dictionary::null, iss());
+    OCharStream os;
+    os  << val << token::END_STATEMENT;
+    ISpanStream is(os.view());
+    readEntry(dictionary::null, is);
 }
 
 

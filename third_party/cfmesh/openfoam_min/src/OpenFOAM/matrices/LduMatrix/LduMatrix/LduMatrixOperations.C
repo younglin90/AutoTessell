@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,11 +33,6 @@ License
 template<class Type, class DType, class LUType>
 void Foam::LduMatrix<Type, DType, LUType>::sumDiag()
 {
-    if (!lowerPtr_ && !upperPtr_)
-    {
-        return;
-    }
-
     const Field<LUType>& Lower = const_cast<const LduMatrix&>(*this).lower();
     const Field<LUType>& Upper = const_cast<const LduMatrix&>(*this).upper();
     Field<DType>& Diag = diag();
@@ -53,11 +51,6 @@ void Foam::LduMatrix<Type, DType, LUType>::sumDiag()
 template<class Type, class DType, class LUType>
 void Foam::LduMatrix<Type, DType, LUType>::negSumDiag()
 {
-    if (!lowerPtr_ && !upperPtr_)
-    {
-        return;
-    }
-
     const Field<LUType>& Lower = const_cast<const LduMatrix&>(*this).lower();
     const Field<LUType>& Upper = const_cast<const LduMatrix&>(*this).upper();
     Field<DType>& Diag = diag();
@@ -79,11 +72,6 @@ void Foam::LduMatrix<Type, DType, LUType>::sumMagOffDiag
     Field<LUType>& sumOff
 ) const
 {
-    if (!lowerPtr_ && !upperPtr_)
-    {
-        return;
-    }
-
     const Field<LUType>& Lower = const_cast<const LduMatrix&>(*this).lower();
     const Field<LUType>& Upper = const_cast<const LduMatrix&>(*this).upper();
 
@@ -102,16 +90,11 @@ template<class Type, class DType, class LUType>
 Foam::tmp<Foam::Field<Type>>
 Foam::LduMatrix<Type, DType, LUType>::H(const Field<Type>& psi) const
 {
-    tmp<Field<Type>> tHpsi
-    (
-        new Field<Type>(lduAddr().size(), Zero)
-    );
+    auto tHpsi = tmp<Field<Type>>::New(lduAddr().size(), Foam::zero{});
 
-    if (lowerPtr_ || upperPtr_)
+    if (hasLower() || hasUpper())
     {
-        Field<Type> & Hpsi = tHpsi();
-
-        Type* __restrict__ HpsiPtr = Hpsi.begin();
+        Type* __restrict__ HpsiPtr = tHpsi.ref().begin();
 
         const Type* __restrict__ psiPtr = psi.begin();
 
@@ -154,8 +137,8 @@ Foam::LduMatrix<Type, DType, LUType>::faceH(const Field<Type>& psi) const
     const labelUList& l = lduAddr().lowerAddr();
     const labelUList& u = lduAddr().upperAddr();
 
-    tmp<Field<Type>> tfaceHpsi(new Field<Type> (Lower.size()));
-    Field<Type> & faceHpsi = tfaceHpsi();
+    auto tfaceHpsi = tmp<Field<Type>>::New(Lower.size());
+    auto& faceHpsi = tfaceHpsi.ref();
 
     for (label face=0; face<l.size(); face++)
     {
@@ -183,43 +166,57 @@ void Foam::LduMatrix<Type, DType, LUType>::operator=(const LduMatrix& A)
 {
     if (this == &A)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
-    if (A.diagPtr_)
+    if (A.hasDiag())
     {
         diag() = A.diag();
     }
 
-    if (A.upperPtr_)
+    if (A.hasUpper())
     {
         upper() = A.upper();
     }
-    else if (upperPtr_)
+    else
     {
-        delete upperPtr_;
-        upperPtr_ = nullptr;
+        upperPtr_.reset(nullptr);
     }
 
-    if (A.lowerPtr_)
+    if (A.hasLower())
     {
         lower() = A.lower();
     }
-    else if (lowerPtr_)
+    else
     {
-        delete lowerPtr_;
-        lowerPtr_ = nullptr;
+        lowerPtr_.reset(nullptr);
     }
 
-    if (A.sourcePtr_)
+    if (A.hasSource())
     {
         source() = A.source();
     }
 
     interfacesUpper_ = A.interfacesUpper_;
     interfacesLower_ = A.interfacesLower_;
+}
+
+
+template<class Type, class DType, class LUType>
+void Foam::LduMatrix<Type, DType, LUType>::operator=(LduMatrix&& A)
+{
+    if (this == &A)
+    {
+        return;  // Self-assignment is a no-op
+    }
+
+    diagPtr_ = std::move(A.diagPtr_);
+    upperPtr_ = std::move(A.upperPtr_);
+    lowerPtr_ = std::move(A.lowerPtr_);
+    sourcePtr_ = std::move(A.sourcePtr_);
+
+    interfacesUpper_ = std::move(A.interfacesUpper_);
+    interfacesLower_ = std::move(A.interfacesLower_);
 }
 
 
@@ -254,12 +251,12 @@ void Foam::LduMatrix<Type, DType, LUType>::negate()
 template<class Type, class DType, class LUType>
 void Foam::LduMatrix<Type, DType, LUType>::operator+=(const LduMatrix& A)
 {
-    if (A.diagPtr_)
+    if (A.hasDiag())
     {
         diag() += A.diag();
     }
 
-    if (A.sourcePtr_)
+    if (A.hasSource())
     {
         source() += A.source();
     }
@@ -284,7 +281,7 @@ void Foam::LduMatrix<Type, DType, LUType>::operator+=(const LduMatrix& A)
     }
     else if (asymmetric() && A.symmetric())
     {
-        if (A.upperPtr_)
+        if (A.hasUpper())
         {
             lower() += A.upper();
             upper() += A.upper();
@@ -303,12 +300,12 @@ void Foam::LduMatrix<Type, DType, LUType>::operator+=(const LduMatrix& A)
     }
     else if (diagonal())
     {
-        if (A.upperPtr_)
+        if (A.hasUpper())
         {
             upper() = A.upper();
         }
 
-        if (A.lowerPtr_)
+        if (A.hasLower())
         {
             lower() = A.lower();
         }
@@ -331,12 +328,12 @@ void Foam::LduMatrix<Type, DType, LUType>::operator+=(const LduMatrix& A)
 template<class Type, class DType, class LUType>
 void Foam::LduMatrix<Type, DType, LUType>::operator-=(const LduMatrix& A)
 {
-    if (A.diagPtr_)
+    if (A.hasDiag())
     {
         diag() -= A.diag();
     }
 
-    if (A.sourcePtr_)
+    if (A.hasSource())
     {
         source() -= A.source();
     }
@@ -361,7 +358,7 @@ void Foam::LduMatrix<Type, DType, LUType>::operator-=(const LduMatrix& A)
     }
     else if (asymmetric() && A.symmetric())
     {
-        if (A.upperPtr_)
+        if (A.hasUpper())
         {
             lower() -= A.upper();
             upper() -= A.upper();
@@ -380,12 +377,12 @@ void Foam::LduMatrix<Type, DType, LUType>::operator-=(const LduMatrix& A)
     }
     else if (diagonal())
     {
-        if (A.upperPtr_)
+        if (A.hasUpper())
         {
             upper() = -A.upper();
         }
 
-        if (A.lowerPtr_)
+        if (A.hasLower())
         {
             lower() = -A.lower();
         }
@@ -448,8 +445,8 @@ void Foam::LduMatrix<Type, DType, LUType>::operator*=
            "require special transfers"
         << abort(FatalError);
 
-    // interfacesUpper_ *= ;
-    // interfacesLower_ *= sf;
+    //interfacesUpper_ *= ;
+    //interfacesLower_ *= sf;
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,33 +23,42 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-    Specialisation of FieldField<Field, T> for vector.
-
 \*---------------------------------------------------------------------------*/
 
 #include "vectorFieldField.H"
 
-#define TEMPLATE template<template<class> class Field>
-#include "FieldFieldFunctionsM.C"
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
+template<template<class> class Field, class Cmpt>
+void Foam::zip
+(
+    FieldField<Field, Vector<Cmpt>>& result,
+    const FieldField<Field, Cmpt>& x,
+    const FieldField<Field, Cmpt>& y,
+    const FieldField<Field, Cmpt>& z
+)
 {
+    forAll(result, i)
+    {
+        Foam::zip(result[i], x[i], y[i], z[i]);
+    }
+}
 
-// * * * * * * * * * * * * * * * global functions  * * * * * * * * * * * * * //
 
-UNARY_FUNCTION(vector, vector, normalised)
-UNARY_FUNCTION(vector, vector, perpendicular)
+template<template<class> class Field, class Cmpt>
+void Foam::unzip
+(
+    const FieldField<Field, Vector<Cmpt>>& input,
+    FieldField<Field, Cmpt>& x,
+    FieldField<Field, Cmpt>& y,
+    FieldField<Field, Cmpt>& z
+)
+{
+    forAll(input, i)
+    {
+        Foam::unzip(input[i], x[i], y[i], z[i]);
+    }
+}
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "undefFieldFunctionsM.H"
 
 // ************************************************************************* //

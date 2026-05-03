@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -106,7 +109,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class lduAddressing Declaration
+                           Class lduAddressing Declaration
 \*---------------------------------------------------------------------------*/
 
 class lduAddressing
@@ -120,13 +123,13 @@ class lduAddressing
     //- Demand-driven data
 
         //- Losort addressing
-        mutable labelList* losortPtr_;
+        mutable std::unique_ptr<labelList> losortPtr_;
 
         //- Owner start addressing
-        mutable labelList* ownerStartPtr_;
+        mutable std::unique_ptr<labelList> ownerStartPtr_;
 
         //- Losort start addressing
-        mutable labelList* losortStartPtr_;
+        mutable std::unique_ptr<labelList> losortStartPtr_;
 
 
     // Private Member Functions
@@ -143,28 +146,32 @@ class lduAddressing
 
 public:
 
+    // Generated Methods
+
+        //- No copy construct
+        lduAddressing(const lduAddressing&) = delete;
+
+        //- No copy assignment
+        void operator=(const lduAddressing&) = delete;
+
+
     // Constructors
 
-        lduAddressing(const label nEqns)
+        //- Construct with size (number of equations)
+        explicit lduAddressing(const label nEqns) noexcept
         :
-            size_(nEqns),
-            losortPtr_(nullptr),
-            ownerStartPtr_(nullptr),
-            losortStartPtr_(nullptr)
+            size_(nEqns)
         {}
-
-        //- Disallow default bitwise copy construction
-        lduAddressing(const lduAddressing&) = delete;
 
 
     //- Destructor
-    virtual ~lduAddressing();
+    virtual ~lduAddressing() = default;
 
 
     // Member Functions
 
         //- Return number of equations
-        label size() const
+        label size() const noexcept
         {
             return size_;
         }
@@ -181,8 +188,11 @@ public:
             const label patchNo
         ) const = 0;
 
-        // Return patch field evaluation schedule
+        //- Return patch field evaluation schedule
         virtual const lduSchedule& patchSchedule() const = 0;
+
+        //- Clear additional addressing
+        void clearOut();
 
         //- Return losort addressing
         const labelUList& losortAddr() const;
@@ -198,12 +208,6 @@ public:
 
         //- Calculate bandwidth and profile of addressing
         Tuple2<label, scalar> band() const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const lduAddressing&) = delete;
 };
 
 

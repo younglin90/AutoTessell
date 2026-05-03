@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,34 +36,28 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef quaternion_H
-#define quaternion_H
+#ifndef Foam_quaternion_H
+#define Foam_quaternion_H
 
 #include "scalar.H"
 #include "vector.H"
 #include "tensor.H"
 #include "word.H"
-#include "contiguous.H"
+#include "Enum.H"
+#include "stdFoam.H"  // For deprecation macros
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
-class quaternion;
-Istream& operator>>(Istream& is, quaternion&);
-Ostream& operator<<(Ostream& os, const quaternion& C);
-
-
 /*---------------------------------------------------------------------------*\
-                         Class quaternion Declaration
+                           Class quaternion Declaration
 \*---------------------------------------------------------------------------*/
 
 class quaternion
 {
-    // private data
+    // Private Data
 
         //- Scalar part of the quaternion ( = cos(theta/2) for rotation)
         scalar w_;
@@ -95,142 +92,191 @@ class quaternion
 
 public:
 
-    //- Component type
-    typedef scalar cmptType;
+    // Public Types
 
-    //- Euler-angle rotation sequence
-    enum rotationSequence
-    {
-        ZYX, ZYZ, ZXY, ZXZ, YXZ, YXY, YZX, YZY, XYZ, XYX, XZY, XZX
-    };
+        //- Component type
+        typedef scalar cmptType;
+
+        //- Magnitude type
+        typedef scalar magType;
+
+        //- Euler-angle rotation order
+        enum eulerOrder : unsigned char
+        {
+            // Proper Euler angles
+            XZX, XYX, YXY, YZY, ZYZ, ZXZ,
+
+            // Tait-Bryan angles
+            XZY, XYZ, YXZ, YZX, ZYX, ZXY,
+
+            // Aliases
+            ROLL_PITCH_YAW = XYZ,
+            YAW_PITCH_ROLL = ZYX,
+        };
+
+        //- The names for Euler-angle and Tait-Bryan angles,
+        //- including "rollPitchYaw" and "yawPitchRoll" aliases
+        static const Enum<eulerOrder> eulerOrderNames;
 
 
-    // Member constants
+    // Member Constants
 
         //- Rank of quaternion is 1
-        static const direction rank = 1;
+        static constexpr direction rank = 1;
 
 
     // Static Data Members
 
-        static const char* const typeName;
+        static constexpr const char* const typeName = "quaternion";
 
         static const quaternion zero;
         static const quaternion I;
 
 
+    // Generated Methods
+
+        //- Default construct
+        quaternion() = default;
+
+        //- Copy construct
+        quaternion(const quaternion&) = default;
+
+        //- Copy assignment
+        quaternion& operator=(const quaternion&) = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline quaternion();
+        //- Construct initialized to zero
+        inline quaternion(const Foam::zero);
 
         //- Construct given scalar and vector parts
         inline quaternion(const scalar w, const vector& v);
 
-        //- Construct a rotation quaternion given the direction d
-        //  and angle theta
+        //- Construct rotation quaternion given direction d and angle theta
         inline quaternion(const vector& d, const scalar theta);
 
-        //- Construct a rotation quaternion given the direction d
-        //  and cosine angle cosTheta and a if d is normalised
+        //- Construct a rotation quaternion given direction d
+        //- and cosine angle cosTheta and flag if d is normalised
         inline quaternion
         (
             const vector& d,
             const scalar cosTheta,
-            const bool normalised
+            const bool isNormalised
         );
 
-        //- Construct a real from the given scalar part, the vector part = zero
+        //- Construct a real quaternion from the given scalar part,
+        //- the vector part = zero
         inline explicit quaternion(const scalar w);
 
         //- Construct a pure imaginary quaternion given the vector part,
-        //  the scalar part = 0
+        //- the scalar part = 0
         inline explicit quaternion(const vector& v);
 
         //- Return the unit quaternion (versor) from the given vector
-        //  (w = sqrt(1 - |sqr(v)|))
+        //- (w = sqrt(1 - |sqr(v)|))
         static inline quaternion unit(const vector& v);
 
-        //- Construct a quaternion given the three Euler angles
-        inline quaternion
-        (
-            const rotationSequence rs,
-            const vector& angles
-        );
+        //- Construct from three Euler rotation angles
+        inline quaternion(const eulerOrder order, const vector& angles);
 
-        //- Construct a quaternion from a rotation tensor
+        //- Construct from a rotation tensor
         inline explicit quaternion(const tensor& rotationTensor);
 
         //- Construct from Istream
-        quaternion(Istream&);
+        explicit quaternion(Istream& is);
 
 
     // Member Functions
 
-           // Access
+    // Access
 
-               //- Scalar part of the quaternion ( = cos(theta/2) for rotation)
-               inline scalar w() const;
+        //- Scalar part of the quaternion ( = cos(theta/2) for rotation)
+        inline scalar w() const noexcept;
 
-               //- Vector part of the quaternion ( = axis of rotation)
-               inline const vector& v() const;
+        //- Vector part of the quaternion ( = axis of rotation)
+        inline const vector& v() const noexcept;
 
-               //- The rotation tensor corresponding the quaternion
-               inline tensor R() const;
+        //- The rotation tensor corresponding to the quaternion
+        inline tensor R() const;
 
-               //- Return a vector of euler angles corresponding to the
-               //  specified rotation sequence
-               inline vector eulerAngles(const rotationSequence rs) const;
-
-               inline quaternion normalised() const;
+        //- Return the Euler rotation angles corresponding to the
+        //- specified rotation order
+        inline vector eulerAngles(const eulerOrder order) const;
 
 
-           // Edit
+    // Edit
 
-               //- Scalar part of the quaternion ( = cos(theta/2) for rotation)
-               inline scalar& w();
+        //- Scalar part of the quaternion ( = cos(theta/2) for rotation)
+        inline scalar& w() noexcept;
 
-               //- Vector part of the quaternion ( = axis of rotation)
-               inline vector& v();
+        //- Vector part of the quaternion ( = axis of rotation)
+        inline vector& v() noexcept;
 
-               inline void normalise();
+        //- Inplace normalise the quaternion by its magnitude
+        //  For small magnitudes (less than ROOTVSMALL) set to zero.
+        inline quaternion& normalise(const scalar tol = ROOTVSMALL);
 
 
-           // Transform
+    // Transform
 
-               //- Rotate the given vector
-               inline vector transform(const vector& v) const;
+       //- Rotate the given vector
+       inline vector transform(const vector& v) const;
 
-               //- Rotate the given vector anti-clockwise
-               inline vector invTransform(const vector& v) const;
+       //- Rotate the given vector anti-clockwise
+       inline vector invTransform(const vector& v) const;
 
-               //- Rotate the given quaternion (and normalise)
-               inline quaternion transform(const quaternion& q) const;
+       //- Rotate the given quaternion (and normalise)
+       inline quaternion transform(const quaternion& q) const;
 
-               //- Rotate the given quaternion anti-clockwise (and normalise)
-               inline quaternion invTransform(const quaternion& q) const;
+       //- Rotate the given quaternion anti-clockwise (and normalise)
+       inline quaternion invTransform(const quaternion& q) const;
 
 
     // Member Operators
 
-        inline void operator+=(const quaternion&);
-        inline void operator-=(const quaternion&);
-        inline void operator*=(const quaternion&);
-        inline void operator/=(const quaternion&);
+        inline void operator+=(const quaternion& q);
+        inline void operator-=(const quaternion& q);
+        inline void operator*=(const quaternion& q);
+        inline void operator/=(const quaternion& q);
 
-        inline void operator=(const scalar);
+        //- Change scalar portion only
+        inline void operator=(const scalar s);
 
-        inline void operator=(const vector&);
+        //- Change vector portion only
+        inline void operator=(const vector& v);
 
-        inline void operator*=(const scalar);
-        inline void operator/=(const scalar);
+        //- Assign scalar and vector to zero
+        inline void operator=(const Foam::zero);
+
+        inline void operator*=(const scalar s);
+        inline void operator/=(const scalar s);
 
 
-    // IOstream Operators
+    // Housekeeping
 
-        friend Istream& operator>>(Istream& is, quaternion&);
-        friend Ostream& operator<<(Ostream& os, const quaternion& C);
+        //- Inplace normalise the quaternion by its magnitude
+        FOAM_DEPRECATED_FOR(2022-04, "normalise() method")
+        void normalize() { this->normalise(); }
+
+        //- Return the quaternion normalised by its magnitude
+        FOAM_DEPRECATED_FOR(2022-04, "Use Foam::normalised() function")
+        quaternion normalized() const
+        {
+            quaternion q(*this);
+            q.normalise();
+            return q;
+        }
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for quaternion
+template<> struct is_contiguous<quaternion> : std::true_type {};
+
+//- Contiguous scalar data for quaternion
+template<> struct is_contiguous_scalar<quaternion> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
@@ -242,13 +288,17 @@ inline scalar mag(const quaternion& q);
 inline quaternion conjugate(const quaternion& q);
 
 //- Return the normalised (unit) quaternion of the given quaternion
-inline quaternion normalise(const quaternion& q);
+inline quaternion normalised(const quaternion& q);
+
+//- Return the normalised (unit) quaternion of the given quaternion
+FOAM_DEPRECATED_FOR(2022-04, "Use Foam::normalised() function")
+inline quaternion normalize(const quaternion& q) { return Foam::normalised(q); }
 
 //- Return the inverse of the given quaternion
 inline quaternion inv(const quaternion& q);
 
 //- Return a string representation of a quaternion
-word name(const quaternion&);
+word name(const quaternion& q);
 
 //- Spherical linear interpolation of quaternions
 quaternion slerp
@@ -274,12 +324,11 @@ quaternion pow(const quaternion& q, const label power);
 //- Power of a quaternion
 quaternion pow(const quaternion& q, const scalar power);
 
-//- Data associated with quaternion type are contiguous
-template<>
-inline bool contiguous<quaternion>() {return true;}
-
 
 // * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
+
+Istream& operator>>(Istream& is, quaternion& q);
+Ostream& operator<<(Ostream& os, const quaternion& q);
 
 inline bool operator==(const quaternion& q1, const quaternion& q2);
 inline bool operator!=(const quaternion& q1, const quaternion& q2);

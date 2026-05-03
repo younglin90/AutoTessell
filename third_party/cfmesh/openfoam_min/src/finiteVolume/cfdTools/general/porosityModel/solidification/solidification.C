@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,23 +48,17 @@ namespace Foam
 Foam::porosityModels::solidification::solidification
 (
     const word& name,
+    const word& modelType,
     const fvMesh& mesh,
     const dictionary& dict,
-    const dictionary& coeffDict,
-    const word& cellZoneName
+    const wordRe& cellZoneName
 )
 :
-    porosityModel(name, mesh, dict, coeffDict, cellZoneName),
-    TName_(coeffDict.lookupOrDefault<word>("T", "T")),
-    alphaName_(coeffDict.lookupOrDefault<word>("alpha", "none")),
-    rhoName_(coeffDict.lookupOrDefault<word>("rho", "rho")),
-    D_(Function1<scalar>::New("D", dimTemperature, dimless/dimTime, coeffDict))
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::porosityModels::solidification::~solidification()
+    porosityModel(name, modelType, mesh, dict, cellZoneName),
+    TName_(coeffs_.getOrDefault<word>("T", "T")),
+    alphaName_(coeffs_.getOrDefault<word>("alpha", "none")),
+    rhoName_(coeffs_.getOrDefault<word>("rho", "rho")),
+    D_(Function1<scalar>::New("D", coeffs_, &mesh))
 {}
 
 
@@ -79,7 +76,7 @@ void Foam::porosityModels::solidification::calcForce
     vectorField& force
 ) const
 {
-    scalarField Udiag(U.size(), 0.0);
+    scalarField Udiag(U.size(), Zero);
     const scalarField& V = mesh_.V();
 
     apply(Udiag, V, rho, U);
@@ -99,7 +96,7 @@ void Foam::porosityModels::solidification::correct
 
     if (UEqn.dimensions() == dimForce)
     {
-        const volScalarField& rho = mesh_.lookupObject<volScalarField>
+        const auto& rho = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(rhoName_, U.group())
         );
@@ -115,6 +112,21 @@ void Foam::porosityModels::solidification::correct
 
 void Foam::porosityModels::solidification::correct
 (
+    fvVectorMatrix& UEqn,
+    const volScalarField& rho,
+    const volScalarField& mu
+) const
+{
+    const volVectorField& U = UEqn.psi();
+    const scalarField& V = mesh_.V();
+    scalarField& Udiag = UEqn.diag();
+
+    apply(Udiag, V, rho, U);
+}
+
+
+void Foam::porosityModels::solidification::correct
+(
     const fvVectorMatrix& UEqn,
     volTensorField& AU
 ) const
@@ -123,7 +135,7 @@ void Foam::porosityModels::solidification::correct
 
     if (UEqn.dimensions() == dimForce)
     {
-        const volScalarField& rho = mesh_.lookupObject<volScalarField>
+        const auto& rho = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(rhoName_, U.group())
         );
@@ -134,6 +146,14 @@ void Foam::porosityModels::solidification::correct
     {
         apply(AU, geometricOneField(), U);
     }
+}
+
+
+bool Foam::porosityModels::solidification::writeData(Ostream& os) const
+{
+    dict_.writeEntry(name_, os);
+
+    return true;
 }
 
 

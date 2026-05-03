@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::diagonalPreconditioner
+
+Group
+    grpLduMatrixPreconditioners
 
 Description
     Diagonal preconditioner for both symmetric and asymmetric matrices.
@@ -46,17 +52,26 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class diagonalPreconditioner Declaration
+                           Class diagonalPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 class diagonalPreconditioner
 :
     public lduMatrix::preconditioner
 {
-    // Private Data
+    // Private data
 
         //- The reciprocal diagonal
-        scalarField rD;
+        solveScalarField rD;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        diagonalPreconditioner(const diagonalPreconditioner&) = delete;
+
+        //- No copy assignment
+        void operator=(const diagonalPreconditioner&) = delete;
 
 
 public:
@@ -74,13 +89,9 @@ public:
             const dictionary& solverControlsUnused
         );
 
-        //- Disallow default bitwise copy construction
-        diagonalPreconditioner(const diagonalPreconditioner&) = delete;
-
 
     //- Destructor
-    virtual ~diagonalPreconditioner()
-    {}
+    virtual ~diagonalPreconditioner() = default;
 
 
     // Member Functions
@@ -88,27 +99,21 @@ public:
         //- Return wA the preconditioned form of residual rA
         virtual void precondition
         (
-            scalarField& wA,
-            const scalarField& rA,
+            solveScalarField& wA,
+            const solveScalarField& rA,
             const direction cmpt=0
         ) const;
 
         //- Return wT the transpose-matrix preconditioned form of residual rT.
         virtual void preconditionT
         (
-            scalarField& wT,
-            const scalarField& rT,
+            solveScalarField& wT,
+            const solveScalarField& rT,
             const direction cmpt=0
         ) const
         {
             return precondition(wT, rT, cmpt);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const diagonalPreconditioner&) = delete;
 };
 
 

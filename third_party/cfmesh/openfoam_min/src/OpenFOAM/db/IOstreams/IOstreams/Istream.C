@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,10 +27,55 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Istream.H"
+#include "ISstream.H"
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace
+{
+
+// The current get position (std::istream only)
+inline std::streampos stream_tellg(Foam::Istream* isptr)
+{
+    auto* sptr = dynamic_cast<Foam::ISstream*>(isptr);
+    return sptr ? sptr->stdStream().tellg() : std::streampos(0);
+}
+
+} // End anonymous namespace
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::Istream::putBack(const token& t)
+const Foam::token& Foam::Istream::peekBack() const noexcept
+{
+    return (putBackAvail_ ? putBackToken_ : token::undefinedToken);
+}
+
+// Return the putback token if available or fetch a new token
+// from the stream.
+//
+// Foam::token& Foam::Istream::peekToken()
+// {
+//     if (!putBackAvail_)
+//     {
+//         putBackToken_.reset();
+//         token tok;
+//         this->read(tok);
+//         putBackToken_ = std::move(tok);
+//     }
+//
+//     return putBackToken_;
+// }
+
+
+void Foam::Istream::putBackClear()
+{
+    putBackAvail_ = false;
+    putBackToken_.reset();
+}
+
+
+void Foam::Istream::putBack(const token& tok)
 {
     if (bad())
     {
@@ -35,7 +83,7 @@ void Foam::Istream::putBack(const token& t)
             << "Attempt to put back onto bad stream"
             << exit(FatalIOError);
     }
-    else if (putBack_)
+    else if (putBackAvail_)
     {
         FatalIOErrorInFunction(*this)
             << "Attempt to put back another token"
@@ -43,21 +91,35 @@ void Foam::Istream::putBack(const token& t)
     }
     else
     {
-        // Cache the put back token
-        putBackToken_ = t;
-
-        // Cache the current stream line number
-        putBackLineNumber_ = lineNumber_;
-
-        // Reset the stream line number to that of the put back token
-        lineNumber_ = t.lineNumber();
-
-        putBack_ = true;
+        putBackAvail_ = true;
+        putBackToken_ = tok;
     }
 }
 
 
-bool Foam::Istream::getBack(token& t)
+void Foam::Istream::putBack(token&& tok)
+{
+    if (bad())
+    {
+        FatalIOErrorInFunction(*this)
+            << "Attempt to put back onto bad stream"
+            << exit(FatalIOError);
+    }
+    else if (putBackAvail_)
+    {
+        FatalIOErrorInFunction(*this)
+            << "Attempt to put back another token"
+            << exit(FatalIOError);
+    }
+    else
+    {
+        putBackAvail_ = true;
+        putBackToken_ = std::move(tok);
+    }
+}
+
+
+bool Foam::Istream::getBack(token& tok)
 {
     if (bad())
     {
@@ -65,16 +127,10 @@ bool Foam::Istream::getBack(token& t)
             << "Attempt to get back from bad stream"
             << exit(FatalIOError);
     }
-    else if (putBack_)
+    else if (putBackAvail_)
     {
-        // Set the token to the current put back token
-        t = putBackToken_;
-
-        // Reset the stream line number to when the put back token was cached
-        lineNumber_ = putBackLineNumber_;
-
-        putBack_ = false;
-
+        putBackAvail_ = false;
+        tok = std::move(putBackToken_);
         return true;
     }
 
@@ -82,47 +138,28 @@ bool Foam::Istream::getBack(token& t)
 }
 
 
-bool Foam::Istream::peekBack()
+bool Foam::Istream::readBegin(const char* funcName)
 {
-    return putBack_;
-}
+    const token delimiter(*this);
 
-
-bool Foam::Istream::peekBack(token& t)
-{
-    if (putBack_)
-    {
-        t = putBackToken_;
-    }
-    else
-    {
-        t = token::undefinedToken;
-    }
-
-    return putBack_;
-}
-
-
-Foam::Istream& Foam::Istream::readBegin(const char* funcName)
-{
-    token delimiter(*this);
     if (delimiter != token::BEGIN_LIST)
     {
         setBad();
         FatalIOErrorInFunction(*this)
             << "Expected a '" << token::BEGIN_LIST
             << "' while reading " << funcName
-            << ", found " << delimiter.info()
+            << ", found " << delimiter.info() << nl
             << exit(FatalIOError);
     }
 
-    return *this;
+    return true;
 }
 
 
-Foam::Istream& Foam::Istream::readEnd(const char* funcName)
+bool Foam::Istream::readEnd(const char* funcName)
 {
-    token delimiter(*this);
+    const token delimiter(*this);
+
     if (delimiter != token::END_LIST)
     {
         setBad();
@@ -130,23 +167,17 @@ Foam::Istream& Foam::Istream::readEnd(const char* funcName)
             << "Expected a '" << token::END_LIST
             << "' while reading " << funcName
             << ", found " << delimiter.info()
+            << " at stream position " << stream_tellg(this) << nl
             << exit(FatalIOError);
     }
 
-    return *this;
-}
-
-
-Foam::Istream& Foam::Istream::readEndBegin(const char* funcName)
-{
-    readEnd(funcName);
-    return readBegin(funcName);
+    return true;
 }
 
 
 char Foam::Istream::readBeginList(const char* funcName)
 {
-    token delimiter(*this);
+    const token delimiter(*this);
 
     if (delimiter != token::BEGIN_LIST && delimiter != token::BEGIN_BLOCK)
     {
@@ -167,7 +198,7 @@ char Foam::Istream::readBeginList(const char* funcName)
 
 char Foam::Istream::readEndList(const char* funcName)
 {
-    token delimiter(*this);
+    const token delimiter(*this);
 
     if (delimiter != token::END_LIST && delimiter != token::END_BLOCK)
     {
@@ -177,6 +208,7 @@ char Foam::Istream::readEndList(const char* funcName)
             << "' or a '" << token::END_BLOCK
             << "' while reading " << funcName
             << ", found " << delimiter.info()
+            << " at stream position " << stream_tellg(this) << nl
             << exit(FatalIOError);
 
         return '\0';
@@ -190,7 +222,7 @@ Foam::Istream& Foam::Istream::operator()() const
 {
     if (!good())
     {
-        check("Istream::operator()");
+        check(FUNCTION_NAME);
         FatalIOError.exit();
     }
 

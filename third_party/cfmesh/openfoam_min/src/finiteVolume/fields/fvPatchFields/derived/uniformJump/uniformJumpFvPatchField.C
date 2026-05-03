@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,43 +34,11 @@ template<class Type>
 Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    fixedJumpFvPatchField<Type>(p, iF, dict, false),
+    fixedJumpFvPatchField<Type>(p, iF),
     jumpTable_()
-{
-    if (this->cyclicPatch().owner())
-    {
-        jumpTable_ =
-            Function1<Type>::New
-            (
-                "jumpTable",
-                this->time().userUnits(),
-                iF.dimensions(),
-                dict
-            );
-
-        this->jumpRef() =
-            Field<Type>(p.size(), jumpTable_->value(this->time().value()));
-    }
-
-    this->evaluateNoUpdateCoeffs();
-}
-
-
-template<class Type>
-Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
-(
-    const uniformJumpFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    fixedJumpFvPatchField<Type>(ptf, p, iF, mapper),
-    jumpTable_(ptf.jumpTable_, false)
 {}
 
 
@@ -75,11 +46,63 @@ template<class Type>
 Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
 (
     const uniformJumpFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedJumpFvPatchField<Type>(ptf, p, iF, mapper),
+    jumpTable_(ptf.jumpTable_.clone())
+{}
+
+
+template<class Type>
+Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict,
+    const bool needValue
+)
+:
+    fixedJumpFvPatchField<Type>(p, iF, dict, false),  // needValue = false
+    jumpTable_()
+{
+    if (needValue)
+    {
+        if (this->cyclicPatch().owner())
+        {
+            jumpTable_ = Function1<Type>::New("jumpTable", dict, &this->db());
+        }
+
+        if (!this->readValueEntry(dict))
+        {
+            this->evaluate(Pstream::commsTypes::buffered);
+        }
+    }
+}
+
+
+template<class Type>
+Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
+(
+    const uniformJumpFvPatchField<Type>& ptf
+)
+:
+    fixedJumpFvPatchField<Type>(ptf),
+    jumpTable_(ptf.jumpTable_.clone())
+{}
+
+
+template<class Type>
+Foam::uniformJumpFvPatchField<Type>::uniformJumpFvPatchField
+(
+    const uniformJumpFvPatchField<Type>& ptf,
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fixedJumpFvPatchField<Type>(ptf, iF),
-    jumpTable_(ptf.jumpTable_, false)
+    jumpTable_(ptf.jumpTable_.clone())
 {}
 
 
@@ -95,7 +118,7 @@ void Foam::uniformJumpFvPatchField<Type>::updateCoeffs()
 
     if (this->cyclicPatch().owner())
     {
-        this->jumpRef() = jumpTable_->value(this->time().value());
+        this->setJump(jumpTable_->value(this->db().time().value()));
     }
 
     fixedJumpFvPatchField<Type>::updateCoeffs();
@@ -105,17 +128,11 @@ void Foam::uniformJumpFvPatchField<Type>::updateCoeffs()
 template<class Type>
 void Foam::uniformJumpFvPatchField<Type>::write(Ostream& os) const
 {
-    fvPatchField<Type>::write(os);
+    fixedJumpFvPatchField<Type>::write(os);
 
     if (this->cyclicPatch().owner())
     {
-        writeEntry
-        (
-            os,
-            this->time().userUnits(),
-            this->internalField().dimensions(),
-            jumpTable_()
-        );
+        jumpTable_->writeData(os);
     }
 }
 

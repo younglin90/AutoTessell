@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,26 +28,29 @@ Class
     Foam::DiagonalMatrix
 
 Description
-    DiagonalMatrix<Type> is a 2D diagonal matrix of objects
-    of type Type, size nxn
+    A templated (N x N) diagonal matrix of objects of \<Type\>, effectively
+    containing N elements, derived from List.
+
+See also
+    Test-DiagonalMatrix.C
 
 SourceFiles
     DiagonalMatrix.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DiagonalMatrix_H
-#define DiagonalMatrix_H
+#ifndef Foam_DiagonalMatrix_H
+#define Foam_DiagonalMatrix_H
 
 #include "List.H"
+#include <numeric>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * *  * * * * * * Class Forward declaration  * * * * * * * * * * * //
-
+// Forward Declarations
 template<class Form, class Type> class Matrix;
 
 /*---------------------------------------------------------------------------*\
@@ -58,46 +64,48 @@ class DiagonalMatrix
 {
 public:
 
+    // Generated Methods
+
+        //- Default construct
+        DiagonalMatrix() = default;
+
+        //- Copy construct
+        DiagonalMatrix(const DiagonalMatrix&) = default;
+
+        //- Copy assignment
+        DiagonalMatrix& operator=(const DiagonalMatrix&) = default;
+
+
     // Constructors
 
-        //- Null constructor.
-        DiagonalMatrix();
+        //- Construct from size, uninitialised content
+        explicit DiagonalMatrix(const label n);
 
-        //- Construct from diagonal component of a Matrix
+        //- Construct from size and initialise all elems to zero
+        DiagonalMatrix(const label n, const Foam::zero);
+
+        //- Construct from size and initialise all elems to value
+        DiagonalMatrix(const label n, const Type& val);
+
+        //- Construct from the diagonal of a Matrix
         template<class Form>
-        DiagonalMatrix(const Matrix<Form, Type>&);
-
-        //- Construct empty from size
-        DiagonalMatrix(const label size);
-
-        //- Construct from size and a value
-        DiagonalMatrix(const label, const Type&);
-
-        //- Construct from an initialiser list
-        DiagonalMatrix(std::initializer_list<Type>);
-
-        //- Construct from Istream.
-        DiagonalMatrix(Istream&);
+        DiagonalMatrix(const Matrix<Form, Type>& mat);
 
 
     // Member Functions
 
-        //- Return the instantiated type name
-        static word typeName()
-        {
-            return word("DiagonalMatrix<") + pTraits<Type>::typeName + '>';
-        }
+        //- Return the matrix inverse into itself
+        void invert();
 
-        //- Invert the diagonal matrix and return itself
-        DiagonalMatrix<Type>& invert();
+        //- Return a sort permutation labelList according to
+        //- a given comparison on the diagonal entries
+        template<class CompOp>
+        List<label> sortPermutation(CompOp& compare) const;
+
+        //- Column-reorder this Matrix according to
+        //- a given permutation labelList
+        void applyPermutation(const List<label>& p);
 };
-
-
-// Global functions
-
-//- Return the diagonal Matrix inverse
-template<class Type>
-DiagonalMatrix<Type> inv(const DiagonalMatrix<Type>&);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

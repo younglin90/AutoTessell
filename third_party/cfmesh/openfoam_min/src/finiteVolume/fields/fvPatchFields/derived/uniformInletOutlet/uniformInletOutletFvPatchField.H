@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::uniformInletOutletFvPatchField
+
+Group
+    grpOutletBoundaryConditions
 
 Description
     Variant of inletOutlet boundary condition with uniform inletValue.
@@ -48,14 +53,14 @@ Usage
     The mode of operation is determined by the sign of the flux across the
     patch faces.
 
-    Note:
-        Sign conventions:
-      - positive flux (out of domain): apply zero-gradient condition
-      - negative flux (into of domain): apply the user-specified fixed value
+Note
+    Sign conventions:
+    - positive flux (out of domain): apply zero-gradient condition
+    - negative flux (into of domain): apply the user-specified fixed value
 
 See also
     Foam::inletOutletFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     uniformInletOutletFvPatchField.C
@@ -74,7 +79,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-               Class uniformInletOutletFvPatchField Declaration
+                   Class uniformInletOutletFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -102,11 +107,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        uniformInletOutletFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         uniformInletOutletFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -116,55 +128,59 @@ public:
         (
             const uniformInletOutletFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         uniformInletOutletFvPatchField
         (
             const uniformInletOutletFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         uniformInletOutletFvPatchField
         (
             const uniformInletOutletFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new uniformInletOutletFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
-        // Attributes
-
-            //- Return true: this patch field is altered by assignment
-            virtual bool assignable() const
-            {
-                return true;
-            }
+        //- True: this patch field is altered by assignment
+        virtual bool assignable() const { return true; }
 
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         //- Update the coefficients associated with the patch field
@@ -174,12 +190,9 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const fvPatchField<Type>& pvf);
-
-        //- Inherit assignment
-        using mixedFvPatchField<Type>::operator=;
 };
 
 

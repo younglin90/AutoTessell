@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ void Foam::momentOfInertia::massPropertiesSolid
     scalar density,
     scalar& mass,
     vector& cM,
-    symmTensor& J
+    tensor& J
 )
 {
     // Reimplemented from: Wm4PolyhedralMassProperties.cpp
@@ -50,7 +53,7 @@ void Foam::momentOfInertia::massPropertiesSolid
     // Boost Software License - Version 1.0 - August 17th, 2003
 
     // Permission is hereby granted, free of charge, to any person or
-    // organisation obtaining a copy of the software and accompanying
+    // organization obtaining a copy of the software and accompanying
     // documentation covered by this license (the "Software") to use,
     // reproduce, display, distribute, execute, and transmit the
     // Software, and to prepare derivative works of the Software, and
@@ -80,21 +83,21 @@ void Foam::momentOfInertia::massPropertiesSolid
     const scalar r120 = 1.0/120.0;
 
     // order:  1, x, y, z, x^2, y^2, z^2, xy, yz, zx
-    scalarField integrals(10, 0.0);
+    scalarField integrals(10, Zero);
 
     forAll(triFaces, i)
     {
         const triFace& tri(triFaces[i]);
 
         // vertices of triangle i
-        const vector& v0 = pts[tri[0]];
-        const vector& v1 = pts[tri[1]];
-        const vector& v2 = pts[tri[2]];
+        vector v0 = pts[tri[0]];
+        vector v1 = pts[tri[1]];
+        vector v2 = pts[tri[2]];
 
         // cross product of edges
-        const vector eA(v1 - v0);
-        const vector eB(v2 - v0);
-        const vector n(eA ^ eB);
+        vector eA = v1 - v0;
+        vector eB = v2 - v0;
+        vector n = eA ^ eB;
 
         // compute integral terms
         scalar tmp0, tmp1, tmp2;
@@ -169,12 +172,15 @@ void Foam::momentOfInertia::massPropertiesSolid
     J.xx() = integrals[5] + integrals[6];
     J.xy() = -integrals[7];
     J.xz() = -integrals[9];
+    J.yx() = J.xy();
     J.yy() = integrals[4] + integrals[6];
     J.yz() = -integrals[8];
+    J.zx() = J.xz();
+    J.zy() = J.yz();
     J.zz() = integrals[4] + integrals[5];
 
     // inertia relative to center of mass
-    J -= mass*((cM & cM)*I - sqr(cM));
+    J -= mass*((cM & cM)*I - cM*cM);
 
     // Apply density
     mass *= density;
@@ -189,12 +195,13 @@ void Foam::momentOfInertia::massPropertiesShell
     scalar density,
     scalar& mass,
     vector& cM,
-    symmTensor& J
+    tensor& J,
+    bool doReduce
 )
 {
     // Reset properties for accumulation
 
-    mass = 0;
+    mass = 0.0;
     cM = Zero;
     J = Zero;
 
@@ -204,18 +211,24 @@ void Foam::momentOfInertia::massPropertiesShell
     {
         const triFace& tri(triFaces[i]);
 
-        const triPointRef t
+        triPointRef t
         (
             pts[tri[0]],
             pts[tri[1]],
             pts[tri[2]]
         );
 
-        const scalar triMag = t.mag();
+        scalar triMag = t.mag();
 
-        cM += triMag*t.centre();
+        cM +=  triMag*t.centre();
 
         mass += triMag;
+    }
+
+    if (doReduce)
+    {
+        reduce(cM, sumOp<vector>());
+        reduce(mass, sumOp<scalar>());
     }
 
     cM /= mass;
@@ -235,6 +248,11 @@ void Foam::momentOfInertia::massPropertiesShell
             pts[tri[2]]
         ).inertia(cM, density);
     }
+
+    if (doReduce)
+    {
+        reduce(J, sumOp<tensor>());
+    }
 }
 
 
@@ -244,7 +262,7 @@ void Foam::momentOfInertia::massPropertiesSolid
     scalar density,
     scalar& mass,
     vector& cM,
-    symmTensor& J
+    tensor& J
 )
 {
     triFaceList faces(surf.size());
@@ -264,7 +282,8 @@ void Foam::momentOfInertia::massPropertiesShell
     scalar density,
     scalar& mass,
     vector& cM,
-    symmTensor& J
+    tensor& J,
+    bool doReduce
 )
 {
     triFaceList faces(surf.size());
@@ -274,7 +293,41 @@ void Foam::momentOfInertia::massPropertiesShell
         faces[i] = triFace(surf[i]);
     }
 
-    massPropertiesShell(surf.points(), faces, density, mass, cM, J);
+    massPropertiesShell(surf.points(), faces, density, mass, cM, J, doReduce);
+}
+
+
+void Foam::momentOfInertia::massPropertiesPatch
+(
+    const polyPatch& pp,
+    scalar density,
+    scalar& mass,
+    vector& cM,
+    tensor& J,
+    bool doReduce
+)
+{
+    DynamicList<triFace> faces(3*pp.size());
+
+    // decompose patch faces using triangle fan
+    forAll(pp, faceI)
+    {
+        const face& f = pp[faceI];
+
+        if (f.size() > 2)
+        {
+            const label v0 = 0;
+
+            for (label i = 1; i < f.size() - 1; i++)
+            {
+                faces.append(triFace(f[v0], f[i],f[i + 1]));
+            }
+        }
+    }
+
+    triFaceList triFaces;
+    triFaces.transfer(faces);
+    massPropertiesShell(pp.points(), triFaces, density, mass, cM, J, doReduce);
 }
 
 
@@ -282,7 +335,7 @@ Foam::tensor Foam::momentOfInertia::applyParallelAxisTheorem
 (
     scalar mass,
     const vector& cM,
-    const symmTensor& J,
+    const tensor& J,
     const vector& refPt
 )
 {
@@ -290,9 +343,9 @@ Foam::tensor Foam::momentOfInertia::applyParallelAxisTheorem
     // new reference point from the centre of mass of the body that
     // the inertia tensor applies to.
 
-    const vector d(refPt - cM);
+    vector d = (refPt - cM);
 
-    return J + mass*(magSqr(d)*I - sqr(d));
+    return J + mass*((d & d)*I - d*d);
 }
 
 
@@ -301,9 +354,8 @@ Foam::tmp<Foam::tensorField> Foam::momentOfInertia::meshInertia
     const polyMesh& mesh
 )
 {
-    tmp<tensorField> tTf = tmp<tensorField>(new tensorField(mesh.nCells()));
-
-    tensorField& tf = tTf.ref();
+    auto tTf = tmp<tensorField>::New(mesh.nCells());
+    auto& tf = tTf.ref();
 
     forAll(tf, cI)
     {
@@ -333,9 +385,9 @@ Foam::tensor Foam::momentOfInertia::meshInertia
         faces[cTI] = cellTets[cTI].faceTriIs(mesh);
     }
 
-    scalar m = 0;
+    scalar m = 0.0;
     vector cM = Zero;
-    symmTensor J = Zero;
+    tensor J = Zero;
 
     massPropertiesSolid(mesh.points(), faces, 1.0, m, cM, J);
 

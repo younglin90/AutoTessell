@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,266 +26,306 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include <iostream>
-#include "token.H"
+#include <utility>  // For std::move, std::swap
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+inline Foam::token Foam::token::boolean(bool on) noexcept
+{
+    token tok;
+    tok.type_ = tokenType::BOOL;
+    tok.data_.labelVal = on;
+
+    return tok;
+}
+
+
+inline Foam::token Foam::token::flag(int bitmask) noexcept
+{
+    token tok;
+    tok.type_ = tokenType::FLAG;
+    tok.data_.flagVal = bitmask;
+
+    return tok;
+}
+
+
+inline bool Foam::token::is_wordToken(tokenType tokType) noexcept
+{
+    return
+    (
+        tokType == tokenType::WORD
+     || tokType == tokenType::DIRECTIVE
+    );
+}
+
+
+inline bool Foam::token::is_stringToken(tokenType tokType) noexcept
+{
+    return
+    (
+        tokType == tokenType::STRING
+     || tokType == tokenType::EXPRESSION
+     || tokType == tokenType::VARIABLE
+     || tokType == tokenType::VERBATIM
+     || tokType == tokenType::CHAR_DATA
+    );
+}
+
+
+inline bool Foam::token::isseparator(int c) noexcept
+{
+    // NOTE: keep synchronized with ISstream::read(token&)
+
+    switch (c)
+    {
+        case token::END_STATEMENT :
+        case token::BEGIN_LIST :
+        case token::END_LIST :
+        case token::BEGIN_SQR :
+        case token::END_SQR :
+        case token::BEGIN_BLOCK :
+        case token::END_BLOCK :
+        case token::COLON :
+        case token::COMMA :
+        case token::ASSIGN :
+        case token::PLUS :
+        // Excluded token::MINUS since it could start a number
+        case token::MULTIPLY :
+        case token::DIVIDE :
+        {
+            return true;
+        }
+
+        default:
+            break;
+    }
+
+    return false;
+}
+
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-inline void Foam::token::clear()
+inline void Foam::token::setUndefined() noexcept
 {
-    if (type_ == WORD)
-    {
-        delete wordTokenPtr_;
-    }
-    else if (type_ == FUNCTIONNAME)
-    {
-        delete functionNameTokenPtr_;
-    }
-    else if (type_ == VARIABLE)
-    {
-        delete variableTokenPtr_;
-    }
-    else if (type_ == STRING)
-    {
-        delete stringTokenPtr_;
-    }
-    else if (type_ == VERBATIMSTRING)
-    {
-        delete verbatimStringTokenPtr_;
-    }
-    else if (type_ == LONG_DOUBLE_SCALAR)
-    {
-        delete longDoubleScalarTokenPtr_;
-    }
-    else if (type_ == COMPOUND)
-    {
-        if (compoundTokenPtr_->unique())
-        {
-            delete compoundTokenPtr_;
-        }
-        else
-        {
-            compoundTokenPtr_->refCount::operator--();
-        }
-    }
-
-    type_ = UNDEFINED;
+    type_ = tokenType::UNDEFINED;
+    data_.int64Val = 0; // bit-wise zero for union content
+    // leave lineNumber untouched - may still be needed
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::token::token()
+inline constexpr Foam::token::token() noexcept
 :
-    type_(UNDEFINED),
-    lineNumber_(0)
+    data_(), // bit-wise zero for union content
+    type_(tokenType::UNDEFINED),
+    line_(0)
 {}
 
 
-inline Foam::token::token(const token& t)
+inline Foam::token::token(const token& tok)
 :
-    type_(t.type_),
-    lineNumber_(t.lineNumber_)
+    data_(tok.data_), // bit-wise copy of union content
+    type_(tok.type_),
+    line_(tok.line_)
 {
+    // Fundamental: values already handled by bit-wise copy
+    // Pointer: duplicate content or increase refCount
+
     switch (type_)
     {
-        case token::UNDEFINED:
-        break;
+        // token::isWord()
+        case tokenType::WORD:
+        case tokenType::DIRECTIVE:
+        {
+            data_.wordPtr = new word(*tok.data_.wordPtr);
+            break;
+        }
 
-        case PUNCTUATION:
-            punctuationToken_ = t.punctuationToken_;
-        break;
+        // token::isString()
+        case tokenType::STRING:
+        case tokenType::EXPRESSION:
+        case tokenType::VARIABLE:
+        case tokenType::VERBATIM:
+        case tokenType::CHAR_DATA:
+        {
+            data_.stringPtr = new string(*tok.data_.stringPtr);
+            break;
+        }
 
-        case WORD:
-            wordTokenPtr_ = new word(*t.wordTokenPtr_);
-        break;
+        case tokenType::COMPOUND:
+        {
+            // Identical pointers, but increase the refCount
+            data_.compoundPtr = tok.data_.compoundPtr;
+            data_.compoundPtr->refCount::operator++();
+            break;
+        }
 
-        case FUNCTIONNAME:
-            functionNameTokenPtr_ = new functionName(*t.functionNameTokenPtr_);
-        break;
-
-        case VARIABLE:
-            variableTokenPtr_ = new variable(*t.variableTokenPtr_);
-        break;
-
-        case STRING:
-            stringTokenPtr_ = new string(*t.stringTokenPtr_);
-        break;
-
-        case VERBATIMSTRING:
-            verbatimStringTokenPtr_ =
-                new verbatimString(*t.verbatimStringTokenPtr_);
-        break;
-
-        case INTEGER_32:
-            integer32Token_ = t.integer32Token_;
-        break;
-
-        case INTEGER_64:
-            integer64Token_ = t.integer64Token_;
-        break;
-
-        case UNSIGNED_INTEGER_32:
-            unsignedInteger32Token_ = t.unsignedInteger32Token_;
-        break;
-
-        case UNSIGNED_INTEGER_64:
-            unsignedInteger64Token_ = t.unsignedInteger64Token_;
-        break;
-
-        case FLOAT_SCALAR:
-            floatScalarToken_ = t.floatScalarToken_;
-        break;
-
-        case DOUBLE_SCALAR:
-            doubleScalarToken_ = t.doubleScalarToken_;
-        break;
-
-        case LONG_DOUBLE_SCALAR:
-            longDoubleScalarTokenPtr_ =
-                new longDoubleScalar(*t.longDoubleScalarTokenPtr_);
-        break;
-
-        case COMPOUND:
-            compoundTokenPtr_ = t.compoundTokenPtr_;
-            compoundTokenPtr_->refCount::operator++();
-        break;
-
-        case token::ERROR:
-        break;
+        default:
+            break;
     }
 }
 
 
-inline Foam::token::token(punctuationToken p, label lineNumber)
+inline Foam::token::token(token&& tok) noexcept
 :
-    type_(PUNCTUATION),
-    punctuationToken_(p),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const word& w, label lineNumber)
-:
-    type_(WORD),
-    wordTokenPtr_(new word(w)),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const string& s, label lineNumber)
-:
-    type_(STRING),
-    stringTokenPtr_(new string(s)),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const keyType& kt, label lineNumber)
-:
-    type_(UNDEFINED),
-    lineNumber_(lineNumber)
+    data_(tok.data_), // bit-wise copy of union content
+    type_(tok.type_),
+    line_(tok.line_)
 {
-    switch (kt.Type())
+    tok.setUndefined(); // zero the union content without any checking
+    tok.line_ = 0;
+}
+
+
+inline Foam::token::token(punctuationToken p, label lineNum) noexcept
+:
+    data_(),
+    type_(tokenType::PUNCTUATION),
+    line_(lineNum)
+{
+    data_.punctuationVal = p;
+}
+
+
+inline Foam::token::token(const label val, label lineNum) noexcept
+:
+    data_(),
+    type_(tokenType::LABEL),
+    line_(lineNum)
+{
+    data_.labelVal = val;
+}
+
+
+inline Foam::token::token(const float val, label lineNum) noexcept
+:
+    data_(),
+    type_(tokenType::FLOAT),
+    line_(lineNum)
+{
+    data_.floatVal = val;
+}
+
+
+inline Foam::token::token(const double val, label lineNum) noexcept
+:
+    data_(),
+    type_(tokenType::DOUBLE),
+    line_(lineNum)
+{
+    data_.doubleVal = val;
+}
+
+
+inline Foam::token::token(const word& w, label lineNum)
+:
+    data_(),
+    type_(tokenType::WORD),
+    line_(lineNum)
+{
+    data_.wordPtr = new word(w);
+}
+
+
+inline Foam::token::token(const string& str, label lineNum)
+:
+    data_(),
+    type_(tokenType::STRING),
+    line_(lineNum)
+{
+    data_.stringPtr = new string(str);
+}
+
+
+inline Foam::token::token(word&& w, label lineNum)
+:
+    data_(),
+    type_(tokenType::WORD),
+    line_(lineNum)
+{
+    data_.wordPtr = new word(std::move(w));
+}
+
+
+inline Foam::token::token(string&& str, label lineNum)
+:
+    data_(),
+    type_(tokenType::STRING),
+    line_(lineNum)
+{
+    data_.stringPtr = new string(std::move(str));
+}
+
+
+inline Foam::token::token
+(
+    tokenType tokType,
+    const std::string& str,
+    label lineNum
+)
+:
+    data_(),
+    type_(tokenType::STRING),
+    line_(lineNum)
+{
+    if (is_wordToken(tokType))
     {
-        case keyType::UNDEFINED:
-        {
-            type_ = UNDEFINED;
-            break;
-        }
-
-        case keyType::WORD:
-        {
-            type_ = WORD;
-            wordTokenPtr_ = new word(kt);
-            break;
-        }
-
-        case keyType::FUNCTIONNAME:
-        {
-            type_ = FUNCTIONNAME;
-            functionNameTokenPtr_ = new functionName(kt);
-            break;
-        }
-
-        case keyType::VARIABLE:
-        {
-            type_ = VARIABLE;
-            variableTokenPtr_ = new variable(kt);
-            break;
-        }
-
-        case keyType::PATTERN:
-        {
-            type_ = STRING;
-            stringTokenPtr_ = new string(kt);
-            break;
-        }
+        type_ = tokType;
+        data_.wordPtr = new word(str, false);  // no stripping
+    }
+    else
+    {
+        if (is_stringToken(tokType)) type_ = tokType;
+        data_.stringPtr = new string(str);  // never strips
     }
 }
 
 
-inline Foam::token::token(const verbatimString& vs, label lineNumber)
+inline Foam::token::token
+(
+    tokenType tokType,
+    std::string&& str,
+    label lineNum
+)
 :
-    type_(VERBATIMSTRING),
-    verbatimStringTokenPtr_(new verbatimString(vs)),
-    lineNumber_(lineNumber)
-{}
+    data_(),
+    type_(tokenType::STRING),
+    line_(lineNum)
+{
+    if (is_wordToken(tokType))
+    {
+        type_ = tokType;
+        data_.wordPtr = new word(std::move(str), false);  // no stripping
+    }
+    else
+    {
+        if (is_stringToken(tokType)) type_ = tokType;
+        data_.stringPtr = new string(std::move(str));  // never strips
+    }
+}
 
 
-inline Foam::token::token(const int32_t l, label lineNumber)
+inline Foam::token::token(token::compound* ptr, label lineNum)
 :
-    type_(INTEGER_32),
-    integer32Token_(l),
-    lineNumber_(lineNumber)
-{}
+    data_(),
+    type_(tokenType::COMPOUND),
+    line_(lineNum)
+{
+    data_.compoundPtr = ptr;
+    if (!data_.compoundPtr)
+    {
+        // Could handle nullptr as Fatal, but this is simpler
+        setUndefined();
+    }
+}
 
 
-inline Foam::token::token(const int64_t l, label lineNumber)
+inline Foam::token::token(autoPtr<token::compound>&& ptr, label lineNum)
 :
-    type_(INTEGER_64),
-    integer64Token_(l),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const uint32_t l, label lineNumber)
-:
-    type_(UNSIGNED_INTEGER_32),
-    unsignedInteger32Token_(l),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const uint64_t l, label lineNumber)
-:
-    type_(UNSIGNED_INTEGER_64),
-    unsignedInteger64Token_(l),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const floatScalar s, label lineNumber)
-:
-    type_(FLOAT_SCALAR),
-    floatScalarToken_(s),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const doubleScalar s, label lineNumber)
-:
-    type_(DOUBLE_SCALAR),
-    doubleScalarToken_(s),
-    lineNumber_(lineNumber)
-{}
-
-
-inline Foam::token::token(const longDoubleScalar s, label lineNumber)
-:
-    type_(LONG_DOUBLE_SCALAR),
-    longDoubleScalarTokenPtr_(new longDoubleScalar(s)),
-    lineNumber_(lineNumber)
+    token(ptr.release(), lineNum)
 {}
 
 
@@ -290,979 +333,910 @@ inline Foam::token::token(const longDoubleScalar s, label lineNumber)
 
 inline Foam::token::~token()
 {
-    clear();
+    reset();
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::token::tokenType  Foam::token::type() const
+inline void Foam::token::reset()
 {
-    return type_;
-}
+    switch (type_)
+    {
+        // token::isWord()
+        case tokenType::WORD:
+        case tokenType::DIRECTIVE:
+        {
+            delete data_.wordPtr;
+            break;
+        }
 
-inline Foam::token::tokenType&  Foam::token::type()
-{
-    return type_;
-}
+        // token::isString()
+        case tokenType::STRING:
+        case tokenType::EXPRESSION:
+        case tokenType::VARIABLE:
+        case tokenType::VERBATIM:
+        case tokenType::CHAR_DATA:
+        {
+            delete data_.stringPtr;
+            break;
+        }
 
-inline bool Foam::token::good() const
-{
-    return (type_ != ERROR && type_ != UNDEFINED);
-}
+        case tokenType::COMPOUND:
+        {
+            if (data_.compoundPtr->refCount::unique())
+            {
+                delete data_.compoundPtr;
+            }
+            else
+            {
+                data_.compoundPtr->refCount::operator--();
+            }
+            break;
+        }
 
-inline bool Foam::token::undefined() const
-{
-    return (type_ == UNDEFINED);
-}
+        default:
+            break;
+    }
 
-inline bool Foam::token::error() const
-{
-    return (type_ == ERROR);
-}
-
-inline bool Foam::token::isPunctuation() const
-{
-    return (type_ == PUNCTUATION);
-}
-
-inline Foam::token::punctuationToken  Foam::token::pToken() const
-{
-    if (type_ == PUNCTUATION)
-    {
-        return punctuationToken_;
-    }
-    else
-    {
-        parseError("punctuation character");
-        return NULL_TOKEN;
-    }
-}
-
-inline bool Foam::token::isWord() const
-{
-    return (type_ == WORD);
-}
-
-inline const Foam::word& Foam::token::wordToken() const
-{
-    if (type_ == WORD)
-    {
-        return *wordTokenPtr_;
-    }
-    else
-    {
-        parseError(word::typeName);
-        return word::null;
-    }
-}
-
-inline bool Foam::token::isFunctionName() const
-{
-    return (type_ == FUNCTIONNAME);
-}
-
-inline const Foam::functionName& Foam::token::functionNameToken() const
-{
-    if (type_ == FUNCTIONNAME)
-    {
-        return *functionNameTokenPtr_;
-    }
-    else
-    {
-        parseError(functionName::typeName);
-        return functionName::null;
-    }
-}
-
-inline bool Foam::token::isVariable() const
-{
-    return (type_ == VARIABLE);
-}
-
-inline const Foam::variable& Foam::token::variableToken() const
-{
-    if (type_ == VARIABLE)
-    {
-        return *variableTokenPtr_;
-    }
-    else
-    {
-        parseError(variable::typeName);
-        return variable::null;
-    }
-}
-
-inline bool Foam::token::isString() const
-{
-    return (type_ == STRING);
-}
-
-inline const Foam::string& Foam::token::stringToken() const
-{
-    if (type_ == STRING)
-    {
-        return *stringTokenPtr_;
-    }
-    else
-    {
-        parseError(string::typeName);
-        return string::null;
-    }
-}
-
-inline bool Foam::token::isVerbatimString() const
-{
-    return (type_ == VERBATIMSTRING);
-}
-
-inline const Foam::verbatimString& Foam::token::verbatimStringToken() const
-{
-    if (type_ == VERBATIMSTRING)
-    {
-        return *verbatimStringTokenPtr_;
-    }
-    else
-    {
-        parseError(verbatimString::typeName);
-        return verbatimString::null;
-    }
-}
-
-inline bool Foam::token::isAnyString() const
-{
-    return
-    (
-        type_ == WORD
-     || type_ == FUNCTIONNAME
-     || type_ == VARIABLE
-     || type_ == STRING
-     || type_ == VERBATIMSTRING
-    );
-}
-
-inline const Foam::string& Foam::token::anyStringToken() const
-{
-    if (type_ == WORD)
-    {
-        return *wordTokenPtr_;
-    }
-    else if (type_ == FUNCTIONNAME)
-    {
-        return *functionNameTokenPtr_;
-    }
-    else if (type_ == VARIABLE)
-    {
-        return *variableTokenPtr_;
-    }
-    else if (type_ == STRING)
-    {
-        return *stringTokenPtr_;
-    }
-    else if (type_ == VERBATIMSTRING)
-    {
-        return *verbatimStringTokenPtr_;
-    }
-    else
-    {
-        parseError(string::typeName);
-        return string::null;
-    }
-}
-
-inline bool Foam::token::isInteger32() const
-{
-    return
-        type_ == INTEGER_32
-     || (
-            type_ == INTEGER_64
-         && (integer64Token_ >= INT32_MIN) && (integer64Token_ <= INT32_MAX)
-        )
-     || (type_ == UNSIGNED_INTEGER_32 && unsignedInteger32Token_ <= INT32_MAX)
-     || (type_ == UNSIGNED_INTEGER_64 && unsignedInteger64Token_ <= INT32_MAX);
-}
-
-inline int32_t Foam::token::integer32Token() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<int32_t>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isInteger64() const
-{
-    return
-        type_ == INTEGER_32
-     || type_ == INTEGER_64
-     || type_ == UNSIGNED_INTEGER_32
-     || (type_ == UNSIGNED_INTEGER_64 && unsignedInteger64Token_ <= INT64_MAX);
-}
-
-inline int64_t Foam::token::integer64Token() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<int64_t>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isUnsignedInteger32() const
-{
-    return
-        (type_ == INTEGER_32 && integer32Token_ >= 0)
-     || (
-            type_ == INTEGER_64
-         && (integer64Token_ >= 0) && (integer64Token_ <= UINT32_MAX)
-        )
-     || type_ == UNSIGNED_INTEGER_32
-     || (type_ == UNSIGNED_INTEGER_64 && unsignedInteger64Token_ <= UINT32_MAX);
-}
-
-inline uint32_t Foam::token::unsignedInteger32Token() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<uint32_t>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isUnsignedInteger64() const
-{
-    return
-        (type_ == INTEGER_32 && integer32Token_ >= 0)
-     || (type_ == INTEGER_64 && integer64Token_ >= 0)
-     || type_ == UNSIGNED_INTEGER_32
-     || type_ == UNSIGNED_INTEGER_64;
-}
-
-inline uint64_t Foam::token::unsignedInteger64Token() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<uint64_t>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isLabel() const
-{
-    return
-        type_ == INTEGER_32
-     || (
-            type_ == INTEGER_64
-         && integer64Token_ >= int64_t(labelMin)
-         && integer64Token_ <= int64_t(labelMax)
-        )
-     || (
-            type_ == UNSIGNED_INTEGER_32
-         && uint64_t(unsignedInteger32Token_) <= uint64_t(labelMax)
-        )
-     || (
-            type_ == UNSIGNED_INTEGER_64
-         && unsignedInteger64Token_ <= uint64_t(labelMax)
-        );
-}
-
-inline Foam::label Foam::token::labelToken() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<label>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isULabel() const
-{
-    return
-        (
-            type_ == INTEGER_32
-         && integer32Token_ >= 0
-        )
-     || (
-            type_ == INTEGER_64
-         && integer64Token_ >= 0
-         && uint64_t(integer64Token_) <= uint64_t(uLabelMax)
-        )
-     || type_ == UNSIGNED_INTEGER_32
-     || (
-            type_ == UNSIGNED_INTEGER_64
-         && unsignedInteger64Token_ <= uint64_t(uLabelMax)
-        );
-}
-
-inline Foam::uLabel Foam::token::uLabelToken() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else
-    {
-        parseError(pTraits<uLabel>::typeName);
-        return 0;
-    }
-}
-
-inline bool Foam::token::isFloatScalar() const
-{
-    return (type_ == FLOAT_SCALAR);
-}
-
-inline Foam::floatScalar Foam::token::floatScalarToken() const
-{
-    if (type_ == FLOAT_SCALAR)
-    {
-        return floatScalarToken_;
-    }
-    else
-    {
-        parseError("floatScalar");
-        return 0.0;
-    }
-}
-
-
-inline bool Foam::token::isDoubleScalar() const
-{
-    return (type_ == DOUBLE_SCALAR);
-}
-
-inline Foam::doubleScalar Foam::token::doubleScalarToken() const
-{
-    if (type_ == DOUBLE_SCALAR)
-    {
-        return doubleScalarToken_;
-    }
-    else
-    {
-        parseError("doubleScalar");
-        return 0.0;
-    }
-}
-
-
-inline bool Foam::token::isLongDoubleScalar() const
-{
-    return (type_ == LONG_DOUBLE_SCALAR);
-}
-
-inline Foam::longDoubleScalar Foam::token::longDoubleScalarToken() const
-{
-    if (type_ == LONG_DOUBLE_SCALAR)
-    {
-        return *longDoubleScalarTokenPtr_;
-    }
-    else
-    {
-        parseError("longDoubleScalar");
-        return 0.0;
-    }
-}
-
-
-inline bool Foam::token::isScalar() const
-{
-    return
-        type_ == FLOAT_SCALAR
-     || type_ == DOUBLE_SCALAR
-     || type_ == LONG_DOUBLE_SCALAR;
-}
-
-inline Foam::scalar Foam::token::scalarToken() const
-{
-    if (type_ == FLOAT_SCALAR)
-    {
-        return floatScalarToken_;
-    }
-    else if (type_ == DOUBLE_SCALAR)
-    {
-        return doubleScalarToken_;
-    }
-    else if (type_ == LONG_DOUBLE_SCALAR)
-    {
-        return *longDoubleScalarTokenPtr_;
-    }
-    else
-    {
-        parseError(pTraits<scalar>::typeName);
-        return 0.0;
-    }
-}
-
-inline bool Foam::token::isNumber() const
-{
-    return
-        type_ == INTEGER_32
-     || type_ == INTEGER_64
-     || type_ == UNSIGNED_INTEGER_32
-     || type_ == UNSIGNED_INTEGER_64
-     || isScalar();
-}
-
-inline Foam::scalar Foam::token::number() const
-{
-    if (type_ == INTEGER_32)
-    {
-        return integer32Token_;
-    }
-    else if (type_ == INTEGER_64)
-    {
-        return integer64Token_;
-    }
-    if (type_ == UNSIGNED_INTEGER_32)
-    {
-        return unsignedInteger32Token_;
-    }
-    else if (type_ == UNSIGNED_INTEGER_64)
-    {
-        return unsignedInteger64Token_;
-    }
-    else if (isScalar())
-    {
-        return scalarToken();
-    }
-    else
-    {
-        parseError("number (label or scalar)");
-        return 0.0;
-    }
-}
-
-inline bool Foam::token::isCompound() const
-{
-    return (type_ == COMPOUND);
-}
-
-inline const Foam::token::compound& Foam::token::compoundToken() const
-{
-    if (type_ == COMPOUND)
-    {
-        return *compoundTokenPtr_;
-    }
-    else
-    {
-        parseError("compound");
-        return *compoundTokenPtr_;
-    }
-}
-
-
-inline Foam::label Foam::token::lineNumber() const
-{
-    return lineNumber_;
-}
-
-inline Foam::label& Foam::token::lineNumber()
-{
-    return lineNumber_;
+    setUndefined();
 }
 
 
 inline void Foam::token::setBad()
 {
-    clear();
-    type_ = ERROR;
+    reset();
+    type_ = tokenType::ERROR;
+}
+
+
+inline void Foam::token::swap(token& tok) noexcept
+{
+    if (this == &tok)
+    {
+        return;  // Self-swap is a no-op
+    }
+
+    std::swap(data_, tok.data_);
+    std::swap(type_, tok.type_);
+    std::swap(line_, tok.line_);
+}
+
+
+inline Foam::word Foam::token::name() const
+{
+    return token::name(type_);
+}
+
+
+inline Foam::token::tokenType Foam::token::type() const noexcept
+{
+    return type_;
+}
+
+
+inline bool Foam::token::setType(token::tokenType tokType) noexcept
+{
+    if (type_ == tokType)
+    {
+        // No change required
+        return true;
+    }
+
+    switch (tokType)
+    {
+        case tokenType::BOOL:
+        case tokenType::LABEL:
+        {
+            switch (type_)
+            {
+                case tokenType::BOOL:
+                case tokenType::LABEL:
+                    type_ = tokType;
+                    return true;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+        break;
+
+        // token::isWord()
+        case tokenType::WORD:
+        case tokenType::DIRECTIVE:
+        {
+            switch (type_)
+            {
+                // token::isWord()
+                case tokenType::WORD:
+                case tokenType::DIRECTIVE:
+                    type_ = tokType;
+                    return true;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+        break;
+
+        // token::isString()
+        case tokenType::STRING:
+        case tokenType::EXPRESSION:
+        case tokenType::VARIABLE:
+        case tokenType::VERBATIM:
+        case tokenType::CHAR_DATA:
+        {
+            switch (type_)
+            {
+                // token::isWord()
+                // could also go from WORD to STRING etc - to be decided
+
+                // token::isString()
+                case tokenType::STRING:
+                case tokenType::EXPRESSION:
+                case tokenType::VARIABLE:
+                case tokenType::VERBATIM:
+                case tokenType::CHAR_DATA:
+                    type_ = tokType;
+                    return true;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+        break;
+
+        default:
+            break;
+    }
+
+    return false;
+}
+
+
+inline Foam::label Foam::token::lineNumber() const noexcept
+{
+    return line_;
+}
+
+
+inline Foam::label Foam::token::lineNumber(const label lineNum) noexcept
+{
+    label old(line_);
+    line_ = lineNum;
+    return old;
+}
+
+
+inline bool Foam::token::good() const noexcept
+{
+    return (type_ != tokenType::UNDEFINED && type_ != tokenType::ERROR);
+}
+
+
+inline bool Foam::token::undefined() const noexcept
+{
+    return (type_ == tokenType::UNDEFINED);
+}
+
+
+inline bool Foam::token::error() const noexcept
+{
+    return (type_ == tokenType::ERROR);
+}
+
+
+inline bool Foam::token::isBool() const noexcept
+{
+    return (type_ == tokenType::BOOL);
+}
+
+
+inline bool Foam::token::boolToken() const
+{
+    if (type_ == tokenType::BOOL || type_ == tokenType::LABEL)
+    {
+        return data_.labelVal;
+    }
+
+    parseError("bool");
+    return false;
+}
+
+
+inline bool Foam::token::isFlag() const noexcept
+{
+    return (type_ == tokenType::FLAG);
+}
+
+
+inline int Foam::token::flagToken() const
+{
+    if (type_ == tokenType::FLAG)
+    {
+        return data_.flagVal;
+    }
+
+    parseError("flag bitmask");
+    return flagType::NO_FLAG;
+}
+
+
+inline bool Foam::token::isPunctuation() const noexcept
+{
+    return (type_ == tokenType::PUNCTUATION);
+}
+
+
+inline bool Foam::token::isPunctuation(const punctuationToken p) const noexcept
+{
+    return
+    (
+        type_ == tokenType::PUNCTUATION
+     && data_.punctuationVal == p
+    );
+}
+
+
+inline bool Foam::token::isSeparator() const noexcept
+{
+    return
+    (
+        type_ == tokenType::PUNCTUATION
+     && isseparator(data_.punctuationVal)
+    );
+}
+
+
+inline Foam::token::punctuationToken Foam::token::pToken() const
+{
+    if (type_ == tokenType::PUNCTUATION)
+    {
+        return data_.punctuationVal;
+    }
+
+    parseError("punctuation character");
+    return punctuationToken::NULL_TOKEN;
+}
+
+
+inline bool Foam::token::isLabel() const noexcept
+{
+    return
+    (
+        type_ == tokenType::LABEL
+        // FUTURE?
+        // || type_ == tokenType::INT32
+        // || type_ == tokenType::INT64
+    );
+}
+
+
+inline bool Foam::token::isLabel(const label value) const noexcept
+{
+    // FUTURE?
+    // return
+    // (
+    //     type_ == tokenType::LABEL
+    //   ? value == data_.labelVal
+    //   : type_ == tokenType::INT32
+    //   ? value == data_.int32Val
+    //   : type_ == tokenType::INT64
+    //   ? value == data_.int64Val
+    //   : false
+    // );
+
+    return
+    (
+        type_ == tokenType::LABEL
+     && value == data_.labelVal
+    );
+}
+
+
+inline Foam::label Foam::token::labelToken() const
+{
+    if (type_ == tokenType::LABEL)
+    {
+        return data_.labelVal;
+    }
+
+    parseError("label");
+    return 0;
+}
+
+
+inline bool Foam::token::isFloat() const noexcept
+{
+    return (type_ == tokenType::FLOAT);
+}
+
+
+inline float Foam::token::floatToken() const
+{
+    if (type_ == tokenType::FLOAT)
+    {
+        return data_.floatVal;
+    }
+
+    parseError("float");
+    return 0;
+}
+
+
+inline bool Foam::token::isDouble() const noexcept
+{
+    return (type_ == tokenType::DOUBLE);
+}
+
+
+inline double Foam::token::doubleToken() const
+{
+    if (type_ == tokenType::DOUBLE)
+    {
+        return data_.doubleVal;
+    }
+
+    parseError("double");
+    return 0;
+}
+
+
+inline bool Foam::token::isScalar() const noexcept
+{
+    return
+    (
+        type_ == tokenType::FLOAT
+     || type_ == tokenType::DOUBLE
+    );
+}
+
+
+inline Foam::scalar Foam::token::scalarToken() const
+{
+    if (type_ == tokenType::FLOAT)
+    {
+        return data_.floatVal;
+    }
+    else if (type_ == tokenType::DOUBLE)
+    {
+        return data_.doubleVal;
+    }
+
+    parseError("scalar");
+    return 0;
+}
+
+
+inline bool Foam::token::isNumber() const noexcept
+{
+    return (isLabel() || isScalar());
+}
+
+
+inline Foam::scalar Foam::token::number() const
+{
+    if (isLabel())
+    {
+        return labelToken();
+    }
+    if (isScalar())
+    {
+        return scalarToken();
+    }
+
+    parseError("number (label or scalar)");
+    return 0;
+}
+
+
+inline bool Foam::token::isWord() const noexcept
+{
+    return is_wordToken(type_);
+}
+
+
+inline bool Foam::token::isWord(const std::string& s) const
+{
+    return (isWord() && s == *data_.wordPtr);
+}
+
+
+inline bool Foam::token::isDirective() const noexcept
+{
+    return (type_ == tokenType::DIRECTIVE);
+}
+
+
+inline const Foam::word& Foam::token::wordToken() const
+{
+    if (isWord())
+    {
+        return *data_.wordPtr;
+    }
+
+    parseError("word");
+    return word::null;
+}
+
+
+inline bool Foam::token::isQuotedString() const noexcept
+{
+    return (type_ == tokenType::STRING);
+}
+
+
+inline bool Foam::token::isString() const noexcept
+{
+    return is_stringToken(type_);
+}
+
+
+inline bool Foam::token::isExpression() const noexcept
+{
+    return (type_ == tokenType::EXPRESSION);
+}
+
+
+inline bool Foam::token::isVariable() const noexcept
+{
+    return (type_ == tokenType::VARIABLE);
+}
+
+
+inline bool Foam::token::isVerbatim() const noexcept
+{
+    return (type_ == tokenType::VERBATIM);
+}
+
+
+inline bool Foam::token::isCharData() const noexcept
+{
+    return (type_ == tokenType::CHAR_DATA);
+}
+
+
+inline bool Foam::token::isStringType() const noexcept
+{
+    return (isWord() || isString());
+}
+
+
+inline const Foam::string& Foam::token::stringToken() const
+{
+    if (isString())
+    {
+        return *data_.stringPtr;
+    }
+    else if (isWord())
+    {
+        // Foam::word derives from Foam::string, no need to cast.
+        return *data_.wordPtr;
+    }
+
+    parseError("string");
+    return string::null;
+}
+
+
+// Could also have reference to stringToken() - eg refStringToken() ?
+// but not really sure where this would be useful...
+
+inline bool Foam::token::isCompound() const noexcept
+{
+    return (type_ == tokenType::COMPOUND);
+}
+
+
+inline bool Foam::token::isCompound(const word& compoundType) const
+{
+    return
+    (
+        type_ == tokenType::COMPOUND
+     && data_.compoundPtr->type() == compoundType
+    );
+}
+
+
+template<class Type>
+inline const Type* Foam::token::isCompound() const
+{
+    return
+    (
+        type_ == tokenType::COMPOUND
+      ? dynamic_cast<const Type*>(data_.compoundPtr)
+      : nullptr
+    );
+}
+
+
+inline const Foam::token::compound& Foam::token::compoundToken() const
+{
+    if (type_ != tokenType::COMPOUND)
+    {
+        parseError("compound");
+    }
+    return *data_.compoundPtr;
+}
+
+
+inline Foam::token::compound& Foam::token::refCompoundToken()
+{
+    if (type_ != tokenType::COMPOUND)
+    {
+        parseError("compound");
+    }
+    return *data_.compoundPtr;
+}
+
+
+template<class Type>
+inline Type& Foam::token::refCompoundToken()
+{
+    if (type_ != tokenType::COMPOUND)
+    {
+        parseError("compound");
+    }
+    return static_cast<Type&>
+    (
+        dynamicCast<token::Compound<Type>>
+        (
+            *data_.compoundPtr
+        )
+    );
+}
+
+
+inline Foam::token::compound&
+Foam::token::transferCompoundToken(const Istream& is)
+{
+    return transferCompoundToken(&is);
+}
+
+
+template<class Type>
+inline Type& Foam::token::transferCompoundToken(const Istream& is)
+{
+    return static_cast<Type&>
+    (
+        dynamicCast<token::Compound<Type>>
+        (
+            transferCompoundToken(&is)
+        )
+    );
+}
+
+
+template<class T>
+Foam::token::tokenType Foam::token::Compound<T>::typeCode() const
+{
+    // Does not cover all possibilities perfectly, but should handle
+    // most of the common ones (bool, label, scalar, vector lists).
+    // Something like List<edge> will not be quite correct if we rely
+    // on nComponents
+
+    typedef typename T::value_type valueType;
+
+    if (std::is_same<valueType, bool>::value)
+    {
+        // List<bool>
+        return token::tokenType::BOOL;
+    }
+    else if (is_contiguous_label<valueType>::value)
+    {
+        // List<label>, List<labelVector> etc
+        return token::tokenType::LABEL;
+
+        // FUTURE?
+        // return
+        // (
+        //     sizeof(int32_t) == sizeof(Foam::label)
+        //   ? token::tokenType::INT32
+        //   : token::tokenType::INT64
+        // );
+
+    }
+    else if (is_contiguous_scalar<valueType>::value)
+    {
+        // List<scalar>, List<vector>, List<tensor> etc
+        return
+        (
+            sizeof(float) == sizeof(Foam::scalar)
+          ? token::tokenType::FLOAT
+          : token::tokenType::DOUBLE
+        );
+    }
+    else if (std::is_same<valueType, char>::value)
+    {
+        // List<char>
+        return token::tokenType::PUNCTUATION;
+    }
+    else
+    {
+        // Do not handle List<word> or List<string> at the moment
+        // since filling non-contiguous data is probably not desirable
+        return token::tokenType::UNDEFINED;
+    }
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline void Foam::token::operator=(const token& t)
+inline void Foam::token::operator=(const token& tok)
 {
-    clear();
-    type_ = t.type_;
+    if (this == &tok)
+    {
+        return;  // Self-assignment is a no-op
+    }
+
+    reset();
+
+    type_ = tok.type_;
+    data_ = tok.data_;  // bit-wise copy of union content
+    line_ = tok.line_;
+
+    // Fundamental: values already handled by bit-wise copy
+    // Pointer: duplicate content or increase refCount
 
     switch (type_)
     {
-        case token::UNDEFINED:
+        // token::isWord()
+        case tokenType::WORD:
+        case tokenType::DIRECTIVE:
+        {
+            data_.wordPtr = new word(*tok.data_.wordPtr);
+        }
         break;
 
-        case PUNCTUATION:
-            punctuationToken_ = t.punctuationToken_;
+        // token::isString()
+        case tokenType::STRING:
+        case tokenType::EXPRESSION:
+        case tokenType::VARIABLE:
+        case tokenType::VERBATIM:
+        case tokenType::CHAR_DATA:
+        {
+            data_.stringPtr = new string(*tok.data_.stringPtr);
+        }
         break;
 
-        case WORD:
-            wordTokenPtr_ = new word(*t.wordTokenPtr_);
+        case tokenType::COMPOUND:
+        {
+            // Identical pointers, but increase the refCount
+            data_.compoundPtr = tok.data_.compoundPtr;
+            data_.compoundPtr->refCount::operator++();
+        }
         break;
 
-        case FUNCTIONNAME:
-            functionNameTokenPtr_ = new functionName(*t.functionNameTokenPtr_);
-        break;
+        default:
+            break;
+    }
+}
 
-        case VARIABLE:
-            variableTokenPtr_ = new variable(*t.variableTokenPtr_);
-        break;
 
-        case STRING:
-            stringTokenPtr_ = new string(*t.stringTokenPtr_);
-        break;
-
-        case VERBATIMSTRING:
-            verbatimStringTokenPtr_ =
-                new verbatimString(*t.verbatimStringTokenPtr_);
-        break;
-
-        case INTEGER_32:
-            integer32Token_ = t.integer32Token_;
-        break;
-
-        case INTEGER_64:
-            integer64Token_ = t.integer64Token_;
-        break;
-
-        case UNSIGNED_INTEGER_32:
-            unsignedInteger32Token_ = t.unsignedInteger32Token_;
-        break;
-
-        case UNSIGNED_INTEGER_64:
-            unsignedInteger64Token_ = t.unsignedInteger64Token_;
-        break;
-
-        case FLOAT_SCALAR:
-            floatScalarToken_ = t.floatScalarToken_;
-        break;
-
-        case DOUBLE_SCALAR:
-            doubleScalarToken_ = t.doubleScalarToken_;
-        break;
-
-        case LONG_DOUBLE_SCALAR:
-            longDoubleScalarTokenPtr_ =
-                new longDoubleScalar(*t.longDoubleScalarTokenPtr_);
-        break;
-
-        case COMPOUND:
-            compoundTokenPtr_ = t.compoundTokenPtr_;
-            compoundTokenPtr_->refCount::operator++();
-        break;
-
-        case token::ERROR:
-        break;
+inline void Foam::token::operator=(token&& tok)
+{
+    if (this == &tok)
+    {
+        return;  // Self-assignment is a no-op
     }
 
-    lineNumber_ = t.lineNumber_;
+    reset();
+    line_ = 0;
+    swap(tok);
 }
+
 
 inline void Foam::token::operator=(const punctuationToken p)
 {
-    clear();
-    type_ = PUNCTUATION;
-    punctuationToken_ = p;
+    reset();
+    type_ = tokenType::PUNCTUATION;
+    data_.punctuationVal = p;
 }
 
-inline void Foam::token::operator=(word* wPtr)
+
+inline void Foam::token::operator=(const label val)
 {
-    clear();
-    type_ = WORD;
-    wordTokenPtr_ = wPtr;
+    reset();
+    type_ = tokenType::LABEL;
+    data_.labelVal = val;
 }
+
+
+inline void Foam::token::operator=(const float val)
+{
+    reset();
+    type_ = tokenType::FLOAT;
+    data_.floatVal = val;
+}
+
+
+inline void Foam::token::operator=(const double val)
+{
+    reset();
+    type_ = tokenType::DOUBLE;
+    data_.doubleVal = val;
+}
+
 
 inline void Foam::token::operator=(const word& w)
 {
-    operator=(new word(w));
-}
-
-inline void Foam::token::operator=(functionName* fnPtr)
-{
-    clear();
-    type_ = FUNCTIONNAME;
-    functionNameTokenPtr_ = fnPtr;
-}
-
-inline void Foam::token::operator=(const functionName& fn)
-{
-    operator=(new functionName(fn));
-}
-
-inline void Foam::token::operator=(variable* vPtr)
-{
-    clear();
-    type_ = VARIABLE;
-    variableTokenPtr_ = vPtr;
-}
-
-inline void Foam::token::operator=(const variable& v)
-{
-    operator=(new variable(v));
-}
-
-inline void Foam::token::operator=(string* sPtr)
-{
-    clear();
-    type_ = STRING;
-    stringTokenPtr_ = sPtr;
-}
-
-inline void Foam::token::operator=(const string& s)
-{
-    operator=(new string(s));
-}
-
-inline void Foam::token::operator=(verbatimString* vsPtr)
-{
-    clear();
-    type_ = VERBATIMSTRING;
-    verbatimStringTokenPtr_ = vsPtr;
-}
-
-inline void Foam::token::operator=(const verbatimString& vs)
-{
-    operator=(new verbatimString(vs));
-}
-
-inline void Foam::token::operator=(const int32_t l)
-{
-    clear();
-    type_ = INTEGER_32;
-    integer32Token_ = l;
-}
-
-inline void Foam::token::operator=(const int64_t l)
-{
-    clear();
-    type_ = INTEGER_64;
-    integer64Token_ = l;
-}
-
-inline void Foam::token::operator=(const uint32_t l)
-{
-    clear();
-    type_ = UNSIGNED_INTEGER_32;
-    unsignedInteger32Token_ = l;
-}
-
-inline void Foam::token::operator=(const uint64_t l)
-{
-    clear();
-    type_ = UNSIGNED_INTEGER_64;
-    unsignedInteger64Token_ = l;
-}
-
-inline void Foam::token::operator=(const floatScalar s)
-{
-    clear();
-    type_ = FLOAT_SCALAR;
-    floatScalarToken_ = s;
-}
-
-inline void Foam::token::operator=(const doubleScalar s)
-{
-    clear();
-    type_ = DOUBLE_SCALAR;
-    doubleScalarToken_ = s;
-}
-
-inline void Foam::token::operator=(const longDoubleScalar s)
-{
-    clear();
-    type_ = LONG_DOUBLE_SCALAR;
-    longDoubleScalarTokenPtr_ = new longDoubleScalar(s);
-}
-
-inline void Foam::token::operator=(Foam::token::compound* cPtr)
-{
-    clear();
-    type_ = COMPOUND;
-    compoundTokenPtr_ = cPtr;
+    reset();
+    type_ = tokenType::WORD;
+    data_.wordPtr = new word(w);
 }
 
 
-inline bool Foam::token::operator==(const token& t) const
+inline void Foam::token::operator=(const string& str)
 {
-    if (type_ != t.type_)
+    reset();
+    type_ = tokenType::STRING;
+    data_.stringPtr = new string(str);
+}
+
+
+inline void Foam::token::operator=(word&& w)
+{
+    reset();
+    type_ = tokenType::WORD;
+    data_.wordPtr = new word(std::move(w));
+}
+
+
+inline void Foam::token::operator=(string&& s)
+{
+    reset();
+    type_ = tokenType::STRING;
+    data_.stringPtr = new string(std::move(s));
+}
+
+
+inline void Foam::token::operator=(Foam::token::compound* ptr)
+{
+    reset();
+    type_ = tokenType::COMPOUND;
+    data_.compoundPtr = ptr;
+}
+
+
+inline void Foam::token::operator=(autoPtr<token::compound>&& ptr)
+{
+    reset();
+    type_ = tokenType::COMPOUND;
+    data_.compoundPtr = ptr.release();
+}
+
+
+inline bool Foam::token::operator==(const token& tok) const
+{
+    if (type_ != tok.type_)
     {
         return false;
     }
 
     switch (type_)
     {
-        case token::UNDEFINED:
+        case tokenType::UNDEFINED:
             return true;
 
-        case PUNCTUATION:
-            return punctuationToken_ == t.punctuationToken_;
+        case tokenType::BOOL:
+            return data_.labelVal == tok.data_.labelVal;
 
-        case WORD:
-            return *wordTokenPtr_ == *t.wordTokenPtr_;
+        case tokenType::FLAG:
+            return data_.flagVal == tok.data_.flagVal;
 
-        case FUNCTIONNAME:
-            return *functionNameTokenPtr_ == *t.functionNameTokenPtr_;
+        case tokenType::PUNCTUATION:
+            return data_.punctuationVal == tok.data_.punctuationVal;
 
-        case VARIABLE:
-            return *variableTokenPtr_ == *t.variableTokenPtr_;
+        case tokenType::LABEL:
+            return data_.labelVal == tok.data_.labelVal;
 
-        case STRING:
-            return *stringTokenPtr_ == *t.stringTokenPtr_;
+        case tokenType::FLOAT:
+            return equal(data_.floatVal, tok.data_.floatVal);
 
-        case VERBATIMSTRING:
-            return *verbatimStringTokenPtr_ == *t.verbatimStringTokenPtr_;
+        case tokenType::DOUBLE:
+            return equal(data_.doubleVal, tok.data_.doubleVal);
 
-        case INTEGER_32:
-            return integer32Token_ == t.integer32Token_;
+        // token::isWord()
+        case tokenType::WORD:
+        case tokenType::DIRECTIVE:
+            return *data_.wordPtr == *tok.data_.wordPtr;
 
-        case INTEGER_64:
-            return integer64Token_ == t.integer64Token_;
+        // token::isString()
+        case tokenType::STRING:
+        case tokenType::EXPRESSION:
+        case tokenType::VARIABLE:
+        case tokenType::VERBATIM:
+        case tokenType::CHAR_DATA:
+            return *data_.stringPtr == *tok.data_.stringPtr;
 
-        case UNSIGNED_INTEGER_32:
-            return unsignedInteger32Token_ == t.unsignedInteger32Token_;
+        case tokenType::COMPOUND:
+            return data_.compoundPtr == tok.data_.compoundPtr;
 
-        case UNSIGNED_INTEGER_64:
-            return unsignedInteger64Token_ == t.unsignedInteger64Token_;
-
-        case FLOAT_SCALAR:
-            return equal(floatScalarToken_, t.floatScalarToken_);
-
-        case DOUBLE_SCALAR:
-            return equal(doubleScalarToken_, t.doubleScalarToken_);
-
-        case LONG_DOUBLE_SCALAR:
-            return equal
-            (
-                *longDoubleScalarTokenPtr_,
-                *t.longDoubleScalarTokenPtr_
-            );
-
-        case COMPOUND:
-            return compoundTokenPtr_ == t.compoundTokenPtr_;
-
-        case token::ERROR:
+        case tokenType::ERROR:
             return true;
     }
 
     return false;
 }
 
-inline bool Foam::token::operator==(const punctuationToken p) const
+
+inline bool Foam::token::operator==(const punctuationToken p) const noexcept
 {
-    return (type_ == PUNCTUATION && punctuationToken_ == p);
+    return isPunctuation(p);
 }
 
-inline bool Foam::token::operator==(const word& w) const
-{
-    return (type_ == WORD && wordToken() == w);
-}
 
-inline bool Foam::token::operator==(const functionName& fn) const
-{
-    return (type_ == FUNCTIONNAME && functionNameToken() == fn);
-}
-
-inline bool Foam::token::operator==(const variable& v) const
-{
-    return (type_ == VARIABLE && variableToken() == v);
-}
-
-inline bool Foam::token::operator==(const string& s) const
-{
-    return (type_ == STRING && stringToken() == s);
-}
-
-inline bool Foam::token::operator==(const verbatimString& vs) const
-{
-    return (type_ == VERBATIMSTRING && verbatimStringToken() == vs);
-}
-
-inline bool Foam::token::operator==(const int32_t l) const
-{
-    return (type_ == INTEGER_32 && integer32Token_ == l);
-}
-
-inline bool Foam::token::operator==(const int64_t l) const
-{
-    return (type_ == INTEGER_64 && integer64Token_ == l);
-}
-
-inline bool Foam::token::operator==(const uint32_t l) const
-{
-    return (type_ == UNSIGNED_INTEGER_32 && unsignedInteger32Token_ == l);
-}
-
-inline bool Foam::token::operator==(const uint64_t l) const
-{
-    return (type_ == UNSIGNED_INTEGER_64 && unsignedInteger64Token_ == l);
-}
-
-inline bool Foam::token::operator==(const floatScalar s) const
-{
-    return (type_ == FLOAT_SCALAR && equal(floatScalarToken_, s));
-}
-
-inline bool Foam::token::operator==(const doubleScalar s) const
-{
-    return (type_ == DOUBLE_SCALAR && equal(doubleScalarToken_, s));
-}
-
-inline bool Foam::token::operator==(const longDoubleScalar s) const
+inline bool Foam::token::operator==(const std::string& s) const
 {
     return
     (
-        type_ == LONG_DOUBLE_SCALAR && equal(*longDoubleScalarTokenPtr_, s)
+        isWord()
+      ? s == *data_.wordPtr
+      : isString() && s == *data_.stringPtr
     );
 }
 
-inline bool Foam::token::operator!=(const token& t) const
+
+inline bool Foam::token::operator==(const label val) const noexcept
 {
-    return !operator==(t);
+    return isLabel(val);
 }
 
-inline bool Foam::token::operator!=(const punctuationToken p) const
+
+inline bool Foam::token::operator==(const float val) const noexcept
 {
-    return !operator==(p);
+    return
+    (
+        type_ == tokenType::FLOAT
+     && equal(data_.floatVal, val)
+    );
 }
 
-inline bool Foam::token::operator!=(const word& w) const
+
+inline bool Foam::token::operator==(const double val) const noexcept
 {
-    return !operator==(w);
+    return
+    (
+        type_ == tokenType::DOUBLE
+     && equal(data_.doubleVal, val)
+    );
 }
 
-inline bool Foam::token::operator!=(const functionName& fn) const
+
+inline bool Foam::token::operator!=(const token& tok) const
 {
-    return !operator==(fn);
+    return !operator==(tok);
 }
 
-inline bool Foam::token::operator!=(const variable& v) const
+
+inline bool Foam::token::operator!=(const punctuationToken p) const noexcept
 {
-    return !operator==(v);
+    return !isPunctuation(p);
 }
 
-inline bool Foam::token::operator!=(const string& s) const
+
+inline bool Foam::token::operator!=(const label val) const noexcept
 {
-    return !operator==(s);
+    return !operator==(val);
 }
 
-inline bool Foam::token::operator!=(const verbatimString& vs) const
+
+inline bool Foam::token::operator!=(const float val) const noexcept
 {
-    return !operator==(vs);
+    return !operator==(val);
 }
 
-inline bool Foam::token::operator!=(const int32_t l) const
+
+inline bool Foam::token::operator!=(const double val) const noexcept
 {
-    return !operator==(l);
+    return !operator==(val);
 }
 
-inline bool Foam::token::operator!=(const int64_t l) const
-{
-    return !operator==(l);
-}
 
-inline bool Foam::token::operator!=(const uint32_t l) const
-{
-    return !operator==(l);
-}
-
-inline bool Foam::token::operator!=(const uint64_t l) const
-{
-    return !operator==(l);
-}
-
-inline bool Foam::token::operator!=(const floatScalar s) const
-{
-    return !operator==(s);
-}
-
-inline bool Foam::token::operator!=(const doubleScalar s) const
-{
-    return !operator==(s);
-}
-
-inline bool Foam::token::operator!=(const longDoubleScalar s) const
+inline bool Foam::token::operator!=(const std::string& s) const
 {
     return !operator==(s);
 }

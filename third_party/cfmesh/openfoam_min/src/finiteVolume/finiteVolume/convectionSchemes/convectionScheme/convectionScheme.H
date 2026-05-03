@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::convectionScheme
+
+Group
+    grpFvConvectionSchemes
 
 Description
     Abstract base class for convection schemes.
@@ -58,15 +63,15 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class convectionScheme Declaration
+                           Class convectionScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class convectionScheme
 :
-    public tmp<convectionScheme<Type>>::refCount
+    public refCount
 {
-    // Private Data
+    // Private data
 
         const fvMesh& mesh_;
 
@@ -159,33 +164,33 @@ public:
             return mesh_;
         }
 
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
-        virtual tmp<SurfaceField<Type>> flux
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> flux
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
         virtual tmp<fvMatrix<Type>> fvmDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
-        virtual tmp<VolField<Type>> fvcDiv
+        virtual tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
 
-    // Member Operators
+    // Member operators
 
         void operator=(const convectionScheme<Type>&);
 };

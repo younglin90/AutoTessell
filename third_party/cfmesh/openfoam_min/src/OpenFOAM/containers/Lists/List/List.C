@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,243 +27,278 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "List.H"
-#include "ListLoopM.H"
 #include "FixedList.H"
 #include "PtrList.H"
-#include "SLList.H"
-#include "IndirectList.H"
-#include "UIndirectList.H"
-#include "BiIndirectList.H"
 #include "contiguous.H"
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+template<class T>
+void Foam::List<T>::doResize(const label len)
+{
+    if (len == this->size_)
+    {
+        return;
+    }
+
+    if (len > 0)
+    {
+        // With sign-check to avoid spurious -Walloc-size-larger-than
+        const label overlap = min(this->size_, len);
+
+        if (overlap > 0)
+        {
+            // Recover overlapping content when resizing
+            T* old = this->v_;
+            this->size_ = len;
+            this->v_ = new T[len];
+
+            // Can dispatch with
+            // - std::execution::parallel_unsequenced_policy
+            // - std::execution::unsequenced_policy
+            std::move(old, (old + overlap), this->v_);
+
+            delete[] old;
+        }
+        else
+        {
+            // No overlapping content
+            delete[] this->v_;
+            this->size_ = len;
+            this->v_ = new T[len];
+        }
+    }
+    else
+    {
+        // Or only #ifdef FULLDEBUG
+        if (len < 0)
+        {
+            FatalErrorInFunction
+                << "bad size " << len
+                << abort(FatalError);
+        }
+        // #endif
+
+        clear();
+    }
+}
+
 
 // * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * * //
 
 template<class T>
-Foam::List<T>::List(const label s)
+Foam::List<T>::List(const label len)
 :
-    UList<T>(nullptr, s)
+    UList<T>(nullptr, len)
 {
-    if (this->size_ < 0)
+    if (len < 0)
     {
         FatalErrorInFunction
-            << "bad size " << this->size_
+            << "bad size " << len
             << abort(FatalError);
     }
 
-    alloc();
+    doAlloc();
 }
 
 
 template<class T>
-Foam::List<T>::List(const label s, const T& a)
+Foam::List<T>::List(const label len, const T& val)
 :
-    UList<T>(nullptr, s)
+    UList<T>(nullptr, len)
 {
-    if (this->size_ < 0)
+    if (len < 0)
     {
         FatalErrorInFunction
-            << "bad size " << this->size_
+            << "bad size " << len
             << abort(FatalError);
     }
 
-    alloc();
-
-    if (this->size_)
+    if (len)
     {
-        List_ACCESS(T, (*this), vp);
-        List_FOR_ALL((*this), i)
-            List_ELEM((*this), vp, i) = a;
-        List_END_FOR_ALL
+        doAlloc();
+        UList<T>::operator=(val);
     }
 }
 
 
 template<class T>
-Foam::List<T>::List(const label s, const zero)
+Foam::List<T>::List(const label len, const Foam::zero)
 :
-    UList<T>(nullptr, s)
+    UList<T>(nullptr, len)
 {
-    if (this->size_ < 0)
+    if (len < 0)
     {
         FatalErrorInFunction
-            << "bad size " << this->size_
+            << "bad size " << len
             << abort(FatalError);
     }
 
-    alloc();
-
-    if (this->size_)
+    if (len)
     {
-        List_ACCESS(T, (*this), vp);
-        List_FOR_ALL((*this), i)
-            List_ELEM((*this), vp, i) = Zero;
-        List_END_FOR_ALL
+        doAlloc();
+        UList<T>::operator=(Foam::zero{});
     }
 }
 
 
 template<class T>
-Foam::List<T>::List(const List<T>& a)
+Foam::List<T>::List(const Foam::one, const T& val)
 :
-    UList<T>(nullptr, a.size_)
+    UList<T>(new T[1], 1)
 {
-    if (this->size_)
-    {
-        alloc();
+    this->v_[0] = val;
+}
 
-        #ifdef USEMEMCPY
-        if (contiguous<T>())
-        {
-            memcpy(this->v_, a.v_, this->byteSize());
-        }
-        else
-        #endif
-        {
-            List_ACCESS(T, (*this), vp);
-            List_CONST_ACCESS(T, a, ap);
-            List_FOR_ALL((*this), i)
-                List_ELEM((*this), vp, i) = List_ELEM(a, ap, i);
-            List_END_FOR_ALL
-        }
+
+template<class T>
+Foam::List<T>::List(const Foam::one, T&& val)
+:
+    UList<T>(new T[1], 1)
+{
+    this->v_[0] = std::move(val);
+}
+
+
+template<class T>
+Foam::List<T>::List(const Foam::one, const Foam::zero)
+:
+    UList<T>(new T[1], 1)
+{
+    this->v_[0] = Zero;
+}
+
+
+template<class T>
+Foam::List<T>::List(const UList<T>& list)
+:
+    UList<T>(nullptr, list.size_)
+{
+    if (this->size_ > 0)
+    {
+        doAlloc();
+        UList<T>::deepCopy(list);
     }
 }
 
 
 template<class T>
-template<class T2>
-Foam::List<T>::List(const UList<T2>& a)
+Foam::List<T>::List(const List<T>& list)
 :
-    UList<T>(nullptr, a.size())
+    UList<T>(nullptr, list.size_)
 {
-    if (this->size_)
+    if (this->size_ > 0)
     {
-        alloc();
-
-        List_ACCESS(T, (*this), vp);
-        List_CONST_ACCESS(T2, a, ap);
-        List_FOR_ALL((*this), i)
-            List_ELEM((*this), vp, i) = T(List_ELEM(a, ap, i));
-        List_END_FOR_ALL
+        doAlloc();
+        UList<T>::deepCopy(list);
     }
 }
 
 
 template<class T>
-Foam::List<T>::List(List<T>&& lst)
-{
-    transfer(lst);
-}
-
-
-template<class T>
-Foam::List<T>::List(List<T>& a, bool reuse)
+Foam::List<T>::List(List<T>& list, bool reuse)
 :
-    UList<T>(nullptr, a.size_)
+    UList<T>(nullptr, list.size_)
 {
     if (reuse)
     {
-        this->v_ = a.v_;
-        a.v_ = 0;
-        a.size_ = 0;
+        // Steal content
+        this->v_ = list.v_;
+        list.v_ = nullptr;
+        list.size_ = 0;
+        return;
     }
-    else if (this->size_)
-    {
-        alloc();
 
-        #ifdef USEMEMCPY
-        if (contiguous<T>())
-        {
-            memcpy(this->v_, a.v_, this->byteSize());
-        }
-        else
-        #endif
-        {
-            List_ACCESS(T, (*this), vp);
-            List_CONST_ACCESS(T, a, ap);
-            List_FOR_ALL((*this), i)
-                List_ELEM((*this), vp, i) = List_ELEM(a, ap, i);
-            List_END_FOR_ALL
-        }
-    }
-}
-
-
-template<class T>
-Foam::List<T>::List(const UList<T>& a, const labelUList& map)
-:
-    UList<T>(nullptr, map.size())
-{
     if (this->size_)
     {
-        // Note:cannot use List_ELEM since third argument has to be index.
-
-        alloc();
-
-        forAll(*this, i)
-        {
-            this->operator[](i) = a[map[i]];
-        }
+        doAlloc();
+        UList<T>::deepCopy(list);
     }
 }
 
 
 template<class T>
-template<class InputIterator>
-Foam::List<T>::List(InputIterator first, InputIterator last)
+Foam::List<T>::List(const UList<T>& list, const labelUList& indices)
 :
-    List<T>(first, last, std::distance(first, last))
+    UList<T>(nullptr, indices.size())
+{
+    doAlloc();
+    copyList(list, indices);  // <- deepCopy()
+}
+
+
+template<class T>
+template<unsigned N>
+Foam::List<T>::List
+(
+    const UList<T>& list,
+    const FixedList<label,N>& indices
+)
+:
+    UList<T>(nullptr, indices.size())
+{
+    doAlloc();
+    copyList(list, indices);  // <- deepCopy()
+}
+
+
+template<class T>
+template<unsigned N>
+Foam::List<T>::List(const FixedList<T, N>& list)
+:
+    List<T>(list.begin(), list.end(), list.size())
 {}
 
 
 template<class T>
-template<unsigned Size>
-Foam::List<T>::List(const FixedList<T, Size>& lst)
+Foam::List<T>::List(const PtrList<T>& list)
 :
-    UList<T>(nullptr, Size)
+    UList<T>(nullptr, list.size())
 {
-    allocCopyList(lst);
+    doAlloc();
+    copyList(list);
 }
 
 
 template<class T>
-Foam::List<T>::List(const PtrList<T>& lst)
+template<class Addr>
+Foam::List<T>::List(const IndirectListBase<T, Addr>& list)
 :
-    UList<T>(nullptr, lst.size())
+    UList<T>(nullptr, list.size())
 {
-    allocCopyList(lst);
+    if (this->size_ > 0)
+    {
+        doAlloc();
+        UList<T>::deepCopy(list);
+    }
 }
 
 
 template<class T>
-Foam::List<T>::List(const SLList<T>& lst)
+Foam::List<T>::List(std::initializer_list<T> list)
 :
-    List<T>(lst.begin(), lst.end(), lst.size())
+    List<T>(list.begin(), list.end(), list.size())
 {}
 
 
 template<class T>
-Foam::List<T>::List(const UIndirectList<T>& lst)
+Foam::List<T>::List(List<T>&& list) noexcept
 :
-    UList<T>(nullptr, lst.size())
+    UList<T>(list.data(), list.size())
 {
-    allocCopyList(lst);
+    list.size_ = 0;
+    list.v_ = nullptr;
 }
 
 
 template<class T>
-Foam::List<T>::List(const BiIndirectList<T>& lst)
+template<int SizeMin>
+Foam::List<T>::List(DynamicList<T, SizeMin>&& list)
 :
-    UList<T>(nullptr, lst.size())
+    UList<T>()
 {
-    allocCopyList(lst);
+    transfer(list);
 }
-
-
-template<class T>
-Foam::List<T>::List(std::initializer_list<T> lst)
-:
-    List<T>(lst.begin(), lst.end())
-{}
 
 
 // * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * * //
@@ -268,215 +306,215 @@ Foam::List<T>::List(std::initializer_list<T> lst)
 template<class T>
 Foam::List<T>::~List()
 {
-    if (this->v_)
-    {
-        delete[] this->v_;
-    }
+    delete[] this->v_;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class T>
-void Foam::List<T>::setSize(const label newSize)
+void Foam::List<T>::resize(const label len, const T& val)
 {
-    if (newSize < 0)
+    const label oldLen = this->size_;
+    this->doResize(len);
+
+    // Fill trailing part with new values
+    if (oldLen < this->size_)
     {
-        FatalErrorInFunction
-            << "bad size " << newSize
-            << abort(FatalError);
-    }
-
-    if (newSize != this->size_)
-    {
-        if (newSize > 0)
-        {
-            T* nv = new T[label(newSize)];
-
-            if (this->size_)
-            {
-                label i = min(this->size_, newSize);
-
-                #ifdef USEMEMCPY
-                if (contiguous<T>())
-                {
-                    memcpy(nv, this->v_, i*sizeof(T));
-                }
-                else
-                #endif
-                {
-                    T* vv = &this->v_[i];
-                    T* av = &nv[i];
-                    while (i--) *--av = *--vv;
-                }
-            }
-
-            clear();
-            this->size_ = newSize;
-            this->v_ = nv;
-        }
-        else
-        {
-            clear();
-        }
+        std::fill
+        (
+            (this->v_ + oldLen), (this->v_ + this->size_), val
+        );
     }
 }
 
 
 template<class T>
-void Foam::List<T>::setSize(const label newSize, const T& a)
+void Foam::List<T>::transfer(List<T>& list)
 {
-    label oldSize = label(this->size_);
-    this->setSize(newSize);
-
-    if (newSize > oldSize)
+    if (this == &list)
     {
-        label i = newSize - oldSize;
-        T* vv = &this->v_[newSize];
-        while (i--) *--vv = a;
+        return;  // Self-assignment is a no-op
     }
-}
 
-
-template<class T>
-void Foam::List<T>::transfer(List<T>& a)
-{
+    // Clear and swap
     clear();
-    this->size_ = a.size_;
-    this->v_ = a.v_;
+    this->size_ = list.size_;
+    this->v_ = list.v_;
 
-    a.size_ = 0;
-    a.v_ = 0;
+    list.size_ = 0;
+    list.v_ = nullptr;
 }
 
 
 template<class T>
-template<unsigned SizeInc, unsigned SizeMult, unsigned SizeDiv>
-void Foam::List<T>::transfer(DynamicList<T, SizeInc, SizeMult, SizeDiv>& a)
+template<int SizeMin>
+void Foam::List<T>::transfer(DynamicList<T, SizeMin>& list)
 {
+    // Remove existing contents before anything else.
+    clear();
+
     // Shrink the allocated space to the number of elements used
-    a.shrink();
-    transfer(static_cast<List<T>&>(a));
-    a.clearStorage();
-}
-
-
-template<class T>
-void Foam::List<T>::transfer(SortableList<T>& a)
-{
-    // Shrink away the sort indices
-    a.shrink();
-    transfer(static_cast<List<T>&>(a));
+    list.shrink_to_fit();
+    transfer(static_cast<List<T>&>(list));
+    list.clearStorage();  // Deletion, capacity=0 etc.
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class T>
-void Foam::List<T>::operator=(const UList<T>& a)
+void Foam::List<T>::operator=(const UList<T>& list)
 {
-    reAlloc(a.size_);
-
-    if (this->size_)
+    if (this == &list)
     {
-        #ifdef USEMEMCPY
-        if (contiguous<T>())
-        {
-            memcpy(this->v_, a.v_, this->byteSize());
-        }
-        else
-        #endif
-        {
-            List_ACCESS(T, (*this), vp);
-            List_CONST_ACCESS(T, a, ap);
-            List_FOR_ALL((*this), i)
-                List_ELEM((*this), vp, i) = List_ELEM(a, ap, i);
-            List_END_FOR_ALL
-        }
+        return;  // Self-assignment is a no-op
+    }
+
+    reAlloc(list.size_);
+
+    if (this->size_ > 0)
+    {
+        UList<T>::deepCopy(list);
     }
 }
 
 
 template<class T>
-void Foam::List<T>::operator=(const List<T>& a)
+void Foam::List<T>::operator=(const List<T>& list)
 {
-    if (this == &a)
+    if (this == &list)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
-    operator=(static_cast<const UList<T>&>(a));
-}
+    reAlloc(list.size_);
 
-
-template<class T>
-void Foam::List<T>::operator=(List<T>&& a)
-{
-    if (this == &a)
+    if (this->size_ > 0)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
-    }
-
-    transfer(a);
-}
-
-
-template<class T>
-void Foam::List<T>::operator=(const SLList<T>& lst)
-{
-    reAlloc(lst.size());
-
-    if (this->size_)
-    {
-        label i = 0;
-        for
-        (
-            typename SLList<T>::const_iterator iter = lst.begin();
-            iter != lst.end();
-            ++iter
-        )
-        {
-            this->operator[](i++) = iter();
-        }
+        UList<T>::deepCopy(list);
     }
 }
 
 
 template<class T>
-void Foam::List<T>::operator=(const UIndirectList<T>& lst)
+template<unsigned N>
+void Foam::List<T>::operator=(const FixedList<T, N>& list)
 {
-    reAlloc(lst.size());
-    copyList(lst);
+    reAlloc(list.size());
+
+    std::copy(list.begin(), list.end(), this->v_);
 }
 
 
 template<class T>
-void Foam::List<T>::operator=(const BiIndirectList<T>& lst)
+template<class Addr>
+void Foam::List<T>::operator=(const IndirectListBase<T, Addr>& list)
 {
-    reAlloc(lst.size());
-    copyList(lst);
+    reAlloc(list.size());
+    UList<T>::deepCopy(list);
 }
 
 
 template<class T>
-void Foam::List<T>::operator=(std::initializer_list<T> lst)
+void Foam::List<T>::operator=(std::initializer_list<T> list)
 {
-    reAlloc(lst.size());
+    reAlloc(list.size());
 
-    typename std::initializer_list<T>::iterator iter = lst.begin();
-    forAll(*this, i)
+    std::copy(list.begin(), list.end(), this->v_);
+}
+
+
+template<class T>
+void Foam::List<T>::operator=(List<T>&& list)
+{
+    if (this == &list)
     {
-        this->operator[](i) = *iter++;
+        return;  // Self-assignment is a no-op
+    }
+
+    transfer(list);
+}
+
+
+template<class T>
+template<int SizeMin>
+void Foam::List<T>::operator=(DynamicList<T, SizeMin>&& list)
+{
+    transfer(list);
+}
+
+
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+template<class T>
+Foam::labelList Foam::sortedOrder
+(
+    const UList<T>& list
+)
+{
+    labelList order;
+    Foam::sortedOrder(list, order, typename UList<T>::less(list));
+    return order;
+}
+
+
+template<class T>
+void Foam::sortedOrder
+(
+    const UList<T>& list,
+    labelList& order
+)
+{
+    Foam::sortedOrder(list, order, typename UList<T>::less(list));
+}
+
+
+template<class T, class ListComparePredicate>
+void Foam::sortedOrder
+(
+    const UList<T>& list,
+    labelList& order,
+    const ListComparePredicate& comp
+)
+{
+    // List lengths must be identical. Old content is overwritten
+    order.resize_nocopy(list.size());
+
+    Foam::identity(order, 0);
+    Foam::stableSort(order, comp);
+}
+
+
+// * * * * * * * * * * * * * * * Housekeeping  * * * * * * * * * * * * * * * //
+
+#include "SLList.H"
+
+template<class T>
+Foam::List<T>::List(const SLList<T>& list)
+:
+    List<T>(list.begin(), list.end(), list.size())
+{}
+
+
+template<class T>
+void Foam::List<T>::operator=(const SLList<T>& list)
+{
+    const label len = list.size();
+
+    reAlloc(len);
+
+    // Cannot use std::copy algorithm
+    // - SLList doesn't define iterator category
+
+    T* iter = this->begin();
+
+    for (const T& val : list)
+    {
+        *iter = val;
+        ++iter;
     }
 }
 
-
-// * * * * * * * * * * * * * * * *  IOStream operators * * * * * * * * * * * //
-
-#include "ListIO.C"
 
 // ************************************************************************* //

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::plenumPressureFvPatchScalarField
+
+Group
+    grpInletBoundaryConditions
 
 Description
     This boundary condition provides a plenum pressure inlet condition. This
@@ -113,14 +118,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class plenumPressureFvPatch Declaration
+                      Class plenumPressureFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class plenumPressureFvPatchScalarField
 :
     public fixedValueFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Ratio of specific heats
         scalar gamma_;
@@ -183,11 +188,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        plenumPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         plenumPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -197,37 +209,40 @@ public:
         (
             const plenumPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         plenumPressureFvPatchScalarField
         (
             const plenumPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         plenumPressureFvPatchScalarField
         (
             const plenumPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new plenumPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -237,12 +252,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

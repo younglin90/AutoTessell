@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +46,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class NoPreconditioner Declaration
+                           Class NoPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -51,6 +54,14 @@ class NoPreconditioner
 :
     public LduMatrix<Type, DType, LUType>::preconditioner
 {
+    // Private Member Functions
+
+        //- No copy construct
+        NoPreconditioner(const NoPreconditioner&) = delete;
+
+        //- No copy assignment
+        void operator=(const NoPreconditioner&) = delete;
+
 
 public:
 
@@ -67,14 +78,10 @@ public:
             const dictionary& preconditionerDict
         );
 
-        //- Disallow default bitwise copy construction
-        NoPreconditioner(const NoPreconditioner&) = delete;
-
 
     // Destructor
 
-        virtual ~NoPreconditioner()
-        {}
+        virtual ~NoPreconditioner() = default;
 
 
     // Member Functions
@@ -100,12 +107,6 @@ public:
         {
             return(precondition(wT, rT));
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const NoPreconditioner&) = delete;
 };
 
 

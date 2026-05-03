@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,23 +29,18 @@ License
 #include "sampledSets.H"
 #include "dictionary.H"
 #include "Time.H"
+#include "globalIndex.H"
 #include "volFields.H"
-#include "ListListOps.H"
-#include "SortableList.H"
-#include "volPointInterpolation.H"
-#include "polyTopoChangeMap.H"
-#include "polyMeshMap.H"
-#include "polyDistributionMap.H"
-#include "writeFile.H"
-#include "OFstream.H"
-#include "OSspecific.H"
+#include "mapPolyMesh.H"
+#include "IOmanip.H"
+#include "IOobjectList.H"
+#include "IndirectList.H"
+#include "ListOps.H"
 #include "addToRunTimeSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
-{
-namespace functionObjects
 {
     defineTypeNameAndDebug(sampledSets, 0);
 
@@ -53,221 +51,657 @@ namespace functionObjects
         dictionary
     );
 }
-}
 
+#include "sampledSetsImpl.C"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-void Foam::functionObjects::sampledSets::updateMasterSets()
+Foam::autoPtr<Foam::coordSetWriter> Foam::sampledSets::newWriter
+(
+    word writerType,
+    const dictionary& topDict,
+    const dictionary& setDict
+)
 {
-    masterSets_.setSize(size());
-    masterSetOrders_.setSize(size());
+    // Per-set adjustment
+    setDict.readIfPresent<word>("setFormat", writerType);
 
-    forAll(*this, seti)
+    return coordSetWriter::New
+    (
+        writerType,
+        // Top-level/set-specific "formatOptions"
+        coordSetWriter::formatOptions(topDict, setDict, writerType)
+    );
+}
+
+
+Foam::OFstream* Foam::sampledSets::createProbeFile(const word& fieldName)
+{
+    // Open new output stream
+
+    OFstream* osptr = probeFilePtrs_.lookup(fieldName, nullptr);
+
+    if (!osptr && Pstream::master())
     {
-        const sampledSet& s = operator[](seti);
+        // Put in undecomposed case
+        // (Note: gives problems for distributed data running)
 
-        Tuple2<coordSet, labelList> g = s.coords().gather();
+        fileName probeDir
+        (
+            mesh_.time().globalPath()
+          / functionObject::outputPrefix
+          / name()/mesh_.regionName()
+            // Use startTime as the instance for output files
+          / mesh_.time().timeName(mesh_.time().startTime().value())
+        );
+        probeDir.clean();  // Remove unneeded ".."
 
-        masterSets_.set(seti, new coordSet(g.first()));
-        masterSetOrders_[seti] = g.second();
+        // Create directory if needed
+        Foam::mkDir(probeDir);
 
-        if (Pstream::master() && masterSets_[seti].size() == 0)
+        probeFilePtrs_.insert
+        (
+            fieldName,
+            autoPtr<OFstream>::New(probeDir/fieldName)
+        );
+        osptr = probeFilePtrs_.lookup(fieldName, nullptr);
+
+        if (osptr)
         {
-            WarningInFunction
-                << "Sample set " << s.name()
-                << " has zero points." << endl;
+            auto& os = *osptr;
+
+            DebugInfo<< "open probe stream: " << os.name() << endl;
+
+            const unsigned int width(IOstream::defaultPrecision() + 7);
+
+            label nPoints = 0;
+            forAll(*this, seti)
+            {
+                const coordSet& s = gatheredSets_[seti];
+
+                const pointField& pts = static_cast<const pointField&>(s);
+
+                for (const point& p : pts)
+                {
+                    os  << "# Probe " << nPoints++ << ' ' << p << nl;
+                }
+            }
+
+            os  << '#' << setw(IOstream::defaultPrecision() + 6)
+                << "Probe";
+
+            for (label probei = 0; probei < nPoints; ++probei)
+            {
+                os  << ' ' << setw(width) << probei;
+            }
+            os  << nl;
+
+            os  << '#' << setw(IOstream::defaultPrecision() + 6)
+                << "Time" << endl;
         }
     }
+
+    return osptr;
+}
+
+
+void Foam::sampledSets::gatherAllSets()
+{
+    // Any writer references will become invalid
+    for (auto& writer : writers_)
+    {
+        writer.expire();
+    }
+
+    const PtrList<sampledSet>& localSets = *this;
+
+    gatheredSets_.resize_null(localSets.size());
+    gatheredSorting_.resize_nocopy(localSets.size());
+    globalIndices_.resize_nocopy(localSets.size());
+
+    forAll(localSets, seti)
+    {
+        const coordSet& coords = localSets[seti];
+
+        globalIndices_[seti].reset(globalIndex::gatherOnly{}, coords.size());
+        gatheredSets_.set(seti, coords.gatherSort(gatheredSorting_[seti]));
+    }
+}
+
+
+Foam::IOobjectList Foam::sampledSets::preCheckFields(unsigned request)
+{
+    wordList allFields;    // Just needed for warnings
+    HashTable<wordHashSet> selected;
+
+    IOobjectList objects;
+
+    if (loadFromFiles_)
+    {
+        // Check files for a particular time
+        objects = IOobjectList(mesh_, mesh_.time().timeName());
+
+        allFields = objects.names();
+        selected = objects.classes(fieldSelection_);
+    }
+    else
+    {
+        // Check currently available fields
+        allFields = mesh_.names();
+        selected = mesh_.classes(fieldSelection_);
+    }
+
+    // Parallel consistency (no-op in serial)
+    // Probably not needed...
+    /// Pstream::mapCombineReduce(selected, HashSetOps::plusEqOp<word>());
+
+
+    DynamicList<label> missed(fieldSelection_.size());
+
+    // Detect missing fields
+    forAll(fieldSelection_, i)
+    {
+        if
+        (
+            fieldSelection_[i].isLiteral()
+         && !ListOps::found(allFields, fieldSelection_[i])
+        )
+        {
+            missed.append(i);
+        }
+    }
+
+    if (missed.size() && (request != ACTION_NONE))
+    {
+        WarningInFunction
+            << nl
+            << "Cannot find "
+            << (loadFromFiles_ ? "field file" : "registered field")
+            << " matching "
+            << UIndirectList<wordRe>(fieldSelection_, missed) << endl;
+    }
+
+
+    // The selected field names, ordered by (scalar, vector, ...)
+    // with internal sorting
+
+    selectedFieldNames_.clear();
+
+    do
+    {
+        #undef  doLocalCode
+        #define doLocalCode(InputType)                                        \
+        {                                                                     \
+            const auto iter = selected.find(InputType::typeName);             \
+            if (iter.good())                                                  \
+            {                                                                 \
+                selectedFieldNames_.append(iter.val().sortedToc());           \
+            }                                                                 \
+        }
+
+        doLocalCode(volScalarField);
+        doLocalCode(volVectorField);
+        doLocalCode(volSphericalTensorField);
+        doLocalCode(volSymmTensorField);
+        doLocalCode(volTensorField);
+        #undef doLocalCode
+    }
+    while (false);
+
+
+    // Now propagate field counts (per surface)
+    // - can update writer even when not writing without problem
+
+    const label nFields = selectedFieldNames_.size();
+
+    if (writeAsProbes_)
+    {
+        // Close streams for fields that no longer exist
+        forAllIters(probeFilePtrs_, iter)
+        {
+            if (!selectedFieldNames_.found(iter.key()))
+            {
+                DebugInfo
+                    << "close probe stream: "
+                    << iter()->name() << endl;
+
+                probeFilePtrs_.remove(iter);
+            }
+        }
+    }
+    else if ((request & ACTION_WRITE) != 0)
+    {
+        forAll(writers_, seti)
+        {
+            coordSetWriter& writer = writers_[seti];
+
+            writer.nFields(nFields);
+        }
+    }
+
+    return objects;
+}
+
+
+void Foam::sampledSets::initDict(const dictionary& dict, const bool initial)
+{
+    PtrList<sampledSet>::clear();
+    if (initial)
+    {
+        writers_.clear();
+    }
+
+    const entry* eptr = dict.findEntry("sets", keyType::LITERAL);
+
+    if (eptr && eptr->isDict())
+    {
+        PtrList<sampledSet> sampSets(eptr->dict().size());
+        if (initial && !writeAsProbes_)
+        {
+            writers_.resize(sampSets.size());
+        }
+
+        label seti = 0;
+
+        for (const entry& dEntry : eptr->dict())
+        {
+            if (!dEntry.isDict())
+            {
+                continue;
+            }
+
+            const dictionary& subDict = dEntry.dict();
+
+            autoPtr<sampledSet> sampSet =
+                sampledSet::New
+                (
+                    dEntry.keyword(),
+                    mesh_,
+                    searchEngine_,
+                    subDict
+                );
+
+            // if (!sampSet || !sampSet->enabled())
+            // {
+            //     continue;
+            // }
+
+            // Define the set
+            sampSets.set(seti, sampSet);
+
+            // Define writer, but do not attached
+            if (initial && !writeAsProbes_)
+            {
+                writers_.set
+                (
+                    seti,
+                    newWriter(writeFormat_, dict_, subDict)
+                );
+
+                // Use outputDir/TIME/set-name
+                writers_[seti].useTimeDir(true);
+                writers_[seti].verbose(verbose_);
+            }
+            ++seti;
+        }
+
+        sampSets.resize(seti);
+        if (initial && !writeAsProbes_)
+        {
+            writers_.resize(seti);
+        }
+        static_cast<PtrList<sampledSet>&>(*this).transfer(sampSets);
+    }
+    else if (eptr)
+    {
+        // This is slightly trickier.
+        // We want access to the individual dictionaries used for construction
+
+        DynamicList<dictionary> capture;
+
+        PtrList<sampledSet> input
+        (
+            eptr->stream(),
+            sampledSet::iNewCapture(mesh_, searchEngine_, capture)
+        );
+
+        PtrList<sampledSet> sampSets(input.size());
+        if (initial && !writeAsProbes_)
+        {
+            writers_.resize(sampSets.size());
+        }
+
+        label seti = 0;
+
+        forAll(input, inputi)
+        {
+            const dictionary& subDict = capture[inputi];
+
+            autoPtr<sampledSet> sampSet = input.release(inputi);
+
+            // if (!sampSet || !sampSet->enabled())
+            // {
+            //     continue;
+            // }
+
+            // Define the set
+            sampSets.set(seti, sampSet);
+
+            // Define writer, but do not attached
+            if (initial && !writeAsProbes_)
+            {
+                writers_.set
+                (
+                    seti,
+                    newWriter(writeFormat_, dict_, subDict)
+                );
+
+                // Use outputDir/TIME/set-name
+                writers_[seti].useTimeDir(true);
+                writers_[seti].verbose(verbose_);
+            }
+            ++seti;
+        }
+
+        sampSets.resize(seti);
+        if (initial && !writeAsProbes_)
+        {
+            writers_.resize(seti);
+        }
+
+        static_cast<PtrList<sampledSet>&>(*this).transfer(sampSets);
+    }
+
+    gatherAllSets();
+
+    needsCorrect_ = false;
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::functionObjects::sampledSets::sampledSets
+Foam::sampledSets::sampledSets
 (
     const word& name,
-    const Time& t,
+    const Time& runTime,
     const dictionary& dict
 )
 :
-    fvMeshFunctionObject(name, t, dict),
+    functionObjects::fvMeshFunctionObject(name, runTime, dict),
     PtrList<sampledSet>(),
+    dict_(dict),
+    loadFromFiles_(false),
+    verbose_(false),
+    onExecute_(false),
+    needsCorrect_(false),
+    writeAsProbes_(false),
     outputPath_
     (
-        mesh_.time().globalPath()
-       /writeFile::outputPrefix
-       /(mesh_.name() != polyMesh::defaultRegion ? mesh_.name() : word())
-       /name
+        time_.globalPath()/functionObject::outputPrefix
+      / name/mesh_.regionName()
     ),
-    interpolationScheme_(word::null),
-    formatter_(nullptr)
+    searchEngine_(mesh_),
+    samplePointScheme_(),
+    writeFormat_(),
+    selectedFieldNames_(),
+    writers_(),
+    probeFilePtrs_(),
+    gatheredSets_(),
+    gatheredSorting_(),
+    globalIndices_()
 {
+    outputPath_.clean();  // Remove unneeded ".."
+
     read(dict);
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+Foam::sampledSets::sampledSets
+(
+    const word& name,
+    const objectRegistry& obr,
+    const dictionary& dict,
+    const bool loadFromFiles
+)
+:
+    functionObjects::fvMeshFunctionObject(name, obr, dict),
+    PtrList<sampledSet>(),
+    dict_(dict),
+    loadFromFiles_(loadFromFiles),
+    verbose_(false),
+    onExecute_(false),
+    needsCorrect_(false),
+    writeAsProbes_(false),
+    outputPath_
+    (
+        time_.globalPath()/functionObject::outputPrefix
+      / name/mesh_.regionName()
+    ),
+    searchEngine_(mesh_),
+    samplePointScheme_(),
+    writeFormat_(),
+    selectedFieldNames_(),
+    writers_(),
+    probeFilePtrs_(),
+    gatheredSets_(),
+    gatheredSorting_(),
+    globalIndices_()
+{
+    outputPath_.clean();  // Remove unneeded ".."
 
-Foam::functionObjects::sampledSets::~sampledSets()
-{}
+    read(dict);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-bool Foam::functionObjects::sampledSets::read(const dictionary& dict)
+bool Foam::sampledSets::verbose(const bool on) noexcept
 {
-    if (!dict.found("sets")) return true;
+    bool old(verbose_);
+    verbose_ = on;
+    return old;
+}
 
-    dict.lookup("fields") >> fields_;
 
-    dict.lookup("interpolationScheme") >> interpolationScheme_;
-
-    formatter_ = setWriter::New(dict.lookup("setFormat"), dict);
-
-    if (dict.isDict("sets"))
+bool Foam::sampledSets::read(const dictionary& dict)
+{
+    if (&dict_ != &dict)
     {
-        const dictionary& setsDict = dict.subDict("sets");
-
-        setSize(setsDict.size());
-
-        label i = 0;
-
-        forAllConstIter(dictionary, setsDict, iter)
-        {
-            set
-            (
-                i++,
-                sampledSet::New
-                (
-                    iter().keyword(),
-                    mesh_,
-                    iter().dict()
-                )
-            );
-        }
+        // Update local copy of dictionary
+        dict_ = dict;
     }
-    else
+
+    fvMeshFunctionObject::read(dict);
+
+    PtrList<sampledSet>::clear();
+    writers_.clear();
+    fieldSelection_.clear();
+    selectedFieldNames_.clear();
+
+    gatheredSets_.clear();
+    gatheredSorting_.clear();
+    globalIndices_.clear();
+
+    verbose_ = dict.getOrDefault("verbose", false);
+    onExecute_ = dict.getOrDefault("sampleOnExecute", false);
+
+    samplePointScheme_ =
+        dict.getOrDefault<word>("interpolationScheme", "cellPoint");
+
+    const entry* eptr = dict.findEntry("sets", keyType::LITERAL);
+
+    if (eptr)
     {
-        PtrList<sampledSet> newList
-        (
-            dict.lookup("sets"),
-            sampledSet::iNew(mesh_)
-        );
-        transfer(newList);
+        dict.readEntry("setFormat", writeFormat_);
     }
+
+    // Hard-coded handling of ensemble 'probes' writer
+    writeAsProbes_ = ("probes" == writeFormat_);
+    if (!writeAsProbes_)
+    {
+        // Close all streams
+        probeFilePtrs_.clear();
+    }
+
+    initDict(dict, true);
+
+    // Have some sets, so sort out which fields are needed and report
 
     if (this->size())
     {
-        Info<< indent << "Reading set description:" << nl;
-        Info << incrIndent;
-        forAll(*this, seti)
+        dict_.readEntry("fields", fieldSelection_);
+        fieldSelection_.uniq();
+
+        // Report
+        if (writeAsProbes_)
         {
-            Info<< indent << operator[](seti).name() << nl;
+            Info<< "Sampled set as probes ensemble:" << nl;
+
+            forAll(*this, seti)
+            {
+                const sampledSet& s = (*this)[seti];
+                Info<< "  " << s.name();
+            }
+            Info<< nl;
         }
-        Info << decrIndent;
+        else
+        {
+            Info<< "Sampled set:" << nl;
+
+            forAll(*this, seti)
+            {
+                const sampledSet& s = (*this)[seti];
+
+                Info<< "    " << s.name() << " -> "
+                    << writers_[seti].type() << nl;
+            }
+        }
+
+        Info<< endl;
     }
 
-    return true;
-}
-
-
-Foam::wordList Foam::functionObjects::sampledSets::fields() const
-{
-    return fields_;
-}
-
-
-bool Foam::functionObjects::sampledSets::execute()
-{
-    return true;
-}
-
-
-bool Foam::functionObjects::sampledSets::write()
-{
-    if (size())
+    if (debug && Pstream::master())
     {
-        updateMasterSets();
+        Pout<< "sample fields:" << flatOutput(fieldSelection_) << nl
+            << "sample sets:" << nl << '(' << nl;
 
-        if (Pstream::master())
+        for
+        (
+            const sampledSet& s
+          : static_cast<const PtrList<sampledSet>&>(*this)
+        )
         {
-            if (debug)
-            {
-                Pout<< "Creating directory "
-                    << outputPath_/mesh_.time().name() << nl << endl;
-            }
-
-            mkDir(outputPath_/mesh_.time().name());
+            Pout<< "  " << s << endl;
         }
+        Pout<< ')' << endl;
+    }
 
-        // Create a list of names of fields that are actually available
-        wordList fieldNames;
-        forAll(fields_, fieldi)
-        {
-            #define FoundFieldType(Type, nullArg)             \
-              || foundObject<VolField<Type>>(fields_[fieldi])
-            if (false FOR_ALL_FIELD_TYPES(FoundFieldType))
-            {
-                fieldNames.append(fields_[fieldi]);
-            }
-            else
-            {
-                cannotFindObject(fields_[fieldi]);
-            }
-            #undef FoundFieldType
-        }
+    if (writeAsProbes_)
+    {
+        (void) preCheckFields(ACTION_NONE);
+    }
 
-        // Create table of cached interpolations, to prevent unnecessary work
-        // when interpolating fields over multiple surfaces
-        #define DeclareInterpolations(Type, nullArg) \
-            HashPtrTable<interpolation<Type>> interpolation##Type##s;
-        FOR_ALL_FIELD_TYPES(DeclareInterpolations);
-        #undef DeclareInterpolations
+    // FUTURE:
+    // Ensure all sets and merge information are expired
+    // expire(true);
 
-        // Sample and write the sets
+    return true;
+}
+
+
+bool Foam::sampledSets::performAction(unsigned request)
+{
+    if (empty())
+    {
+        // Nothing to do
+        return true;
+    }
+    else if (needsCorrect_)
+    {
+        searchEngine_.correct();
+        initDict(dict_, false);
+    }
+
+    // FUTURE:
+    // Update sets and store
+    // ...
+
+    // Determine availability of fields.
+    // Count number of fields (only seems to be needed for VTK legacy)
+
+    IOobjectList objects = preCheckFields(request);
+
+    const label nFields = selectedFieldNames_.size();
+
+    if (!nFields)
+    {
+        // Nothing to do
+        return true;
+    }
+
+    // Update writers
+    if (!writeAsProbes_)
+    {
         forAll(*this, seti)
         {
-            #define GenerateFieldTypeValues(Type, nullArg) \
-                PtrList<Field<Type>> field##Type##Values = \
-                    sampleType<Type>(seti, fieldNames, interpolation##Type##s);
-            FOR_ALL_FIELD_TYPES(GenerateFieldTypeValues);
-            #undef GenerateFieldTypeValues
+            const coordSet& s = gatheredSets_[seti];
 
-            if (Pstream::parRun())
+            if ((request & ACTION_WRITE) != 0)
             {
-                if (Pstream::master() && masterSets_[seti].size())
-                {
-                    formatter_->write
-                    (
-                        outputPath_/mesh_.time().name(),
-                        operator[](seti).name(),
-                        masterSets_[seti],
-                        fieldNames
-                        #define FieldTypeValuesParameter(Type, nullArg) \
-                            , field##Type##Values
-                        FOR_ALL_FIELD_TYPES(FieldTypeValuesParameter)
-                        #undef FieldTypeValuesParameter
-                    );
+                coordSetWriter& writer = writers_[seti];
 
+                if (writer.needsUpdate())
+                {
+                    writer.setCoordinates(s);
                 }
+
+                if (writer.buffering())
+                {
+                    writer.open
+                    (
+                        outputPath_
+                      / word
+                        (
+                            s.name()
+                          + coordSetWriter::suffix(selectedFieldNames_)
+                        )
+                    );
+                }
+                else
+                {
+                    writer.open(outputPath_/s.name());
+                }
+
+                writer.beginTime(mesh_.time());
             }
-            else
+        }
+    }
+
+    // Sample fields
+
+    performAction<VolumeField<scalar>>(objects, request);
+    performAction<VolumeField<vector>>(objects, request);
+    performAction<VolumeField<sphericalTensor>>(objects, request);
+    performAction<VolumeField<symmTensor>>(objects, request);
+    performAction<VolumeField<tensor>>(objects, request);
+
+
+    // Finish this time step
+    if (!writeAsProbes_)
+    {
+        forAll(writers_, seti)
+        {
+            // Write geometry if no fields were written so that we still
+            // can have something to look at
+
+            if ((request & ACTION_WRITE) != 0)
             {
-                if (operator[](seti).size())
-                {
-                    formatter_->write
-                    (
-                        outputPath_/mesh_.time().name(),
-                        operator[](seti).name(),
-                        operator[](seti),
-                        fieldNames
-                        #define FieldTypeValuesParameter(Type, nullArg) \
-                            , field##Type##Values
-                        FOR_ALL_FIELD_TYPES(FieldTypeValuesParameter)
-                        #undef FieldTypeValuesParameter
-                    );
-                }
+                /// if (!writers_[seti].wroteData())
+                /// {
+                ///     writers_[seti].write();
+                /// }
+
+                writers_[seti].endTime();
             }
         }
     }
@@ -276,68 +710,52 @@ bool Foam::functionObjects::sampledSets::write()
 }
 
 
-void Foam::functionObjects::sampledSets::movePoints(const polyMesh& mesh)
+bool Foam::sampledSets::execute()
+{
+    if (onExecute_)
+    {
+        return performAction(ACTION_ALL & ~ACTION_WRITE);
+    }
+
+    return true;
+}
+
+
+bool Foam::sampledSets::write()
+{
+    return performAction(ACTION_ALL);
+}
+
+
+void Foam::sampledSets::correct()
+{
+    needsCorrect_ = true;
+}
+
+
+void Foam::sampledSets::updateMesh(const mapPolyMesh& mpm)
+{
+    if (&mpm.mesh() == &mesh_)
+    {
+        correct();
+    }
+}
+
+
+void Foam::sampledSets::movePoints(const polyMesh& mesh)
 {
     if (&mesh == &mesh_)
     {
-        forAll(*this, seti)
-        {
-            operator[](seti).movePoints();
-        }
-
-        masterSets_.clear();
-        masterSetOrders_.clear();
+        correct();
     }
 }
 
 
-void Foam::functionObjects::sampledSets::topoChange
-(
-    const polyTopoChangeMap& map
-)
+void Foam::sampledSets::readUpdate(const polyMesh::readUpdateState state)
 {
-    if (&map.mesh() == &mesh_)
+    if (state != polyMesh::UNCHANGED)
     {
-        forAll(*this, seti)
-        {
-            operator[](seti).topoChange(map);
-        }
-
-        masterSets_.clear();
-        masterSetOrders_.clear();
-    }
-}
-
-
-void Foam::functionObjects::sampledSets::mapMesh(const polyMeshMap& map)
-{
-    if (&map.mesh() == &mesh_)
-    {
-        forAll(*this, seti)
-        {
-            operator[](seti).mapMesh(map);
-        }
-
-        masterSets_.clear();
-        masterSetOrders_.clear();
-    }
-}
-
-
-void Foam::functionObjects::sampledSets::distribute
-(
-    const polyDistributionMap& map
-)
-{
-    if (&map.mesh() == &mesh_)
-    {
-        forAll(*this, seti)
-        {
-            operator[](seti).distribute(map);
-        }
-
-        masterSets_.clear();
-        masterSetOrders_.clear();
+        correct();
     }
 }
 

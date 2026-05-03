@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,48 +28,20 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::linearEqn::linearEqn()
-{}
-
-
 inline Foam::linearEqn::linearEqn(const Foam::zero)
 :
-    VectorSpace<linearEqn, scalar, 2>(Foam::zero())
+    VectorSpace<linearEqn, scalar, 2>(Foam::zero{})
 {}
 
 
 inline Foam::linearEqn::linearEqn(const scalar a, const scalar b)
 {
-    this->v_[coefficient::a] = a;
-    this->v_[coefficient::b] = b;
+    this->v_[A] = a;
+    this->v_[B] = b;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline Foam::scalar Foam::linearEqn::a() const
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar Foam::linearEqn::b() const
-{
-    return this->v_[coefficient::b];
-}
-
-
-inline Foam::scalar& Foam::linearEqn::a()
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar& Foam::linearEqn::b()
-{
-    return this->v_[coefficient::b];
-}
-
 
 inline Foam::scalar Foam::linearEqn::value(const scalar x) const
 {
@@ -82,41 +57,25 @@ inline Foam::scalar Foam::linearEqn::derivative(const scalar x) const
 
 inline Foam::scalar Foam::linearEqn::error(const scalar x) const
 {
-    return small*(mag(x*a()) + mag(b()));
+    return SMALL*(mag(x*a()) + mag(b()));
 }
 
 
 inline Foam::Roots<1> Foam::linearEqn::roots() const
 {
-    /*
-
-    This function solves a linear equation of the following form:
-
-        a*x + b = 0
-          x + b = 0
-
-    */
-
     const scalar a = this->a();
     const scalar b = this->b();
 
-    if (a == 0)
+    if (mag(a) < VSMALL)
     {
-        return Roots<1>(rootType::nan, 0);
+        return Roots<1>(roots::nan, 0);
+    }
+    else if (mag(b/VGREAT) >= mag(a))
+    {
+        return Roots<1>(sign(a) == sign(b) ? roots::negInf : roots::posInf, 0);
     }
 
-    if (mag(b/vGreat) >= mag(a))
-    {
-        return Roots<1>
-        (
-            sign(a) == sign(b)
-          ? rootType::negInf
-          : rootType::posInf,
-          0
-        );
-    }
-
-    return Roots<1>(rootType::real, -b/a);
+    return Roots<1>(roots::real, -b/a);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2021-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,16 +43,13 @@ Description
     collecting is done locally; the thread only does the writing
     (since the data has already been collected)
 
-
-Operation determine
-
 SourceFiles
     OFstreamCollator.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef OFstreamCollator_H
-#define OFstreamCollator_H
+#ifndef Foam_OFstreamCollator_H
+#define Foam_OFstreamCollator_H
 
 #include <thread>
 #include <mutex>
@@ -57,6 +57,7 @@ SourceFiles
 #include "labelList.H"
 #include "FIFOStack.H"
 #include "SubList.H"
+#include "dictionary.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -64,65 +65,63 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class OFstreamCollator Declaration
+                        Class OFstreamCollator Declaration
 \*---------------------------------------------------------------------------*/
 
 class OFstreamCollator
 {
-    // Private class
+    // Private Class
 
-        class writeData
+        struct writeData
         {
-        public:
-
             const label comm_;
-            const word typeName_;
-            const fileName filePath_;
+            const word objectType_;
+            const fileName pathName_;
             const string data_;
             const labelList sizes_;
             PtrList<List<char>> slaveData_;
-            const IOstream::streamFormat format_;
-            const IOstream::versionNumber version_;
-            const IOstream::compressionType compression_;
-            const bool append_;
+            const IOstreamOption streamOpt_;
+            IOstreamOption::atomicType atomic_;
+            IOstreamOption::appendType append_;
+            const dictionary headerEntries_;
 
             writeData
             (
                 const label comm,
-                const word& typeName,
-                const fileName& filePath,
+                const word& objectType,
+                const fileName& pathName,
                 const string& data,
                 const labelList& sizes,
-                IOstream::streamFormat format,
-                IOstream::versionNumber version,
-                IOstream::compressionType compression,
-                const bool append
+                IOstreamOption streamOpt,
+                IOstreamOption::atomicType atomic,
+                IOstreamOption::appendType append,
+                const dictionary& headerEntries
             )
             :
                 comm_(comm),
-                typeName_(typeName),
-                filePath_(filePath),
+                objectType_(objectType),
+                pathName_(pathName),
                 data_(data),
                 sizes_(sizes),
-                slaveData_(0),
-                format_(format),
-                version_(version),
-                compression_(compression),
-                append_(append)
+                slaveData_(),
+                streamOpt_(streamOpt),
+                atomic_(atomic),
+                append_(append),
+                headerEntries_(headerEntries)
             {}
 
-            //- (approximate) size of master + any optional slave data
+            //- The (approximate) size of master + any optional slave data
             off_t size() const
             {
-                off_t sz = data_.size();
+                off_t totalSize = data_.size();
                 forAll(slaveData_, i)
                 {
                     if (slaveData_.set(i))
                     {
-                        sz += slaveData_[i].size();
+                        totalSize += slaveData_[i].size();
                     }
                 }
-                return sz;
+                return totalSize;
             }
         };
 
@@ -134,7 +133,7 @@ class OFstreamCollator
 
         mutable std::mutex mutex_;
 
-        autoPtr<std::thread> thread_;
+        std::unique_ptr<std::thread> thread_;
 
         //- Stack of files to write + contents
         FIFOStack<writeData*> objects_;
@@ -155,15 +154,15 @@ class OFstreamCollator
         static bool writeFile
         (
             const label comm,
-            const word& typeName,
+            const word& objectType,
             const fileName& fName,
             const string& masterData,
             const labelUList& recvSizes,
-            const PtrList<SubList<char>>& slaveData,
-            IOstream::streamFormat fmt,
-            IOstream::versionNumber ver,
-            IOstream::compressionType cmp,
-            const bool append
+            const UPtrList<SubList<char>>& slaveData,
+            IOstreamOption streamOpt,
+            IOstreamOption::atomicType atomic,
+            IOstreamOption::appendType append,
+            const dictionary& headerEntries
         );
 
         //- Write all files in stack
@@ -183,10 +182,10 @@ public:
     // Constructors
 
         //- Construct from buffer size. 0 = do not use thread
-        OFstreamCollator(const off_t maxBufferSize);
+        explicit OFstreamCollator(const off_t maxBufferSize);
 
-        //- Construct from buffer size (0 = do not use thread) and local
-        //  thread
+        //- Construct from buffer size (0 = do not use thread)
+        //- and specified communicator
         OFstreamCollator(const off_t maxBufferSize, const label comm);
 
 
@@ -196,18 +195,19 @@ public:
 
     // Member Functions
 
-        //- Write file with contents. Blocks until writethread has space
-        //  available (total file sizes < maxBufferSize)
+        //- Write file with contents.
+        //  Blocks until writethread has space available
+        //  (total file sizes < maxBufferSize)
         bool write
         (
-            const word& typeName,
+            const word& objectType,
             const fileName&,
             const string& data,
-            IOstream::streamFormat,
-            IOstream::versionNumber,
-            IOstream::compressionType,
-            const bool append,
-            const bool useThread = true
+            IOstreamOption streamOpt,
+            IOstreamOption::atomicType atomic,
+            IOstreamOption::appendType append,
+            const bool useThread = true,
+            const dictionary& headerEntries = dictionary::null
         );
 
         //- Wait for all thread actions to have finished

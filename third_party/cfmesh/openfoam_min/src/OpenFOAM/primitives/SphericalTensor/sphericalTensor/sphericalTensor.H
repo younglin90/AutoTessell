@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,10 @@ Typedef
     Foam::sphericalTensor
 
 Description
-    SphericalTensor of scalars.
+    SphericalTensor of scalars, i.e. SphericalTensor<scalar>.
+
+See also
+    Test-SphericalTensor.C
 
 SourceFiles
     sphericalTensor.C
@@ -37,7 +43,6 @@ SourceFiles
 
 #include "SphericalTensor.H"
 #include "Identity.H"
-#include "contiguous.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -50,14 +55,6 @@ typedef SphericalTensor<scalar> sphericalTensor;
 
 static const sphericalTensor oneThirdI(1.0/3.0);
 static const sphericalTensor twoThirdsI(2.0/3.0);
-
-//- Specify data associated with sphericalTensor type are contiguous
-template<>
-inline bool contiguous<sphericalTensor>() {return true;}
-
-//- A sphericalTensor is scaleable
-template<>
-struct scaleable<sphericalTensor> : public std::true_type {};
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

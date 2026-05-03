@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,39 +35,112 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef line_H
-#define line_H
+#ifndef Foam_line_H
+#define Foam_line_H
 
-#include "vector.H"
-#include "PointHit.H"
+#include "point.H"
 #include "point2D.H"
+#include "vector.H"
+#include "pointHit.H"
 #include "FixedList.H"
 #include "UList.H"
+#include "Pair.H"
+#include "Tuple2.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
-
-class Istream;
-class Ostream;
-
-
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<class Point, class PointRef> class line;
 
 template<class Point, class PointRef>
-inline Istream& operator>>(Istream&, line<Point, PointRef>&);
+inline Istream& operator>>(Istream& is, line<Point, PointRef>& l);
 
 template<class Point, class PointRef>
-inline Ostream& operator<<(Ostream&, const line<Point, PointRef>&);
+inline Ostream& operator<<(Ostream& os, const line<Point, PointRef>& l);
+
+
+// Common Typedefs
+
+//- A line using referred points
+typedef line<point, const point&> linePointRef;
 
 
 /*---------------------------------------------------------------------------*\
-                            Class line Declaration
+                         Class linePoints Declaration
+\*---------------------------------------------------------------------------*/
+
+//- Line point storage. Default constructable (line is not)
+class linePoints
+:
+    public Pair<point>
+{
+public:
+
+    // Generated Methods
+
+        //- Default construct
+        linePoints() = default;
+
+        //- Inherit constructors
+        using Pair<point>::Pair;
+
+
+    // Constructors
+
+        //- Construct from point references
+        inline explicit linePoints(const linePointRef& pts);
+
+        //- Copy construct from subset of points
+        inline linePoints
+        (
+            const UList<point>& points,
+            const FixedList<label, 2>& indices
+        );
+
+
+    // Member Functions
+
+        //- The first vertex
+        const point& a() const noexcept { return Pair<point>::first(); }
+
+        //- The second vertex
+        const point& b() const noexcept { return Pair<point>::second(); }
+
+        //- The first vertex
+        point& a() noexcept { return Pair<point>::first(); }
+
+        //- The second vertex
+        point& b() noexcept { return Pair<point>::second(); }
+
+        //- Return as line reference
+        inline linePointRef ln() const;
+
+
+    // Properties
+
+        //- Return centre (centroid)
+        inline point centre() const;
+
+        //- The magnitude (length) of the line
+        inline scalar mag() const;
+
+        //- Return start-to-end vector
+        inline vector vec() const;
+
+        //- Return the unit vector (start-to-end)
+        inline vector unitVec() const;
+
+        //- The enclosing (bounding) box for the line
+        inline Pair<point> box() const;
+};
+
+
+/*---------------------------------------------------------------------------*\
+                           Class line Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Point, class PointRef>
@@ -72,7 +148,11 @@ class line
 {
     // Private Data
 
-        PointRef a_, b_;
+        //- Reference to the first line point
+        PointRef a_;
+
+        //- Reference to the second line point
+        PointRef b_;
 
 
 public:
@@ -80,70 +160,88 @@ public:
     // Constructors
 
         //- Construct from two points
-        inline line(const Point& start, const Point& end);
+        inline line(const Point& from, const Point& to);
 
         //- Construct from two points in the list of points
         //  The indices could be from edge etc.
         inline line
         (
-            const UList<Point>&,
+            const UList<Point>& points,
             const FixedList<label, 2>& indices
         );
 
         //- Construct from Istream
-        inline line(Istream&);
+        inline explicit line(Istream& is);
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return first vertex
-            inline PointRef start() const;
+        //- The first point
+        PointRef a() const noexcept { return a_; }
 
-            //- Return second vertex
-            inline PointRef end() const;
+        //- The second point
+        PointRef b() const noexcept { return b_; }
 
+        //- The first point
+        PointRef first() const noexcept { return a_; }
 
-        // Properties
+        //- The second (last) point
+        PointRef second() const noexcept { return b_; }
 
-            //- Return centre (centroid)
-            inline Point centre() const;
+        //- The start (first) point
+        PointRef start() const noexcept { return a_; }
 
-            //- Return scalar magnitude
-            inline scalar mag() const;
+        //- The end (second) point
+        PointRef end() const noexcept { return b_; }
 
-            //- Return start-end vector
-            inline Point vec() const;
-
-            //- Return nearest distance to line from a given point
-            //  If the nearest point is on the line, return a hit
-            PointHit<Point> nearestDist(const Point& p) const;
-
-            //- Return nearest distance from line to line. Returns distance
-            //  and sets both points (one on *this, one on the provided
-            //  linePointRef.
-            scalar nearestDist
-            (
-                const line<Point, const Point&>& edge,
-                Point& thisPoint,
-                Point& edgePoint
-            ) const;
+        //- The last (second) point
+        PointRef last() const noexcept { return b_; }
 
 
-    // Ostream operator
+    // Line properties (static calculations)
 
-        friend Istream& operator>> <Point, PointRef>
+        //- The enclosing (bounding) box for two points
+        inline static Pair<Point> box(const Point& p0, const Point& p1);
+
+
+    // Properties
+
+        //- Return centre (centroid)
+        inline Point centre() const;
+
+        //- The magnitude (length) of the line
+        inline scalar mag() const;
+
+        //- Return start-to-end vector
+        inline Point vec() const;
+
+        //- Return the unit vector (start-to-end)
+        inline Point unitVec() const;
+
+        //- The enclosing (bounding) box for the line
+        inline Pair<Point> box() const;
+
+        //- Return nearest distance to line from a given point
+        //  If the nearest point is on the line, return a hit
+        PointHit<Point> nearestDist(const Point& p) const;
+
+        //- Return nearest distance from line to line.
+        //- Returns distance and sets both points
+        //- (one on *this, one on the provided linePointRef.
+        scalar nearestDist
         (
-            Istream&,
-            line&
-        );
+            const line<Point, const Point&>& edge,
+            Point& thisPoint,
+            Point& edgePoint
+        ) const;
 
-        friend Ostream& operator<< <Point, PointRef>
-        (
-            Ostream&,
-            const line&
-        );
+
+    // IOstream Operators
+
+        friend Istream& operator>> <Point, PointRef>(Istream&, line&);
+        friend Ostream& operator<< <Point, PointRef>(Ostream&, const line&);
 };
 
 

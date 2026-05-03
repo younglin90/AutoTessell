@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,21 +27,18 @@ Class
     Foam::pisoControl
 
 Description
-    Piso control class. Provides time-loop and piso-loop control methods. No
-    convergence checking is done.
-
-SourceFiles
-    pisoControlI.H
-    pisoControl.C
+    Specialization of the pimpleControl class for PISO control.
 
 \*---------------------------------------------------------------------------*/
 
 #ifndef pisoControl_H
 #define pisoControl_H
 
-#include "fluidSolutionControl.H"
+#include "pimpleControl.H"
 
+//- Declare that pisoControl will be used
 #define PISO_CONTROL
+#undef PIMPLE_CONTROL
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,28 +46,20 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class pisoControl Declaration
+                        Class pisoControl Declaration
 \*---------------------------------------------------------------------------*/
 
 class pisoControl
 :
-    public fluidSolutionControl
+    public pimpleControl
 {
-protected:
+    // Private member functions
 
-    // Protected data
+        //- No copy construct
+        pisoControl(const pisoControl&) = delete;
 
-        //- Maximum number of piso correctors
-        label nCorrPiso_;
-
-        //- Current piso corrector
-        label corrPiso_;
-
-
-    // Protected Member Functions
-
-        //- Read controls
-        virtual bool read();
+        //- No copy assignment
+        void operator=(const pisoControl&) = delete;
 
 
 public:
@@ -81,8 +72,8 @@ public:
 
     // Constructors
 
-        //- Construct from a mesh and the name of the algorithm
-        pisoControl(fvMesh& mesh, const word& algorithmName="PISO");
+        //- Construct from mesh and the name of control sub-dictionary
+        pisoControl(fvMesh& mesh, const word& dictName="PISO");
 
 
     //- Destructor
@@ -91,51 +82,23 @@ public:
 
     // Member Functions
 
-        // Access
+        // Solution control
 
-            //- Maximum number of piso correctors
-            inline label nCorrPiso() const;
+            //- Read controls from fvSolution dictionary
+            virtual bool read();
 
-            //- Flag to indicate any piso iteration
-            inline bool anyPisoIter() const;
-
-            //- Flag to indicate the first piso iteration
-            inline bool firstPisoIter() const;
-
-            //- Flag to indicate the last piso iteration
-            inline bool finalPisoIter() const;
-
-            //- Flag to indicate the last inner iteration (last piso and last
-            //  non-orthogonal)
+            //- Return true if in the final inner (PISO) iteration
             inline bool finalInnerIter() const;
-
-            //- Flag to indicate whether in final state
-            bool isFinal(const bool finalIter) const;
-
-
-        // Evolution
-
-            //- Piso loop within outer loop
-            bool correct(const bool finalIter = false);
-
-            //- Non-orthogonal corrector loop
-            bool correctNonOrthogonal(const bool finalIter = true);
-
-            //- Time run loop
-            bool run(Time& time);
-
-            //- Time loop loop
-            bool loop(Time& time);
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Foam
+#include "pisoControlI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#include "pisoControlI.H"
+} // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

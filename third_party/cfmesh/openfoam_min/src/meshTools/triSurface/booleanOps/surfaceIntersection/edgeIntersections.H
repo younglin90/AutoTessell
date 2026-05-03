@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -51,18 +53,18 @@ namespace Foam
 // Forward declaration of classes
 class triSurface;
 class triSurfaceSearch;
-class randomGenerator;
+class Random;
 class edge;
 
 /*---------------------------------------------------------------------------*\
-                      Class edgeIntersections Declaration
+                           Class edgeIntersections Declaration
 \*---------------------------------------------------------------------------*/
 
 class edgeIntersections
 :
     public List<List<pointIndexHit>>
 {
-    // Private Data
+    // Private data
 
         //- For every entry in *this gives the edge classification result.
         //  -1 : intersection not close to edge
@@ -98,19 +100,19 @@ class edgeIntersections
             const triSurface& surf1,
             const scalarField& surf1PointTol,
             const label edgeI,
-            randomGenerator& rndGen,
+            Random& rndGen,
             pointField& points1,
             boolList& affectedEdges
         ) const;
 
-        //- Perturb single endpoint of edge if edge is algigned with face.
+        //- Perturb single endpoint of edge if edge is aligned with face.
         //  See inlinePerturb. Return true if anything changed.
         bool rotatePerturb
         (
             const triSurface& surf1,
             const scalarField& surf1PointTol,
             const label edgeI,
-            randomGenerator& rndGen,
+            Random& rndGen,
             pointField& points1,
             boolList& affectedEdges
         ) const;
@@ -125,7 +127,7 @@ class edgeIntersections
             const triSurface& surf2,
             const label edgeI,
 
-            randomGenerator& rndGen,
+            Random& rndGen,
             pointField& points1,
             boolList& affectedEdges
         ) const;
@@ -136,7 +138,7 @@ public:
     ClassName("edgeIntersections");
 
 
-    // Static Data Members
+    // Static data members
 
         //- Cosine between edge and face normal when considered parallel
         //  (note: should be private and make access- and set- function)

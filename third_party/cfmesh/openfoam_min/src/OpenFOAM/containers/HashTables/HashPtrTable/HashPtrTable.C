@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,41 +26,35 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "error.H"
 #include "HashPtrTable.H"
+#include "autoPtr.H"
+#include "error.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class T, class Key, class Hash>
-Foam::HashPtrTable<T, Key, Hash>::HashPtrTable(const label size)
-:
-    HashTable<T*, Key, Hash>(size)
-{}
-
-
-template<class T, class Key, class Hash>
 Foam::HashPtrTable<T, Key, Hash>::HashPtrTable
 (
-    const HashPtrTable<T, Key, Hash>& ht
+    const HashPtrTable<T, Key, Hash>& rhs
 )
 :
-    HashTable<T*, Key, Hash>()
+    parent_type(rhs.capacity())
 {
-    for (const_iterator iter = ht.begin(); iter != ht.end(); ++iter)
+    for (const_iterator iter = rhs.begin(); iter != rhs.end(); ++iter)
     {
-        this->insert(iter.key(), new T(**iter));
+        const Key& k = iter.key();
+        const T* ptr = iter.val();
+
+        if (ptr)
+        {
+            this->set(k, new T(*ptr));
+        }
+        else
+        {
+            this->set(k, nullptr);
+        }
     }
 }
-
-
-template<class T, class Key, class Hash>
-Foam::HashPtrTable<T, Key, Hash>::HashPtrTable
-(
-    HashPtrTable<T, Key, Hash>&& ht
-)
-:
-    HashTable<T*, Key, Hash>(move(ht))
-{}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -72,49 +69,108 @@ Foam::HashPtrTable<T, Key, Hash>::~HashPtrTable()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class T, class Key, class Hash>
-T* Foam::HashPtrTable<T, Key, Hash>::remove(const iterator& it)
+Foam::autoPtr<T> Foam::HashPtrTable<T, Key, Hash>::release(iterator& iter)
 {
-    T* elemPtr = *it;
-    HashTable<T*, Key, Hash>::erase(it);
-    return elemPtr;
+    if (iter.good())
+    {
+        autoPtr<T> old(iter.val());
+        iter.val() = nullptr;
+        return old;
+    }
+
+    return nullptr;
 }
 
 
 template<class T, class Key, class Hash>
-bool Foam::HashPtrTable<T, Key, Hash>::erase(const iterator& it)
+Foam::autoPtr<T> Foam::HashPtrTable<T, Key, Hash>::release(const Key& key)
 {
-    T* elemPtr = *it;
+    iterator iter(this->find(key));
+    return this->release(iter);
+}
 
-    if (HashTable<T*, Key, Hash>::erase(it))
+
+template<class T, class Key, class Hash>
+Foam::autoPtr<T> Foam::HashPtrTable<T, Key, Hash>::remove(iterator& iter)
+{
+    if (iter.good())
     {
-        if (elemPtr)
+        autoPtr<T> old(iter.val());
+        this->parent_type::erase(iter);
+        return old;
+    }
+
+    return nullptr;
+}
+
+
+template<class T, class Key, class Hash>
+Foam::autoPtr<T> Foam::HashPtrTable<T, Key, Hash>::remove(const Key& key)
+{
+    iterator iter(this->find(key));
+    return this->remove(iter);
+}
+
+
+template<class T, class Key, class Hash>
+bool Foam::HashPtrTable<T, Key, Hash>::erase(iterator& iter)
+{
+    if (iter.good())
+    {
+        T* ptr = iter.val();
+
+        if (this->parent_type::erase(iter))
         {
-            delete elemPtr;
+            delete ptr;
+            return true;
         }
+    }
 
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+    return false;
+}
+
+
+template<class T, class Key, class Hash>
+bool Foam::HashPtrTable<T, Key, Hash>::erase(const Key& key)
+{
+    iterator iter(this->find(key));
+    return this->erase(iter);
 }
 
 
 template<class T, class Key, class Hash>
 void Foam::HashPtrTable<T, Key, Hash>::clear()
 {
-    for
-    (
-        iterator iter = this->begin();
-        iter != this->end();
-        ++iter
-    )
+    for (iterator iter = this->begin(); iter != this->end(); ++iter)
     {
-        delete *iter;
+        delete iter.val();
     }
 
-    HashTable<T*, Key, Hash>::clear();
+    this->parent_type::clear();
+}
+
+
+template<class T, class Key, class Hash>
+void Foam::HashPtrTable<T, Key, Hash>::merge
+(
+    HashPtrTable<T, Key, Hash>& source
+)
+{
+    // Use parent merge (of raw pointer entries)
+    // and by-pass any pointer deletions etc.
+    parent_type::merge(static_cast<parent_type&>(source));
+}
+
+
+template<class T, class Key, class Hash>
+void Foam::HashPtrTable<T, Key, Hash>::merge
+(
+    HashPtrTable<T, Key, Hash>&& source
+)
+{
+    // Use parent merge (of raw pointer entries)
+    // and by-pass any pointer deletions etc.
+    parent_type::merge(static_cast<parent_type&>(source));
 }
 
 
@@ -126,19 +182,26 @@ void Foam::HashPtrTable<T, Key, Hash>::operator=
     const HashPtrTable<T, Key, Hash>& rhs
 )
 {
-    // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
     this->clear();
 
     for (const_iterator iter = rhs.begin(); iter != rhs.end(); ++iter)
     {
-        this->insert(iter.key(), new T(**iter));
+        const Key& k = iter.key();
+        const T* ptr = iter.val();
+
+        if (ptr)
+        {
+            this->set(k, new T(*ptr));
+        }
+        else
+        {
+            this->set(k, nullptr);
+        }
     }
 }
 
@@ -149,15 +212,13 @@ void Foam::HashPtrTable<T, Key, Hash>::operator=
     HashPtrTable<T, Key, Hash>&& rhs
 )
 {
-    // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
-    HashTable<T*, Key, Hash>::operator=(move(rhs));
+    this->clear();
+    this->transfer(rhs);
 }
 
 

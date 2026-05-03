@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,18 +35,17 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dimensionedScalar_H
-#define dimensionedScalar_H
+#ifndef Foam_dimensionedScalar_H
+#define Foam_dimensionedScalar_H
 
 #include "dimensionedType.H"
 #include "scalar.H"
+#include "dimensionedScalarFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-typedef dimensioned<scalar> dimensionedScalar;
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -65,7 +67,6 @@ dimensionedScalar pow025(const dimensionedScalar&);
 
 dimensionedScalar sqrt(const dimensionedScalar&);
 dimensionedScalar cbrt(const dimensionedScalar&);
-dimensionedScalar hypot(const dimensionedScalar&, const dimensionedScalar&);
 
 dimensionedScalar sign(const dimensionedScalar&);
 dimensionedScalar pos(const dimensionedScalar&);
@@ -85,6 +86,7 @@ dimensionedScalar asin(const dimensionedScalar&);
 dimensionedScalar acos(const dimensionedScalar&);
 dimensionedScalar atan(const dimensionedScalar&);
 dimensionedScalar atan2(const dimensionedScalar&, const dimensionedScalar&);
+dimensionedScalar hypot(const dimensionedScalar&, const dimensionedScalar&);
 dimensionedScalar sinh(const dimensionedScalar&);
 dimensionedScalar cosh(const dimensionedScalar&);
 dimensionedScalar tanh(const dimensionedScalar&);
@@ -100,6 +102,7 @@ dimensionedScalar jn(const int, const dimensionedScalar&);
 dimensionedScalar y0(const dimensionedScalar&);
 dimensionedScalar y1(const dimensionedScalar&);
 dimensionedScalar yn(const int, const dimensionedScalar&);
+dimensionedScalar stabilise(const dimensionedScalar&, const dimensionedScalar&);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

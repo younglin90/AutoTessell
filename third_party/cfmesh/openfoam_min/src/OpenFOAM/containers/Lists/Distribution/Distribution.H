@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -56,7 +58,7 @@ template<class Type>
 Ostream& operator<<(Ostream&, const Distribution<Type>&);
 
 /*---------------------------------------------------------------------------*\
-                        Class Distribution Declaration
+                         Class Distribution Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -64,7 +66,7 @@ class Distribution
 :
     public List<List<scalar>>
 {
-    // Private Data
+    // Private data
 
         //- Width of the bin for each component
         Type binWidth_;
@@ -87,16 +89,12 @@ public:
         //- Construct from separate binWidth for each component
         Distribution(const Type& binWidth);
 
-        //- Copy constructor
+        //- Construct as copy
         Distribution(const Distribution& d);
-
-        //- Move constructor
-        Distribution(Distribution&& d);
 
 
     //- Destructor
-    ~Distribution();
-
+        ~Distribution();
 
     // Member Functions
 
@@ -165,9 +163,6 @@ public:
     // Member Operators
 
         void operator=(const Distribution<Type>&);
-
-        void operator=(Distribution<Type>&&);
-
 
     // IOstream Operators
 

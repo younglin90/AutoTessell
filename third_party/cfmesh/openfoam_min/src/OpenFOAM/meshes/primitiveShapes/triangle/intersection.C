@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,19 +31,27 @@ License
 
 Foam::scalar Foam::intersection::planarTol_ = 0.2;
 
-const Foam::NamedEnum<Foam::intersection::direction, 2>
+const Foam::Enum
+<
+    Foam::intersection::direction
+>
 Foam::intersection::directionNames_
-{
-    "vector",
-    "contactSphere"
-};
+({
+    { intersection::direction::VECTOR, "vector" },
+    { intersection::direction::CONTACT_SPHERE, "contactSphere" },
+});
 
-const Foam::NamedEnum<Foam::intersection::algorithm, 3>
+
+const Foam::Enum
+<
+    Foam::intersection::algorithm
+>
 Foam::intersection::algorithmNames_
-{
-    "fullRay",
-    "halfRay",
-    "visible"
-};
+({
+    { intersection::algorithm::FULL_RAY, "fullRay" },
+    { intersection::algorithm::HALF_RAY, "halfRay" },
+    { intersection::algorithm::VISIBLE, "visible" },
+});
+
 
 // ************************************************************************* //

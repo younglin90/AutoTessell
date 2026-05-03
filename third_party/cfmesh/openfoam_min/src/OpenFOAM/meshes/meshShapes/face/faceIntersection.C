@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "face.H"
 #include "pointHit.H"
-#include "triPointRef.H"
+#include "triangle.H"
 #include "line.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -34,13 +37,13 @@ Foam::pointHit Foam::face::ray
 (
     const point& p,
     const vector& n,
-    const pointField& meshPoints,
+    const UList<point>& meshPoints,
     const intersection::algorithm alg,
     const intersection::direction dir
 ) const
 {
     // Return potential intersection with face with a ray starting
-    // at p, direction n (does not need to be normalised)
+    // at p, direction n (does not need to be normalized)
     // Does face-center decomposition and returns triangle intersection
     // point closest to p.
 
@@ -61,17 +64,16 @@ Foam::pointHit Foam::face::ray
 
     point ctr = Foam::average(points(meshPoints));
 
-    scalar nearestHitDist = great;
-
-    scalar nearestMissDist = great;
+    scalar nearestHitDist = GREAT;
+    scalar nearestMissDist = GREAT;
     bool eligible = false;
 
-    // Initialise to miss, distance = great
+    // Initialize to miss, distance = GREAT
     pointHit nearest(p);
 
     const labelList& f = *this;
 
-    label nPoints = size();
+    const label nPoints = size();
 
     point nextPoint = ctr;
 
@@ -93,8 +95,7 @@ Foam::pointHit Foam::face::ray
             if (Foam::mag(curHit.distance()) < Foam::mag(nearestHitDist))
             {
                 nearestHitDist = curHit.distance();
-                nearest.setHit();
-                nearest.setPoint(curHit.hitPoint());
+                nearest.hitPoint(curHit.point());
             }
         }
         else if (!nearest.hit())
@@ -106,18 +107,13 @@ Foam::pointHit Foam::face::ray
 
                 // Miss distance is the distance between the plane intersection
                 // point and the nearest point of the triangle
-                scalar missDist =
-                    Foam::mag
-                    (
-                        p + curHit.distance()*n
-                      - curHit.missPoint()
-                    );
+                scalar missDist = curHit.point().dist(p + curHit.distance()*n);
 
                 if (missDist < nearestMissDist)
                 {
                     nearestMissDist = missDist;
                     nearest.setDistance(curHit.distance());
-                    nearest.setPoint(curHit.missPoint());
+                    nearest.setPoint(curHit.point());
                 }
             }
         }
@@ -142,7 +138,7 @@ Foam::pointHit Foam::face::intersection
     const point& p,
     const vector& q,
     const point& ctr,
-    const pointField& meshPoints,
+    const UList<point>& meshPoints,
     const intersection::algorithm alg,
     const scalar tol
 ) const
@@ -158,9 +154,9 @@ Foam::pointHit Foam::face::intersection
         ).intersection(p, q, alg, tol);
     }
 
-    scalar nearestHitDist = vGreat;
+    scalar nearestHitDist = VGREAT;
 
-    // Initialise to miss, distance = great
+    // Initialize to miss, distance = GREAT
     pointHit nearest(p);
 
     const labelList& f = *this;
@@ -180,8 +176,7 @@ Foam::pointHit Foam::face::intersection
             if (Foam::mag(curHit.distance()) < Foam::mag(nearestHitDist))
             {
                 nearestHitDist = curHit.distance();
-                nearest.setHit();
-                nearest.setPoint(curHit.hitPoint());
+                nearest.hitPoint(curHit.point());
             }
         }
     }
@@ -198,7 +193,7 @@ Foam::pointHit Foam::face::intersection
 Foam::pointHit Foam::face::nearestPoint
 (
     const point& p,
-    const pointField& meshPoints
+    const UList<point>& meshPoints
 ) const
 {
     // Dummy labels
@@ -212,7 +207,7 @@ Foam::pointHit Foam::face::nearestPoint
 Foam::pointHit Foam::face::nearestPointClassify
 (
     const point& p,
-    const pointField& meshPoints,
+    const UList<point>& meshPoints,
     label& nearType,
     label& nearLabel
 ) const
@@ -231,13 +226,13 @@ Foam::pointHit Foam::face::nearestPointClassify
     const face& f = *this;
     point ctr = centre(meshPoints);
 
-    // Initialise to miss, distance=great
+    // Initialize to miss, distance=GREAT
     pointHit nearest(p);
 
     nearType = -1;
     nearLabel = -1;
 
-    label nPoints = f.size();
+    const label nPoints = f.size();
 
     point nextPoint = ctr;
 
@@ -294,19 +289,37 @@ Foam::pointHit Foam::face::nearestPointClassify
 
             if (curHit.hit())
             {
-                nearest.setHit();
-                nearest.setPoint(curHit.hitPoint());
+                nearest.hitPoint(curHit.point());
             }
             else
             {
                 // In nearest point, miss is always eligible
                 nearest.setMiss(true);
-                nearest.setPoint(curHit.missPoint());
+                nearest.setPoint(curHit.point());
             }
         }
     }
 
     return nearest;
+}
+
+
+int Foam::face::sign
+(
+    const point& p,
+    const UList<point>& points,
+    const scalar tol
+) const
+{
+    // Take three points [0, 1/3, 2/3] from the face
+    // - assumes the face is not severely warped
+
+    return triPointRef
+    (
+        points[operator[](0)],
+        points[operator[](size()/3)],
+        points[operator[]((2*size())/3)]
+    ).sign(p, tol);
 }
 
 

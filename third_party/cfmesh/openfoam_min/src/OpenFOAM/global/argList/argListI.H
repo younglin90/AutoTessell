@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,39 +30,51 @@ License
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline const Foam::string& Foam::argList::commandLine() const
+template<class T>
+inline void Foam::argList::readList(ITstream& is, List<T>& list)
 {
-    return argListStr_;
+    if (is.size() == 1)
+    {
+        // Single token - treat like List with one entry
+        list.resize(1);
+        is >> list.front();
+    }
+    else
+    {
+        is >> list;
+    }
 }
 
 
-inline const Foam::word& Foam::argList::executable() const
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+inline const Foam::word& Foam::argList::executable() const noexcept
 {
     return executable_;
 }
 
 
-inline const Foam::fileName& Foam::argList::rootPath() const
+inline const Foam::string& Foam::argList::commandLine() const noexcept
+{
+    return commandLine_;
+}
+
+
+inline const Foam::fileName& Foam::argList::rootPath() const noexcept
 {
     return rootPath_;
 }
 
 
-inline const Foam::fileName& Foam::argList::caseName() const
+inline const Foam::fileName& Foam::argList::caseName() const noexcept
 {
     return case_;
 }
 
 
-inline const Foam::fileName& Foam::argList::globalCaseName() const
+inline const Foam::fileName& Foam::argList::globalCaseName() const noexcept
 {
     return globalCase_;
-}
-
-
-inline const Foam::ParRunControl& Foam::argList::parRunControl() const
-{
-    return parRunControl_;
 }
 
 
@@ -69,161 +84,190 @@ inline Foam::fileName Foam::argList::path() const
 }
 
 
-inline const Foam::stringList& Foam::argList::args() const
+inline Foam::fileName Foam::argList::globalPath() const
 {
-    return args_;
+    return rootPath()/globalCaseName();
 }
 
 
-inline Foam::stringList& Foam::argList::args()
+inline Foam::fileName Foam::argList::relativePath
+(
+    const fileName& input,
+    const bool caseTag
+) const
 {
-    return args_;
+    return input.relative(globalPath(), caseTag);
 }
 
 
-inline const Foam::string& Foam::argList::arg(const label index) const
+inline const Foam::ParRunControl&
+Foam::argList::runControl() const noexcept
 {
-    return args_[index];
+    return runControl_;
 }
 
 
-inline Foam::label Foam::argList::size() const
+inline bool Foam::argList::distributed() const noexcept
+{
+    return runControl_.distributed();
+}
+
+
+inline int Foam::argList::dryRun() const noexcept
+{
+    return runControl_.dryRun();
+}
+
+
+inline int Foam::argList::dryRun(const int level) noexcept
+{
+    return runControl_.dryRun(level);
+}
+
+
+inline int Foam::argList::verbose() const noexcept
+{
+    return runControl_.verbose();
+}
+
+
+inline int Foam::argList::verbose(const int level) noexcept
+{
+    return runControl_.verbose(level);
+}
+
+
+inline Foam::dlLibraryTable& Foam::argList::libs() const noexcept
+{
+    return libs_;
+}
+
+
+inline Foam::label Foam::argList::size() const noexcept
 {
     return args_.size();
 }
 
 
-inline const Foam::HashTable<Foam::string>& Foam::argList::options() const
+inline const Foam::stringList& Foam::argList::args() const noexcept
+{
+    return args_;
+}
+
+
+inline Foam::stringList& Foam::argList::args() noexcept
+{
+    return args_;
+}
+
+
+inline const Foam::HashTable<Foam::string>&
+Foam::argList::options() const noexcept
 {
     return options_;
 }
 
 
-inline Foam::HashTable<Foam::string>& Foam::argList::options()
+inline Foam::HashTable<Foam::string>&
+Foam::argList::options() noexcept
 {
     return options_;
 }
 
 
-inline const Foam::string& Foam::argList::option(const word& opt) const
+inline bool Foam::argList::found(const word& optName) const
 {
-    return options_[opt];
+    return options_.contains(optName);
 }
 
 
-inline bool Foam::argList::optionFound(const word& opt) const
+inline Foam::ITstream Foam::argList::lookup(const word& optName) const
 {
-    return options_.found(opt);
+    return ITstream(options_[optName]);
 }
 
 
-inline Foam::IStringStream Foam::argList::optionLookup(const word& opt) const
-{
-    return IStringStream(options_[opt]);
-}
-
-
-// * * * * * * * * * * * * Template Specialisations  * * * * * * * * * * * * //
+// * * * * * * * * * * * * Template Specializations  * * * * * * * * * * * * //
 
 namespace Foam
 {
-    // Template specialisation for string
+    template<> inline int32_t argList::get<int32_t>(const label index) const
+    {
+        return Foam::readInt32(args_[index]);
+    }
+
+    template<> inline int64_t argList::get<int64_t>(const label index) const
+    {
+        return Foam::readInt64(args_[index]);
+    }
+
+    template<> inline float argList::get<float>(const label index) const
+    {
+        return Foam::readFloat(args_[index]);
+    }
+
+    template<> inline double argList::get<double>(const label index) const
+    {
+        return Foam::readDouble(args_[index]);
+    }
+
+
+    template<> inline int32_t argList::get<int32_t>(const word& optName) const
+    {
+        return Foam::readInt32(options_[optName]);
+    }
+
+    template<> inline int64_t argList::get<int64_t>(const word& optName) const
+    {
+        return Foam::readInt64(options_[optName]);
+    }
+
+    template<> inline float argList::get<float>(const word& optName) const
+    {
+        return Foam::readFloat(options_[optName]);
+    }
+
+    template<> inline double argList::get<double>(const word& optName) const
+    {
+        return Foam::readDouble(options_[optName]);
+    }
+
+
     template<>
-    inline Foam::string
-    Foam::argList::argRead<Foam::string>(const label index) const
+    inline string argList::get<Foam::string>(const label index) const
     {
         return args_[index];
     }
 
-    // Template specialisation for word
     template<>
-    inline Foam::word
-    Foam::argList::argRead<Foam::word>(const label index) const
+    inline word argList::get<Foam::word>(const label index) const
     {
         return args_[index];
     }
 
-    // Template specialisation for fileName
     template<>
-    inline Foam::fileName
-    Foam::argList::argRead<Foam::fileName>(const label index) const
+    inline fileName argList::get<Foam::fileName>(const label index) const
     {
-        return args_[index];
+        return fileName::validate(args_[index]);
     }
 
-    // Template specialisation for string
+
     template<>
-    inline Foam::string
-    Foam::argList::optionRead<Foam::string>(const word& opt) const
+    inline string argList::get<Foam::string>(const word& optName) const
     {
-        return options_[opt];
+        return options_[optName];
     }
 
-    // Template specialisation for word
     template<>
-    inline Foam::word
-    Foam::argList::optionRead<Foam::word>(const word& opt) const
+    inline word argList::get<Foam::word>(const word& optName) const
     {
-        return options_[opt];
+        return options_[optName];
     }
 
-    // Template specialisation for fileName
     template<>
-    inline Foam::fileName
-    Foam::argList::optionRead<Foam::fileName>(const word& opt) const
+    inline fileName argList::get<Foam::fileName>(const word& optName) const
     {
-        return options_[opt];
-    }
-
-    inline Foam::label
-    Foam::argList::bracketLevel(const Foam::string& str) const
-    {
-        label level = 0;
-        label maxLevel = 0;
-
-        for
-        (
-            string::const_iterator iter = str.begin();
-            iter != str.end();
-            ++iter
-        )
-        {
-            const char c = *iter;
-
-            if (c == '(')
-            {
-                level++;
-            }
-            else if (c == ')')
-            {
-                level--;
-            }
-
-            maxLevel = max(maxLevel, level);
-        }
-
-        return maxLevel;
-    }
-
-    template<class T>
-    inline Foam::List<T>
-    Foam::argList::optionReadList(const word& opt) const
-    {
-        string argstr(optionLookup(opt).str());
-
-        OStringStream os;
-        const T x;
-        os << x;
-
-        label level = bracketLevel(os.str()) + 1;
-
-        while (bracketLevel(argstr) < level)
-        {
-            argstr.insert(0, "(");
-            argstr.insert(argstr.size(), ")");
-        }
-
-        return readList<T>(IStringStream(argstr)());
+        return fileName::validate(options_[optName]);
     }
 }
 
@@ -231,79 +275,213 @@ namespace Foam
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class T>
-inline T Foam::argList::argRead(const label index) const
+inline T Foam::argList::get(const label index) const
 {
-    T val;
+    ITstream is(args_[index]);
 
-    IStringStream(args_[index])() >> val;
+    T val;
+    is >> val;
+
+    checkITstream(is, index);
+
     return val;
 }
 
 
 template<class T>
-inline T Foam::argList::optionRead(const word& opt) const
+inline T Foam::argList::get(const word& optName) const
 {
-    T val;
+    ITstream is(options_[optName]);
 
-    optionLookup(opt)() >> val;
+    T val;
+    is >> val;
+
+    checkITstream(is, optName);
+
     return val;
 }
 
 
 template<class T>
-inline bool Foam::argList::optionReadIfPresent
+inline T Foam::argList::getOrDefault
 (
-    const word& opt,
+    const word& optName,
+    const T& deflt
+) const
+{
+    if (options_.contains(optName))
+    {
+        return get<T>(optName);
+    }
+
+    return deflt;
+}
+
+
+template<class T>
+inline bool Foam::argList::readIfPresent
+(
+    const word& optName,
     T& val
 ) const
 {
-    if (optionFound(opt))
+    if (options_.contains(optName))
     {
-        val = optionRead<T>(opt);
+        val = get<T>(optName);
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 
 template<class T>
-inline bool Foam::argList::optionReadIfPresent
+inline bool Foam::argList::readIfPresent
 (
-    const word& opt,
+    const word& optName,
     T& val,
     const T& deflt
 ) const
 {
-    if (optionReadIfPresent<T>(opt, val))
+    if (readIfPresent<T>(optName, val))
     {
         return true;
     }
-    else
-    {
-        val = deflt;
-        return false;
-    }
+
+    val = deflt;
+    return false;
 }
 
 
 template<class T>
-inline T Foam::argList::optionLookupOrDefault
+inline Foam::List<T> Foam::argList::getList(const label index) const
+{
+    ITstream is(args_[index]);
+
+    List<T> list;
+    readList(is, list);
+
+    checkITstream(is, index);
+
+    return list;
+}
+
+
+template<class T>
+inline Foam::List<T> Foam::argList::getList
 (
-    const word& opt,
-    const T& deflt
+    const word& optName,
+    bool mandatory
 ) const
 {
-    if (optionFound(opt))
+    List<T> list;
+
+    if (mandatory || options_.contains(optName))
     {
-        return optionRead<T>(opt);
+        ITstream is(options_[optName]);
+
+        readList(is, list);
+
+        checkITstream(is, optName);
     }
-    else
+
+    return list;
+}
+
+
+template<class T>
+inline bool Foam::argList::readListIfPresent
+(
+    const word& optName,
+    List<T>& list
+) const
+{
+    if (options_.contains(optName))
     {
-        return deflt;
+        ITstream is(options_[optName]);
+
+        readList(is, list);
+
+        checkITstream(is, optName);
+
+        return true;
     }
+
+    return false;
+}
+
+
+template<class T, class Predicate>
+inline bool Foam::argList::readCheck
+(
+    const word& optName,
+    T& val,
+    const Predicate& pred,
+    bool mandatory
+) const
+{
+    if (readIfPresent<T>(optName, val))
+    {
+        if (!pred(val))
+        {
+            raiseBadInput(optName);
+        }
+
+        return true;
+    }
+    else if (mandatory)
+    {
+        FatalError(executable())
+            << "Option -" << optName << " not specified" << nl
+            << exit(FatalError);
+    }
+
+    return false;
+}
+
+
+template<class T, class Predicate>
+inline bool Foam::argList::readCheckIfPresent
+(
+    const word& optName,
+    T& val,
+    const Predicate& pred
+) const
+{
+    return readCheck<T>(optName, val, pred, false);
+}
+
+
+template<class T, class Predicate>
+inline T Foam::argList::getCheck
+(
+    const word& optName,
+    const Predicate& pred
+) const
+{
+    T val;
+    readCheck<T>(optName, val, pred, true);
+    return val;
+}
+
+
+template<class T, class Predicate>
+inline T Foam::argList::getCheckOrDefault
+(
+    const word& optName,
+    const T& deflt,
+    const Predicate& pred
+) const
+{
+    // Could predicate check default as well (for FULLDEBUG)
+
+    T val;
+    if (readCheck<T>(optName, val, pred, false))
+    {
+        return val;
+    }
+
+    return deflt;
 }
 
 
@@ -315,9 +493,9 @@ inline const Foam::string& Foam::argList::operator[](const label index) const
 }
 
 
-inline const Foam::string& Foam::argList::operator[](const word& opt) const
+inline const Foam::string& Foam::argList::operator[](const word& optName) const
 {
-    return options_[opt];
+    return options_[optName];
 }
 
 

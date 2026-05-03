@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,32 +33,63 @@ License
 // * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-Foam::Ostream& Foam::operator<<(Ostream& os, const UILList<LListBase, T>& lst)
+Foam::Ostream& Foam::UILList<LListBase, T>::writeList
+(
+    Ostream& os,
+    const label shortLen
+) const
 {
-    // Write size
-    os << nl << lst.size();
+    // NB: no binary, contiguous output
 
-    // Write beginning of contents
-    os << nl << token::BEGIN_LIST << nl;
+    const label len = this->size();
 
-    // Write contents
-    for
+    if
     (
-        typename UILList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
+        (len <= 1 || !shortLen)
+     || (len <= shortLen)
     )
     {
-        os << iter() << nl;
+        // Size and start delimiter
+        os << len << token::BEGIN_LIST;
+
+        // Contents
+        bool space = false;
+        for (const T& val : *this)
+        {
+            if (space) os << token::SPACE;
+            space = true;
+            os << val;
+        }
+
+        // End delimiter
+        os << token::END_LIST;
+    }
+    else
+    {
+        // Size and start delimiter
+        os << nl << len << nl << token::BEGIN_LIST << nl;
+
+        // Contents
+        for (const T& val : *this)
+        {
+            os << val << nl;
+        }
+
+        // End delimiter
+        os << token::END_LIST;
     }
 
-    // Write end of contents
-    os << token::END_LIST;
-
-    // Check state of IOstream
-    os.check("Ostream& operator<<(Ostream&, const UILList<LListBase, T>&)");
-
+    os.check(FUNCTION_NAME);
     return os;
+
 }
+
+
+template<class LListBase, class T>
+Foam::Ostream& Foam::operator<<(Ostream& os, const UILList<LListBase, T>& lst)
+{
+    return lst.writeList(os, -1);
+}
+
 
 // ************************************************************************* //

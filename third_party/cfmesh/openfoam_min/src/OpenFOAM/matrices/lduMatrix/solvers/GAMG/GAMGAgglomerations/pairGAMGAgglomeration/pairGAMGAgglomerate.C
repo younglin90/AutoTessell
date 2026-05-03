@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,33 +33,78 @@ License
 
 void Foam::pairGAMGAgglomeration::agglomerate
 (
-    const lduMesh& mesh,
-    const scalarField& faceWeights
+    const label nCellsInCoarsestLevel,
+    const label startLevel,
+    const scalarField& startFaceWeights,
+    const bool doProcessorAgglomerate
 )
 {
+    if (nCells_.size() < maxLevels_)
+    {
+        // See compactLevels. Make space if not enough
+        nCells_.resize(maxLevels_);
+        restrictAddressing_.resize(maxLevels_);
+        nFaces_.resize(maxLevels_);
+        faceRestrictAddressing_.resize(maxLevels_);
+        faceFlipMap_.resize(maxLevels_);
+        nPatchFaces_.resize(maxLevels_);
+        patchFaceRestrictAddressing_.resize(maxLevels_);
+        meshLevels_.resize(maxLevels_);
+        // Have procCommunicator_ always, even if not procAgglomerating.
+        // Use value -1 to indicate nothing is proc-agglomerated
+        procCommunicator_.resize(maxLevels_ + 1, -1);
+        if (processorAgglomerate())
+        {
+            procAgglomMap_.resize(maxLevels_);
+            agglomProcIDs_.resize(maxLevels_);
+            procCommunicator_.resize(maxLevels_);
+            procCellOffsets_.resize(maxLevels_);
+            procFaceMap_.resize(maxLevels_);
+            procBoundaryMap_.resize(maxLevels_);
+            procBoundaryFaceMap_.resize(maxLevels_);
+        }
+    }
+
+
     // Start geometric agglomeration from the given faceWeights
-    scalarField* faceWeightsPtr = const_cast<scalarField*>(&faceWeights);
+    scalarField faceWeights = startFaceWeights;
 
     // Agglomerate until the required number of cells in the coarsest level
     // is reached
 
     label nPairLevels = 0;
-    label nCreatedLevels = 0;
+    label nCreatedLevels = startLevel;
 
     while (nCreatedLevels < maxLevels_ - 1)
     {
+        if (!hasMeshLevel(nCreatedLevels))
+        {
+            FatalErrorInFunction<< "No mesh at nCreatedLevels:"
+                << nCreatedLevels
+                << exit(FatalError);
+        }
+
+        const auto& fineMesh = meshLevel(nCreatedLevels);
+
+
         label nCoarseCells = -1;
 
         tmp<labelField> finalAgglomPtr = agglomerate
         (
             nCoarseCells,
-            meshLevel(nCreatedLevels).lduAddr(),
-            *faceWeightsPtr
+            fineMesh.lduAddr(),
+            faceWeights
         );
 
         if
         (
-            continueAgglomerating(finalAgglomPtr().size(), nCoarseCells)
+            continueAgglomerating
+            (
+                nCellsInCoarsestLevel,
+                finalAgglomPtr().size(),
+                nCoarseCells,
+                fineMesh.comm()
+            )
         )
         {
             nCells_[nCreatedLevels] = nCoarseCells;
@@ -67,32 +115,25 @@ void Foam::pairGAMGAgglomeration::agglomerate
             break;
         }
 
+        // Create coarse mesh
         agglomerateLduAddressing(nCreatedLevels);
 
         // Agglomerate the faceWeights field for the next level
         {
-            scalarField* aggFaceWeightsPtr
+            scalarField aggFaceWeights
             (
-                new scalarField
-                (
-                    meshLevels_[nCreatedLevels].upperAddr().size(),
-                    0.0
-                )
+                meshLevels_[nCreatedLevels].upperAddr().size(),
+                0.0
             );
 
             restrictFaceField
             (
-                *aggFaceWeightsPtr,
-                *faceWeightsPtr,
+                aggFaceWeights,
+                faceWeights,
                 nCreatedLevels
             );
 
-            if (nCreatedLevels)
-            {
-                delete faceWeightsPtr;
-            }
-
-            faceWeightsPtr = aggFaceWeightsPtr;
+            faceWeights = std::move(aggFaceWeights);
         }
 
         if (nPairLevels % mergeLevels_)
@@ -108,13 +149,7 @@ void Foam::pairGAMGAgglomeration::agglomerate
     }
 
     // Shrink the storage of the levels to those created
-    compactLevels(nCreatedLevels);
-
-    // Delete temporary geometry storage
-    if (nCreatedLevels)
-    {
-        delete faceWeightsPtr;
-    }
+    compactLevels(nCreatedLevels, doProcessorAgglomerate);
 }
 
 
@@ -138,7 +173,7 @@ Foam::tmp<Foam::labelField> Foam::pairGAMGAgglomeration::agglomerate
 
     // memory management
     {
-        labelList nNbrs(nFineCells, 0);
+        labelList nNbrs(nFineCells, Zero);
 
         forAll(upperAddr, facei)
         {
@@ -183,8 +218,8 @@ Foam::tmp<Foam::labelField> Foam::pairGAMGAgglomeration::agglomerate
 
     // go through the faces and create clusters
 
-    tmp<labelField> tcoarseCellMap(new labelField(nFineCells, -1));
-    labelField& coarseCellMap = tcoarseCellMap.ref();
+    auto tcoarseCellMap = tmp<labelField>::New(nFineCells, -1);
+    auto& coarseCellMap = tcoarseCellMap.ref();
 
     nCoarseCells = 0;
     label celli;
@@ -197,7 +232,7 @@ Foam::tmp<Foam::labelField> Foam::pairGAMGAgglomeration::agglomerate
         if (coarseCellMap[celli] < 0)
         {
             label matchFaceNo = -1;
-            scalar maxFaceWeight = -great;
+            scalar maxFaceWeight = -GREAT;
 
             // check faces to find ungrouped neighbour with largest face weight
             for
@@ -236,7 +271,7 @@ Foam::tmp<Foam::labelField> Foam::pairGAMGAgglomeration::agglomerate
                 // No match. Find the best neighbouring cluster and
                 // put the cell there
                 label clusterMatchFaceNo = -1;
-                scalar clusterMaxFaceCoeff = -great;
+                scalar clusterMaxFaceCoeff = -GREAT;
 
                 for
                 (

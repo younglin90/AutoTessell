@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +27,25 @@ Class
     Foam::scalarRange
 
 Description
-    A scalar range specifier.
+    Scalar bounds to be used as a unary predicate.
 
-    The range selector can be specified as an "LOWER:UPPER" range, as a
-    "LOWER:" bound, as an ":UPPER" bound or simply as an "EXACT" value.
-    The read constructor uses a colon (:) as a range marker and a comma (,)
-    to delimit the next possible range selector.
+    The bound can be specified as an "MIN:MAX" range, as a "MIN:" or ":MAX"
+    bound or simply as a single "VALUE".
+
+    When defined via the parse() method, the special string "none" can be
+    used to define an empty (inverse) range.
+
+SeeAlso
+    Foam::MinMax
+    Foam::predicates::scalars
 
 SourceFiles
     scalarRange.C
 
 \*---------------------------------------------------------------------------*/
-#ifndef scalarRange_H
-#define scalarRange_H
+
+#ifndef Foam_scalarRange_H
+#define Foam_scalarRange_H
 
 #include "scalar.H"
 
@@ -46,14 +54,11 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
+// Forward Declarations
 class scalarRange;
-Istream& operator>>(Istream&, scalarRange&);
-Ostream& operator<<(Ostream&, const scalarRange&);
+template<class T> class MinMax;
+
+Ostream& operator<<(Ostream& os, const scalarRange& range);
 
 
 /*---------------------------------------------------------------------------*\
@@ -62,78 +67,173 @@ Ostream& operator<<(Ostream&, const scalarRange&);
 
 class scalarRange
 {
-    //- Enumeration defining the types of token
-    enum rangeType
+    //- The type of range
+    enum rangeTypes : unsigned char
     {
-        EMPTY = 0,
-        EXACT,
-        LOWER,
-        UPPER,
-        RANGE
+        NONE = 0,   //!< Empty or invalid (inverse) range. Never matches.
+        EQ,         //!< Single value equality
+        GE,         //!< Greater-than-equal.
+        GT,         //!< Greater-than.
+        LE,         //!< Less-than-equal.
+        LT,         //!< Less-than.
+        GE_LE,      //!< An inclusive range.
+        ALWAYS      //!< Placeholder range that always matches
     };
 
 
-    // Private Data
+    // Private Member Data
 
-        enum rangeType type_;
-        scalar value_;
-        scalar value2_;
+        //- The min value of the range
+        scalar min_;
+
+        //- The max value of the range
+        scalar max_;
+
+        //- The range type
+        enum rangeTypes type_;
+
+        //- Construct from components, no checks
+        inline constexpr scalarRange
+        (
+            const rangeTypes type,
+            const scalar minVal,
+            const scalar maxVal
+        ) noexcept;
 
 
 public:
 
-        static int debug;
+    // STL type definitions
+
+        //- Type of values the range contains
+        typedef scalar value_type;
+
+
+    // Static Data Members
+
+        //- A range that always matches
+        static const scalarRange always;
 
 
     // Constructors
 
-        //- Construct an empty range
-        scalarRange();
+        //- Construct an empty (inverse, NONE) range - never matches
+        inline constexpr scalarRange() noexcept;
 
-        //- Construct a range from lower to upper
-        scalarRange(const scalar lower, const scalar upper);
+        //- Construct an exact value matcher
+        inline explicit constexpr scalarRange(const scalar val) noexcept;
 
-        //- Construct from Istream.
-        //  Since commas can be used as list delimiters,
-        //  leading and trailing commas are ignored.
-        scalarRange(Istream&);
+        //- Construct a range from min-value to max-value
+        //  Check validity of the range and sets to NONE or EQ if required.
+        inline scalarRange(const scalar minVal, const scalar maxVal) noexcept;
+
+        //- Copy construct from a min/max range.
+        //  Automatically decides if this is a GE_LE or NONE range
+        explicit scalarRange(const MinMax<label>& range) noexcept;
+
+        //- Copy construct from a min/max range.
+        //  Automatically decides if this is a GE_LE or NONE range
+        explicit scalarRange(const MinMax<scalar>& range) noexcept;
+
+
+    // Static Constructors
+
+        //- Construct by parsing string content.
+        //  A colon (:) is used as a range marker or when specifying
+        //  greater-than or less-than bounds.
+        //
+        //  \note The special string "none" can be used define an empty
+        //      (inverse) range
+        //
+        //  \return True if no parse problems were encountered.
+        static bool parse(const std::string& str, scalarRange& range);
+
+        //- Construct by parsing string content.
+        //  Any parse problems are emitted as information and the returned
+        //  range is of type empty().
+        //  \return The parsed range, which is empty() on any problems
+        static scalarRange parse(const std::string& str);
+
+
+        //- A greater-equals bound
+        inline static constexpr scalarRange ge(const scalar minVal) noexcept;
+
+        //- A greater-than bound
+        inline static constexpr scalarRange gt(const scalar minVal) noexcept;
+
+        //- A greater-equals zero bound
+        inline static constexpr scalarRange ge0() noexcept;
+
+        //- A greater-than zero bound
+        inline static constexpr scalarRange gt0() noexcept;
+
+        //- A less-equals bound
+        inline static constexpr scalarRange le(const scalar maxVal) noexcept;
+
+        //- A less-than bound
+        inline static constexpr scalarRange lt(const scalar maxVal) noexcept;
+
+        //- A greater-equals 0, less-equals 1 bound
+        inline static constexpr scalarRange zero_one() noexcept;
 
 
     // Member Functions
 
-        //- Is the range empty?
-        bool empty() const;
+        //- True if range is empty (eg, inverted, NONE)
+        inline bool empty() const noexcept;
 
-        //- Is the range non-empty?
-        bool valid() const;
+        //- True if range is non-empty.
+        inline bool good() const noexcept;
 
-        //- Is the range 'EXACT'?
-        bool isExact() const;
+        //- True if the range bounds represent a single value.
+        inline bool single() const noexcept;
 
-        //- The value constituting an 'EXACT' match
-        //  or the values for 'UPPER' or 'LOWER' limits
-        scalar value() const;
+        //- The min value of the range.
+        scalar min() const noexcept { return min_; }
 
-        //- The lower limit
-        scalar lower() const;
+        //- The max value of the range.
+        scalar max() const noexcept { return max_; }
 
-        //- The upper limit
-        scalar upper() const;
+        //- Reset to an empty (inverse, NONE) range.
+        inline void reset() noexcept;
 
-        //- Return true if the value is within the range
-        bool selected(const scalar) const;
+        //- Same as reset() - reset to an empty (inverse, NONE) range.
+        void clear() noexcept { reset(); }
+
+
+        //- A representative (average) value for the range.
+        //  For GE, LE bounds it is the min/max value, respectively.
+        inline scalar value() const;
+
+        //- True if the value is matched by the condition
+        inline bool contains(const scalar val) const;
+
+        //- True if the value is matched by the condition
+        bool match(const scalar value) const { return contains(value); }
 
 
     // Member Operators
 
-        bool operator==(const scalarRange&) const;
-        bool operator!=(const scalarRange&) const;
+        //- For use as a predicate, same as contains(), match()
+        bool operator()(const scalar value) const { return contains(value); }
+
+        inline constexpr bool operator==(const scalarRange& rhs) const noexcept;
+        inline constexpr bool operator!=(const scalarRange& rhs) const noexcept;
 
 
     // IOstream Operators
 
-        friend Istream& operator>>(Istream&, scalarRange&);
-        friend Ostream& operator<<(Ostream&, const scalarRange&);
+        //- Print information about the range
+        void print(Ostream& os) const;
+
+        //- Print information about the range
+        friend Ostream& operator<<(Ostream& os, const scalarRange& range);
+
+
+    // Housekeeping
+
+        //- Same as good() or !empty()
+        bool valid() const noexcept { return good(); }
 };
 
 
@@ -142,6 +242,8 @@ public:
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "scalarRangeI.H"
 
 #endif
 

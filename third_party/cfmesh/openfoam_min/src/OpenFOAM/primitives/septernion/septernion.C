@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,21 +28,19 @@ License
 
 #include "septernion.H"
 #include "IOstreams.H"
-#include "OStringStream.H"
+#include "StringStream.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 const char* const Foam::septernion::typeName = "septernion";
-const Foam::septernion Foam::septernion::zero
-(
-    vector(0, 0, 0),
-    quaternion(0, vector(0, 0, 0))
-);
+const Foam::septernion Foam::septernion::zero(Zero);
+
 const Foam::septernion Foam::septernion::I
 (
-    vector(0, 0, 0),
-    quaternion(1, vector(0, 0, 0))
+    vector(Zero),
+    quaternion(scalar(1))
 );
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -103,17 +104,13 @@ Foam::septernion Foam::average
 
 Foam::Istream& Foam::operator>>(Istream& is, septernion& s)
 {
-    // Read beginning of septernion
     is.readBegin("septernion");
 
     is  >> s.t() >> s.r();
 
-    // Read end of septernion
     is.readEnd("septernion");
 
-    // Check state of Istream
-    is.check("operator>>(Istream&, septernion&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 

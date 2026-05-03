@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,182 +26,71 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::labelRange::labelRange()
+inline constexpr Foam::labelRange::labelRange() noexcept
 :
-    start_(0),
-    size_(0)
+    IntRange<label>()
 {}
 
 
-inline Foam::labelRange::labelRange(const label start, const label size)
+inline constexpr Foam::labelRange::labelRange(const label len) noexcept
 :
-    start_(start),
-    size_(size)
-{
-    // disallow invalid sizes
-    if (size_ <= 0)
-    {
-        this->clear();
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * Iterators * * * * * * * * * * * * * * * * //
-
-inline Foam::labelRange::const_iterator::const_iterator()
-:
-   range_(endLabelRange_),
-   index_(-1)
+    IntRange<label>(len)
 {}
 
 
-inline Foam::labelRange::const_iterator::const_iterator(const labelRange& range)
-:
-   range_(range),
-   index_(range_.empty() ? -1 : 0)
-{}
-
-
-inline bool Foam::labelRange::const_iterator::operator==
+inline Foam::labelRange::labelRange
 (
-    const const_iterator& iter
-) const
+    const label beg,
+    const label len
+) noexcept
+:
+    IntRange<label>(beg, len)
 {
-    return (this->index_ == iter.index_);
+    clampSize();
 }
 
 
-inline bool Foam::labelRange::const_iterator::operator!=
+inline Foam::labelRange::labelRange
 (
-    const const_iterator& iter
-) const
+    const label beg,
+    const label len,
+    const bool adjustStart
+) noexcept
+:
+    IntRange<label>(beg, len)
 {
-    return !(this->operator==(iter));
-}
-
-
-inline Foam::label Foam::labelRange::const_iterator::operator*() const
-{
-    return range_[index_];
-}
-
-
-inline Foam::label Foam::labelRange::const_iterator::operator()() const
-{
-    return range_[index_];
-}
-
-
-inline Foam::labelRange::const_iterator&
-Foam::labelRange::const_iterator::operator++()
-{
-    if (++index_ >= range_.size())
+    if (adjustStart)
     {
-        // equivalent to end iterator
-        index_ = -1;
+        adjust(); // Eliminate negative start, adjust size accordingly
     }
-
-    return *this;
-}
-
-
-inline Foam::labelRange::const_iterator
-Foam::labelRange::const_iterator::operator++(int)
-{
-    const_iterator old = *this;
-    this->operator++();
-    return old;
-}
-
-
-inline Foam::labelRange::const_iterator Foam::labelRange::cbegin() const
-{
-    return const_iterator(*this);
-}
-
-
-inline const Foam::labelRange::const_iterator& Foam::labelRange::cend() const
-{
-    return endIter_;
-}
-
-
-inline Foam::labelRange::const_iterator Foam::labelRange::begin() const
-{
-    return const_iterator(*this);
-}
-
-
-inline const Foam::labelRange::const_iterator& Foam::labelRange::end() const
-{
-    return endIter_;
+    else
+    {
+        clampSize();
+    }
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline void Foam::labelRange::clear()
+inline void Foam::labelRange::reset
+(
+    const label beg,
+    const label len,
+    const bool adjustStart
+) noexcept
 {
-    start_ = size_ = 0;
-}
+    reset(beg, len);
 
-
-inline bool Foam::labelRange::empty() const
-{
-    return !size_;
-}
-
-
-inline Foam::label Foam::labelRange::size() const
-{
-    return size_;
-}
-
-
-inline Foam::label Foam::labelRange::first() const
-{
-    return start_;
-}
-
-
-inline Foam::label Foam::labelRange::last() const
-{
-    return start_ + size_ - 1;
-}
-
-
-inline bool Foam::labelRange::contains(const label value) const
-{
-    return value >= this->first() && value <= this->last();
-}
-
-
-// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
-
-inline Foam::label Foam::labelRange::operator[](const label i) const
-{
-    return start_ + i;
-}
-
-
-inline bool Foam::labelRange::operator<(const labelRange& rhs) const
-{
-    return this->first() < rhs.first();
-}
-
-
-inline bool Foam::labelRange::operator==(const labelRange& rhs) const
-{
-    return start_ == rhs.start_ && size_ == rhs.size_;
-}
-
-
-inline bool Foam::labelRange::operator!=(const labelRange& rhs) const
-{
-    return !(operator==(rhs));
+    if (adjustStart)
+    {
+        adjust(); // Eliminate negative start, adjust size accordingly
+    }
+    else
+    {
+        clampSize();
+    }
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,7 +43,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class Identity Declaration
+                           Class Identity Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -49,10 +51,9 @@ class Identity
 :
     public SphericalTensor<Cmpt>
 {
-
 public:
 
-    //- Construct initialising the SphericalTensor to 1
+    //- Construct initializing the SphericalTensor to 1
     Identity()
     :
         SphericalTensor<Cmpt>(1)
@@ -63,7 +64,7 @@ public:
     :
         public SphericalTensor<Cmpt>
     {
-        //- Construct initialising the SphericalTensor to 1
+        //- Construct initializing the SphericalTensor to 1
         dual()
         :
             SphericalTensor<Cmpt>(1)
@@ -71,19 +72,19 @@ public:
     };
 
     //- Return the identity in the dual space
-    inline dual operator*()
+    dual operator*()
     {
         return dual();
     }
 
     //- Return 1 for label
-    inline explicit operator label() const
+    explicit operator label() const noexcept
     {
         return 1;
     }
 
     //- Return 1 for scalar
-    inline explicit operator scalar() const
+    explicit operator scalar() const noexcept
     {
         return 1;
     }

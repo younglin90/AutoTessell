@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,70 +25,92 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::Function1s::Square
+    Foam::Function1Types::Square
 
 Description
-    Templated square-wave function with support for an offset level.
+    A templated square-wave function with support for offset, etc.
 
-        \f[
-            a square(f (x - x_0) ) + l
-        \f]
+    The wave period can be specified directly
+
+    \f[
+        a square((t - t0) / p)) s + l
+    \f]
+
+    Or it can be specified by the frequency
+
+    \f[
+        a square(f (t - t0)) s + l
+    \f]
 
     where
 
-    \f$square(x)\f$ is the square-wave function in range \f$[-1, 1]\f$ with a
-    mark/space ratio of \f$r\f$
+    \f$ square(t) \f$ is the square-wave function in range \f$ [-1, 1] \f$
+    with a mark/space ratio of \f$ r \f$
 
     \vartable
-        Symbol  | Description      | Data type       | Default
-        a       | Amplitude        | Function1<Type> |
-        f       | Frequency        | scalar          |
-        x_0     | Phase            | scalar          | 0
-        l       | Offset level     | Function1<Type> |
-        r       | Mark/space ratio | scalar          | 1
+        symbol  | Description       | Units
+        a       | Amplitude         | -
+        f       | Frequency         | [1/s]
+        p       | Period            | [s]
+        s       | Type scale factor | -
+        l       | Type offset level | -
+        t       | Time              | [s]
+        t0      | Start time offset | [s]
+        r       | mark/space ratio  | -
     \endvartable
 
-    Example for a scalar:
+    The dictionary specification would typically resemble this:
     \verbatim
-        <name> square;
-        <name>Coeffs
-        {
-            amplitude 2e-7;
-            frequency 10;
-            start     0;
-            level     2e-6;
-            markSpace 0.5;
-        }
+    entry1
+    {
+        type        square;
+        frequency   10;
+        amplitude   0.1;
+
+        // A scalar Function1
+        scale       2e-6;
+        level       2e-6;
+    }
+    entry2
+    {
+        type        square;
+        frequency   10;
+
+        // A vector Function1
+        scale       (1 0.1 0);
+        level       (10 1 0);
+    }
     \endverbatim
 
-    Example for a vector:
-    \verbatim
-        <name> square;
-        <name>Coeffs
-        {
-            amplitude (1 0.1 0);
-            frequency 10;
-            start     0;
-            level     (10 1 0);
-            markSpace 0.5;
-        }
-    \endverbatim
+    where the entries mean:
+    \table
+        Property  | Description             | Type | Reqd | Default
+        type      | Function type: square   | word | yes |
+        amplitude | Amplitude               | Function1<scalar> | no | 1
+        frequency | Frequency [1/s]         | Function1<scalar> | or period |
+        period    | Period [s]              | Function1<scalar> | or frequency |
+        scale     | Scale factor (Type)     | Function1<Type> | yes |
+        level     | Offset level (Type)     | Function1<Type> | yes |
+        t0        | Start time offset       | scalar       | no | 0
+        mark      | Positive amount         | scalar       | no | 1
+        space     | Negative amount         | scalar       | no | 1
+    \endtable
 
-SourceFiles
-    Square.C
+Note
+    For slow oscillations it can be more intuitive to specify the period.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Square_H
-#define Square_H
+#ifndef Foam_Function1Types_Square_H
+#define Foam_Function1Types_Square_H
 
-#include "Function1.H"
+#include "Sine.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
 
 /*---------------------------------------------------------------------------*\
@@ -95,30 +120,15 @@ namespace Function1s
 template<class Type>
 class Square
 :
-    public FieldFunction1<Type, Square<Type>>
+    public Function1Types::Sine<Type>
 {
     // Private Data
 
-        //- Scalar amplitude of the square function
-        const autoPtr<Function1<Type>> amplitude_;
+        //- Mark/space ratio (square function only)
+        scalar mark_;
 
-        //- Frequency of the square function
-        const scalar frequency_;
-
-        //- Argument offset
-        const scalar start_;
-
-        //- Level to which the square function is added
-        const autoPtr<Function1<Type>> level_;
-
-        //- Mark/space ratio of the square function; the fraction of one period
-        //  in which the function value is at the higher of the two possible
-        //  values.
-        const scalar markSpace_;
-
-        //- Is this function integrable?
-        const bool integrable_;
-
+        //- Mark/space ratio (square function only)
+        scalar space_;
 
 public:
 
@@ -126,51 +136,58 @@ public:
     TypeName("square");
 
 
+    // Generated Methods
+
+        //- No copy assignment
+        void operator=(const Square<Type>&) = delete;
+
+
     // Constructors
 
-        //- Construct from name and dictionary
+        //- Construct from entry name, dictionary and optional registry
         Square
         (
-            const word& name,
-            const unitSets& units,
-            const dictionary& dict
+            const word& entryName,
+            const dictionary& dict,
+            const objectRegistry* obrPtr = nullptr
         );
 
-        //- Copy constructor
-        Square(const Square<Type>& se);
+        //- Copy construct
+        explicit Square(const Square<Type>& rhs);
+
+        //- Return a clone
+        virtual tmp<Function1<Type>> clone() const
+        {
+            return Function1<Type>::Clone(*this);
+        }
 
 
     //- Destructor
-    virtual ~Square();
+    virtual ~Square() = default;
 
 
     // Member Functions
 
-        //- Return value
-        virtual inline Type value(const scalar x) const;
+        //- Return value for time t
+        virtual inline Type value(const scalar t) const
+        {
+            return Sine<Type>::squareValue(t, mark_ / (mark_ + space_));
+        }
 
-        //- Integrate between two values
-        virtual inline Type integral(const scalar x1, const scalar x2) const;
+        //- Write in dictionary format
+        virtual void writeData(Ostream& os) const;
 
-        //- Write data to dictionary stream
-        virtual void write(Ostream& os, const unitSets& units) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const Square<Type>&) = delete;
+        //- Write coefficient entries in dictionary format
+        virtual void writeEntries(Ostream& os) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Function1s
+} // End namespace Function1Types
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "SquareI.H"
 
 #ifdef NoRepository
     #include "Square.C"

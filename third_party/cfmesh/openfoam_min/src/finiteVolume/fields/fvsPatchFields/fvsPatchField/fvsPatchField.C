@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,41 @@ License
 #include "IOobject.H"
 #include "dictionary.H"
 #include "fvMesh.H"
-#include "fieldMapper.H"
+#include "surfaceMesh.H"
+#include "fvPatchFieldMapper.H"
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+template<class Type>
+bool Foam::fvsPatchField<Type>::readValueEntry
+(
+    const dictionary& dict,
+    IOobjectOption::readOption readOpt
+)
+{
+    if (!IOobjectOption::isAnyRead(readOpt)) return false;
+    const auto& p = fvsPatchFieldBase::patch();
+
+
+    const auto* eptr = dict.findEntry("value", keyType::LITERAL);
+
+    if (eptr)
+    {
+        Field<Type>::assign(*eptr, p.size());
+        return true;
+    }
+
+    if (IOobjectOption::isReadRequired(readOpt))
+    {
+        FatalIOErrorInFunction(dict)
+            << "Required entry 'value' : missing for patch " << p.name()
+            << " in dictionary " << dict.relativeName() << nl
+            << exit(FatalIOError);
+    }
+
+    return false;
+}
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -37,8 +74,8 @@ Foam::fvsPatchField<Type>::fvsPatchField
     const DimensionedField<Type, surfaceMesh>& iF
 )
 :
+    fvsPatchFieldBase(p),
     Field<Type>(p.size()),
-    patch_(p),
     internalField_(iF)
 {}
 
@@ -48,11 +85,39 @@ Foam::fvsPatchField<Type>::fvsPatchField
 (
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const Field<Type>& f
+    const Type& value
 )
 :
-    Field<Type>(f),
-    patch_(p),
+    fvsPatchFieldBase(p),
+    Field<Type>(p.size(), value),
+    internalField_(iF)
+{}
+
+
+template<class Type>
+Foam::fvsPatchField<Type>::fvsPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, surfaceMesh>& iF,
+    const Field<Type>& pfld
+)
+:
+    fvsPatchFieldBase(p),
+    Field<Type>(pfld),
+    internalField_(iF)
+{}
+
+
+template<class Type>
+Foam::fvsPatchField<Type>::fvsPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, surfaceMesh>& iF,
+    Field<Type>&& pfld
+)
+:
+    fvsPatchFieldBase(p),
+    Field<Type>(std::move(pfld)),
     internalField_(iF)
 {}
 
@@ -63,31 +128,14 @@ Foam::fvsPatchField<Type>::fvsPatchField
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
     const dictionary& dict,
-    const bool valueRequired
+    IOobjectOption::readOption requireValue
 )
 :
+    fvsPatchFieldBase(p, dict),
     Field<Type>(p.size()),
-    patch_(p),
     internalField_(iF)
 {
-    if (valueRequired)
-    {
-        if (dict.found("value"))
-        {
-            Field<Type>::operator=
-            (
-                Field<Type>("value", iF.dimensions(), dict, p.size())
-            );
-        }
-        else
-        {
-            FatalIOErrorInFunction
-            (
-                dict
-            )   << "essential value entry not provided"
-                << exit(FatalIOError);
-        }
-    }
+    readValueEntry(dict, requireValue);
 }
 
 
@@ -97,19 +145,22 @@ Foam::fvsPatchField<Type>::fvsPatchField
     const fvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper,
-    const bool mappingRequired
+    const fvPatchFieldMapper& mapper
 )
 :
-    Field<Type>(p.size()),
-    patch_(p),
+    fvsPatchFieldBase(ptf, p),
+    Field<Type>(ptf, mapper),
     internalField_(iF)
-{
-    if (mappingRequired)
-    {
-        mapper(*this, ptf);
-    }
-}
+{}
+
+
+template<class Type>
+Foam::fvsPatchField<Type>::fvsPatchField(const fvsPatchField<Type>& ptf)
+:
+    fvsPatchFieldBase(ptf),
+    Field<Type>(ptf),
+    internalField_(ptf.internalField_)
+{}
 
 
 template<class Type>
@@ -119,8 +170,8 @@ Foam::fvsPatchField<Type>::fvsPatchField
     const DimensionedField<Type, surfaceMesh>& iF
 )
 :
+    fvsPatchFieldBase(ptf),
     Field<Type>(ptf),
-    patch_(ptf.patch_),
     internalField_(iF)
 {}
 
@@ -128,58 +179,34 @@ Foam::fvsPatchField<Type>::fvsPatchField
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-const Foam::objectRegistry& Foam::fvsPatchField<Type>::db() const
+void Foam::fvsPatchField<Type>::check(const fvsPatchField<Type>& rhs) const
 {
-    return patch_.mesh();
+    fvsPatchFieldBase::checkPatch(rhs);
 }
 
 
 template<class Type>
-const Foam::Time& Foam::fvsPatchField<Type>::time() const
+void Foam::fvsPatchField<Type>::autoMap(const fvPatchFieldMapper& m)
 {
-    return patch_.time();
+    Field<Type>::autoMap(m, internalField_.is_oriented());
 }
 
 
 template<class Type>
-void Foam::fvsPatchField<Type>::check(const fvsPatchField<Type>& ptf) const
-{
-    if (&patch_ != &(ptf.patch_))
-    {
-        FatalErrorInFunction
-            << "different patches for fvsPatchField<Type>s"
-            << abort(FatalError);
-    }
-}
-
-
-template<class Type>
-void Foam::fvsPatchField<Type>::map
+void Foam::fvsPatchField<Type>::rmap
 (
     const fvsPatchField<Type>& ptf,
-    const fieldMapper& mapper
+    const labelList& addr
 )
 {
-    mapper(*this, ptf);
-}
-
-
-template<class Type>
-void Foam::fvsPatchField<Type>::reset(const fvsPatchField<Type>& ptf)
-{
-    Field<Type>::reset(ptf);
+    Field<Type>::rmap(ptf, addr);
 }
 
 
 template<class Type>
 void Foam::fvsPatchField<Type>::write(Ostream& os) const
 {
-    writeEntry(os, "type", type());
-
-    if (overridesConstraint())
-    {
-        writeEntry(os, "patchType", patch().type());
-    }
+    os.writeEntry("type", type());
 }
 
 
@@ -201,7 +228,7 @@ void Foam::fvsPatchField<Type>::operator=
     const fvsPatchField<Type>& ptf
 )
 {
-    check(ptf);
+    fvsPatchFieldBase::checkPatch(ptf);
     Field<Type>::operator=(ptf);
 }
 
@@ -212,7 +239,7 @@ void Foam::fvsPatchField<Type>::operator+=
     const fvsPatchField<Type>& ptf
 )
 {
-    check(ptf);
+    fvsPatchFieldBase::checkPatch(ptf);
     Field<Type>::operator+=(ptf);
 }
 
@@ -223,7 +250,7 @@ void Foam::fvsPatchField<Type>::operator-=
     const fvsPatchField<Type>& ptf
 )
 {
-    check(ptf);
+    fvsPatchFieldBase::checkPatch(ptf);
     Field<Type>::operator-=(ptf);
 }
 
@@ -234,13 +261,7 @@ void Foam::fvsPatchField<Type>::operator*=
     const fvsPatchField<scalar>& ptf
 )
 {
-    if (&patch_ != &ptf.patch())
-    {
-        FatalErrorInFunction
-            << "incompatible patches for patch fields"
-            << abort(FatalError);
-    }
-
+    fvsPatchFieldBase::checkPatch(ptf);
     Field<Type>::operator*=(ptf);
 }
 
@@ -251,12 +272,7 @@ void Foam::fvsPatchField<Type>::operator/=
     const fvsPatchField<scalar>& ptf
 )
 {
-    if (&patch_ != &ptf.patch())
-    {
-        FatalErrorInFunction
-            << abort(FatalError);
-    }
-
+    fvsPatchFieldBase::checkPatch(ptf);
     Field<Type>::operator/=(ptf);
 }
 
@@ -388,14 +404,10 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const fvsPatchField<Type>& ptf)
 {
     ptf.write(os);
 
-    os.check("Ostream& operator<<(Ostream&, const fvsPatchField<Type>&");
+    os.check(FUNCTION_NAME);
 
     return os;
 }
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "fvsPatchFieldNew.C"
 
 // ************************************************************************* //

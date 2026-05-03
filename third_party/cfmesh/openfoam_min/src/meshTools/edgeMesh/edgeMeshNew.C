@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,33 +33,34 @@ License
 Foam::autoPtr<Foam::edgeMesh> Foam::edgeMesh::New
 (
     const fileName& name,
-    const word& ext
+    const word& fileType
 )
 {
-    fileExtensionConstructorTable::iterator cstrIter =
-        fileExtensionConstructorTablePtr_->find(ext);
+    auto* ctorPtr = fileExtensionConstructorTable(fileType);
 
-    if (cstrIter == fileExtensionConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
         FatalErrorInFunction
-            << "Unknown file extension " << ext
+            << "Unknown edge format " << fileType
             << " for file " << name << nl << nl
-            << "Valid extensions are :" << nl
-            << fileExtensionConstructorTablePtr_->sortedToc()
+            << "Valid types:" << nl
+            << flatOutput(fileExtensionConstructorTablePtr_->sortedToc())
             << exit(FatalError);
     }
 
-    return autoPtr<edgeMesh>(cstrIter()(name));
+    return autoPtr<edgeMesh>(ctorPtr(name));
 }
 
 
 Foam::autoPtr<Foam::edgeMesh> Foam::edgeMesh::New(const fileName& name)
 {
-    word ext = name.ext();
-    if (ext == "gz")
-    {
-        ext = name.lessExt().ext();
-    }
+    const word ext =
+    (
+        name.has_ext("gz")
+      ? name.stem().ext()
+      : name.ext()
+    );
+
     return New(name, ext);
 }
 

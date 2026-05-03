@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -64,7 +67,7 @@ void Foam::ParSortableList<Type>::copyInto
 
         tagVal.value() = values[elemI];
         tagVal.index() = indices[elemI];
-        tagVal.procIndex() = fromProcNo;
+        tagVal.procID() = fromProcNo;
 
         destI++;
     }
@@ -112,8 +115,8 @@ void Foam::ParSortableList<Type>::checkAndSend
         }
 
         {
-            OPstream toSlave(Pstream::commsTypes::blocking, destProci);
-            toSlave << values << indices;
+            OPstream toProc(UPstream::commsTypes::buffered, destProci);
+            toProc << values << indices;
         }
     }
 }
@@ -199,7 +202,7 @@ void Foam::ParSortableList<Type>::sort()
 
         getPivots(sortedPivots, pivots);
     }
-    Pstream::scatter(pivots);
+    Pstream::broadcast(pivots);
 
     if (debug)
     {
@@ -283,7 +286,7 @@ void Foam::ParSortableList<Type>::sort()
 
     label combinedI = 0;
 
-    for (label proci = 0; proci < Pstream::nProcs(); proci++)
+    for (const int proci : Pstream::allProcs())
     {
         if (proci == Pstream::myProcNo())
         {
@@ -306,9 +309,9 @@ void Foam::ParSortableList<Type>::sort()
                     Pout<< "Receiving from " << proci << endl;
                 }
 
-                IPstream fromSlave(Pstream::commsTypes::blocking, proci);
+                IPstream fromProc(UPstream::commsTypes::buffered, proci);
 
-                fromSlave >> recValues >> recIndices;
+                fromProc >> recValues >> recIndices;
 
                 if (debug & 2)
                 {
@@ -338,7 +341,7 @@ void Foam::ParSortableList<Type>::sort()
     {
         this->operator[](elemI) = combinedValues[elemI].value();
         indices_[elemI] = combinedValues[elemI].index();
-        procs_[elemI] = combinedValues[elemI].procIndex();
+        procs_[elemI] = combinedValues[elemI].procID();
     }
 }
 

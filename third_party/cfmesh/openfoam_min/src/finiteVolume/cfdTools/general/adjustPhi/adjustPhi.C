@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,6 @@ License
 #include "adjustPhi.H"
 #include "volFields.H"
 #include "surfaceFields.H"
-#include "processorFvPatchFields.H"
 #include "inletOutletFvPatchFields.H"
 
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
@@ -52,7 +54,7 @@ bool Foam::adjustPhi
             const fvPatchVectorField& Up = U.boundaryField()[patchi];
             const fvsPatchScalarField& phip = bphi[patchi];
 
-            if (!isA<processorFvPatchVectorField>(Up))
+            if (!phip.coupled())
             {
                 if (Up.fixesValue() && !isA<inletOutletFvPatchVectorField>(Up))
                 {
@@ -86,7 +88,7 @@ bool Foam::adjustPhi
         }
 
         // Calculate the total flux in the domain, used for normalisation
-        scalar totalFlux = vSmall + sum(mag(phi)).value();
+        scalar totalFlux = VSMALL + sum(mag(phi)).value();
 
         reduce(massIn, sumOp<scalar>());
         reduce(fixedMassOut, sumOp<scalar>());
@@ -97,8 +99,8 @@ bool Foam::adjustPhi
 
         if
         (
-            magAdjustableMassOut > vSmall
-         && magAdjustableMassOut/totalFlux > small
+            magAdjustableMassOut > VSMALL
+         && magAdjustableMassOut/totalFlux > SMALL
         )
         {
             massCorr = (massIn - fixedMassOut)/adjustableMassOut;
@@ -140,14 +142,12 @@ bool Foam::adjustPhi
             }
         }
 
-        return mag(massIn)/totalFlux < small
-            && mag(fixedMassOut)/totalFlux < small
-            && mag(adjustableMassOut)/totalFlux < small;
+        return mag(massIn)/totalFlux < SMALL
+            && mag(fixedMassOut)/totalFlux < SMALL
+            && mag(adjustableMassOut)/totalFlux < SMALL;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

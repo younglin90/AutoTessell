@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,53 +30,9 @@ License
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-inline Type Foam::Function1s::Scale<Type>::value(const scalar x) const
+inline Type Foam::Function1Types::Scale<Type>::value(const scalar t) const
 {
-    if (constantScale_ && constantValue_)
-    {
-        return scale_->value(NaN)*value_->value(NaN);
-    }
-    else
-    {
-        const scalar sx = xScale_->value(x)*x;
-        return scale_->value(sx)*value_->value(sx);
-    }
-}
-
-
-template<class Type>
-inline Type Foam::Function1s::Scale<Type>::integral
-(
-    const scalar x1,
-    const scalar x2
-) const
-{
-    if (constantXScale_ && constantScale_)
-    {
-        const scalar sx = xScale_->value(NaN);
-        return scale_->value(NaN)*value_->integral(sx*x1, sx*x2)/sx;
-    }
-
-    if (constantXScale_ && constantValue_)
-    {
-        const scalar sx = xScale_->value(NaN);
-        return scale_->integral(sx*x1, sx*x2)/sx*value_->value(NaN);
-    }
-
-    FatalErrorInFunction
-        << "Integration is not defined for " << type() << " functions "
-        << "unless x-scaling is constant and either scaling is constant or "
-        << "the value is constant"
-        << exit(FatalError);
-
-    return Zero;
-}
-
-
-template<class Type>
-inline bool Foam::Function1s::Scale<Type>::constant() const
-{
-    return constantScale_ && constantValue_;
+    return scale_->value(t)*value_->value(t);
 }
 
 

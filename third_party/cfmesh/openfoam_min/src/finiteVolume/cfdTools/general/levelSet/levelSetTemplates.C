@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,26 +27,32 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "levelSet.H"
-#include "cutTriTet.H"
+#include "cut.H"
 #include "polyMeshTetDecomposition.H"
 #include "tetIndices.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
+Foam::tmp<Foam::DimensionedField<Type, Foam::volMesh>> Foam::levelSetAverage
 (
     const fvMesh& mesh,
     const scalarField& levelC,
     const scalarField& levelP,
-    const Field<Type>& positiveC,
-    const Field<Type>& positiveP,
-    const Field<Type>& negativeC,
-    const Field<Type>& negativeP
+    const DimensionedField<Type, volMesh>& positiveC,
+    const DimensionedField<Type, pointMesh>& positiveP,
+    const DimensionedField<Type, volMesh>& negativeC,
+    const DimensionedField<Type, pointMesh>& negativeP
 )
 {
-    tmp<Field<Type>> tResult(new Field<Type>(mesh.nCells(), Zero));
-    Field<Type>& result = tResult.ref();
+    auto tresult = DimensionedField<Type, volMesh>::New
+    (
+        IOobject::scopedName(positiveC.name(), "levelSetAverage"),
+        mesh,
+        Foam::zero{}, // value
+        positiveC.dimensions()
+    );
+    auto& result = tresult.ref();
 
     forAll(result, cI)
     {
@@ -73,7 +82,7 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
                     levelP[triIs[1]],
                     levelP[triIs[2]]
                 };
-            const cutTriTet::volumeIntegrateOp<Type>
+            const cut::volumeIntegrateOp<Type>
                 positive = FixedList<Type, 4>
                 ({
                     positiveC[cI],
@@ -81,7 +90,7 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
                     positiveP[triIs[1]],
                     positiveP[triIs[2]]
                 });
-            const cutTriTet::volumeIntegrateOp<Type>
+            const cut::volumeIntegrateOp<Type>
                 negative = FixedList<Type, 4>
                 ({
                     negativeC[cI],
@@ -90,7 +99,7 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
                     negativeP[triIs[2]]
                 });
 
-            v += cutTriTet::volumeOp()(tet);
+            v += cut::volumeOp()(tet);
 
             r += tetCut(tet, level, positive, negative);
         }
@@ -98,7 +107,7 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
         result[cI] = r/v;
     }
 
-    return tResult;
+    return tresult;
 }
 
 
@@ -114,26 +123,28 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
     const Field<Type>& negativeP
 )
 {
-    tmp<Field<Type>> tResult(new Field<Type>(patch.size(), Zero));
-    Field<Type>& result = tResult.ref();
+    typedef typename outerProduct<Type, vector>::type sumType;
+
+    auto tResult = tmp<Field<Type>>::New(patch.size(), Zero);
+    auto& result = tResult.ref();
 
     forAll(result, fI)
     {
-        const face& f = patch.poly().localFaces()[fI];
+        const face& f = patch.patch().localFaces()[fI];
 
-        scalar a = 0;
-        Type r = Zero;
+        vector a(Zero);
+        sumType r = Zero;
 
-        for(label eI = 0; eI < f.size(); ++ eI)
+        for (label edgei = 0; edgei < f.nEdges(); ++edgei)
         {
-            const edge e = f.faceEdge(eI);
+            const edge e = f.edge(edgei);
 
             const FixedList<point, 3>
                 tri =
                 {
-                    patch.poly().faceCentres()[fI],
-                    patch.poly().localPoints()[e[0]],
-                    patch.poly().localPoints()[e[1]]
+                    patch.patch().faceCentres()[fI],
+                    patch.patch().localPoints()[e[0]],
+                    patch.patch().localPoints()[e[1]]
                 };
             const FixedList<scalar, 3>
                 level =
@@ -142,14 +153,14 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
                     levelP[e[0]],
                     levelP[e[1]]
                 };
-            const cutTriTet::areaMagIntegrateOp<Type>
+            const cut::areaIntegrateOp<Type>
                 positive = FixedList<Type, 3>
                 ({
                     positiveF[fI],
                     positiveP[e[0]],
                     positiveP[e[1]]
                 });
-            const cutTriTet::areaMagIntegrateOp<Type>
+            const cut::areaIntegrateOp<Type>
                 negative = FixedList<Type, 3>
                 ({
                     negativeF[fI],
@@ -157,68 +168,12 @@ Foam::tmp<Foam::Field<Type>> Foam::levelSetAverage
                     negativeP[e[1]]
                 });
 
-            a += cutTriTet::areaMagOp()(tri);
+            a += cut::areaOp()(tri);
 
             r += triCut(tri, level, positive, negative);
         }
 
-        result[fI] = r/a;
-    }
-
-    return tResult;
-}
-
-
-template<class Type>
-Foam::tmp<Foam::VolField<Type>>
-Foam::levelSetAverage
-(
-    const volScalarField& levelC,
-    const pointScalarField& levelP,
-    const VolField<Type>& positiveC,
-    const PointField<Type>& positiveP,
-    const VolField<Type>& negativeC,
-    const PointField<Type>& negativeP
-)
-{
-    const fvMesh& mesh = levelC.mesh();
-
-    tmp<VolField<Type>> tResult
-    (
-        VolField<Type>::New
-        (
-            positiveC.name() + ":levelSetAverage",
-            mesh,
-            dimensioned<Type>("0", positiveC.dimensions(), Zero)
-        )
-    );
-    VolField<Type>& result = tResult.ref();
-
-    result.primitiveFieldRef() =
-        levelSetAverage
-        (
-            mesh,
-            levelC.primitiveField(),
-            levelP.primitiveField(),
-            positiveC.primitiveField(),
-            positiveP.primitiveField(),
-            negativeC.primitiveField(),
-            negativeP.primitiveField()
-        );
-
-    forAll(mesh.boundary(), patchi)
-    {
-        result.boundaryFieldRef()[patchi] =
-            levelSetAverage
-            (
-                mesh.boundary()[patchi],
-                levelC.boundaryField()[patchi],
-                levelP.boundaryField()[patchi].patchInternalField()(),
-                positiveC.boundaryField()[patchi],
-                positiveP.boundaryField()[patchi].patchInternalField()(),
-                negativeC.boundaryField()[patchi],
-                negativeP.boundaryField()[patchi].patchInternalField()()
-            );
+        result[fI] = a/magSqr(a) & r;
     }
 
     return tResult;

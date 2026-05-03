@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,9 +37,7 @@ SourceFiles
 #ifndef X3DsurfaceFormatCore_H
 #define X3DsurfaceFormatCore_H
 
-#include "Ostream.H"
-#include "OFstream.H"
-#include "MeshedSurface.H"
+#include "pointField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,20 +47,32 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class X3DsurfaceFormatCore Declaration
+              Class fileFormats::X3DsurfaceFormatCore Declaration
 \*---------------------------------------------------------------------------*/
 
 class X3DsurfaceFormatCore
 {
 protected:
+
     // Protected Member Functions
 
     //- Write file header
-    static void writeHeader(Ostream&);
+    static void writeHeader(Ostream& os);
+
+    //- Write file header
+    static void writeFooter(Ostream& os);
+
+    //- Begin Group/Shape node
+    static void beginGroup(Ostream& os);
+
+    //- End Group/Shape node
+    static void endGroup(Ostream& os);
 
     //- Write appearance node
-    static void writeAppearance(Ostream&);
+    static void writeAppearance(Ostream& os);
 
+    //- Write points (Coordinate)
+    static void writePoints(Ostream& os, const UList<point>& pts);
 };
 
 

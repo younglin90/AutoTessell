@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,6 +40,18 @@ namespace Foam
 {
 defineTypeNameAndDebug(booleanSurface, 0);
 }
+
+const Foam::Enum
+<
+    Foam::booleanSurface::booleanOpType
+>
+Foam::booleanSurface::booleanOpTypeNames
+({
+    { booleanOpType::UNION, "union" },
+    { booleanOpType::INTERSECTION, "intersection" },
+    { booleanOpType::DIFFERENCE, "difference" },
+    { booleanOpType::ALL, "all" },
+});
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -943,7 +958,7 @@ Foam::booleanSurface::booleanSurface
     const pointField& pts = combinedSurf.points();
 
     label minFacei = -1;
-    pointHit minHit(false, Zero, great, true);
+    pointHit minHit(false, Zero, GREAT, true);
 
     forAll(combinedSurf, facei)
     {
@@ -960,7 +975,7 @@ Foam::booleanSurface::booleanSurface
     {
         Pout<< "booleanSurface : found for point:" << outsidePoint
             << "  nearest face:" << minFacei
-            << "  nearest point:" << minHit.rawPoint()
+            << "  nearest point:" << minHit.point()
             << endl;
     }
 
@@ -987,7 +1002,7 @@ Foam::booleanSurface::booleanSurface
         {
             FatalErrorInFunction
                 << "Face " << facei << " has not been reached by walking from"
-                << " nearest point " << minHit.rawPoint()
+                << " nearest point " << minHit.point()
                 << " nearest face " << minFacei << exit(FatalError);
         }
         else if (side[facei] == OUTSIDE)

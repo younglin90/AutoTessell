@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,13 +29,13 @@ License
 #include "IOstreams.H"
 #include "transformField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::transformFvPatchField<Type>::transformFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
    fvPatchField<Type>(p, iF)
@@ -43,22 +45,10 @@ Foam::transformFvPatchField<Type>::transformFvPatchField
 template<class Type>
 Foam::transformFvPatchField<Type>::transformFvPatchField
 (
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    fvPatchField<Type>(p, iF, dict, false)
-{}
-
-
-template<class Type>
-Foam::transformFvPatchField<Type>::transformFvPatchField
-(
     const transformFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fvPatchField<Type>(ptf, p, iF, mapper)
@@ -68,8 +58,30 @@ Foam::transformFvPatchField<Type>::transformFvPatchField
 template<class Type>
 Foam::transformFvPatchField<Type>::transformFvPatchField
 (
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ)
+{}
+
+
+template<class Type>
+Foam::transformFvPatchField<Type>::transformFvPatchField
+(
+    const transformFvPatchField<Type>& ptf
+)
+:
+    fvPatchField<Type>(ptf)
+{}
+
+
+template<class Type>
+Foam::transformFvPatchField<Type>::transformFvPatchField
+(
     const transformFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(ptf, iF)

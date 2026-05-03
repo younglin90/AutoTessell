@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::clippedLinear
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Centred interpolation interpolation scheme using clipped-weights to
+    Central-differencing interpolation scheme using clipped-weights to
     improve stability on meshes with very rapid variations in cell size.
 
 SourceFiles
@@ -45,7 +50,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class clippedLinear Declaration
+                           Class clippedLinear Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -55,24 +60,27 @@ class clippedLinear
 {
     // Private Data
 
-        const scalar cellSizeRatio_;
         scalar wfLimit_;
 
 
     // Private Member Functions
 
-        void calcWfLimit()
+        static scalar calcWfLimit(scalar cellSizeRatio)
         {
-            if (cellSizeRatio_ <= 0 || cellSizeRatio_ > 1)
+            if (cellSizeRatio <= 0 || cellSizeRatio > 1)
             {
                 FatalErrorInFunction
-                    << "Given cellSizeRatio of " << cellSizeRatio_
+                    << "Given cellSizeRatio of " << cellSizeRatio
                     << " is not between 0 and 1"
                     << exit(FatalError);
             }
 
-            wfLimit_ = cellSizeRatio_/(1.0 + cellSizeRatio_);
+            return cellSizeRatio/(1.0 + cellSizeRatio);
         }
+
+
+        //- No copy assignment
+        void operator=(const clippedLinear&) = delete;
 
 
 public:
@@ -87,19 +95,15 @@ public:
         clippedLinear(const fvMesh& mesh, const scalar cellSizeRatio)
         :
             surfaceInterpolationScheme<Type>(mesh),
-            cellSizeRatio_(cellSizeRatio)
-        {
-            calcWfLimit();
-        }
+            wfLimit_(calcWfLimit(cellSizeRatio))
+        {}
 
         //- Construct from Istream
         clippedLinear(const fvMesh& mesh, Istream& is)
         :
             surfaceInterpolationScheme<Type>(mesh),
-            cellSizeRatio_(readScalar(is))
-        {
-            calcWfLimit();
-        }
+            wfLimit_(calcWfLimit(readScalar(is)))
+        {}
 
         //- Construct from faceFlux and Istream
         clippedLinear
@@ -110,10 +114,8 @@ public:
         )
         :
             surfaceInterpolationScheme<Type>(mesh),
-            cellSizeRatio_(readScalar(is))
-        {
-            calcWfLimit();
-        }
+            wfLimit_(calcWfLimit(readScalar(is)))
+        {}
 
 
     // Member Functions
@@ -121,7 +123,7 @@ public:
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -132,11 +134,18 @@ public:
             );
             const surfaceScalarField& cdWeights = tcdWeights();
 
+            const scalarMinMax bounds(wfLimit_, 1 - wfLimit_);
+
             tmp<surfaceScalarField> tclippedLinearWeights
             (
-                surfaceScalarField::New
+                new surfaceScalarField
                 (
-                    "clippedLinearWeights",
+                    IOobject
+                    (
+                        "clippedLinearWeights",
+                        mesh.time().timeName(),
+                        mesh
+                    ),
                     mesh,
                     dimless
                 )
@@ -145,7 +154,7 @@ public:
                 tclippedLinearWeights.ref();
 
             clippedLinearWeights.primitiveFieldRef() =
-                max(min(cdWeights.primitiveField(), 1 - wfLimit_), wfLimit_);
+                clamp(cdWeights.primitiveField(), bounds);
 
             surfaceScalarField::Boundary& clwbf =
                 clippedLinearWeights.boundaryFieldRef();
@@ -155,15 +164,7 @@ public:
                 if (clwbf[patchi].coupled())
                 {
                     clwbf[patchi] =
-                        max
-                        (
-                            min
-                            (
-                                cdWeights.boundaryField()[patchi],
-                                1 - wfLimit_
-                            ),
-                            wfLimit_
-                        );
+                        clamp(cdWeights.boundaryField()[patchi], bounds);
                 }
                 else
                 {
@@ -173,12 +174,6 @@ public:
 
             return tclippedLinearWeights;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const clippedLinear&) = delete;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,18 +30,19 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "volFields.H"
 #include "surfaceFields.H"
+#include "TableFile.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-const Foam::NamedEnum
+const Foam::Enum
 <
-    Foam::fanPressureFvPatchScalarField::fanFlowDirection,
-    2
-> Foam::fanPressureFvPatchScalarField::fanFlowDirectionNames_
-{
-    "in",
-    "out"
-};
+    Foam::fanPressureFvPatchScalarField::fanFlowDirection
+>
+Foam::fanPressureFvPatchScalarField::fanFlowDirectionNames_
+({
+    { fanFlowDirection::ffdIn, "in" },
+    { fanFlowDirection::ffdOut, "out" },
+});
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -46,48 +50,96 @@ const Foam::NamedEnum
 Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    totalPressureFvPatchScalarField(p, iF),
+    fanCurve_(nullptr),
+    direction_(ffdOut),
+    nonDimensional_(false),
+    rpm_(nullptr),
+    dm_(nullptr)
+{}
+
+
+Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
+(
+    const fanPressureFvPatchScalarField& rhs,
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    totalPressureFvPatchScalarField(rhs, p, iF, mapper),
+    fanCurve_(rhs.fanCurve_.clone()),
+    direction_(rhs.direction_),
+    nonDimensional_(rhs.nonDimensional_),
+    rpm_(rhs.rpm_.clone()),
+    dm_(rhs.dm_.clone())
+{}
+
+
+Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
     totalPressureFvPatchScalarField(p, iF, dict),
-    fanCurve_
-    (
-        Function1<scalar>::New
+    fanCurve_(nullptr),
+    direction_(fanFlowDirectionNames_.get("direction", dict)),
+    nonDimensional_(dict.getOrDefault("nonDimensional", false)),
+    rpm_(nullptr),
+    dm_(nullptr)
+{
+    // Backwards compatibility
+    if (dict.found("file"))
+    {
+        fanCurve_.reset
         (
-            "fanCurve",
-            dimVolumetricFlux,
-            iF.dimensions(),
-            dict
-        )
-    ),
-    direction_(fanFlowDirectionNames_.read(dict.lookup("direction")))
+            new Function1Types::TableFile<scalar>("fanCurve", dict, &this->db())
+        );
+    }
+    else
+    {
+        fanCurve_.reset(Function1<scalar>::New("fanCurve", dict, &this->db()));
+    }
+
+    if (nonDimensional_)
+    {
+        rpm_.reset(Function1<scalar>::New("rpm", dict, &this->db()));
+        dm_.reset(Function1<scalar>::New("dm", dict, &this->db()));
+    }
+}
+
+
+Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
+(
+    const fanPressureFvPatchScalarField& rhs
+)
+:
+    totalPressureFvPatchScalarField(rhs),
+    fanCurve_(rhs.fanCurve_.clone()),
+    direction_(rhs.direction_),
+    nonDimensional_(rhs.nonDimensional_),
+    rpm_(rhs.rpm_.clone()),
+    dm_(rhs.dm_.clone())
 {}
 
 
 Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
 (
-    const fanPressureFvPatchScalarField& pfopsf,
-    const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const fanPressureFvPatchScalarField& rhs,
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
-    totalPressureFvPatchScalarField(pfopsf, p, iF, mapper),
-    fanCurve_(pfopsf.fanCurve_, false),
-    direction_(pfopsf.direction_)
-{}
-
-
-Foam::fanPressureFvPatchScalarField::fanPressureFvPatchScalarField
-(
-    const fanPressureFvPatchScalarField& pfopsf,
-    const DimensionedField<scalar, fvMesh>& iF
-)
-:
-    totalPressureFvPatchScalarField(pfopsf, iF),
-    fanCurve_(pfopsf.fanCurve_, false),
-    direction_(pfopsf.direction_)
+    totalPressureFvPatchScalarField(rhs, iF),
+    fanCurve_(rhs.fanCurve_.clone()),
+    direction_(rhs.direction_),
+    nonDimensional_(rhs.nonDimensional_),
+    rpm_(rhs.rpm_.clone()),
+    dm_(rhs.dm_.clone())
 {}
 
 
@@ -100,47 +152,70 @@ void Foam::fanPressureFvPatchScalarField::updateCoeffs()
         return;
     }
 
-    const fvsPatchField<scalar>& phip =
-        patch().lookupPatchField<surfaceScalarField, scalar>(phiName_);
+    // Retrieve flux field
+    const auto& phip = patch().lookupPatchField<surfaceScalarField>(phiName());
 
-    const fvPatchField<vector>& Up =
-        patch().lookupPatchField<volVectorField, vector>(UName_);
+    const int dir = 2*direction_ - 1;
 
-    const int sign = direction_ ? +1 : -1;
-
-    // Get the volumetric flow rate
+    // Average volumetric flow rate
     scalar volFlowRate = 0;
-    if (phip.internalField().dimensions() == dimVolumetricFlux)
-    {
-        volFlowRate = sign*gSum(phip);
-    }
-    else if
-    (
-        phip.internalField().dimensions() == dimMassFlux
-    )
-    {
-        const scalarField& rhop =
-            patch().lookupPatchField<volScalarField, scalar>(rhoName_);
 
-        volFlowRate = sign*gSum(phip/rhop);
+    if (phip.internalField().dimensions() == dimVolume/dimTime)
+    {
+        volFlowRate = dir*gSum(phip);
+    }
+    else if (phip.internalField().dimensions() == dimMass/dimTime)
+    {
+        const auto& rhop = patch().lookupPatchField<volScalarField>(rhoName());
+        volFlowRate = dir*gSum(phip/rhop);
     }
     else
     {
         FatalErrorInFunction
-            << "dimensions of phi are not correct"
-            << "\n    on patch " << patch().name()
+            << "dimensions of phi are not correct\n"
+            << "    on patch " << patch().name()
             << " of field " << internalField().name()
             << " in file " << internalField().objectPath() << nl
             << exit(FatalError);
     }
 
-    // Pressure drop for this flow rate
-    const scalar dp0 = fanCurve_->value(max(volFlowRate, scalar(0)));
+    // The non-dimensional parameters
 
-    dynamicPressureFvPatchScalarField::updateCoeffs
+    scalar rpm(0);
+    scalar meanDiam(0);
+
+    if (nonDimensional_)
+    {
+        rpm = rpm_->value(this->db().time().timeOutputValue());
+        meanDiam = dm_->value(this->db().time().timeOutputValue());
+
+        // Create an non-dimensional flow rate
+        volFlowRate =
+            120.0*volFlowRate
+          / stabilise
+            (
+                pow3(constant::mathematical::pi * meanDiam) * rpm,
+                VSMALL
+            );
+    }
+
+    // Pressure drop for this flow rate
+    scalar pdFan = fanCurve_->value(max(volFlowRate, scalar(0)));
+
+    if (nonDimensional_)
+    {
+        // Convert the non-dimensional deltap from curve into deltaP
+        pdFan =
+        (
+            pdFan*pow4(constant::mathematical::pi)
+          * sqr(rpm * meanDiam) / 1800.0
+        );
+    }
+
+    totalPressureFvPatchScalarField::updateCoeffs
     (
-        p0_ - sign*dp0,
-        -0.5*neg(phip)*magSqr(Up)
+        p0() - dir*pdFan,
+        patch().lookupPatchField<volVectorField>(UName())
     );
 }
 
@@ -148,8 +223,15 @@ void Foam::fanPressureFvPatchScalarField::updateCoeffs()
 void Foam::fanPressureFvPatchScalarField::write(Ostream& os) const
 {
     totalPressureFvPatchScalarField::write(os);
-    writeEntry(os, fanCurve_());
-    writeEntry(os, "direction", fanFlowDirectionNames_[direction_]);
+    fanCurve_->writeData(os);
+    os.writeEntry("direction", fanFlowDirectionNames_[direction_]);
+
+    if (nonDimensional_)
+    {
+        os.writeEntry("nonDimensional", "true");
+        rpm_->writeData(os);
+        dm_->writeData(os);
+    }
 }
 
 

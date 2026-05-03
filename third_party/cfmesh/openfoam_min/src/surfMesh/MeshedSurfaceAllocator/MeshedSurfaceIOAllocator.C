@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,112 +30,79 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
+Foam::Detail::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
 (
     const IOobject& ioPoints,
-    const IOobject& ioFaces,
-    const IOobject& ioZones
+    const IOobject& ioFaces
 )
 :
     points_(ioPoints),
-    faces_(ioFaces),
-    zones_(ioZones)
+    faces_(ioFaces)
 {}
 
 
-Foam::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
+Foam::Detail::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
 (
-    const IOobject& ioPoints,
-    const pointField& points,
-    const IOobject& ioFaces,
-    const faceList& faces,
-    const IOobject& ioZones,
-    const surfZoneList& zones
+    const IOobject& ioPoints, const pointField& points,
+    const IOobject& ioFaces,  const faceList& faces
 )
 :
     points_(ioPoints, points),
-    faces_(ioFaces, faces),
-    zones_(ioZones, zones)
+    faces_(ioFaces, faces)
 {}
 
 
-Foam::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
+Foam::Detail::MeshedSurfaceIOAllocator::MeshedSurfaceIOAllocator
 (
-    const IOobject& ioPoints,
-    pointField&& points,
-    const IOobject& ioFaces,
-    faceList&& faces,
-    const IOobject& ioZones,
-    surfZoneList&& zones
+    const IOobject& ioPoints, pointField&& points,
+    const IOobject& ioFaces,  faceList&& faces
 )
 :
-    points_(ioPoints, move(points)),
-    faces_(ioFaces, move(faces)),
-    zones_(ioZones, move(zones))
+    points_(ioPoints, std::move(points)),
+    faces_(ioFaces, std::move(faces))
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::MeshedSurfaceIOAllocator::clear()
+void Foam::Detail::MeshedSurfaceIOAllocator::setInstance
+(
+    const fileName& inst
+)
+{
+    points_.instance() = inst;
+    faces_.instance()  = inst;
+}
+
+
+void Foam::Detail::MeshedSurfaceIOAllocator::setWriteOption
+(
+    IOobjectOption::writeOption wOpt
+)
+{
+    points_.writeOpt(wOpt);
+    faces_.writeOpt(wOpt);
+}
+
+
+void Foam::Detail::MeshedSurfaceIOAllocator::clear()
 {
     points_.clear();
     faces_.clear();
-    zones_.clear();
 }
 
 
-void Foam::MeshedSurfaceIOAllocator::resetFaces
+bool Foam::Detail::MeshedSurfaceIOAllocator::writeObject
 (
-    List<face>&& faces,
-    surfZoneList&& zones
-)
+    IOstreamOption streamOpt,
+    const bool writeOnProc
+) const
 {
-    if (notNull(faces))
-    {
-        faces_.transfer(faces);
-    }
-
-    if (notNull(zones))
-    {
-        zones_.transfer(zones);
-    }
-}
-
-
-void Foam::MeshedSurfaceIOAllocator::reset
-(
-    pointField&& points,
-    faceList&& faces,
-    surfZoneList&& zones
-)
-{
-    // Take over new primitive data.
-    // Optimised to avoid overwriting data at all
-    if (notNull(points))
-    {
-        points_.transfer(points);
-    }
-
-    resetFaces(move(faces), move(zones));
-}
-
-
-void Foam::MeshedSurfaceIOAllocator::reset
-(
-    List<point>&& points,
-    faceList&& faces,
-    surfZoneList&& zones
-)
-{
-    // Take over new primitive data.
-    // Optimised to avoid overwriting data at all
-    if (notNull(points))
-    {
-        points_.transfer(points);
-    }
-
-    resetFaces(move(faces), move(zones));
+    return
+    (
+        points_.writeObject(streamOpt, writeOnProc)
+     && faces_.writeObject(streamOpt, writeOnProc)
+    );
 }
 
 

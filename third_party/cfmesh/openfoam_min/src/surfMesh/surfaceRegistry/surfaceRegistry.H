@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef surfaceRegistry_H
-#define surfaceRegistry_H
+#ifndef Foam_surfaceRegistry_H
+#define Foam_surfaceRegistry_H
 
 #include "objectRegistry.H"
 
@@ -52,8 +55,7 @@ class surfaceRegistry
 {
 public:
 
-    //- Runtime type information
-    TypeName("surfaceRegistry");
+    // Static Data Members
 
         //- The prefix to local: %surfaces
         static const word prefix;
@@ -62,23 +64,30 @@ public:
         static word defaultName;
 
 
+    //- Runtime type information
+    TypeName("surfaceRegistry");
+
+
+    // Generated Methods
+
+        //- No copy construct
+        surfaceRegistry(const surfaceRegistry&) = delete;
+
+        //- No copy assignment
+        surfaceRegistry& operator=(const surfaceRegistry&) = delete;
+
+
     // Constructors
 
-        //- Construct for the given objectRegistry and named surface
-        surfaceRegistry(const objectRegistry&, const word& surfName = "");
+        //- Construct for given objectRegistry. Uses default surface name
+        explicit surfaceRegistry(const objectRegistry& obr);
 
-        //- Disallow default bitwise copy construction
-        surfaceRegistry(const surfaceRegistry&) = delete;
+        //- Construct for given objectRegistry and named surface
+        surfaceRegistry(const objectRegistry& obr, const word& surfName);
 
 
     //- Destructor
-    virtual ~surfaceRegistry();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const surfaceRegistry&) = delete;
+    virtual ~surfaceRegistry() = default;
 };
 
 

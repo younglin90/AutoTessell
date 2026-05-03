@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::prghTotalHydrostaticPressureFvPatchScalarField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition provides static pressure condition for p_rgh,
     calculated as:
@@ -34,11 +39,11 @@ Description
 
     where
     \vartable
-        p_rgh   | Pressure - rho g.(h - hRef) [Pa]
-        ph_rgh  | Hydrostatic pressure - rho g.(h - hRef) [Pa]
+        p_rgh   | Pressure: \f$ \rho g (h - h_{ref}) \f$ [Pa]
+        ph_rgh  | Hydrostatic pressure: \f$ \rho g (h - h_{ref}) \f$ [Pa]
         h       | Height in the opposite direction to gravity
         hRef    | Reference height in the opposite direction to gravity
-        rho     | Density
+        \rho    | Density
         g       | Acceleration due to gravity [m/s^2]
     \endtable
 
@@ -81,7 +86,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-       Class prghTotalHydrostaticPressureFvPatchScalarField Declaration
+         Class prghTotalHydrostaticPressureFvPatchScalarField Declaration
 \*---------------------------------------------------------------------------*/
 
 class prghTotalHydrostaticPressureFvPatchScalarField
@@ -114,11 +119,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        prghTotalHydrostaticPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         prghTotalHydrostaticPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -128,37 +140,40 @@ public:
         (
             const prghTotalHydrostaticPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         prghTotalHydrostaticPressureFvPatchScalarField
         (
             const prghTotalHydrostaticPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         prghTotalHydrostaticPressureFvPatchScalarField
         (
             const prghTotalHydrostaticPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new prghTotalHydrostaticPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -168,12 +183,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,27 +23,23 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::faceIOList
-
-Description
-    IOList of faces
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef faceIOList_H
-#define faceIOList_H
+#ifndef Foam_faceIOList_H
+#define Foam_faceIOList_H
 
 #include "face.H"
-#include "IOList.H"
 #include "CompactIOList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+    //! IO for a List of face
     typedef IOList<face> faceIOList;
-    typedef CompactIOList<face> faceCompactIOList;
+
+    //! Compact IO for a List of face
+    typedef CompactIOList<face, label> faceCompactIOList;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

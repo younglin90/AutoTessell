@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -51,13 +53,25 @@ class extendedCentredCellToFaceStencil
 :
     public extendedCellToFaceStencil
 {
-    // Private Data
+    // Private data
 
         //- Swap map for getting neighbouring data
-        autoPtr<distributionMap> mapPtr_;
+        autoPtr<mapDistribute> mapPtr_;
 
         //- Per face the stencil.
         labelListList stencil_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        extendedCentredCellToFaceStencil
+        (
+            const extendedCentredCellToFaceStencil&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const extendedCentredCellToFaceStencil&) = delete;
 
 
 public:
@@ -67,19 +81,13 @@ public:
         //- Construct from uncompacted face stencil
         explicit extendedCentredCellToFaceStencil(const cellToFaceStencil&);
 
-        //- Disallow default bitwise copy construction
-        extendedCentredCellToFaceStencil
-        (
-            const extendedCentredCellToFaceStencil&
-        ) = delete;
-
 
     // Member Functions
 
         //- Return reference to the parallel distribution map
-        const distributionMap& map() const
+        const mapDistribute& map() const
         {
-            return mapPtr_();
+            return *mapPtr_;
         }
 
         //- Return reference to the stencil
@@ -92,11 +100,11 @@ public:
         void compact();
 
         //- Use map to get the data into stencil order
-        template<class Type>
+        template<class T>
         void collectData
         (
-            const VolField<Type>& fld,
-            List<List<Type>>& stencilFld
+            const GeometricField<T, fvPatchField, volMesh>& fld,
+            List<List<T>>& stencilFld
         ) const
         {
             extendedCellToFaceStencil::collectData
@@ -110,9 +118,9 @@ public:
 
         //- Sum vol field contributions to create face values
         template<class Type>
-        tmp<SurfaceField<Type>> weightedSum
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> weightedSum
         (
-            const VolField<Type>& fld,
+            const GeometricField<Type, fvPatchField, volMesh>& fld,
             const List<List<scalar>>& stencilWeights
         ) const
         {
@@ -125,11 +133,6 @@ public:
             );
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const extendedCentredCellToFaceStencil&) = delete;
 };
 
 

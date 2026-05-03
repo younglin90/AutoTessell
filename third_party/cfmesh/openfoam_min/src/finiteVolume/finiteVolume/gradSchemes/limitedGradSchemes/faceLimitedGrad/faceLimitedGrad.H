@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::fv::faceLimitedGrad
+
+Group
+    grpFvGradSchemes
 
 Description
     faceLimitedGrad gradient scheme applied to a runTime selected base gradient
@@ -63,6 +69,7 @@ class faceLimitedGrad
 {
     // Private Data
 
+        //- Gradient scheme
         tmp<fv::gradScheme<Type>> basicGradScheme_;
 
         //- Limiter coefficient
@@ -78,6 +85,13 @@ class faceLimitedGrad
             const scalar minDelta,
             const scalar extrapolate
         ) const;
+
+
+        //- No copy construct
+        faceLimitedGrad(const faceLimitedGrad&) = delete;
+
+        //- No copy assignment
+        void operator=(const faceLimitedGrad&) = delete;
 
 
 public:
@@ -97,38 +111,30 @@ public:
         {
             if (k_ < 0 || k_ > 1)
             {
-                FatalIOErrorInFunction
-                (
-                    schemeData
-                )   << "coefficient = " << k_
+                FatalIOErrorInFunction(schemeData)
+                    << "coefficient = " << k_
                     << " should be >= 0 and <= 1"
                     << exit(FatalIOError);
             }
         }
 
-        //- Disallow default bitwise copy construction
-        faceLimitedGrad(const faceLimitedGrad&) = delete;
-
 
     // Member Functions
 
         //- Return the gradient of the given field to the gradScheme::grad
-        //  for optional caching
-        virtual tmp<VolField <typename outerProduct<vector, Type>::type>>
-        calcGrad
+        //- for optional caching
+        virtual tmp
+        <
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > calcGrad
         (
-            const VolField<Type>& vsf,
+            const GeometricField<Type, fvPatchField, volMesh>& vsf,
             const word& name
         ) const
         {
             return grad(vsf);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const faceLimitedGrad&) = delete;
 };
 
 
@@ -143,11 +149,11 @@ inline void faceLimitedGrad<Type>::limitFace
     const scalar extrapolate
 ) const
 {
-    if (extrapolate > maxDelta + vSmall)
+    if (extrapolate > maxDelta + VSMALL)
     {
         limiter = min(limiter, maxDelta/extrapolate);
     }
-    else if (extrapolate < minDelta - vSmall)
+    else if (extrapolate < minDelta - VSMALL)
     {
         limiter = min(limiter, minDelta/extrapolate);
     }

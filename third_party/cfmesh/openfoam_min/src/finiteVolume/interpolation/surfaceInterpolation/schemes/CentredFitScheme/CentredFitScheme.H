@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::CentredFitScheme
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
     Centred fit surface interpolation scheme which applies an explicit
     correction to linear.
@@ -42,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class CentredFitScheme Declaration
+                           Class CentredFitScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class Polynomial, class Stencil>
@@ -59,6 +64,15 @@ class CentredFitScheme
 
         //- Weights for central stencil
         const scalar centralWeight_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        CentredFitScheme(const CentredFitScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const CentredFitScheme&) = delete;
 
 
 public:
@@ -91,9 +105,6 @@ public:
             centralWeight_(1000)
         {}
 
-        //- Disallow default bitwise copy construction
-        CentredFitScheme(const CentredFitScheme&) = delete;
-
 
     // Member Functions
 
@@ -104,10 +115,10 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -130,12 +141,6 @@ public:
 
             return stencil.weightedSum(vf, f);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const CentredFitScheme&) = delete;
 };
 
 

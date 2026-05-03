@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dimensionedSymmTensor_H
-#define dimensionedSymmTensor_H
+#ifndef Foam_dimensionedSymmTensor_H
+#define Foam_dimensionedSymmTensor_H
 
 #include "dimensionedVector.H"
 #include "symmTensor.H"
@@ -48,7 +50,7 @@ namespace Foam
 typedef dimensioned<symmTensor> dimensionedSymmTensor;
 
 
-// global functions
+// Global Functions
 
 dimensionedSymmTensor sqr(const dimensionedVector&);
 dimensionedSymmTensor innerSqr(const dimensionedSymmTensor&);
@@ -63,7 +65,7 @@ dimensionedSymmTensor cof(const dimensionedSymmTensor&);
 dimensionedSymmTensor inv(const dimensionedSymmTensor&);
 
 
-// global operators
+// Global Operators
 
 //- Hodge Dual operator (tensor -> vector)
 dimensionedVector operator*(const dimensionedSymmTensor&);

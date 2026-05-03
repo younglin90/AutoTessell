@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +53,7 @@ template<class Type, class DType, class LUType>
 typename Foam::SolverPerformance<Type>
 Foam::PCICG<Type, DType, LUType>::solve(Field<Type>& psi) const
 {
-    word preconditionerName(this->controlDict_.lookup("preconditioner"));
+    const word preconditionerName(this->controlDict_.getWord("preconditioner"));
 
     // --- Setup class containing solver performance data
     SolverPerformance<Type> solverPerf
@@ -84,7 +87,7 @@ Foam::PCICG<Type, DType, LUType>::solve(Field<Type>& psi) const
     // --- Calculate normalisation factor
     Type normFactor = this->normFactor(psi, wA, pA);
 
-    if (LduMatrix<Type, DType, LUType>::debug >= 2)
+    if ((this->log_ >= 2) || (LduMatrix<Type, DType, LUType>::debug >= 2))
     {
         Info<< "   Normalisation factor = " << normFactor << endl;
     }
@@ -97,7 +100,12 @@ Foam::PCICG<Type, DType, LUType>::solve(Field<Type>& psi) const
     if
     (
         this->minIter_ > 0
-     || !solverPerf.checkConvergence(this->tolerance_, this->relTol_)
+     || !solverPerf.checkConvergence
+        (
+            this->tolerance_,
+            this->relTol_,
+            this->log_
+        )
     )
     {
         // --- Select and construct the preconditioner
@@ -182,7 +190,12 @@ Foam::PCICG<Type, DType, LUType>::solve(Field<Type>& psi) const
         (
             (
                 nIter++ < this->maxIter_
-            && !solverPerf.checkConvergence(this->tolerance_, this->relTol_)
+            && !solverPerf.checkConvergence
+                (
+                    this->tolerance_,
+                    this->relTol_,
+                    this->log_
+                )
             )
          || nIter < this->minIter_
         );

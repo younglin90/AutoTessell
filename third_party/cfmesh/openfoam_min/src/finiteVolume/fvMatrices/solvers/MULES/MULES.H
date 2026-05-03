@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,12 +45,10 @@ SourceFiles
 #ifndef MULES_H
 #define MULES_H
 
-#include "Switch.H"
 #include "volFieldsFwd.H"
 #include "surfaceFieldsFwd.H"
 #include "primitiveFieldsFwd.H"
 #include "geometricOneField.H"
-#include "zero.H"
 #include "zeroField.H"
 #include "UPtrList.H"
 #include "HashSet.H"
@@ -61,61 +61,7 @@ namespace Foam
 namespace MULES
 {
 
-NamespaceName("MULES");
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-// MULES control structure
-struct control
-{
-    //- Optional maximum number of limiter iterations
-    //  Defaults to 3
-    label nIter;
-
-    //- Optional limiter convergence tolerance
-    //  1e-2 is usually sufficient
-    //  but 1e-3 can be used for very tight convergence
-    //  Defaults to 0, i.e. unused and nIter iterations are performed
-    scalar tol;
-
-    //- Optional switch to select global bounds only
-    //  rather than local and global bounds
-    Switch globalBounds;
-
-    //- Optional coefficient to relax the local boundedness constraint
-    //  by adding extremaCoeff*local_range to the allowed range
-    //  allowing the solution to approach the global bounds in case temporary
-    //  smearing has caused the solution to deviate from the entire range.
-    //
-    //  A value of 0 enforces strict local boundedness,
-    //  a value of 1 enforces the global bounds only.
-    //  Defaults to 0
-    scalar extremaCoeff;
-
-    //- Optional coefficient to relax the local boundedness constraint
-    //  in the cells adjacent to boundaries only
-    //  Defaults to 0
-    scalar boundaryExtremaCoeff;
-
-    //- Optional coefficient to reduce the allowed range of the solution to
-    //  smoothingCoeff*local_range.
-    //
-    //  This option should only be used to improve the smoothness of the
-    //  solution at low Courant number (explicit solution with sub-cycling)
-    //  otherwise excessive smearing may result.
-    scalar smoothingCoeff;
-
-    //- Null constructor
-    //  Should be followed by a call to read(dict)
-    control()
-    {}
-
-    //- Construct from dict and set the controls
-    control(const dictionary& dict);
-
-    //- Read dict and set the controls
-    void read(const dictionary& dict);
-};
 
 template<class RdeltaTType, class RhoType, class SpType, class SuType>
 void explicitSolve
@@ -123,7 +69,7 @@ void explicitSolve
     const RdeltaTType& rDeltaT,
     const RhoType& rho,
     volScalarField& psi,
-    const surfaceScalarField& psiPhi,
+    const surfaceScalarField& phiPsi,
     const SpType& Sp,
     const SuType& Su
 );
@@ -133,7 +79,7 @@ void explicitSolve
 (
     const RhoType& rho,
     volScalarField& psi,
-    const surfaceScalarField& psiPhi
+    const surfaceScalarField& phiPsi
 );
 
 template<class RhoType, class SpType, class SuType>
@@ -141,7 +87,7 @@ void explicitSolve
 (
     const RhoType& rho,
     volScalarField& psi,
-    const surfaceScalarField& psiPhi,
+    const surfaceScalarField& phiPsi,
     const SpType& Sp,
     const SuType& Su
 );
@@ -149,14 +95,14 @@ void explicitSolve
 template<class RhoType, class PsiMaxType, class PsiMinType>
 void explicitSolve
 (
-    const control& controls,
     const RhoType& rho,
     volScalarField& psi,
     const surfaceScalarField& phiBD,
-    surfaceScalarField& psiPhi,
+    surfaceScalarField& phiPsi,
     const PsiMaxType& psiMax,
     const PsiMinType& psiMin
 );
+
 
 template
 <
@@ -168,63 +114,40 @@ template
 >
 void explicitSolve
 (
-    const control& controls,
     const RhoType& rho,
     volScalarField& psi,
     const surfaceScalarField& phiBD,
-    surfaceScalarField& psiPhi,
+    surfaceScalarField& phiPsi,
     const SpType& Sp,
     const SuType& Su,
     const PsiMaxType& psiMax,
     const PsiMinType& psiMin
 );
 
+
 template
 <
     class RdeltaTType,
     class RhoType,
     class SpType,
+    class SuType,
     class PsiMaxType,
     class PsiMinType
 >
 void limiter
 (
-    const control& controls,
-    surfaceScalarField& lambda,
+    scalarField& allLambda,
     const RdeltaTType& rDeltaT,
     const RhoType& rho,
     const volScalarField& psi,
-    const scalarField& SuCorr,
-    const surfaceScalarField& phi,
+    const surfaceScalarField& phiBD,
     const surfaceScalarField& phiCorr,
     const SpType& Sp,
+    const SuType& Su,
     const PsiMaxType& psiMax,
     const PsiMinType& psiMin
 );
 
-template
-<
-    class RdeltaTType,
-    class RhoType,
-    class SpType,
-    class SuType,
-    class PsiMaxType,
-    class PsiMinType
->
-void limit
-(
-    const control& controls,
-    const RdeltaTType& rDeltaT,
-    const RhoType& rho,
-    const volScalarField& psi,
-    const surfaceScalarField& phi,
-    surfaceScalarField& psiPhi,
-    const SpType& Sp,
-    const SuType& Su,
-    const PsiMaxType& psiMax,
-    const PsiMinType& psiMin,
-    const bool returnCorr
-);
 
 template
 <
@@ -237,19 +160,18 @@ template
 >
 void limit
 (
-    const control& controls,
     const RdeltaTType& rDeltaT,
     const RhoType& rho,
     const volScalarField& psi,
     const surfaceScalarField& phi,
-    const surfaceScalarField& phiBD,
-    surfaceScalarField& psiPhi,
+    surfaceScalarField& phiPsi,
     const SpType& Sp,
     const SuType& Su,
     const PsiMaxType& psiMax,
     const PsiMinType& psiMin,
     const bool returnCorr
 );
+
 
 template
 <
@@ -261,11 +183,10 @@ template
 >
 void limit
 (
-    const control& controls,
     const RhoType& rho,
     const volScalarField& psi,
     const surfaceScalarField& phi,
-    surfaceScalarField& psiPhi,
+    surfaceScalarField& phiPsi,
     const SpType& Sp,
     const SuType& Su,
     const PsiMaxType& psiMax,
@@ -273,59 +194,26 @@ void limit
     const bool returnCorr
 );
 
-template
-<
-    class RhoType,
-    class SpType,
-    class SuType,
-    class PsiMaxType,
-    class PsiMinType
->
-void limit
-(
-    const control& controls,
-    const RhoType& rho,
-    const volScalarField& psi,
-    const surfaceScalarField& phi,
-    const surfaceScalarField& phiBD,
-    surfaceScalarField& psiPhi,
-    const SpType& Sp,
-    const SuType& Su,
-    const PsiMaxType& psiMax,
-    const PsiMinType& psiMin,
-    const bool returnCorr
-);
 
-void limitSumCorr(UPtrList<scalarField>& psiPhiCorrs);
+void limitSum(UPtrList<scalarField>& phiPsiCorrs);
 
-void limitSumCorr
+template<class SurfaceScalarFieldList>
+void limitSum(SurfaceScalarFieldList& phiPsiCorrs);
+
+void limitSum
 (
+    const UPtrList<const scalarField>& alphas,
     UPtrList<scalarField>& phiPsiCorrs,
-    const UPtrList<scalarField>& phiPsiFixedCorrs
+    const labelHashSet& fixed
 );
 
-void limitSumCorr
-(
-    const UPtrList<const volScalarField>& psis,
-    UPtrList<surfaceScalarField>& psiPhiCorrs,
-    const surfaceScalarField& phi
-);
-
+template<class SurfaceScalarFieldList>
 void limitSum
 (
-    const UPtrList<const volScalarField>& psis,
-    const PtrList<surfaceScalarField>& alphaPhiBDs,
-    UPtrList<surfaceScalarField>& psiPhis,
-    const surfaceScalarField& phi
+    const SurfaceScalarFieldList& alphas,
+    SurfaceScalarFieldList& phiPsiCorrs,
+    const labelHashSet& fixed
 );
-
-void limitSum
-(
-    const UPtrList<const volScalarField>& psis,
-    UPtrList<surfaceScalarField>& psiPhis,
-    const surfaceScalarField& phi
-);
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -335,7 +223,6 @@ void limitSum
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #ifdef NoRepository
-    #include "MULESlimiter.C"
     #include "MULESTemplates.C"
 #endif
 

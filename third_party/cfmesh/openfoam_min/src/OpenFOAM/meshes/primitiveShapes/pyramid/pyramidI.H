@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,18 +23,16 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-
 \*---------------------------------------------------------------------------*/
 
 #include "IOstreams.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-template<class Point, class PointRef, class polygonRef>
-inline Foam::pyramid<Point, PointRef, polygonRef>::pyramid
+template<class Point, class PointRef, class PolygonRef>
+inline Foam::pyramid<Point, PointRef, PolygonRef>::pyramid
 (
-    polygonRef base,
+    PolygonRef base,
     const Point& apex
 )
 :
@@ -41,43 +41,29 @@ inline Foam::pyramid<Point, PointRef, polygonRef>::pyramid
 {}
 
 
-template<class Point, class PointRef, class polygonRef>
-inline Foam::pyramid<Point, PointRef, polygonRef>::pyramid(Istream& is)
+template<class Point, class PointRef, class PolygonRef>
+inline Foam::pyramid<Point, PointRef, PolygonRef>::pyramid(Istream& is)
 {
-    is >> base_ >> apex_;
-    is.check("pyramid::pyramid(Istream&)");
+    is >> *this;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class Point, class PointRef, class polygonRef>
-inline const Point& Foam::pyramid<Point, PointRef, polygonRef>::apex() const
-{
-    return apex_;
-}
-
-template<class Point, class PointRef, class polygonRef>
-inline polygonRef Foam::pyramid<Point, PointRef, polygonRef>::base() const
-{
-    return base_;
-}
-
-
-template<class Point, class PointRef, class polygonRef>
-inline Point Foam::pyramid<Point, PointRef, polygonRef>::centre
+template<class Point, class PointRef, class PolygonRef>
+inline Point Foam::pyramid<Point, PointRef, PolygonRef>::centre
 (
-    const pointField& points
+    const UList<point>& points
 ) const
 {
     return (3.0/4.0)*base_.centre(points) + (1.0/4.0)*apex_;
 }
 
 
-template<class Point, class PointRef, class polygonRef>
-inline Foam::vector Foam::pyramid<Point, PointRef, polygonRef>::height
+template<class Point, class PointRef, class PolygonRef>
+inline Foam::vector Foam::pyramid<Point, PointRef, PolygonRef>::height
 (
-    const pointField& points
+    const UList<point>& points
 ) const
 {
     // Height = apex - baseCentroid
@@ -85,36 +71,36 @@ inline Foam::vector Foam::pyramid<Point, PointRef, polygonRef>::height
 }
 
 
-template<class Point, class PointRef, class polygonRef>
-inline Foam::scalar Foam::pyramid<Point, PointRef, polygonRef>::mag
+template<class Point, class PointRef, class PolygonRef>
+inline Foam::scalar Foam::pyramid<Point, PointRef, PolygonRef>::mag
 (
-    const pointField& points
+    const UList<point>& points
 ) const
 {
-    return (1.0/3.0)*(base_.area(points)&(height(points)));
+    return (1.0/3.0)*(base_.areaNormal(points) & (height(points)));
 }
 
 
 // * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * * //
 
-template<class Point, class PointRef, class polygonRef>
+template<class Point, class PointRef, class PolygonRef>
 inline Foam::Istream& Foam::operator>>
 (
     Istream& is,
-    pyramid<Point, PointRef, polygonRef>& p
+    pyramid<Point, PointRef, PolygonRef>& p
 )
 {
     is  >> p.base_ >> p.apex_;
-    is.check("Istream& operator>>(Istream&, pyramid&)");
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-template<class Point, class PointRef, class polygonRef>
+template<class Point, class PointRef, class PolygonRef>
 inline Foam::Ostream& Foam::operator<<
 (
     Ostream& os,
-    const pyramid<Point, PointRef, polygonRef>& p
+    const pyramid<Point, PointRef, PolygonRef>& p
 )
 {
     os  << p.base_ << tab << p.apex_ << nl;

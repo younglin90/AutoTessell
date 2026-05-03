@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,59 +25,111 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::functionObjects::sampledSurfaces
+    Foam::sampledSurfaces
 
 Description
-    Set of surfaces to sample
+    Set of surfaces to sample.
+
+    The write() method is used to sample and write files.
 
     Example of function object specification:
+
     \verbatim
-    surfaces1
+    surfaces
     {
-        type            surfaces;
-        libs            ("libsampling.so");
+        type    surfaces;
+        libs    (sampling);
 
+        // Write at same frequency as fields
         writeControl    writeTime;
+        writeInterval   1;
 
+        // Fields to be sampled
         fields          (p U);
 
+        // Scheme to obtain face centre value
+        sampleScheme    cell;
+
+        // Scheme to obtain node values
+        // (only used if interpolate=true for the surfaces below)
+        interpolationScheme cell;
+
+        // Optional: registry storage
+        store           true
+
+        // Output surface format
         surfaceFormat   vtk;
-        interpolationScheme cellPoint;
+
+        formatOptions
+        {
+            default
+            {
+                verbose     true;
+            }
+            vtk
+            {
+                precision   10;
+            }
+        }
 
         surfaces
-        (
-            p1e5
+        {
+            f0surf
             {
-                type            isoSurface;
-                isoField        p;
-                isoValue        1e5;
-                interpolate     yes;
+                type        meshedSurface;
+                surface     f0surf.obj;
+                source      cells;
+
+                // Optional: keep original regions
+                keepIds     true;
+
+                // Optional: generate values on points instead of faces
+                interpolate true;
+
+                // Optional: alternative output type
+                surfaceFormat   ensight;
+
+                // Optional: registry storage
+                store       true
             }
-        );
+        }
     }
     \endverbatim
 
-Usage
+    Entries:
     \table
-        Property     | Description             | Required    | Default value
-        type         | type name: surfaces     | yes         |
-        surfaceFormat | the format in which to write the surface file | yes   |
-        interpolationScheme | the method by which values are interpolated \\
-                              from the mesh to the surface | yes
-        writeEmpty   | write out files for empty surfaces | no | no
-        surfaces     | the list of surfaces    | yes         |
+        Property | Description                              | Required | Default
+        type     | Type-name: surfaces                      | yes |
+        surfaces | Dictionary or list of sample surfaces    | expected |
+        fields   | word/regex list of fields to sample      | yes |
+        sampleScheme | scheme to obtain face centre value   | no  | cell
+        interpolationScheme | scheme to obtain node values  | no  | cellPoint
+        surfaceFormat | output surface format               | yes |
+        formatOptions | dictionary of format options        | no  |
+        sampleOnExecute | Sample (store) on execution as well | no | false
+        store    | Store surface/fields on registry         | no  | false
     \endtable
 
-See also
-    Foam::sampledSurfaces
+    Additional per-surface entries:
+    \table
+        Property | Description                              | Required | Default
+        store    | Store surface/fields on registry         | no  |
+        surfaceFormat | output surface format               | no  |
+        formatOptions | dictionary of format options        | no  |
+    \endtable
+
+Note
+    The interpolationScheme is only used if interpolate=true is used by any
+    of the surfaces.
 
 SourceFiles
     sampledSurfaces.C
+    sampledSurfacesTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef sampledSurfaces_functionObject_H
-#define sampledSurfaces_functionObject_H
+#ifndef Foam_sampledSurfaces_H
+#define Foam_sampledSurfaces_H
 
 #include "fvMeshFunctionObject.H"
 #include "sampledSurface.H"
@@ -88,13 +143,8 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class Time;
-class fvMesh;
-class dictionary;
-
-namespace functionObjects
-{
+// Forward Declarations
+class polySurface;
 
 /*---------------------------------------------------------------------------*\
                        Class sampledSurfaces Declaration
@@ -102,92 +152,156 @@ namespace functionObjects
 
 class sampledSurfaces
 :
-    public fvMeshFunctionObject,
+    public functionObjects::fvMeshFunctionObject,
     public PtrList<sampledSurface>
 {
-    // Private classes
-
-        //- Class used for surface merging information
-        class mergeInfo
-        {
-        public:
-            pointField points;
-            faceList   faces;
-            labelList  pointsMap;
-
-            //- Clear all storage
-            void clear()
-            {
-                points.clear();
-                faces.clear();
-                pointsMap.clear();
-            }
-        };
-
-
     // Static Data Members
 
         //- Tolerance for merging points (fraction of mesh bounding box)
         static scalar mergeTol_;
 
+        //- Local control for sampling actions
+        enum sampleActionType : unsigned
+        {
+            ACTION_NONE  = 0,
+            ACTION_WRITE = 0x1,
+            ACTION_STORE = 0x2,
+            ACTION_ALL = 0xF
+        };
+
 
     // Private Data
+
+        //- Load fields from files (not from objectRegistry)
+        const bool loadFromFiles_;
+
+        //- Output verbosity
+        bool verbose_;
+
+        //- Perform sample/store actions on execute as well
+        bool onExecute_;
 
         //- Output path
         fileName outputPath_;
 
 
-        // Read from dictionary
+    // Read from dictionary
 
-            //- Names of fields to sample
-            wordList fields_;
+        //- Names of fields to sample
+        wordRes fieldSelection_;
 
-            //- Interpolation scheme to use
-            word interpolationScheme_;
+        //- Interpolation/sample scheme to obtain face values
+        word sampleFaceScheme_;
 
-            //- Should we create files for empty surfaces?
-            Switch writeEmpty_;
-
-
-        // Surfaces
-
-            //- Information for merging surfaces
-            List<mergeInfo> mergeList_;
+        //- Interpolation/sample scheme to obtain node values
+        word sampleNodeScheme_;
 
 
-        // Calculated
+    // Output control
 
-            //- Surface formatter
-            autoPtr<surfaceWriter> formatter_;
+        //- Surface writers (one per surface)
+        PtrList<surfaceWriter> writers_;
+
+        //- Per-surface selection of store/write actions
+        List<unsigned> actions_;
+
+        //- Per-surface status of the surfaces
+        List<bool> hasFaces_;
 
 
     // Private Member Functions
 
-        //- Does any of the surfaces need an update?
-        bool needsUpdate() const;
+        //- Return the surfaces
+        const PtrList<sampledSurface>& surfaces() const noexcept
+        {
+            return *this;
+        }
 
-        //- Update the surfaces as required and merge surface points (parallel).
+        //- Return the surfaces
+        PtrList<sampledSurface>& surfaces() noexcept
+        {
+            return *this;
+        }
+
+        //- A new surfaceWriter, with per-surface formatOptions
+        static autoPtr<surfaceWriter> newWriter
+        (
+            word writerType,
+            const dictionary& topDict,
+            const dictionary& surfDict
+        );
+
+
+        //- Perform sampling action with store/write
+        bool performAction(unsigned request);
+
+        //- Count selected/sampled fields per surface
+        //  Returns empty IOobjectList if loadFromFiles_ is not active
+        IOobjectList preCheckFields();
+
+        //- Write sampled fieldName on surface and on outputDir path
+        template<class Type>
+        void writeSurface
+        (
+            surfaceWriter& writer,
+            const Field<Type>& values,
+            const word& fieldName
+        );
+
+        //- Sample and store/write a specific volume field
+        template<class Type>
+        void performAction(const VolumeField<Type>& fld, unsigned request);
+
+        //- Sample and store/write a specific surface field
+        template<class Type>
+        void performAction(const SurfaceField<Type>& fld, unsigned request);
+
+        //- Sample and write all applicable sampled fields
+        //  Only uses IOobjectList when loadFromFiles_ is active
+        template<class GeoField>
+        void performAction
+        (
+            const IOobjectList& objects,
+            unsigned request
+        );
+
+
+        //- Put surface onto registry
+        void storeRegistrySurface(const sampledSurface& s);
+
+        //- Store sampled field onto surface registry (if surface exists)
+        template<class Type, class GeoMeshType>
+        void storeRegistryField
+        (
+            const sampledSurface& s,
+            const word& fieldName,
+            const dimensionSet& dims,
+            Field<Type>&& values
+        );
+
+        //- Test surfaces for condition.
+        //- Like std::any_of() but without any iterator requirements
+        template<class Container, class Predicate>
+        static bool testAny(const Container& items, const Predicate& pred);
+
+        //- Do any surfaces need an update?
+        virtual bool needsUpdate() const;
+
+        //- Mark the surfaces as needing an update.
+        //  Return false if all surfaces were already marked as expired.
+        //  Optionally force expire, even if a surface has been marked as
+        //  invariant.
+        virtual bool expire(const bool force=false);
+
+        //- Update the surfaces as required.
         //  Return false if no surfaces required an update.
-        bool update();
+        virtual bool update();
 
-        //- Sample all fields of a type on a given surface
-        template<class Type>
-        PtrList<Field<Type>> sampleLocalType
-        (
-            const label surfi,
-            const wordList& fieldNames,
-            HashPtrTable<interpolation<Type>>& interpolations
-        );
+        //- No copy construct
+        sampledSurfaces(const sampledSurfaces&) = delete;
 
-        //- Sample all fields of a type on a given surface and combine on the
-        //  master for writing
-        template<class Type>
-        PtrList<Field<Type>> sampleType
-        (
-            const label surfi,
-            const wordList& fieldNames,
-            HashPtrTable<interpolation<Type>>& interpolations
-        );
+        //- No copy assignment
+        void operator=(const sampledSurfaces&) = delete;
 
 
 public:
@@ -202,55 +316,62 @@ public:
         sampledSurfaces
         (
             const word& name,
-            const Time& time,
+            const Time& runTime,
             const dictionary& dict
         );
 
-        //- Disallow default bitwise copy construction
-        sampledSurfaces(const sampledSurfaces&) = delete;
+        //- Construct for given objectRegistry and dictionary
+        //  allow the possibility to load fields from files
+        sampledSurfaces
+        (
+            const word& name,
+            const objectRegistry& obr,
+            const dictionary& dict,
+            const bool loadFromFiles = false
+        );
 
 
     //- Destructor
-    virtual ~sampledSurfaces();
+    virtual ~sampledSurfaces() = default;
 
 
     // Member Functions
 
+        //- Enable/disable verbose output
+        //  \return old value
+        bool verbose(bool on) noexcept;
+
+        //- Return names of fields to sample
+        const wordRes& fieldNames() const noexcept { return fieldSelection_; }
+
         //- Read the sampledSurfaces dictionary
-        virtual bool read(const dictionary&);
+        virtual bool read(const dictionary& dict);
 
-        //- Return the list of fields required
-        virtual wordList fields() const;
-
-        //- Execute, currently does nothing
+        //- Sample and store if the sampleOnExecute is enabled.
         virtual bool execute();
 
         //- Sample and write
         virtual bool write();
 
-        //- Update for mesh point-motion
-        virtual void movePoints(const polyMesh&);
+        //- Update for changes of mesh - expires the surfaces
+        virtual void updateMesh(const mapPolyMesh& mpm);
 
-        //- Update topology using the given map
-        virtual void topoChange(const polyTopoChangeMap&);
+        //- Update for mesh point-motion - expires the surfaces
+        virtual void movePoints(const polyMesh& mesh);
 
-        //- Update from another mesh using the given map
-        virtual void mapMesh(const polyMeshMap&);
+        //- Update for changes of mesh due to readUpdate - expires the surfaces
+        virtual void readUpdate(const polyMesh::readUpdateState state);
 
-        //- Redistribute or update using the given distribution map
-        virtual void distribute(const polyDistributionMap&);
+        //- Get merge tolerance
+        static scalar mergeTol() noexcept;
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const sampledSurfaces&) = delete;
+        //- Set merge tolerance and return old value
+        static scalar mergeTol(scalar tol) noexcept;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace functionObjects
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

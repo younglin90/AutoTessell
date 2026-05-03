@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,24 @@ Class
     Foam::fileFormats::GTSsurfaceFormat
 
 Description
-    Provide a means of reading/writing GTS format.
+    Read/write GTS format.
+
     The output is never sorted by zone and is only written if it consists
     entirely of triangles.
+
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
 
 SourceFiles
     GTSsurfaceFormat.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef GTSsurfaceFormat_H
-#define GTSsurfaceFormat_H
+#ifndef Foam_GTSsurfaceFormat_H
+#define Foam_GTSsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -49,7 +59,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class GTSsurfaceFormat Declaration
+                Class fileFormats::GTSsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -57,56 +67,73 @@ class GTSsurfaceFormat
 :
     public UnsortedMeshedSurface<Face>
 {
+    // Private Member Functions
+
+        //- Check and raise FatalError if output is not triangulated
+        //  Triangulating on-the-fly is otherwise too annoying
+        static bool checkIfTriangulated(const UList<Face>& faceLst);
+
+
 public:
 
     // Constructors
 
         //- Construct from file name
-        GTSsurfaceFormat(const fileName&);
-
-        //- Disallow default bitwise copy construction
-        GTSsurfaceFormat(const GTSsurfaceFormat<Face>&) = delete;
-
-
-    // Selectors
-
-        //- Read file and return surface
-        static autoPtr<UnsortedMeshedSurface<Face>> New(const fileName& name)
-        {
-            return autoPtr<UnsortedMeshedSurface<Face>>
-            (
-                new GTSsurfaceFormat<Face>(name)
-            );
-        }
+        explicit GTSsurfaceFormat(const fileName& filename);
 
 
     //- Destructor
-    virtual ~GTSsurfaceFormat()
-    {}
+    virtual ~GTSsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write MeshedSurface
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
+
+        //- Write UnsortedMeshedSurface, the output remains unsorted
+        static void write
+        (
+            const fileName& filename,
+            const UnsortedMeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write MeshedSurface
-        static void write(const fileName&, const MeshedSurface<Face>&);
-
-        //- Write UnsortedMeshedSurface, the output remains unsorted
-        static void write(const fileName&, const UnsortedMeshedSurface<Face>&);
-
         //- Read from file
-        virtual bool read(const fileName&);
+        virtual bool read(const fileName& filename) override;
 
-        //- Write object
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, *this);
+            write(name, *this, streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const GTSsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, *this, streamOpt, options);
+        }
 };
 
 

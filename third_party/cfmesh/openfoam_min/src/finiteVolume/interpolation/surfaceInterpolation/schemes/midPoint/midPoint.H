@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::midPoint
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     Mid-point interpolation (weighting factors = 0.5) scheme class.
@@ -44,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class midPoint Declaration
+                           Class midPoint Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,6 +57,11 @@ class midPoint
 :
     public surfaceInterpolationScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const midPoint&) = delete;
+
 
 public:
 
@@ -90,21 +100,18 @@ public:
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
-            tmp<surfaceScalarField> taw
+            auto taw = surfaceScalarField::New
             (
-                surfaceScalarField::New
-                (
-                    "midPointWeights",
-                    this->mesh(),
-                    dimensionedScalar(dimless, 0.5)
-                )
+                "midPointWeights",
+                IOobject::NO_REGISTER,
+                this->mesh(),
+                dimensionedScalar("0.5", dimless, 0.5)
             );
 
-            surfaceScalarField::Boundary& awBf =
-                taw.ref().boundaryFieldRef();
+            auto& awBf = taw.ref().boundaryFieldRef();
 
             forAll(awBf, patchi)
             {
@@ -116,12 +123,6 @@ public:
 
             return taw;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const midPoint&) = delete;
 };
 
 

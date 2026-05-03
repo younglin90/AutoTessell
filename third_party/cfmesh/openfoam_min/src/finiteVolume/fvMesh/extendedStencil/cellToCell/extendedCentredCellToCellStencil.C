@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +26,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "extendedCentredCellToCellStencil.H"
-#include "distributionMap.H"
+#include "mapDistribute.H"
 #include "cellToCellStencil.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -41,7 +43,7 @@ Foam::extendedCentredCellToCellStencil::extendedCentredCellToCellStencil
     List<Map<label>> compactMap(Pstream::nProcs());
     mapPtr_.reset
     (
-        new distributionMap
+        new mapDistribute
         (
             stencil.globalNumbering(),
             stencil_,

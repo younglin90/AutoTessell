@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::freestreamPressureFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a free-stream condition for pressure.
 
@@ -33,10 +38,9 @@ Description
 
 Usage
     \table
-        Property        | Description                | Required | Default value
-        U               | velocity field name        | no       | U
-        freestreamValue | freestream pressure        | yes      |
-        supersonic      | Switch for supersonic flow | no       | false
+        Property        | Description             | Required    | Default value
+        U               | velocity field name     | no          | U
+        freestreamValue | freestream pressure     | yes         |
     \endtable
 
     Example of the boundary condition specification:
@@ -48,9 +52,8 @@ Usage
     }
     \endverbatim
 
-    Note:
-        This condition is designed to operate with a freestreamVelocity
-        condition
+Note
+    This condition is designed to operate with a freestreamVelocity condition
 
 See also
     Foam::mixedFvPatchField
@@ -73,20 +76,17 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-            Class freestreamPressureFvPatchScalarField Declaration
+             Class freestreamPressureFvPatchScalarField Declaration
 \*---------------------------------------------------------------------------*/
 
 class freestreamPressureFvPatchScalarField
 :
     public mixedFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Name of the velocity field
         word UName_;
-
-        //- Set true for supersonic freestream
-        Switch supersonic_;
 
 
 public:
@@ -97,11 +97,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        freestreamPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         freestreamPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -111,63 +118,53 @@ public:
         (
             const freestreamPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         freestreamPressureFvPatchScalarField
         (
             const freestreamPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         freestreamPressureFvPatchScalarField
         (
             const freestreamPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new freestreamPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-            const scalarField& freestreamValue() const
-            {
-                return refValue();
-            }
+        //- Same as refValue()
+        const scalarField& freestreamValue() const { return refValue(); }
 
-            scalarField& freestreamValue()
-            {
-                return refValue();
-            }
+        //- Same as refValue()
+        scalarField& freestreamValue() { return refValue(); }
 
 
-        // Evaluation functions
-
-            //- Update the coefficients associated with the patch field
-            virtual void updateCoeffs();
-
+        //- Update the coefficients associated with the patch field
+        virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchScalarField::operator=;
 };
 
 

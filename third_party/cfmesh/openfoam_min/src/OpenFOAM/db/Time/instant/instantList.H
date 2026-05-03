@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +31,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef instantList_H
-#define instantList_H
+#ifndef Foam_instantList_H
+#define Foam_instantList_H
 
 #include "instant.H"
 #include "List.H"
@@ -39,7 +41,11 @@ Description
 
 namespace Foam
 {
-    typedef List<instant> instantList;
+
+typedef
+    List<instant>
+    instantList;
+
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,98 +28,184 @@ License
 
 #include "DiagonalMatrix.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-inline Foam::DiagonalMatrix<Type>::DiagonalMatrix()
+Foam::DiagonalMatrix<Type>::DiagonalMatrix(const label n)
 :
-    List<Type>()
+    List<Type>(n)
+{}
+
+
+template<class Type>
+Foam::DiagonalMatrix<Type>::DiagonalMatrix(const label n, const Foam::zero)
+:
+    List<Type>(n, Foam::zero{})
+{}
+
+
+template<class Type>
+Foam::DiagonalMatrix<Type>::DiagonalMatrix(const label n, const Type& val)
+:
+    List<Type>(n, val)
 {}
 
 
 template<class Type>
 template<class Form>
-Foam::DiagonalMatrix<Type>::DiagonalMatrix(const Matrix<Form, Type>& a)
+Foam::DiagonalMatrix<Type>::DiagonalMatrix(const Matrix<Form, Type>& mat)
 :
-    List<Type>(min(a.m(), a.n()))
+    List<Type>(min(mat.m(), mat.n()))
 {
-    forAll(*this, i)
+    label i = 0;
+
+    for (Type& val : *this)
     {
-        this->operator[](i) = a(i, i);
+        val = mat(i, i);
+        ++i;
     }
 }
-
-
-template<class Type>
-Foam::DiagonalMatrix<Type>::DiagonalMatrix(const label size)
-:
-    List<Type>(size)
-{}
-
-
-template<class Type>
-Foam::DiagonalMatrix<Type>::DiagonalMatrix(const label size, const Type& val)
-:
-    List<Type>(size, val)
-{}
-
-
-template<class Type>
-Foam::DiagonalMatrix<Type>::DiagonalMatrix(std::initializer_list<Type> lst)
-:
-    List<Type>(lst)
-{}
-
-
-template<class Type>
-Foam::DiagonalMatrix<Type>::DiagonalMatrix(Istream& is)
-:
-    List<Type>(is)
-{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::DiagonalMatrix<Type>& Foam::DiagonalMatrix<Type>::invert()
+void Foam::DiagonalMatrix<Type>::invert()
 {
-    forAll(*this, i)
+    for (Type& val : *this)
     {
-        Type x = this->operator[](i);
-        if (mag(x) < vSmall)
+        // If mag(val)<VSMALL, leave untouched
+        // forcing of val=Zero sometimes confuses compiler
+        if (mag(val) > VSMALL)
         {
-            this->operator[](i) = Type(0);
-        }
-        else
-        {
-            this->operator[](i) = Type(1)/x;
+            val = Type(1)/val;
         }
     }
-
-    return this;
 }
 
 
 template<class Type>
-Foam::DiagonalMatrix<Type> Foam::inv(const DiagonalMatrix<Type>& A)
+template<class CompOp>
+Foam::List<Foam::label> Foam::DiagonalMatrix<Type>::sortPermutation
+(
+    CompOp& compare
+) const
 {
-    DiagonalMatrix<Type> Ainv = A;
+    List<label> p(this->size());
+    std::iota(p.begin(), p.end(), 0);
+    std::sort
+    (
+        p.begin(),
+        p.end(),
+        [&](label i, label j){ return compare((*this)[i], (*this)[j]); }
+    );
 
-    forAll(A, i)
+    return p;
+}
+
+
+template<class Type>
+void Foam::DiagonalMatrix<Type>::applyPermutation(const List<label>& p)
+{
+    #ifdef FULLDEBUG
+    if (this->size() != p.size())
     {
-        Type x = A[i];
-        if (mag(x) < vSmall)
+        FatalErrorInFunction
+            << "Attempt to column-reorder according to an uneven list: " << nl
+            << "DiagonalMatrix diagonal size = " << this->size() << nl
+            << "Permutation list size = " << p.size() << nl
+            << abort(FatalError);
+    }
+    #endif
+
+    List<bool> pass(p.size(), false);
+
+    for (label i = 0; i < p.size(); ++i)
+    {
+        if (pass[i])
         {
-            Ainv[i] = Type(0);
+            continue;
         }
-        else
+        pass[i] = true;
+        label prev = i;
+        label j = p[i];
+        while (i != j)
         {
-            Ainv[i] = Type(1)/x;
+            Foam::Swap((*this)[prev], (*this)[j]);
+            pass[j] = true;
+            prev = j;
+            j = p[j];
         }
+    }
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+//- Return the matrix inverse as a DiagonalMatrix
+template<class Type>
+DiagonalMatrix<Type> inv(const DiagonalMatrix<Type>& mat)
+{
+    // Construct with fall-back value conditional calculation
+    // of invert to avoid over-eager compiler optimisation
+    DiagonalMatrix<Type> Ainv(mat.size(), Zero);
+
+    Type* iter = Ainv.begin();
+
+    for (const Type& val : mat)
+    {
+        if (mag(val) > VSMALL)
+        {
+            *iter = Type(1)/val;
+        }
+
+        ++iter;
     }
 
     return Ainv;
 }
 
+
+//- Return Matrix column-reordered according to
+//- a given permutation labelList
+template<class Type>
+DiagonalMatrix<Type> applyPermutation
+(
+    const DiagonalMatrix<Type>& mat,
+    const List<label>& p
+)
+{
+    #ifdef FULLDEBUG
+    if (mat.size() != p.size())
+    {
+        FatalErrorInFunction
+            << "Attempt to column-reorder according to an uneven list: " << nl
+            << "DiagonalMatrix diagonal size = " << mat.size() << nl
+            << "Permutation list size = " << p.size() << nl
+            << abort(FatalError);
+    }
+    #endif
+
+    DiagonalMatrix<Type> reordered(mat.size());
+
+    label j = 0;
+    for (const label i : p)
+    {
+        reordered[j] = mat[i];
+        ++j;
+    }
+
+    return reordered;
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+} // End namespace Foam
 
 // ************************************************************************* //

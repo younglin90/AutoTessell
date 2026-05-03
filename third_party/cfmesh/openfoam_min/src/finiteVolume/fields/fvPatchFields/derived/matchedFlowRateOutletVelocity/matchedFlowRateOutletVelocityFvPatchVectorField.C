@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,13 +37,28 @@ Foam::matchedFlowRateOutletVelocityFvPatchVectorField::
 matchedFlowRateOutletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    inletPatchName_(),
+    rhoName_("rho"),
+    volumetric_(false)
+{}
+
+
+Foam::matchedFlowRateOutletVelocityFvPatchVectorField::
+matchedFlowRateOutletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    inletPatchName_(dict.lookup("inletPatch")),
-    volumetric_(dict.lookupOrDefault("volumetric", true))
+    fixedValueFvPatchField<vector>(p, iF, dict, IOobjectOption::NO_READ),
+    inletPatchName_(dict.get<word>("inletPatch")),
+    rhoName_(),
+    volumetric_(dict.getOrDefault("volumetric", true))
 {
     if (volumetric_)
     {
@@ -48,20 +66,13 @@ matchedFlowRateOutletVelocityFvPatchVectorField
     }
     else
     {
-        rhoName_ = word(dict.lookupOrDefault<word>("rho", "rho"));
+        rhoName_ = dict.getOrDefault<word>("rho", "rho");
     }
 
-    // Value field require if mass based
-    if (dict.found("value"))
+    // Value field required if mass based
+    if (!this->readValueEntry(dict))
     {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        evaluate(Pstream::commsTypes::blocking);
+        evaluate(Pstream::commsTypes::buffered);
     }
 }
 
@@ -71,14 +82,27 @@ matchedFlowRateOutletVelocityFvPatchVectorField
 (
     const matchedFlowRateOutletVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
     inletPatchName_(ptf.inletPatchName_),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_)
+    rhoName_(ptf.rhoName_),
+    volumetric_(ptf.volumetric_)
+{}
+
+
+Foam::matchedFlowRateOutletVelocityFvPatchVectorField::
+matchedFlowRateOutletVelocityFvPatchVectorField
+(
+    const matchedFlowRateOutletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    inletPatchName_(ptf.inletPatchName_),
+    rhoName_(ptf.rhoName_),
+    volumetric_(ptf.volumetric_)
 {}
 
 
@@ -86,13 +110,13 @@ Foam::matchedFlowRateOutletVelocityFvPatchVectorField::
 matchedFlowRateOutletVelocityFvPatchVectorField
 (
     const matchedFlowRateOutletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchField<vector>(ptf, iF),
     inletPatchName_(ptf.inletPatchName_),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_)
+    rhoName_(ptf.rhoName_),
+    volumetric_(ptf.volumetric_)
 {}
 
 
@@ -144,7 +168,7 @@ void Foam::matchedFlowRateOutletVelocityFvPatchVectorField::updateValues
     // Calculate the extrapolated outlet patch flow rate
     const scalar estimatedFlowRate = gSum(rhoOutlet*(patch().magSf()*nUp));
 
-    if (estimatedFlowRate/flowRate > 0.5)
+    if (estimatedFlowRate > 0.5*flowRate)
     {
         nUp *= (mag(flowRate)/mag(estimatedFlowRate));
     }
@@ -170,7 +194,7 @@ void Foam::matchedFlowRateOutletVelocityFvPatchVectorField::updateCoeffs()
 
     // Find corresponding inlet patch
     const label inletPatchID =
-        patch().poly().boundaryMesh().findIndex(inletPatchName_);
+        patch().patch().boundaryMesh().findPatchID(inletPatchName_);
 
     if (inletPatchID < 0)
     {
@@ -181,7 +205,7 @@ void Foam::matchedFlowRateOutletVelocityFvPatchVectorField::updateCoeffs()
 
     if (volumetric_)
     {
-        updateValues(inletPatchID, one(), one());
+        updateValues(inletPatchID, one{}, one{});
     }
     else
     {
@@ -217,13 +241,13 @@ void Foam::matchedFlowRateOutletVelocityFvPatchVectorField::write
 ) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, "inletPatch", inletPatchName_);
+    os.writeEntry("inletPatch", inletPatchName_);
     if (!volumetric_)
     {
-        writeEntry(os, "volumetric", volumetric_);
-        writeEntryIfDifferent<word>(os, "rho", "rho", rhoName_);
+        os.writeEntry("volumetric", volumetric_);
+        os.writeEntryIfDifferent<word>("rho", "rho", rhoName_);
     }
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

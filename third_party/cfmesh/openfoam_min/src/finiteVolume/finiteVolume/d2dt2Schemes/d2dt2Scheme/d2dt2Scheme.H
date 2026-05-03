@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,7 @@ Class
     Foam::fv::d2dt2Scheme
 
 Description
-    Abstract base class for d2dt2 schemes.
+    Abstract base class for finite volume d2dt2 schemes.
 
 SourceFiles
     d2dt2Scheme.C
@@ -58,13 +60,13 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class d2dt2Scheme Declaration
+                           Class d2dt2Scheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class d2dt2Scheme
 :
-    public tmp<d2dt2Scheme<Type>>::refCount
+    public refCount
 {
 
 protected:
@@ -72,6 +74,15 @@ protected:
     // Protected data
 
         const fvMesh& mesh_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        d2dt2Scheme(const d2dt2Scheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const d2dt2Scheme&) = delete;
 
 
 public:
@@ -106,9 +117,6 @@ public:
             mesh_(mesh)
         {}
 
-        //- Disallow default bitwise copy construction
-        d2dt2Scheme(const d2dt2Scheme&) = delete;
-
 
     // Selectors
 
@@ -121,7 +129,7 @@ public:
 
 
     //- Destructor
-    virtual ~d2dt2Scheme();
+    virtual ~d2dt2Scheme() = default;
 
 
     // Member Functions
@@ -132,39 +140,33 @@ public:
             return mesh_;
         }
 
-        virtual tmp<VolField<Type>> fvcD2dt2
+        virtual tmp<GeometricField<Type, fvPatchField, volMesh>> fvcD2dt2
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
 
-        virtual tmp<VolField<Type>> fvcD2dt2
+        virtual tmp<GeometricField<Type, fvPatchField, volMesh>> fvcD2dt2
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
 
         virtual tmp<fvMatrix<Type>> fvmD2dt2
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
 
         virtual tmp<fvMatrix<Type>> fvmD2dt2
         (
             const dimensionedScalar&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
 
         virtual tmp<fvMatrix<Type>> fvmD2dt2
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const d2dt2Scheme&) = delete;
 };
 
 

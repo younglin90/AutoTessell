@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -63,23 +65,39 @@ makeBaseSurfaceInterpolationScheme(tensor)
 template<>
 Foam::tmp
 <
-    Foam::SurfaceField
+    Foam::GeometricField
     <
-        typename Foam::innerProduct<Foam::vector, Foam::scalar>::type
+        typename Foam::innerProduct<Foam::vector, Foam::scalar>::type,
+        Foam::fvsPatchField,
+        Foam::surfaceMesh
     >
 >
 Foam::surfaceInterpolationScheme<Foam::scalar>::dotInterpolate
 (
     const surfaceVectorField& Sf,
-    const VolField<scalar>&
+    const GeometricField<scalar, fvPatchField, volMesh>&
 ) const
 {
     NotImplemented;
 
-    return tmp<SurfaceField<typename innerProduct<vector, scalar>::type>>
-    (
-        SurfaceField<typename innerProduct<vector, scalar>::type >::null()
-    );
+    return
+        tmp
+        <
+            GeometricField
+            <
+                typename innerProduct<vector, scalar>::type,
+                fvsPatchField,
+                surfaceMesh
+            >
+        >
+        (
+            GeometricField
+            <
+                typename innerProduct<vector, scalar>::type,
+                fvsPatchField,
+                surfaceMesh
+            >::null()
+        );
 }
 
 

@@ -1,12 +1,2 @@
-    Info<< nl << "Reading g" << endl;
-    uniformDimensionedVectorField g
-    (
-        IOobject
-        (
-            "g",
-            runTime.constant(),
-            mesh,
-            IOobject::MUST_READ,
-            IOobject::NO_WRITE
-        )
-    );
+Info<< "\nReading g" << endl;
+const meshObjects::gravity& g = meshObjects::gravity::New(runTime);

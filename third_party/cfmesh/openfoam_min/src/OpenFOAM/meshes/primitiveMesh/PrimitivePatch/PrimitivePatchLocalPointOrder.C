@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,102 +29,87 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#include "SLList.H"
 #include "boolList.H"
+#include "CircularBuffer.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcLocalPointOrder() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcLocalPointOrder() const
 {
     // Note: Cannot use bandCompressing as point-point addressing does
     // not exist and is not considered generally useful.
-    //
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::"
-            << "calcLocalPointOrder() : "
-            << "calculating local point order"
-            << endl;
-    }
+    DebugInFunction << "Calculating local point order" << endl;
 
     if (localPointOrderPtr_)
     {
-        // it is considered an error to attempt to recalculate
-        // if already allocated
+        // An error to recalculate if already allocated
         FatalErrorInFunction
             << "local point order already calculated"
             << abort(FatalError);
     }
 
-    const List<FaceType>& lf = localFaces();
+    const List<face_type>& lf = localFaces();
 
     const labelListList& ff = faceFaces();
 
+    localPointOrderPtr_.reset(new labelList(meshPoints().size(), -1));
+    auto& pointOrder = *localPointOrderPtr_;
+
     boolList visitedFace(lf.size(), false);
-
-    localPointOrderPtr_ = new labelList(meshPoints().size(), -1);
-
-    labelList& pointOrder = *localPointOrderPtr_;
-
     boolList visitedPoint(pointOrder.size(), false);
 
     label nPoints = 0;
+
+    // FIFO buffer managing point/face insertion order
+    CircularBuffer<label> faceOrder(32);
 
     forAll(lf, facei)
     {
         if (!visitedFace[facei])
         {
-            SLList<label> faceOrder(facei);
+            faceOrder.push_back(facei);
 
-            do
+            while (!faceOrder.empty())
             {
-                const label curFace = faceOrder.first();
-
-                faceOrder.removeHead();
+                // Process as FIFO
+                const label curFace = faceOrder.front();
+                faceOrder.pop_front();
 
                 if (!visitedFace[curFace])
                 {
                     visitedFace[curFace] = true;
 
-                    const labelList& curPoints = lf[curFace];
-
                     // mark points
-                    forAll(curPoints, pointi)
+                    for (const label pointi : lf[curFace])
                     {
-                        if (!visitedPoint[curPoints[pointi]])
+                        if (!visitedPoint[pointi])
                         {
-                            visitedPoint[curPoints[pointi]] = true;
+                            visitedPoint[pointi] = true;
 
-                            pointOrder[nPoints] = curPoints[pointi];
+                            pointOrder[nPoints] = pointi;
 
-                            nPoints++;
+                            ++nPoints;
                         }
                     }
 
-                    // add face neighbours to the list
-                    const labelList& nbrs = ff[curFace];
+                    // Add unvisited face neighbours to the list
 
-                    forAll(nbrs, nbrI)
+                    for (const label nbrFacei : ff[curFace])
                     {
-                        if (!visitedFace[nbrs[nbrI]])
+                        if (!visitedFace[nbrFacei])
                         {
-                            faceOrder.append(nbrs[nbrI]);
+                            faceOrder.push_back(nbrFacei);
                         }
                     }
                 }
-            } while (faceOrder.size());
+            }
         }
     }
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::"
-            << "calcLocalPointOrder() "
-            << "finished calculating local point order"
-            << endl;
-    }
+    DebugInfo << "Calculated local point order" << endl;
 }
 
 

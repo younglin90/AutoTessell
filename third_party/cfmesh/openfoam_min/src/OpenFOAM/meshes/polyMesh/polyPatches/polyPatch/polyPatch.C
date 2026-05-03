@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,6 +34,7 @@ License
 #include "SubField.H"
 #include "entry.H"
 #include "dictionary.H"
+#include "pointPatchField.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -53,19 +57,13 @@ namespace Foam
 
 // * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
-void Foam::polyPatch::movePoints(const pointField& p)
-{
-    primitivePatch::clearGeom();
-}
-
-
 void Foam::polyPatch::movePoints(PstreamBuffers&, const pointField& p)
 {
-    primitivePatch::clearGeom();
+    primitivePatch::movePoints(p);
 }
 
 
-void Foam::polyPatch::topoChange(PstreamBuffers&)
+void Foam::polyPatch::updateMesh(PstreamBuffers&)
 {
     primitivePatch::clearGeom();
     clearAddressing();
@@ -78,18 +76,6 @@ void Foam::polyPatch::clearGeom()
 }
 
 
-void Foam::polyPatch::rename(const wordList& newNames)
-{
-    name_ = newNames[index_];
-}
-
-
-void Foam::polyPatch::reorder(const labelUList& newToOldIndex)
-{
-    index_ = findIndex(newToOldIndex, index_);
-}
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::polyPatch::polyPatch
@@ -98,7 +84,8 @@ Foam::polyPatch::polyPatch
     const label size,
     const label start,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
     patchIdentifier(name, index),
@@ -108,9 +95,34 @@ Foam::polyPatch::polyPatch
         bm.mesh().points()
     ),
     start_(start),
-    boundaryMesh_(bm),
-    faceCellsPtr_(nullptr),
-    mePtr_(nullptr)
+    boundaryMesh_(bm)
+{
+    if (constraintType(patchType))
+    {
+        addGroup(patchType);
+    }
+}
+
+
+Foam::polyPatch::polyPatch
+(
+    const word& name,
+    const label size,
+    const label start,
+    const label index,
+    const polyBoundaryMesh& bm,
+    const word& physicalType,
+    const wordList& inGroups
+)
+:
+    patchIdentifier(name, index, physicalType, inGroups),
+    primitivePatch
+    (
+        faceSubList(bm.mesh().faces(), size, start),
+        bm.mesh().points()
+    ),
+    start_(start),
+    boundaryMesh_(bm)
 {}
 
 
@@ -119,7 +131,8 @@ Foam::polyPatch::polyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
     patchIdentifier(name, dict, index),
@@ -128,16 +141,19 @@ Foam::polyPatch::polyPatch
         faceSubList
         (
             bm.mesh().faces(),
-            dict.lookup<label>("nFaces"),
-            dict.lookup<label>("startFace")
+            dict.get<label>("nFaces"),
+            dict.get<label>("startFace")
         ),
         bm.mesh().points()
     ),
-    start_(dict.lookup<label>("startFace")),
-    boundaryMesh_(bm),
-    faceCellsPtr_(nullptr),
-    mePtr_(nullptr)
-{}
+    start_(dict.get<label>("startFace")),
+    boundaryMesh_(bm)
+{
+    if (constraintType(patchType))
+    {
+        addGroup(patchType);
+    }
+}
 
 
 Foam::polyPatch::polyPatch
@@ -158,9 +174,7 @@ Foam::polyPatch::polyPatch
         bm.mesh().points()
     ),
     start_(pp.start()),
-    boundaryMesh_(bm),
-    faceCellsPtr_(nullptr),
-    mePtr_(nullptr)
+    boundaryMesh_(bm)
 {}
 
 
@@ -185,9 +199,32 @@ Foam::polyPatch::polyPatch
         bm.mesh().points()
     ),
     start_(newStart),
-    boundaryMesh_(bm),
-    faceCellsPtr_(nullptr),
-    mePtr_(nullptr)
+    boundaryMesh_(bm)
+{}
+
+
+Foam::polyPatch::polyPatch
+(
+    const polyPatch& pp,
+    const polyBoundaryMesh& bm,
+    const label index,
+    const labelUList& mapAddressing,
+    const label newStart
+)
+:
+    patchIdentifier(pp, index),
+    primitivePatch
+    (
+        faceSubList
+        (
+            bm.mesh().faces(),
+            mapAddressing.size(),
+            newStart
+        ),
+        bm.mesh().points()
+    ),
+    start_(newStart),
+    boundaryMesh_(bm)
 {}
 
 
@@ -196,10 +233,20 @@ Foam::polyPatch::polyPatch(const polyPatch& p)
     patchIdentifier(p),
     primitivePatch(p),
     start_(p.start_),
-    boundaryMesh_(p.boundaryMesh_),
-    faceCellsPtr_(nullptr),
-    mePtr_(nullptr)
+    boundaryMesh_(p.boundaryMesh_)
 {}
+
+
+Foam::polyPatch::polyPatch
+(
+    const polyPatch& p,
+    const labelList& faceCells
+)
+:
+    polyPatch(p)
+{
+    faceCellsPtr_.reset(new labelList::subList(faceCells, faceCells.size()));
+}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -212,43 +259,71 @@ Foam::polyPatch::~polyPatch()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::polyBoundaryMesh& Foam::polyPatch::boundaryMesh() const
+bool Foam::polyPatch::constraintType(const word& patchType)
+{
+    return
+    (
+        !patchType.empty()
+     && pointPatchField<scalar>::patchConstructorTablePtr_
+     && pointPatchField<scalar>::patchConstructorTablePtr_->found(patchType)
+    );
+}
+
+
+Foam::wordList Foam::polyPatch::constraintTypes()
+{
+    const auto& cnstrTable = *dictionaryConstructorTablePtr_;
+
+    wordList cTypes(cnstrTable.size());
+
+    label i = 0;
+
+    forAllConstIters(cnstrTable, iter)
+    {
+        if (constraintType(iter.key()))
+        {
+            cTypes[i++] = iter.key();
+        }
+    }
+
+    cTypes.resize(i);
+
+    return cTypes;
+}
+
+
+Foam::label Foam::polyPatch::offset() const noexcept
+{
+    // Same as start_ - polyMesh::nInternalFaces()
+    return start_ - boundaryMesh_.start();
+}
+
+
+const Foam::polyBoundaryMesh& Foam::polyPatch::boundaryMesh() const noexcept
 {
     return boundaryMesh_;
 }
 
 
-const Foam::polyMesh& Foam::polyPatch::mesh() const
-{
-    return boundaryMesh_.mesh();
-}
-
-
 const Foam::vectorField::subField Foam::polyPatch::faceCentres() const
 {
-    return patchSlice(mesh().faceCentres());
+    return patchSlice(boundaryMesh().mesh().faceCentres());
 }
 
 
 const Foam::vectorField::subField Foam::polyPatch::faceAreas() const
 {
-    return patchSlice(mesh().faceAreas());
-}
-
-
-const Foam::scalarField::subField Foam::polyPatch::magFaceAreas() const
-{
-    return patchSlice(mesh().magFaceAreas());
+    return patchSlice(boundaryMesh().mesh().faceAreas());
 }
 
 
 Foam::tmp<Foam::vectorField> Foam::polyPatch::faceCellCentres() const
 {
-    tmp<vectorField> tcc(new vectorField(size()));
-    vectorField& cc = tcc.ref();
+    auto tcc = tmp<vectorField>::New(size());
+    auto& cc = tcc.ref();
 
     // get reference to global cell centres
-    const vectorField& gcc = mesh().cellCentres();
+    const vectorField& gcc = boundaryMesh_.mesh().cellCentres();
 
     const labelUList& faceCells = this->faceCells();
 
@@ -261,13 +336,66 @@ Foam::tmp<Foam::vectorField> Foam::polyPatch::faceCellCentres() const
 }
 
 
+Foam::tmp<Foam::scalarField> Foam::polyPatch::areaFraction
+(
+    const pointField& points
+) const
+{
+    auto tfraction = tmp<scalarField>::New(size());
+    auto& fraction = tfraction.ref();
+
+    const vectorField::subField faceAreas = this->faceAreas();
+
+    forAll(*this, facei)
+    {
+        const face& f = this->operator[](facei);
+        fraction[facei] = faceAreas[facei].mag()/(f.mag(points) + ROOTVSMALL);
+    }
+
+    return tfraction;
+}
+
+
+Foam::tmp<Foam::scalarField> Foam::polyPatch::areaFraction() const
+{
+    if (areaFractionPtr_)
+    {
+        return tmp<scalarField>(*areaFractionPtr_);
+    }
+    return nullptr;
+}
+
+
+void Foam::polyPatch::areaFraction(const scalar fraction)
+{
+    areaFractionPtr_ = std::make_unique<scalarField>(size(), fraction);
+}
+
+
+void Foam::polyPatch::areaFraction(const tmp<scalarField>& fraction)
+{
+    if (fraction)
+    {
+        // Steal or clone
+        areaFractionPtr_.reset(fraction.ptr());
+    }
+    else
+    {
+        areaFractionPtr_.reset(nullptr);
+    }
+}
+
+
 const Foam::labelUList& Foam::polyPatch::faceCells() const
 {
     if (!faceCellsPtr_)
     {
-        faceCellsPtr_ = new labelList::subList
+        faceCellsPtr_.reset
         (
-            patchSlice(mesh().faceOwner())
+            new labelList::subList
+            (
+                patchSlice(boundaryMesh().mesh().faceOwner())
+            )
         );
     }
 
@@ -279,15 +407,17 @@ const Foam::labelList& Foam::polyPatch::meshEdges() const
 {
     if (!mePtr_)
     {
-        mePtr_ =
+        mePtr_.reset
+        (
             new labelList
             (
                 primitivePatch::meshEdges
                 (
-                    mesh().edges(),
-                    mesh().pointEdges()
+                    boundaryMesh().mesh().edges(),
+                    boundaryMesh().mesh().pointEdges()
                 )
-            );
+            )
+        );
     }
 
     return *mePtr_;
@@ -298,17 +428,18 @@ void Foam::polyPatch::clearAddressing()
 {
     primitivePatch::clearTopology();
     primitivePatch::clearPatchMeshAddr();
-    deleteDemandDrivenData(faceCellsPtr_);
-    deleteDemandDrivenData(mePtr_);
+    faceCellsPtr_.reset(nullptr);
+    mePtr_.reset(nullptr);
+    areaFractionPtr_.reset(nullptr);
 }
 
 
 void Foam::polyPatch::write(Ostream& os) const
 {
-    writeEntry(os, "type", type());
+    os.writeEntry("type", type());
     patchIdentifier::write(os);
-    writeEntry(os, "nFaces", size());
-    writeEntry(os, "startFace", start());
+    os.writeEntry("nFaces", size());
+    os.writeEntry("startFace", start());
 }
 
 
@@ -329,20 +460,6 @@ bool Foam::polyPatch::order
 }
 
 
-void Foam::polyPatch::reset(const label size, const label start)
-{
-    clearAddressing();
-    start_ = start;
-
-    const primitivePatch pp
-    (
-        faceSubList(mesh().faces(), size, start),
-        mesh().points()
-    );
-    primitivePatch::operator=(pp);
-}
-
-
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 void Foam::polyPatch::operator=(const polyPatch& p)
@@ -360,7 +477,7 @@ void Foam::polyPatch::operator=(const polyPatch& p)
 Foam::Ostream& Foam::operator<<(Ostream& os, const polyPatch& p)
 {
     p.write(os);
-    os.check("Ostream& operator<<(Ostream& os, const polyPatch& p");
+    os.check(FUNCTION_NAME);
     return os;
 }
 

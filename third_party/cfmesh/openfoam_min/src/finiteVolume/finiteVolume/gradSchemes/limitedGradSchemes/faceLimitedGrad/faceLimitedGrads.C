@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,6 +29,8 @@ License
 #include "faceLimitedGrad.H"
 #include "gaussGrad.H"
 #include "fvMesh.H"
+#include "volMesh.H"
+#include "surfaceMesh.H"
 #include "volFields.H"
 #include "fixedValueFvPatchFields.H"
 
@@ -47,7 +52,7 @@ Foam::fv::faceLimitedGrad<Foam::scalar>::calcGrad
 
     tmp<volVectorField> tGrad = basicGradScheme_().calcGrad(vsf, name);
 
-    if (k_ < small)
+    if (k_ < SMALL)
     {
         return tGrad;
     }
@@ -63,19 +68,19 @@ Foam::fv::faceLimitedGrad<Foam::scalar>::calcGrad
     // create limiter
     scalarField limiter(vsf.primitiveField().size(), 1.0);
 
-    scalar rk = (1.0/k_ - 1.0);
+    const scalar rk = (1.0/k_ - 1.0);
 
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
-        scalar vsfOwn = vsf[own];
-        scalar vsfNei = vsf[nei];
+        const scalar vsfOwn = vsf[own];
+        const scalar vsfNei = vsf[nei];
 
         scalar maxFace = max(vsfOwn, vsfNei);
         scalar minFace = min(vsfOwn, vsfNei);
-        scalar maxMinFace = rk*(maxFace - minFace);
+        const scalar maxMinFace = rk*(maxFace - minFace);
         maxFace += maxMinFace;
         minFace -= maxMinFace;
 
@@ -111,14 +116,14 @@ Foam::fv::faceLimitedGrad<Foam::scalar>::calcGrad
 
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
 
-                scalar vsfOwn = vsf[own];
-                scalar vsfNei = psfNei[pFacei];
+                const scalar vsfOwn = vsf[own];
+                const scalar vsfNei = psfNei[pFacei];
 
                 scalar maxFace = max(vsfOwn, vsfNei);
                 scalar minFace = min(vsfOwn, vsfNei);
-                scalar maxMinFace = rk*(maxFace - minFace);
+                const scalar maxMinFace = rk*(maxFace - minFace);
                 maxFace += maxMinFace;
                 minFace -= maxMinFace;
 
@@ -134,14 +139,14 @@ Foam::fv::faceLimitedGrad<Foam::scalar>::calcGrad
         {
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
 
-                scalar vsfOwn = vsf[own];
-                scalar vsfNei = psf[pFacei];
+                const scalar vsfOwn = vsf[own];
+                const scalar vsfNei = psf[pFacei];
 
                 scalar maxFace = max(vsfOwn, vsfNei);
                 scalar minFace = min(vsfOwn, vsfNei);
-                scalar maxMinFace = rk*(maxFace - minFace);
+                const scalar maxMinFace = rk*(maxFace - minFace);
                 maxFace += maxMinFace;
                 minFace -= maxMinFace;
 
@@ -183,7 +188,7 @@ Foam::fv::faceLimitedGrad<Foam::vector>::calcGrad
 
     tmp<volTensorField> tGrad = basicGradScheme_().calcGrad(vvf, name);
 
-    if (k_ < small)
+    if (k_ < SMALL)
     {
         return tGrad;
     }
@@ -199,25 +204,25 @@ Foam::fv::faceLimitedGrad<Foam::vector>::calcGrad
     // create limiter
     scalarField limiter(vvf.primitiveField().size(), 1.0);
 
-    scalar rk = (1.0/k_ - 1.0);
+    const scalar rk = (1.0/k_ - 1.0);
 
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
-        vector vvfOwn = vvf[own];
-        vector vvfNei = vvf[nei];
+        const vector& vvfOwn = vvf[own];
+        const vector& vvfNei = vvf[nei];
 
         // owner side
-        vector gradf = (Cf[facei] - C[own]) & g[own];
+        vector gradf((Cf[facei] - C[own]) & g[own]);
 
         scalar vsfOwn = gradf & vvfOwn;
         scalar vsfNei = gradf & vvfNei;
 
         scalar maxFace = max(vsfOwn, vsfNei);
         scalar minFace = min(vsfOwn, vsfNei);
-        scalar maxMinFace = rk*(maxFace - minFace);
+        const scalar maxMinFace = rk*(maxFace - minFace);
         maxFace += maxMinFace;
         minFace -= maxMinFace;
 
@@ -262,19 +267,19 @@ Foam::fv::faceLimitedGrad<Foam::vector>::calcGrad
 
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
 
-                vector vvfOwn = vvf[own];
-                vector vvfNei = psfNei[pFacei];
+                const vector& vvfOwn = vvf[own];
+                const vector& vvfNei = psfNei[pFacei];
 
-                vector gradf = (pCf[pFacei] - C[own]) & g[own];
+                const vector gradf((pCf[pFacei] - C[own]) & g[own]);
 
-                scalar vsfOwn = gradf & vvfOwn;
-                scalar vsfNei = gradf & vvfNei;
+                const scalar vsfOwn = gradf & vvfOwn;
+                const scalar vsfNei = gradf & vvfNei;
 
                 scalar maxFace = max(vsfOwn, vsfNei);
                 scalar minFace = min(vsfOwn, vsfNei);
-                scalar maxMinFace = rk*(maxFace - minFace);
+                const scalar maxMinFace = rk*(maxFace - minFace);
                 maxFace += maxMinFace;
                 minFace -= maxMinFace;
 
@@ -290,19 +295,19 @@ Foam::fv::faceLimitedGrad<Foam::vector>::calcGrad
         {
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
 
-                vector vvfOwn = vvf[own];
-                vector vvfNei = psf[pFacei];
+                const vector& vvfOwn = vvf[own];
+                const vector& vvfNei = psf[pFacei];
 
-                vector gradf = (pCf[pFacei] - C[own]) & g[own];
+                const vector gradf((pCf[pFacei] - C[own]) & g[own]);
 
-                scalar vsfOwn = gradf & vvfOwn;
-                scalar vsfNei = gradf & vvfNei;
+                const scalar vsfOwn = gradf & vvfOwn;
+                const scalar vsfNei = gradf & vvfNei;
 
                 scalar maxFace = max(vsfOwn, vsfNei);
                 scalar minFace = min(vsfOwn, vsfNei);
-                scalar maxMinFace = rk*(maxFace - minFace);
+                const scalar maxMinFace = rk*(maxFace - minFace);
                 maxFace += maxMinFace;
                 minFace -= maxMinFace;
 

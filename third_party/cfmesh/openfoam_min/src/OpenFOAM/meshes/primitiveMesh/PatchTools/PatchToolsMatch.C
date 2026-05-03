@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,7 +30,11 @@ License
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-template<class FaceList1, class PointField1, class FaceList2, class PointField2>
+template
+<
+    class FaceList1, class PointField1,
+    class FaceList2, class PointField2
+>
 void Foam::PatchTools::matchPoints
 (
     const PrimitivePatch<FaceList1, PointField1>& p1,
@@ -37,33 +44,35 @@ void Foam::PatchTools::matchPoints
     labelList& p2PointLabels
 )
 {
-    p1PointLabels.setSize(p1.nPoints());
-    p2PointLabels.setSize(p1.nPoints());
+    p1PointLabels.resize(p1.nPoints());
+    p2PointLabels.resize(p1.nPoints());
 
     label nMatches = 0;
 
     forAll(p1.meshPoints(), pointi)
     {
-        label meshPointi = p1.meshPoints()[pointi];
+        const label meshPointi = p1.meshPoints()[pointi];
 
-        Map<label>::const_iterator iter = p2.meshPointMap().find
-        (
-            meshPointi
-        );
+        const auto iter = p2.meshPointMap().cfind(meshPointi);
 
-        if (iter != p2.meshPointMap().end())
+        if (iter.good())
         {
             p1PointLabels[nMatches] = pointi;
-            p2PointLabels[nMatches] = iter();
-            nMatches++;
+            p2PointLabels[nMatches] = iter.val();
+            ++nMatches;
         }
     }
-    p1PointLabels.setSize(nMatches);
-    p2PointLabels.setSize(nMatches);
+
+    p1PointLabels.resize(nMatches);
+    p2PointLabels.resize(nMatches);
 }
 
 
-template<class FaceList1, class PointField1, class FaceList2, class PointField2>
+template
+<
+    class FaceList1, class PointField1,
+    class FaceList2, class PointField2
+>
 void Foam::PatchTools::matchEdges
 (
     const PrimitivePatch<FaceList1, PointField1>& p1,
@@ -71,46 +80,41 @@ void Foam::PatchTools::matchEdges
 
     labelList& p1EdgeLabels,
     labelList& p2EdgeLabels,
-    PackedBoolList& sameOrientation
+    bitSet& sameOrientation
 )
 {
-    p1EdgeLabels.setSize(p1.nEdges());
-    p2EdgeLabels.setSize(p1.nEdges());
-    sameOrientation.setSize(p1.nEdges());
-    sameOrientation = 0;
+    p1EdgeLabels.resize(p1.nEdges());
+    p2EdgeLabels.resize(p1.nEdges());
+    sameOrientation.resize(p1.nEdges());
+    sameOrientation = false;
 
     label nMatches = 0;
 
     EdgeMap<label> edgeToIndex(2*p1.nEdges());
-    forAll(p1.edges(), edgeI)
+    forAll(p1.edges(), edgei)
     {
-        const edge& e = p1.edges()[edgeI];
-        const edge meshE
-        (
-            p1.meshPoints()[e[0]],
-            p1.meshPoints()[e[1]]
-        );
-        edgeToIndex.insert(meshE, edgeI);
+        // Map lookup with globalEdge
+        edgeToIndex.insert(p1.meshEdge(edgei), edgei);
     }
 
-    forAll(p2.edges(), edgeI)
+    forAll(p2.edges(), edgei)
     {
-        const edge& e = p2.edges()[edgeI];
-        const edge meshE(p2.meshPoints()[e[0]], p2.meshPoints()[e[1]]);
+        const edge meshEdge2(p2.meshEdge(edgei));
 
-        EdgeMap<label>::const_iterator iter = edgeToIndex.find(meshE);
+        const auto iter = edgeToIndex.cfind(meshEdge2);
 
-        if (iter != edgeToIndex.end())
+        if (iter.good())
         {
-            p1EdgeLabels[nMatches] = iter();
-            p2EdgeLabels[nMatches] = edgeI;
-            sameOrientation[nMatches] = (meshE[0] == iter.key()[0]);
-            nMatches++;
+            p1EdgeLabels[nMatches] = iter.val();
+            p2EdgeLabels[nMatches] = edgei;
+            sameOrientation.set(nMatches, (meshEdge2[0] == iter.key()[0]));
+            ++nMatches;
         }
     }
-    p1EdgeLabels.setSize(nMatches);
-    p2EdgeLabels.setSize(nMatches);
-    sameOrientation.setSize(nMatches);
+
+    p1EdgeLabels.resize(nMatches);
+    p2EdgeLabels.resize(nMatches);
+    sameOrientation.resize(nMatches);
 }
 
 

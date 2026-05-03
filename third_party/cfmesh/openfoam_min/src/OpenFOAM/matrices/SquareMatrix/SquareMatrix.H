@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,11 @@ Class
     Foam::SquareMatrix
 
 Description
-    A templated 2D square matrix of objects of \<T\>, where the n x n matrix
-    dimension is known and used for subscript bounds checking, etc.
+    A templated (N x N) square matrix of objects of \<Type\>,
+    containing N*N elements, derived from Matrix.
+
+See also
+    Test-SquareMatrix.C
 
 SourceFiles
     SquareMatrixI.H
@@ -34,25 +40,24 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SquareMatrix_H
-#define SquareMatrix_H
+#ifndef Foam_SquareMatrix_H
+#define Foam_SquareMatrix_H
 
 #include "Matrix.H"
 #include "Identity.H"
+#include <numeric>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
-template<class Type>
-class RectangularMatrix;
+// Forward Declarations
+template<class Type> class RectangularMatrix;
 
 
 /*---------------------------------------------------------------------------*\
-                           Class Matrix Declaration
+                        Class SquareMatrix Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -60,66 +65,78 @@ class SquareMatrix
 :
     public Matrix<SquareMatrix<Type>, Type>
 {
-
 public:
+
+    // Generated Methods
+
+        //- Default construct
+        SquareMatrix() = default;
+
+        //- Copy construct
+        SquareMatrix(const SquareMatrix&) = default;
+
+        //- Copy assignment
+        SquareMatrix& operator=(const SquareMatrix&) = default;
+
 
     // Constructors
 
-        //- Null constructor.
-        inline SquareMatrix();
+        //- Construct for given size (rows == cols), uninitialised content
+        inline explicit SquareMatrix(const label n);
 
-        //- Construct given number of rows/columns.
-        inline SquareMatrix(const label n);
+        //- Construct for given size (rows == cols)
+        //- initializing all elements to zero
+        inline SquareMatrix(const label n, const Foam::zero);
 
-        //- Construct from a block of another matrix
-        template<class MatrixType>
-        inline SquareMatrix(const ConstMatrixBlock<MatrixType>&);
+        //- Construct for given size (rows == cols)
+        //- initializing all elements to the given value
+        inline SquareMatrix(const label n, const Type& val);
 
-        //- Construct from a block of another matrix
-        template<class MatrixType>
-        inline SquareMatrix(const MatrixBlock<MatrixType>&);
+        //- Construct for given size (rows == cols)
+        //- initializing to the identity matrix
+        template<class AnyType>
+        inline SquareMatrix(const label n, const Identity<AnyType>);
+
+        //- Construct for given size (rows == cols) by using a labelPair
+        //- initializing to the identity matrix
+        template<class AnyType>
+        inline SquareMatrix(const labelPair& dims, const Identity<AnyType>);
 
         //- Construct given number of rows/columns
-        //  initialising all elements to zero
-        inline SquareMatrix(const label n, const zero);
+        //- by using a labelPair (checked to be equal)
+        //  For constructor consistency in rectangular matrices
+        inline explicit SquareMatrix(const labelPair& dims);
+
+        //- Construct given number of rows/columns
+        //- by using a labelPair (checked to be equal)
+        //- and initializing all elements to zero
+        //  For constructor consistency with rectangular matrices
+        inline SquareMatrix(const labelPair& dims, const Foam::zero);
+
+        //- Construct given number of rows/columns
+        //- by using a labelPair (checked to be equal)
+        //- and initializing all elements to the given value
+        //  For constructor consistency with rectangular matrices
+        inline SquareMatrix(const labelPair& dims, const Type& val);
 
         //- Construct given number of rows/columns (checked to be equal)
-        //  initialising all elements to zero
-        inline SquareMatrix(const label m, const label n, const zero);
+        //- initializing all elements to zero
+        inline SquareMatrix(const label m, const label n, const Foam::zero);
 
-        //- Construct given number of rows/columns
-        //  initialising to the identity matrix
-        inline SquareMatrix(const label n, const Identity<Type>);
+        //- Construct from const sub-matrix block
+        template<class MatrixType>
+        inline SquareMatrix(const ConstMatrixBlock<MatrixType>& mat);
 
-        //- Construct with given number of rows/columns
-        //  initialising all elements to the given value
-        inline SquareMatrix(const label n, const Type&);
-
-        //- Construct with given number of rows/columns
-        //  and start and end iterators
-        template<class InputIterator>
-        inline SquareMatrix
-        (
-            const label n,
-            InputIterator first,
-            InputIterator last
-        );
-
-        //- Construct with given number of rows/columns and initialiser list
-        inline SquareMatrix(const label n, std::initializer_list<Type>);
-
-        //- Construct from an initialiser list
-        inline SquareMatrix(std::initializer_list<Type>);
-
-        //- Construct from initialiser list list
-        inline SquareMatrix(std::initializer_list<std::initializer_list<Type>>);
+        //- Construct from sub-matrix block
+        template<class MatrixType>
+        inline SquareMatrix(const MatrixBlock<MatrixType>& mat);
 
         //- Construct as copy of a RectangularMatrix
-        //  which is checked to be square
-        inline explicit SquareMatrix(const RectangularMatrix<Type>&);
+        //- which is checked to be square
+        inline explicit SquareMatrix(const RectangularMatrix<Type>& mat);
 
-        //- Construct from Istream.
-        inline SquareMatrix(Istream&);
+        //- Construct from Istream
+        inline explicit SquareMatrix(Istream& is);
 
         //- Clone
         inline autoPtr<SquareMatrix<Type>> clone() const;
@@ -127,51 +144,56 @@ public:
 
     // Member Functions
 
-        //- Return the instantiated type name
-        static word typeName()
-        {
-            return word("SquareMatrix<") + pTraits<Type>::typeName + '>';
-        }
+    // Edit
 
-        // Edit
+        //- Resize the matrix preserving the elements
+        inline void resize(const label m);
 
-            //- Resize the matrix preserving the elements
-            inline void setSize(const label m);
+        //- Resize the matrix \em without preserving existing content
+        inline void resize_nocopy(const label n);
 
-            //- Resize the matrix without reallocating storage (unsafe)
-            inline void shallowResize(const label m);
+        //- Resize the matrix preserving the elements (compatibility)
+        inline void resize(const label m, const label n);
+
+        //- Resize the matrix preserving the elements
+        inline void setSize(const label m);
+
+        //- Resize the matrix without reallocating storage (unsafe)
+        inline void shallowResize(const label m);
+
+    // Check
+
+        //- Return true if the square matrix is effectively symmetric/Hermitian
+        inline bool symmetric() const;
+
+        //- Return true if the square matrix is reduced tridiagonal
+        inline bool tridiagonal() const;
+
+    // Sort
+
+        //- Return a sort permutation using the given comparison operator
+        //- on the diagonal entries
+        template<class CompOp>
+        labelList sortPermutation(CompOp& compare) const;
+
+        //- Column-reorder this Matrix according to the given permutation
+        void applyPermutation(const labelUList& p);
 
 
     // Member Operators
 
-        //- Assignment of all elements to zero
-        void operator=(const zero);
+        //- Move assignment
+        inline void operator=(SquareMatrix<Type>&& mat);
 
-        //- Assignment elements to the
-        void operator=(const Identity<Type>);
-};
+        //- Assign all elements to zero
+        inline void operator=(const Foam::zero);
 
+        //- Assign all elements to value
+        inline void operator=(const Type& val);
 
-// Global functions and operators
-
-//- Return the LU decomposed SquareMatrix det
-template<class Type>
-scalar detDecomposed(const SquareMatrix<Type>&, const label sign);
-
-//- Return the SquareMatrix det
-template<class Type>
-scalar det(const SquareMatrix<Type>&);
-
-//- Return the SquareMatrix det and the LU decomposition in the original matrix
-template<class Type>
-scalar det(SquareMatrix<Type>&);
-
-template<class Type>
-class typeOfInnerProduct<Type, SquareMatrix<Type>, SquareMatrix<Type>>
-{
-public:
-
-    typedef SquareMatrix<Type> type;
+        //- Set to identity matrix
+        template<class AnyType>
+        void operator=(const Identity<AnyType>);
 };
 
 

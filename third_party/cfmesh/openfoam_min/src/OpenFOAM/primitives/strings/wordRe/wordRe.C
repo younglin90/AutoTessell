@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,9 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "wordRe.H"
+#include "keyType.H"
+#include "token.H"
 #include "IOstreams.H"
-#include "InfoProxy.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -34,84 +38,112 @@ const Foam::wordRe Foam::wordRe::null;
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
+Foam::wordRe::wordRe(const keyType& str)
+:
+    word(str, false),  // No stripping
+    regexPtr_(nullptr)
+{
+    if (str.isPattern())
+    {
+        compile();
+    }
+}
+
+
 Foam::wordRe::wordRe(Istream& is)
 :
     word(),
-    re_(nullptr)
+    regexPtr_(nullptr)
 {
     is >> *this;
 }
 
 
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+bool Foam::wordRe::assign(const token& tok)
+{
+    if (tok.isWord())
+    {
+        // Assign from word - literal
+        assign(tok.wordToken());
+        uncompile();
+        return true;
+    }
+    else if (tok.isQuotedString())
+    {
+        // Assign from quoted string - auto-detect regex
+        assign(tok.stringToken());
+        compile(wordRe::DETECT);
+        return true;
+    }
+
+    return false;
+}
+
+
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+void Foam::wordRe::operator=(const keyType& str)
+{
+    assign(str);
+    if (str.isPattern())
+    {
+        compile();
+    }
+    else
+    {
+        uncompile();
+    }
+}
+
+
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Istream& Foam::operator>>(Istream& is, wordRe& w)
+Foam::Istream& Foam::operator>>(Istream& is, wordRe& val)
 {
-    token t(is);
+    token tok(is);
 
-    if (!t.good())
+    if (val.assign(tok))
     {
-        is.setBad();
-        return is;
-    }
-
-    if (t.isWord())
-    {
-        w = t.wordToken();
-    }
-    else if (t.isString())
-    {
-        // Auto-tests for regular expression
-        w = t.stringToken();
-
-        // flag empty strings as an error
-        if (w.empty())
+        if (val.empty())
         {
-            is.setBad();
+            // Empty strings are an error
             FatalIOErrorInFunction(is)
-                << "empty word/expression "
+                << "Zero-length regex"
                 << exit(FatalIOError);
+            is.setBad();
             return is;
         }
     }
     else
     {
+        FatalIOErrorInFunction(is);
+        if (tok.good())
+        {
+            FatalIOError
+                << "Wrong token type - expected word or string, found "
+                << tok.info();
+        }
+        else
+        {
+            FatalIOError
+                << "Bad token - could not get wordRe";
+        }
+        FatalIOError << exit(FatalIOError);
         is.setBad();
-        FatalIOErrorInFunction(is)
-            << "wrong token type - expected word or string, found "
-            << t.info()
-            << exit(FatalIOError);
-
         return is;
     }
 
-    // Check state of IOstream
-    is.check("Istream& operator>>(Istream&, wordRe&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const wordRe& w)
+Foam::Ostream& Foam::operator<<(Ostream& os, const wordRe& val)
 {
-    os.writeQuoted(w, w.isPattern());
-    os.check("Ostream& operator<<(Ostream&, const wordRe&)");
-    return os;
-}
-
-
-Foam::Ostream& Foam::wordRe::info(Ostream& os) const
-{
-    if (isPattern())
-    {
-        os  << "wordRe(regex) " << *this;
-    }
-    else
-    {
-        os  << "wordRe(plain) \"" << *this << '"';
-    }
-    os.flush();
-
+    os.writeQuoted(val, val.isPattern());
+    os.check(FUNCTION_NAME);
     return os;
 }
 

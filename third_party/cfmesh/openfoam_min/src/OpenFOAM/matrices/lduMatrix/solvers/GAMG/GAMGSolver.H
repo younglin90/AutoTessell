@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,10 +27,13 @@ License
 Class
     Foam::GAMGSolver
 
+Group
+    grpLduMatrixSolvers
+
 Description
     Geometric agglomerated algebraic multigrid solver.
 
-  Characteristics:
+    Characteristics:
       - Requires positive definite, diagonally dominant matrix.
       - Agglomeration algorithm: selectable and optionally cached.
       - Restriction operator: summation.
@@ -39,7 +45,8 @@ Description
       - Coarse matrix scaling: performed by correction scaling, using steepest
         descent optimisation.
       - Type of cycle: V-cycle with optional pre-smoothing.
-      - Coarsest-level matrix solved using PCG or PBiCGStab.
+      - Coarsest-level matrix solved using any lduSolver (PCG, PBiCGStab,
+        smoothSolver) or direct solver on master processor
 
 SourceFiles
     GAMGSolver.C
@@ -50,12 +57,11 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef GAMGSolver_H
-#define GAMGSolver_H
+#ifndef Foam_GAMGSolver_H
+#define Foam_GAMGSolver_H
 
 #include "GAMGAgglomeration.H"
 #include "lduMatrix.H"
-#include "labelField.H"
 #include "primitiveFields.H"
 #include "LUscalarMatrix.H"
 
@@ -73,8 +79,6 @@ class GAMGSolver
     public lduMatrix::solver
 {
     // Private Data
-
-        bool cacheAgglomeration_;
 
         //- Number of pre-smoothing sweeps
         label nPreSweeps_;
@@ -96,6 +100,9 @@ class GAMGSolver
 
         //- Number of smoothing sweeps on finest mesh
         label nFinestSweeps_;
+
+        //- Cache the agglomeration (default: true)
+        bool cacheAgglomeration_;
 
         //- Choose if the corrections should be interpolated after injection.
         //  By default corrections are not interpolated.
@@ -127,10 +134,10 @@ class GAMGSolver
         //- Hierarchy of interface internal coefficients
         PtrList<FieldField<Field, scalar>> interfaceLevelsIntCoeffs_;
 
-        //- LU decomposed coarsest matrix for direct solution on the master
+        //- LU decomposed coarsest matrix
         autoPtr<LUscalarMatrix> coarsestLUMatrixPtr_;
 
-        //- Coarsest matrix solver for iterative solution
+        //- Sparse coarsest matrix solver
         autoPtr<lduMatrix::solver> coarsestSolverPtr_;
 
 
@@ -184,9 +191,8 @@ class GAMGSolver
         //- Collect matrices from other processors
         void gatherMatrices
         (
-            const labelList& procIDs,
-            const lduMesh& dummyMesh,
-            const label meshComm,
+            const label destLevel,
+            const label comm,
 
             const lduMatrix& mat,
             const FieldField<Field, scalar>& interfaceBouCoeffs,
@@ -196,8 +202,7 @@ class GAMGSolver
             PtrList<lduMatrix>& otherMats,
             PtrList<FieldField<Field, scalar>>& otherBouCoeffs,
             PtrList<FieldField<Field, scalar>>& otherIntCoeffs,
-            List<boolList>& otherTransforms,
-            List<List<label>>& otherRanks
+            PtrList<PtrList<lduInterfaceField>>& otherInterfaces
         ) const;
 
         //- Agglomerate processor matrices
@@ -228,8 +233,8 @@ class GAMGSolver
         //- Interpolate the correction after injected prolongation
         void interpolate
         (
-            scalarField& psi,
-            scalarField& Apsi,
+            solveScalarField& psi,
+            solveScalarField& Apsi,
             const lduMatrix& m,
             const FieldField<Field, scalar>& interfaceBouCoeffs,
             const lduInterfaceFieldPtrsList& interfaces,
@@ -240,13 +245,13 @@ class GAMGSolver
         //  re-normalise
         void interpolate
         (
-            scalarField& psi,
-            scalarField& Apsi,
+            solveScalarField& psi,
+            solveScalarField& Apsi,
             const lduMatrix& m,
             const FieldField<Field, scalar>& interfaceBouCoeffs,
             const lduInterfaceFieldPtrsList& interfaces,
             const labelList& restrictAddressing,
-            const scalarField& psiC,
+            const solveScalarField& psiC,
             const direction cmpt
         ) const;
 
@@ -257,23 +262,23 @@ class GAMGSolver
         //  scaling factor.
         void scale
         (
-            scalarField& field,
-            scalarField& Acf,
+            solveScalarField& field,
+            solveScalarField& Acf,
             const lduMatrix& A,
             const FieldField<Field, scalar>& interfaceLevelBouCoeffs,
             const lduInterfaceFieldPtrsList& interfaceLevel,
-            const scalarField& source,
+            const solveScalarField& source,
             const direction cmpt
         ) const;
 
         //- Initialise the data structures for the V-cycle
         void initVcycle
         (
-            PtrList<scalarField>& coarseCorrFields,
-            PtrList<scalarField>& coarseSources,
+            PtrList<solveScalarField>& coarseCorrFields,
+            PtrList<solveScalarField>& coarseSources,
             PtrList<lduMatrix::smoother>& smoothers,
-            scalarField& scratch1,
-            scalarField& scratch2
+            solveScalarField& scratch1,
+            solveScalarField& scratch2
         ) const;
 
 
@@ -281,25 +286,41 @@ class GAMGSolver
         void Vcycle
         (
             const PtrList<lduMatrix::smoother>& smoothers,
-            scalarField& psi,
+            solveScalarField& psi,
             const scalarField& source,
-            scalarField& Apsi,
-            scalarField& finestCorrection,
-            scalarField& finestResidual,
+            solveScalarField& Apsi,
+            solveScalarField& finestCorrection,
+            solveScalarField& finestResidual,
 
-            scalarField& scratch1,
-            scalarField& scratch2,
+            solveScalarField& scratch1,
+            solveScalarField& scratch2,
 
-            PtrList<scalarField>& coarseCorrFields,
-            PtrList<scalarField>& coarseSources,
+            PtrList<solveScalarField>& coarseCorrFields,
+            PtrList<solveScalarField>& coarseSources,
             const direction cmpt=0
+        ) const;
+
+        //- Create and return the dictionary to specify the PCG solver
+        //  to solve the coarsest level
+        dictionary PCGsolverDict
+        (
+            const scalar tol,
+            const scalar relTol
+        ) const;
+
+        //- Create and return the dictionary to specify the PBiCGStab solver
+        //  to solve the coarsest level
+        dictionary PBiCGStabSolverDict
+        (
+            const scalar tol,
+            const scalar relTol
         ) const;
 
         //- Solve the coarsest level with either an iterative or direct solver
         void solveCoarsestLevel
         (
-            scalarField& coarsestCorrField,
-            const scalarField& coarsestSource
+            solveScalarField& coarsestCorrField,
+            const solveScalarField& coarsestSource
         ) const;
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class emptyPolyPatch Declaration
+                      Class emptyPolyPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class emptyPolyPatch
@@ -65,7 +67,8 @@ public:
             const label size,
             const label start,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct from dictionary
@@ -74,7 +77,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct as copy, resetting the boundary mesh
@@ -88,6 +92,16 @@ public:
             const polyBoundaryMesh& bm,
             const label index,
             const label newSize,
+            const label newStart
+        );
+
+        //- Construct given the original patch and a map
+        emptyPolyPatch
+        (
+            const emptyPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
             const label newStart
         );
 
@@ -113,13 +127,20 @@ public:
             );
         }
 
-
-    // Member Functions
-
-        //- Return true as this patch is a constraint type
-        virtual bool constraint() const
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
         {
-            return true;
+            return autoPtr<polyPatch>
+            (
+                new emptyPolyPatch(*this, bm, index, mapAddressing, newStart)
+            );
         }
 };
 

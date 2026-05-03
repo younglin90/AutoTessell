@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,27 +34,53 @@ template<class Type>
 Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<Type>(p, iF),
+    profile_(),
+    dir_(Zero),
+    origin_(0)
+{}
+
+
+template<class Type>
+Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const Field<Type>& fld
+)
+:
+    fixedValueFvPatchField<Type>(p, iF, fld),
+    profile_(),
+    dir_(Zero),
+    origin_(0)
+{}
+
+
+template<class Type>
+Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<Type>(p, iF, dict, false),
-    profile_
-    (
-        Function1<Type>::New("profile", dimLength, iF.dimensions(), dict)
-    ),
-    origin_(dict.lookup<scalar>("origin", dimLength)),
-    direction_(dict.lookup<vector>("direction", dimless))
+    fixedValueFvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ),
+    profile_(Function1<Type>::New("profile", dict, &this->db())),
+    dir_(dict.lookup("direction")),
+    origin_(dict.get<scalar>("origin"))
 {
-    if (mag(direction_) == 0)
+    if (mag(dir_) < SMALL)
     {
         FatalErrorInFunction
-            << "The direction must be non-zero"
+            << "magnitude Direction must be greater than zero"
             << abort(FatalError);
     }
 
-    // Normalise the direction
-    direction_ /= mag(direction_);
+    // Ensure direction vector is normalized
+    dir_ /= mag(dir_);
 
     // Evaluate profile
     this->evaluate();
@@ -63,14 +92,14 @@ Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
 (
     const fixedProfileFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    fixedValueFvPatchField<Type>(p, iF), // Don't map
-    profile_(ptf.profile_, false),
-    origin_(ptf.origin_),
-    direction_(ptf.direction_)
+    fixedValueFvPatchField<Type>(p, iF),  // Don't map
+    profile_(ptf.profile_.clone()),
+    dir_(ptf.dir_),
+    origin_(ptf.origin_)
 {
     // Evaluate profile since value not mapped
     this->evaluate();
@@ -80,17 +109,30 @@ Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
 template<class Type>
 Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
 (
+    const fixedProfileFvPatchField<Type>& ptf
+)
+:
+    fixedValueFvPatchField<Type>(ptf),
+    profile_(ptf.profile_.clone()),
+    dir_(ptf.dir_),
+    origin_(ptf.origin_)
+{}
+
+
+template<class Type>
+Foam::fixedProfileFvPatchField<Type>::fixedProfileFvPatchField
+(
     const fixedProfileFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fixedValueFvPatchField<Type>(ptf, iF),
-    profile_(ptf.profile_, false),
-    origin_(ptf.origin_),
-    direction_(ptf.direction_)
+    profile_(ptf.profile_.clone()),
+    dir_(ptf.dir_),
+    origin_(ptf.origin_)
 {
     // Evaluate the profile if defined
-    if (ptf.profile_.valid())
+    if (ptf.profile_)
     {
         this->evaluate();
     }
@@ -107,8 +149,7 @@ void Foam::fixedProfileFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    const scalarField dirCmpt((direction_ & this->patch().Cf()) - origin_);
-
+    const scalarField dirCmpt((dir_ & this->patch().Cf()) - origin_);
     fvPatchField<Type>::operator==(profile_->value(dirCmpt));
 
     fixedValueFvPatchField<Type>::updateCoeffs();
@@ -119,10 +160,10 @@ template<class Type>
 void Foam::fixedProfileFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, profile_());
-    writeEntry(os, "direction", direction_);
-    writeEntry(os, "origin", origin_);
-    writeEntry(os, "value", *this);
+    profile_->writeData(os);
+    os.writeEntry("direction", dir_);
+    os.writeEntry("origin", origin_);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

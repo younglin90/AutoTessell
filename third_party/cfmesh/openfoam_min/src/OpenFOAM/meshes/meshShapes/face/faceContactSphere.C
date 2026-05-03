@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,15 +36,13 @@ Foam::scalar Foam::face::contactSphereDiameter
 (
     const point& p,
     const vector& n,
-    const pointField& meshPoints
+    const UList<point>& meshPoints
 ) const
 {
-    scalar magN = Foam::mag(n);
+    vector n1 = n/(Foam::mag(n) + SMALL);
+    vector n2 = areaNormal(meshPoints);
 
-    vector n1 = n/(magN + small);
-    vector n2 = area(meshPoints);
-
-    n2 /= Foam::mag(n2) + small;
+    n2 /= Foam::mag(n2) + SMALL;
 
     return 2*((centre(meshPoints) - p) & n2)/((n1 & n2) - 1.0);
 }

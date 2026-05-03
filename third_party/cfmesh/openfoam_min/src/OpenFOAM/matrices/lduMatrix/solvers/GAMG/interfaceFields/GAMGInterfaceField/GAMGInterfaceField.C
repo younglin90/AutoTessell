@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,6 +35,7 @@ namespace Foam
     defineTypeNameAndDebug(GAMGInterfaceField, 0);
     defineRunTimeSelectionTable(GAMGInterfaceField, lduInterface);
     defineRunTimeSelectionTable(GAMGInterfaceField, lduInterfaceField);
+    defineRunTimeSelectionTable(GAMGInterfaceField, Istream);
 }
 
 // ************************************************************************* //

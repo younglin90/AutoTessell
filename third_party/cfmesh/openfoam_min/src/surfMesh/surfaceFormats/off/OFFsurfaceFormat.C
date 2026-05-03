@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +28,9 @@ License
 
 #include "OFFsurfaceFormat.H"
 #include "clock.H"
-#include "IFstream.H"
-#include "IStringStream.H"
-#include "Ostream.H"
-#include "OFstream.H"
+#include "Fstream.H"
+#include "StringStream.H"
+#include "faceTraits.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -50,14 +52,14 @@ bool Foam::fileFormats::OFFsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
-    const bool mustTriangulate = this->isTri();
+    // Clear everything
     this->clear();
 
     IFstream is(filename);
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << filename
+            << "Cannot read file " << filename << nl
             << exit(FatalError);
     }
 
@@ -82,15 +84,17 @@ bool Foam::fileFormats::OFFsurfaceFormat<Face>::read
 
     // Read points
     pointField pointLst(nPoints);
-    forAll(pointLst, pointi)
+    for (point& pt : pointLst)
     {
         scalar x, y, z;
+
         line = this->getLineNoComment(is);
         {
             IStringStream lineStream(line);
             lineStream >> x >> y >> z;
         }
-        pointLst[pointi] = point(x, y, z);
+
+        pt = point(x, y, z);
     }
 
     // Read faces - ignore optional zone information
@@ -114,9 +118,9 @@ bool Foam::fileFormats::OFFsurfaceFormat<Face>::read
                 lineStream >> verts[vertI];
             }
 
-            labelUList& f = static_cast<labelUList&>(verts);
+            const labelUList& f = static_cast<const labelUList&>(verts);
 
-            if (mustTriangulate && f.size() > 3)
+            if (faceTraits<Face>::isTri() && f.size() > 3)
             {
                 // simple face triangulation about f[0]
                 // cannot use face::triangulation (points may be incomplete)
@@ -124,7 +128,7 @@ bool Foam::fileFormats::OFFsurfaceFormat<Face>::read
                 {
                     label fp2 = f.fcIndex(fp1);
 
-                    dynFaces.append(triFace(f[0], f[fp1], f[fp2]));
+                    dynFaces.append(Face{f[0], f[fp1], f[fp2]});
                 }
             }
             else
@@ -134,8 +138,10 @@ bool Foam::fileFormats::OFFsurfaceFormat<Face>::read
         }
     }
 
-    // transfer to normal lists, no zone information
-    this->reset(move(pointLst), move(dynFaces), NullObjectMove<surfZoneList>());
+    // Transfer to normal lists, no zone information
+    MeshedSurface<Face> surf(std::move(pointLst), std::move(dynFaces));
+
+    this->swap(surf);
 
     return true;
 }
@@ -145,24 +151,31 @@ template<class Face>
 void Foam::fileFormats::OFFsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
-    const List<surfZone>& zoneLst = surf.surfZones();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
 
-    OFstream os(filename);
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&  faceLst  = surf.surfFaces();
+    const UList<label>& faceMap  = surf.faceMap();
+    const UList<surfZone>& zoneLst = surf.surfZones();
+
+    const bool useFaceMap = surf.useFaceMap();
+
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
     // Write header
-    os  << "OFF" << endl
+    os  << "OFF" << nl
         << "# Geomview OFF file written " << clock::dateTime().c_str() << nl
         << nl
         << "# points : " << pointLst.size() << nl
@@ -180,60 +193,49 @@ void Foam::fileFormats::OFFsurfaceFormat<Face>::write
         << "# nPoints  nFaces  nEdges" << nl
         << pointLst.size() << ' ' << faceLst.size() << ' ' << 0 << nl
         << nl
-        << "# <points count=\"" << pointLst.size() << "\">" << endl;
+        << "# <points count=\"" << pointLst.size() << "\">" << nl;
 
     // Write vertex coords
     forAll(pointLst, ptI)
     {
         os  << pointLst[ptI].x() << ' '
             << pointLst[ptI].y() << ' '
-            << pointLst[ptI].z() << " #" << ptI << endl;
+            << pointLst[ptI].z() << " #" << ptI << nl;
     }
 
     os  << "# </points>" << nl
         << nl
-        << "# <faces count=\"" << faceLst.size() << "\">" << endl;
+        << "# <faces count=\"" << faceLst.size() << "\">" << nl;
 
     label faceIndex = 0;
-    forAll(zoneLst, zoneI)
+    label zoneIndex = 0;
+
+    for (const surfZone& zone : zoneLst)
     {
-        os << "# <zone name=\"" << zoneLst[zoneI].name() << "\">" << endl;
+        os << "# <zone name=\"" << zone.name() << "\">" << nl;
 
-        if (surf.useFaceMap())
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
         {
-            forAll(zoneLst[zoneI], localFacei)
+            const label facei =
+                (useFaceMap ? faceMap[faceIndex] : faceIndex);
+
+            const Face& f = faceLst[facei];
+
+            os << f.size();
+            for (const label verti : f)
             {
-                const Face& f = faceLst[faceMap[faceIndex++]];
-
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-
-                // add optional zone information
-                os << ' ' << zoneI << endl;
+                os << ' ' << verti;
             }
-        }
-        else
-        {
-            forAll(zoneLst[zoneI], localFacei)
-            {
-                const Face& f = faceLst[faceIndex++];
 
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-
-                // add optional zone information
-                os << ' ' << zoneI << endl;
-            }
+            // Add optional zone information
+            os << ' ' << zoneIndex << nl;
         }
-        os << "# </zone>" << endl;
+
+        os << "# </zone>" << nl;
+        ++zoneIndex;
     }
-    os << "# </faces>" << endl;
+
+    os << "# </faces>" << nl;
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +27,9 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::cubicEqn::cubicEqn()
-{}
-
-
 inline Foam::cubicEqn::cubicEqn(const Foam::zero)
 :
-    VectorSpace<cubicEqn, scalar, 4>(Foam::zero())
+    VectorSpace<cubicEqn, scalar, 4>(Foam::zero{})
 {}
 
 
@@ -43,62 +41,14 @@ inline Foam::cubicEqn::cubicEqn
     const scalar d
 )
 {
-    this->v_[coefficient::a] = a;
-    this->v_[coefficient::b] = b;
-    this->v_[coefficient::c] = c;
-    this->v_[coefficient::d] = d;
+    this->v_[A] = a;
+    this->v_[B] = b;
+    this->v_[C] = c;
+    this->v_[D] = d;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline Foam::scalar Foam::cubicEqn::a() const
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar Foam::cubicEqn::b() const
-{
-    return this->v_[coefficient::b];
-}
-
-
-inline Foam::scalar Foam::cubicEqn::c() const
-{
-    return this->v_[coefficient::c];
-}
-
-
-inline Foam::scalar Foam::cubicEqn::d() const
-{
-    return this->v_[coefficient::d];
-}
-
-
-inline Foam::scalar& Foam::cubicEqn::a()
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar& Foam::cubicEqn::b()
-{
-    return this->v_[coefficient::b];
-}
-
-
-inline Foam::scalar& Foam::cubicEqn::c()
-{
-    return this->v_[coefficient::c];
-}
-
-
-inline Foam::scalar& Foam::cubicEqn::d()
-{
-    return this->v_[coefficient::d];
-}
-
 
 inline Foam::scalar Foam::cubicEqn::value(const scalar x) const
 {
@@ -115,9 +65,9 @@ inline Foam::scalar Foam::cubicEqn::derivative(const scalar x) const
 inline Foam::scalar Foam::cubicEqn::error(const scalar x) const
 {
     return
-        small*magSqr(x)*(mag(x*a()) + mag(b()))
-      + small*mag(x)*(mag(x*(x*a() + b())) + mag(c()))
-      + small*(mag(x*(x*(x*a() + b()) + c())) + mag(d()));
+        SMALL*magSqr(x)*(mag(x*a()) + mag(b()))
+      + SMALL*mag(x)*(mag(x*(x*a() + b())) + mag(c()))
+      + SMALL*(mag(x*(x*(x*a() + b()) + c())) + mag(d()));
 }
 
 

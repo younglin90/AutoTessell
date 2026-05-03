@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "symGaussSeidelSmoother.H"
+#include "PrecisionAdaptor.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -66,21 +70,21 @@ Foam::symGaussSeidelSmoother::symGaussSeidelSmoother
 void Foam::symGaussSeidelSmoother::smooth
 (
     const word& fieldName_,
-    scalarField& psi,
+    solveScalarField& psi,
     const lduMatrix& matrix_,
-    const scalarField& source,
+    const solveScalarField& source,
     const FieldField<Field, scalar>& interfaceBouCoeffs_,
     const lduInterfaceFieldPtrsList& interfaces_,
     const direction cmpt,
     const label nSweeps
 )
 {
-    scalar* __restrict__ psiPtr = psi.begin();
+    solveScalar* __restrict__ psiPtr = psi.begin();
 
     const label nCells = psi.size();
 
-    scalarField bPrime(nCells);
-    scalar* __restrict__ bPrimePtr = bPrime.begin();
+    solveScalarField bPrime(nCells);
+    solveScalar* __restrict__ bPrimePtr = bPrime.begin();
 
     const scalar* const __restrict__ diagPtr = matrix_.diag().begin();
     const scalar* const __restrict__ upperPtr =
@@ -107,28 +111,16 @@ void Foam::symGaussSeidelSmoother::smooth
     // To compensate for this, it is necessary to turn the
     // sign of the contribution.
 
-    FieldField<Field, scalar>& mBouCoeffs =
-        const_cast<FieldField<Field, scalar>&>
-        (
-            interfaceBouCoeffs_
-        );
-
-    forAll(mBouCoeffs, patchi)
-    {
-        if (interfaces_.set(patchi))
-        {
-            mBouCoeffs[patchi].negate();
-        }
-    }
-
-
     for (label sweep=0; sweep<nSweeps; sweep++)
     {
         bPrime = source;
 
+        const label startRequest = UPstream::nRequests();
+
         matrix_.initMatrixInterfaces
         (
-            mBouCoeffs,
+            false,
+            interfaceBouCoeffs_,
             interfaces_,
             psi,
             bPrime,
@@ -137,14 +129,16 @@ void Foam::symGaussSeidelSmoother::smooth
 
         matrix_.updateMatrixInterfaces
         (
-            mBouCoeffs,
+            false,
+            interfaceBouCoeffs_,
             interfaces_,
             psi,
             bPrime,
-            cmpt
+            cmpt,
+            startRequest
         );
 
-        scalar psii;
+        solveScalar psii;
         label fStart;
         label fEnd = ownStartPtr[0];
 
@@ -192,34 +186,22 @@ void Foam::symGaussSeidelSmoother::smooth
                 psii -= upperPtr[facei]*psiPtr[uPtr[facei]];
             }
 
+            // Note: do not need to distribute the neighbour side
+            // since these will not be revisited
+
             // Finish psi for this cell
             psii /= diagPtr[celli];
 
-            // Distribute the neighbour side using psi for this cell
-            for (label facei=fStart; facei<fEnd; facei++)
-            {
-                bPrimePtr[uPtr[facei]] -= lowerPtr[facei]*psii;
-            }
-
             psiPtr[celli] = psii;
-        }
-    }
-
-    // Restore interfaceBouCoeffs_
-    forAll(mBouCoeffs, patchi)
-    {
-        if (interfaces_.set(patchi))
-        {
-            mBouCoeffs[patchi].negate();
         }
     }
 }
 
 
-void Foam::symGaussSeidelSmoother::smooth
+void Foam::symGaussSeidelSmoother::scalarSmooth
 (
-    scalarField& psi,
-    const scalarField& source,
+    solveScalarField& psi,
+    const solveScalarField& source,
     const direction cmpt,
     const label nSweeps
 ) const
@@ -232,6 +214,24 @@ void Foam::symGaussSeidelSmoother::smooth
         source,
         interfaceBouCoeffs_,
         interfaces_,
+        cmpt,
+        nSweeps
+    );
+}
+
+
+void Foam::symGaussSeidelSmoother::smooth
+(
+    solveScalarField& psi,
+    const scalarField& source,
+    const direction cmpt,
+    const label nSweeps
+) const
+{
+    scalarSmooth
+    (
+        psi,
+        ConstPrecisionAdaptor<solveScalar, scalar>(source),
         cmpt,
         nSweeps
     );

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +36,26 @@ Foam::tmp<Foam::Field<Type>> Foam::GAMGInterface::interfaceInternalField
     const UList<Type>& iF
 ) const
 {
-    tmp<Field<Type>> tresult(new Field<Type>(size()));
+    auto tresult = tmp<Field<Type>>::New(size());
     interfaceInternalField(iF, tresult.ref());
+    return tresult;
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>> Foam::GAMGInterface::interfaceInternalField
+(
+    const UList<Type>& iF,
+    const labelUList& faceCells
+) const
+{
+    auto tresult = tmp<Field<Type>>::New(faceCells.size());
+    auto& result = tresult.ref();
+
+    forAll(result, elemi)
+    {
+        result[elemi] = iF[faceCells[elemi]];
+    }
     return tresult;
 }
 
@@ -46,11 +67,11 @@ void Foam::GAMGInterface::interfaceInternalField
     List<Type>& result
 ) const
 {
-    result.setSize(size());
+    result.resize(size());
 
-    forAll(result, elemI)
+    forAll(result, elemi)
     {
-        result[elemI] = iF[faceCells_[elemI]];
+        result[elemi] = iF[faceCells_[elemi]];
     }
 }
 

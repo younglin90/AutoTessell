@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,14 +47,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class pairGAMGAgglomeration Declaration
+                           Class pairGAMGAgglomeration Declaration
 \*---------------------------------------------------------------------------*/
 
 class pairGAMGAgglomeration
 :
     public GAMGAgglomeration
 {
-    // Private Data
+    // Private data
 
         //- Number of levels to merge, 1 = don't merge, 2 = merge pairs etc.
         label mergeLevels_;
@@ -64,12 +67,11 @@ protected:
 
     // Protected Member Functions
 
-        //- Agglomerate all levels starting from the given face weights
-        void agglomerate
-        (
-            const lduMesh& mesh,
-            const scalarField& faceWeights
-        );
+        //- No copy construct
+        pairGAMGAgglomeration(const pairGAMGAgglomeration&) = delete;
+
+        //- No copy assignment
+        void operator=(const pairGAMGAgglomeration&) = delete;
 
 
 public:
@@ -87,9 +89,6 @@ public:
             const dictionary& controlDict
         );
 
-        //- Disallow default bitwise copy construction
-        pairGAMGAgglomeration(const pairGAMGAgglomeration&) = delete;
-
         //- Calculate and return agglomeration
         static tmp<labelField> agglomerate
         (
@@ -98,11 +97,16 @@ public:
             const scalarField& faceWeights
         );
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const pairGAMGAgglomeration&) = delete;
+        //- Agglomerate from a starting level. Starting level is usually 0
+        //- (initial mesh) but sometimes >0 (restarting after processor
+        //- agglomeration)
+        virtual void agglomerate
+        (
+            const label nCellsInCoarsestLevel,
+            const label startLevel,
+            const scalarField& startFaceWeights,
+            const bool doProcessorAgglomerate = true
+        );
 };
 
 

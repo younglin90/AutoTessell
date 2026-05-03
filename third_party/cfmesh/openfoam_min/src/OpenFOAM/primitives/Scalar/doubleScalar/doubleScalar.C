@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,26 +27,34 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "doubleScalar.H"
+#include "error.H"
+#include "parsing.H"
 #include "IOstreams.H"
 
+#include <cstdlib>
 #include <sstream>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+// Scalar.C is used for template-like substitution
+
 #define Scalar doubleScalar
-#define ScalarVGreat doubleScalarVGreat
-#define ScalarVSmall doubleScalarVSmall
-#define ScalarRootVGreat doubleScalarRootVGreat
-#define ScalarRootVSmall doubleScalarRootVSmall
-#define ScalarNaN doubleScalarNaN
-#define readScalar readDoubleScalar
+#define ScalarVGREAT doubleScalarVGREAT
+#define ScalarVSMALL doubleScalarVSMALL
+#define ScalarROOTVGREAT doubleScalarROOTVGREAT
+#define ScalarROOTVSMALL doubleScalarROOTVSMALL
+#define ScalarRead readDouble
+// Convert using larger representation to properly capture underflow
+#define ScalarConvert ::strtold
+
 #include "Scalar.C"
+
 #undef Scalar
-#undef ScalarVGreat
-#undef ScalarVSmall
-#undef ScalarRootVGreat
-#undef ScalarRootVSmall
-#undef ScalarNaN
-#undef readScalar
+#undef ScalarVGREAT
+#undef ScalarVSMALL
+#undef ScalarROOTVGREAT
+#undef ScalarROOTVSMALL
+#undef ScalarRead
+#undef ScalarConvert
 
 // ************************************************************************* //

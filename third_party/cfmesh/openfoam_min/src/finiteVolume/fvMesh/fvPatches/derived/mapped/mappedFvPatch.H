@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +27,7 @@ Class
     Foam::mappedFvPatch
 
 Description
-    Fv patch which can do interpolative mapping of values from another globally
-    conforming fv patch
+    Foam::mappedFvPatch
 
 SourceFiles
     mappedFvPatch.C
@@ -37,7 +38,6 @@ SourceFiles
 #define mappedFvPatch_H
 
 #include "fvPatch.H"
-#include "mappedFvPatchBase.H"
 #include "mappedPolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -46,13 +46,12 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class mappedFvPatch Declaration
+                       Class mappedFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class mappedFvPatch
 :
-    public fvPatch,
-    public mappedFvPatchBase
+    public fvPatch
 {
 
 public:
@@ -66,8 +65,7 @@ public:
         //- Construct from components
         mappedFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
         :
-            fvPatch(patch, bm),
-            mappedFvPatchBase(static_cast<const fvPatch&>(*this))
+            fvPatch(patch, bm)
         {}
 };
 

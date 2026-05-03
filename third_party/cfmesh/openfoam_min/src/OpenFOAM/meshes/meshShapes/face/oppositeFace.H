@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,13 +30,10 @@ Description
     Class containing opposite face for a prismatic cell with addressing
     and a possibility of failure.
 
-SourceFiles
-    oppositeFace.C
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef oppositeFace_H
-#define oppositeFace_H
+#ifndef Foam_oppositeFace_H
+#define Foam_oppositeFace_H
 
 #include "face.H"
 
@@ -44,7 +43,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class oppositeFace Declaration
+                           Class oppositeFace Declaration
 \*---------------------------------------------------------------------------*/
 
 class oppositeFace
@@ -82,22 +81,25 @@ public:
     // Member Functions
 
         //- Master face index
-        inline label masterIndex() const
+        label masterIndex() const noexcept
         {
             return masterIndex_;
         }
 
-        //- Slave face index
-        inline label oppositeIndex() const
+        //- Opposite face index
+        label oppositeIndex() const noexcept
         {
             return oppositeIndex_;
         }
 
         //- Does the opposite face exist?
-        inline bool found() const
+        bool good() const noexcept
         {
             return oppositeIndex_ >= 0;
         }
+
+        //- Does the opposite face exist?
+        bool found() const noexcept { return good(); }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,228 +31,314 @@ License
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::New
 (
-    const word& name,
-    const Function1s::unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const entry* eptr,
+    const dictionary& dict,
+    const word& redirectType,
+    const objectRegistry* obrPtr,
+    const bool mandatory
 )
 {
-    // If the function is a dictionary (preferred) then read straightforwardly
-    if (dict.isDict(name))
+    word modelType(redirectType);
+
+    const dictionary* coeffs = (eptr ? eptr->dictPtr() : nullptr);
+
+    if (coeffs)
     {
-        const dictionary& coeffDict(dict.subDict(name));
+        // Dictionary entry
 
-        const word Function1Type(coeffDict.lookup("type"));
+        DebugInFunction
+            << "For " << entryName << " with dictionary entries: "
+            << flatOutput(coeffs->toc()) << nl;
 
-        if (printDictionary::prints(coeffDict))
+        // The "type" entry - mandatory if no redirectType provided
+        coeffs->readEntry
+        (
+            "type",
+            modelType,
+            keyType::LITERAL,
+            (
+                modelType.empty()
+              ? IOobjectOption::MUST_READ : IOobjectOption::READ_IF_PRESENT
+            )
+        );
+
+        // Fallthrough
+    }
+    else if (eptr)
+    {
+        // Primitive entry
+        // - word : the modelType
+        // - non-word : value for constant function
+
+        DebugInFunction
+            << "For " << entryName << " with primitive entry" << nl;
+
+        ITstream& is = eptr->stream();
+
+        if (is.peek().isWord())
         {
-            Info<< indent << "Selecting " << typeName << " "
-                << Function1Type << endl;
+            modelType = is.peek().wordToken();
+        }
+        else
+        {
+            // A value - compatibility for reading constant
+
+            const Type constValue = pTraits<Type>(is);
+
+            return autoPtr<Function1<Type>>
+            (
+                new Function1Types::Constant<Type>
+                (
+                    entryName,
+                    constValue,
+                    obrPtr
+                )
+            );
         }
 
-        typename dictionaryConstructorTable::iterator cstrIter =
-            dictionaryConstructorTablePtr_->find(Function1Type);
+        // Fallthrough
+    }
 
-        if (cstrIter == dictionaryConstructorTablePtr_->end())
+
+    if (modelType.empty())
+    {
+        // Entry missing
+
+        if (mandatory)
         {
             FatalIOErrorInFunction(dict)
-                << "Unknown Function1 type "
-                << Function1Type << " for Function1 "
-                << name << nl << nl
-                << "Valid Function1 types are:" << nl
-                << dictionaryConstructorTablePtr_->sortedToc() << nl
+                << "Missing or invalid Function1 entry: "
+                << entryName << nl
                 << exit(FatalIOError);
         }
 
-        printDictionary print(coeffDict);
-
-        return cstrIter()(name, units, coeffDict);
+        return nullptr;
     }
-
-    // Find the entry
-    Istream& is(dict.lookup(name));
-
-    // Peek at the first token
-    token firstToken(is);
-    is.putBack(firstToken);
-
-    // Read the type, or assume constant
-    const word Function1Type =
-        firstToken.isWord() ? word(is) : Function1s::Constant<Type>::typeName;
-
-    // If the entry is not a type followed by a end statement then
-    // construct the function from the stream
-    if (!firstToken.isWord() || !is.eof())
+    else if (!coeffs)
     {
-        return New(name, units, Function1Type, is);
+        // Primitive entry. Coeffs dictionary is optional.
+
+        const word& kw =
+        (
+            eptr
+          ? eptr->keyword()  // Could be a compatibility lookup
+          : entryName
+        );
+
+        coeffs = &dict.optionalSubDict(kw + "Coeffs", keyType::LITERAL);
     }
 
-    // Otherwise, construct from the current or coeffs dictionary
-    typename dictionaryConstructorTable::iterator dictCstrIter =
-        dictionaryConstructorTablePtr_->find(Function1Type);
 
-    if (dictCstrIter == dictionaryConstructorTablePtr_->end())
+    auto* ctorPtr = dictionaryConstructorTable(modelType);
+
+    if (!ctorPtr)
     {
         FatalIOErrorInFunction(dict)
             << "Unknown Function1 type "
-            << Function1Type << " for Function1 "
-            << name << nl << nl
-            << "Valid Function1 types are:" << nl
+            << modelType << " for " << entryName
+            << "\n\nValid Function1 types :\n"
             << dictionaryConstructorTablePtr_->sortedToc() << nl
             << exit(FatalIOError);
     }
 
-    return dictCstrIter()(name, units, dict);
+    return ctorPtr(entryName, *coeffs, obrPtr);
 }
 
 
 template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::New
 (
-    const word& name,
-    const unitSet& xUnits,
-    const unitSet& valueUnits,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const word& redirectType,
+    const objectRegistry* obrPtr,
+    const bool mandatory
 )
 {
-    return New(name, {xUnits, valueUnits}, dict);
+    return Function1<Type>::New
+    (
+        entryName,
+        dict.findEntry(entryName, keyType::LITERAL),
+        dict,
+        redirectType,
+        obrPtr,
+        mandatory
+    );
 }
 
 
 template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::NewCompat
 (
-    const Function1s::unitSets& units,
-    const entry& e
+    const word& entryName,
+    std::initializer_list<std::pair<const char*,int>> compat,
+    const dictionary& dict,
+    const word& redirectType,
+    const objectRegistry* obrPtr,
+    const bool mandatory
 )
 {
-    // If the function is a dictionary (preferred) then read straightforwardly
-    if (e.isDict())
+    return Function1<Type>::New
+    (
+        entryName,
+        dict.findCompat(entryName, compat, keyType::LITERAL),
+        dict,
+        redirectType,
+        obrPtr,
+        mandatory
+    );
+}
+
+
+template<class Type>
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::New
+(
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr,
+    const bool mandatory
+)
+{
+    return Function1<Type>::New(entryName, dict, word::null, obrPtr, mandatory);
+}
+
+
+template<class Type>
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::NewIfPresent
+(
+    const word& entryName,
+    const dictionary& dict,
+    const word& redirectType,
+    const objectRegistry* obrPtr
+)
+{
+    // mandatory = false
+    return Function1<Type>::New(entryName, dict, redirectType, obrPtr, false);
+}
+
+
+template<class Type>
+Foam::autoPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::NewIfPresent
+(
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
+)
+{
+    // mandatory = false
+    return Function1<Type>::New(entryName, dict, word::null, obrPtr, false);
+}
+
+
+template<class Type>
+Foam::refPtr<Foam::Function1<Type>>
+Foam::Function1<Type>::New
+(
+    HashPtrTable<Function1<Type>>& cache,
+
+    const word& entryName,
+    const dictionary& dict,
+    enum keyType::option matchOpt,
+    const objectRegistry* obrPtr,
+    const bool mandatory
+)
+{
+    // Use the dictionary to find the keyword (allowing wildcards).
+    // Alternative would be to have
+    // a HashTable where the key type uses a wildcard match
+
+
+    refPtr<Function1<Type>> fref;  // return value
+
+    // Try for direct cache hit
+    fref.cref(cache.get(entryName));
+
+    if (fref)
     {
-        const dictionary& coeffDict(e.dict());
+        return fref;
+    }
 
-        const word Function1Type(coeffDict.lookup("type"));
 
-        if (printDictionary::prints(coeffDict))
+    // Lookup from dictionary
+    const entry* eptr = dict.findEntry(entryName, matchOpt);
+
+    if (eptr)
+    {
+        // Use keyword (potentially a wildcard) instead of entry name
+        const auto& kw = eptr->keyword();
+
+        // Try for a cache hit
+        fref.cref(cache.get(kw));
+
+        if (!fref)
         {
-            Info<< indent << "Selecting " << typeName << " "
-                << Function1Type << endl;
+            // Create new entry
+            auto fauto
+            (
+                Function1<Type>::New
+                (
+                    kw,
+                    eptr,  // Already resolved
+                    dict,
+                    word::null,
+                    obrPtr,
+                    mandatory
+                )
+            );
+
+            if (fauto)
+            {
+                // Cache the newly created function
+                fref.cref(fauto.get());
+                cache.set(kw, fauto);
+            }
         }
-
-        typename dictionaryConstructorTable::iterator cstrIter =
-            dictionaryConstructorTablePtr_->find(Function1Type);
-
-        if (cstrIter == dictionaryConstructorTablePtr_->end())
-        {
-            FatalIOErrorInFunction(e.dict())
-                << "Unknown Function1 type "
-                << Function1Type << " for Function1 "
-                << e.keyword() << nl << nl
-                << "Valid Function1 types are:" << nl
-                << dictionaryConstructorTablePtr_->sortedToc() << nl
-                << exit(FatalIOError);
-        }
-
-        printDictionary print(coeffDict);
-
-        return cstrIter()(e.keyword(), units, coeffDict);
     }
 
-    // Get the stream
-    Istream& is(e.stream());
-
-    // Peek at the first token
-    token firstToken(is);
-    is.putBack(firstToken);
-
-    // Read the type, or assume constant
-    const word Function1Type =
-        firstToken.isWord() ? word(is) : Function1s::Constant<Type>::typeName;
-
-    // If the entry is not a type followed by a end statement then
-    // construct the function from the stream
-    if (!firstToken.isWord() || !is.eof())
+    if (mandatory && !fref)
     {
-        return New(e.keyword(), units, Function1Type, is);
+        FatalIOErrorInFunction(dict)
+            << "No match for " << entryName << nl
+            << exit(FatalIOError);
     }
 
-    FatalIOErrorInFunction(e.stream())
-        << "Unable to construct Function1 for " << e.keyword()
-        << exit(FatalIOError);
-
-    return autoPtr<Function1<Type>>(nullptr);
+    return fref;
 }
 
 
-template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
-(
-    const unitSet& xUnits,
-    const unitSet& valueUnits,
-    const entry& e
-)
-{
-    return New({xUnits, valueUnits}, e);
-}
-
-
-template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
-(
-    const word& name,
-    const Function1s::unitSets& units,
-    const word& Function1Type,
-    Istream& is
-)
-{
-    typename dictionaryConstructorTable::iterator dictCstrIter =
-        dictionaryConstructorTablePtr_->find(Function1Type);
-    const bool haveDictCstrIter =
-        dictCstrIter != dictionaryConstructorTablePtr_->end();
-
-    typename IstreamConstructorTable::iterator isCstrIter =
-        IstreamConstructorTablePtr_->find(Function1Type);
-    const bool haveIstreamCstrIter =
-        isCstrIter != IstreamConstructorTablePtr_->end();
-
-    if (!haveDictCstrIter && !haveIstreamCstrIter)
-    {
-        FatalErrorInFunction
-            << "Unknown Function1 type "
-            << Function1Type << " for Function1 "
-            << name << nl << nl
-            << "Valid Function1 types are:" << nl
-            << dictionaryConstructorTablePtr_->sortedToc() << nl
-            << exit(FatalError);
-    }
-
-    if (!haveIstreamCstrIter)
-    {
-        FatalErrorInFunction
-            << "Function1 type "
-            << Function1Type << " for Function1 "
-            << name << " cannot be specified inline" << nl << nl
-            << "Make " << name << " a sub-dictionary"
-            << exit(FatalError);
-    }
-
-    return isCstrIter()(name, units, is);
-}
-
-
-template<class Type>
-Foam::autoPtr<Foam::Function1<Type>> Foam::Function1<Type>::New
-(
-    const word& name,
-    const unitSet& xUnits,
-    const unitSet& valueUnits,
-    const word& Function1Type,
-    Istream& is
-)
-{
-    return New(name, {xUnits, valueUnits}, Function1Type, is);
-}
-
+/// template<class Type>
+/// Foam::refPtr<Foam::Function1<Type>>
+/// Foam::Function1<Type>::NewOrDefault
+/// (
+///     HashPtrTable<Function1<Type>>& cache,
+///
+///     const word& entryName,
+///     const dictionary& dict,
+///     const Type& deflt,
+///     enum keyType::option matchOpt,
+///     const objectRegistry* obrPtr
+/// )
+/// {
+///     auto fref
+///     (
+///         Function1<Type>::New(entryName, dict, cache, matchOpt, obrPtr,false)
+///     );
+///
+///     if (!fref)
+///     {
+///         fref.reset(new Function1Types::Constant<Type>("default", deflt));
+///     }
+///
+///     return fref;
+/// }
 
 // ************************************************************************* //

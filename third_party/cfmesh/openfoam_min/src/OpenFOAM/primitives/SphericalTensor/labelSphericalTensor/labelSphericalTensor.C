@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -62,6 +64,18 @@ template<>
 const Foam::labelSphericalTensor Foam::labelSphericalTensor::vsType::min
 (
     labelSphericalTensor::uniform(-labelMax)
+);
+
+template<>
+const Foam::labelSphericalTensor Foam::labelSphericalTensor::vsType::rootMax
+(
+    labelSphericalTensor::uniform(::sqrt(double(labelMax)))
+);
+
+template<>
+const Foam::labelSphericalTensor Foam::labelSphericalTensor::vsType::rootMin
+(
+    labelSphericalTensor::uniform(-::sqrt(double(labelMax)))
 );
 
 template<>

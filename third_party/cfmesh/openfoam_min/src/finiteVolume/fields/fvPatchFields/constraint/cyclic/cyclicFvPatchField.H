@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +27,14 @@ License
 Class
     Foam::cyclicFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition enforces a cyclic condition between a pair of
     boundaries.
+
+    The "value" entry is NO_READ.
 
 Usage
     Example of the boundary condition specification:
@@ -37,18 +45,18 @@ Usage
     }
     \endverbatim
 
-    Note:
-        The patches must be topologically similar, i.e. if the owner patch is
-        transformed to the neighbour patch, the patches should be identical (or
-        very similar).
+Note
+    The patches must be topologically similar, i.e. if the owner patch is
+    transformed to the neighbour patch, the patches should be identical (or
+    very similar).
 
 SourceFiles
     cyclicFvPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cyclicFvPatchField_H
-#define cyclicFvPatchField_H
+#ifndef Foam_cyclicFvPatchField_H
+#define Foam_cyclicFvPatchField_H
 
 #include "coupledFvPatchField.H"
 #include "cyclicLduInterfaceField.H"
@@ -66,8 +74,8 @@ namespace Foam
 template<class Type>
 class cyclicFvPatchField
 :
-    public coupledFvPatchField<Type>,
-    public cyclicLduInterfaceField
+    virtual public cyclicLduInterfaceField,
+    public coupledFvPatchField<Type>
 {
     // Private Data
 
@@ -75,7 +83,18 @@ class cyclicFvPatchField
         const cyclicFvPatch& cyclicPatch_;
 
 
+    // Private Member Functions
+
+        //- Return neighbour side field given internal fields
+        template<class Type2>
+        tmp<Field<Type2>> neighbourSideField
+        (
+            const Field<Type2>&
+        ) const;
+
+
 public:
+
 
     //- Runtime type information
     TypeName(cyclicFvPatch::typeName_());
@@ -87,15 +106,16 @@ public:
         cyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         cyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const dictionary&
+            const DimensionedField<Type, volMesh>&,
+            const dictionary&,
+            const bool needValue = true  //!< evaluate
         );
 
         //- Construct by mapping given cyclicFvPatchField onto a new patch
@@ -103,30 +123,36 @@ public:
         (
             const cyclicFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        cyclicFvPatchField(const cyclicFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        cyclicFvPatchField
+        (
+            const cyclicFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         cyclicFvPatchField
         (
             const cyclicFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new cyclicFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
@@ -144,19 +170,19 @@ public:
         // Evaluation functions
 
             //- Return neighbour coupled internal cell data
-            virtual tmp<Field<Type>> patchNeighbourField
-            (
-                const Pstream::commsTypes commsType
-            ) const;
+            tmp<Field<Type>> patchNeighbourField() const;
 
             //- Return reference to neighbour patchField
-            const cyclicFvPatchField<Type>& nbrPatchField() const;
+            const cyclicFvPatchField<Type>& neighbourPatchField() const;
 
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
@@ -166,18 +192,43 @@ public:
             virtual void updateInterfaceMatrix
             (
                 Field<Type>& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
                 const Field<Type>& psiInternal,
                 const scalarField& coeffs,
                 const Pstream::commsTypes commsType
             ) const;
 
 
+            //- Manipulate matrix
+            virtual void manipulateMatrix
+            (
+                fvMatrix<Type>& m,
+                const label iMatrix,
+                const direction cmp
+            );
+
+
+
         // Cyclic coupled interface functions
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
+            //- Does the patch field perform the transformation
+            virtual bool doTransform() const
             {
-                return cyclicPatch_.transform();
+                return (pTraits<Type>::rank && !cyclicPatch_.parallel());
+            }
+
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
+            {
+                return cyclicPatch_.forwardT();
+            }
+
+            //- Return neighbour-cell transformation tensor
+            virtual const tensorField& reverseT() const
+            {
+                return cyclicPatch_.reverseT();
             }
 
             //- Return rank of component for transform
@@ -191,12 +242,6 @@ public:
 
             //- Write
             virtual void write(Ostream& os) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using coupledFvPatchField<Type>::operator=;
 };
 
 

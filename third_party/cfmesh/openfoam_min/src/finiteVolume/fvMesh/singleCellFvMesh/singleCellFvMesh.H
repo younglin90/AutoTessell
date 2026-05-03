@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019,2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,10 +38,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef singleCellFvMesh_H
-#define singleCellFvMesh_H
+#ifndef Foam_singleCellFvMesh_H
+#define Foam_singleCellFvMesh_H
 
-#include "generalFieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "fvMesh.H"
 #include "labelListIOList.H"
 
@@ -57,6 +60,7 @@ class singleCellFvMesh
 {
     // Private Data
 
+        //- Fine patch face to agglomeration index addressing
         const labelListIOList patchFaceAgglomeration_;
 
         //- From patch faces back to agglomeration or fine mesh
@@ -78,27 +82,27 @@ class singleCellFvMesh
         void agglomerateMesh(const fvMesh&, const labelListList&);
 
 
-public:
+        //- No copy construct
+        singleCellFvMesh(const singleCellFvMesh&) = delete;
 
-    // Public Classes
+        //- No copy assignment
+        void operator=(const singleCellFvMesh&) = delete;
+
+
+public:
 
         //- Patch field mapper class for agglomerated meshes
         class agglomPatchFieldMapper
         :
-            public generalFieldMapper
+            public fvPatchFieldMapper
         {
-            // Private Data
+            // Private data
 
-                //- Interpolated addressing
                 const labelListList& addressing_;
-
-                //- Interpolation weights
                 const scalarListList& weights_;
-
+                bool hasUnmapped_;
 
         public:
-
-            // Constructors
 
                 //- Construct given addressing
                 agglomPatchFieldMapper
@@ -108,25 +112,39 @@ public:
                 )
                 :
                     addressing_(addressing),
-                    weights_(weights)
-                {}
+                    weights_(weights),
+                    hasUnmapped_(false)
+                {
+                    for (const labelList& addr : addressing)
+                    {
+                        if (addr.empty())
+                        {
+                            hasUnmapped_ = true;
+                            break;
+                        }
+                    }
+                }
 
+                virtual label size() const
+                {
+                    return addressing_.size();
+                }
 
-            // Member Functions
-
-                //- Is the mapping direct?
                 virtual bool direct() const
                 {
                     return false;
                 }
 
-                //- Return interpolated addressing
+                bool hasUnmapped() const
+                {
+                    return hasUnmapped_;
+                }
+
                 virtual const labelListList& addressing() const
                 {
                     return addressing_;
                 }
 
-                //- Return interpolation weights
                 virtual const scalarListList& weights() const
                 {
                     return weights_;
@@ -134,74 +152,81 @@ public:
         };
 
 
+
     // Constructors
 
         //- Construct from fvMesh and no agglomeration
-        singleCellFvMesh(const IOobject& io, const fvMesh&);
+        singleCellFvMesh
+        (
+            const IOobject& io,
+            const fvMesh&,
+            const bool doInit=true
+        );
 
         //- Construct from fvMesh and agglomeration of boundary faces.
-        //  agglomeration is per patch, per patch face index the agglomeration
+        //  Agglomeration is per patch, per patch face index the agglomeration
         //  the face goes into.
         singleCellFvMesh
         (
             const IOobject& io,
             const fvMesh&,
-            const labelListList& patchFaceAgglomeration
+            const labelListList& patchFaceAgglomeration,
+            const bool doInit=true
         );
 
         //- Read from IOobject
-        singleCellFvMesh(const IOobject& io);
-
-        //- Disallow default bitwise copy construction
-        singleCellFvMesh(const singleCellFvMesh&) = delete;
+        singleCellFvMesh(const IOobject& io, const bool doInit=true);
 
 
     // Member Functions
 
-        bool agglomerate() const
+        bool agglomerate() const noexcept
         {
-            return patchFaceAgglomeration_.size() > 0;
+            return !patchFaceAgglomeration_.empty();
+        }
+
+        //- Fine patch face to agglomeration index addressing
+        const labelListList& patchFaceAgglomeration() const noexcept
+        {
+            return patchFaceAgglomeration_;
         }
 
         //- From patchFace on this back to original mesh or agglomeration
-        const labelListList& patchFaceMap() const
+        const labelListList& patchFaceMap() const noexcept
         {
             return patchFaceMap_;
         }
 
         //- From point on this back to original mesh
-        const labelList& pointMap() const
+        const labelList& pointMap() const noexcept
         {
             return pointMap_;
         }
 
         //- From face on original mesh to face on this
-        const labelList& reverseFaceMap() const
+        const labelList& reverseFaceMap() const noexcept
         {
             return reverseFaceMap_;
         }
 
         //- From point on original mesh to point on this (or -1 for removed
-        //  points)
-        const labelList& reversePointMap() const
+        //- points)
+        const labelList& reversePointMap() const noexcept
         {
             return reversePointMap_;
         }
 
+        //- Interpolate for overset (unused)
+        using fvMesh::interpolate;
+
         //- Map volField. Internal field set to average, patch fields straight
-        //  copies.
+        //- copies.
         template<class Type>
-        tmp<VolField<Type>>
+        tmp<GeometricField<Type, fvPatchField, volMesh>>
         interpolate
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const singleCellFvMesh&) = delete;
 };
 
 

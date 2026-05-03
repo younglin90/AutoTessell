@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::CoEulerDdtScheme
+
+Group
+    grpFvDdtSchemes
 
 Description
     Courant number limited first-order Euler implicit/explicit ddt.
@@ -55,7 +60,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class CoEulerDdtScheme Declaration
+                       Class CoEulerDdtScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -77,6 +82,12 @@ class CoEulerDdtScheme
 
 
     // Private Member Functions
+
+        //- No copy construct
+        CoEulerDdtScheme(const CoEulerDdtScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const CoEulerDdtScheme&) = delete;
 
         //- Return the reciprocal of the Courant-number limited time-step
         tmp<volScalarField> CorDeltaT() const;
@@ -102,9 +113,6 @@ public:
             maxCo_(readScalar(is))
         {}
 
-        //- Disallow default bitwise copy construction
-        CoEulerDdtScheme(const CoEulerDdtScheme&) = delete;
-
 
     // Member Functions
 
@@ -114,135 +122,99 @@ public:
             return fv::ddtScheme<Type>::mesh();
         }
 
-        virtual tmp<VolField<Type>> fvcDdt
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDdt
         (
             const dimensioned<Type>&
         );
 
-        virtual tmp<VolField<Type>> fvcDdt
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDdt
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<VolField<Type>> fvcDdt
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDdt
         (
             const dimensionedScalar&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<VolField<Type>> fvcDdt
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDdt
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<VolField<Type>> fvcDdt
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDdt
         (
             const volScalarField& alpha,
             const volScalarField& rho,
-            const VolField<Type>& psi
+            const GeometricField<Type, fvPatchField, volMesh>& psi
         );
 
-        virtual tmp<fvMatrix<Type>> fvmDdt
+        tmp<fvMatrix<Type>> fvmDdt
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<fvMatrix<Type>> fvmDdt
+        tmp<fvMatrix<Type>> fvmDdt
         (
             const dimensionedScalar&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<fvMatrix<Type>> fvmDdt
+        tmp<fvMatrix<Type>> fvmDdt
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        virtual tmp<fvMatrix<Type>> fvmDdt
+        tmp<fvMatrix<Type>> fvmDdt
         (
             const volScalarField& alpha,
             const volScalarField& rho,
-            const VolField<Type>& psi
+            const GeometricField<Type, fvPatchField, volMesh>& psi
         );
 
         typedef typename ddtScheme<Type>::fluxFieldType fluxFieldType;
 
-        virtual tmp<fluxFieldType> fvcDdtUfCorr
+        tmp<fluxFieldType> fvcDdtUfCorr
         (
-            const VolField<Type>& U,
-            const SurfaceField<Type>& Uf
+            const GeometricField<Type, fvPatchField, volMesh>& U,
+            const GeometricField<Type, fvsPatchField, surfaceMesh>& Uf
         );
 
-        virtual tmp<fluxFieldType> fvcDdtPhiCorr
+        tmp<fluxFieldType> fvcDdtPhiCorr
         (
-            const VolField<Type>& U,
+            const GeometricField<Type, fvPatchField, volMesh>& U,
             const fluxFieldType& phi
         );
 
-        virtual tmp<fluxFieldType> fvcDdtUfCorr
+        tmp<fluxFieldType> fvcDdtUfCorr
         (
             const volScalarField& rho,
-            const VolField<Type>& U,
-            const SurfaceField<Type>& rhoUf
+            const GeometricField<Type, fvPatchField, volMesh>& U,
+            const GeometricField<Type, fvsPatchField, surfaceMesh>& Uf
         );
 
-        virtual tmp<fluxFieldType> fvcDdtPhiCorr
+        tmp<fluxFieldType> fvcDdtPhiCorr
         (
             const volScalarField& rho,
-            const VolField<Type>& U,
+            const GeometricField<Type, fvPatchField, volMesh>& U,
             const fluxFieldType& phi
         );
 
-        virtual tmp<fluxFieldType> fvcDdtUfCorr
+        tmp<surfaceScalarField> meshPhi
         (
-            const volScalarField& alpha,
-            const volScalarField& rho,
-            const VolField<Type>& U,
-            const SurfaceField<Type>& Uf
-        )
-        {
-            NotImplemented;
-            return fluxFieldType::null();
-        }
-
-        virtual tmp<fluxFieldType> fvcDdtPhiCorr
-        (
-            const volScalarField& alpha,
-            const volScalarField& rho,
-            const VolField<Type>& U,
-            const fluxFieldType& phi
-        )
-        {
-            NotImplemented;
-            return fluxFieldType::null();
-        }
-
-        virtual tmp<surfaceScalarField> meshPhi
-        (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
-
-        virtual tmp<scalarField> meshPhi
-        (
-            const VolField<Type>&,
-            const label patchi
-        );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const CoEulerDdtScheme&) = delete;
 };
 
 
 template<>
 tmp<surfaceScalarField> CoEulerDdtScheme<scalar>::fvcDdtUfCorr
 (
-    const VolField<scalar>& U,
-    const SurfaceField<scalar>& Uf
+    const GeometricField<scalar, fvPatchField, volMesh>& U,
+    const GeometricField<scalar, fvsPatchField, surfaceMesh>& Uf
 );
 
 template<>
@@ -263,24 +235,6 @@ tmp<surfaceScalarField> CoEulerDdtScheme<scalar>::fvcDdtUfCorr
 template<>
 tmp<surfaceScalarField> CoEulerDdtScheme<scalar>::fvcDdtPhiCorr
 (
-    const volScalarField& rho,
-    const volScalarField& U,
-    const surfaceScalarField& phi
-);
-
-template<>
-tmp<surfaceScalarField> CoEulerDdtScheme<scalar>::fvcDdtUfCorr
-(
-    const volScalarField& alpha,
-    const volScalarField& rho,
-    const volScalarField& U,
-    const surfaceScalarField& Uf
-);
-
-template<>
-tmp<surfaceScalarField> CoEulerDdtScheme<scalar>::fvcDdtPhiCorr
-(
-    const volScalarField& alpha,
     const volScalarField& rho,
     const volScalarField& U,
     const surfaceScalarField& phi

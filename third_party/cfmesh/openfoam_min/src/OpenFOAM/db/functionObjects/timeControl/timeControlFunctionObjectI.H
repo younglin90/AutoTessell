@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +27,9 @@ License
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline const Foam::Time& Foam::functionObjects::timeControl::time() const
+inline const Foam::dictionary& Foam::functionObjects::timeControl::dict() const
 {
-    return time_;
+    return dict_;
 }
 
 
@@ -48,7 +50,7 @@ Foam::functionObjects::timeControl::writeControl() const
 inline const Foam::functionObject&
 Foam::functionObjects::timeControl::filter() const
 {
-    return foPtr_();
+    return *foPtr_;
 }
 
 

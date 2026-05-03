@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class linearInterpolationWeights Declaration
+                  Class linearInterpolationWeights Declaration
 \*---------------------------------------------------------------------------*/
 
 class linearInterpolationWeights
@@ -55,6 +58,13 @@ class linearInterpolationWeights
         mutable label index_;
 
 
+    // Private Member Functions
+
+        //- Get weights of i and i+1 to calculate integration from t to
+        //- samples_[i+1]
+        Pair<scalar> integrationWeights(const label i, const scalar t) const;
+
+
 public:
 
     //- Runtime type information
@@ -64,21 +74,17 @@ public:
     // Constructors
 
         //- Construct from components
-        linearInterpolationWeights
-        (
-            const scalarField& samples
-        );
+        explicit linearInterpolationWeights(const scalarField& samples);
 
 
     //- Destructor
-    virtual ~linearInterpolationWeights()
-    {}
+    virtual ~linearInterpolationWeights() = default;
 
 
     // Member Functions
 
         //- Calculate weights and indices to calculate t from samples.
-        //  Returns true if indices changed.
+        //  \return true if indices changed.
         virtual bool valueWeights
         (
             const scalar t,
@@ -87,11 +93,12 @@ public:
         ) const;
 
         //- Calculate weights and indices to calculate integrand of t1..t2
-        //  from samples. Returns true if indices changed.
+        //- from samples.
+        //  \return true if indices changed.
         virtual bool integrationWeights
         (
-            scalar t1,
-            scalar t2,
+            const scalar t1,
+            const scalar t2,
             labelList& indices,
             scalarField& weights
         ) const;

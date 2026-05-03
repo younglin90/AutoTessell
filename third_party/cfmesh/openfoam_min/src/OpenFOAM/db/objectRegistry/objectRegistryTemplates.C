@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2019 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,61 +27,495 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "objectRegistry.H"
-#include "stringListOps.H"
+#include "predicates.H"
+#include <type_traits>
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+// Templated implementation for classes()
+template<class MatchPredicate>
+Foam::HashTable<Foam::wordHashSet> Foam::objectRegistry::classesImpl
+(
+    const objectRegistry& list,
+    const MatchPredicate& matchName
+)
+{
+    HashTable<wordHashSet> summary(2*list.size());
+
+    // Summary (key,val) = (class-name, object-names)
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+
+        if (matchName(obj->name()))
+        {
+            // Create entry (if needed) and insert
+            summary(obj->type()).insert(obj->name());
+        }
+    }
+
+    return summary;
+}
+
+
+// Templated implementation for count()
+template<class MatchPredicate1, class MatchPredicate2>
+Foam::label Foam::objectRegistry::countImpl
+(
+    const objectRegistry& list,
+    const MatchPredicate1& matchClass,
+    const MatchPredicate2& matchName
+)
+{
+    label count = 0;
+
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+
+        if (matchClass(obj->type()) && matchName(obj->name()))
+        {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
+
+// Templated implementation for count()
+template<class Type, class MatchPredicate>
+Foam::label Foam::objectRegistry::countTypeImpl
+(
+    const objectRegistry& list,
+    const MatchPredicate& matchName
+)
+{
+    label count = 0;
+
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+
+        if
+        (
+            (std::is_void<Type>::value || Foam::isA<Type>(*obj))
+         && matchName(obj->name())
+        )
+        {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
+
+// Templated implementation for names(), sortedNames()
+template<class MatchPredicate1, class MatchPredicate2>
+Foam::wordList Foam::objectRegistry::namesImpl
+(
+    const objectRegistry& list,
+    const MatchPredicate1& matchClass,
+    const MatchPredicate2& matchName,
+    const bool doSort
+)
+{
+    wordList objNames(list.size());
+
+    label count=0;
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+
+        if (matchClass(obj->type()) && matchName(obj->name()))
+        {
+            objNames[count] = obj->name();
+            ++count;
+        }
+    }
+
+    objNames.resize(count);
+
+    if (doSort)
+    {
+        Foam::sort(objNames);
+    }
+
+    return objNames;
+}
+
+
+// Templated implementation for names(), sortedNames()
+template<class Type, class MatchPredicate>
+Foam::wordList Foam::objectRegistry::namesTypeImpl
+(
+    const objectRegistry& list,
+    const MatchPredicate& matchName,
+    const bool doSort
+)
+{
+    wordList objNames(list.size());
+
+    label count = 0;
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+
+        if
+        (
+            (std::is_void<Type>::value || Foam::isA<Type>(*obj))
+         && matchName(obj->name())
+        )
+        {
+            objNames[count] = obj->name();
+            ++count;
+        }
+    }
+
+    objNames.resize(count);
+
+    if (doSort)
+    {
+        Foam::sort(objNames);
+    }
+
+    return objNames;
+}
+
+
+// Templated implementation for cobjects()/objects(), csorted()/sorted()
+template<class Type, class MatchPredicate>
+Foam::UPtrList<Type>
+Foam::objectRegistry::objectsTypeImpl
+(
+    const bool strict,
+    const objectRegistry& list,
+    const MatchPredicate& matchName,
+    const bool doSort
+)
+{
+    typedef typename std::remove_cv<Type>::type BaseType;
+
+    UPtrList<Type> result(list.size());
+
+    label count = 0;
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+        const BaseType* ptr = dynamic_cast<const BaseType*>(obj);
+
+        if
+        (
+            ptr
+         && (!strict || Foam::isType<BaseType>(*obj))
+         && matchName(obj->name())
+        )
+        {
+            result.set(count, const_cast<BaseType*>(ptr));
+            ++count;
+        }
+    }
+
+    result.resize(count);
+
+    if (doSort)
+    {
+        Foam::sort(result, nameOp<Type>());  // Sort by object name()
+    }
+
+    return result;
+}
+
+
+// Templated implementation for lookupClass()
+template<class Type>
+Foam::HashTable<Type*>
+Foam::objectRegistry::lookupClassTypeImpl
+(
+    const bool strict,
+    const objectRegistry& list
+)
+{
+    typedef typename std::remove_cv<Type>::type BaseType;
+
+    HashTable<Type*> result(list.capacity());
+
+    forAllConstIters(list, iter)
+    {
+        const regIOobject* obj = iter.val();
+        const BaseType* ptr = dynamic_cast<const BaseType*>(obj);
+
+        if
+        (
+            ptr
+         && (!strict || Foam::isType<BaseType>(*obj))
+        )
+        {
+            result.insert(obj->name(), const_cast<BaseType*>(ptr));
+        }
+    }
+
+    return result;
+}
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class Type>
-Foam::wordList Foam::objectRegistry::toc() const
+template<class MatchPredicate>
+Foam::HashTable<Foam::wordHashSet>
+Foam::objectRegistry::classes
+(
+    const MatchPredicate& matchName
+) const
 {
-    wordList objectNames(size());
+    return classesImpl(*this, matchName);
+}
 
-    label count=0;
-    forAllConstIter(HashTable<regIOobject*>, *this, iter)
-    {
-        if (isA<Type>(*iter()))
-        {
-            objectNames[count++] = iter()->name();
-        }
-    }
 
-    objectNames.setSize(count);
+template<class MatchPredicate>
+Foam::label Foam::objectRegistry::count
+(
+    const MatchPredicate& matchClass
+) const
+{
+    return countImpl(*this, matchClass, predicates::always());
+}
 
-    return objectNames;
+
+template<class MatchPredicate1, class MatchPredicate2>
+Foam::label Foam::objectRegistry::count
+(
+    const MatchPredicate1& matchClass,
+    const MatchPredicate2& matchName
+) const
+{
+    return countImpl(*this, matchClass, matchName);
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::label Foam::objectRegistry::count
+(
+    const MatchPredicate& matchName
+) const
+{
+    return countTypeImpl<Type>(*this, matchName);
 }
 
 
 template<class Type>
-Foam::wordList Foam::objectRegistry::toc(const wordRe& name) const
+Foam::label Foam::objectRegistry::count
+(
+    const bool strict
+) const
 {
-    wordList objectNames(size());
+    label nObjects = 0;
 
-    label count = 0;
-    forAllConstIter(HashTable<regIOobject*>, *this, iter)
+    forAllConstIters(*this, iter)
     {
-        if (isA<Type>(*iter()))
-        {
-            const word& objectName = iter()->name();
+        const regIOobject* obj = iter.val();
 
-            if (name.match(objectName))
-            {
-                objectNames[count++] = objectName;
-            }
+        if
+        (
+            std::is_void<Type>::value
+         ||
+            (
+                strict
+              ? bool(Foam::isType<Type>(*obj))
+              : bool(Foam::isA<Type>(*obj))
+            )
+        )
+        {
+            ++nObjects;
         }
     }
 
-    objectNames.setSize(count);
+    return nObjects;
+}
 
-    return objectNames;
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+template<class Type, bool Strict>
+Foam::UPtrList<const Type>
+Foam::objectRegistry::cobjects() const
+{
+    return objectsTypeImpl<const Type>
+    (
+        Strict, *this, predicates::always(), false  // doSort = false
+    );
+}
+
+
+template<class Type, bool Strict>
+Foam::UPtrList<Type>
+Foam::objectRegistry::objects()
+{
+    return objectsTypeImpl<Type>
+    (
+        Strict, *this, predicates::always(), false  // doSort = false
+    );
+}
+
+
+template<class Type, bool Strict>
+Foam::UPtrList<const Type>
+Foam::objectRegistry::csorted() const
+{
+    return objectsTypeImpl<const Type>
+    (
+        Strict, *this, predicates::always(), true  // doSort = true
+    );
+}
+
+
+template<class Type, bool Strict>
+Foam::UPtrList<Type>
+Foam::objectRegistry::sorted()
+{
+    return objectsTypeImpl<Type>
+    (
+        Strict, *this, predicates::always(), true  // doSort = false
+    );
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::UPtrList<const Type>
+Foam::objectRegistry::cobjects
+(
+    const MatchPredicate& matchName
+) const
+{
+    // doSort = false
+    return objectsTypeImpl<const Type>(false, *this, matchName, false);
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::UPtrList<Type>
+Foam::objectRegistry::objects
+(
+    const MatchPredicate& matchName
+)
+{
+    // doSort = false
+    return objectsTypeImpl<Type>(false, *this, matchName, false);
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::UPtrList<const Type>
+Foam::objectRegistry::csorted
+(
+    const MatchPredicate& matchName
+) const
+{
+    return objectsTypeImpl<const Type>(false, *this, matchName, true);
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::UPtrList<Type>
+Foam::objectRegistry::sorted
+(
+    const MatchPredicate& matchName
+)
+{
+    return objectsTypeImpl<Type>(false, *this, matchName, true);
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+template<class MatchPredicate>
+Foam::wordList Foam::objectRegistry::names
+(
+    const MatchPredicate& matchClass
+) const
+{
+    return namesImpl(*this, matchClass, predicates::always(), false);
+}
+
+
+template<class MatchPredicate1, class MatchPredicate2>
+Foam::wordList Foam::objectRegistry::names
+(
+    const MatchPredicate1& matchClass,
+    const MatchPredicate2& matchName
+) const
+{
+    return namesImpl(*this, matchClass, matchName, false);
 }
 
 
 template<class Type>
-Foam::wordList Foam::objectRegistry::toc(const wordReList& patterns) const
+Foam::wordList Foam::objectRegistry::names() const
 {
-    wordList names(this->toc<Type>());
+    return namesTypeImpl<Type>(*this, predicates::always(), false);
+}
 
-    return wordList(names, findStrings(patterns, names));
+
+template<class Type, class MatchPredicate>
+Foam::wordList Foam::objectRegistry::names
+(
+    const MatchPredicate& matchName
+) const
+{
+    return namesTypeImpl<Type>(*this, matchName, false);
+}
+
+
+template<class MatchPredicate>
+Foam::wordList Foam::objectRegistry::sortedNames
+(
+    const MatchPredicate& matchClass
+) const
+{
+    return namesImpl(*this, matchClass, predicates::always(), true);
+}
+
+
+template<class MatchPredicate1, class MatchPredicate2>
+Foam::wordList Foam::objectRegistry::sortedNames
+(
+    const MatchPredicate1& matchClass,
+    const MatchPredicate2& matchName
+) const
+{
+    return namesImpl(*this, matchClass, matchName, true);
+}
+
+
+template<class Type>
+Foam::wordList Foam::objectRegistry::sortedNames() const
+{
+    return namesTypeImpl<Type>(*this, predicates::always(), true);
+}
+
+
+template<class Type, class MatchPredicate>
+Foam::wordList Foam::objectRegistry::sortedNames
+(
+    const MatchPredicate& matchName
+) const
+{
+    return namesTypeImpl<Type>(*this, matchName, true);
+}
+
+
+template<class Type, bool Strict>
+Foam::HashTable<const Type*> Foam::objectRegistry::lookupClass() const
+{
+    return lookupClassTypeImpl<const Type>(Strict, *this);
+}
+
+
+template<class Type, bool Strict>
+Foam::HashTable<Type*> Foam::objectRegistry::lookupClass()
+{
+    return lookupClassTypeImpl<Type>(Strict, *this);
 }
 
 
@@ -88,25 +525,7 @@ Foam::HashTable<const Type*> Foam::objectRegistry::lookupClass
     const bool strict
 ) const
 {
-    HashTable<const Type*> objectsOfClass(size());
-
-    forAllConstIter(HashTable<regIOobject*>, *this, iter)
-    {
-        if
-        (
-            (strict && isType<Type>(*iter()))
-         || (!strict && isA<Type>(*iter()))
-        )
-        {
-            objectsOfClass.insert
-            (
-                iter()->name(),
-                dynamic_cast<const Type*>(iter())
-            );
-        }
-    }
-
-    return objectsOfClass;
+    return lookupClassTypeImpl<const Type>(strict, *this);
 }
 
 
@@ -116,194 +535,166 @@ Foam::HashTable<Type*> Foam::objectRegistry::lookupClass
     const bool strict
 )
 {
-    HashTable<Type*> objectsOfClass(size());
-
-    forAllIter(HashTable<regIOobject*>, *this, iter)
-    {
-        if
-        (
-            (strict && isType<Type>(*iter()))
-         || (!strict && isA<Type>(*iter()))
-        )
-        {
-            objectsOfClass.insert
-            (
-                iter()->name(),
-                dynamic_cast<Type*>(iter())
-            );
-        }
-    }
-
-    return objectsOfClass;
+    return lookupClassTypeImpl<Type>(strict, *this);
 }
 
 
 template<class Type>
-bool Foam::objectRegistry::foundObject(const word& name) const
+bool Foam::objectRegistry::foundObject
+(
+    const word& name,
+    const bool recursive
+) const
 {
-    const_iterator iter = find(name);
-
-    if (iter != end())
-    {
-        const Type* vpsiPtr_ = dynamic_cast<const Type*>(iter());
-
-        if (vpsiPtr_)
-        {
-            return true;
-        }
-    }
-    else if (this->parentNotTime())
-    {
-        return parent_.foundObject<Type>(name);
-    }
-
-    return false;
+    return this->cfindObject<Type>(name, recursive);
 }
 
 
 template<class Type>
-const Type& Foam::objectRegistry::lookupObject(const word& name) const
+const Type* Foam::objectRegistry::cfindObject
+(
+    const word& name,
+    const bool recursive
+) const
 {
-    const_iterator iter = find(name);
+    return dynamic_cast<const Type*>(this->cfindIOobject(name, recursive));
+}
 
-    if (iter != end())
+
+template<class Type>
+const Type* Foam::objectRegistry::findObject
+(
+    const word& name,
+    const bool recursive
+) const
+{
+    return this->cfindObject<Type>(name, recursive);
+}
+
+
+template<class Type>
+Type* Foam::objectRegistry::findObject
+(
+    const word& name,
+    const bool recursive
+)
+{
+    return const_cast<Type*>(this->cfindObject<Type>(name, recursive));
+}
+
+
+template<class Type>
+Type* Foam::objectRegistry::getObjectPtr
+(
+    const word& name,
+    const bool recursive
+) const
+{
+    return const_cast<Type*>(this->cfindObject<Type>(name, recursive));
+}
+
+
+template<class Type>
+const Type& Foam::objectRegistry::lookupObject
+(
+    const word& name,
+    const bool recursive
+) const
+{
+    const_iterator iter = cfind(name);
+
+    if (iter.good())
     {
-        const Type* vpsiPtr_ = dynamic_cast<const Type*>(iter());
+        const Type* ptr = dynamic_cast<const Type*>(iter.val());
 
-        if (vpsiPtr_)
+        if (ptr)
         {
-            return *vpsiPtr_;
+            return *ptr;
         }
 
         FatalErrorInFunction
             << nl
-            << "    lookup of " << name << " from objectRegistry "
+            << "    bad lookup of " << name << " (objectRegistry "
             << this->name()
-            << " successful\n    but it is not a " << Type::typeName
-            << ", it is a " << iter()->type()
-            << abort(FatalError);
+            << ")\n    expected a " << Type::typeName
+            << ", found a " << (*iter)->type() << nl
+            << exit(FatalError);
     }
-    else
+    else if (recursive && this->parentNotTime())
     {
-        if (this->parentNotTime())
-        {
-            return parent_.lookupObject<Type>(name);
-        }
-
-        FatalErrorInFunction
-            << nl
-            << "    request for " << Type::typeName
-            << " " << name << " from objectRegistry " << this->name()
-            << " failed\n    available objects of type " << Type::typeName
-            << " are" << nl
-            << toc<Type>();
-
-        if (temporaryObjectCached(name))
-        {
-            FatalErrorInFunction
-                << nl
-                << "    request for " << name << " from objectRegistry "
-                << this->name() << " to be cached failed" << nl
-                << "    available temporary objects are" << nl
-                << temporaryObjects_;
-        }
-
-        FatalErrorInFunction
-            << abort(FatalError);
+        return parent_.lookupObject<Type>(name, recursive);
     }
+
+    FatalErrorInFunction
+        << nl
+        << "    failed lookup of " << name << " (objectRegistry "
+        << this->name()
+        << ")\n    available objects of type " << Type::typeName
+        << ':' << nl
+        << names<Type>() << nl
+        << exit(FatalError);
 
     return NullObjectRef<Type>();
 }
 
 
 template<class Type>
-Type& Foam::objectRegistry::lookupObjectRef(const word& name) const
+Type& Foam::objectRegistry::lookupObjectRef
+(
+    const word& name,
+    const bool recursive
+) const
 {
-    return const_cast<Type&>(lookupObject<Type>(name));
+    const Type& ref = this->lookupObject<Type>(name, recursive);
+    // The above will already fail if things didn't work
+
+    return const_cast<Type&>(ref);
 }
 
 
 template<class Type>
-bool Foam::objectRegistry::foundType(const word& group) const
+bool Foam::objectRegistry::cacheTemporaryObject(Type& obj) const
 {
-    return foundObject<Type>(IOobject::groupName(Type::typeName, group));
-}
+    bool ok = false;
 
+    readCacheTemporaryObjects();
 
-template<class Type>
-const Type& Foam::objectRegistry::lookupType(const word& group) const
-{
-    return lookupObject<Type>(IOobject::groupName(Type::typeName, group));
-}
-
-
-template<class Object>
-bool Foam::objectRegistry::cacheTemporaryObject(Object& ob) const
-{
-    const objectRegistry& root = time_;
-
-    root.readCacheTemporaryObjects();
-
-    if (root.cacheTemporaryObjects_.empty())
+    if (cacheTemporaryObjects_.size())
     {
-        return false;
-    }
+        temporaryObjects_.insert(obj.name());
 
-    temporaryObjects_.insert(ob.name());
+        auto iter = cacheTemporaryObjects_.find(obj.name());
 
-    HashTable<Pair<bool>>::iterator rootIter
-    (
-        root.cacheTemporaryObjects_.find(ob.name())
-    );
-
-    if (rootIter == root.cacheTemporaryObjects_.end()) return false;
-
-    HashTable<Pair<bool>>::iterator iter
-    (
-        cacheTemporaryObjects_.find(ob.name())
-    );
-
-    if (iter == cacheTemporaryObjects_.end())
-    {
-        cacheTemporaryObjects_.insert(rootIter.key(), rootIter());
-
-        iter = cacheTemporaryObjects_.find(ob.name());
-    }
-
-    // Cache object ob if it hasn't been cached yet
-    if (iter().first() == false)
-    {
-        rootIter().first() = true;
-        rootIter().second() = true;
-        iter().first() = true;
-        iter().second() = true;
-
-        if (ob.db().template foundObject<Object>(ob.name()))
+        // Cache object if is in the cacheTemporaryObjects list
+        // and hasn't been cached yet
+        if (iter.good() && iter.val().first() == false)
         {
-            Object& cachedOb =
-                ob.db().template lookupObjectRef<Object>(ob.name());
+            iter.val().first() = true;
+            iter.val().second() = true;
 
-            // If the object is already cached in the database delete it
-            if (&cachedOb != &ob && cachedOb.ownedByRegistry())
+            Type* cachedPtr = obj.db().template getObjectPtr<Type>(obj.name());
+
+            // Remove any name collisions from the cache
+            if (cachedPtr && cachedPtr != &obj && cachedPtr->ownedByRegistry())
             {
-                deleteCachedObject(cachedOb);
+                deleteCachedObject(cachedPtr);
             }
+
+            if (debug)
+            {
+                Info<< "Caching " << obj.name()
+                    << " of type " << obj.type() << endl;
+            }
+
+            obj.release();
+            obj.checkOut();
+            regIOobject::store(new Type(std::move(obj)));
+
+            ok = true;
         }
-
-        if (debug)
-        {
-            Info<< "Caching " << ob.name()
-                << " of type " << ob.type() << endl;
-        }
-
-        ob.release();
-        ob.checkOut();
-        store(new Object(move(ob)));
-
-        return true;
     }
 
-    return false;
+    return ok;
 }
 
 

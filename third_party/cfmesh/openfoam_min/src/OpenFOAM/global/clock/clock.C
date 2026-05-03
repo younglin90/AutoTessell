@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +27,14 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "clock.H"
-#include "string.H"
 
+#include <string>
 #include <sstream>
 #include <iomanip>
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-const char *Foam::clock::monthNames[] =
+static const char *monthNames[] =
 {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -49,61 +52,59 @@ time_t Foam::clock::getTime()
 const struct tm Foam::clock::rawDate()
 {
     time_t t = getTime();
-    struct tm *timeStruct = localtime(&t);
-    return *timeStruct;
+    struct tm *curr = ::localtime(&t);
+    return *curr;
 }
 
 
-Foam::string Foam::clock::dateTime()
+std::string Foam::clock::dateTime()
 {
-    std::ostringstream osBuffer;
-
     time_t t = getTime();
-    struct tm *timeStruct = localtime(&t);
+    struct tm *curr = ::localtime(&t);
 
-    osBuffer
+    std::ostringstream os;
+    os
         << std::setfill('0')
-        << std::setw(4) << timeStruct->tm_year + 1900
-        << '-' << std::setw(2) << timeStruct->tm_mon + 1
-        << '-' << std::setw(2) << timeStruct->tm_mday
+        << std::setw(4) << curr->tm_year + 1900
+        << '-' << std::setw(2) << curr->tm_mon + 1
+        << '-' << std::setw(2) << curr->tm_mday
         << 'T'
-        << std::setw(2) << timeStruct->tm_hour
-        << ':' << std::setw(2) << timeStruct->tm_min
-        << ':' << std::setw(2) << timeStruct->tm_sec;
+        << std::setw(2) << curr->tm_hour
+        << ':' << std::setw(2) << curr->tm_min
+        << ':' << std::setw(2) << curr->tm_sec;
 
-    return osBuffer.str();
-}
-
-Foam::string Foam::clock::date()
-{
-    std::ostringstream osBuffer;
-
-    time_t t = getTime();
-    struct tm *timeStruct = localtime(&t);
-
-    osBuffer
-        << monthNames[timeStruct->tm_mon]
-        << ' ' << std::setw(2) << std::setfill('0') << timeStruct->tm_mday
-        << ' ' << std::setw(4) << timeStruct->tm_year + 1900;
-
-    return osBuffer.str();
+    return os.str();
 }
 
 
-Foam::string Foam::clock::clockTime()
+std::string Foam::clock::date()
 {
-    std::ostringstream osBuffer;
-
     time_t t = getTime();
-    struct tm *timeStruct = localtime(&t);
+    struct tm *curr = ::localtime(&t);
 
-    osBuffer
+    std::ostringstream os;
+    os
+        << monthNames[curr->tm_mon]
+        << ' ' << std::setw(2) << std::setfill('0') << curr->tm_mday
+        << ' ' << std::setw(4) << curr->tm_year + 1900;
+
+    return os.str();
+}
+
+
+std::string Foam::clock::clockTime()
+{
+    time_t t = getTime();
+    struct tm *curr = ::localtime(&t);
+
+    std::ostringstream os;
+    os
         << std::setfill('0')
-        << std::setw(2) << timeStruct->tm_hour
-        << ':' << std::setw(2) << timeStruct->tm_min
-        << ':' << std::setw(2) << timeStruct->tm_sec;
+        << std::setw(2) << curr->tm_hour
+        << ':' << std::setw(2) << curr->tm_min
+        << ':' << std::setw(2) << curr->tm_sec;
 
-    return osBuffer.str();
+    return os.str();
 }
 
 
@@ -111,26 +112,26 @@ Foam::string Foam::clock::clockTime()
 
 Foam::clock::clock()
 :
-    startTime_(getTime()),
-    lastTime_(startTime_),
-    newTime_(startTime_)
+    start_(getTime()),
+    last_(start_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-time_t Foam::clock::elapsedClockTime() const
+double Foam::clock::elapsedClockTime() const
 {
-    newTime_ = getTime();
-    return newTime_ - startTime_;
+    last_ = getTime();
+    return ::difftime(last_, start_);
 }
 
 
-time_t Foam::clock::clockTimeIncrement() const
+double Foam::clock::clockTimeIncrement() const
 {
-    lastTime_ = newTime_;
-    newTime_ = getTime();
-    return newTime_ - lastTime_;
+    const auto prev(last_);
+
+    last_ = getTime();
+    return ::difftime(last_, prev);
 }
 
 

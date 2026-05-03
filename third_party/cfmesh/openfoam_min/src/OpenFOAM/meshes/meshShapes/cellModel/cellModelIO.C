@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,42 +29,49 @@ License
 #include "cellModel.H"
 #include "dictionaryEntry.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::cellModel::cellModel(Istream& is)
 {
-    dictionaryEntry entry(dictionary::null, is);
-    name_ = entry.keyword();
-    entry.lookup("index") >> index_;
-    entry.lookup("numberOfPoints") >> nPoints_;
-    entry.lookup("faces") >> faces_;
-    entry.lookup("edges") >> edges_;
+    const dictionaryEntry dictEntry(dictionary::null, is);
+    const dictionary& dict = dictEntry.dict();
+
+    name_ = dictEntry.keyword();
+    dict.readEntry("index", index_);
+    dict.readEntry("numberOfPoints", nPoints_);
+    dict.readEntry("faces", faces_);
+    dict.readEntry("edges", edges_);
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const cellModel& c)
+// * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
+
+Foam::Ostream& Foam::operator<<(Ostream& os, const cellModel& cm)
 {
-    os  << "name" << tab << c.name_ << tab
-        << "index" << tab << c.index_ << tab
-        << "numberOfPoints" << tab << c.nPoints_ << tab
-        << "faces" << tab << c.faces_ << tab
-        << "edges" << tab << c.edges_ << endl;
+    os  << "name" << tab << cm.name() << tab
+        << "index" << tab << cm.index() << tab
+        << "numberOfPoints" << tab << cm.nPoints() << tab
+        << "faces" << tab << cm.modelFaces() << tab
+        << "edges" << tab << cm.modelEdges() << endl;
 
     return os;
 }
 
 
 template<>
-Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<cellModel>& ip)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const InfoProxy<cellModel>& iproxy
+)
 {
-    const cellModel& cm = ip.t_;
+    const auto& cm = *iproxy;
 
     os  << "name = " << cm.name() << ", "
         << "index = " << cm.index() << ", "
         << "number of points = " << cm.nPoints() << ", "
         << "number of faces = " << cm.nFaces() << ", "
-        << "number of edges = " << cm.nEdges()
-        << endl;
+        << "number of edges = " << cm.nEdges() << endl;
 
     return os;
 }

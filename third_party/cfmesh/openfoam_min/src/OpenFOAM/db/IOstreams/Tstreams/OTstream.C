@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2025-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,77 +25,56 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "error.H"
 #include "OTstream.H"
-#include "int.H"
-#include "tokenList.H"
-#include "IStringStream.H"
-
 #include <cctype>
-
-// * * * * * * * * * * * * * * * * Constructor * * * * * * * * * * * * * * * //
-
-Foam::OTstream::OTstream
-(
-    const string& name,
-    const streamFormat format,
-    const versionNumber version,
-    const bool global
-)
-:
-    Ostream(format, version, UNCOMPRESSED, global),
-    name_(name)
-{
-    setOpened();
-    setGood();
-}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::OTstream::~OTstream()
-{}
-
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::OTstream::write(const token& t)
+bool Foam::OTstream::write(const token& tok)
 {
-    append(t);
-    return *this;
+    if (tok.good())
+    {
+        tokens().push_back(tok);
+        return true;
+    }
+
+    return false;
 }
 
 
 Foam::Ostream& Foam::OTstream::write(const char c)
 {
-    switch (c)
+    if (!std::isspace(c) && std::isprint(c))
     {
-        // Punctuation
-        case token::END_STATEMENT :
-        case token::BEGIN_LIST :
-        case token::END_LIST :
-        case token::BEGIN_SQR :
-        case token::END_SQR :
-        case token::BEGIN_BLOCK :
-        case token::END_BLOCK :
-        case token::COLON :
-        case token::COMMA :
-        case token::ASSIGN :
-        case token::ADD :
-        case token::SUBTRACT :
-        case token::MULTIPLY :
-        case token::DIVIDE :
-        {
-            append(token(token::punctuationToken(c), lineNumber()));
-            return *this;
-        }
+        // Should generally work, but need to verify corner cases
+        tokens().push_back(token(token::punctuationToken(c)));
+    }
 
-        default:
-        {
-            if (!isspace(c))
-            {
-                append(token(token::punctuationToken(c), lineNumber()));
-            }
-        }
+    return *this;
+}
+
+
+Foam::Ostream& Foam::OTstream::writeQuoted
+(
+    const char* str,
+    std::streamsize len,
+    const bool quoted
+)
+{
+    if (quoted)
+    {
+        // tokenType::STRING
+        tokens().emplace_back() = string(str, len);
+    }
+    else if (len > 0)
+    {
+        // Create from std::string with specified type never strips
+        tokens().emplace_back
+        (
+            token::tokenType::WORD,  // or perhaps tokenType::CHAR_DATA ?
+            std::string(str, len)
+        );
     }
 
     return *this;
@@ -102,12 +83,17 @@ Foam::Ostream& Foam::OTstream::write(const char c)
 
 Foam::Ostream& Foam::OTstream::write(const char* str)
 {
-    IStringStream is(str);
+    word nonWhiteChars(string::validate<word>(str));
 
-    token t;
-    while (!is.eof() && !is.read(t).bad() && t.good())
+    if (nonWhiteChars.size() == 1)
     {
-        append(t);
+        // Like punctuation
+        write(nonWhiteChars[0]);
+    }
+    else if (nonWhiteChars.size())
+    {
+        // As a word
+        tokens().emplace_back() = std::move(nonWhiteChars);  // Move assign
     }
 
     return *this;
@@ -116,109 +102,99 @@ Foam::Ostream& Foam::OTstream::write(const char* str)
 
 Foam::Ostream& Foam::OTstream::write(const word& str)
 {
-    append(token(str, lineNumber()));
+    // tokenType::WORD
+    tokens().emplace_back() = str;  // Copy assign
+
     return *this;
 }
 
 
-Foam::Ostream& Foam::OTstream::write(const string& str)
+Foam::Ostream& Foam::OTstream::write(const std::string& str)
 {
-    append(token(str, lineNumber()));
-    return *this;
-}
+    // tokenType::STRING
+    tokens().emplace_back() = Foam::string(str);  // Move assign
 
-
-Foam::Ostream& Foam::OTstream::write(const keyType& kt)
-{
-    append(token(kt, lineNumber()));
-    return *this;
-}
-
-
-Foam::Ostream& Foam::OTstream::write(const verbatimString& vs)
-{
-    append(token(vs, lineNumber()));
-    return *this;
-}
-
-
-Foam::Ostream& Foam::OTstream::writeQuoted
-(
-    const std::string& str,
-    const bool quoted
-)
-{
-    if (quoted)
-    {
-        append(token(string(str), lineNumber()));
-    }
-    else
-    {
-        append(token(word(str), lineNumber()));
-    }
     return *this;
 }
 
 
 Foam::Ostream& Foam::OTstream::write(const int32_t val)
 {
-    append(token(val, lineNumber()));
+    tokens().push_back(token(label(val))); // tokenType::LABEL
+
     return *this;
 }
 
 
 Foam::Ostream& Foam::OTstream::write(const int64_t val)
 {
-    append(token(val, lineNumber()));
+    tokens().push_back(token(label(val))); // tokenType::LABEL
+
     return *this;
 }
 
 
-Foam::Ostream& Foam::OTstream::write(const uint32_t val)
+Foam::Ostream& Foam::OTstream::write(const float val)
 {
-    append(token(val, lineNumber()));
+    tokens().push_back(token(val)); // tokenType::FLOAT
+
     return *this;
 }
 
 
-Foam::Ostream& Foam::OTstream::write(const uint64_t val)
+Foam::Ostream& Foam::OTstream::write(const double val)
 {
-    append(token(val, lineNumber()));
-    return *this;
-}
+    tokens().push_back(token(val)); // tokenType::DOUBLE
 
-
-Foam::Ostream& Foam::OTstream::write(const floatScalar val)
-{
-    append(token(val, lineNumber()));
-    return *this;
-}
-
-
-Foam::Ostream& Foam::OTstream::write(const doubleScalar val)
-{
-    append(token(val, lineNumber()));
-    return *this;
-}
-
-
-Foam::Ostream& Foam::OTstream::write(const longDoubleScalar val)
-{
-    append(token(val, lineNumber()));
     return *this;
 }
 
 
 Foam::Ostream& Foam::OTstream::write(const char* data, std::streamsize count)
 {
+    // if (format() != IOstreamOption::BINARY)
+    // {
+    //     FatalErrorInFunction
+    //         << "stream format not binary"
+    //         << Foam::abort(FatalError);
+    // }
+
     NotImplemented;
     return *this;
 }
 
 
+Foam::Ostream& Foam::OTstream::writeRaw
+(
+    const char* data,
+    std::streamsize count
+)
+{
+    // No check for IOstreamOption::BINARY since this is either done in the
+    // beginRawWrite() method, or the caller knows what they are doing.
+
+    NotImplemented;
+    return *this;
+}
+
+
+bool Foam::OTstream::beginRawWrite(std::streamsize count)
+{
+    // if (format() != IOstreamOption::BINARY)
+    // {
+    //     FatalErrorInFunction
+    //         << "stream format not binary"
+    //         << Foam::abort(FatalError);
+    // }
+
+    NotImplemented;
+    return true;
+}
+
+
 void Foam::OTstream::print(Ostream& os) const
 {
-    os  << "OTstream: " << name().c_str() << ' ';
+    os  << "OTstream : " << name().c_str() << ", " << size() << " tokens, ";
     IOstream::print(os);
 }
 

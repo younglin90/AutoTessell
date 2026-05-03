@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -72,15 +75,20 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
 {
     if (treeByRegion_.empty())
     {
-        Map<label> regionSizes;
+        label maxRegion = -1;
         forAll(surface(), fI)
         {
             const label regionI = surface()[fI].region();
-
-            regionSizes(regionI)++;
+            maxRegion = max(maxRegion, regionI);
         }
+        const label nRegions = maxRegion+1;
 
-        label nRegions = regionSizes.size();
+        labelList nFacesInRegions(nRegions, 0);
+        forAll(surface(), fI)
+        {
+            const label regionI = surface()[fI].region();
+            nFacesInRegions[regionI]++;
+        }
 
         indirectRegionPatches_.setSize(nRegions);
         treeByRegion_.setSize(nRegions);
@@ -89,22 +97,18 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
 
         forAll(regionsAddressing, regionI)
         {
-            regionsAddressing[regionI] = labelList(regionSizes[regionI], -1);
+            regionsAddressing[regionI].setSize(nFacesInRegions[regionI]);
         }
-
-        labelList nFacesInRegions(nRegions, 0);
-
+        nFacesInRegions = Zero;
         forAll(surface(), fI)
         {
             const label regionI = surface()[fI].region();
-
             regionsAddressing[regionI][nFacesInRegions[regionI]++] = fI;
         }
 
         forAll(regionsAddressing, regionI)
         {
-            scalar oldTol = treeType::perturbTol();
-            treeType::perturbTol() = tolerance();
+            const scalar oldTol = treeType::perturbTol(tolerance());
 
             indirectRegionPatches_.set
             (
@@ -121,7 +125,7 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
             );
 
             // Calculate bb without constructing local point numbering.
-            treeBoundBox bb(Zero, Zero);
+            treeBoundBox bb(point::zero);
 
             if (indirectRegionPatches_[regionI].size())
             {
@@ -144,10 +148,14 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
     //                    << endl;
     //            }
 
+                // Random number generator. Bit dodgy since not exactly
+                // random ;-)
+                Random rndGen(65431);
+
                 // Slightly extended bb. Slightly off-centred just so
                 // on symmetric geometry there are fewer face/edge
                 // aligned items.
-                bb = bb.extend(1e-4);
+                bb.inflate(rndGen, 1e-4, ROOTVSMALL);
             }
 
             treeByRegion_.set
@@ -157,7 +165,6 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
                 (
                     treeDataIndirectTriSurface
                     (
-                        true,
                         indirectRegionPatches_[regionI],
                         tolerance()
                     ),
@@ -168,7 +175,7 @@ Foam::triSurfaceRegionSearch::treeByRegion() const
                 )
             );
 
-            treeType::perturbTol() = oldTol;
+            treeType::perturbTol(oldTol);
         }
     }
 
@@ -190,8 +197,7 @@ void Foam::triSurfaceRegionSearch::findNearest
     }
     else
     {
-        scalar oldTol = treeType::perturbTol();
-        treeType::perturbTol() = tolerance();
+        const scalar oldTol = treeType::perturbTol(tolerance());
 
         const PtrList<treeType>& octrees = treeByRegion();
 
@@ -199,12 +205,13 @@ void Foam::triSurfaceRegionSearch::findNearest
 
         forAll(octrees, treeI)
         {
-            if (findIndex(regionIndices, treeI) == -1)
+            if (!regionIndices.found(treeI))
             {
                 continue;
             }
 
             const treeType& octree = octrees[treeI];
+            const treeDataIndirectTriSurface::findNearestOp nearOp(octree);
 
             forAll(samples, i)
             {
@@ -217,7 +224,7 @@ void Foam::triSurfaceRegionSearch::findNearest
                 (
                     samples[i],
                     nearestDistSqr[i],
-                    treeDataIndirectTriSurface::findNearestOp(octree)
+                    nearOp
                 );
 
                 if
@@ -228,8 +235,8 @@ void Foam::triSurfaceRegionSearch::findNearest
                         !info[i].hit()
                      ||
                         (
-                            magSqr(currentRegionHit.hitPoint() - samples[i])
-                          < magSqr(info[i].hitPoint() - samples[i])
+                            samples[i].distSqr(currentRegionHit.point())
+                          < samples[i].distSqr(info[i].point())
                         )
                     )
                 )
@@ -239,7 +246,7 @@ void Foam::triSurfaceRegionSearch::findNearest
             }
         }
 
-        treeType::perturbTol() = oldTol;
+        treeType::perturbTol(oldTol);
     }
 }
 

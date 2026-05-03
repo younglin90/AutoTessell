@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,6 +24,9 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
+Note
+    Included by global/globals.C
+
 \*---------------------------------------------------------------------------*/
 
 #include "token.H"
@@ -29,124 +35,177 @@ License
 
 namespace Foam
 {
-    token token::undefinedToken;
-
     typedef token::compound tokenCompound;
-    defineTypeNameAndDebug(tokenCompound, 0);
-    defineRunTimeSelectionTable(tokenCompound, Istream);
-
-    const word token::typeNames_[] =
-    {
-        "undefined",
-        "char",
-        "word",
-        "functionName",
-        "variable",
-        "string",
-        "verbatimString",
-        "int32_t",
-        "int64_t",
-        "uint32_t",
-        "uint64_t",
-        "floatScalar",
-        "doubleScalar",
-        "longDoubleScalar",
-        "compound",
-        "error"
-    };
+    defineTypeName(tokenCompound);
+    defineRunTimeSelectionTable(tokenCompound, empty);
 }
+
+const Foam::token Foam::token::undefinedToken;
 
 
 // * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * * //
 
 void Foam::token::parseError(const char* expected) const
 {
-    cerr<< "Parse error, expected a " << expected
-        << ", found \n    " << info() << std::endl;
+    FatalIOError
+        << "Parse error, expected a " << expected
+        << ", found \n    " << info() << endl;
 }
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::token::compound::~compound()
-{}
 
 
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
 
 Foam::autoPtr<Foam::token::compound> Foam::token::compound::New
 (
-    const word& compoundType,
-    Istream& is
+    const word& compoundType
 )
 {
-    IstreamConstructorTable::iterator cstrIter =
-        IstreamConstructorTablePtr_->find(compoundType);
+    auto* ctorPtr = emptyConstructorTable(compoundType);
 
-    if (cstrIter == IstreamConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalIOErrorInFunction(is)
-            << "Unknown compound type " << compoundType << nl << nl
-            << "Valid compound types:" << endl
-            << IstreamConstructorTablePtr_->sortedToc()
-            << abort(FatalIOError);
+        FatalErrorInLookup
+        (
+            "compound",
+            compoundType,
+            *emptyConstructorTablePtr_
+        ) << abort(FatalError);
     }
 
-    return autoPtr<Foam::token::compound>(cstrIter()(is));
+    return autoPtr<token::compound>(ctorPtr());
+}
+
+
+Foam::autoPtr<Foam::token::compound> Foam::token::compound::New
+(
+    const word& compoundType,
+    Istream& is,
+    const bool readContent
+)
+{
+    auto* ctorPtr = emptyConstructorTable(compoundType);
+
+    if (!ctorPtr)
+    {
+        FatalIOErrorInLookup
+        (
+            is,
+            "compound",
+            compoundType,
+            *emptyConstructorTablePtr_
+        ) << abort(FatalIOError);
+    }
+
+    autoPtr<token::compound> aptr(ctorPtr());
+
+    if (readContent)
+    {
+        aptr->read(is);
+    }
+    return aptr;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::word& Foam::token::typeName() const
+bool Foam::token::compound::isCompound(const word& compoundType)
 {
-    if (type_ == token::UNDEFINED)
-    {
-        return typeNames_[0];
-    }
-    else if (type_ == token::COMPOUND)
-    {
-        return compoundTokenPtr_->type();
-    }
-    else
-    {
-        return typeNames_[type_ - token::PUNCTUATION + 1];
-    }
-}
+    // Could also return the constructor pointer directly
+    // and test as bool or use for construction
+    //
+    // token::compound::emptyConstructorPtr ctorPtr = nullptr;
+    // if (emptyConstructorTablePtr_)
+    // {
+    //     ctorPtr = emptyConstructorTablePtr_->cfind(compoundType);
+    //     if (iter.good()) ctorPtr = iter.val();
+    // }
+    // return ctorPtr;
 
-
-bool Foam::token::compound::isCompound(const word& name)
-{
     return
     (
-        IstreamConstructorTablePtr_
-     && IstreamConstructorTablePtr_->found(name)
+        emptyConstructorTablePtr_
+     && emptyConstructorTablePtr_->contains(compoundType)
     );
 }
 
 
-Foam::token::compound& Foam::token::transferCompoundToken(const Istream& is)
+bool Foam::token::readCompoundToken
+(
+    const word& compoundType,
+    Istream& is,
+    const bool readContent
+)
 {
-    if (type_ == COMPOUND)
+    // Like compound::New() but more failure tolerant.
+    // - a no-op if the compoundType is unknown
+
+    auto* ctorPtr = token::compound::emptyConstructorTable(compoundType);
+
+    if (!ctorPtr)
     {
-        if (compoundTokenPtr_->empty())
+        return false;
+    }
+
+    autoPtr<token::compound> aptr(ctorPtr());
+
+    if (readContent)
+    {
+        aptr->read(is);
+    }
+    // Could also set pending(false) for !readContent,
+    // but prefer to leave that to the caller.
+
+    (*this) = std::move(aptr);
+
+    return true;
+}
+
+
+Foam::token::compound& Foam::token::transferCompoundToken(const Istream* is)
+{
+    if (type_ != tokenType::COMPOUND)
+    {
+        parseError("compound");
+    }
+
+    if (data_.compoundPtr->moved())
+    {
+        if (is)
         {
-            FatalIOErrorInFunction(is)
+            FatalIOErrorInFunction(*is)
                 << "compound has already been transferred from token\n    "
                 << info() << abort(FatalIOError);
         }
         else
         {
-            compoundTokenPtr_->empty() = true;
+            FatalErrorInFunction
+                << "compound has already been transferred from token\n    "
+                << info() << abort(FatalError);
         }
-
-        return *compoundTokenPtr_;
     }
+    // // TDB
+    // else if (data_.compoundPtr->pending())
+    // {
+    //     if (is)
+    //     {
+    //         FatalIOErrorInFunction(*is)
+    //             << "compound is pending (not yet read?)\n    "
+    //             << info() << abort(FatalIOError);
+    //     }
+    //     else
+    //     {
+    //         FatalErrorInFunction
+    //             << "compound is pending (not yet read?)\n    "
+    //             << info() << abort(FatalError);
+    //     }
+    // }
     else
     {
-        parseError("compound");
-        return *compoundTokenPtr_;
+        // TBD: reset pending?
+        data_.compoundPtr->moved(true);
     }
+
+    return *data_.compoundPtr;
 }
 
 

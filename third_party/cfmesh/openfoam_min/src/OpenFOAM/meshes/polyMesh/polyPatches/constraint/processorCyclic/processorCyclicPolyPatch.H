@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,11 +36,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorCyclicPolyPatch_H
-#define processorCyclicPolyPatch_H
+#ifndef Foam_processorCyclicPolyPatch_H
+#define Foam_processorCyclicPolyPatch_H
 
 #include "processorPolyPatch.H"
-#include "cyclicPolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -62,31 +63,15 @@ class processorCyclicPolyPatch
         mutable int tag_;
 
         //- Index of originating patch
-        mutable label referPatchIndex_;
+        mutable label referPatchID_;
 
 
 protected:
 
-    // Protected constructors
-
-        //- Construct from components with specified name
-        processorCyclicPolyPatch
-        (
-            const word& name,
-            const label size,
-            const label start,
-            const label index,
-            const polyBoundaryMesh& bm,
-            const int myProcNo,
-            const int neighbProcNo,
-            const word& referPatchName
-        );
-
-
     // Protected Member functions
 
         //- Initialise the calculation of the patch geometry
-        void initCalcGeometry(PstreamBuffers&);
+        void initGeometry(PstreamBuffers&);
 
         //- Calculate the patch geometry
         void calcGeometry(PstreamBuffers&);
@@ -114,10 +99,10 @@ protected:
         void movePoints(PstreamBuffers&, const pointField&);
 
         //- Initialise the update of the patch topology
-        virtual void initTopoChange(PstreamBuffers&);
+        virtual void initUpdateMesh(PstreamBuffers&);
 
         //- Update of the patch topology
-        virtual void topoChange(PstreamBuffers&);
+        virtual void updateMesh(PstreamBuffers&);
 
 
 public:
@@ -137,7 +122,9 @@ public:
             const polyBoundaryMesh& bm,
             const int myProcNo,
             const int neighbProcNo,
-            const word& referPatchName
+            const word& referPatchName,
+            const transformType transform = UNKNOWN,
+            const word& patchType = typeName
         );
 
         //- Construct from dictionary
@@ -146,7 +133,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh&
+            const polyBoundaryMesh&,
+            const word& patchType
         );
 
         //- Construct as copy, resetting the boundary mesh
@@ -166,6 +154,29 @@ public:
             const label newSize,
             const label newStart
         );
+
+        //- Construct as given the original patch and resetting the
+        //  face list, boundary mesh information and referPatch
+        processorCyclicPolyPatch
+        (
+            const processorCyclicPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const label newSize,
+            const label newStart,
+            const word& referPatchName
+        );
+
+        //- Construct given the original patch and a map
+        processorCyclicPolyPatch
+        (
+            const processorCyclicPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        );
+
 
         //- Construct and return a clone, resetting the boundary mesh
         virtual autoPtr<polyPatch> clone(const polyBoundaryMesh& bm) const
@@ -196,21 +207,63 @@ public:
             );
         }
 
-
-    // Destructor
-    virtual ~processorCyclicPolyPatch();
-
-
-    // Member Functions
-
-        //- Return name of originating cyclicPolyPatch patch
-        const word& referPatchName() const
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const label newSize,
+            const label newStart,
+            const word& referPatchName
+        ) const
         {
-            return referPatchName_;
+            return autoPtr<polyPatch>
+            (
+                new processorCyclicPolyPatch
+                (
+                    *this,
+                    bm,
+                    index,
+                    newSize,
+                    newStart,
+                    referPatchName
+                )
+            );
         }
 
-        //- Return the name of a processorCyclicPolyPatch
-        //  constructed from cyclicPolyPatch name and the processor IDs
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
+        {
+            return autoPtr<polyPatch>
+            (
+                new processorCyclicPolyPatch
+                (
+                    *this,
+                    bm,
+                    index,
+                    mapAddressing,
+                    newStart
+                )
+            );
+        }
+
+
+    // Destructor
+    virtual ~processorCyclicPolyPatch() = default;
+
+
+    // Static Functions
+
+        //- Return the name of a processorCyclicPolyPatch constructed from
+        //- the cyclicPolyPatch name and the pair of processor IDs.
         static word newName
         (
             const word& cyclicPolyPatchName,
@@ -226,32 +279,24 @@ public:
             const polyBoundaryMesh& bm
         );
 
-        //- Return the referring patchID
-        label referPatchIndex() const
+
+    // Member Functions
+
+        //- Return name of originating cyclicPolyPatch patch
+        const word& referPatchName() const
         {
-            if (referPatchIndex_ == -1)
-            {
-                referPatchIndex_ = this->boundaryMesh().findIndex
-                (
-                    referPatchName_
-                );
-                if (referPatchIndex_ == -1)
-                {
-                    FatalErrorInFunction
-                        << "Illegal referPatch name " << referPatchName_
-                        << endl << "Valid patch names are "
-                        << this->boundaryMesh().names()
-                        << exit(FatalError);
-                }
-            }
-            return referPatchIndex_;
+            return referPatchName_;
         }
 
-        //- Return a reference to the referring patch
-        const cyclicPolyPatch& referPatch() const
+        //- The referring patchID.
+        //- Searches for referPatchName() on the first call.
+        virtual label referPatchID() const;
+
+        //- The referred coupled patch
+        const coupledPolyPatch& referPatch() const
         {
-            const polyPatch& pp = this->boundaryMesh()[referPatchIndex()];
-            return refCast<const cyclicPolyPatch>(pp);
+            const polyPatch& pp = this->boundaryMesh()[referPatchID()];
+            return refCast<const coupledPolyPatch>(pp);
         }
 
         //- Return message tag to use for communication
@@ -264,18 +309,69 @@ public:
         }
 
         //- Type of transform
-        virtual cyclicTransform::transformTypes transformType() const
-        {
-            return referPatch().transformType();
-        }
-
-        //- Return transformation between the coupled patches
-        virtual const transformer& transform() const
+        virtual transformType transform() const
         {
             return referPatch().transform();
         }
 
-        //- Initialise ordering for primitivePatch. Does not
+        //- Type of transform
+        //  This is currently only for use when collapsing generated
+        //  meshes that can have zero area faces.
+        virtual transformType& transform()
+        {
+            return const_cast<coupledPolyPatch&>(referPatch()).transform();
+        }
+
+        //- Transform a patch-based position from other side to this side
+        virtual void transformPosition(pointField& l) const
+        {
+            referPatch().transformPosition(l);
+        }
+
+        //- Transform a patch-based position from other side to this side
+        virtual void transformPosition(point& l, const label facei) const
+        {
+            referPatch().transformPosition(l, facei);
+        }
+
+        //- Are the planes separated.
+        virtual bool separated() const
+        {
+            return referPatch().separated();
+        }
+
+        //- If the planes are separated the separation vector.
+        virtual const vectorField& separation() const
+        {
+            return referPatch().separation();
+        }
+
+        //- Are the cyclic planes parallel.
+        virtual bool parallel() const
+        {
+            return referPatch().parallel();
+        }
+
+        //- Return face transformation tensor.
+        virtual const tensorField& forwardT() const
+        {
+            return referPatch().forwardT();
+        }
+
+        //- Return neighbour-cell transformation tensor.
+        virtual const tensorField& reverseT() const
+        {
+            return referPatch().reverseT();
+        }
+
+        //- Are faces collocated. Either size 0,1 or length of patch
+        virtual const boolList& collocated() const
+        {
+            return referPatch().collocated();
+        }
+
+
+        //- Initialize ordering for primitivePatch. Does not
         //  refer to *this (except for name() and type() etc.)
         virtual void initOrder(PstreamBuffers&, const primitivePatch&) const;
 
@@ -291,6 +387,7 @@ public:
             labelList& faceMap,
             labelList& rotation
         ) const;
+
 
         //- Write the polyPatch data as a dictionary
         virtual void write(Ostream&) const;

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,12 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "fvScalarMatrix.H"
-#include "Residuals.H"
 #include "extrapolatedCalculatedFvPatchFields.H"
+#include "profiling.H"
+#include "PrecisionAdaptor.H"
+#include "jumpCyclicFvPatchField.H"
+#include "cyclicPolyPatch.H"
+#include "cyclicAMIPolyPatch.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -60,9 +67,16 @@ Foam::fvMatrix<Foam::scalar>::solver
     const dictionary& solverControls
 )
 {
+    word regionName;
+    if (psi_.mesh().name() != polyMesh::defaultRegion)
+    {
+        regionName = psi_.mesh().name() + "::";
+    }
+    addProfiling(solve, "fvMatrix::solve.", regionName, psi_.name());
+
     if (debug)
     {
-        Info(this->mesh().comm())
+        Info.masterStream(this->mesh().comm())
             << "fvMatrix<scalar>::solver(const dictionary& solverControls) : "
                "solver for fvMatrix<scalar>"
             << endl;
@@ -70,6 +84,10 @@ Foam::fvMatrix<Foam::scalar>::solver
 
     scalarField saveDiag(diag());
     addBoundaryDiag(diag(), 0);
+
+    lduInterfaceFieldPtrsList interfaces =
+        psi_.boundaryField().scalarInterfaces();
+
 
     autoPtr<fvMatrix<scalar>::fvSolver> solverPtr
     (
@@ -82,7 +100,7 @@ Foam::fvMatrix<Foam::scalar>::solver
                 *this,
                 boundaryCoeffs_,
                 internalCoeffs_,
-                psi_.boundaryField().scalarInterfaces(),
+                interfaces,
                 solverControls
             )
         )
@@ -100,9 +118,18 @@ Foam::solverPerformance Foam::fvMatrix<Foam::scalar>::fvSolver::solve
     const dictionary& solverControls
 )
 {
-    VolField<scalar>& psi =
-        const_cast<VolField<scalar>&>
-        (fvMat_.psi());
+    const int logLevel =
+        solverControls.getOrDefault<int>
+        (
+            "log",
+            solverPerformance::debug
+        );
+
+    auto& psi =
+        const_cast<GeometricField<scalar, fvPatchField, volMesh>&>
+        (
+            fvMat_.psi()
+        );
 
     scalarField saveDiag(fvMat_.diag());
     fvMat_.addBoundaryDiag(fvMat_.diag(), 0);
@@ -119,16 +146,16 @@ Foam::solverPerformance Foam::fvMatrix<Foam::scalar>::fvSolver::solve
         totalSource
     );
 
-    if (solverPerformance::debug)
+    if (logLevel)
     {
-        solverPerf.print(Info(fvMat_.mesh().comm()));
+        solverPerf.print(Info.masterStream(fvMat_.mesh().comm()));
     }
 
     fvMat_.diag() = saveDiag;
 
     psi.correctBoundaryConditions();
 
-    Residuals<scalar>::append(psi.mesh(), solverPerf);
+    psi.mesh().data().setSolverPerformance(psi.name(), solverPerf);
 
     return solverPerf;
 }
@@ -142,15 +169,43 @@ Foam::solverPerformance Foam::fvMatrix<Foam::scalar>::solveSegregated
 {
     if (debug)
     {
-        Info(this->mesh().comm())
+        Info.masterStream(this->mesh().comm())
             << "fvMatrix<scalar>::solveSegregated"
                "(const dictionary& solverControls) : "
                "solving fvMatrix<scalar>"
             << endl;
     }
 
-    VolField<scalar>& psi =
-       const_cast<VolField<scalar>&>(psi_);
+    const int logLevel =
+        solverControls.getOrDefault<int>
+        (
+            "log",
+            solverPerformance::debug
+        );
+
+    scalarField saveLower;
+    scalarField saveUpper;
+
+    if (useImplicit_)
+    {
+        createOrUpdateLduPrimitiveAssembly();
+
+        if (psi_.mesh().fluxRequired(psi_.name()))
+        {
+            // Save lower/upper for flux calculation
+            if (asymmetric())
+            {
+                saveLower = lower();
+            }
+            saveUpper = upper();
+        }
+
+        setLduMesh(*lduMeshPtr());
+        transferFvMatrixCoeffs();
+        setBounAndInterCoeffs();
+        direction cmpt = 0;
+        manipulateMatrix(cmpt);
+    }
 
     scalarField saveDiag(diag());
     addBoundaryDiag(diag(), 0);
@@ -158,27 +213,116 @@ Foam::solverPerformance Foam::fvMatrix<Foam::scalar>::solveSegregated
     scalarField totalSource(source_);
     addBoundarySource(totalSource, false);
 
+    lduInterfaceFieldPtrsList interfaces;
+    PtrDynList<lduInterfaceField> newInterfaces;
+    if (!useImplicit_)
+    {
+        interfaces = this->psi(0).boundaryField().scalarInterfaces();
+    }
+    else
+    {
+        setInterfaces(interfaces, newInterfaces);
+    }
+
+    tmp<scalarField> tpsi;
+    if (!useImplicit_)
+    {
+        tpsi.ref
+        (
+            const_cast<GeometricField<scalar, fvPatchField, volMesh>&>
+            (
+                psi_
+            ).primitiveFieldRef()
+        );
+    }
+    else
+    {
+        tpsi = tmp<scalarField>::New(lduAddr().size(), Zero);
+        scalarField& psi = tpsi.ref();
+
+        for (label fieldi = 0; fieldi < nMatrices(); fieldi++)
+        {
+            const label cellOffset = lduMeshPtr()->cellOffsets()[fieldi];
+            const auto& psiInternal = this->psi(fieldi).primitiveField();
+
+            forAll(psiInternal, localCellI)
+            {
+                psi[cellOffset + localCellI] = psiInternal[localCellI];
+            }
+        }
+    }
+    scalarField& psi = tpsi.ref();
+
     // Solver call
     solverPerformance solverPerf = lduMatrix::solver::New
     (
-        psi.name(),
+        this->psi(0).name(),
         *this,
         boundaryCoeffs_,
         internalCoeffs_,
-        psi_.boundaryField().scalarInterfaces(),
+        interfaces,
         solverControls
-    )->solve(psi.primitiveFieldRef(), totalSource);
+    )->solve(psi, totalSource);
 
-    if (solverPerformance::debug)
+    if (useImplicit_)
     {
-        solverPerf.print(Info(mesh().comm()));
+        for (label fieldi = 0; fieldi < nMatrices(); fieldi++)
+        {
+            auto& psiInternal =
+                const_cast<GeometricField<scalar, fvPatchField, volMesh>&>
+                (
+                    this->psi(fieldi)
+                ).primitiveFieldRef();
+
+            const label cellOffset = lduMeshPtr()->cellOffsets()[fieldi];
+
+            forAll(psiInternal, localCellI)
+            {
+                psiInternal[localCellI] = psi[localCellI + cellOffset];
+            }
+        }
+    }
+
+    if (logLevel)
+    {
+        solverPerf.print(Info.masterStream(mesh().comm()));
     }
 
     diag() = saveDiag;
 
-    psi.correctBoundaryConditions();
+    if (useImplicit_)
+    {
+        if (psi_.mesh().fluxRequired(psi_.name()))
+        {
+            // Restore lower/upper
+            if (asymmetric())
+            {
+                lower().setSize(saveLower.size());
+                lower() = saveLower;
+            }
 
-    Residuals<scalar>::append(psi.mesh(), solverPerf);
+            upper().setSize(saveUpper.size());
+            upper() = saveUpper;
+        }
+        // Set the original lduMesh
+        setLduMesh(psi_.mesh());
+    }
+
+    for (label fieldi = 0; fieldi < nMatrices(); fieldi++)
+    {
+        auto& localPsi =
+            const_cast<GeometricField<scalar, fvPatchField, volMesh>&>
+            (
+                this->psi(fieldi)
+            );
+
+        localPsi.correctBoundaryConditions();
+        localPsi.mesh().data().setSolverPerformance
+        (
+            localPsi.name(),
+            solverPerf
+        );
+    }
 
     return solverPerf;
 }
@@ -187,41 +331,43 @@ Foam::solverPerformance Foam::fvMatrix<Foam::scalar>::solveSegregated
 template<>
 Foam::tmp<Foam::scalarField> Foam::fvMatrix<Foam::scalar>::residual() const
 {
-    scalarField boundaryDiag(psi_.size(), 0.0);
+    scalarField boundaryDiag(psi_.size(), Zero);
     addBoundaryDiag(boundaryDiag, 0);
 
-    tmp<scalarField> tres
+    const scalarField& psif = psi_.primitiveField();
+    ConstPrecisionAdaptor<solveScalar, scalar> tpsi(psif);
+    const solveScalarField& psi = tpsi();
+
+    tmp<solveScalarField> tres
     (
         lduMatrix::residual
         (
-            psi_.primitiveField(),
-            source_ - boundaryDiag*psi_.primitiveField(),
+            psi,
+            source_ - boundaryDiag*psif,
             boundaryCoeffs_,
             psi_.boundaryField().scalarInterfaces(),
             0
         )
     );
 
-    addBoundarySource(tres.ref());
+    ConstPrecisionAdaptor<scalar, solveScalar> tres_s(tres);
+    addBoundarySource(tres_s.ref());
 
-    return tres;
+    return tres_s;
 }
 
 
 template<>
 Foam::tmp<Foam::volScalarField> Foam::fvMatrix<Foam::scalar>::H() const
 {
-    tmp<volScalarField> tHphi
+    auto tHphi = volScalarField::New
     (
-        volScalarField::New
-        (
-            "H("+psi_.name()+')',
-            psi_.mesh(),
-            dimensions_/dimVolume,
-            extrapolatedCalculatedFvPatchScalarField::typeName
-        )
+        "H(" + psi_.name() + ')',
+        psi_.mesh(),
+        dimensions_/dimVol,
+        fvPatchFieldBase::extrapolatedCalculatedType()
     );
-    volScalarField& Hphi = tHphi.ref();
+    auto& Hphi = tHphi.ref();
 
     Hphi.primitiveFieldRef() = (lduMatrix::H(psi_.primitiveField()) + source_);
     addBoundarySource(Hphi.primitiveFieldRef());
@@ -236,20 +382,17 @@ Foam::tmp<Foam::volScalarField> Foam::fvMatrix<Foam::scalar>::H() const
 template<>
 Foam::tmp<Foam::volScalarField> Foam::fvMatrix<Foam::scalar>::H1() const
 {
-    tmp<volScalarField> tH1
+    auto tH1 = volScalarField::New
     (
-        volScalarField::New
-        (
-            "H(1)",
-            psi_.mesh(),
-            dimensions_/(dimVolume*psi_.dimensions()),
-            extrapolatedCalculatedFvPatchScalarField::typeName
-        )
+        "H(1)",
+        psi_.mesh(),
+        dimensions_/(dimVol*psi_.dimensions()),
+        fvPatchFieldBase::extrapolatedCalculatedType()
     );
-    volScalarField& H1_ = tH1.ref();
+    auto& H1_ = tH1.ref();
 
     H1_.primitiveFieldRef() = lduMatrix::H1();
-    // addBoundarySource(Hphi.primitiveField());
+    //addBoundarySource(Hphi.primitiveField());
 
     H1_.primitiveFieldRef() /= psi_.mesh().V();
     H1_.correctBoundaryConditions();

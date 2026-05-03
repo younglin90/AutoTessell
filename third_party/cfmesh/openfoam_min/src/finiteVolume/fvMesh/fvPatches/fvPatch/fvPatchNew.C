@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,19 +39,19 @@ Foam::autoPtr<Foam::fvPatch> Foam::fvPatch::New
 {
     DebugInFunction << "Constructing fvPatch" << endl;
 
-    polyPatchConstructorTable::iterator cstrIter =
-        polyPatchConstructorTablePtr_->find(patch.type());
+    auto* ctorPtr = polyPatchConstructorTable(patch.type());
 
-    if (cstrIter == polyPatchConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalErrorInFunction
-            << "Unknown fvPatch type " << patch.type() << nl
-            << "Valid fvPatch types are :"
-            << polyPatchConstructorTablePtr_->sortedToc()
-            << exit(FatalError);
+        FatalErrorInLookup
+        (
+            "fvPatch",
+            patch.type(),
+            *polyPatchConstructorTablePtr_
+        ) << exit(FatalError);
     }
 
-    return autoPtr<fvPatch>(cstrIter()(patch, bm));
+    return autoPtr<fvPatch>(ctorPtr(patch, bm));
 }
 
 

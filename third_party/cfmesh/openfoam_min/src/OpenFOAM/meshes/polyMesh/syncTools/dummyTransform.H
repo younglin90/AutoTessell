@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +32,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dummyTransform_H
-#define dummyTransform_H
+#ifndef Foam_dummyTransform_H
+#define Foam_dummyTransform_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -38,7 +41,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class dummyTransform Declaration
+                           Class dummyTransform Declaration
 \*---------------------------------------------------------------------------*/
 
 class dummyTransform
@@ -47,14 +50,16 @@ public:
     template<class T>
     void operator()
     (
-        const transformer& vt,
+        const vectorTensorTransform& vt,
         const bool forward,
         List<T>& fld
     ) const
-    {};
+    {}
+
     template<class T>
     void operator()(const coupledPolyPatch& cpp, Field<T>& fld) const
     {}
+
     template<class T, template<class> class Container>
     void operator()(const coupledPolyPatch& cpp, Container<T>& map) const
     {}
@@ -69,7 +74,7 @@ class pTraits<List<T>>
 public:
     typedef label cmptType;
 
-    pTraits(Istream& is)
+    explicit pTraits(Istream& is)
     :
         List<T>(is)
     {}
@@ -83,7 +88,7 @@ class pTraits<UList<T>>
 public:
     typedef label cmptType;
 
-    pTraits(Istream& is)
+    explicit pTraits(Istream& is)
     :
         UList<T>(is)
     {}
@@ -97,7 +102,7 @@ class pTraits<Field<T>>
 public:
     typedef label cmptType;
 
-    pTraits(Istream& is)
+    explicit pTraits(Istream& is)
     :
         Field<T>(is)
     {}
@@ -111,7 +116,7 @@ class pTraits<face>
 public:
     typedef label cmptType;
 
-    pTraits(Istream& is)
+    explicit pTraits(Istream& is)
     :
         face(is)
     {}

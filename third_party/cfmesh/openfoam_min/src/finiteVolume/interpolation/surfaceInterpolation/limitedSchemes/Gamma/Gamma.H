@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::GammaLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    Gamma interpolation scheme based on phict obtained from the LimiterFunc
+    Gamma differencing scheme based on phict obtained from the LimiterFunc
     class.
 
     Used in conjunction with the template class LimitedScheme.
@@ -73,7 +78,7 @@ public:
 
         // Rescale k_ to be >= 0 and <= 0.5 (TVD conformant)
         // and avoid the /0 when k_ = 0
-        k_ = max(k_/2.0, small);
+        k_ = max(k_/2.0, SMALL);
     }
 
     scalar limiter
@@ -92,7 +97,7 @@ public:
             faceFlux, phiP, phiN, gradcP, gradcN, d
         );
 
-        return min(max(phict/k_, 0), 1);
+        return clamp(phict/k_, zero_one{});
     }
 };
 

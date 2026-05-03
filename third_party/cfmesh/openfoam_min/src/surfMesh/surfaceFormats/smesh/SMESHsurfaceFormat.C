@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,16 +28,7 @@ License
 
 #include "SMESHsurfaceFormat.H"
 #include "clock.H"
-#include "IFstream.H"
 #include "OFstream.H"
-#include "Ostream.H"
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Face>
-Foam::fileFormats::SMESHsurfaceFormat<Face>::SMESHsurfaceFormat()
-{}
-
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -42,14 +36,19 @@ template<class Face>
 void Foam::fileFormats::SMESHsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
 
-    const List<surfZone>& zones =
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&  faceLst  = surf.surfFaces();
+    const UList<label>& faceMap  = surf.faceMap();
+
+    const surfZoneList zones =
     (
         surf.surfZones().empty()
       ? surfaceFormatsCore::oneZone(faceLst)
@@ -58,12 +57,11 @@ void Foam::fileFormats::SMESHsurfaceFormat<Face>::write
 
     const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
 
-
-    OFstream os(filename);
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
@@ -74,11 +72,11 @@ void Foam::fileFormats::SMESHsurfaceFormat<Face>::write
         << pointLst.size() << " 3" << nl;    // 3: dimensions
 
     // Write vertex coords
-    forAll(pointLst, ptI)
+    forAll(pointLst, pti)
     {
-        const point& pt = pointLst[ptI];
+        const point& pt = pointLst[pti];
 
-        os  << ptI << ' ' << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
+        os  << pti << ' ' << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
     }
     os  << "# </points>" << nl
         << nl
@@ -88,38 +86,26 @@ void Foam::fileFormats::SMESHsurfaceFormat<Face>::write
 
 
     label faceIndex = 0;
-    forAll(zones, zoneI)
+    label zoneIndex = 0;
+
+    for (const surfZone& zone : zones)
     {
-        const surfZone& zone = zones[zoneI];
-
-        if (useFaceMap)
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
         {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceMap[faceIndex++]];
+            const label facei =
+                (useFaceMap ? faceMap[faceIndex] : faceIndex);
 
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-                os << ' ' << zoneI << endl;
-            }
-        }
-        else
-        {
-            forAll(zones[zoneI], localFacei)
-            {
-                const Face& f = faceLst[faceIndex++];
+            const Face& f = faceLst[facei];
 
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-                os << ' ' << zoneI << endl;
+            os << f.size();
+            for (const label verti : f)
+            {
+                os << ' ' << verti;
             }
+            os << ' ' << zoneIndex << nl;
         }
+
+        ++zoneIndex;
     }
 
     // write tail

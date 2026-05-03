@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -68,13 +71,22 @@ class triSurfaceRegionSearch
         typedef indexedOctree<treeDataIndirectTriSurface> treeType;
 
 
-    // Private Data
+    // Private data
 
         //- Surface is split into patches by region
         mutable PtrList<indirectTriSurface> indirectRegionPatches_;
 
         //- Search tree for each region
         mutable PtrList<treeType> treeByRegion_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        triSurfaceRegionSearch(const triSurfaceRegionSearch&) = delete;
+
+        //- No copy assignment
+        void operator=(const triSurfaceRegionSearch&) = delete;
 
 
 public:
@@ -86,9 +98,6 @@ public:
 
         //- Construct from surface and dictionary. Holds reference to surface!
         triSurfaceRegionSearch(const triSurface&, const dictionary& dict);
-
-        //- Disallow default bitwise copy construction
-        triSurfaceRegionSearch(const triSurfaceRegionSearch&) = delete;
 
 
     //- Destructor
@@ -119,12 +128,6 @@ public:
                 const labelList& regionIndices,
                 List<pointIndexHit>& info
             ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const triSurfaceRegionSearch&) = delete;
 };
 
 

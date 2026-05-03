@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,41 +26,15 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "primitiveMesh.H"
-
-// * * * * * * * * * * Protected Static Member Functions * * * * * * * * * * //
-
-template<class Class, class Type>
-inline bool Foam::primitiveMesh::isMethod
-(
-    const Type& (Class::*method)() const,
-    const Type& (Class::*otherMethod)() const
-)
-{
-    return method == otherMethod;
-}
-
-
-template<class Class, class Type, class OtherType>
-inline bool Foam::primitiveMesh::isMethod
-(
-    const Type& (Class::*method)() const,
-    const OtherType& (Class::*otherMethod)() const
-)
-{
-    return false;
-}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::label Foam::primitiveMesh::nInternalPoints() const
+inline Foam::label Foam::primitiveMesh::nInternalPoints() const noexcept
 {
     return nInternalPoints_;
 }
 
 
-inline Foam::label Foam::primitiveMesh::nPoints() const
+inline Foam::label Foam::primitiveMesh::nPoints() const noexcept
 {
     return nPoints_;
 }
@@ -98,56 +75,138 @@ inline Foam::label Foam::primitiveMesh::nEdges() const
 }
 
 
-inline Foam::label Foam::primitiveMesh::nInternalFaces() const
+inline Foam::label Foam::primitiveMesh::nInternalFaces() const noexcept
 {
     return nInternalFaces_;
 }
 
 
-inline Foam::label Foam::primitiveMesh::nFaces() const
+inline Foam::label Foam::primitiveMesh::nBoundaryFaces() const noexcept
+{
+    return (nFaces_ - nInternalFaces_);
+}
+
+
+inline Foam::label Foam::primitiveMesh::nFaces() const noexcept
 {
     return nFaces_;
 }
 
 
-inline Foam::label Foam::primitiveMesh::nCells() const
+inline Foam::label Foam::primitiveMesh::nCells() const noexcept
 {
     return nCells_;
 }
 
 
-inline bool Foam::primitiveMesh::isInternalFace(const label faceIndex) const
+inline bool Foam::primitiveMesh::isInternalFace
+(
+    const label faceIndex
+) const noexcept
 {
-    return faceIndex < nInternalFaces();
+    return faceIndex < nInternalFaces_;
 }
 
 
-template<class Type>
-inline bool Foam::primitiveMesh::has
-(
-    const Type& (primitiveMesh::*method)() const
-) const
+inline bool Foam::primitiveMesh::hasCellShapes() const noexcept
 {
-    if (isMethod(method, &primitiveMesh::cellShapes)) return cellShapesPtr_;
-    if (isMethod(method, &primitiveMesh::edges)) return edgesPtr_;
-    if (isMethod(method, &primitiveMesh::cellCells)) return ccPtr_;
-    if (isMethod(method, &primitiveMesh::edgeCells)) return ecPtr_;
-    if (isMethod(method, &primitiveMesh::pointCells)) return pcPtr_;
-    if (isMethod(method, &primitiveMesh::cells)) return cfPtr_;
-    if (isMethod(method, &primitiveMesh::edgeFaces)) return efPtr_;
-    if (isMethod(method, &primitiveMesh::pointFaces)) return pfPtr_;
-    if (isMethod(method, &primitiveMesh::cellEdges)) return cePtr_;
-    if (isMethod(method, &primitiveMesh::faceEdges)) return fePtr_;
-    if (isMethod(method, &primitiveMesh::pointEdges)) return pePtr_;
-    if (isMethod(method, &primitiveMesh::pointPoints)) return ppPtr_;
-    if (isMethod(method, &primitiveMesh::cellPoints)) return cpPtr_;
-    if (isMethod(method, &primitiveMesh::cellCentres)) return cellCentresPtr_;
-    if (isMethod(method, &primitiveMesh::faceCentres)) return faceCentresPtr_;
-    if (isMethod(method, &primitiveMesh::cellVolumes)) return cellVolumesPtr_;
-    if (isMethod(method, &primitiveMesh::faceAreas)) return faceAreasPtr_;
-    if (isMethod(method, &primitiveMesh::magFaceAreas)) return magFaceAreasPtr_;
+    return bool(cellShapesPtr_);
+}
 
-    return false;
+
+inline bool Foam::primitiveMesh::hasEdges() const noexcept
+{
+    return bool(edgesPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCellCells() const noexcept
+{
+    return bool(ccPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasEdgeCells() const noexcept
+{
+    return bool(ecPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasPointCells() const noexcept
+{
+    return bool(pcPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCells() const noexcept
+{
+    return bool(cfPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasEdgeFaces() const noexcept
+{
+    return bool(efPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasPointFaces() const noexcept
+{
+    return bool(pfPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCellEdges() const noexcept
+{
+    return bool(cePtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasFaceEdges() const noexcept
+{
+    return bool(fePtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasPointEdges() const noexcept
+{
+    return bool(pePtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasPointPoints() const noexcept
+{
+    return bool(ppPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCellPoints() const noexcept
+{
+    return bool(cpPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCellCentres() const noexcept
+{
+    return bool(cellCentresPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasCellVolumes() const noexcept
+{
+    return bool(cellVolumesPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasFaceCentres() const noexcept
+{
+    return bool(faceCentresPtr_);
+}
+
+
+inline bool Foam::primitiveMesh::hasFaceAreas() const noexcept
+{
+    return bool(faceAreasPtr_);
 }
 
 

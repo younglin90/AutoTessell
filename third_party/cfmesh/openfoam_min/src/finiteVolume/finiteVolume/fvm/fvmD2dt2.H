@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,16 +38,15 @@ SourceFiles
 #define fvmD2dt2_H
 
 #include "volFieldsFwd.H"
+#include "fvMatrix.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-template<class Type> class fvMatrix;
-
 /*---------------------------------------------------------------------------*\
-                      Namespace fvm functions Declaration
+                     Namespace fvm functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvm
@@ -54,20 +55,20 @@ namespace fvm
     tmp<fvMatrix<Type>> d2dt2
     (
         const dimensionedScalar&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> d2dt2
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> d2dt2
     (
         const volScalarField&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 }
 

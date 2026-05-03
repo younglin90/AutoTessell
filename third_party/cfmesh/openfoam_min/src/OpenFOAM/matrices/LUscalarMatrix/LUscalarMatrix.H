@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef LUscalarMatrix_H
-#define LUscalarMatrix_H
+#ifndef Foam_LUscalarMatrix_H
+#define Foam_LUscalarMatrix_H
 
 #include "scalarMatrices.H"
 #include "labelList.H"
@@ -45,11 +47,12 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class lduMatrix;
 class procLduMatrix;
 
 /*---------------------------------------------------------------------------*\
-                       Class LUscalarMatrix Declaration
+                           Class LUscalarMatrix Declaration
 \*---------------------------------------------------------------------------*/
 
 class LUscalarMatrix
@@ -79,12 +82,12 @@ class LUscalarMatrix
         );
 
         //- Convert the given list of procLduMatrix into this LUscalarMatrix
-        //  on the master processor
+        //- on the master processor
         void convert(const PtrList<procLduMatrix>& lduMatrices);
 
 
         //- Print the ratio of the mag-sum of the off-diagonal coefficients
-        //  to the mag-diagonal
+        //- to the mag-diagonal
         void printDiagonalDominance() const;
 
 
@@ -96,19 +99,17 @@ public:
 
     // Constructors
 
-        //- Construct null
-        LUscalarMatrix();
+        //- Default construct
+        LUscalarMatrix() noexcept;
 
-        //- Construct given number of rows/columns
-        LUscalarMatrix(const label n);
+        //- Construct from and perform LU decomposition of the given matrix
+        explicit LUscalarMatrix(const scalarSquareMatrix& mat);
 
-        //- Construct from and perform LU decomposition of the matrix M
-        LUscalarMatrix(const scalarSquareMatrix& M);
-
-        //- Construct from lduMatrix and perform LU decomposition
+        //- Construct from lduMatrix and perform LU decomposition.
+        //- In parallel it assembles the matrix on the master.
         LUscalarMatrix
         (
-            const lduMatrix&,
+            const lduMatrix& ldum,
             const FieldField<Field, scalar>& interfaceCoeffs,
             const lduInterfaceFieldPtrsList& interfaces
         );
@@ -117,21 +118,18 @@ public:
     // Member Functions
 
         //- Perform the LU decomposition of the matrix
-        void decompose();
-
-        //- Perform the LU decomposition of the matrix M
-        void decompose(const scalarSquareMatrix& M);
+        void decompose(const scalarSquareMatrix& mat);
 
         //- Solve the linear system with the given source
         //  and returning the solution in the Field argument x.
         //  This function may be called with the same field for x and source.
         template<class Type>
-        void solve(Field<Type>& x, const Field<Type>& source) const;
+        void solve(List<Type>& x, const UList<Type>& source) const;
 
         //- Solve the linear system with the given source
         //  returning the solution
         template<class Type>
-        tmp<Field<Type>> solve(const Field<Type>& source) const;
+        tmp<Field<Type>> solve(const UList<Type>& source) const;
 
         //- Set M to the inverse of this square matrix
         void inv(scalarSquareMatrix& M) const;

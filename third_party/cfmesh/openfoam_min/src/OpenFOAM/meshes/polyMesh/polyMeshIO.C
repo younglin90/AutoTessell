@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,161 +29,83 @@ License
 #include "polyMesh.H"
 #include "Time.H"
 #include "cellIOList.H"
-#include "zonesGenerator.H"
-#include "OSspecific.H"
-
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
-
-void Foam::polyMesh::setPointsWrite(const Foam::IOobject::writeOption wo)
-{
-    points_.writeOpt() = wo;
-
-    if (tetBasePtIsPtr_.valid())
-    {
-        tetBasePtIsPtr_->writeOpt() = wo;
-    }
-}
-
-
-void Foam::polyMesh::setTopologyWrite(const Foam::IOobject::writeOption wo)
-{
-    setPointsWrite(wo);
-
-    faces_.writeOpt() = wo;
-    owner_.writeOpt() = wo;
-    neighbour_.writeOpt() = wo;
-    boundary_.writeOpt() = wo;
-
-    if (pointZones_.noTopoUpdate())
-    {
-        pointZones_.writeOpt() = wo;
-    }
-
-    if (faceZones_.noTopoUpdate())
-    {
-        faceZones_.writeOpt() = wo;
-    }
-
-    if (cellZones_.noTopoUpdate())
-    {
-        cellZones_.writeOpt() = wo;
-    }
-}
-
-
-// * * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * //
-
-bool Foam::polyMesh::readUpdateIsForward() const
-{
-    scalar time0 = NaN;
-
-    return readScalar(instance().c_str(), time0) && time0 < time().value();
-}
-
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::polyMesh::setPointsInstance(const fileName& inst)
+void Foam::polyMesh::setInstance
+(
+    const fileName& inst,
+    const IOobjectOption::writeOption wOpt
+)
 {
-    DebugInFunction << "Resetting points instance to " << inst << endl;
+    DebugInFunction << "Resetting file instance to " << inst << endl;
 
-    instance() = inst;
-
+    points_.writeOpt(wOpt);
     points_.instance() = inst;
-    points_.eventNo() = getEvent();
 
-    if (tetBasePtIsPtr_.valid())
-    {
-        tetBasePtIsPtr_->instance() = inst;
-        tetBasePtIsPtr_().eventNo() = getEvent();
-    }
-
-    setPointsWrite(IOobject::AUTO_WRITE);
-}
-
-
-void Foam::polyMesh::setInstance(const fileName& inst)
-{
-    DebugInFunction << "Resetting topology instance to " << inst << endl;
-
-    setPointsInstance(inst);
-
+    faces_.writeOpt(wOpt);
     faces_.instance() = inst;
+
+    owner_.writeOpt(wOpt);
     owner_.instance() = inst;
+
+    neighbour_.writeOpt(wOpt);
     neighbour_.instance() = inst;
+
+    boundary_.writeOpt(wOpt);
     boundary_.instance() = inst;
 
-    if (pointZones_.noTopoUpdate())
-    {
-        pointZones_.instance() = inst;
-    }
+    pointZones_.writeOpt(wOpt);
+    pointZones_.instance() = inst;
 
-    if (faceZones_.noTopoUpdate())
-    {
-        faceZones_.instance() = inst;
-    }
+    faceZones_.writeOpt(wOpt);
+    faceZones_.instance() = inst;
 
-    if (cellZones_.noTopoUpdate())
-    {
-        cellZones_.instance() = inst;
-    }
+    cellZones_.writeOpt(wOpt);
+    cellZones_.instance() = inst;
 
-    setTopologyWrite(IOobject::AUTO_WRITE);
+    if (tetBasePtIsPtr_)
+    {
+        tetBasePtIsPtr_->writeOpt(wOpt);
+        tetBasePtIsPtr_->instance() = inst;
+    }
 }
 
 
 Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
 {
-    // Determine if this update moves forward in time. If so, searching back in
-    // time for data files will only go back as far as the previous instance.
-    const fileName instance0 = instance();
-    const bool forward = readUpdateIsForward();
+    DebugInFunction << "Updating mesh based on saved data." << endl;
 
-    // Update the mesh instance
-    instance() = time().name();
+    // Find point/faces instances
+    const fileName pointsInst(time().findInstance(meshDir(), "points"));
+    const fileName facesInst(time().findInstance(meshDir(), "faces"));
+    //const fileName boundInst
+    //(time().findInstance(meshDir(), "boundary", IOobject::MUST_READ, facesInst));
 
-    DebugInFunction << "Updating the polyMesh:" << endl;
+    if (debug)
+    {
+        Info<< "Faces instance: old = " << facesInstance()
+            << " new = " << facesInst << nl
+            << "Points instance: old = " << pointsInstance()
+            << " new = " << pointsInst << endl;
+    }
 
-    polyMesh::readUpdateState state = polyMesh::UNCHANGED;
-
-    // Find the points and faces instance
-    const fileName pointsInst
-    (
-        time().findInstance
-        (
-            meshDir(),
-            "points",
-            IOobject::READ_IF_PRESENT,
-            forward ? word(instance0) : word::null
-        )
-    );
-    const fileName facesInst
-    (
-        time().findInstance
-        (
-            meshDir(),
-            "faces",
-            IOobject::READ_IF_PRESENT,
-            forward ? word(instance0) : word::null
-        )
-    );
-
-    DebugInfo
-        << "    Faces instance: old = " << facesInstance()
-        << ", new = " << facesInst << nl
-        << "    Points instance: old = " << pointsInstance()
-        << ", new = " << pointsInst << endl;
-
-    if (facesInst != (forward ? instance0 : facesInstance()))
+    if (facesInst != facesInstance())
     {
         // Topological change
-        DebugInfo << "    Topological change" << endl;
+        if (debug)
+        {
+            Info<< "Topological change" << endl;
+        }
 
         clearOut();
 
-        // Clear all DeletableMeshObjects
-        meshObjects::clearAll<polyMesh, DeletableMeshObject>(*this);
+        // Set instance to new instance. Note that points instance can differ
+        // from from faces instance.
+        setInstance(facesInst);
+        points_.instance() = pointsInst;
 
+        points_.clear();
         points_ = pointIOField
         (
             IOobject
@@ -191,12 +116,11 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
                 *this,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
-                false
+                IOobject::NO_REGISTER
             )
         );
 
-        points_.instance() = pointsInst;
-
+        faces_.clear();
         faces_ = faceCompactIOList
         (
             IOobject
@@ -207,43 +131,62 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
                 *this,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
-                false
+                IOobject::NO_REGISTER
             )
         );
 
-        faces_.instance() = facesInst;
+        // owner
+        {
+            owner_.clear();
 
-        owner_ = labelIOList
-        (
-            IOobject
+            labelIOList list
             (
-                "owner",
-                facesInst,
-                meshSubDir,
-                *this,
-                IOobject::READ_IF_PRESENT,
-                IOobject::NO_WRITE,
-                false
-            )
-        );
+                IOobject
+                (
+                    "owner",
+                    facesInst,
+                    meshSubDir,
+                    *this,
+                    IOobject::READ_IF_PRESENT,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                )
+            );
 
-        owner_.instance() = facesInst;
+            // Update owner headerClassName.
+            // The "cells" logic below may rely on it!
 
-        neighbour_ = labelIOList
-        (
-            IOobject
+            owner_ = std::move(static_cast<labelList&>(list));
+            owner_.headerClassName() = std::move(list.headerClassName());
+            owner_.note() = std::move(list.note());
+        }
+
+        // neighbour
+        {
+            neighbour_.clear();
+
+            labelIOList list
             (
-                "neighbour",
-                facesInst,
-                meshSubDir,
-                *this,
-                IOobject::READ_IF_PRESENT,
-                IOobject::NO_WRITE,
-                false
-            )
-        );
+                IOobject
+                (
+                    "neighbour",
+                    facesInst,
+                    meshSubDir,
+                    *this,
+                    IOobject::READ_IF_PRESENT,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                )
+            );
 
-        neighbour_.instance() = facesInst;
+            // Update neighbour headerClassName.
+            // - not currently needed, but for symmetry with owner
+            // The "cells" logic below may rely on it!
+
+            neighbour_ = std::move(static_cast<labelList&>(list));
+            neighbour_.headerClassName() = std::move(list.headerClassName());
+            neighbour_.note() = std::move(list.note());
+        }
 
         // Reset the boundary patches
         polyBoundaryMesh newBoundary
@@ -256,7 +199,7 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
                 *this,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
-                false
+                IOobject::NO_REGISTER
             ),
             *this
         );
@@ -270,18 +213,15 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
         }
         else
         {
-            wordList newTypes = newBoundary.types();
-            wordList newNames = newBoundary.names();
-
-            wordList oldTypes = boundary_.types();
-            wordList oldNames = boundary_.names();
-
-            forAll(oldTypes, patchi)
+            forAll(boundary_, patchi)
             {
+                const auto& oldPatch = boundary_[patchi];
+                const auto& newPatch = newBoundary[patchi];
+
                 if
                 (
-                    oldTypes[patchi] != newTypes[patchi]
-                 || oldNames[patchi] != newNames[patchi]
+                    (oldPatch.name() != newPatch.name())
+                 || (oldPatch.type() != newPatch.type())
                 )
                 {
                     boundaryChanged = true;
@@ -292,8 +232,11 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
 
         if (boundaryChanged)
         {
-            boundary_.clear();
-            boundary_.setSize(newBoundary.size());
+            WarningInFunction
+                << "Number of patches has changed.  This may have "
+                << "unexpected consequences.  Proceed with care." << endl;
+
+            boundary_.resize_null(newBoundary.size());
 
             forAll(newBoundary, patchi)
             {
@@ -304,30 +247,24 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
         {
             forAll(boundary_, patchi)
             {
-                // boundary_[patchi] = polyPatch
-                // (
-                //     newBoundary[patchi].name(),
-                //     newBoundary[patchi].size(),
-                //     newBoundary[patchi].start(),
-                //     patchi,
-                //     boundary_
-                // );
-
-                boundary_[patchi].reset
+                boundary_[patchi] = polyPatch
                 (
+                    newBoundary[patchi].name(),
                     newBoundary[patchi].size(),
-                    newBoundary[patchi].start()
+                    newBoundary[patchi].start(),
+                    patchi,
+                    boundary_,
+                    newBoundary[patchi].physicalType(),
+                    newBoundary[patchi].inGroups()
                 );
             }
         }
-
-        boundary_.instance() = facesInst;
 
 
         // Boundary is set so can use initMesh now (uses boundary_ to
         // determine internal and active faces)
 
-        if (!owner_.headerClassName().empty())
+        if (owner_.hasHeaderClass())
         {
             initMesh();
         }
@@ -343,7 +280,7 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
                     *this,
                     IOobject::MUST_READ,
                     IOobject::NO_WRITE,
-                    false
+                    IOobject::NO_REGISTER
                 )
             );
 
@@ -357,7 +294,7 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
         // data.
 
         // Calculate topology for the patches (processor-processor comms etc.)
-        boundary_.topoChange();
+        boundary_.updateMesh();
 
         // Calculate the geometry for the patches (transformation tensors etc.)
         boundary_.calcGeometry();
@@ -367,28 +304,75 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
         geometricD_ = Zero;
         solutionD_ = Zero;
 
+
+        // Update point/face/cell zones, but primarily just the addressing.
+        // - this will be extremely fragile (not just here) if the names
+        //   or the order of the zones also change
+
+        #undef  update_meshZones
+        #define update_meshZones(DataMember)                                  \
+        {                                                                     \
+            (DataMember).clearAddressing();                                   \
+            (DataMember).clearPrimitives();                                   \
+                                                                              \
+            decltype(DataMember) newZones                                     \
+            (                                                                 \
+                IOobject                                                      \
+                (                                                             \
+                    (DataMember).name(),                                      \
+                    facesInst,                                                \
+                    meshSubDir,                                               \
+                    *this,                                                    \
+                    IOobject::READ_IF_PRESENT,                                \
+                    IOobject::NO_WRITE,                                       \
+                    IOobject::NO_REGISTER                                     \
+                ),                                                            \
+                *this,                                                        \
+                PtrList<entry>()                                              \
+            );                                                                \
+            const label numZones = newZones.size();                           \
+            (DataMember).resize(numZones);                                    \
+                                                                              \
+            for (label zonei = 0; zonei < numZones; ++zonei)                  \
+            {                                                                 \
+                /* Existing or new empty zone */                              \
+                auto& zn = (DataMember).try_emplace                           \
+                (                                                             \
+                    zonei,                                                    \
+                    newZones[zonei], Foam::zero{}, (DataMember)               \
+                );                                                            \
+                                                                              \
+                /* Set addressing */                                          \
+                zn.resetAddressing(std::move(newZones[zonei]));               \
+            }                                                                 \
+        }
+
+        update_meshZones(pointZones_);
+        update_meshZones(faceZones_);
+        update_meshZones(cellZones_);
+        #undef update_meshZones
+
+
         // Re-read tet base points
         tetBasePtIsPtr_ = readTetBasePtIs();
 
+
         if (boundaryChanged)
         {
-            state = polyMesh::TOPO_PATCH_CHANGE;
+            return polyMesh::TOPO_PATCH_CHANGE;
         }
         else
         {
-            state = polyMesh::TOPO_CHANGE;
+            return polyMesh::TOPO_CHANGE;
         }
     }
-    else if (pointsInst != (forward ? instance0 : pointsInstance()))
+    else if (pointsInst != pointsInstance())
     {
         // Points moved
-        DebugInfo << "    Point motion" << endl;
-
-        clearGeom();
-
-        label nOldPoints = points_.size();
-
-        points_.clear();
+        if (debug)
+        {
+            Info<< "Point motion" << endl;
+        }
 
         pointIOField newPoints
         (
@@ -400,262 +384,27 @@ Foam::polyMesh::readUpdateState Foam::polyMesh::readUpdate()
                 *this,
                 IOobject::MUST_READ,
                 IOobject::NO_WRITE,
-                false
+                IOobject::NO_REGISTER
             )
         );
-
-        if (nOldPoints != 0 && nOldPoints != newPoints.size())
-        {
-            FatalErrorInFunction
-                << "Point motion detected but number of points "
-                << newPoints.size() << " in "
-                << newPoints.objectPath() << " does not correspond to "
-                << " current " << nOldPoints
-                << exit(FatalError);
-        }
-
-        points_.transfer(newPoints);
-
-        points_.instance() = pointsInst;
 
         // Re-read tet base points
         autoPtr<labelIOList> newTetBasePtIsPtr = readTetBasePtIs();
-        if (newTetBasePtIsPtr.valid())
+
+        // Update all geometry
+        updateGeomPoints(std::move(newPoints), newTetBasePtIsPtr);
+
+        return polyMesh::POINTS_MOVED;
+    }
+    else
+    {
+        if (debug)
         {
-            tetBasePtIsPtr_ = newTetBasePtIsPtr;
+            Info<< "No change" << endl;
         }
 
-        // Calculate the geometry for the patches (transformation tensors etc.)
-        boundary_.calcGeometry();
-
-        // Derived info
-        bounds_ = boundBox(points_);
-
-        // Rotation can cause direction vector to change
-        geometricD_ = Zero;
-        solutionD_ = Zero;
-
-        state = polyMesh::POINTS_MOVED;
+        return polyMesh::UNCHANGED;
     }
-
-    // pointZones
-    {
-        const fileName pointZonesInst
-        (
-            time().findInstance
-            (
-                meshDir(),
-                "pointZones",
-                IOobject::READ_IF_PRESENT,
-                facesInst
-            )
-        );
-
-        if (pointZonesInst != pointZones_.instance())
-        {
-            pointZoneList newPointZones
-            (
-                IOobject
-                (
-                    "pointZones",
-                    pointZonesInst,
-                    meshSubDir,
-                    *this,
-                    IOobject::READ_IF_PRESENT,
-                    IOobject::NO_WRITE,
-                    false
-                ),
-                *this
-            );
-
-            pointZones_.swap(newPointZones);
-            pointZones_.instance() = pointZonesInst;
-        }
-    }
-
-    // faceZones
-    {
-        const fileName faceZonesInst
-        (
-            time().findInstance
-            (
-                meshDir(),
-                "faceZones",
-                IOobject::READ_IF_PRESENT,
-                facesInst
-            )
-        );
-
-        if (faceZonesInst != faceZones_.instance())
-        {
-            faceZoneList newFaceZones
-            (
-                IOobject
-                (
-                    "faceZones",
-                    faceZonesInst,
-                    meshSubDir,
-                    *this,
-                    IOobject::READ_IF_PRESENT,
-                    IOobject::NO_WRITE,
-                    false
-                ),
-                *this
-            );
-
-            faceZones_.swap(newFaceZones);
-            faceZones_.instance() = faceZonesInst;
-        }
-    }
-
-    // cellZones
-    {
-        const fileName cellZonesInst
-        (
-            time().findInstance
-            (
-                meshDir(),
-                "cellZones",
-                IOobject::READ_IF_PRESENT,
-                facesInst
-            )
-        );
-
-        if (cellZonesInst != cellZones_.instance())
-        {
-            cellZoneList newCellZones
-            (
-                IOobject
-                (
-                    "cellZones",
-                    cellZonesInst,
-                    meshSubDir,
-                    *this,
-                    IOobject::READ_IF_PRESENT,
-                    IOobject::NO_WRITE,
-                    false
-                ),
-                *this
-            );
-
-            cellZones_.swap(newCellZones);
-            cellZones_.instance() = cellZonesInst;
-        }
-    }
-
-    if (state == polyMesh::UNCHANGED)
-    {
-        DebugInfo << "    No change" << endl;
-    }
-
-    return state;
-}
-
-
-bool Foam::polyMesh::writeObject
-(
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool write
-) const
-{
-    if (faces_.writeOpt() == AUTO_WRITE)
-    {
-        auto rmAddressing = [&](const word& name)
-        {
-            const IOobject faceProcAddressingIO
-            (
-                name,
-                facesInstance(),
-                meshSubDir,
-                *this
-            );
-
-            fileHandler().rm(faceProcAddressingIO.filePath(false));
-        };
-
-        if (!Pstream::parRun())
-        {
-            rmAddressing("cellProc");
-        }
-        else
-        {
-            rmAddressing("pointProcAddressing");
-            rmAddressing("faceProcAddressing");
-            rmAddressing("cellProcAddressing");
-        }
-    }
-
-    // Write the points out at a higher precision
-    if (points_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        unsigned int precision0 =
-            IOstream::defaultPrecision(IOstream::fullPrecision());
-
-        points_.write();
-
-        IOstream::defaultPrecision(precision0);
-    }
-
-    const_cast<polyMesh&>(*this).points_.writeOpt() = IOobject::NO_WRITE;
-
-    const bool written = objectRegistry::writeObject(fmt, ver, cmp, write);
-
-    const_cast<polyMesh&>(*this).setTopologyWrite(IOobject::NO_WRITE);
-
-    return written;
-}
-
-
-bool Foam::polyMesh::writeMesh() const
-{
-    bool ok = true;
-
-    // Write the points out at a higher precision
-    if (points_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        unsigned int precision0 =
-            IOstream::defaultPrecision(IOstream::fullPrecision());
-
-        ok = ok && points_.write();
-
-        IOstream::defaultPrecision(precision0);
-    }
-
-    if (faces_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && faces_.write();
-    }
-
-    if (owner_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && owner_.write();
-    }
-
-    if (neighbour_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && neighbour_.write();
-    }
-
-    if (pointZones_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && pointZones_.write();
-    }
-
-    if (faceZones_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && faceZones_.write();
-    }
-
-    if (cellZones_.writeOpt() == IOobject::AUTO_WRITE)
-    {
-        ok = ok && cellZones_.write();
-    }
-
-    const_cast<polyMesh&>(*this).setTopologyWrite(IOobject::NO_WRITE);
-
-    return ok;
 }
 
 

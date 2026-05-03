@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,45 +26,72 @@ License
 Class
     Foam::turbulentInletFvPatchField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    This boundary condition generates a fluctuating inlet condition by adding
-    a random component to a reference (mean) field.
+    This boundary condition produces spatiotemporal-variant field by summing
+    a set of pseudo-random numbers and a given spatiotemporal-invariant mean
+    field. The field can be any type, e.g. scalarField. At a single point and
+    time, all components are summed by the same random number, e.g. velocity
+    components (u, v, w) are summed by the same random number, p; thus, output
+    is (u+p, v+p, w+p).
+
+    The pseudo-random number generator obeys the probability density function
+    of the uniform distribution constrained by the range [0:1]. The seed for
+    the random number generator is hard-coded; therefore, it will produce the
+    same sequence of random numbers at every execution.
 
     \f[
-        x_p = (1 - \alpha) x_p^{n-1} + \alpha (x_{ref} + s C_{RMS} x_{ref})
+        x_p = (1 - \alpha) x_p^{n - 1} + \alpha (x_{ref} + c s R |x_{ref}|)
     \f]
-
     where
 
     \vartable
-        x_p     | patch values
-        x_{ref} | reference patch values
+        x_p     | patch field
+        x_{ref} | spatiotemporal-invariant patch scalar
         n       | time level
-        \alpha  | fraction of new random component added to previous time value
-        C_{RMS} | RMS coefficient
-        s       | fluctuation scale
+        \alpha  | a scalar attempting to build two-temporal-point correlations
+                  by heuristically adding a fraction of the new random component
+                  to the previous time patch field
+        c       | a heuristic automatically calculated correction term
+                  to compensate energy level losses due to the alpha scalar
+        R       | pseudo-random number [HARD-CODED seed]
+        s       | fluctuation scale (proportional to the xRef)
     \endvartable
 
 Usage
     \table
-        Property     | Description             | Required    | Default value
+        Property         | Description             | Required    | Default value
         fluctuationScale | RMS fluctuation scale (fraction of mean) | yes |
-        referenceField | reference (mean) field | yes        |
-        alpha | fraction of new random component added to previous| no| 0.1
+        referenceField   | reference (mean) field  | yes         |
+        alpha | fraction of new random component added to previous  | no | 0.1
     \endtable
 
     Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
-        type            turbulentInlet;
-        fluctuationScale 0.1;
-        referenceField  uniform 10;
-        alpha           0.1;
+        // Mandatory entries
+        type             turbulentInlet;
+        fluctuationScale 0.1;               // the term `s` above
+        referenceField   uniform 10;        // the term `xRef` above
+
+        // Optional entries
+        alpha            0.1;               // the term `alpha` above
     }
     \endverbatim
 
-See also
+Note
+    This boundary condition should not be used for DES or LES computations as a
+    turbulent velocity inflow condition, because the BC will not produce
+    turbulence-alike time-series, and will decay almost immediately downstream
+    of the inlet boundary although its historical name suggests the opposite.
+
+    Nevertheless, the BC may be still used for other applications, e.g. as a
+    uniform-random noise source in aeroacoustics.
+
+SeeAlso
     Foam::fixedValueFvPatchField
 
 SourceFiles
@@ -73,7 +102,7 @@ SourceFiles
 #ifndef turbulentInletFvPatchField_H
 #define turbulentInletFvPatchField_H
 
-#include "randomGenerator.H"
+#include "Random.H"
 #include "fixedValueFvPatchFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -93,7 +122,7 @@ class turbulentInletFvPatchField
     // Private Data
 
         //- Random number generator
-        randomGenerator ranGen_;
+        Random ranGen_;
 
         //- Fluctuation scale
         Type fluctuationScale_;
@@ -116,47 +145,57 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        turbulentInletFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         turbulentInletFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
         //- Construct by mapping given turbulentInletFvPatchField
-        //  onto a new patch
+        //- onto a new patch
         turbulentInletFvPatchField
         (
             const turbulentInletFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         turbulentInletFvPatchField
         (
             const turbulentInletFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         turbulentInletFvPatchField
         (
             const turbulentInletFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new turbulentInletFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
@@ -191,12 +230,18 @@ public:
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -207,12 +252,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchField<Type>::operator=;
 };
 
 

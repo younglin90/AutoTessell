@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +36,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef LduInterfaceField_H
-#define LduInterfaceField_H
+#ifndef Foam_LduInterfaceField_H
+#define Foam_LduInterfaceField_H
 
 #include "lduInterfaceField.H"
 #include "primitiveFieldsFwd.H"
@@ -45,12 +48,12 @@ SourceFiles
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
+// Forward Declarations
 class lduMatrix;
+template<class Type> class LduInterfaceField;
 
 /*---------------------------------------------------------------------------*\
-                      Class LduInterfaceField Declaration
+                     Class LduInterfaceField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -58,6 +61,14 @@ class LduInterfaceField
 :
     public lduInterfaceField
 {
+    // Private Member Functions
+
+        //- No copy construct
+        LduInterfaceField(const LduInterfaceField&) = delete;
+
+        //- No copy assignment
+        void operator=(const LduInterfaceField&) = delete;
+
 
 public:
 
@@ -73,12 +84,9 @@ public:
             lduInterfaceField(patch)
         {}
 
-        //- Disallow default bitwise copy construction
-        LduInterfaceField(const LduInterfaceField&) = delete;
-
 
     //- Destructor
-    virtual ~LduInterfaceField();
+    virtual ~LduInterfaceField() = default;
 
 
     // Member Functions
@@ -92,6 +100,9 @@ public:
             virtual void initInterfaceMatrixUpdate
             (
                 Field<Type>&,
+                const bool add,
+                const lduAddressing&,
+                const label interfacei,
                 const Field<Type>&,
                 const scalarField&,
                 const Pstream::commsTypes commsType
@@ -105,28 +116,19 @@ public:
             virtual void updateInterfaceMatrix
             (
                 Field<Type>&,
+                const bool add,
+                const lduAddressing&,
+                const label interfacei,
                 const Field<Type>&,
                 const scalarField&,
                 const Pstream::commsTypes commsType
             ) const = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const LduInterfaceField&) = delete;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "LduInterfaceField.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,6 +46,12 @@ inline Foam::triad::triad(const vector& x, const vector& y, const vector& z)
 {}
 
 
+inline Foam::triad::triad(const tensor& t)
+:
+    Vector<vector>(t.x(), t.y(), t.z())
+{}
+
+
 inline Foam::triad::triad(const vector& pa)
 {
     operator=(triad::unset);
@@ -60,7 +69,7 @@ inline Foam::triad::triad(Istream& is)
 
 inline bool Foam::triad::set(const direction d) const
 {
-    return operator[](d)[0] < great;
+    return operator[](d)[0] < GREAT;
 }
 
 
@@ -72,11 +81,15 @@ inline bool Foam::triad::set() const
 
 inline Foam::direction Foam::triad::primaryDirection(const vector& v)
 {
-    if (mag(v.x()) > mag(v.y()) && mag(v.x()) > mag(v.z()))
+    if
+    (
+        Foam::mag(v.x()) > Foam::mag(v.y())
+     && Foam::mag(v.x()) > Foam::mag(v.z())
+    )
     {
         return triad::X;
     }
-    else if (mag(v.y()) > mag(v.z()))
+    else if (Foam::mag(v.y()) > Foam::mag(v.z()))
     {
         return triad::Y;
     }
@@ -95,7 +108,7 @@ inline Foam::vector Foam::triad::orthogonal
 {
     vector v3 = v1 ^ v2;
 
-    scalar magV3 = mag(v3);
+    scalar magV3 = Foam::mag(v3);
 
     if (magV3 > 0.5)
     {
@@ -110,9 +123,33 @@ inline Foam::vector Foam::triad::orthogonal
 
 inline void Foam::triad::normalise()
 {
-    if (set(0)) operator[](0) /= mag(operator[](0));
-    if (set(1)) operator[](1) /= mag(operator[](1));
-    if (set(2)) operator[](2) /= mag(operator[](2));
+    if (set(0)) (*this)[0].normalise();
+    if (set(1)) (*this)[1].normalise();
+    if (set(2)) (*this)[2].normalise();
+}
+
+
+inline Foam::vector Foam::triad::cx() const
+{
+    return vector(x().x(), y().x(), z().x());
+}
+
+
+inline Foam::vector Foam::triad::cy() const
+{
+    return vector(x().y(), y().y(), z().y());
+}
+
+
+inline Foam::vector Foam::triad::cz() const
+{
+    return vector(x().z(), y().z(), z().z());
+}
+
+
+inline Foam::triad Foam::triad::T() const
+{
+    return triad(cx(), cy(), cz());
 }
 
 
@@ -121,6 +158,14 @@ inline void Foam::triad::normalise()
 inline void Foam::triad::operator=(const Vector<vector>& vv)
 {
     Vector<vector>::operator=(vv);
+}
+
+
+inline void Foam::triad::operator=(const tensor& t)
+{
+    x() = t.x();
+    y() = t.y();
+    z() = t.z();
 }
 
 

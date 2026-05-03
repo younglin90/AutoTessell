@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2018 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,15 +36,15 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef porosityModel_H
-#define porosityModel_H
+#ifndef Foam_porosityModel_H
+#define Foam_porosityModel_H
 
 #include "fvMesh.H"
+#include "dictionary.H"
 #include "fvMatricesFwd.H"
+#include "runTimeSelectionTables.H"
 #include "coordinateSystem.H"
 #include "dimensionedVector.H"
-#include "wordRe.H"
-#include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -56,18 +59,9 @@ class porosityModel
 :
     public regIOobject
 {
-    // Private Member Functions
-
-        //- Disallow default bitwise copy construction
-        porosityModel(const porosityModel&) = delete;
-
-        //- Disallow default bitwise assignment
-        void operator=(const porosityModel&) = delete;
-
-
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- Porosity name
         word name_;
@@ -75,11 +69,23 @@ protected:
         //- Reference to the mesh database
         const fvMesh& mesh_;
 
-        //- Name of cellZone
-        word zoneName_;
+        //- Dictionary used for model construction
+        const dictionary dict_;
 
-        //- Local co-ordinate system
-        coordinateSystem coordSys_;
+        //- Model coefficients dictionary
+        dictionary coeffs_;
+
+        //- Porosity active flag
+        bool active_;
+
+        //- Name(s) of cell-zone
+        wordRe zoneName_;
+
+        //- Cell zone IDs
+        labelList cellZoneIDs_;
+
+        //- Local coordinate system
+        autoPtr<coordinateSystem> csysPtr_;
 
 
     // Protected Member Functions
@@ -103,12 +109,29 @@ protected:
 
         virtual void correct
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        ) const = 0;
+
+        virtual void correct
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU
         ) const = 0;
 
+
+        //- Local coordinate system
+        inline const coordinateSystem& csys() const;
+
         //- Return label index
-        label fieldIndex(const label index) const;
+        inline label fieldIndex(const label index) const;
+
+        //- No copy construct
+        porosityModel(const porosityModel&) = delete;
+
+        //- No copy assignment
+        void operator=(const porosityModel&) = delete;
 
 
 public:
@@ -123,25 +146,61 @@ public:
         porosityModel,
         mesh,
         (
+            const word& modelName,
             const word& name,
             const fvMesh& mesh,
             const dictionary& dict,
-            const dictionary& coeffDict,
-            const word& cellZoneName
+            const wordRe& cellZoneName
         ),
-        (name, mesh, dict, coeffDict, cellZoneName)
+        (modelName, name, mesh, dict, cellZoneName)
     );
 
     //- Constructor
     porosityModel
     (
         const word& name,
+        const word& modelType,
         const fvMesh& mesh,
         const dictionary& dict,
-        const dictionary& coeffDict,
-        const word& cellZoneName = word::null
+        const wordRe& cellZoneName = wordRe::null
     );
 
+
+    //- Return pointer to new porosityModel object created on the freestore
+    //  from an Istream
+    class iNew
+    {
+        //- Reference to the mesh database
+        const fvMesh& mesh_;
+        const word& name_;
+
+    public:
+
+        iNew
+        (
+            const fvMesh& mesh,
+            const word& name
+        )
+        :
+            mesh_(mesh),
+            name_(name)
+        {}
+
+        autoPtr<porosityModel> operator()(Istream& is) const
+        {
+            const dictionary dict(is);
+
+            return autoPtr<porosityModel>
+            (
+                porosityModel::New
+                (
+                    name_,
+                    mesh_,
+                    dict
+                )
+            );
+        }
+    };
 
     //- Selector
     static autoPtr<porosityModel> New
@@ -149,11 +208,12 @@ public:
         const word& name,
         const fvMesh& mesh,
         const dictionary& dict,
-        const word& cellZoneName = word::null
+        const wordRe& cellZoneName = wordRe::null
     );
 
+
     //- Destructor
-    virtual ~porosityModel();
+    virtual ~porosityModel() = default;
 
 
     // Member Functions
@@ -161,8 +221,17 @@ public:
         //- Return const access to the porosity model name
         inline const word& name() const;
 
-        //- Return const access to the cell zone name
-        inline const word& zoneName() const;
+        //- Return const access to the porosity active flag
+        inline bool active() const;
+
+        //- Return const access to the cell zone IDs
+        inline const labelList& cellZoneIDs() const;
+
+        //- Return dictionary used for model construction
+        const dictionary& dict() const;
+
+        //- Transform the model data wrt mesh changes
+        virtual void transformModelData();
 
         //- Return the force over the cell zone(s)
         virtual tmp<vectorField> force
@@ -170,10 +239,18 @@ public:
             const volVectorField& U,
             const volScalarField& rho,
             const volScalarField& mu
-        ) const;
+        );
 
         //- Add resistance
         virtual void addResistance(fvVectorMatrix& UEqn);
+
+        //- Add resistance
+        virtual void addResistance
+        (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        );
 
         //- Add resistance
         virtual void addResistance
@@ -184,35 +261,37 @@ public:
         );
 
 
-        // Mesh changes
-
-            //- Update for mesh motion
-            virtual bool movePoints();
-
-            //- Update topology using the given map
-            virtual void topoChange(const polyTopoChangeMap&);
-
-            //- Update from another mesh using the given map
-            virtual void mapMesh(const polyMeshMap&);
-
-            //- Redistribute or update using the given distribution map
-            virtual void distribute(const polyDistributionMap&);
-
-
     // I-O
 
         //- Write
-        virtual bool writeData(Ostream& os) const
-        {
-            return true;
-        }
+        virtual bool writeData(Ostream& os) const;
 
         //- Inherit read from regIOobject
         using regIOobject::read;
 
+        //- Is object global
+        virtual bool global() const
+        {
+            return true;
+        }
+
+        //- Return complete path + object name if the file exists
+        //  either in the case/processor or case otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
+
         //- Read porosity dictionary
         virtual bool read(const dictionary& dict);
 };
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+//- Global file type for porosityModel
+template<>
+struct is_globalIOobject<porosityModel> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

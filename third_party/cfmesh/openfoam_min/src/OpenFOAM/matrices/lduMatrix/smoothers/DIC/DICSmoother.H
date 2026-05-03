@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::DICSmoother
+
+Group
+    grpLduMatrixSmoothers
 
 Description
     Simplified diagonal-based incomplete Cholesky smoother for symmetric
@@ -47,17 +53,17 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class DICSmoother Declaration
+                           Class DICSmoother Declaration
 \*---------------------------------------------------------------------------*/
 
 class DICSmoother
 :
     public lduMatrix::smoother
 {
-    // Private Data
+    // Private data
 
         //- The reciprocal preconditioned diagonal
-        scalarField rD_;
+        solveScalarField rD_;
 
 
 public:
@@ -84,8 +90,17 @@ public:
         //- Smooth the solution for a given number of sweeps
         void smooth
         (
-            scalarField& psi,
+            solveScalarField& psi,
             const scalarField& source,
+            const direction cmpt,
+            const label nSweeps
+        ) const;
+
+        //- Smooth the solution for a given number of sweeps
+        void scalarSmooth
+        (
+            solveScalarField& psi,
+            const solveScalarField& source,
             const direction cmpt,
             const label nSweeps
         ) const;

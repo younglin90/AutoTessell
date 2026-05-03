@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,21 +33,38 @@ Description
 
 SourceFiles
     regIOobject.C
+    regIOobjectI.H
     regIOobjectRead.C
     regIOobjectWrite.C
+    regIOobjectMetaData.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef regIOobject_H
-#define regIOobject_H
+#ifndef Foam_regIOobject_H
+#define Foam_regIOobject_H
 
 #include "IOobject.H"
+#include "OSspecific.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 
 namespace Foam
 {
+
+// Forward Declarations
+class dictionary;
+class regIOobject;
+
+namespace functionEntries
+{
+    class codeStream;
+}
+namespace fileOperations
+{
+    class uncollatedFileOperation;
+}
 
 /*---------------------------------------------------------------------------*\
                          Class regIOobject Declaration
@@ -54,6 +74,21 @@ class regIOobject
 :
     public IOobject
 {
+protected:
+
+        //- Helper: check readOpt flags and read if necessary
+        bool readHeaderOk
+        (
+            const IOstreamOption::streamFormat fmt,
+            const word& typeName
+        );
+
+        //- To flag master-only reading of objects
+        static bool masterOnlyReading;
+
+
+private:
+
     // Private Data
 
         //- Is this object registered with the registry
@@ -62,11 +97,17 @@ class regIOobject
         //- Is this object owned by the registry
         bool ownedByRegistry_;
 
-        //- List of modification watch indices
-        mutable labelList watchIndices_;
+        //- The eventNo of last update
+        label eventNo_;
 
-        //- eventNo of last update
-        uint64_t eventNo_;
+        //- List of additional files to watch
+        mutable DynamicList<fileName> watchFiles_;
+
+        //- List of modification watch indices
+        mutable DynamicList<label> watchIndices_;
+
+        //- Dictionary for any meta-data
+        autoPtr<dictionary> metaDataPtr_;
 
         //- Istream for reading
         autoPtr<ISstream> isPtr_;
@@ -74,53 +115,48 @@ class regIOobject
 
     // Private Member Functions
 
-        //- Return Istream
-        Istream& readStream(const bool read = true);
-
-
-protected:
-
-    // Protected Member Functions
-
-        //- Read header, check readOpt flags and read data if necessary.
-        //  Format is set to ASCII if defaultFormat and file format are ASCII
-        bool readHeaderOk
-        (
-            const IOstream::streamFormat defaultFormat,
-            const word& typeName
-        );
+        //- Construct object stream, read header if not already constructed
+        void readStream(const bool readOnProc);
 
 
 public:
 
-    // Static data
+        //- Friendship with classes needing access to masterOnlyReading
+        friend class functionEntries::codeStream;
+        friend class fileOperations::uncollatedFileOperation;
+
+
+    // Generated Methods
+
+        //- No copy assignment
+        void operator=(const regIOobject&) = delete;
+
+
+    // Static Data
 
         //- Runtime type information
         TypeName("regIOobject");
 
-        static float fileModificationSkew;
-
 
     // Constructors
 
-        //- Construct from IOobject. Optional flag for if IOobject is the
-        //  top level regIOobject.
-        regIOobject(const IOobject&, const bool isTime = false);
+        //- Construct from IOobject. The optional flag adds special handling
+        //- if the object is the top-level regIOobject (eg, Time).
+        regIOobject(const IOobject& io, const bool isTimeObject = false);
 
-        //- Construct from IOobject with new name, and overriding the
-        //  IOobject's register object setting
-        regIOobject(const word& newName, const IOobject&, bool registerObject);
+        //- Copy construct
+        regIOobject(const regIOobject& rio);
 
-        //- Copy constructor
-        regIOobject(const regIOobject&);
+        //- Copy construct, transferring registry registration to the copy
+        //- if registerCopy is true
+        regIOobject(const regIOobject& rio, bool registerCopy);
 
-        //- Move constructor
-        //  Registers copy if the object is registered
-        regIOobject(regIOobject&&);
+        //- Copy construct with new name, transferring registry registration
+        //- to the copy if registerCopy is true
+        regIOobject(const word& newName, const regIOobject&, bool registerCopy);
 
-        //- Copy constructor, transferring registry registration to copy
-        //  if registerCopy is true
-        regIOobject(const regIOobject&, bool registerCopy);
+        //- Copy construct with new IO parameters
+        regIOobject(const IOobject& io, const regIOobject& rio);
 
 
     //- Destructor
@@ -129,93 +165,97 @@ public:
 
     // Member Functions
 
-        // Path components
-
-            //- Return true if object is global, i.e. same for all processors
-            //  Defaults to false, must be overridden by global IO classes
-            virtual bool global() const;
-
-            //- Return true if object is global, i.e. same for all processors
-            //  and written to the global case directory,
-            //  i.e. not the processor time directory
-            //  Defaults to global()
-            virtual bool globalFile() const;
-
-            using IOobject::caseName;
-
-            const fileName& caseName() const;
-
-            using IOobject::path;
-
-            //- Return complete path
-            fileName path() const;
-
-            using IOobject::objectPath;
-
-            //- Return complete path + object name
-            fileName objectPath() const
-            {
-                return path()/name();
-            }
-
-            using IOobject::filePath;
-
-            //- Return complete path + object name if the file exists
-            //  in the case directory otherwise null.
-            //
-            //  For global objects in parallel searches up into the global
-            //  case directory
-            fileName filePath() const;
-
-
         // Registration
 
-            //- Add object to registry
+            //- Add object to registry, if not already registered
+            //  \return true if object was already registered,
+            //      or was newly registered
             bool checkIn();
 
-            //- Remove object from registry
+            //- Remove object from registry, and remove all file watches
+            //  \return true if object was registered and was removed
             bool checkOut();
 
             //- Add file watch on object (if registered and READ_IF_MODIFIED)
-            void addWatch();
+            virtual void addWatch();
 
-            //- Is this object registered with the registry?
-            inline bool registered() const;
+            //- Query the registered state (ie, has been checked in).
+            //- This is not necessarily the same as registerObject(),
+            //- which is just a stated preference.
+            inline bool registered() const noexcept;
 
             //- Is this object owned by the registry?
-            inline bool ownedByRegistry() const;
+            inline bool ownedByRegistry() const noexcept;
 
-            //- Transfer ownership of this object to its registry
-            inline void store();
+            //- Register object with its registry
+            //- and transfer ownership to the registry.
+            //  \return true if now ownedByRegistry
+            inline bool store();
 
-            //- Transfer ownership of the given object pointer to its registry
-            //  and return reference to object.
+            //- Transfer pointer ownership to its registry.
+            //  \return reference to the stored object
             template<class Type>
-            inline static Type& store(Type*);
+            inline static Type& store(Type* p);
 
-            //- Transfer ownership of the given object pointer to its registry
-            //  and return reference to object.
+            //- Transfer pointer ownership to its registry.
+            //  Resets (clears) the parameter.
+            //  \return reference to the stored object
             template<class Type>
-            inline static Type& store(autoPtr<Type>&);
+            inline static Type& store(std::unique_ptr<Type>&& ptr);
 
-            //- Release ownership of this object from its registry
-            inline void release();
+            //- Transfer pointer ownership to its registry.
+            //  Resets (clears) the parameter.
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(autoPtr<Type>& ptr);
+
+            //- Transfer pointer ownership to its registry.
+            //  Resets (clears) the parameter.
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(autoPtr<Type>&& ptr);
+
+            //- Transfer pointer ownership to its registry.
+            //  Changes parameter from PTR to CREF (do not rely on this).
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(refPtr<Type>& ptr);
+
+            //- Transfer pointer ownership to its registry.
+            //  Changes parameter from PTR to CREF (do not rely on this).
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(refPtr<Type>&& ptr);
+
+            //- Transfer pointer ownership to its registry.
+            //  Changes parameter from PTR to CREF (do not rely on this).
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(tmp<Type>& ptr);
+
+            //- Transfer pointer ownership to its registry.
+            //  Changes parameter from PTR to CREF (do not rely on this).
+            //  \return reference to the stored object
+            template<class Type>
+            inline static Type& store(tmp<Type>&& ptr);
+
+            //- Set object as \b not ownedByRegistry
+            //  \param unregister optionally set as non-registered too
+            inline void release(const bool unregister = false) noexcept;
 
 
-        // Dependency checking
+        // Dependency Checking
 
             //- Event number at last update.
-            inline uint64_t eventNo() const;
+            inline label eventNo() const noexcept;
 
             //- Event number at last update.
-            inline uint64_t& eventNo();
+            inline label& eventNo() noexcept;
 
             //- Return true if up-to-date with respect to given object
-            //  otherwise false
             bool upToDate(const regIOobject&) const;
 
             //- Return true if up-to-date with respect to given objects
-            //  otherwise false
             bool upToDate
             (
                 const regIOobject&,
@@ -223,7 +263,6 @@ public:
             ) const;
 
             //- Return true if up-to-date with respect to given objects
-            //  otherwise false
             bool upToDate
             (
                 const regIOobject&,
@@ -232,7 +271,6 @@ public:
             ) const;
 
             //- Return true if up-to-date with respect to given objects
-            //  otherwise false
             bool upToDate
             (
                 const regIOobject&,
@@ -241,7 +279,8 @@ public:
                 const regIOobject&
             ) const;
 
-            //- Set up to date (obviously)
+
+            //- Set as up-to-date
             void setUpToDate();
 
 
@@ -251,13 +290,34 @@ public:
             virtual void rename(const word& newName);
 
 
+        // Meta-data
+
+            //- Return pointer to meta-data or nullptr
+            const dictionary* findMetaData() const noexcept;
+
+            //- Get or create meta-data
+            dictionary& getMetaData() noexcept;
+
+            //- Remove meta-data
+            void removeMetaData();
+
+            //- Update internal meta-data (eg, prior to writing)
+            virtual void updateMetaData();
+
+
         // Reading
 
-            //- Read and check header info
+            //- Return complete path + object name if the file exists
+            //  in the case directory otherwise null. Does not search
+            //  up if parallel. Can be overridden to provide this functionality
+            //  (e.g. IOdictionary)
+            virtual fileName filePath() const;
+
+            //- Read and check header info. Does not check the headerClassName.
             bool headerOk();
 
             //- Return Istream and check object type against that given
-            Istream& readStream(const word&, const bool read = true);
+            Istream& readStream(const word&, const bool readOnProc = true);
 
             //- Close Istream
             void close();
@@ -270,21 +330,19 @@ public:
             //- Read object
             virtual bool read();
 
-            //- Return file-monitoring handles
-            inline const labelList& watchIndices() const;
+            //- Add file watch for fileName on object if not yet watched.
+            //  \return index of watch
+            virtual label addWatch(const fileName&);
 
-            //- Return file-monitoring handles
-            inline labelList& watchIndices();
+            //- Read access to file-monitoring handles
+            inline const labelList& watchIndices() const noexcept;
+
+            //- Write access to file-monitoring handles
+            inline labelList& watchIndices() noexcept;
 
             //- Return true if the object's file (or files for objectRegistry)
-            //  have been modified. (modified state is cached by Time)
+            //- have been modified. (modified state is cached by Time)
             virtual bool modified() const;
-
-            //- Return true if the object's dependencies have been modified
-            virtual bool dependenciesModified() const
-            {
-                return false;
-            }
 
             //- Read object if modified (as set by call to modified)
             virtual bool readIfModified();
@@ -292,30 +350,51 @@ public:
 
         // Writing
 
-            //- Pure virtual writaData function.
+            //- Pure virtual writeData function.
             //  Must be defined in derived types
             virtual bool writeData(Ostream&) const = 0;
 
-            //- Write using given format, version and compression
+            //- Write using stream options
             virtual bool writeObject
             (
-                IOstream::streamFormat,
-                IOstream::versionNumber,
-                IOstream::compressionType,
-                const bool write
+                IOstreamOption streamOpt,
+                const bool writeOnProc
             ) const;
 
             //- Write using setting from DB
-            virtual bool write(const bool write = true) const;
+            virtual bool write(const bool writeOnProc = true) const;
+
+
+        // Other
+
+            //- Is object global
+            virtual bool global() const
+            {
+                return false;
+            }
 
 
     // Member Operators
 
-        //- Assign to IOobject
-        void operator=(const IOobject&) = delete;
+        //- Copy assignment
+        FOAM_DEPRECATED_STRICT(2023-12, "possibly remove in the future")
+        void operator=(const IOobject& io);
 
-        //- Disallow default assignment
-        void operator=(const regIOobject&) = delete;
+
+    // Housekeeping
+
+        //- Write using given format, version and compression
+        FOAM_DEPRECATED_FOR(2020-02, "writeObject(IOstreamOption, bool)")
+        virtual bool writeObject
+        (
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::versionNumber ver,
+            IOstreamOption::compressionType cmp,
+            const bool writeOnProc
+        ) const
+        {
+            return writeObject(IOstreamOption(fmt, ver, cmp), writeOnProc);
+        }
 };
 
 

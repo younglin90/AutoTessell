@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "globalMeshData.H"
 #include "polyMesh.H"
-#include "distributionMap.H"
+#include "mapDistribute.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -35,7 +38,7 @@ void Foam::globalMeshData::syncData
     List<Type>& elems,
     const labelListList& slaves,
     const labelListList& transformedSlaves,
-    const distributionMap& slavesMap,
+    const mapDistribute& slavesMap,
     const globalIndexAndTransform& transforms,
     const CombineOp& cop,
     const TransformOp& top
@@ -50,44 +53,36 @@ void Foam::globalMeshData::syncData
         Type& elem = elems[i];
 
         const labelList& slavePoints = slaves[i];
-        label nTransformSlavePoints =
+
+        const labelList& transformSlavePoints =
         (
-            transformedSlaves.size() == 0
-          ? 0
-          : transformedSlaves[i].size()
+            transformedSlaves.empty()
+          ? labelList::null()
+          : transformedSlaves[i]
         );
 
-        if (slavePoints.size()+nTransformSlavePoints > 0)
+
+        // Combine master with untransformed slave data
+        for (const label pointi : slavePoints)
         {
-            // Combine master with untransformed slave data
-            forAll(slavePoints, j)
-            {
-                cop(elem, elems[slavePoints[j]]);
-            }
+            cop(elem, elems[pointi]);
+        }
 
-            // Combine master with transformed slave data
-            if (nTransformSlavePoints)
-            {
-                const labelList& transformSlavePoints = transformedSlaves[i];
-                forAll(transformSlavePoints, j)
-                {
-                    cop(elem, elems[transformSlavePoints[j]]);
-                }
-            }
+        // Combine master with transformed slave data
+        for (const label pointi : transformSlavePoints)
+        {
+            cop(elem, elems[pointi]);
+        }
 
-            // Copy result back to slave slots
-            forAll(slavePoints, j)
-            {
-                elems[slavePoints[j]] = elem;
-            }
-            if (nTransformSlavePoints)
-            {
-                const labelList& transformSlavePoints = transformedSlaves[i];
-                forAll(transformSlavePoints, j)
-                {
-                    elems[transformSlavePoints[j]] = elem;
-                }
-            }
+        // Copy result back to slave slots
+        for (const label pointi : slavePoints)
+        {
+            elems[pointi] = elem;
+        }
+
+        for (const label pointi : transformSlavePoints)
+        {
+            elems[pointi] = elem;
         }
     }
 
@@ -108,7 +103,7 @@ void Foam::globalMeshData::syncData
     List<Type>& elems,
     const labelListList& slaves,
     const labelListList& transformedSlaves,
-    const distributionMap& slavesMap,
+    const mapDistribute& slavesMap,
     const CombineOp& cop
 )
 {
@@ -121,44 +116,36 @@ void Foam::globalMeshData::syncData
         Type& elem = elems[i];
 
         const labelList& slavePoints = slaves[i];
-        label nTransformSlavePoints =
+
+        const labelList& transformSlavePoints =
         (
-            transformedSlaves.size() == 0
-          ? 0
-          : transformedSlaves[i].size()
+            transformedSlaves.empty()
+          ? labelList::null()
+          : transformedSlaves[i]
         );
 
-        if (slavePoints.size()+nTransformSlavePoints > 0)
+
+        // Combine master with untransformed slave data
+        for (const label pointi : slavePoints)
         {
-            // Combine master with untransformed slave data
-            forAll(slavePoints, j)
-            {
-                cop(elem, elems[slavePoints[j]]);
-            }
+            cop(elem, elems[pointi]);
+        }
 
-            // Combine master with transformed slave data
-            if (nTransformSlavePoints)
-            {
-                const labelList& transformSlavePoints = transformedSlaves[i];
-                forAll(transformSlavePoints, j)
-                {
-                    cop(elem, elems[transformSlavePoints[j]]);
-                }
-            }
+        // Combine master with transformed slave data
+        for (const label pointi : transformSlavePoints)
+        {
+            cop(elem, elems[pointi]);
+        }
 
-            // Copy result back to slave slots
-            forAll(slavePoints, j)
-            {
-                elems[slavePoints[j]] = elem;
-            }
-            if (nTransformSlavePoints)
-            {
-                const labelList& transformSlavePoints = transformedSlaves[i];
-                forAll(transformSlavePoints, j)
-                {
-                    elems[transformSlavePoints[j]] = elem;
-                }
-            }
+        // Copy result back to slave slots
+        for (const label pointi : slavePoints)
+        {
+            elems[pointi] = elem;
+        }
+
+        for (const label pointi : transformSlavePoints)
+        {
+            elems[pointi] = elem;
         }
     }
 

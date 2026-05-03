@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +27,14 @@ License
 Class
     Foam::jumpCyclicFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
-    This boundary condition provides a base class for cyclic conditions with a
-    specified "jump" (or offset) between the sides
+    This boundary condition provides a base class for coupled-cyclic
+    conditions with a specified 'jump' (or offset) between the values
+
+    The "value" entry is NO_READ.
 
 See also
     Foam::cyclicFvPatchField
@@ -36,8 +44,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef jumpCyclicFvPatchField_H
-#define jumpCyclicFvPatchField_H
+#ifndef Foam_jumpCyclicFvPatchField_H
+#define Foam_jumpCyclicFvPatchField_H
 
 #include "cyclicFvPatchField.H"
 
@@ -55,20 +63,6 @@ class jumpCyclicFvPatchField
 :
     public cyclicFvPatchField<Type>
 {
-    // Private Member Functions
-
-        //- Update result field based on interface functionality
-        template<class ... Cmpt>
-        void updateInterfaceMatrixCmpts
-        (
-            Field<Type>& result,
-            const Field<Type>& psi,
-            const scalarField& coeffs,
-            const Pstream::commsTypes comms,
-            const Cmpt ... cmpt
-        ) const;
-
-
 public:
 
     //- Runtime type information
@@ -81,15 +75,17 @@ public:
         jumpCyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
         jumpCyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const dictionary&
+            const DimensionedField<Type, volMesh>&,
+            const dictionary&,
+            const bool needValue = true  //!< evaluate
         );
 
         //- Construct by mapping given jumpCyclicFvPatchField onto a new patch
@@ -97,22 +93,25 @@ public:
         (
             const jumpCyclicFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        jumpCyclicFvPatchField(const jumpCyclicFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        jumpCyclicFvPatchField
+        (
+            const jumpCyclicFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         jumpCyclicFvPatchField
         (
             const jumpCyclicFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -122,55 +121,67 @@ public:
                 return cyclicFvPatchField<Type>::type();
             }
 
-            //- Return the "jump" in value applied to the opposite field when
-            //  transforming to this side
+            //- Return the "jump" across the patch as a "half" field
             virtual tmp<Field<Type>> jump() const = 0;
 
 
         // Evaluation functions
 
             //- Return neighbour coupled given internal cell data
-            virtual tmp<Field<Type>> patchNeighbourField
-            (
-                const Pstream::commsTypes
-            ) const;
+            tmp<Field<Type>> patchNeighbourField() const;
 
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                scalarField& result,
-                const scalarField& psi,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
-                const Pstream::commsTypes comms
+                const Pstream::commsTypes commsType
             ) const;
 
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                Field<Type>& result,
-                const Field<Type>& psi,
-                const scalarField& coeffs,
-                const Pstream::commsTypes comms
+                Field<Type>&,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const Field<Type>&,
+                const scalarField&,
+                const Pstream::commsTypes commsType
             ) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using cyclicFvPatchField<Type>::operator=;
 };
-
 
 //- Update result field based on interface functionality
 template<>
 void jumpCyclicFvPatchField<scalar>::updateInterfaceMatrix
 (
-    scalarField& result,
-    const scalarField& psi,
+    solveScalarField& result,
+    const bool add,
+    const lduAddressing& lduAddr,
+    const label patchId,
+    const solveScalarField& psiInternal,
     const scalarField& coeffs,
     const direction cmpt,
-    const Pstream::commsTypes comms
+    const Pstream::commsTypes commsType
+) const;
+
+
+template<>
+void jumpCyclicFvPatchField<vector>::updateInterfaceMatrix
+(
+    solveScalarField& result,
+    const bool add,
+    const lduAddressing& lduAddr,
+    const label patchId,
+    const solveScalarField& psiInternal,
+    const scalarField& coeffs,
+    const direction cmpt,
+    const Pstream::commsTypes commsType
 ) const;
 
 

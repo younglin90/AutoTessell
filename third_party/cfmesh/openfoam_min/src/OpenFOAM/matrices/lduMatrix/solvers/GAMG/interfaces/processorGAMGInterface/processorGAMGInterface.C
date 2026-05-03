@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,7 @@ License
 
 #include "processorGAMGInterface.H"
 #include "addToRunTimeSelectionTable.H"
-#include "HashTable.H"
-#include "labelPair.H"
+#include "labelPairHashes.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -72,10 +74,7 @@ Foam::processorGAMGInterface::processorGAMGInterface
     (
         refCast<const processorLduInterface>(fineInterface).neighbProcNo()
     ),
-    transform_
-    (
-        refCast<const processorLduInterface>(fineInterface).transform()
-    ),
+    forwardT_(refCast<const processorLduInterface>(fineInterface).forwardT()),
     tag_(refCast<const processorLduInterface>(fineInterface).tag())
 {
     // From coarse face to coarse cell
@@ -87,10 +86,7 @@ Foam::processorGAMGInterface::processorGAMGInterface
     );
 
     // From coarse cell pair to coarse face
-    HashTable<label, labelPair, labelPair::Hash<>> cellsToCoarseFace
-    (
-        2*localRestrictAddressing.size()
-    );
+    labelPairLookup cellsToCoarseFace(2*localRestrictAddressing.size());
 
     forAll(localRestrictAddressing, ffi)
     {
@@ -117,21 +113,20 @@ Foam::processorGAMGInterface::processorGAMGInterface
             );
         }
 
-        HashTable<label, labelPair, labelPair::Hash<>>::const_iterator fnd =
-            cellsToCoarseFace.find(cellPair);
+        const auto fnd = cellsToCoarseFace.cfind(cellPair);
 
-        if (fnd == cellsToCoarseFace.end())
+        if (fnd.good())
+        {
+            // Already have coarse face
+            dynFaceRestrictAddressing.append(fnd.val());
+        }
+        else
         {
             // New coarse face
             label coarseI = dynFaceCells.size();
             dynFaceRestrictAddressing.append(coarseI);
             dynFaceCells.append(localRestrictAddressing[ffi]);
             cellsToCoarseFace.insert(cellPair, coarseI);
-        }
-        else
-        {
-            // Already have coarse face
-            dynFaceRestrictAddressing.append(fnd());
         }
     }
 
@@ -145,11 +140,11 @@ Foam::processorGAMGInterface::processorGAMGInterface
     const label index,
     const lduInterfacePtrsList& coarseInterfaces,
     const labelUList& faceCells,
-    const labelUList& faceRestrictAddressing,
+    const labelUList& faceRestrictAddresssing,
     const label coarseComm,
     const label myProcNo,
     const label neighbProcNo,
-    const transformer& transform,
+    const tensorField& forwardT,
     const int tag
 )
 :
@@ -158,12 +153,12 @@ Foam::processorGAMGInterface::processorGAMGInterface
         index,
         coarseInterfaces,
         faceCells,
-        faceRestrictAddressing
+        faceRestrictAddresssing
     ),
     comm_(coarseComm),
     myProcNo_(myProcNo),
     neighbProcNo_(neighbProcNo),
-    transform_(transform),
+    forwardT_(forwardT),
     tag_(tag)
 {}
 
@@ -179,14 +174,8 @@ Foam::processorGAMGInterface::processorGAMGInterface
     comm_(readLabel(is)),
     myProcNo_(readLabel(is)),
     neighbProcNo_(readLabel(is)),
-    transform_(is),
+    forwardT_(is),
     tag_(readLabel(is))
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor * * * * * * * * * * * * * * * //
-
-Foam::processorGAMGInterface::~processorGAMGInterface()
 {}
 
 
@@ -202,13 +191,24 @@ void Foam::processorGAMGInterface::initInternalFieldTransfer
 }
 
 
+void Foam::processorGAMGInterface::initInternalFieldTransfer
+(
+    const Pstream::commsTypes commsType,
+    const labelUList& iF,
+    const labelUList& faceCells
+) const
+{
+    send(commsType, interfaceInternalField(iF, faceCells)());
+}
+
+
 Foam::tmp<Foam::labelField> Foam::processorGAMGInterface::internalFieldTransfer
 (
     const Pstream::commsTypes commsType,
     const labelUList& iF
 ) const
 {
-    tmp<Field<label>> tfld(receive<label>(commsType, this->size()));
+    tmp<labelField> tfld(receive<label>(commsType, this->size()));
 
     return tfld;
 }
@@ -220,7 +220,7 @@ void Foam::processorGAMGInterface::write(Ostream& os) const
     os  << token::SPACE << comm_
         << token::SPACE << myProcNo_
         << token::SPACE << neighbProcNo_
-        << token::SPACE << transform_
+        << token::SPACE << forwardT_
         << token::SPACE << tag_;
 }
 

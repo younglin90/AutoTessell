@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +28,6 @@ License
 #include "extendedCellToFaceStencil.H"
 #include "globalIndex.H"
 #include "syncTools.H"
-#include "SortableList.H"
 
 /* * * * * * * * * * * * * * * Static Member Data  * * * * * * * * * * * * * */
 
@@ -42,7 +43,7 @@ void Foam::extendedCellToFaceStencil::writeStencilStats
 (
     Ostream& os,
     const labelListList& stencil,
-    const distributionMap& map
+    const mapDistribute& map
 )
 {
     label sumSize = 0;
@@ -102,7 +103,7 @@ Foam::extendedCellToFaceStencil::extendedCellToFaceStencil(const polyMesh& mesh)
     mesh_(mesh)
 {
     // Check for transformation - not supported.
-    const polyBoundaryMesh& patches = mesh.boundary();
+    const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
     forAll(patches, patchi)
     {
@@ -111,7 +112,7 @@ Foam::extendedCellToFaceStencil::extendedCellToFaceStencil(const polyMesh& mesh)
             const coupledPolyPatch& cpp =
                 refCast<const coupledPolyPatch>(patches[patchi]);
 
-            if (cpp.transform().transformsPosition())
+            if (!cpp.parallel() || cpp.separated())
             {
                 FatalErrorInFunction
                     << "Coupled patches with transformations not supported."

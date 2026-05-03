@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -62,10 +65,11 @@ Foam::faceAreaPairGAMGAgglomeration::faceAreaPairGAMGAgglomeration
 {
     const fvMesh& fvmesh = refCast<const fvMesh>(mesh);
 
-    // agglomerate(mesh, sqrt(fvmesh.magSf().primitiveField()));
+    //agglomerate(mesh, sqrt(fvmesh.magSf().primitiveField()));
     agglomerate
     (
-        mesh,
+        nCellsInCoarsestLevel_,
+        0,          //mesh,
         mag
         (
             cmptMultiply
@@ -73,9 +77,10 @@ Foam::faceAreaPairGAMGAgglomeration::faceAreaPairGAMGAgglomeration
                 fvmesh.Sf().primitiveField()
                /sqrt(fvmesh.magSf().primitiveField()),
                 vector(1, 1.01, 1.02)
-                // vector::one
+                //vector::one
             )
-        )
+        ),
+        true
     );
 }
 
@@ -90,10 +95,11 @@ Foam::faceAreaPairGAMGAgglomeration::faceAreaPairGAMGAgglomeration
 :
     pairGAMGAgglomeration(mesh, controlDict)
 {
-    // agglomerate(mesh, sqrt(mag(faceAreas)));
+    //agglomerate(mesh, sqrt(mag(faceAreas)));
     agglomerate
     (
-        mesh,
+        nCellsInCoarsestLevel_,
+        0,          //mesh,
         mag
         (
             cmptMultiply
@@ -101,9 +107,10 @@ Foam::faceAreaPairGAMGAgglomeration::faceAreaPairGAMGAgglomeration
                 faceAreas
                /sqrt(mag(faceAreas)),
                 vector(1, 1.01, 1.02)
-                // vector::one
+                //vector::one
             )
-        )
+        ),
+        true
     );
 }
 

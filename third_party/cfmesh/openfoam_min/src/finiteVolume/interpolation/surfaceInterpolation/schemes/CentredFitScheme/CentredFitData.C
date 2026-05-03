@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,17 +55,11 @@ Foam::CentredFitData<Polynomial>::CentredFitData
     ),
     coeffs_(mesh.nFaces())
 {
-    if (debug)
-    {
-        InfoInFunction << "Constructing CentredFitData<Polynomial>" << endl;
-    }
+    DebugInFunction << "Constructing CentredFitData<Polynomial>" << nl;
 
     calcFit();
 
-    if (debug)
-    {
-        Info<<     "Finished constructing polynomialFit data" << endl;
-    }
+    DebugInfo << "Finished constructing polynomialFit data" << endl;
 }
 
 

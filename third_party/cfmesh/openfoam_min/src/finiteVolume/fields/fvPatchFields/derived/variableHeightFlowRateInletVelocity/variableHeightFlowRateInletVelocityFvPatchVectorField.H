@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions
+
 Description
     This boundary condition provides a velocity boundary condition for
-    multiphase flow based on a user-specified volumetric flow rate.
+    multphase flow based on a user-specified volumetric flow rate.
 
     The flow rate is made proportional to the phase fraction alpha at each
     face of the patch and alpha is ensured to be bound between 0 and 1.
@@ -34,7 +39,7 @@ Description
 Usage
     \table
         Property     | Description             | Required    | Default value
-        flowRate     | volumetric flow rate [m^3/s] | yes |
+        flowRate     | volumetric flow rate [m3/s] | yes |
         alpha        | phase-fraction field    | yes |
     \endtable
 
@@ -49,17 +54,17 @@ Usage
     }
     \endverbatim
 
-    The \c flowRate entry is a \c Function1 of time, see Foam::Function1s.
+    The \c flowRate entry is a \c Function1 of time, see Foam::Function1Types.
 
-    Note:
-      - the value is positive into the domain
-      - may not work correctly for transonic inlets
-      - strange behaviour with potentialFoam since the momentum equation is
-        not solved
+Note
+    - the value is positive into the domain
+    - may not work correctly for transonic inlets
+    - strange behaviour with potentialFoam since the momentum equation is
+      not solved
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     variableHeightFlowRateInletVelocityFvPatchVectorField.C
@@ -84,7 +89,7 @@ class variableHeightFlowRateInletVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Inlet integral flow rate
         autoPtr<Function1<scalar>> flowRate_;
@@ -101,11 +106,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        variableHeightFlowRateInletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         variableHeightFlowRateInletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -116,53 +128,46 @@ public:
         (
             const variableHeightFlowRateInletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         variableHeightFlowRateInletVelocityFvPatchVectorField
         (
             const variableHeightFlowRateInletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         variableHeightFlowRateInletVelocityFvPatchVectorField
         (
             const variableHeightFlowRateInletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new variableHeightFlowRateInletVelocityFvPatchVectorField
-                (
-                    *this,
-                    iF
-                )
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::FDICPreconditioner
+
+Group
+    grpLduMatrixPreconditioners
 
 Description
     Faster version of the DICPreconditioner diagonal-based incomplete
@@ -47,19 +53,28 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class FDICPreconditioner Declaration
+                           Class FDICPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 class FDICPreconditioner
 :
     public lduMatrix::preconditioner
 {
-    // Private Data
+    // Private data
 
         //- The reciprocal preconditioned diagonal
-        scalarField rD_;
-        scalarField rDuUpper_;
-        scalarField rDlUpper_;
+        solveScalarField rD_;
+        solveScalarField rDuUpper_;
+        solveScalarField rDlUpper_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        FDICPreconditioner(const FDICPreconditioner&) = delete;
+
+        //- No copy assignment
+        void operator=(const FDICPreconditioner&) = delete;
 
 
 public:
@@ -77,13 +92,9 @@ public:
             const dictionary& solverControlsUnused
         );
 
-        //- Disallow default bitwise copy construction
-        FDICPreconditioner(const FDICPreconditioner&) = delete;
-
 
     //- Destructor
-    virtual ~FDICPreconditioner()
-    {}
+    virtual ~FDICPreconditioner() = default;
 
 
     // Member Functions
@@ -91,16 +102,10 @@ public:
         //- Return wA the preconditioned form of residual rA
         virtual void precondition
         (
-            scalarField& wA,
-            const scalarField& rA,
+            solveScalarField& wA,
+            const solveScalarField& rA,
             const direction cmpt=0
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const FDICPreconditioner&) = delete;
 };
 
 

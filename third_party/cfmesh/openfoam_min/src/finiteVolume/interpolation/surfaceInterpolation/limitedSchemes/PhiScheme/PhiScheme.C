@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,16 +37,21 @@ template<class Type, class PhiLimiter>
 Foam::tmp<Foam::surfaceScalarField>
 Foam::PhiScheme<Type, PhiLimiter>::limiter
 (
-    const VolField<Type>& phi
+    const GeometricField<Type, fvPatchField, volMesh>& phi
 ) const
 {
     const fvMesh& mesh = this->mesh();
 
     tmp<surfaceScalarField> tLimiter
     (
-        surfaceScalarField::New
+        new surfaceScalarField
         (
-            "PhiLimiter",
+            IOobject
+            (
+                "PhiLimiter",
+                mesh.time().timeName(),
+                mesh
+            ),
             mesh,
             dimless
         )
@@ -61,7 +68,7 @@ Foam::PhiScheme<Type, PhiLimiter>::limiter
 
     tmp<surfaceScalarField> tUflux = this->faceFlux_;
 
-    if (this->faceFlux_.dimensions() == dimMassFlux)
+    if (this->faceFlux_.dimensions() == dimMass/dimTime)
     {
         const volScalarField& rho =
             phi.db().objectRegistry::template lookupObject<volScalarField>
@@ -69,7 +76,7 @@ Foam::PhiScheme<Type, PhiLimiter>::limiter
 
         tUflux = this->faceFlux_/fvc::interpolate(rho);
     }
-    else if (this->faceFlux_.dimensions() != dimVolumetricFlux)
+    else if (this->faceFlux_.dimensions() != dimVolume/dimTime)
     {
         FatalErrorInFunction
             << "dimensions of faceFlux are not correct"

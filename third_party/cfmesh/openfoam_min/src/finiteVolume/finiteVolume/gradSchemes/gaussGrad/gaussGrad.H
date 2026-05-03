@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Class
     Foam::fv::gaussGrad
 
+Group
+    grpFvGradSchemes
+
 Description
     Basic second-order gradient scheme using face-interpolation
     and Gauss' theorem.
@@ -33,8 +39,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef gaussGrad_H
-#define gaussGrad_H
+#ifndef Foam_gaussGrad_H
+#define Foam_gaussGrad_H
 
 #include "gradScheme.H"
 #include "surfaceInterpolationScheme.H"
@@ -51,7 +57,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class gaussGrad Declaration
+                       Class gaussGrad Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -59,12 +65,19 @@ class gaussGrad
 :
     public fv::gradScheme<Type>
 {
+    // Private Data
 
-protected:
-
-    // Protected Data
-
+        //- Interpolation scheme
         tmp<surfaceInterpolationScheme<Type>> tinterpScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        gaussGrad(const gaussGrad&) = delete;
+
+        //- No copy assignment
+        void operator=(const gaussGrad&) = delete;
 
 
 public:
@@ -90,59 +103,56 @@ public:
         {
             if (is.eof())
             {
-                tinterpScheme_ =
-                    tmp<surfaceInterpolationScheme<Type>>
-                    (
-                        new linear<Type>(mesh)
-                    );
+                tinterpScheme_.reset
+                (
+                    new linear<Type>(mesh)
+                );
             }
             else
             {
-                tinterpScheme_ =
-                    tmp<surfaceInterpolationScheme<Type>>
-                    (
-                        surfaceInterpolationScheme<Type>::New(mesh, is)
-                    );
+                tinterpScheme_.reset
+                (
+                    surfaceInterpolationScheme<Type>::New(mesh, is)
+                );
             }
         }
-
-        //- Disallow default bitwise copy construction
-        gaussGrad(const gaussGrad&) = delete;
 
 
     // Member Functions
 
         //- Return the gradient of the given field
-        //  calculated using Gauss' theorem on the given surface field
-        static tmp<VolField<typename outerProduct<vector, Type>::type>>
-        gradf
+        //- calculated using Gauss' theorem on the given surface field
+        static
+        tmp
+        <
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > gradf
         (
-            const SurfaceField<Type>&,
+            const GeometricField<Type, fvsPatchField, surfaceMesh>&,
             const word& name
         );
 
         //- Return the gradient of the given field to the gradScheme::grad
-        //  for optional caching
-        virtual tmp<VolField<typename outerProduct<vector, Type>::type>>
-        calcGrad
+        //- for optional caching
+        virtual tmp
+        <
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > calcGrad
         (
-            const VolField<Type>& vsf,
+            const GeometricField<Type, fvPatchField, volMesh>& vsf,
             const word& name
         ) const;
 
         //- Correct the boundary values of the gradient using the patchField
-        // snGrad functions
+        //- snGrad functions
         static void correctBoundaryConditions
         (
-            const VolField<Type>&,
-            VolField<typename outerProduct<vector, Type>::type>&
+            const GeometricField<Type, fvPatchField, volMesh>&,
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>&
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const gaussGrad&) = delete;
 };
 
 

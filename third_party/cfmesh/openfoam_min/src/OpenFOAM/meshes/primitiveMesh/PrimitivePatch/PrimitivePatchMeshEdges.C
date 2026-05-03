@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,64 +28,63 @@ License
 
 #include "PrimitivePatch.H"
 
-
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-Foam::labelList Foam::PrimitivePatch<FaceList, PointField>::meshEdges
+Foam::edge
+Foam::PrimitivePatch<FaceList, PointField>::meshEdge(const label edgei) const
+{
+    return Foam::edge(this->meshPoints(), this->edges()[edgei]);
+}
+
+
+template<class FaceList, class PointField>
+Foam::edge
+Foam::PrimitivePatch<FaceList, PointField>::meshEdge(const edge& e) const
+{
+    return Foam::edge(this->meshPoints(), e);
+}
+
+
+template<class FaceList, class PointField>
+Foam::labelList
+Foam::PrimitivePatch<FaceList, PointField>::
+meshEdges
 (
     const edgeList& allEdges,
     const labelListList& cellEdges,
     const labelList& faceCells
 ) const
 {
-    if (debug)
-    {
-        InfoInFunction
-            << "Calculating labels of patch edges in mesh edge list" << endl;
-    }
+    DebugInFunction
+        << "Calculating labels of patch edges in mesh edge list" << nl;
 
-    // get reference to the list of edges on the patch
-    const edgeList& PatchEdges = edges();
+    // The output storage
+    labelList meshEdgeLabels(this->nEdges());
 
     const labelListList& EdgeFaces = edgeFaces();
 
-    // create the storage
-    labelList meshEdges(PatchEdges.size());
-
-    bool found = false;
-
-    // get reference to the points on the patch
-    const labelList& pp = meshPoints();
-
     // WARNING: Remember that local edges address into local point list;
     // local-to-global point label translation is necessary
-    forAll(PatchEdges, edgeI)
+    forAll(meshEdgeLabels, edgei)
     {
-        const edge curEdge
-            (pp[PatchEdges[edgeI].start()], pp[PatchEdges[edgeI].end()]);
+        const edge globalEdge(this->meshEdge(edgei));
 
-        found = false;
+        bool found = false;
 
-        // get the patch faces sharing the edge
-        const labelList& curFaces = EdgeFaces[edgeI];
-
-        forAll(curFaces, facei)
+        // For each patch face sharing the edge
+        for (const label patchFacei : EdgeFaces[edgei])
         {
-            // get the cell next to the face
-            label curCell = faceCells[curFaces[facei]];
+            // The cell next to the face
+            const label curCelli = faceCells[patchFacei];
 
-            // get reference to edges on the cell
-            const labelList& ce = cellEdges[curCell];
-
-            forAll(ce, cellEdgeI)
+            // Check the cell edges
+            for (const label cellEdgei : cellEdges[curCelli])
             {
-                if (allEdges[ce[cellEdgeI]] == curEdge)
+                if (allEdges[cellEdgei] == globalEdge)
                 {
                     found = true;
-
-                    meshEdges[edgeI] = ce[cellEdgeI];
-
+                    meshEdgeLabels[edgei] = cellEdgei;
                     break;
                 }
             }
@@ -91,81 +93,112 @@ Foam::labelList Foam::PrimitivePatch<FaceList, PointField>::meshEdges
         }
     }
 
-    return meshEdges;
+    return meshEdgeLabels;
 }
 
 
 template<class FaceList, class PointField>
-Foam::labelList Foam::PrimitivePatch<FaceList, PointField>::meshEdges
+Foam::labelList
+Foam::PrimitivePatch<FaceList, PointField>::meshEdges
 (
     const edgeList& allEdges,
     const labelListList& pointEdges
 ) const
 {
-    if (debug)
-    {
-        InfoInFunction
-            << "Calculating labels of patch edges in mesh edge list" << endl;
-    }
+    DebugInFunction
+        << "Calculating labels of patch edges in mesh edge list" << nl;
 
-    // get reference to the list of edges on the patch
-    const edgeList& PatchEdges = edges();
-
-    // create the storage
-    labelList meshEdges(PatchEdges.size());
-
-    // get reference to the points on the patch
-    const labelList& pp = meshPoints();
+    labelList meshEdgeLabels(this->nEdges());
 
     // WARNING: Remember that local edges address into local point list;
     // local-to-global point label translation is necessary
-    forAll(PatchEdges, edgeI)
+    forAll(meshEdgeLabels, edgei)
     {
-        const label globalPointi = pp[PatchEdges[edgeI].start()];
-        const edge curEdge(globalPointi, pp[PatchEdges[edgeI].end()]);
+        const edge globalEdge(this->meshEdge(edgei));
 
-        const labelList& pe = pointEdges[globalPointi];
-
-        forAll(pe, i)
+        // Check the attached edges
+        for (const label meshEdgei : pointEdges[globalEdge.start()])
         {
-            if (allEdges[pe[i]] == curEdge)
+            if (allEdges[meshEdgei] == globalEdge)
             {
-                meshEdges[edgeI] = pe[i];
+                meshEdgeLabels[edgei] = meshEdgei;
                 break;
             }
         }
     }
 
-    return meshEdges;
+    return meshEdgeLabels;
 }
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+template<class FaceList, class PointField>
+Foam::label
+Foam::PrimitivePatch<FaceList, PointField>::meshEdge
+(
+    const label edgei,
+    const edgeList& allEdges,
+    const labelListList& pointEdges
+) const
+{
+    // Need local-to-global point label translation
+    const edge globalEdge(this->meshEdge(edgei));
+
+    // Check attached edges
+    for (const label meshEdgei : pointEdges[globalEdge.start()])
+    {
+        if (allEdges[meshEdgei] == globalEdge)
+        {
+            return meshEdgei;
+        }
+    }
+
+    return -1;
+}
+
 
 template<class FaceList, class PointField>
-Foam::label Foam::PrimitivePatch<FaceList, PointField>::whichEdge
+Foam::labelList
+Foam::PrimitivePatch<FaceList, PointField>::meshEdges
+(
+    const labelUList& edgeLabels,
+    const edgeList& allEdges,
+    const labelListList& pointEdges
+) const
+{
+    labelList meshEdgeLabels(edgeLabels.size());
+
+    forAll(meshEdgeLabels, edgei)
+    {
+        meshEdgeLabels[edgei] =
+            this->meshEdge(edgeLabels[edgei], allEdges, pointEdges);
+    }
+
+    return meshEdgeLabels;
+}
+
+
+template<class FaceList, class PointField>
+Foam::label
+Foam::PrimitivePatch<FaceList, PointField>::findEdge
 (
     const edge& e
 ) const
 {
-    // Get pointEdges from the starting point and search all the candidates
-    const edgeList& Edges = edges();
-
-    if (e.start() > -1 && e.start() < nPoints())
+    if (e.good() && e.first() < nPoints() && e.second() < nPoints())
     {
-        const labelList& pe = pointEdges()[e.start()];
+        // Get pointEdges from the starting point and search all the candidates
+        const edgeList& myEdges = this->edges();
 
-        forAll(pe, peI)
+        for (const label patchEdgei : pointEdges()[e.first()])
         {
-            if (e == Edges[pe[peI]])
+            if (e == myEdges[patchEdgei])
             {
-                return pe[peI];
+                return patchEdgei;
             }
         }
     }
 
-    // Edge not found.  Return -1
-    return -1;
+    return -1;  // Not found, or invalid edge
 }
 
 

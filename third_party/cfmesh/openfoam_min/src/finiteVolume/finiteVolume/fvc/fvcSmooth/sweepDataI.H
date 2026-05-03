@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,10 +25,7 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "sweepData.H"
-#include "transformer.H"
-#include "volFields.H"
-#include "surfaceFields.H"
+#include "transform.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -45,9 +44,9 @@ inline bool Foam::sweepData::update
         return true;
     }
 
-    scalar myDist2 = magSqr(position - origin());
+    const scalar myDist2 = magSqr(position - origin());
 
-    if (myDist2 < small)
+    if (myDist2 < SMALL)
     {
         if (svf.value() > value())
         {
@@ -76,12 +75,16 @@ inline bool Foam::sweepData::update
 
 inline Foam::sweepData::sweepData()
 :
-    value_(-great),
-    origin_(vector::max)
+    value_(-GREAT),
+    origin_(point::max)
 {}
 
 
-inline Foam::sweepData::sweepData(const scalar value, const point& origin)
+inline Foam::sweepData::sweepData
+(
+    const scalar value,
+    const point& origin
+)
 :
     value_(value),
     origin_(origin)
@@ -93,14 +96,14 @@ inline Foam::sweepData::sweepData(const scalar value, const point& origin)
 template<class TrackingData>
 inline bool Foam::sweepData::valid(TrackingData& td) const
 {
-    return value_ > -small;
+    return value_ > -SMALL;
 }
 
 
 template<class TrackingData>
 inline bool Foam::sweepData::sameGeometry
 (
-    const fvMesh&,
+    const polyMesh&,
     const sweepData&,
     const scalar,
     TrackingData& td
@@ -111,57 +114,73 @@ inline bool Foam::sweepData::sameGeometry
 
 
 template<class TrackingData>
-inline void Foam::sweepData::transform
+inline void Foam::sweepData::leaveDomain
 (
-    const fvPatch& patch,
-    const label patchFacei,
-    const transformer& transform,
+    const polyMesh&,
+    const polyPatch&,
+    const label,
+    const point& faceCentre,
     TrackingData& td
 )
 {
-    origin_ = transform.transformPosition(origin_);
+    origin_ -= faceCentre;
+}
+
+
+template<class TrackingData>
+inline void Foam::sweepData::transform
+(
+    const polyMesh&,
+    const tensor& rotTensor,
+    TrackingData& td
+)
+{
+    origin_ = Foam::transform(rotTensor, origin_);
+}
+
+
+template<class TrackingData>
+inline void Foam::sweepData::enterDomain
+(
+    const polyMesh&,
+    const polyPatch&,
+    const label,
+    const point& faceCentre,
+    TrackingData& td
+)
+{
+    // back to absolute form
+    origin_ += faceCentre;
 }
 
 
 template<class TrackingData>
 inline bool Foam::sweepData::updateCell
 (
-    const fvMesh& mesh,
+    const polyMesh& mesh,
     const label thisCelli,
-    const labelPair&,
-    const sweepData& svf,
-    const scalar tol,
-    TrackingData& td
-)
-{
-    return update(svf, mesh.C()[thisCelli], tol, td);
-}
-
-
-template<class TrackingData>
-inline bool Foam::sweepData::updateFace
-(
-    const fvMesh& mesh,
-    const labelPair& thisPatchAndFacei,
     const label,
     const sweepData& svf,
     const scalar tol,
     TrackingData& td
 )
 {
-    const label thisPatchi = thisPatchAndFacei.first();
-    const label thisFacei = thisPatchAndFacei.second();
+    return update(svf, mesh.cellCentres()[thisCelli], tol, td);
+}
 
-    return
-        update
-        (
-            svf,
-            thisPatchi == -1
-          ? mesh.Cf()[thisFacei]
-          : mesh.Cf().boundaryField()[thisPatchi][thisFacei],
-            tol,
-            td
-        );
+
+template<class TrackingData>
+inline bool Foam::sweepData::updateFace
+(
+    const polyMesh& mesh,
+    const label thisFacei,
+    const label,
+    const sweepData& svf,
+    const scalar tol,
+    TrackingData& td
+)
+{
+    return update(svf, mesh.faceCentres()[thisFacei], tol, td);
 }
 
 
@@ -169,26 +188,14 @@ inline bool Foam::sweepData::updateFace
 template<class TrackingData>
 inline bool Foam::sweepData::updateFace
 (
-    const fvMesh& mesh,
-    const labelPair& thisPatchAndFacei,
+    const polyMesh& mesh,
+    const label thisFacei,
     const sweepData& svf,
     const scalar tol,
     TrackingData& td
 )
 {
-    const label thisPatchi = thisPatchAndFacei.first();
-    const label thisFacei = thisPatchAndFacei.second();
-
-    return
-        update
-        (
-            svf,
-            thisPatchi == -1
-          ? mesh.Cf()[thisFacei]
-          : mesh.Cf().boundaryField()[thisPatchi][thisFacei],
-            tol,
-            td
-        );
+    return update(svf, mesh.faceCentres()[thisFacei], tol, td);
 }
 
 
@@ -205,21 +212,12 @@ inline bool Foam::sweepData::equal
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline void Foam::sweepData::operator=
-(
-    const scalar value
-)
-{
-    value_ = value;
-}
-
-
 inline bool Foam::sweepData::operator==
 (
     const sweepData& rhs
 ) const
 {
-    return origin() == rhs.origin();
+    return origin_ == rhs.origin_;
 }
 
 

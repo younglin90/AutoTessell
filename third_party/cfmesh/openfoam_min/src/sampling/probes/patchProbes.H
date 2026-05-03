@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,50 @@ Class
     Foam::patchProbes
 
 Description
-    Set of locations to sample.at patches
+    Set of locations to sample at patches
 
     Call write() to sample and write files.
+    - find nearest location on nearest face
+    - update *this with location (so header contains 'snapped' locations
+    - use *this as the sampling location
+
+    Example of function object specification:
+    \verbatim
+    patchProbes
+    {
+        type            patchProbes;
+        libs            (sampling);
+
+        // Name of the directory for probe data
+        name            patchProbes;
+
+        // Patches to sample (wildcards allowed)
+        patches         (".*inl.*");
+
+        // Write at same frequency as fields
+        writeControl    writeTime;
+        writeInterval   1;
+
+        // Fields to be probed
+        fields          (p U);
+
+        // Locations to probe. These get snapped onto the nearest point
+        // on the selected patches
+        probeLocations
+        (
+            ( -100 0 0.01 )      // at inlet
+        );
+    }
+    \endverbatim
 
 SourceFiles
     patchProbes.C
+    patchProbesTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef patchProbes_H
-#define patchProbes_H
+#ifndef Foam_patchProbes_H
+#define Foam_patchProbes_H
 
 #include "probes.H"
 
@@ -44,58 +80,58 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class objectRegistry;
-class dictionary;
-class fvMesh;
-class polyTopoChangeMap;
-
 /*---------------------------------------------------------------------------*\
-                         Class patchProbes Declaration
+                          Class patchProbes Declaration
 \*---------------------------------------------------------------------------*/
 
 class patchProbes
 :
     public probes
 {
-    // Private Data
+protected:
 
-        //- Patch name
-        word patchName_;
+    // Protected Data
 
+        //- Patches to sample
+        wordRes patchNames_;
+
+
+    // Protected Member Functions
+
+        //- Find elements containing patchProbes
+        virtual void findElements(const fvMesh& mesh);  // override
+
+
+private:
 
     // Private Member Functions
 
-        //- Find elements containing patchProbes
-        virtual void findElements(const fvMesh&);
-
-        //- Sample and write a particular volume field
+        //- Write field values
         template<class Type>
-        void sampleAndWrite(const VolField<Type>&);
+        void writeValues
+        (
+            const word& fieldName,
+            const Field<Type>& values,
+            const scalar timeValue
+        );
 
-        //- Sample and write a particular surface field
-        template<class Type>
-        void sampleAndWrite(const SurfaceField<Type>&);
+        //- Sample and store/write applicable volume/surface fields
+        template<class GeoField>
+        void performAction
+        (
+            const fieldGroup<GeoField>& fieldNames,  /* must be sorted */
+            unsigned request
+        );
 
-        //- Sample and write all the fields of the given type
-        template<class Type>
-        void sampleAndWrite(const fieldGroup<Type>&);
+        //- Perform sampling action with store/write
+        bool performAction(unsigned request);
 
-         //- Sample and write all the surface fields of the given type
-        template<class Type>
-        void sampleAndWriteSurfaceFields(const fieldGroup<Type>&);
 
-        //- Sample a volume field at all locations
-        template<class Type>
-        tmp<Field<Type>> sample(const VolField<Type>&) const;
+        //- No copy construct
+        patchProbes(const patchProbes&) = delete;
 
-        //- Sample a surface field at all locations
-        template<class Type>
-        tmp<Field<Type>> sample(const SurfaceField<Type>&) const;
-
-        //- Sample a single field on all sample locations
-        template<class Type>
-        tmp<Field<Type>> sample(const word& fieldName) const;
+        //- No copy assignment
+        void operator=(const patchProbes&) = delete;
 
 
 public:
@@ -110,19 +146,20 @@ public:
         patchProbes
         (
             const word& name,
-            const Time& time,
-            const dictionary& dict
+            const Time& runTime,
+            const dictionary& dict,
+            const bool loadFromFiles = false,
+            const bool readFields = true
         );
 
-        //- Disallow default bitwise copy construction
-        patchProbes(const patchProbes&) = delete;
-
-
     //- Destructor
-    virtual ~patchProbes();
+    virtual ~patchProbes() = default;
 
 
     // Member Functions
+
+        //- Sample and store result if the sampleOnExecute is enabled.
+        virtual bool execute();
 
         //- Sample and write
         virtual bool write();
@@ -131,10 +168,23 @@ public:
         virtual bool read(const dictionary&);
 
 
-    // Member Operators
+    // Sampling
 
-        //- Disallow default bitwise assignment
-        void operator=(const patchProbes&) = delete;
+        //- Sample a volume field at all locations
+        template<class Type>
+        tmp<Field<Type>> sample(const VolumeField<Type>&) const;
+
+        //- Sample a surface field at all locations
+        template<class Type>
+        tmp<Field<Type>> sample(const SurfaceField<Type>&) const;
+
+        //- Sample a single field on all sample locations
+        template<class Type>
+        tmp<Field<Type>> sample(const word& fieldName) const;
+
+        //- Sample a surface field at all locations
+        template<class Type>
+        tmp<Field<Type>> sampleSurfaceField(const word& fieldName) const;
 };
 
 

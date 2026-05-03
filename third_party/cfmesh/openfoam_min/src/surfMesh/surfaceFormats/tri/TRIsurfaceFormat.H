@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,19 +30,24 @@ Class
 Description
     Provide a means of reading/writing .tri format.
 
-    Note:
-        For efficiency, the zones are sorted before creating the faces.
-        The class is thus derived from MeshedSurface.
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
+
+Note
+    For efficiency, the zones are sorted before creating the faces.
+    The class is thus derived from MeshedSurface.
 
 SourceFiles
     TRIsurfaceFormat.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef TRIsurfaceFormat_H
-#define TRIsurfaceFormat_H
+#ifndef Foam_TRIsurfaceFormat_H
+#define Foam_TRIsurfaceFormat_H
 
-#include "TRIsurfaceFormatCore.H"
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
 #include "UnsortedMeshedSurface.H"
@@ -52,7 +60,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class TRIsurfaceFormat Declaration
+                Class fileFormats::TRIsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -64,9 +72,9 @@ class TRIsurfaceFormat
 
         static inline void writeShell
         (
-            Ostream&,
-            const pointField&,
-            const Face&,
+            Ostream& os,
+            const UList<point>& pts,
+            const Face& f,
             const label zoneI
         );
 
@@ -76,52 +84,61 @@ public:
     // Constructors
 
         //- Construct from file name
-        TRIsurfaceFormat(const fileName&);
-
-        //- Disallow default bitwise copy construction
-        TRIsurfaceFormat(const TRIsurfaceFormat<Face>&) = delete;
-
-
-    // Selectors
-
-        //- Read file and return surface
-        static autoPtr<MeshedSurface<Face>> New(const fileName& name)
-        {
-            return autoPtr<MeshedSurface<Face>>
-            (
-                new TRIsurfaceFormat<Face>(name)
-            );
-        }
+        explicit TRIsurfaceFormat(const fileName& filename);
 
 
     //- Destructor
-    virtual ~TRIsurfaceFormat()
-    {}
+    virtual ~TRIsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components (by proxy) in TRI format
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
+
+        //- Write UnsortedMeshedSurface, the output remains unsorted
+        static void write
+        (
+            const fileName& filename,
+            const UnsortedMeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
-        //- Write UnsortedMeshedSurface,
-        //  by default the output is not sorted by zones
-        static void write(const fileName&, const UnsortedMeshedSurface<Face>&);
-
         //- Read from file
-        virtual bool read(const fileName&);
+        virtual bool read(const fileName& filename) override;
 
-        //- Write object
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const TRIsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

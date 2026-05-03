@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2021-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,16 +35,18 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef threadedCollatedOFstream_H
-#define threadedCollatedOFstream_H
+#ifndef Foam_threadedCollatedOFstream_H
+#define Foam_threadedCollatedOFstream_H
 
-#include "OStringStream.H"
+#include "dictionary.H"
+#include "StringStream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class OFstreamCollator;
 
 /*---------------------------------------------------------------------------*\
@@ -54,13 +59,23 @@ class threadedCollatedOFstream
 {
     // Private Data
 
+        //- The backend writer
         OFstreamCollator& writer_;
 
-        const fileName filePath_;
+        //- The backend file name
+        const fileName pathName_;
 
-        const IOstream::compressionType compression_;
+        //- Atomic file creation (ignored with append)
+        const IOstreamOption::atomicType atomic_;
 
+        //- Output file compression
+        const IOstreamOption::compressionType compression_;
+
+        //- Use threading
         const bool useThread_;
+
+        //- Additional FoamFile entries for decomposed data
+        dictionary headerEntries_;
 
 
 public:
@@ -70,17 +85,31 @@ public:
         //- Construct and set stream status
         threadedCollatedOFstream
         (
-            OFstreamCollator&,
-            const fileName& filePath,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const compressionType compression = UNCOMPRESSED,
+            OFstreamCollator& writer,
+            IOstreamOption::atomicType atomic,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const bool useThread = true
+        );
+
+        //- Construct and set stream status
+        threadedCollatedOFstream
+        (
+            OFstreamCollator& writer,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
             const bool useThread = true
         );
 
 
     //- Destructor
     ~threadedCollatedOFstream();
+
+
+    // Member Functions
+
+        //- Define the header entries for the data block(s)
+        void setHeaderEntries(const dictionary& dict);
 };
 
 

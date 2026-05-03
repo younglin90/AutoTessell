@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,16 +28,37 @@ License
 
 #include "complex.H"
 #include "IOstreams.H"
-
 #include <sstream>
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-const char* const Foam::complex::typeName = "complex";
-const Foam::complex Foam::complex::zero(0, 0);
-const Foam::complex Foam::complex::one(1, 1);
+const char* const Foam::pTraits<Foam::complex>::typeName = "complex";
+const char* const Foam::pTraits<Foam::complex>::componentNames[] = {"re", "im"};
+
+const Foam::complex Foam::pTraits<Foam::complex>::zero(0, 0);
+const Foam::complex Foam::pTraits<Foam::complex>::one(1, 0);
+
+const Foam::complex Foam::pTraits<Foam::complex>::min(-VGREAT, -VGREAT);
+const Foam::complex Foam::pTraits<Foam::complex>::max(VGREAT, VGREAT);
+
+const Foam::complex Foam::pTraits<Foam::complex>::rootMin
+(
+    -ROOTVGREAT, -ROOTVGREAT
+);
+
+const Foam::complex Foam::pTraits<Foam::complex>::rootMax
+(
+    ROOTVGREAT, ROOTVGREAT
+);
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::pTraits<Foam::complex>::pTraits(Istream& is)
+{
+    is >> p_;
+}
+
 
 Foam::complex::complex(Istream& is)
 {
@@ -42,13 +66,15 @@ Foam::complex::complex(Istream& is)
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
 Foam::word Foam::name(const complex& c)
 {
+    // Caution std::to_string(double) is locale sensitive!
     std::ostringstream buf;
-    buf << '(' << c.Re() << ',' << c.Im() << ')';
-    return buf.str();
+    buf << '(' << c.real() << ',' << c.imag() << ')';
+
+    return word(buf.str(), false);  // Needs no stripping
 }
 
 
@@ -56,17 +82,16 @@ Foam::word Foam::name(const complex& c)
 
 Foam::Istream& Foam::operator>>(Istream& is, complex& c)
 {
-    // Read beginning of complex
+    scalar r, i;
+
     is.readBegin("complex");
-
-    is  >> c.re >> c.im;
-
-    // Read end of complex
+    is >> r >> i;
     is.readEnd("complex");
 
-    // Check state of Istream
-    is.check("operator>>(Istream&, complex&)");
+    c.real(r);
+    c.imag(i);
 
+    is.check(FUNCTION_NAME);
     return is;
 }
 
@@ -74,7 +99,7 @@ Foam::Istream& Foam::operator>>(Istream& is, complex& c)
 Foam::Ostream& Foam::operator<<(Ostream& os, const complex& c)
 {
     os  << token::BEGIN_LIST
-        << c.re << token::SPACE << c.im
+        << c.real() << token::SPACE << c.imag()
         << token::END_LIST;
 
     return os;

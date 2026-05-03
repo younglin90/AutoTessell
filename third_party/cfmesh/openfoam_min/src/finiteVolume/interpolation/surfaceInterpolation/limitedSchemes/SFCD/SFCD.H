@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::SFCDLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    SFCD interpolation scheme based on phict obtained from the LimiterFunc
+    SFCD differencing scheme based on phict obtained from the LimiterFunc
     class.
 
     Used in conjunction with the template class LimitedScheme.
@@ -47,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class SFCDLimiter Declaration
+                           Class SFCDLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -77,7 +82,7 @@ public:
             faceFlux, phiP, phiN, gradcP, gradcN, d
         );
 
-        scalar limitPhict = min(max(phict, 0), 0.5);
+        scalar limitPhict = clamp(phict, scalar(0), scalar(0.5));
         return limitPhict/(1 - limitPhict);
     }
 };

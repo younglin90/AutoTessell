@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,23 +26,18 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "ISstream.H"
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 inline Foam::ISstream::ISstream
 (
-    istream& is,
-    const string& name,
-    const streamFormat format,
-    const versionNumber version,
-    const compressionType compression
+    std::istream& is,
+    const string& streamName,
+    IOstreamOption streamOpt
 )
 :
-    Istream(format, version, compression),
-    name_(name),
-    is_(is),
-    buf_(bufInitialCapacity)
+    Istream(streamOpt),
+    name_(streamName),
+    is_(is)
 {
     if (is_.good())
     {
@@ -48,7 +46,7 @@ inline Foam::ISstream::ISstream
     }
     else
     {
-        setState(is_.rdstate());
+        syncState();
     }
 }
 
@@ -58,11 +56,11 @@ inline Foam::ISstream::ISstream
 inline Foam::ISstream& Foam::ISstream::get(char& c)
 {
     is_.get(c);
-    setState(is_.rdstate());
+    syncState();
 
-    if (c == '\n')
+    if (c == '\n' && good())
     {
-        lineNumber_++;
+        ++lineNumber_;
     }
 
     return *this;
@@ -75,11 +73,41 @@ inline int Foam::ISstream::peek()
 }
 
 
-inline Foam::ISstream& Foam::ISstream::putback(const char& c)
+inline Foam::ISstream& Foam::ISstream::getLine(std::string& str, char delim)
+{
+    std::getline(is_, str, delim);
+    syncState();
+
+    // Unlike with ignore(), cannot use gcount() to test success
+    if (delim == '\n')
+    {
+        ++lineNumber_;
+    }
+
+    return *this;
+}
+
+
+inline std::streamsize Foam::ISstream::getLine(std::nullptr_t, char delim)
+{
+    is_.ignore(std::numeric_limits<std::streamsize>::max(), delim);
+    std::streamsize count = is_.gcount();
+    syncState();
+
+    if (delim == '\n' && count > 0)
+    {
+        ++lineNumber_;
+    }
+
+    return count;
+}
+
+
+inline Foam::ISstream& Foam::ISstream::putback(const char c)
 {
     if (c == '\n')
     {
-        lineNumber_--;
+        --lineNumber_;
     }
 
     if (!is_.putback(c))
@@ -87,7 +115,7 @@ inline Foam::ISstream& Foam::ISstream::putback(const char& c)
         setBad();
     }
 
-    setState(is_.rdstate());
+    syncState();
 
     return *this;
 }

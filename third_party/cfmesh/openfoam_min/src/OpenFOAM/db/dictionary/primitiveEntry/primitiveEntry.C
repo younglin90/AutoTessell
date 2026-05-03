@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,123 +31,208 @@ License
 #include "OSspecific.H"
 #include "stringOps.H"
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
-void Foam::primitiveEntry::append(const UList<token>& varTokens)
-{
-    forAll(varTokens, i)
-    {
-        newElmt(tokenIndex()++) = varTokens[i];
-    }
-}
-
-
-bool Foam::primitiveEntry::expandVariable
+//  Find the type/position of the ":-" or ":+" alternative values
+//  Returns 0, '-', '+' corresponding to not-found or ':-' or ':+'
+static inline char findParameterAlternative
 (
-    const variable& w,
-    const dictionary& dict
+    const std::string& s,
+    std::string::size_type& pos,
+    std::string::size_type endPos = std::string::npos
 )
 {
-    if (w.size() > 2 && w[0] == '$' && w[1] == token::BEGIN_BLOCK)
+    while (pos != std::string::npos)
     {
-        // Recursive substitution mode. Replace between {} with expansion.
-        string s(w(2, w.size() - 3));
-
-        // Substitute dictionary and environment variables. Do not allow
-        // empty substitutions.
-        stringOps::inplaceExpandEntry(s, dict, true, false);
-        variable newW(w);
-        newW.std::string::replace(1, newW.size() - 1, s);
-
-        return expandVariable(newW, dict);
-    }
-    else
-    {
-        string varName = w(1, w.size() - 1);
-
-        // Lookup the variable name in the given dictionary....
-        // Note: allow wildcards to match? For now disabled since following
-        // would expand internalField to wildcard match and not expected
-        // internalField:
-        //      internalField XXX;
-        //      boundaryField { ".*" {YYY;} movingWall {value $internalField;}
-        const entry* ePtr = dict.lookupScopedEntryPtr(varName, true, false);
-
-        // ...if defined append its tokens into this
-        if (ePtr)
+        pos = s.find(':', pos);
+        if (pos != std::string::npos)
         {
-            if (ePtr->isDict())
+            if (pos < endPos)
             {
-                append(ePtr->dict().tokens());
+                // in-range: check for '+' or '-' following the ':'
+                const char altType = s[pos+1];
+                if (altType == '+' || altType == '-')
+                {
+                    return altType;
+                }
+
+                ++pos;    // unknown/unsupported - continue at next position
             }
             else
             {
-                append(ePtr->stream());
+                // out-of-range: abort
+                pos = std::string::npos;
             }
+        }
+    }
+
+    return 0;
+}
+
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+bool Foam::primitiveEntry::expandVariable
+(
+    const string& varName,
+    const dictionary& dict
+)
+{
+    char altType = 0; // Type ('-' or '+') for ":-" or ":+" alternatives
+    word expanded;
+    string altValue;
+
+    // Any ${{ expr }} entries have been trapped and processed elsewhere
+
+    if (varName[0] == token::BEGIN_BLOCK && varName.size() > 1)
+    {
+        // Replace content between {} with string expansion and
+        // handle ${parameter:-word} or ${parameter:+word}
+
+        // Copy into a word without stripping
+        expanded.assign(varName, 1, varName.size()-2);
+
+        // Substitute dictionary and environment variables.
+        // - Allow environment.
+        // - No empty substitutions.
+        // - No sub-dictionary lookups
+
+        stringOps::inplaceExpand(expanded, dict, true, false, false);
+
+        // Position of ":-" or ":+" alternative values
+        std::string::size_type altPos = 0;
+
+        // Check for parameter:-word or parameter:+word
+        altType = findParameterAlternative(expanded, altPos);
+
+        if (altType)
+        {
+            altValue = expanded.substr(altPos + 2);
+            expanded.erase(altPos);
+        }
+
+        // Catch really bad expansions and let them die soon after.
+        // Eg, ${:-other} should not be allowed.
+        if (expanded.empty())
+        {
+            altType = 0;
+            altValue.clear();
+        }
+
+        // Fallthrough for further processing
+    }
+
+
+    // Lookup variable name in the given dictionary WITHOUT pattern matching.
+    // Having a pattern match means that in this example:
+    // {
+    //     internalField XXX;
+    //     boundaryField { ".*" {YYY;} movingWall {value $internalField;}
+    // }
+    // The $internalField would be matched by the ".*" !!!
+
+    // Recursive, non-patterns
+
+    const word& lookupName = (expanded.empty() ? varName : expanded);
+
+    const entry* eptr =
+        dict.findScoped(lookupName, keyType::LITERAL_RECURSIVE);
+
+    if (!eptr)
+    {
+        // Not found - revert to environment variable
+        // and parse into a series of tokens.
+
+        // We wish to fail if the environment variable returns
+        // an empty string and there is no alternative given.
+        //
+        // Always allow empty strings as alternative parameters,
+        // since the user provided them for a reason.
+
+        string str(Foam::getEnv(lookupName));
+
+        if (str.empty() ? (altType == '-') : (altType == '+'))
+        {
+            // Not found or empty:  use ":-" alternative value
+            // Found and not empty: use ":+" alternative value
+            str = std::move(altValue);
+        }
+        else if (str.empty())
+        {
+            FatalIOErrorInFunction(dict)
+                << "Illegal dictionary entry or environment variable name "
+                << lookupName << nl
+                << "Known dictionary entries: " << dict.toc() << nl
+                << exit(FatalIOError);
+
+            return false;
+        }
+
+        // Parse string into a series of tokens
+
+        tokenList toks(ITstream::parse(str));   // ASCII
+
+        ITstream::add_tokens(std::move(toks));  // Add at tokenIndex
+    }
+    else if (eptr->isDict())
+    {
+        // Found dictionary entry
+
+        tokenList toks(eptr->dict().tokens());
+
+        if (toks.empty() ? (altType == '-') : (altType == '+'))
+        {
+            // Not found or empty:  use ":-" alternative value
+            // Found and not empty: use ":+" alternative value
+
+            toks = ITstream::parse(altValue);   // ASCII
+        }
+
+        ITstream::add_tokens(std::move(toks));  // Add at tokenIndex
+    }
+    else
+    {
+        // Found primitive entry - copy tokens
+
+        if (eptr->stream().empty() ? (altType == '-') : (altType == '+'))
+        {
+            // Not found or empty:  use ":-" alternative value
+            // Found and not empty: use ":+" alternative value
+
+            tokenList toks(ITstream::parse(altValue));  // ASCII
+
+            ITstream::add_tokens(std::move(toks));  // Add at tokenIndex
         }
         else
         {
-            // Not in the dictionary - try an environment variable
-            string envStr = getEnv(varName);
-
-            if (envStr.empty())
-            {
-                FatalIOErrorInFunction
-                (
-                    dict
-                )   << "Unknown dictionary entry or environment variable name "
-                    << varName << endl << "Valid dictionary entries are "
-                    << dict.toc() << exit(FatalIOError);
-
-                return false;
-            }
-            append(tokenList(IStringStream('(' + envStr + ')')()));
+            ITstream::add_tokens(eptr->stream());   // Add at tokenIndex
         }
     }
+
     return true;
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::primitiveEntry::primitiveEntry
-(
-    const label keyLineNumber,
-    const keyType& key
-)
+Foam::primitiveEntry::primitiveEntry(const keyType& key)
 :
-    entry(key, keyLineNumber),
-    ITstream(key)
+    entry(key),
+    ITstream(Foam::zero{}, key)
 {}
 
 
-Foam::primitiveEntry::primitiveEntry(const keyType& key, const ITstream& is)
+Foam::primitiveEntry::primitiveEntry(const keyType& key, const token& tok)
 :
-    entry(key, is.lineNumber()),
-    ITstream(is)
-{
-    name() += '/' + keyword();
-}
+    entry(key),
+    ITstream(key, tokenList(Foam::one{}, tok))
+{}
 
 
-Foam::primitiveEntry::primitiveEntry
-(
-    const label keyLineNumber,
-    const keyType& key,
-    const ITstream& is
-)
+Foam::primitiveEntry::primitiveEntry(const keyType& key, token&& tok)
 :
-    entry(key, keyLineNumber),
-    ITstream(is)
-{
-    name() += '/' + keyword();
-}
-
-
-Foam::primitiveEntry::primitiveEntry(const keyType& key, const token& t)
-:
-    entry(key, t.lineNumber()),
-    ITstream(key, t)
+    entry(key),
+    ITstream(key, tokenList(Foam::one{}, std::move(tok)))
 {}
 
 
@@ -154,18 +242,7 @@ Foam::primitiveEntry::primitiveEntry
     const UList<token>& tokens
 )
 :
-    entry(key, tokens.size() ? tokens[0].lineNumber() : -1),
-    ITstream(key, tokens)
-{}
-
-
-Foam::primitiveEntry::primitiveEntry
-(
-    const keyType& key,
-    const List<token>& tokens
-)
-:
-    entry(key, tokens.size() ? tokens[0].lineNumber() : -1),
+    entry(key),
     ITstream(key, tokens)
 {}
 
@@ -176,32 +253,38 @@ Foam::primitiveEntry::primitiveEntry
     List<token>&& tokens
 )
 :
-    entry(key, tokens.size() ? tokens[0].lineNumber() : -1),
-    ITstream(key, move(tokens))
+    entry(key),
+    ITstream(key, std::move(tokens))
 {}
+
+
+Foam::primitiveEntry::primitiveEntry
+(
+    const keyType& key,
+    const ITstream& is
+)
+:
+    entry(key),
+    ITstream(is)
+{
+    ITstream::name() = fileName::concat(ITstream::name(), key, '/');
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-Foam::label Foam::primitiveEntry::endLineNumber() const
+Foam::ITstream* Foam::primitiveEntry::streamPtr() const noexcept
 {
-    const tokenList& tokens = *this;
-
-    if (tokens.empty())
-    {
-        return startLineNumber();
-    }
-    else
-    {
-        return tokens.last().lineNumber();
-    }
+    ITstream* ptr = const_cast<primitiveEntry*>(this);
+    ptr->seek(0);
+    return ptr;
 }
 
 
 Foam::ITstream& Foam::primitiveEntry::stream() const
 {
     ITstream& is = const_cast<primitiveEntry&>(*this);
-    is.rewind();
+    is.seek(0);
     return is;
 }
 

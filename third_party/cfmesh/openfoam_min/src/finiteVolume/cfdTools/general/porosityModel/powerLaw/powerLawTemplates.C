@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,17 +37,18 @@ void Foam::porosityModels::powerLaw::apply
     const vectorField& U
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
     const scalar C0 = C0_;
     const scalar C1m1b2 = (C1_ - 1.0)/2.0;
 
-    forAll(cells, i)
+    for (const label zonei : cellZoneIDs_)
     {
-        const label celli = cells[i];
+        const labelList& cells = mesh_.cellZones()[zonei];
 
-        Udiag[celli] +=
-            V[celli]*rho[celli]*C0*pow(magSqr(U[celli]), C1m1b2);
+        for (const label celli : cells)
+        {
+            Udiag[celli] +=
+                V[celli]*rho[celli]*C0*pow(magSqr(U[celli]), C1m1b2);
+        }
     }
 }
 
@@ -57,17 +61,18 @@ void Foam::porosityModels::powerLaw::apply
     const vectorField& U
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
     const scalar C0 = C0_;
     const scalar C1m1b2 = (C1_ - 1.0)/2.0;
 
-    forAll(cells, i)
+    for (const label zonei : cellZoneIDs_)
     {
-        const label celli = cells[i];
+        const labelList& cells = mesh_.cellZones()[zonei];
 
-        AU[celli] =
-            AU[celli] + I*(rho[celli]*C0*pow(magSqr(U[celli]), C1m1b2));
+        for (const label celli : cells)
+        {
+            AU[celli] =
+                AU[celli] + I*(rho[celli]*C0*pow(magSqr(U[celli]), C1m1b2));
+        }
     }
 }
 

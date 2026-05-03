@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class wallPolyPatch Declaration
+                      Class wallPolyPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class wallPolyPatch
@@ -65,7 +67,8 @@ public:
             const label size,
             const label start,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct from dictionary
@@ -74,7 +77,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct as copy, resetting the boundary mesh
@@ -88,6 +92,16 @@ public:
             const polyBoundaryMesh& bm,
             const label index,
             const label newSize,
+            const label newStart
+        );
+
+        //- Construct given the original patch and a map
+        wallPolyPatch
+        (
+            const wallPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
             const label newStart
         );
 
@@ -110,6 +124,22 @@ public:
             return autoPtr<polyPatch>
             (
                 new wallPolyPatch(*this, bm, index, newSize, newStart)
+            );
+        }
+
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
+        {
+            return autoPtr<polyPatch>
+            (
+                new wallPolyPatch(*this, bm, index, mapAddressing, newStart)
             );
         }
 };

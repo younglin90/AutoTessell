@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::SuperBeeLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    SuperBee interpolation scheme based on r obtained from the LimiterFunc
+    SuperBee differencing scheme based on r obtained from the LimiterFunc
     class.
 
     Used in conjunction with the template class LimitedScheme.

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "emptyFvsPatchField.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
+#include "surfaceMesh.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -35,7 +39,7 @@ Foam::emptyFvsPatchField<Type>::emptyFvsPatchField
     const DimensionedField<Type, surfaceMesh>& iF
 )
 :
-    fvsPatchField<Type>(p, iF, Field<Type>(0))
+    fvsPatchField<Type>(p, iF, Field<Type>())  // zero-sized patch field
 {}
 
 
@@ -47,14 +51,15 @@ Foam::emptyFvsPatchField<Type>::emptyFvsPatchField
     const dictionary& dict
 )
 :
-    fvsPatchField<Type>(p, iF, Field<Type>(0))
+    fvsPatchField<Type>(p, iF, Field<Type>())  // zero-sized patch field
 {
+    // Empty means empty, so no patchType override
+    // with fvsPatchFieldBase::readDict(dict);
+
     if (!isType<emptyFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "patch " << this->patch().index() << " not empty type. "
+        FatalIOErrorInFunction(dict)
+            << "patch " << this->patch().index() << " not empty type. "
             << "Patch type = " << p.type()
             << exit(FatalIOError);
     }
@@ -67,10 +72,10 @@ Foam::emptyFvsPatchField<Type>::emptyFvsPatchField
     const emptyFvsPatchField<Type>&,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper&
+    const fvPatchFieldMapper&
 )
 :
-    fvsPatchField<Type>(p, iF, Field<Type>(0))
+    fvsPatchField<Type>(p, iF, Field<Type>())  // zero-sized patch field
 {
     if (!isType<emptyFvPatch>(this->patch()))
     {
@@ -91,8 +96,28 @@ Foam::emptyFvsPatchField<Type>::emptyFvsPatchField
     const DimensionedField<Type, surfaceMesh>& iF
 )
 :
-    fvsPatchField<Type>(ptf.patch(), iF, Field<Type>(0))
+    fvsPatchField<Type>(ptf.patch(), iF, Field<Type>())  // zero-sized
 {}
+
+
+template<class Type>
+Foam::emptyFvsPatchField<Type>::emptyFvsPatchField
+(
+    const emptyFvsPatchField<Type>& ptf
+)
+:
+    emptyFvsPatchField<Type>(ptf, ptf.internalField())
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class Type>
+void Foam::emptyFvsPatchField<Type>::write(Ostream& os) const
+{
+    fvsPatchField<Type>::write(os);
+    // Never write "value"
+}
 
 
 // ************************************************************************* //

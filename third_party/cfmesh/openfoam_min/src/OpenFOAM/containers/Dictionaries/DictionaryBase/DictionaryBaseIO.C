@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,9 +24,6 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-    Reads the data description and data portions of a DictionaryBase File.
-
 \*---------------------------------------------------------------------------*/
 
 #include "DictionaryBase.H"
@@ -35,14 +35,10 @@ template<class IDLListType, class T>
 Foam::Ostream& Foam::operator<<
 (
     Ostream& os,
-    const DictionaryBase<IDLListType, T>& dict)
+    const DictionaryBase<IDLListType, T>& dict
+)
 {
-    for
-    (
-        typename IDLListType::const_iterator iter = dict.begin();
-        iter != dict.end();
-        ++iter
-    )
+    for (auto iter = dict.cbegin(); iter != dict.cend(); ++iter)
     {
         os << *iter;
 
@@ -54,7 +50,7 @@ Foam::Ostream& Foam::operator<<
                 << "Can't write entry for DictionaryBase"
                 << endl;
 
-            return os;
+            break;
         }
     }
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::limitedLinearLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    TVD limited linear interpolation scheme based on r obtained from the
+    TVD limited linear differencing scheme based on r obtained from the
     LimiterFunc class.
 
     Used in conjunction with the template class LimitedScheme.
@@ -73,7 +78,7 @@ public:
         }
 
         // Avoid the /0 when k_ = 0
-        twoByk_ = 2.0/max(k_, small);
+        twoByk_ = 2.0/max(k_, SMALL);
     }
 
     scalar limiter
@@ -92,7 +97,7 @@ public:
             faceFlux, phiP, phiN, gradcP, gradcN, d
         );
 
-        return max(min(twoByk_*r, 1), 0);
+        return clamp(twoByk_*r, zero_one{});
     }
 };
 

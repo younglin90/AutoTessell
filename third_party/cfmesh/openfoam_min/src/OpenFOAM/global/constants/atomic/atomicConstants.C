@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,7 +29,6 @@ License
 #include "universalConstants.H"
 #include "electromagneticConstants.H"
 #include "atomicConstants.H"
-
 #include "dimensionedConstants.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -37,70 +38,112 @@ namespace Foam
 namespace constant
 {
 
-const char* const atomic::group = "atomic";
-
-
-// Note: cannot use dimless etc. as they may not have been constructed yet
-
-const Foam::dimensionedScalar atomic::alpha
+// Note: cannot use dimless etc. since not guaranteed to be constructed
+defineDimensionedConstantWithDefault
 (
-    dimensionedConstant
+    atomic::group,
+    atomic::alpha,
+    dimensionedScalar
     (
-        atomic::group,
         "alpha",
         sqr(electromagnetic::e)
-       /(2*electromagnetic::epsilon0 *universal::h *universal::c)
-    )
-);
-
-
-const Foam::dimensionedScalar atomic::Rinf
-(
-    dimensionedConstant
-    (
-        atomic::group,
-        "Rinf",
-        sqr(atomic::alpha)*atomic::me*universal::c/(2*universal::h)
-    )
-);
-
-
-const Foam::dimensionedScalar atomic::a0
-(
-    dimensionedConstant
-    (
-        atomic::group,
-        "a0",
-        atomic::alpha/(4*mathematical::pi*atomic::Rinf)
-    )
-);
-
-
-const Foam::dimensionedScalar atomic::re
-(
-    dimensionedConstant
-    (
-        atomic::group,
-        "re",
-        sqr(electromagnetic::e)
        /(
-            4*mathematical::pi
+            dimensionedScalar("C", dimensionSet(0, 0, 0, 0, 0), 2.0)
+           *electromagnetic::epsilon0
+           *universal::h
+           *universal::c
+        )
+    ),
+    constantatomicalpha,
+    "alpha"
+);
+
+
+defineDimensionedConstantWithDefault
+(
+    atomic::group,
+    atomic::Rinf,
+    dimensionedScalar
+    (
+        "Rinf",
+        sqr(atomic::alpha)
+       *atomic::me
+       *universal::c
+       /(
+            Foam::dimensionedScalar
+            (
+                "C",
+                dimensionSet(0, 0, 0, 0, 0),
+                2.0
+            )
+           *universal::h
+        )
+    ),
+    constantatomicRinf,
+    "Rinf"
+);
+
+
+defineDimensionedConstantWithDefault
+(
+    atomic::group,
+    atomic::a0,
+    dimensionedScalar
+    (
+        "a0",
+        atomic::alpha
+       /(
+            Foam::dimensionedScalar
+            (
+                "C",
+                dimensionSet(0, 0, 0, 0, 0),
+                4.0*mathematical::pi
+            )
+           *atomic::Rinf
+        )
+    ),
+    constantatomica0,
+    "a0"
+);
+
+
+defineDimensionedConstantWithDefault
+(
+    atomic::group,
+    atomic::re,
+    dimensionedScalar
+    (
+        "re",
+        Foam::sqr(electromagnetic::e)
+       /(
+            Foam::dimensionedScalar
+            (
+                "C",
+                dimensionSet(0, 0, 0, 0, 0),
+                4.0*mathematical::pi
+            )
            *electromagnetic::epsilon0
            *atomic::me
-           *sqr(universal::c)
+           *Foam::sqr(universal::c)
         )
-    )
+    ),
+    constantatomicre,
+    "re"
 );
 
 
-const Foam::dimensionedScalar atomic::Eh
+defineDimensionedConstantWithDefault
 (
-    dimensionedConstant
+    atomic::group,
+    atomic::Eh,
+    dimensionedScalar
     (
-        atomic::group,
         "Eh",
-        2*atomic::Rinf*universal::h*universal::c
-    )
+        Foam::dimensionedScalar("C", dimensionSet(0, 0, 0, 0, 0), 2.0)
+       *atomic::Rinf*universal::h*universal::c
+    ),
+    constantatomicEh,
+    "Eh"
 );
 
 

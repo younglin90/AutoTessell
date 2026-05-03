@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,6 +28,14 @@ Class
 
 Description
     Internal class used by the VTKsurfaceFormat
+    Format is LEGACY_ASCII
+
+    \heading Output Options
+    \table
+        Property    | Description                       | Required | Default
+        format      | ascii or binary format            | no | ascii
+        precision   | Write precision in ascii          | no | same as IOstream
+    \endtable
 
 SourceFiles
     VTKsurfaceFormatCore.C
@@ -35,9 +45,9 @@ SourceFiles
 #ifndef VTKsurfaceFormatCore_H
 #define VTKsurfaceFormatCore_H
 
-#include "Ostream.H"
-#include "OFstream.H"
-#include "MeshedSurface.H"
+#include "point.H"
+#include "surfZone.H"
+#include "foamVtkOutputOptions.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,27 +57,42 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class VTKsurfaceFormatCore Declaration
+              Class fileFormats::VTKsurfaceFormatCore Declaration
 \*---------------------------------------------------------------------------*/
 
 class VTKsurfaceFormatCore
 {
 protected:
 
-    // Protected Member Functions
+    // Protected Static Member Functions
+
+        //- Extract format options (default format LEGACY_ASCII)
+        static vtk::outputOptions formatOptions
+        (
+            const dictionary& dict,
+            vtk::outputOptions opts = vtk::formatType::LEGACY_ASCII
+        );
 
         //- Write header information with points
         static void writeHeader
         (
-            Ostream&,
-            const pointField&
+            vtk::formatter& format,
+            const UList<point>& pts
         );
 
-        //- Write trailing information with zone information
-        static void writeTail(Ostream&, const UList<surfZone>&);
+        //- Write regions (zones) information as CellData
+        static void writeCellData
+        (
+            vtk::formatter& format,
+            const UList<surfZone>& zones
+        );
 
-        //- Write trailing information with zone Ids
-        static void writeTail(Ostream&, const labelUList& zoneIds);
+        //- Write regions (zones) information as CellData
+        static void writeCellData
+        (
+            vtk::formatter& format,
+            const labelUList& zoneIds
+        );
 };
 
 

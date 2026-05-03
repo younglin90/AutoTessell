@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +30,7 @@ Description
     A wide-character and a pointer to a wide-character string.
 
 SourceFiles
-    wcharIO.C
+    wchar.C
 
 See also
     http://en.wikipedia.org/wiki/UTF-8
@@ -36,8 +38,8 @@ See also
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef wchar_H
-#define wchar_H
+#ifndef Foam_primitives_wchar_H
+#define Foam_primitives_wchar_H
 
 #include <cwchar>
 #include <string>
@@ -47,19 +49,20 @@ See also
 namespace Foam
 {
 
+// Forward Declarations
 class Istream;
 class Ostream;
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
 //- Output wide character (Unicode) as UTF-8
-Ostream& operator<<(Ostream&, const wchar_t);
+Ostream& operator<<(Ostream& os, const wchar_t wc);
 
 //- Output wide character (Unicode) string as UTF-8
-Ostream& operator<<(Ostream&, const wchar_t*);
+Ostream& operator<<(Ostream& os, const wchar_t* wstr);
 
 //- Output wide character (Unicode) string as UTF-8
-Ostream& operator<<(Ostream&, const std::wstring&);
+Ostream& operator<<(Ostream& os, const std::wstring& wstr);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

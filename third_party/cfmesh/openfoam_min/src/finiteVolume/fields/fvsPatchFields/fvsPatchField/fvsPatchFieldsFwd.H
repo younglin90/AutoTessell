@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,8 +30,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvsPatchFieldsFwd_H
-#define fvsPatchFieldsFwd_H
+#ifndef Foam_fvsPatchFieldsFwd_H
+#define Foam_fvsPatchFieldsFwd_H
 
 #include "fieldTypes.H"
 
@@ -42,7 +44,6 @@ namespace Foam
 
 template<class Type> class fvsPatchField;
 
-typedef fvsPatchField<label> fvsPatchLabelField;
 typedef fvsPatchField<scalar> fvsPatchScalarField;
 typedef fvsPatchField<vector> fvsPatchVectorField;
 typedef fvsPatchField<sphericalTensor> fvsPatchSphericalTensorField;

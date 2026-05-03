@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "extrapolatedCalculatedFvPatchField.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -33,7 +36,7 @@ Foam::extrapolatedCalculatedFvPatchField<Type>::
 extrapolatedCalculatedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     calculatedFvPatchField<Type>(p, iF)
@@ -45,13 +48,13 @@ Foam::extrapolatedCalculatedFvPatchField<Type>::
 extrapolatedCalculatedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    calculatedFvPatchField<Type>(p, iF, dict, false)
+    calculatedFvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ)
 {
-    evaluate();
+    fvPatchField<Type>::extrapolateInternal();  // Zero-gradient patch values
 }
 
 
@@ -61,14 +64,23 @@ extrapolatedCalculatedFvPatchField
 (
     const extrapolatedCalculatedFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    calculatedFvPatchField<Type>(ptf, p, iF, mapper, false)
-{
-    mapper(*this, ptf, [&](){ return this->patchInternalField(); });
-}
+    calculatedFvPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::extrapolatedCalculatedFvPatchField<Type>::
+extrapolatedCalculatedFvPatchField
+(
+    const extrapolatedCalculatedFvPatchField<Type>& ptf
+)
+:
+    calculatedFvPatchField<Type>(ptf)
+{}
 
 
 template<class Type>
@@ -76,7 +88,7 @@ Foam::extrapolatedCalculatedFvPatchField<Type>::
 extrapolatedCalculatedFvPatchField
 (
     const extrapolatedCalculatedFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     calculatedFvPatchField<Type>(ptf, iF)
@@ -84,17 +96,6 @@ extrapolatedCalculatedFvPatchField
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-void Foam::extrapolatedCalculatedFvPatchField<Type>::map
-(
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
-)
-{
-    mapper(*this, ptf, [&](){ return this->patchInternalField(); });
-}
-
 
 template<class Type>
 void Foam::extrapolatedCalculatedFvPatchField<Type>::evaluate
@@ -107,7 +108,7 @@ void Foam::extrapolatedCalculatedFvPatchField<Type>::evaluate
         this->updateCoeffs();
     }
 
-    calculatedFvPatchField<Type>::operator==(this->patchInternalField());
+    fvPatchField<Type>::extrapolateInternal();  // Zero-gradient patch values
     calculatedFvPatchField<Type>::evaluate();
 }
 

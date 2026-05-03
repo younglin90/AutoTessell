@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,7 +44,7 @@ void Foam::pointConstraints::syncUntransformedData
     const indirectPrimitivePatch& cpp = gmd.coupledPatch();
     const labelList& meshPoints = cpp.meshPoints();
 
-    const distributionMap& slavesMap = gmd.globalCoPointSlavesMap();
+    const mapDistribute& slavesMap = gmd.globalCoPointSlavesMap();
     const labelListList& slaves = gmd.globalCoPointSlaves();
 
     List<Type> elems(slavesMap.constructSize());
@@ -88,10 +90,10 @@ void Foam::pointConstraints::syncUntransformedData
 template<class Type>
 void Foam::pointConstraints::setPatchFields
 (
-    PointField<Type>& pf
+    GeometricField<Type, pointPatchField, pointMesh>& pf
 )
 {
-    typename PointField<Type>::
+    typename GeometricField<Type, pointPatchField, pointMesh>::
         Boundary& pfbf = pf.boundaryFieldRef();
 
     forAll(pfbf, patchi)
@@ -110,7 +112,7 @@ void Foam::pointConstraints::setPatchFields
 template<class Type>
 void Foam::pointConstraints::constrainCorners
 (
-    PointField<Type>& pf
+    GeometricField<Type, pointPatchField, pointMesh>& pf
 ) const
 {
     forAll(patchPatchPointConstraintPoints_, pointi)
@@ -127,7 +129,7 @@ void Foam::pointConstraints::constrainCorners
 template<class Type>
 void Foam::pointConstraints::constrain
 (
-    PointField<Type>& pf,
+    GeometricField<Type, pointPatchField, pointMesh>& pf,
     const bool overrideFixedValue
 ) const
 {

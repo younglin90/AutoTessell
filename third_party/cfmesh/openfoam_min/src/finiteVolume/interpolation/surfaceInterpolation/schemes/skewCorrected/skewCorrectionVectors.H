@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +37,7 @@ SourceFiles
 #ifndef skewCorrectionVectors_H
 #define skewCorrectionVectors_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "fvMesh.H"
 #include "surfaceFields.H"
 
@@ -44,6 +46,7 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class fvMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -52,13 +55,18 @@ class fvMesh;
 
 class skewCorrectionVectors
 :
-    public DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        skewCorrectionVectors
-    >
+    public MeshObject<fvMesh, MoveableMeshObject, skewCorrectionVectors>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            fvMesh,
+            MoveableMeshObject,
+            skewCorrectionVectors
+        > MeshObject_type;
+
+
     // Private Data
 
         //- Is mesh skew
@@ -71,23 +79,15 @@ class skewCorrectionVectors
         void calcSkewCorrectionVectors();
 
 
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        skewCorrectionVectors
-    >;
-
-    // Protected Constructors
-
-        explicit skewCorrectionVectors(const fvMesh& mesh);
-
-
 public:
 
     TypeName("skewCorrectionVectors");
+
+
+    // Constructors
+
+        //- Construct given fvMesh
+        explicit skewCorrectionVectors(const fvMesh& mesh);
 
 
     //- Destructor

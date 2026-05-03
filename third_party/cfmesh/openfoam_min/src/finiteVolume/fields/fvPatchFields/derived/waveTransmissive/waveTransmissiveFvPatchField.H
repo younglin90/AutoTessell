@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::waveTransmissiveFvPatchField
+
+Group
+    grpOutletBoundaryConditions
 
 Description
     This boundary condition provides a wave transmissive outflow condition,
@@ -50,7 +55,7 @@ Usage
         Property     | Description             | Required    | Default value
         phi          | flux field name         | no          | phi
         rho          | density field name      | no          | rho
-        psi          | compressibility field name | no       | psi
+        psi          | compressibility field name | no       | thermo:psi
         gamma        | ratio of specific heats (Cp/Cv) | yes |
     \endtable
 
@@ -93,7 +98,7 @@ class waveTransmissiveFvPatchField
     public advectiveFvPatchField<Type>
 {
 
-    // Private Data
+    // Private data
 
         //- Name of the compressibility field used to calculate the wave speed
         word psiName_;
@@ -110,11 +115,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        waveTransmissiveFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         waveTransmissiveFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -124,37 +136,40 @@ public:
         (
             const waveTransmissiveFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         waveTransmissiveFvPatchField
         (
             const waveTransmissiveFvPatchField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         waveTransmissiveFvPatchField
         (
             const waveTransmissiveFvPatchField&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new waveTransmissiveFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -179,12 +194,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using advectiveFvPatchField<Type>::operator=;
 };
 
 

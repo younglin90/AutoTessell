@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,7 +34,18 @@ Foam::fixedFluxExtrapolatedPressureFvPatchScalarField::
 fixedFluxExtrapolatedPressureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    fixedFluxPressureFvPatchScalarField(p, iF)
+{}
+
+
+Foam::fixedFluxExtrapolatedPressureFvPatchScalarField::
+fixedFluxExtrapolatedPressureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -45,8 +58,8 @@ fixedFluxExtrapolatedPressureFvPatchScalarField
 (
     const fixedFluxExtrapolatedPressureFvPatchScalarField& ptf,
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedFluxPressureFvPatchScalarField(ptf, p, iF, mapper)
@@ -56,8 +69,18 @@ fixedFluxExtrapolatedPressureFvPatchScalarField
 Foam::fixedFluxExtrapolatedPressureFvPatchScalarField::
 fixedFluxExtrapolatedPressureFvPatchScalarField
 (
+    const fixedFluxExtrapolatedPressureFvPatchScalarField& wbppsf
+)
+:
+    fixedFluxPressureFvPatchScalarField(wbppsf)
+{}
+
+
+Foam::fixedFluxExtrapolatedPressureFvPatchScalarField::
+fixedFluxExtrapolatedPressureFvPatchScalarField
+(
     const fixedFluxExtrapolatedPressureFvPatchScalarField& wbppsf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedFluxPressureFvPatchScalarField(wbppsf, iF)

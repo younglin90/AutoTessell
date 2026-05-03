@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,7 +33,7 @@ template<class Type>
 Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     cyclicFvPatchField<Type>(p, iF)
@@ -41,22 +43,10 @@ Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
 template<class Type>
 Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
 (
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    cyclicFvPatchField<Type>(p, iF, dict)
-{}
-
-
-template<class Type>
-Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
-(
     const cyclicSlipFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     cyclicFvPatchField<Type>(ptf, p, iF, mapper)
@@ -66,8 +56,30 @@ Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
 template<class Type>
 Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
 (
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    cyclicFvPatchField<Type>(p, iF, dict)  // needValue (evaluate) = true
+{}
+
+
+template<class Type>
+Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
+(
+    const cyclicSlipFvPatchField<Type>& ptf
+)
+:
+    cyclicFvPatchField<Type>(ptf)
+{}
+
+
+template<class Type>
+Foam::cyclicSlipFvPatchField<Type>::cyclicSlipFvPatchField
+(
     const cyclicSlipFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     cyclicFvPatchField<Type>(ptf, iF)

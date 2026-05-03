@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,8 @@ License
 
 #include "LduMatrix.H"
 #include "diagTensorField.H"
-#include "Residuals.H"
+#include "profiling.H"
+#include "PrecisionAdaptor.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -54,29 +58,34 @@ void Foam::fvMatrix<Type>::setComponentReference
 
 
 template<class Type>
-Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solve
+Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregatedOrCoupled
 (
     const dictionary& solverControls
 )
 {
+    word regionName;
+    if (psi_.mesh().name() != polyMesh::defaultRegion)
+    {
+        regionName = psi_.mesh().name() + "::";
+    }
+    addProfiling(solve, "fvMatrix::solve.", regionName, psi_.name());
+
     if (debug)
     {
-        Info(this->mesh().comm())
-            << "fvMatrix<Type>::solve(const dictionary& solverControls) : "
+        Info.masterStream(this->mesh().comm())
+            << "fvMatrix<Type>::solveSegregatedOrCoupled"
+               "(const dictionary& solverControls) : "
                "solving fvMatrix<Type>"
             << endl;
     }
 
-    label maxIter = -1;
-    if (solverControls.readIfPresent("maxIter", maxIter))
+    // Do not solve if maxIter == 0
+    if (solverControls.getOrDefault<label>("maxIter", -1) == 0)
     {
-        if (maxIter == 0)
-        {
-            return SolverPerformance<Type>();
-        }
+        return SolverPerformance<Type>();
     }
 
-    word type(solverControls.lookupOrDefault<word>("type", "segregated"));
+    word type(solverControls.getOrDefault<word>("type", "segregated"));
 
     if (type == "segregated")
     {
@@ -88,10 +97,8 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solve
     }
     else
     {
-        FatalIOErrorInFunction
-        (
-            solverControls
-        )   << "Unknown type " << type
+        FatalIOErrorInFunction(solverControls)
+            << "Unknown type " << type
             << "; currently supported solver types are segregated and coupled"
             << exit(FatalIOError);
 
@@ -106,17 +113,31 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregated
     const dictionary& solverControls
 )
 {
+    if (useImplicit_)
+    {
+        FatalErrorInFunction
+            << "Implicit option is not allowed for type: " << Type::typeName
+            << exit(FatalError);
+    }
+
     if (debug)
     {
-        Info(this->mesh().comm())
+        Info.masterStream(this->mesh().comm())
             << "fvMatrix<Type>::solveSegregated"
                "(const dictionary& solverControls) : "
                "solving fvMatrix<Type>"
             << endl;
     }
 
-    VolField<Type>& psi =
-       const_cast<VolField<Type>&>(psi_);
+    const int logLevel =
+        solverControls.getOrDefault<int>
+        (
+            "log",
+            SolverPerformance<Type>::debug
+        );
+
+    auto& psi =
+        const_cast<GeometricField<Type, fvPatchField, volMesh>&>(psi_);
 
     SolverPerformance<Type> solverPerfVec
     (
@@ -165,23 +186,33 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregated
         // Use the initMatrixInterfaces and updateMatrixInterfaces to correct
         // bouCoeffsCmpt for the explicit part of the coupled boundary
         // conditions
-        initMatrixInterfaces
-        (
-            bouCoeffsCmpt,
-            interfaces,
-            psiCmpt,
-            sourceCmpt,
-            cmpt
-        );
+        {
+            PrecisionAdaptor<solveScalar, scalar> sourceCmpt_ss(sourceCmpt);
+            ConstPrecisionAdaptor<solveScalar, scalar> psiCmpt_ss(psiCmpt);
 
-        updateMatrixInterfaces
-        (
-            bouCoeffsCmpt,
-            interfaces,
-            psiCmpt,
-            sourceCmpt,
-            cmpt
-        );
+            const label startRequest = UPstream::nRequests();
+
+            initMatrixInterfaces
+            (
+                true,
+                bouCoeffsCmpt,
+                interfaces,
+                psiCmpt_ss(),
+                sourceCmpt_ss.ref(),
+                cmpt
+            );
+
+            updateMatrixInterfaces
+            (
+                true,
+                bouCoeffsCmpt,
+                interfaces,
+                psiCmpt_ss(),
+                sourceCmpt_ss.ref(),
+                cmpt,
+                startRequest
+            );
+        }
 
         solverPerformance solverPerf;
 
@@ -196,9 +227,9 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregated
             solverControls
         )->solve(psiCmpt, sourceCmpt, cmpt);
 
-        if (SolverPerformance<Type>::debug)
+        if (logLevel)
         {
-            solverPerf.print(Info(this->mesh().comm()));
+            solverPerf.print(Info.masterStream(this->mesh().comm()));
         }
 
         solverPerfVec.replace(cmpt, solverPerf);
@@ -210,7 +241,7 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregated
 
     psi.correctBoundaryConditions();
 
-    Residuals<Type>::append(psi.mesh(), solverPerfVec);
+    psi.mesh().data().setSolverPerformance(psi.name(), solverPerfVec);
 
     return solverPerfVec;
 }
@@ -224,15 +255,22 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveCoupled
 {
     if (debug)
     {
-        Info(this->mesh().comm())
+        Info.masterStream(this->mesh().comm())
             << "fvMatrix<Type>::solveCoupled"
                "(const dictionary& solverControls) : "
                "solving fvMatrix<Type>"
             << endl;
     }
 
-    VolField<Type>& psi =
-       const_cast<VolField<Type>&>(psi_);
+    const int logLevel =
+        solverControls.getOrDefault<int>
+        (
+            "log",
+            SolverPerformance<Type>::debug
+        );
+
+    auto& psi =
+        const_cast<GeometricField<Type, fvPatchField, volMesh>&>(psi_);
 
     LduMatrix<Type, scalar, scalar> coupledMatrix(psi.mesh());
     coupledMatrix.diag() = diag();
@@ -263,16 +301,33 @@ Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveCoupled
         coupledMatrixSolver->solve(psi)
     );
 
-    if (SolverPerformance<Type>::debug)
+    if (logLevel)
     {
-        solverPerf.print(Info(this->mesh().comm()));
+        solverPerf.print(Info.masterStream(this->mesh().comm()));
     }
 
     psi.correctBoundaryConditions();
 
-    Residuals<Type>::append(psi.mesh(), solverPerf);
+    psi.mesh().data().setSolverPerformance(psi.name(), solverPerf);
 
     return solverPerf;
+}
+
+
+template<class Type>
+Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solveSegregatedOrCoupled()
+{
+    return this->solveSegregatedOrCoupled(solverDict());
+}
+
+
+template<class Type>
+Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solve
+(
+    const dictionary& solverControls
+)
+{
+    return psi_.mesh().solve(*this, solverControls);
 }
 
 
@@ -280,75 +335,36 @@ template<class Type>
 Foam::autoPtr<typename Foam::fvMatrix<Type>::fvSolver>
 Foam::fvMatrix<Type>::solver()
 {
-    return solver
-    (
-        psi_.mesh().solution().solverDict
-        (
-            psi_.select
-            (
-                !psi_.mesh().schemes().steady()
-             && solutionControl::finalIteration(psi_.mesh())
-            )
-        )
-    );
+    return solver(solverDict());
 }
 
 
 template<class Type>
 Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::fvSolver::solve()
 {
-    return solve
-    (
-        fvMat_.psi_.mesh().solution().solverDict
-        (
-            fvMat_.psi_.select
-            (
-                !fvMat_.psi_.mesh().schemes().steady()
-             && solutionControl::finalIteration(fvMat_.psi_.mesh())
-            )
-        )
-    );
+    return solve(fvMat_.solverDict());
 }
 
 
 template<class Type>
 Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solve(const word& name)
 {
-    return solve
-    (
-        psi_.mesh().solution().solverDict
-        (
-            !psi_.mesh().schemes().steady()
-         && solutionControl::finalIteration(psi_.mesh())
-          ? word(name + "Final")
-          : name
-        )
-    );
+    return this->solve(solverDict(name));
 }
 
 
 template<class Type>
 Foam::SolverPerformance<Type> Foam::fvMatrix<Type>::solve()
 {
-    return solve
-    (
-        psi_.mesh().solution().solverDict
-        (
-            psi_.select
-            (
-                !psi_.mesh().schemes().steady()
-             && solutionControl::finalIteration(psi_.mesh())
-            )
-        )
-    );
+    return this->solve(solverDict());
 }
 
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::fvMatrix<Type>::residual() const
 {
-    tmp<Field<Type>> tres(new Field<Type>(source_));
-    Field<Type>& res = tres.ref();
+    auto tres = tmp<Field<Type>>::New(source_);
+    auto& res = tres.ref();
 
     addBoundarySource(res);
 
@@ -357,7 +373,7 @@ Foam::tmp<Foam::Field<Type>> Foam::fvMatrix<Type>::residual() const
     {
         scalarField psiCmpt(psi_.primitiveField().component(cmpt));
 
-        scalarField boundaryDiagCmpt(psi_.size(), 0.0);
+        scalarField boundaryDiagCmpt(psi_.size(), Zero);
         addBoundaryDiag(boundaryDiagCmpt, cmpt);
 
         FieldField<Field, scalar> bouCoeffsCmpt
@@ -380,53 +396,6 @@ Foam::tmp<Foam::Field<Type>> Foam::fvMatrix<Type>::residual() const
     }
 
     return tres;
-}
-
-
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::SolverPerformance<Type> Foam::solve
-(
-    fvMatrix<Type>& fvm,
-    const word& name
-)
-{
-    return fvm.solve(name);
-}
-
-
-template<class Type>
-Foam::SolverPerformance<Type> Foam::solve
-(
-    const tmp<fvMatrix<Type>>& tfvm,
-    const word& name
-)
-{
-    SolverPerformance<Type> solverPerf =
-        const_cast<fvMatrix<Type>&>(tfvm()).solve(name);
-
-    tfvm.clear();
-
-    return solverPerf;
-}
-
-
-template<class Type>
-Foam::SolverPerformance<Type> Foam::solve(fvMatrix<Type>& fvm)
-{
-    return fvm.solve();
-}
-
-template<class Type>
-Foam::SolverPerformance<Type> Foam::solve(const tmp<fvMatrix<Type>>& tfvm)
-{
-    SolverPerformance<Type> solverPerf =
-        const_cast<fvMatrix<Type>&>(tfvm()).solve();
-
-    tfvm.clear();
-
-    return solverPerf;
 }
 
 

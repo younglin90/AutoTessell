@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +28,7 @@ Class
 
 Description
     Class to generate weighting factors for the filteredLinear3V
-    interpolation scheme.
+    differencing scheme.
 
     The aim is to remove high-frequency modes with "staggering"
     characteristics from vector fields by comparing the face gradient in
@@ -51,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class filteredLinear3VLimiter Declaration
+                 Class filteredLinear3VLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -59,7 +61,7 @@ class filteredLinear3VLimiter
 :
     public LimiterFunc
 {
-    // Private Data
+    // Private data
 
         // Scaling coefficient for the gradient ratio,
         // 0 = linear
@@ -105,10 +107,10 @@ public:
         scalar dN = 2*(dfV & (d & gradcN));
 
         // Calculate the limiter
-        scalar limiter = 1 - k_*(dN - df)*(dP - df)/max(sqr(dN + dP), small);
+        scalar limiter = 1 - k_*(dN - df)*(dP - df)/max(sqr(dN + dP), SMALL);
 
         // Limit the limiter between linear and upwind
-        return max(min(limiter, 1), 0);
+        return clamp(limiter, zero_one{});
     }
 };
 

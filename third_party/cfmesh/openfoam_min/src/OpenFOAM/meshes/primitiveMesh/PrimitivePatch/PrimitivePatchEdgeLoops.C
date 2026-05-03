@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,33 +32,32 @@ Description
 
 #include "PrimitivePatch.H"
 
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcEdgeLoops() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcEdgeLoops() const
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating boundary edge loops" << endl;
-    }
+    DebugInFunction << "Calculating boundary edge loops" << endl;
 
     if (edgeLoopsPtr_)
     {
-        // it is considered an error to attempt to recalculate
-        // if already allocated
+        // An error to recalculate if already allocated
         FatalErrorInFunction
             << "edge loops already calculated"
             << abort(FatalError);
     }
 
     const edgeList& patchEdges = edges();
-    label nIntEdges = nInternalEdges();
-    label nBdryEdges = patchEdges.size() - nIntEdges;
+    const label nIntEdges = nInternalEdges();
+    const label nBdryEdges = (patchEdges.size() - nIntEdges);
+
+    // Size return list plenty big
+    edgeLoopsPtr_.reset(new labelListList(nBdryEdges));
+    auto& edgeLoops = *edgeLoopsPtr_;
 
     if (nBdryEdges == 0)
     {
-        edgeLoopsPtr_ = new labelListList(0);
         return;
     }
 
@@ -66,84 +68,63 @@ void Foam::PrimitivePatch<FaceList, PointField>::calcEdgeLoops() const
     // Walk point-edge-point and assign loop number
     //
 
-    // Loop per (boundary) edge.
-    labelList loopNumber(nBdryEdges, -1);
+    // Temporary storage for vertices of current loop
+    DynamicList<label> loop(nBdryEdges);
 
-    // Size return list plenty big
-    edgeLoopsPtr_ = new labelListList(nBdryEdges);
-    labelListList& edgeLoops = *edgeLoopsPtr_;
+    // In a loop? - per boundary edge
+    boolList unvisited(nBdryEdges, true);
 
+    // Current loop number
+    label numLoops = 0;
 
-    // Current loop number.
-    label loopI = 0;
-
-    while (true)
+    // Walk all boundary edges not yet in a loop
+    for
+    (
+        label bndEdgei = -1;
+        (bndEdgei = unvisited.find(true)) >= 0;
+        /*nil*/
+    )
     {
-        // Find edge not yet given a loop number.
-        label currentEdgeI = -1;
-
-        for (label edgeI = nIntEdges; edgeI < patchEdges.size(); edgeI++)
-        {
-            if (loopNumber[edgeI-nIntEdges] == -1)
-            {
-                currentEdgeI = edgeI;
-                break;
-            }
-        }
-
-        if (currentEdgeI == -1)
-        {
-            // Did not find edge not yet assigned a loop number so done all.
-            break;
-        }
-
-        // Temporary storage for vertices of current loop
-        DynamicList<label> loop(nBdryEdges);
+        label currentEdgei = (bndEdgei + nIntEdges);
 
         // Walk from first all the way round, assigning loops
-        label currentVertI = patchEdges[currentEdgeI].start();
+        label currentVerti = patchEdges[currentEdgei].first();
+
+        loop.clear();
 
         do
         {
-            loop.append(currentVertI);
+            loop.push_back(currentVerti);
 
-            loopNumber[currentEdgeI - nIntEdges] = loopI;
+            unvisited[currentEdgei - nIntEdges] = false;
 
             // Step to next vertex
-            currentVertI = patchEdges[currentEdgeI].otherVertex(currentVertI);
+            currentVerti = patchEdges[currentEdgei].otherVertex(currentVerti);
 
             // Step to next (unmarked, boundary) edge.
-            const labelList& curEdges = patchPointEdges[currentVertI];
+            currentEdgei = -1;
 
-            currentEdgeI = -1;
-
-            forAll(curEdges, pI)
+            for (const label edgei : patchPointEdges[currentVerti])
             {
-                label edgeI = curEdges[pI];
-
-                if (edgeI >= nIntEdges && (loopNumber[edgeI - nIntEdges] == -1))
+                if (edgei >= nIntEdges && unvisited[edgei - nIntEdges])
                 {
-                    // Unassigned boundary edge.
-                    currentEdgeI = edgeI;
-
+                    // Unvisited boundary edge
+                    currentEdgei = edgei;
                     break;
                 }
             }
         }
-        while (currentEdgeI != -1);
+        while (currentEdgei != -1);
 
-        // Done all for current loop. Transfer to edgeLoops.
-        edgeLoops[loopI].transfer(loop);
+        // Done all for current loop - copy to edgeLoops
+        edgeLoops[numLoops] = loop;
 
-        loopI++;
+        ++numLoops;
     }
 
-    edgeLoops.setSize(loopI);
+    edgeLoops.resize(numLoops);
 
-    if (debug)
-    {
-        Info<< "    Finished." << endl;
-    }
+    DebugInFunction << "Calculated boundary edge loops" << nl;
 }
 
 

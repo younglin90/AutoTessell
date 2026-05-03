@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,50 +35,59 @@ License
 template<class Type>
 void Foam::processorLduInterface::send
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     const UList<Type>& f
 ) const
 {
-    label nBytes = f.byteSize();
+    const label nBytes = f.byteSize();
 
     if
     (
-        commsType == Pstream::commsTypes::blocking
-     || commsType == Pstream::commsTypes::scheduled
+        commsType == UPstream::commsTypes::buffered
+     || commsType == UPstream::commsTypes::scheduled
     )
     {
-        OPstream::write
+        UOPstream::write
         (
             commsType,
             neighbProcNo(),
-            reinterpret_cast<const char*>(f.begin()),
+            f.cdata_bytes(),
             nBytes,
             tag(),
             comm()
         );
     }
-    else if (commsType == Pstream::commsTypes::nonBlocking)
+    else if (commsType == UPstream::commsTypes::nonBlocking)
     {
-        resizeBuf(receiveBuf_, nBytes);
+        resizeBuf(byteSendBuf_, nBytes);
+        std::memcpy
+        (
+            static_cast<void*>(byteSendBuf_.data()), f.cdata(), nBytes
+        );
 
-        IPstream::read
+        resizeBuf(byteRecvBuf_, nBytes);
+
+        if (!nBytes)
+        {
+            // Can skip empty messages
+            return;
+        }
+
+        UIPstream::read
         (
             commsType,
             neighbProcNo(),
-            receiveBuf_.begin(),
+            byteRecvBuf_.data(),
             nBytes,
             tag(),
             comm()
         );
 
-        resizeBuf(sendBuf_, nBytes);
-        memcpy(sendBuf_.begin(), f.begin(), nBytes);
-
-        OPstream::write
+        UOPstream::write
         (
             commsType,
             neighbProcNo(),
-            sendBuf_.begin(),
+            byteSendBuf_.cdata(),
             nBytes,
             tag(),
             comm()
@@ -93,29 +105,34 @@ void Foam::processorLduInterface::send
 template<class Type>
 void Foam::processorLduInterface::receive
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     UList<Type>& f
 ) const
 {
+    const label nBytes = f.byteSize();
+
     if
     (
-        commsType == Pstream::commsTypes::blocking
-     || commsType == Pstream::commsTypes::scheduled
+        commsType == UPstream::commsTypes::buffered
+     || commsType == UPstream::commsTypes::scheduled
     )
     {
-        IPstream::read
+        UIPstream::read
         (
             commsType,
             neighbProcNo(),
-            reinterpret_cast<char*>(f.begin()),
-            f.byteSize(),
+            f.data_bytes(),
+            nBytes,
             tag(),
             comm()
         );
     }
-    else if (commsType == Pstream::commsTypes::nonBlocking)
+    else if (commsType == UPstream::commsTypes::nonBlocking)
     {
-        memcpy(f.begin(), receiveBuf_.begin(), f.byteSize());
+        std::memcpy
+        (
+            static_cast<void*>(f.data()), byteRecvBuf_.cdata(), nBytes
+        );
     }
     else
     {
@@ -129,35 +146,44 @@ void Foam::processorLduInterface::receive
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::processorLduInterface::receive
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     const label size
 ) const
 {
-    tmp<Field<Type>> tf(new Field<Type>(size));
-    receive(commsType, tf.ref());
-    return tf;
+    auto tfld = tmp<Field<Type>>::New(size);
+    receive(commsType, tfld.ref());
+    return tfld;
 }
 
 
 template<class Type>
 void Foam::processorLduInterface::compressedSend
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     const UList<Type>& f
 ) const
 {
-    if (sizeof(scalar) != sizeof(float) && Pstream::floatTransfer && f.size())
+    if
+    (
+        f.size()
+     && UPstream::floatTransfer
+     && (!std::is_integral<Type>::value && sizeof(scalar) != sizeof(float))
+    )
     {
-        static const label nCmpts = sizeof(Type)/sizeof(scalar);
-        label nm1 = (f.size() - 1)*nCmpts;
-        label nlast = sizeof(Type)/sizeof(float);
-        label nFloats = nm1 + nlast;
-        label nBytes = nFloats*sizeof(float);
+        static const label nCmpts =
+        (
+            // Placeholder value for unusable template instantiation
+            std::is_integral<Type>::value
+          ? 1
+          : sizeof(Type)/sizeof(scalar)
+        );
+        const label nm1 = (f.size() - 1)*nCmpts;
+        const label nBytes = f.size()*nCmpts*sizeof(float);
 
-        const scalar *sArray = reinterpret_cast<const scalar*>(f.begin());
+        const scalar *sArray = reinterpret_cast<const scalar*>(f.cdata());
         const scalar *slast = &sArray[nm1];
-        resizeBuf(sendBuf_, nBytes);
-        float *fArray = reinterpret_cast<float*>(sendBuf_.begin());
+        resizeBuf(byteSendBuf_, nBytes);
+        float *fArray = reinterpret_cast<float*>(byteSendBuf_.data());
 
         for (label i=0; i<nm1; i++)
         {
@@ -168,39 +194,39 @@ void Foam::processorLduInterface::compressedSend
 
         if
         (
-            commsType == Pstream::commsTypes::blocking
-         || commsType == Pstream::commsTypes::scheduled
+            commsType == UPstream::commsTypes::buffered
+         || commsType == UPstream::commsTypes::scheduled
         )
         {
-            OPstream::write
+            UOPstream::write
             (
                 commsType,
                 neighbProcNo(),
-                sendBuf_.begin(),
+                byteSendBuf_.cdata(),
                 nBytes,
                 tag(),
                 comm()
             );
         }
-        else if (commsType == Pstream::commsTypes::nonBlocking)
+        else if (commsType == UPstream::commsTypes::nonBlocking)
         {
-            resizeBuf(receiveBuf_, nBytes);
+            resizeBuf(byteRecvBuf_, nBytes);
 
-            IPstream::read
+            UIPstream::read
             (
                 commsType,
                 neighbProcNo(),
-                receiveBuf_.begin(),
+                byteRecvBuf_.data(),
                 nBytes,
                 tag(),
                 comm()
             );
 
-            OPstream::write
+            UOPstream::write
             (
                 commsType,
                 neighbProcNo(),
-                sendBuf_.begin(),
+                byteSendBuf_.cdata(),
                 nBytes,
                 tag(),
                 comm()
@@ -219,40 +245,50 @@ void Foam::processorLduInterface::compressedSend
     }
 }
 
+
 template<class Type>
 void Foam::processorLduInterface::compressedReceive
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     UList<Type>& f
 ) const
 {
-    if (sizeof(scalar) != sizeof(float) && Pstream::floatTransfer && f.size())
+    if
+    (
+        f.size()
+     && UPstream::floatTransfer
+     && (!std::is_integral<Type>::value && sizeof(scalar) != sizeof(float))
+    )
     {
-        static const label nCmpts = sizeof(Type)/sizeof(scalar);
-        label nm1 = (f.size() - 1)*nCmpts;
-        label nlast = sizeof(Type)/sizeof(float);
-        label nFloats = nm1 + nlast;
-        label nBytes = nFloats*sizeof(float);
+        static const label nCmpts =
+        (
+            // Placeholder value for unusable template instantiation
+            std::is_integral<Type>::value
+          ? 1
+          : sizeof(Type)/sizeof(scalar)
+        );
+        const label nm1 = (f.size() - 1)*nCmpts;
+        const label nBytes = f.size()*nCmpts*sizeof(float);
 
         if
         (
-            commsType == Pstream::commsTypes::blocking
-         || commsType == Pstream::commsTypes::scheduled
+            commsType == UPstream::commsTypes::buffered
+         || commsType == UPstream::commsTypes::scheduled
         )
         {
-            resizeBuf(receiveBuf_, nBytes);
+            resizeBuf(byteRecvBuf_, nBytes);
 
-            IPstream::read
+            UIPstream::read
             (
                 commsType,
                 neighbProcNo(),
-                receiveBuf_.begin(),
+                byteRecvBuf_.data(),
                 nBytes,
                 tag(),
                 comm()
             );
         }
-        else if (commsType != Pstream::commsTypes::nonBlocking)
+        else if (commsType != UPstream::commsTypes::nonBlocking)
         {
             FatalErrorInFunction
                 << "Unsupported communications type " << int(commsType)
@@ -260,9 +296,9 @@ void Foam::processorLduInterface::compressedReceive
         }
 
         const float *fArray =
-            reinterpret_cast<const float*>(receiveBuf_.begin());
+            reinterpret_cast<const float*>(byteRecvBuf_.cdata());
         f.last() = reinterpret_cast<const Type&>(fArray[nm1]);
-        scalar *sArray = reinterpret_cast<scalar*>(f.begin());
+        scalar *sArray = reinterpret_cast<scalar*>(f.data());
         const scalar *slast = &sArray[nm1];
 
         for (label i=0; i<nm1; i++)
@@ -276,16 +312,17 @@ void Foam::processorLduInterface::compressedReceive
     }
 }
 
+
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::processorLduInterface::compressedReceive
 (
-    const Pstream::commsTypes commsType,
+    const UPstream::commsTypes commsType,
     const label size
 ) const
 {
-    tmp<Field<Type>> tf(new Field<Type>(size));
-    compressedReceive(commsType, tf.ref());
-    return tf;
+    auto tfld = tmp<Field<Type>>::New(size);
+    compressedReceive(commsType, tfld.ref());
+    return tfld;
 }
 
 

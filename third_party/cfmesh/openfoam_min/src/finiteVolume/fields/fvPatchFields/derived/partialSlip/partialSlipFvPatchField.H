@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +27,22 @@ License
 Class
     Foam::partialSlipFvPatchField
 
+Group
+    grpWallBoundaryConditions grpGenericBoundaryConditions
+
 Description
-    This boundary condition provides a partial slip condition.  The amount of
-    slip is controlled by a user-supplied field.
+    This boundary condition provides a partial slip condition.
+    The amount of slip is controlled by a user-supplied field.
+
+    The "value" entry is NO_READ, optional write.
 
 Usage
     \table
-        Property      | Description             | Required    | Default value
-        valueFraction | fraction of value used for boundary [0-1] | yes |
+      Property      | Description                     | Reqd | Default
+      type          | Type name: partialSlip          | yes  | -
+      refValue      | Reference value at zero slip    | no   | 0
+      valueFraction | Fraction of refValue used for boundary [0-1] | yes |
+      writeValue    | Output patch value (eg, ParaView) | no | false
     \endtable
 
     Example of the boundary condition specification:
@@ -39,8 +50,8 @@ Usage
     <patchName>
     {
         type            partialSlip;
+        refValue        uniform 0.001;
         valueFraction   uniform 0.1;
-        value           uniform 0;
     }
     \endverbatim
 
@@ -52,8 +63,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef partialSlipFvPatchField_H
-#define partialSlipFvPatchField_H
+#ifndef Foam_partialSlipFvPatchField_H
+#define Foam_partialSlipFvPatchField_H
 
 #include "transformFvPatchField.H"
 
@@ -63,7 +74,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class partialSlipFvPatchField Declaration
+                  Class partialSlipFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -71,22 +82,20 @@ class partialSlipFvPatchField
 :
     public transformFvPatchField<Type>
 {
+    //- The parent boundary condition type
+    typedef transformFvPatchField<Type> parent_bctype;
+
+
     // Private Data
+
+        //- Reference value
+        Field<Type> refValue_;
 
         //- Fraction (0-1) of value used for boundary condition
         scalarField valueFraction_;
 
-
-protected:
-
-    // Protected functions
-
-        //- Construct from patch and internal field
-        partialSlipFvPatchField
-        (
-            const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
-        );
+        //- Flag to output patch values (e.g. for ParaView)
+        bool writeValue_;
 
 
 public:
@@ -97,68 +106,78 @@ public:
 
     // Constructors
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch and internal field
         partialSlipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&
+        );
+
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
+        partialSlipFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given partialSlipFvPatchField onto a new patch
+        //- Construct by mapping given partialSlip patch field
+        //- onto a new patch
         partialSlipFvPatchField
         (
             const partialSlipFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        partialSlipFvPatchField(const partialSlipFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        partialSlipFvPatchField
+        (
+            const partialSlipFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         partialSlipFvPatchField
         (
             const partialSlipFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new partialSlipFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
+        //- False: this patch field is not altered by assignment
+        virtual bool assignable() const { return false; }
 
-            //- Return false: this patch field is not altered by assignment
-            virtual bool assignable() const
+
+        // Access
+
+            virtual Field<Type>& refValue()
             {
-                return false;
+                return refValue_;
             }
 
-
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
-
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
-
-
-        // Return defining fields
+            virtual const Field<Type>& refValue() const
+            {
+                return refValue_;
+            }
 
             virtual scalarField& valueFraction()
             {
@@ -171,7 +190,23 @@ public:
             }
 
 
-        // Evaluation functions
+        // Mapping
+
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
+
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
+
+
+        // Evaluation
 
             //- Return gradient at boundary
             virtual tmp<Field<Type>> snGrad() const;
@@ -180,7 +215,7 @@ public:
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return face-gradient transform diagonal

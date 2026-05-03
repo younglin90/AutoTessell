@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,24 +33,38 @@ Description
 SourceFiles
     fvPatch.C
     fvPatchNew.C
+    fvPatchTemplates.C
+    fvPatchFvMeshTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvPatch_H
-#define fvPatch_H
+#ifndef Foam_fvPatch_H
+#define Foam_fvPatch_H
 
 #include "polyPatch.H"
+#include "labelList.H"
+#include "SubList.H"
+#include "SubField.H"
+#include "PtrList.H"
+#include "typeInfo.H"
+#include "autoPtr.H"
+#include "tmp.H"
+#include "primitiveFields.H"
 #include "fvPatchFieldsFwd.H"
-#include "SlicedDimensionedField.H"
+#include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class fvMesh;
+// Forward Declarations
 class fvBoundaryMesh;
-class faceZone;
+class fvPatch;
+class surfaceInterpolation;
+
+//- Store lists of fvPatch as a PtrList
+typedef PtrList<fvPatch> fvPatchList;
 
 /*---------------------------------------------------------------------------*\
                            Class fvPatch Declaration
@@ -58,28 +75,51 @@ class fvPatch
     // Private Data
 
         //- Reference to the underlying polyPatch
-        const polyPatch& poly_;
+        const polyPatch& polyPatch_;
 
         //- Reference to boundary mesh
         const fvBoundaryMesh& boundaryMesh_;
 
-        //- Dimensioned face centres
-        mutable autoPtr<SlicedDimensionedField<vector, fvPatch>> CPtr_;
+
+    // Private Member Functions
+
+        //- No copy construct
+        fvPatch(const fvPatch&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvPatch&) = delete;
 
 
 public:
 
-    // Public Typedefs
+    // Protected Member Functions
 
-        //- Mesh type
-        typedef fvMesh Mesh;
+        //- Make patch weighting factors
+        virtual void makeWeights(scalarField&) const;
 
-        //- Boundary mesh type
-        typedef fvBoundaryMesh BoundaryMesh;
+        //- Correct patch deltaCoeffs
+        virtual void makeDeltaCoeffs(scalarField&) const;
 
-        //- Zone type
-        typedef faceZone Zone;
+        //- Correct patch non-ortho deltaCoeffs
+        virtual void makeNonOrthoDeltaCoeffs(scalarField&) const;
 
+        //- Correct patch non-ortho correction vectors
+        virtual void makeNonOrthoCorrVectors(vectorField&) const;
+
+        //- Initialise the patches for moving points
+        virtual void initMovePoints();
+
+        //- Correct patches after moving points
+        virtual void movePoints();
+
+
+public:
+
+    //- The boundary type associated with the patch
+    typedef fvBoundaryMesh BoundaryMesh;
+
+    friend class fvBoundaryMesh;
+    friend class surfaceInterpolation;
 
     //- Runtime type information
     TypeName(polyPatch::typeName_());
@@ -102,9 +142,6 @@ public:
         //- Construct from polyPatch and fvBoundaryMesh
         fvPatch(const polyPatch&, const fvBoundaryMesh&);
 
-        //- Disallow default bitwise copy construction
-        fvPatch(const fvPatch&) = delete;
-
 
     // Selectors
 
@@ -122,74 +159,86 @@ public:
 
     // Member Functions
 
-        // Access
+        //- Lookup the polyPatch index on corresponding fvMesh
+        //  \note Fatal if the polyPatch is not associated with a fvMesh
+        static const fvPatch& lookupPatch(const polyPatch& p);
 
-            //- Return the polyPatch
-            const polyPatch& poly() const
-            {
-                return poly_;
-            }
 
-            //- Return name
-            virtual const word& name() const
-            {
-                return poly_.name();
-            }
+    // Access
 
-            //- Return start label of this patch in the polyMesh face list
-            virtual label start() const
-            {
-                return poly_.start();
-            }
+        //- Return the polyPatch
+        const polyPatch& patch() const noexcept
+        {
+            return polyPatch_;
+        }
 
-            //- Return size
-            virtual label size() const
-            {
-                return poly_.size();
-            }
+        //- Return name
+        virtual const word& name() const
+        {
+            return polyPatch_.name();
+        }
 
-            //- Return true if this patch is a constraint type
-            virtual bool constraint() const
-            {
-                return poly_.constraint();
-            }
+        //- The index of this patch in the boundary mesh
+        label index() const noexcept
+        {
+            return polyPatch_.index();
+        }
 
-            //- Return true if this patch is coupled
-            virtual bool coupled() const
-            {
-                return poly_.coupled();
-            }
+        //- The patch start within the polyMesh face list
+        label start() const noexcept
+        {
+            return polyPatch_.start();
+        }
 
-            //- Return the index of this patch in the fvBoundaryMesh
-            label index() const
-            {
-                return poly_.index();
-            }
+        //- Patch size is the number of faces, but can be overloaded
+        virtual label size() const
+        {
+            return polyPatch_.size();
+        }
 
-            //- Return the local object registry
-            const objectRegistry& db() const;
+        //- Return true if this patch is coupled
+        virtual bool coupled() const
+        {
+            return polyPatch_.coupled();
+        }
 
-            //- Return mesh reference
-            const fvMesh& mesh() const;
+        //- Return true if the given type is a constraint type
+        static bool constraintType(const word& patchType);
 
-            //- Return time
-            const Time& time() const;
+        //- Return a list of all the constraint patch types
+        static wordList constraintTypes();
 
-            //- Return boundaryMesh reference
-            const fvBoundaryMesh& boundaryMesh() const
-            {
-                return boundaryMesh_;
-            }
+        //- Return boundaryMesh reference
+        const fvBoundaryMesh& boundaryMesh() const noexcept
+        {
+            return boundaryMesh_;
+        }
 
-            //- Slice list to patch
-            template<class T>
-            const typename List<T>::subList patchSlice(const List<T>& l) const
-            {
-                return typename List<T>::subList(l, size(), start());
-            }
+        //- This patch slice from the complete list, which has size
+        //- mesh::nFaces(), using the virtual patch size.
+        template<class T>
+        const typename List<T>::subList
+        patchSlice(const List<T>& values) const
+        {
+            return typename List<T>::subList(values, size(), start());
+        }
 
-            //- Return faceCells
-            virtual const labelUList& faceCells() const;
+        //- This patch slice from the list of boundary values, which has size
+        //- mesh::nBoundaryFaces(), using the virtual patch size.
+        template<class T>
+        const typename List<T>::subList
+        boundarySlice(const List<T>& values) const
+        {
+            return typename List<T>::subList
+            (
+                values,
+                size(),
+                polyPatch_.offset()
+            );
+        }
+
+        //- Return faceCells
+        virtual const labelUList& faceCells() const;
 
 
         // Access functions for geometrical data
@@ -197,86 +246,97 @@ public:
             //- Return face centres
             const vectorField& Cf() const;
 
-            //- Return dimensioned face centres
-            const DimensionedField<vector, fvPatch>& C() const;
-
             //- Return neighbour cell centres
             tmp<vectorField> Cn() const;
 
-            //- Return face area vectors
+            //- Return face area vectors, like the fvMesh::Sf() method
             const vectorField& Sf() const;
 
-            //- Return face area magnitudes
+            //- Return face area magnitudes, like the fvMesh::magSf() method
             const scalarField& magSf() const;
 
-            //- Return face normals
+            //- Return face unit normals, like the fvMesh::unitSf() method.
+            //- Same as nf().
+            tmp<vectorField> unitSf() const;
+
+            //- Return face unit normals, like the fvMesh::unitSf() method
+            //- Same as unitSf().
             tmp<vectorField> nf() const;
 
             //- Return cell-centre to face-centre vector
-            //  except for coupled patches for which the cell-centre
-            //  to coupled-cell-centre vector is returned
+            //- except for coupled patches for which the cell-centre
+            //- to coupled-cell-centre vector is returned
             virtual tmp<vectorField> delta() const;
-
-            //- Return the fraction of the poly-face that each fv-face in this
-            //  patch covers. Will be equal to one, unless the mesh is
-            //  non-conformal.
-            tmp<scalarField> polyFaceFraction() const;
 
 
         // Access functions for demand driven data
-
-            //- Make patch weighting factors
-            virtual void makeWeights(scalarField&) const;
 
             //- Return patch weighting factors
             const scalarField& weights() const;
 
             //- Return the face - cell distance coefficient
-            //  except for coupled patches for which the cell-centre
-            //  to coupled-cell-centre distance coefficient is returned
-            virtual const scalarField& deltaCoeffs() const;
+            //- except for coupled patches for which the cell-centre
+            //- to coupled-cell-centre distance coefficient is returned
+            const scalarField& deltaCoeffs() const;
 
 
-        // Evaluation functions
+        // Evaluation Functions
+
+            //- Extract internal field next to patch using specified addressing
+            // \param internalData The internal field to extract from
+            // \param addressing Addressing from patch into internal field
+            // \param [out] pfld The extracted patch field.
+            //     It is always resized according to the patch size(),
+            //     which can be smaller than the addressing size
+            template<class Type>
+            inline void patchInternalField
+            (
+                const UList<Type>& internalData,
+                const labelUList& addressing,
+                Field<Type>& pfld
+            ) const;
+
+            //- Extract internal field next to patch as patch field
+            //- using faceCells() mapping.
+            // \param internalData The internal field to extract from
+            // \param [out] pfld The extracted patch field.
+            //     It is always resized according to the patch size(),
+            //     which can be smaller than the faceCells() size
+            template<class Type>
+            void patchInternalField
+            (
+                const UList<Type>& internalData,
+                Field<Type>& pfld
+            ) const;
 
             //- Return given internal field next to patch as patch field
+            //- using faceCells() mapping.
+            // \param internalData The internal field to extract from
             template<class Type>
-            tmp<Field<Type>> patchInternalField(const UList<Type>&) const;
+            tmp<Field<Type>> patchInternalField
+            (
+                const UList<Type>& internalData
+            ) const;
 
-            //- Return given internal field next to patch as patch field
-            template<class Type>
-            void patchInternalField(const UList<Type>&, Field<Type>&) const;
-
-            //- Return the corresponding patchField of the named field
-            template<class GeometricField, class Type>
+            //- Return the patch field of the GeometricField
+            //- corresponding to this patch.
+            template<class GeometricField, class AnyType = bool>
             const typename GeometricField::Patch& patchField
             (
-                const GeometricField&
+                const GeometricField& gf
             ) const;
 
-            //- Return the corresponding patchField reference of the named field
-            template<class GeometricField, class Type>
-            typename GeometricField::Patch& patchField
-            (
-                GeometricField&
-            ) const;
-
-            //- Lookup and return the patchField of the named field from the
-            //  local objectRegistry.
-            template<class GeometricField, class Type>
+            //- Lookup the named field from the local registry and
+            //- return the patch field corresponding to this patch.
+            //  N.B.  The dummy pointer arguments are used if this function is
+            //  instantiated within a templated function to avoid a bug in gcc.
+            template<class GeometricField, class AnyType = bool>
             const typename GeometricField::Patch& lookupPatchField
             (
-                const word& name
+                const word& name,
+                const GeometricField* = nullptr,
+                const AnyType* = nullptr
             ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvPatch&) = delete;
-
-        //- Return reference to fvMesh
-        const fvMesh& operator()() const;
 };
 
 

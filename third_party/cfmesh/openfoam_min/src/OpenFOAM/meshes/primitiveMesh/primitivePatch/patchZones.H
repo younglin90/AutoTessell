@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,14 +50,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class patchZones Declaration
+                           Class patchZones Declaration
 \*---------------------------------------------------------------------------*/
 
 class patchZones
 :
     public labelList
 {
-    // Private Data
+    // Private data
 
         //- Reference to patch
         const primitivePatch& pp_;

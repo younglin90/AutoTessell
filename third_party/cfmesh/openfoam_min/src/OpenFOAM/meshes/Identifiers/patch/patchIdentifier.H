@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,31 +28,26 @@ Class
     Foam::patchIdentifier
 
 Description
-    Identifies patch by name, patch index and physical type
+    Identifies a patch by name and index, with optional physical type
+    and group information.
 
 SourceFiles
     patchIdentifier.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef patchIdentifier_H
-#define patchIdentifier_H
+#ifndef Foam_patchIdentifier_H
+#define Foam_patchIdentifier_H
 
 #include "wordList.H"
-#include "label.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class dictionary;
-
-// Forward declaration of friend functions and operators
-
-class patchIdentifier;
-Ostream& operator<<(Ostream&, const patchIdentifier&);
-
 
 /*---------------------------------------------------------------------------*\
                        Class patchIdentifier Declaration
@@ -57,33 +55,68 @@ Ostream& operator<<(Ostream&, const patchIdentifier&);
 
 class patchIdentifier
 {
-protected:
+    // Private Data
 
-    // Protected Data
-
-        //- Name of patch
+        //- Patch name
         word name_;
 
-        //- Index of patch in boundary
+        //- Patch index in boundary
         label index_;
 
-        //- Optional physical type
+        //- Patch physical type (optional)
         word physicalType_;
 
-        //- Optional groups patch belongs to
+        //- Groups to which the patch belongs (optional)
         wordList inGroups_;
-
 
 public:
 
+    // Static Member Functions
+
+        //- Default patch name: "patch" or "patchN"
+        static word defaultName(const label n = -1)
+        {
+            return
+            (
+                n < 0
+              ? word("patch", false)
+              : word("patch" + std::to_string(n), false)
+            );
+        }
+
+
+    // Generated Methods
+
+        //- Copy construct
+        patchIdentifier(const patchIdentifier&) = default;
+
+        //- Move construct
+        patchIdentifier(patchIdentifier&&) = default;
+
+        //- Copy assignment
+        patchIdentifier& operator=(const patchIdentifier&) = default;
+
+        //- Move assignment
+        patchIdentifier& operator=(patchIdentifier&&) = default;
+
+        //- Destructor
+        virtual ~patchIdentifier() = default;
+
+
     // Constructors
+
+        //- Default construct: name="", index=0
+        patchIdentifier();
+
+        //- Construct from mandatory components
+        patchIdentifier(const word& name, const label index);
 
         //- Construct from components
         patchIdentifier
         (
             const word& name,
             const label index,
-            const word& physicalType = word::null,
+            const word& physicalType,
             const wordList& inGroups = wordList()
         );
 
@@ -91,71 +124,80 @@ public:
         patchIdentifier
         (
             const word& name,
-            const dictionary&,
+            const dictionary& dict,
             const label index
         );
 
-        //- Construct from geometric patch, resetting the index
+        //- Copy construct, resetting the index (if non-negative)
         patchIdentifier
         (
-            const patchIdentifier&,
-            const label index
+            const patchIdentifier& ident,
+            const label newIndex
         );
 
-
-    //- Destructor
-    virtual ~patchIdentifier();
+        //- Move construct, resetting the index (if non-negative)
+        patchIdentifier
+        (
+            patchIdentifier&& ident,
+            const label newIndex
+        );
 
 
     // Member Functions
 
-        //- Return name
-        const word& name() const
+        //- The patch name
+        const word& name() const noexcept { return name_; }
+
+        //- Modifiable patch name
+        word& name() noexcept { return name_; }
+
+        //- The index of this patch in the boundaryMesh
+        label index() const noexcept { return index_; }
+
+        //- Modifiable index of this patch in the boundaryMesh
+        label& index() noexcept { return index_; }
+
+        //- The (optional) physical type of the patch
+        const word& physicalType() const noexcept { return physicalType_; }
+
+        //- Modifiable (optional) physical type of the patch
+        word& physicalType() noexcept { return physicalType_; }
+
+        //- The (optional) groups that the patch belongs to
+        const wordList& inGroups() const noexcept { return inGroups_; }
+
+        //- Modifiable (optional) groups that the patch belongs to
+        wordList& inGroups() noexcept { return inGroups_; }
+
+        //- True if given name is in a group
+        bool inGroup(const word& name) const
         {
-            return name_;
+            return (!name.empty() && inGroups_.contains(name));
         }
 
-        //- Return the index of this patch in the boundaryMesh
-        label index() const
+        //- Add (unique) group for the patch
+        void addGroup(const word& name)
         {
-            return index_;
+            if (!name.empty() && !inGroups_.contains(name))
+            {
+                inGroups_.push_back(name);
+            }
         }
 
-        //- Return the optional physical type of the patch
-        const word& physicalType() const
-        {
-            return physicalType_;
-        }
+        //- Remove group for the patch
+        void removeGroup(const word& name);
 
-        //- Return the optional physical type of the patch for modification
-        word& physicalType()
-        {
-            return physicalType_;
-        }
-
-        //- Return the optional groups patch belongs to
-        const wordList& inGroups() const
-        {
-            return inGroups_;
-        }
-
-        //- Return the optional groups patch belongs to for modification
-        wordList& inGroups()
-        {
-            return inGroups_;
-        }
-
-        //- Test if in group
-        bool inGroup(const word&) const;
-
-        //- Write patchIdentifier as a dictionary
-        void write(Ostream&) const;
-
-
-    // Ostream Operator
-
-        friend Ostream& operator<<(Ostream&, const patchIdentifier&);
+        //- Write (physicalType, inGroups) dictionary entries
+        //- (without surrounding braces)
+        void write(Ostream& os) const;
 };
+
+
+// Global Operators
+
+//- Write (physicalType, inGroups) dictionary entries
+//- (without surrounding braces)
+Ostream& operator<<(Ostream& os, const patchIdentifier& ident);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

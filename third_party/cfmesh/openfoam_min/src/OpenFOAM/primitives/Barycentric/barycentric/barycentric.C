@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +27,17 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "barycentric.H"
-#include "randomGenerator.H"
+#include "Random.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-Foam::barycentric Foam::barycentric01(randomGenerator& rndGen)
+static inline Foam::barycentric barycentric01Impl
+(
+    Foam::scalar s,
+    Foam::scalar t,
+    Foam::scalar u
+)
 {
-    scalar s = rndGen.scalar01();
-    scalar t = rndGen.scalar01();
-    scalar u = rndGen.scalar01();
-
     // Transform the random point in the unit cube to a random point in the
     // unit tet by means of a series of reflections. See
     // <http://vcg.isti.cnr.it/jgt/tetra.htm> for details.
@@ -61,6 +65,18 @@ Foam::barycentric Foam::barycentric01(randomGenerator& rndGen)
     }
 
     return Foam::barycentric(1 - s - t - u, s, t, u);
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+Foam::barycentric Foam::barycentric01(Random& rndGen)
+{
+    const scalar s(rndGen.sample01<scalar>());
+    const scalar t(rndGen.sample01<scalar>());
+    const scalar u(rndGen.sample01<scalar>());
+
+    return barycentric01Impl(s, t, u);
 }
 
 

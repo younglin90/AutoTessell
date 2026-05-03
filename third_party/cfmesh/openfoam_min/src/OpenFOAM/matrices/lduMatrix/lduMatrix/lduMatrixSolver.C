@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,6 +28,7 @@ License
 
 #include "lduMatrix.H"
 #include "diagonalSolver.H"
+#include "PrecisionAdaptor.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -35,10 +39,11 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
 
 Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
 (
+    const word& solverName,
     const word& fieldName,
     const lduMatrix& matrix,
     const FieldField<Field, scalar>& interfaceBouCoeffs,
@@ -47,8 +52,6 @@ Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
     const dictionary& solverControls
 )
 {
-    const word name(solverControls.lookup("solver"));
-
     if (matrix.diagonal())
     {
         return autoPtr<lduMatrix::solver>
@@ -66,21 +69,22 @@ Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
     }
     else if (matrix.symmetric())
     {
-        symMatrixConstructorTable::iterator constructorIter =
-            symMatrixConstructorTablePtr_->find(name);
+        auto* ctorPtr = symMatrixConstructorTable(solverName);
 
-        if (constructorIter == symMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction(solverControls)
-                << "Unknown symmetric matrix solver " << name << nl << nl
-                << "Valid symmetric matrix solvers are :" << endl
-                << symMatrixConstructorTablePtr_->sortedToc()
-                << exit(FatalIOError);
+            FatalIOErrorInLookup
+            (
+                solverControls,
+                "symmetric matrix solver",
+                solverName,
+                *symMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<lduMatrix::solver>
         (
-            constructorIter()
+            ctorPtr
             (
                 fieldName,
                 matrix,
@@ -93,21 +97,22 @@ Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
     }
     else if (matrix.asymmetric())
     {
-        asymMatrixConstructorTable::iterator constructorIter =
-            asymMatrixConstructorTablePtr_->find(name);
+        auto* ctorPtr = asymMatrixConstructorTable(solverName);
 
-        if (constructorIter == asymMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction(solverControls)
-                << "Unknown asymmetric matrix solver " << name << nl << nl
-                << "Valid asymmetric matrix solvers are :" << endl
-                << asymMatrixConstructorTablePtr_->sortedToc()
-                << exit(FatalIOError);
+            FatalIOErrorInLookup
+            (
+                solverControls,
+                "asymmetric matrix solver",
+                solverName,
+                *asymMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<lduMatrix::solver>
         (
-            constructorIter()
+            ctorPtr
             (
                 fieldName,
                 matrix,
@@ -118,15 +123,36 @@ Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
             )
         );
     }
-    else
-    {
-        FatalIOErrorInFunction(solverControls)
-            << "cannot solve incomplete matrix, "
-               "no diagonal or off-diagonal coefficient"
-            << exit(FatalIOError);
 
-        return autoPtr<lduMatrix::solver>(nullptr);
-    }
+    FatalIOErrorInFunction(solverControls)
+        << "cannot solve incomplete matrix, "
+        "no diagonal or off-diagonal coefficient"
+        << exit(FatalIOError);
+
+    return nullptr;
+}
+
+
+Foam::autoPtr<Foam::lduMatrix::solver> Foam::lduMatrix::solver::New
+(
+    const word& fieldName,
+    const lduMatrix& matrix,
+    const FieldField<Field, scalar>& interfaceBouCoeffs,
+    const FieldField<Field, scalar>& interfaceIntCoeffs,
+    const lduInterfaceFieldPtrsList& interfaces,
+    const dictionary& solverControls
+)
+{
+    return New
+    (
+        solverControls.get<word>("solver"),
+        fieldName,
+        matrix,
+        interfaceBouCoeffs,
+        interfaceIntCoeffs,
+        interfaces,
+        solverControls
+    );
 }
 
 
@@ -147,7 +173,16 @@ Foam::lduMatrix::solver::solver
     interfaceBouCoeffs_(interfaceBouCoeffs),
     interfaceIntCoeffs_(interfaceIntCoeffs),
     interfaces_(interfaces),
-    controlDict_(solverControls)
+    controlDict_(solverControls),
+
+    log_(1),
+    minIter_(0),
+    maxIter_(lduMatrix::defaultMaxIter),
+    normType_(lduMatrix::normTypes::DEFAULT_NORM),
+    tolerance_(lduMatrix::defaultTolerance),
+    relTol_(Zero),
+
+    profiling_("lduMatrix::solver." + fieldName)
 {
     readControls();
 }
@@ -157,10 +192,19 @@ Foam::lduMatrix::solver::solver
 
 void Foam::lduMatrix::solver::readControls()
 {
-    maxIter_ = controlDict_.lookupOrDefault<label>("maxIter", defaultMaxIter_);
-    minIter_ = controlDict_.lookupOrDefault<label>("minIter", 0);
-    tolerance_ = controlDict_.lookupOrDefault<scalar>("tolerance", 1e-6);
-    relTol_ = controlDict_.lookupOrDefault<scalar>("relTol", 0);
+    log_ = 1;
+    minIter_ = 0;
+    maxIter_ = lduMatrix::defaultMaxIter;
+    normType_ = lduMatrix::normTypes::DEFAULT_NORM;
+    tolerance_ = lduMatrix::defaultTolerance;
+    relTol_ = 0;
+
+    controlDict_.readIfPresent("log", log_);
+    lduMatrix::normTypesNames_.readIfPresent("norm", controlDict_, normType_);
+    controlDict_.readIfPresent("minIter", minIter_);
+    controlDict_.readIfPresent("maxIter", maxIter_);
+    controlDict_.readIfPresent("tolerance", tolerance_);
+    controlDict_.readIfPresent("relTol", relTol_);
 }
 
 
@@ -171,29 +215,62 @@ void Foam::lduMatrix::solver::read(const dictionary& solverControls)
 }
 
 
-Foam::scalar Foam::lduMatrix::solver::normFactor
+Foam::solverPerformance Foam::lduMatrix::solver::scalarSolve
 (
-    const scalarField& psi,
-    const scalarField& source,
-    const scalarField& Apsi,
-    scalarField& tmpField
+    solveScalarField& psi,
+    const solveScalarField& source,
+    const direction cmpt
 ) const
 {
-    // --- Calculate A dot reference value of psi
-    matrix_.sumA(tmpField, interfaceBouCoeffs_, interfaces_);
+    PrecisionAdaptor<scalar, solveScalar> tpsi_s(psi);
+    return solve
+    (
+        tpsi_s.ref(),
+        ConstPrecisionAdaptor<scalar, solveScalar>(source)(),
+        cmpt
+    );
+}
 
-    tmpField *= gAverage(psi, matrix_.lduMesh_.comm());
 
-    return
-        gSum
-        (
-            (mag(Apsi - tmpField) + mag(source - tmpField))(),
-            matrix_.lduMesh_.comm()
-        )
-      + solverPerformance::small_;
+Foam::solveScalarField::cmptType Foam::lduMatrix::solver::normFactor
+(
+    const solveScalarField& psi,
+    const solveScalarField& source,
+    const solveScalarField& Apsi,
+    solveScalarField& tmpField,
+    const lduMatrix::normTypes normType
+) const
+{
+    switch (normType)
+    {
+        case lduMatrix::normTypes::NO_NORM :
+        {
+            break;
+        }
 
-    // At convergence this simpler method is equivalent to the above
-    // return 2*gSumMag(source) + solverPerformance::small_;
+        case lduMatrix::normTypes::DEFAULT_NORM :
+        case lduMatrix::normTypes::L1_SCALED_NORM :
+        {
+            // --- Calculate A dot reference value of psi
+            matrix_.sumA(tmpField, interfaceBouCoeffs_, interfaces_);
+
+            tmpField *= gAverage(psi, matrix_.mesh().comm());
+
+            return
+                gSum
+                (
+                    (mag(Apsi - tmpField) + mag(source - tmpField))(),
+                    matrix_.mesh().comm()
+                ) + solverPerformance::small_;
+
+            // Equivalent at convergence:
+            // return 2*gSumMag(source) + solverPerformance::small_;
+            break;
+        }
+    }
+
+    // Fall-through: no norm
+    return solveScalarField::cmptType(1);
 }
 
 

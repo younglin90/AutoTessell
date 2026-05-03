@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,26 +28,24 @@ Class
     Foam::functionEntries::ifeqEntry
 
 Description
-    Conditional parsing of and within dictionary entries.
+    Conditional parsing of dictionary entries.
 
     E.g.
     \verbatim
-        a #calc "0.123";
+        a #eval "0.123";
         b 1.23e-1;
 
-        #ifeq ($a $b)
+        #ifeq $a $b
             ..
         #else
             ..
         #endif
-
-        c #ifeq ($a $b) 5.53 #else 7.89 #endif;
     \endverbatim
 
     \verbatim
     ddtSchemes
     {
-    #ifeq (${FOAM_APPLICATION} foamRun)
+    #ifeq ${FOAM_APPLICATION} simpleFoam
         default         steadyState;
     #else
         default         Euler;
@@ -54,10 +55,11 @@ Description
 
     Note:
     - supports dictionary variables and environment variables
-    - the two arguments should be tokens
-    - the equality test supports any word/string/variable, integers
-      and floating point numbers
-    - parsing of (non)matching \c \#else, \c \#endif is not very sophisticated
+    - the two arguments should be two tokens
+    - the comparison is a string comparison for any word/string/variable,
+      integer comparison for two integers and floating point comparison for
+      any floating point number.
+    - parsing of (non)matching \c #else, \c #endif is not very sophisticated
 
 See also
     Foam::functionEntries::ifEntry
@@ -67,11 +69,12 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef ifeqEntry_H
-#define ifeqEntry_H
+#ifndef functionEntries_ifeqEntry_H
+#define functionEntries_ifeqEntry_H
 
 #include "functionEntry.H"
 #include "DynamicList.H"
+#include "Tuple2.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -90,125 +93,85 @@ class ifeqEntry
 {
 protected:
 
+    // Data Types
+
     typedef Tuple2<fileName, label> filePos;
+
+
+    // Protected Member Functions
+
+        static bool evaluate
+        (
+            const bool doIf,
+            DynamicList<filePos>& stack,
+            dictionary& parentDict,
+            Istream& is
+        );
+
+        //- Main driver: depending on 'equal' starts evaluating or
+        //- skips forward to #else
+        static bool execute
+        (
+            const bool equal,
+            DynamicList<filePos>& stack,
+            dictionary& parentDict,
+            Istream& is
+        );
+
+        //- Main driver: depending on 'equal' starts evaluating or
+        //- skips forward to #else
+        static bool execute
+        (
+            DynamicList<filePos>& stack,
+            dictionary& parentDict,
+            Istream& is
+        );
 
 
 private:
 
     // Private Member Functions
 
-        tokenList readArgList(Istream& is) const;
-
         //- Read tokens. Skip dummy tokens
-        void readToken(token& t, Istream& is) const;
+        static void readToken(token& t, Istream& is);
 
-        //- Expand token if it is a variable
-        token expand(const dictionary& dict, const token& t) const;
+        //- Expand a variable (string/word/var starting with '$')
+        static token expandToken
+        (
+            const dictionary& dict,
+            const string& keyword,
+            const token& t
+        );
 
-        bool equalToken(const token& t1, const token& t2) const;
+        //- Expand a string/word/var token
+        static token expandToken
+        (
+            const dictionary& dict,
+            const token& t
+        );
 
-        //- Consume tokens until reached a specific word
-        void skipUntil
+        //- Test for equality
+        static bool equalToken(const token& t1, const token& t2);
+
+        //- Consume tokens until reached a specific directive
+        static void skipUntil
         (
             DynamicList<filePos>& stack,
-            const dictionary& contextDict,
-            const functionName& endWord,
+            const dictionary& parentDict,
+            const word& endDirective,  //!< end directive (without '#')
             Istream& is
-        ) const;
-
-        template<class Context>
-        bool evaluate
-        (
-            const bool doIf,
-            DynamicList<filePos>& stack,
-            const dictionary& contextDict,
-            Context& context,
-            Istream& is
-        ) const;
-
-        //- Main driver: depending on 'equal' starts evaluating or
-        //  skips forward to #else
-        template<class Context>
-        bool execute
-        (
-            DynamicList<filePos>& stack,
-            const dictionary& contextDict,
-            Context& context,
-            Istream& is
-        ) const;
-
-
-protected:
-
-    // Protected Member Functions
-
-        //- Main driver: depending on 'equal' starts evaluating or
-        //  skips forward to #else
-        template<class Context>
-        bool execute
-        (
-            const bool equal,
-            DynamicList<filePos>& stack,
-            const dictionary& contextDict,
-            Context& context,
-            Istream& is
-        ) const;
+        );
 
 
 public:
 
     //- Runtime type information
-    FunctionTypeName("#ifeq");
-
-
-    // Constructors
-
-        //- Construct from function type, dictionary and tokenList
-        ifeqEntry
-        (
-            const functionName& functionType,
-            const label lineNumber,
-            const dictionary& parentDict,
-            const Istream& is,
-            const tokenList& tokens
-        );
-
-        //- Construct from line number, dictionary and Istream
-        ifeqEntry
-        (
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Copy construct
-        ifeqEntry(const ifeqEntry&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new ifeqEntry(*this));
-        }
-
+    ClassName("ifeq");
 
     // Member Functions
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream& is);
-
-        //- Expand the functionEntry into the contextEntry
-        static bool execute
-        (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
-        );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const ifeqEntry&) = delete;
+        //- Execute the functionEntry in a sub-dict context
+        static bool execute(dictionary& parentDict, Istream& is);
 };
 
 

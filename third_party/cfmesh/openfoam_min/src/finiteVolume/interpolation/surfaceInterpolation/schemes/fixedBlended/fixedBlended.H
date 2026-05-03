@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +26,19 @@ License
 Class
     Foam::fixedBlended
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Two-scheme fixed-blending interpolation scheme.
+    Two-scheme fixed-blending differencing scheme.
 
     Similar to localBlended but uses a single (global) constant blending
     factor. The factor applies to the first scheme and 1-factor to the
     second scheme.
 
-    Note:
-        Although a blending factor of 0 and 1 is permitted, it is more efficient
-        just to use the underlying scheme directly.
+Note
+    Although a blending factor of 0 and 1 is permitted, it is more efficient
+    just to use the underlying scheme directly.
 
 SourceFiles
     fixedBlended.C
@@ -59,7 +64,7 @@ class fixedBlended
 :
     public surfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private data
 
         const scalar blendingFactor_;
 
@@ -70,6 +75,13 @@ class fixedBlended
 
         //- Scheme 2
         tmp<surfaceInterpolationScheme<Type>> tScheme2_;
+
+
+        //- No copy construct
+        fixedBlended(const fixedBlended&) = delete;
+
+        //- No copy assignment
+        void operator=(const fixedBlended&) = delete;
 
 
 public:
@@ -154,9 +166,6 @@ public:
             }
         }
 
-        //- Disallow default bitwise copy construction
-        fixedBlended(const fixedBlended&) = delete;
-
 
     // Member Functions
 
@@ -164,7 +173,7 @@ public:
         tmp<surfaceScalarField>
         weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             return
@@ -175,10 +184,10 @@ public:
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction
-        tmp<SurfaceField<Type>>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             return
@@ -196,10 +205,10 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  for the given field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             if (tScheme1_().corrected())
@@ -233,18 +242,10 @@ public:
             }
             else
             {
-                return tmp<SurfaceField<Type>>
-                (
-                    nullptr
-                );
+                return nullptr;
             }
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fixedBlended&) = delete;
 };
 
 

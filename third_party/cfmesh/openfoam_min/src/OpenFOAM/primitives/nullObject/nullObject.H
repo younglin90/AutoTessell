@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,104 +28,216 @@ Class
     Foam::NullObject
 
 Description
-    Singleton null-object class and instance
+    Singleton null-object class and instance.
+
+    Its contents occupy enough space to also be reinterpreted
+    as another class with a null pointer or zero long for its first
+    member, with additional zero parameters for safe casting to List etc.
 
 SourceFiles
-    nullObjectI.H
     nullObject.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef nullObject_H
-#define nullObject_H
+#ifndef Foam_nullObject_H
+#define Foam_nullObject_H
+
+#include "labelFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
+class Istream;
+class Ostream;
+class NullObject;
+
 /*---------------------------------------------------------------------------*\
-                         Class nullObject Declaration
+                         Class NullObject Declaration
 \*---------------------------------------------------------------------------*/
 
 class NullObject
 {
-    //- Private constructor
-    NullObject()
-    {}
+    //- A %union of zero data types
+    union zeros
+    {
+        void* ptr;
+        unsigned long val;
+    };
+
+
+    // Private Data
+
+        //- The zero data content
+        zeros data_[4];
+
+
+    // Constructors
+
+        //- Private constructor for singleton only
+        //  Could also rely on bit-wise zero initialization for union content
+        NullObject()
+        :
+           data_{{nullptr}, {nullptr}, {nullptr}, {nullptr}}
+        {}
+
+        //- No copy construct
+        NullObject(const NullObject&) = delete;
+
+        //- No copy assignment
+        void operator=(const NullObject&) = delete;
+
 
 public:
 
-    //- The unique null object
-    static const NullObject nullObject;
+    // Static Data
 
-    //- Disallow default bitwise copy construction
-    NullObject(const NullObject&) = delete;
+        //- A unique null object
+        static const NullObject nullObject;
 
-    //- Disallow default bitwise assignment
-    void operator=(const NullObject&) = delete;
+
+    // Member Functions
+
+        //- A nullptr pointer content
+        const void* pointer() const noexcept
+        {
+            return data_[0].ptr;
+        }
+
+        //- Zero valued integer content
+        unsigned long value() const noexcept
+        {
+            return 0;
+        }
+
+        //- No elements
+        bool empty() const noexcept
+        {
+            return true;
+        }
+
+        //- Zero elements
+        label size() const noexcept
+        {
+            return 0;
+        }
+
+        //- No-op method (for HashTable replacement)
+        const NullObject& toc() const noexcept
+        {
+            return *this;
+        }
+
+        //- No-op method (for HashTable replacement)
+        const NullObject& sortedToc() const noexcept
+        {
+            return *this;
+        }
+
+
+    // Member Operators
+
+        //- Swallow assignment (cf, std::ignore)
+        template<class T>
+        const NullObject& operator=(const T&) const noexcept
+        {
+            return *this;
+        }
 };
 
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Globals
 
 //- Pointer to the unique nullObject
 extern const NullObject* nullObjectPtr;
 
 
-//- Return const reference to the nullObject of type T
+// IOstream Operators
+
+//- Read from Istream consumes no content, does not change NullObject
+inline Istream& operator>>(Istream& is, const NullObject&) noexcept
+{
+    return is;
+}
+
+//- Write to Ostream emits no content
+inline Ostream& operator<<(Ostream& os, const NullObject&) noexcept
+{
+    return os;
+}
+
+
+// Global Functions
+
+//- Const pointer (of type T) to the nullObject
 template<class T>
-inline const T& NullObjectRef();
+inline const T* NullObjectPtr() noexcept
+{
+    return reinterpret_cast<const T*>(nullObjectPtr);
+}
 
-//- Return non-const reference to the nullObject of type T
+//- Non-const pointer (of type T) to the nullObject.
+//- Only use when nothing will be written into it!
 template<class T>
-inline T& NullObjectNonConstRef();
+inline T* NullObjectPtr_constCast() noexcept
+{
+    return reinterpret_cast<T*>(const_cast<NullObject*>(nullObjectPtr));
+}
 
-//- Return const pointer to the nullObject of type T
+
+//- Const reference (of type T) to the nullObject
 template<class T>
-inline const T* NullObjectConstPtr();
+inline const T& NullObjectRef() noexcept
+{
+    return *reinterpret_cast<const T*>(nullObjectPtr);
+}
 
-//- Return pointer to the nullObject of type T
+//- Non-const reference (of type T) to the nullObject
+//- Only use when nothing will be written into it!
 template<class T>
-inline T* NullObjectPtr();
+inline T& NullObjectRef_constCast() noexcept
+{
+    return *reinterpret_cast<T*>(const_cast<NullObject*>(nullObjectPtr));
+}
 
-//- Return reference to the nullObject of type T
+
+//- True if ptr is a pointer (of type T) to the nullObject
 template<class T>
-inline T&& NullObjectMove();
+inline bool isNull(const T* ptr) noexcept
+{
+    return ptr == NullObjectPtr<T>();
+}
 
-
-//- Return true if t is a reference to the nullObject of type T
+//- True if obj is a reference (of type T) to the nullObject
 template<class T>
-inline bool isNull(const T& t);
+inline bool isNull(const T& obj) noexcept
+{
+    return &obj == NullObjectPtr<T>();
+}
 
-//- Return true if t is not a reference to the nullObject of type T
+
+//- True if ptr is not a pointer (of type T) to the nullObject
 template<class T>
-inline bool notNull(const T& t);
+inline bool notNull(const T* ptr) noexcept
+{
+    return ptr != NullObjectPtr<T>();
+}
 
-
-//- Return true if t is a pointer to the nullObject of type T
+//- True if obj is not a reference (of type T) to the nullObject
 template<class T>
-inline bool isNull(const T* t);
-
-//- Return true if t is not a pointer to the nullObject of type T
-template<class T>
-inline bool notNull(const T* t);
-
-
-//- Return true if t is a pointer to the nullObject of type T
-template<class T>
-inline bool isNull(T* t);
-
-//- Return true if t is not a pointer to the nullObject of type T
-template<class T>
-inline bool notNull(T* t);
+inline bool notNull(const T& obj) noexcept
+{
+    return &obj != NullObjectPtr<T>();
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "nullObjectI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

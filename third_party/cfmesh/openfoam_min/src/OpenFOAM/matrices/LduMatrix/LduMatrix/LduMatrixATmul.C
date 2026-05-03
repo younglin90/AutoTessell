@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,38 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "LduMatrix.H"
-#include "LduInterfaceFieldPtrsList.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-template<class Type, class LUType>
-class Amultiplier
-:
-    public LduInterfaceField<Type>::Amultiplier
-{
-    const Field<LUType>& A_;
-
-public:
-
-    Amultiplier(const Field<LUType>& A)
-    :
-        A_(A)
-    {}
-
-    virtual ~Amultiplier()
-    {}
-
-    virtual void addAmul(Field<Type>& Apsi, const Field<Type>& psi) const
-    {
-        Apsi += A_*psi;
-    }
-};
-
-}
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -79,9 +50,12 @@ void Foam::LduMatrix<Type, DType, LUType>::Amul
     const LUType* const __restrict__ upperPtr = upper().begin();
     const LUType* const __restrict__ lowerPtr = lower().begin();
 
+    const label startRequest = UPstream::nRequests();
+
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
+        true,
         interfacesUpper_,
         psi,
         Apsi
@@ -104,9 +78,11 @@ void Foam::LduMatrix<Type, DType, LUType>::Amul
     // Update interface interfaces
     updateMatrixInterfaces
     (
+        true,
         interfacesUpper_,
         psi,
-        Apsi
+        Apsi,
+        startRequest
     );
 
     tpsi.clear();
@@ -133,9 +109,12 @@ void Foam::LduMatrix<Type, DType, LUType>::Tmul
     const LUType* const __restrict__ lowerPtr = lower().begin();
     const LUType* const __restrict__ upperPtr = upper().begin();
 
+    const label startRequest = UPstream::nRequests();
+
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
+        true,
         interfacesLower_,
         psi,
         Tpsi
@@ -157,9 +136,11 @@ void Foam::LduMatrix<Type, DType, LUType>::Tmul
     // Update interface interfaces
     updateMatrixInterfaces
     (
+        true,
         interfacesLower_,
         psi,
-        Tpsi
+        Tpsi,
+        startRequest
     );
 
     tpsi.clear();
@@ -235,22 +216,15 @@ void Foam::LduMatrix<Type, DType, LUType>::residual
 
     // Parallel boundary initialisation.
     // Note: there is a change of sign in the coupled
-    // interface update to add the contribution to the r.h.s.
+    // interface update to add the contibution to the r.h.s.
 
-    FieldField<Field, LUType> mBouCoeffs(interfacesUpper_.size());
-
-    forAll(mBouCoeffs, patchi)
-    {
-        if (interfaces_.set(patchi))
-        {
-            mBouCoeffs.set(patchi, -interfacesUpper_[patchi]);
-        }
-    }
+    const label startRequest = UPstream::nRequests();
 
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
-        mBouCoeffs,
+        false,          // negate interface contributions
+        interfacesUpper_,
         psi,
         rA
     );
@@ -272,9 +246,11 @@ void Foam::LduMatrix<Type, DType, LUType>::residual
     // Update interface interfaces
     updateMatrixInterfaces
     (
-        mBouCoeffs,
+        false,
+        interfacesUpper_,
         psi,
-        rA
+        rA,
+        startRequest
     );
 }
 
@@ -285,7 +261,7 @@ Foam::tmp<Foam::Field<Type>> Foam::LduMatrix<Type, DType, LUType>::residual
     const Field<Type>& psi
 ) const
 {
-    tmp<Field<Type>> trA(new Field<Type>(psi.size()));
+    auto trA = tmp<Field<Type>>::New(psi.size());
     residual(trA.ref(), psi);
     return trA;
 }

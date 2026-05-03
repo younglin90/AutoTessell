@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,12 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::septernion::septernion()
+inline Foam::septernion::septernion(const Foam::zero)
+:
+    t_(Zero),
+    r_(Zero)
 {}
+
 
 inline Foam::septernion::septernion(const vector& t, const quaternion& r)
 :
@@ -34,17 +41,20 @@ inline Foam::septernion::septernion(const vector& t, const quaternion& r)
     r_(r)
 {}
 
+
 inline Foam::septernion::septernion(const vector& t)
 :
     t_(t),
     r_(quaternion::I)
 {}
 
+
 inline Foam::septernion::septernion(const quaternion& r)
 :
     t_(Zero),
     r_(r)
 {}
+
 
 inline Foam::septernion::septernion(const spatialTransform& st)
 :
@@ -106,10 +116,12 @@ inline void Foam::septernion::operator=(const vector& t)
     r_ = quaternion::I;
 }
 
+
 inline void Foam::septernion::operator+=(const vector& t)
 {
     t_ += t;
 }
+
 
 inline void Foam::septernion::operator-=(const vector& t)
 {
@@ -123,11 +135,13 @@ inline void Foam::septernion::operator=(const quaternion& r)
     r_ = r;
 }
 
+
 inline void Foam::septernion::operator*=(const quaternion& r)
 {
     t_ = r.invTransform(t_);
     r_ *= r;
 }
+
 
 inline void Foam::septernion::operator/=(const quaternion& r)
 {

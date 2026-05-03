@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ namespace fvc
 
 tmp<volScalarField> reconstructMag(const surfaceScalarField& ssf)
 {
-    const fvMesh& mesh = ssf.mesh()();
+    const fvMesh& mesh = ssf.mesh();
 
     const labelUList& owner = mesh.owner();
     const labelUList& neighbour = mesh.neighbour();
@@ -55,16 +57,19 @@ tmp<volScalarField> reconstructMag(const surfaceScalarField& ssf)
 
     tmp<volScalarField> treconField
     (
-        volScalarField::New
+        new volScalarField
         (
-            "reconstruct("+ssf.name()+')',
-            mesh,
-            dimensionedScalar
+            IOobject
             (
-                ssf.dimensions()/dimArea,
-                scalar(0)
+                "reconstruct("+ssf.name()+')',
+                ssf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
             ),
-            extrapolatedCalculatedFvPatchScalarField::typeName
+            mesh,
+            dimensionedScalar(ssf.dimensions()/dimArea, Zero),
+            fvPatchFieldBase::extrapolatedCalculatedType()
         )
     );
     scalarField& rf = treconField.ref();

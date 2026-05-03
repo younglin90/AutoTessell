@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +52,7 @@ namespace Foam
 template<class Type>
 class multivariateSurfaceInterpolationScheme
 :
-    public tmp<multivariateSurfaceInterpolationScheme<Type>>::refCount
+    public refCount
 {
 
 public:
@@ -58,14 +60,14 @@ public:
     //- fieldTable
     class fieldTable
     :
-        public HashTable<const VolField<Type>*>
+        public HashTable<const GeometricField<Type, fvPatchField, volMesh>*>
     {
     public:
 
         fieldTable()
         {}
 
-        void add(const VolField<Type>& f)
+        void add(const GeometricField<Type, fvPatchField, volMesh>& f)
         {
             this->insert(f.name(), &f);
         }
@@ -74,13 +76,25 @@ public:
 
 private:
 
-    // Private Data
+    // Private data
 
         //- Hold reference to mesh
         const fvMesh& mesh_;
 
         //- HashTable of pointers to the field set
         const fieldTable& fields_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        multivariateSurfaceInterpolationScheme
+        (
+            const multivariateSurfaceInterpolationScheme&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const multivariateSurfaceInterpolationScheme&) = delete;
 
 
 public:
@@ -117,12 +131,6 @@ public:
             Istream& schemeData
         );
 
-        //- Disallow default bitwise copy construction
-        multivariateSurfaceInterpolationScheme
-        (
-            const multivariateSurfaceInterpolationScheme&
-        ) = delete;
-
 
     // Selectors
 
@@ -137,7 +145,7 @@ public:
 
 
     //- Destructor
-    virtual ~multivariateSurfaceInterpolationScheme();
+    virtual ~multivariateSurfaceInterpolationScheme() = default;
 
 
     // Member Functions
@@ -157,9 +165,6 @@ public:
 
     // Member Operators
 
-        //- Disallow default bitwise assignment
-        void operator=(const multivariateSurfaceInterpolationScheme&) = delete;
-
         //- surfaceInterpolationScheme sub-class returned by operator(field)
         //  which is used as the interpolation scheme for the field
         class fieldScheme
@@ -173,7 +178,7 @@ public:
 
                 fieldScheme
                 (
-                    const VolField<Type>& field
+                    const GeometricField<Type, fvPatchField, volMesh>& field
                 )
                 :
                     surfaceInterpolationScheme<Type>(field.mesh())
@@ -185,13 +190,13 @@ public:
                 //- Return the interpolation weighting factors
                 virtual tmp<surfaceScalarField> weights
                 (
-                    const VolField<Type>& field
+                    const GeometricField<Type, fvPatchField, volMesh>& field
                 ) const = 0;
         };
 
         virtual tmp<surfaceInterpolationScheme<Type>> operator()
         (
-            const VolField<Type>& field
+            const GeometricField<Type, fvPatchField, volMesh>& field
         ) const = 0;
 };
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,38 +28,48 @@ Class
     Foam::codedBase
 
 Description
-    Base class for coded functionObjects, fvModels, Function1, Function2
+    Base class for function objects and boundary conditions using dynamic code
+    that provides methods for managing loading/unloading/updating
+    of a dynamic library. For these purposes, it uses a dynamicCodeContext
+    object to maintain information about the state.
 
-    and boundary conditions
+    For simple coded objects, the default state management is sufficient.
+    When there are more complicated code segments
+    (eg, functionObjects::codedFunctionObject), the state management
+    must also register these elements as well, starting with an initial
+    setCodeContext() call and followed by append() to register each element.
 
 SourceFiles
     codedBase.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef codedBase_H
-#define codedBase_H
+#ifndef Foam_codedBase_H
+#define Foam_codedBase_H
 
-#include "dynamicCode.H"
+#include "dictionary.H"
+#include "dynamicCodeContext.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
+class dynamicCode;
+class dlLibraryTable;
+class objectRegistry;
+
 /*---------------------------------------------------------------------------*\
-                          Class codedBase Declaration
+                       Class codedBase Declaration
 \*---------------------------------------------------------------------------*/
 
 class codedBase
-:
-    public dynamicCode
 {
     // Private Data
 
-        //- Optional switch to allow library unloading and reloading
-        //  to support run-time code update
-        const bool reloadable_;
+        //- The code context
+        dynamicCodeContext context_;
 
         //- Previously loaded library
         mutable fileName oldLibPath_;
@@ -64,82 +77,121 @@ class codedBase
 
     // Private Member Functions
 
-        //- Global loader/unloader function type
-        typedef void (*loaderFunctionType)(bool);
-
-        void checkLibrary
-        (
-            const dictionary& dict,
-            const fileName& libPath,
-            void* lib,
-            const string& uniqueFuncName,
-            const bool load
-        ) const;
-
-        //- Load specified library and execute uniqueFuncName(true)
+        //- Load specified library and execute funcName(true)
         void* loadLibrary
         (
-            const dictionary& dict,
             const fileName& libPath,
-            const string& uniqueFuncName
+            const std::string& funcName,
+            const dynamicCodeContext& context
         ) const;
 
-        //- Execute uniqueFuncName(false) and unload specified library
+        //- Execute funcName(false) and unload specified library
         void unloadLibrary
         (
-            const dictionary& dict,
             const fileName& libPath,
-            const string& uniqueFuncName
+            const std::string& funcName,
+            const dynamicCodeContext& context
         ) const;
 
-        verbatimString expandCodeString
+        //- Create library based on the dynamicCodeContext
+        void createLibrary
         (
-            const dictionary& dict,
-            const word& codeKey,
-            const word& codeDictVar
+            dynamicCode& dynCode,
+            const dynamicCodeContext& context
         ) const;
+
+
+protected:
+
+    // Protected Member Functions
+
+        //- Write code-dictionary contents
+        static void writeCodeDict(Ostream& os, const dictionary& dict);
+
+        //- Return "codeDict" from objectRegistry or read from disk
+        static const dictionary& codeDict
+        (
+            const objectRegistry& obr,
+            const word& dictName = "codeDict"
+        );
+
+
+        //- Access to the dynamic code context
+        dynamicCodeContext& codeContext()
+        {
+            return context_;
+        }
+
+        //- Set code context from a dictionary
+        void setCodeContext(const dictionary& dict);
+
+        //- Add content to SHA1 hashing
+        void append(const std::string& str);
+
+
+        //- Update library as required, using the given context
+        void updateLibrary
+        (
+            const word& name,
+            const dynamicCodeContext& context
+        ) const;
+
+        //- Update library as required, using the given code dictionary
+        //- to use for the context
+        void updateLibrary
+        (
+            const word& name,
+            const dictionary& dict
+        ) const;
+
+        //- Update library as required, using the predefined context
+        //- or use the codeDict() to generate one
+        void updateLibrary(const word& name) const;
+
+
+        //- Mutable access to the loaded dynamic libraries
+        virtual dlLibraryTable& libs() const = 0;
+
+        // Return a description (type + name) for the output
+        virtual string description() const = 0;
+
+        // Clear any redirected objects
+        virtual void clearRedirect() const = 0;
+
+        // Get the dictionary to initialize the codeContext
+        virtual const dictionary& codeDict() const = 0;
+
+        //- Adapt the context for the current object
+        virtual void prepare
+        (
+            dynamicCode& dynCode,
+            const dynamicCodeContext& context
+        ) const = 0;
 
 
 public:
 
     //- Runtime type information
-    TypeName("codedBase");
+    ClassName("codedBase");
+
+
+    // Generated Methods
+
+        //- No copy construct
+        codedBase(const codedBase&) = delete;
+
+        //- No copy assignment
+        void operator=(const codedBase&) = delete;
 
 
     // Constructors
 
-        //- Construct from name and dictionary
-        codedBase
-        (
-            const word& name,
-            const dictionary& dict,
-            const wordList& codeKeys,
-            const wordList& codeDictVars,
-            const word& codeOptionsFileName,
-            const wordList& compileFiles,
-            const wordList& copyFiles,
-            const bool reloadable = true
-        );
+        //- Default construct
+        codedBase() = default;
 
 
     //- Destructor
-    virtual ~codedBase();
-
-
-    // Member Functions
-
-        //- Create a coded name from the given name
-        static word codedName(const word& name);
-
-        //- Update library from given updated dictionary as required
-        //  Returns true if the library was updated, otherwise false
-        bool updateLibrary(const dictionary& dict) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const codedBase&) = delete;
+    virtual ~codedBase() = default;
 };
 
 

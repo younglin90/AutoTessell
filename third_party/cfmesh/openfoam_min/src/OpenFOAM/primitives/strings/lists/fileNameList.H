@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,33 +23,22 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::fileNameUList
-
-Description
-    A UList of fileNames.
-
-Typedef
-    Foam::fileNameList
-
-Description
-    A List of fileNames.
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef fileNameList_H
-#define fileNameList_H
+#ifndef Foam_fileNameList_H
+#define Foam_fileNameList_H
 
 #include "fileName.H"
 #include "List.H"
+#include "SubList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-    typedef UList<fileName> fileNameUList;
-
-    typedef List<fileName> fileNameList;
+    typedef List<fileName> fileNameList;        //!< List of fileName
+    typedef SubList<fileName> fileNameSubList;  //!< SubList of fileName
+    typedef UList<fileName> fileNameUList;      //!< UList of fileName
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,9 +33,15 @@ Description
 
 Usage
     \code
-        error << "message1" << "message2" << FoamDataType << exit(error, errNo);
-        error << "message1" << "message2" << FoamDataType << abort(error);
+        error << "message " << someType << abort(error);
+        error << "message " << someType << exit(error, errNo);
     \endcode
+
+Class
+    Foam::errorManipArg
+
+Description
+    Error stream manipulators for functions with an argument.
 
 \*---------------------------------------------------------------------------*/
 
@@ -47,7 +55,7 @@ Usage
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 template<class Err> class errorManip;
 template<class Err> Ostream& operator<<(Ostream&, errorManip<Err>);
 
@@ -90,7 +98,6 @@ inline Ostream& operator<<(Ostream& os, errorManip<Err> m)
                         Class errorManipArg Declaration
 \*---------------------------------------------------------------------------*/
 
-//- errorManipArg
 template<class Err, class T>
 class errorManipArg
 {
@@ -128,17 +135,17 @@ exit(error& err, const int errNo = 1)
 }
 
 
-inline errorManip<error>
-abort(error& err)
-{
-    return errorManip<error>(&error::abort, err);
-}
-
-
 inline errorManipArg<IOerror, int>
 exit(IOerror& err, const int errNo = 1)
 {
     return errorManipArg<IOerror, int>(&IOerror::exit, err, errNo);
+}
+
+
+inline errorManip<error>
+abort(error& err)
+{
+    return errorManip<error>(&error::abort, err);
 }
 
 

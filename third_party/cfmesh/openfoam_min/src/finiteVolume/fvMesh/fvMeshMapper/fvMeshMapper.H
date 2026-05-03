@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvMeshMapper_H
-#define fvMeshMapper_H
+#ifndef Foam_fvMeshMapper_H
+#define Foam_fvMeshMapper_H
 
 #include "faceMapper.H"
 #include "cellMapper.H"
@@ -45,9 +47,9 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class fvMesh;
-class polyTopoChangeMap;
+class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
                         Class fvMeshMapper Declaration
@@ -73,22 +75,28 @@ class fvMeshMapper
         fvBoundaryMeshMapper boundaryMap_;
 
 
+    // Private Member Functions
+
+        //- No copy construct
+        fvMeshMapper(const fvMeshMapper&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvMeshMapper&) = delete;
+
+
 public:
 
     // Constructors
 
         //- Construct from fvMesh
-        fvMeshMapper(const fvMesh& mesh, const polyTopoChangeMap& map)
+        fvMeshMapper(const fvMesh& mesh, const mapPolyMesh& mpm)
         :
             mesh_(mesh),
-            faceMap_(map),
-            cellMap_(map),
+            faceMap_(mpm),
+            cellMap_(mpm),
             surfaceMap_(mesh, faceMap_),
             boundaryMap_(mesh, faceMap_)
         {}
-
-        //- Disallow default bitwise copy construction
-        fvMeshMapper(const fvMeshMapper&) = delete;
 
 
     // Member Functions
@@ -101,7 +109,7 @@ public:
 
         //- Return reference to objectRegistry storing fields. Can be
         //  removed once fields stored on pointMesh.
-        const objectRegistry& db() const
+        const objectRegistry& thisDb() const
         {
             return mesh_;
         }
@@ -123,12 +131,6 @@ public:
         {
             return boundaryMap_;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvMeshMapper&) = delete;
 };
 
 

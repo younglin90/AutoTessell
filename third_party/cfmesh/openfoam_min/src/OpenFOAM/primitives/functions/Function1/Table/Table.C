@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,382 +27,100 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Table.H"
-#include "linearInterpolationWeights.H"
-
-// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
-
-template<class Type>
-const Foam::interpolationWeights&
-Foam::Function1s::Table<Type>::interpolator() const
-{
-    if (interpolatorPtr_.empty())
-    {
-        // Re-work table into linear list
-        tableSamplesPtr_.reset(new scalarField(values_.size()));
-        scalarField& tableSamples = tableSamplesPtr_();
-        forAll(values_, i)
-        {
-            tableSamples[i] = values_[i].first();
-        }
-        interpolatorPtr_ = interpolationWeights::New
-        (
-            interpolationScheme_,
-            tableSamples
-        );
-    }
-
-    return interpolatorPtr_();
-}
-
-
-template<class Type>
-void Foam::Function1s::Table<Type>::check() const
-{
-    if (!values_.size())
-    {
-        FatalErrorInFunction
-            << "Table for entry " << this->name() << " is invalid (empty)"
-            << nl << exit(FatalError);
-    }
-
-    label n = values_.size();
-    scalar prevValue = values_[0].first();
-
-    for (label i = 1; i < n; ++i)
-    {
-        const scalar currValue = values_[i].first();
-
-        // avoid duplicate values (divide-by-zero error)
-        if (currValue <= prevValue)
-        {
-            FatalErrorInFunction
-                << "out-of-order value: " << currValue << " at index " << i
-                << exit(FatalError);
-        }
-        prevValue = currValue;
-    }
-}
-
-
-template<class Type>
-void Foam::Function1s::Table<Type>::checkX(const scalar x) const
-{
-    const bool under = x < values_.first().first();
-    const bool over = x > values_.last().first();
-
-    auto errorMessage = [&]()
-    {
-        return "value (" + name(x) + ") " + (under ? "under" : "over") + "flow";
-    };
-
-    if (under || over)
-    {
-        switch (boundsHandling_)
-        {
-            case tableBase::boundsHandling::error:
-            {
-                FatalErrorInFunction
-                    << errorMessage() << nl << exit(FatalError);
-                break;
-            }
-            case tableBase::boundsHandling::warn:
-            {
-                WarningInFunction
-                    << errorMessage() << nl << endl;
-                break;
-            }
-            default:
-            {
-                break;
-            }
-        }
-    }
-}
-
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::Table<Type>::Table
+Foam::Function1Types::Table<Type>::Table
 (
-    const word& name,
-    const tableBase::boundsHandling boundsHandling,
-    const word& interpolationScheme,
-    const autoPtr<TableReader<scalar, Type>>& reader,
-    const List<Tuple2<scalar, Type>>& table
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, Table<Type>>(name),
-    boundsHandling_(boundsHandling),
-    interpolationScheme_(interpolationScheme),
-    reader_(reader, false),
-    values_(table)
-{}
-
-
-template<class Type>
-Foam::Function1s::Table<Type>::Table
-(
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
-)
-:
-    FieldFunction1<Type, Table<Type>>(name),
-    boundsHandling_
-    (
-        tableBase::boundsHandlingNames.lookupOrDefault
-        (
-            "outOfBounds",
-            dict,
-            tableBase::boundsHandling::clamp
-        )
-    ),
-    interpolationScheme_
-    (
-        dict.lookupOrDefault<word>
-        (
-            "interpolationScheme",
-            linearInterpolationWeights::typeName
-        )
-    ),
-    reader_(TableReader<scalar, Type>::New(name, units, dict)),
-    values_(reader_->read(units, dict))
+    TableBase<Type>(entryName, dict, obrPtr),
+    fName_()
 {
-    check();
+    const entry* eptr = dict.findEntry(entryName, keyType::LITERAL);
+
+    if (eptr && eptr->isStream())
+    {
+        // Primitive (inline) format. Eg,
+        // key table ((0 0) (10 1));
+
+        ITstream& is = eptr->stream();
+        if (is.peek().isWord())
+        {
+            is.skip();  // Discard leading 'table'
+        }
+        is >> this->table_;
+        dict.checkITstream(is, entryName);
+    }
+    else if (dict.readIfPresent("file", fName_))
+    {
+        // Dictionary format - "file" lookup. Eg,
+        // key { type table; file "name"; }
+
+        fileName expandedFile(fName_);
+        expandedFile.expand();
+
+        autoPtr<ISstream> isPtr(fileHandler().NewIFstream(expandedFile));
+        if (isPtr && isPtr->good())
+        {
+            *isPtr >> this->table_;
+        }
+        else
+        {
+            FatalIOErrorInFunction(dict)
+                << "Cannot open file: " << expandedFile << nl
+                << exit(FatalIOError);
+        }
+    }
+    else
+    {
+        // Dictionary format - "values" lookup. Eg,
+        //
+        // key { type table; values ((0 0) (10 1)); }
+
+        dict.readEntry("values", this->table_);
+    }
+
+    TableBase<Type>::initialise();
 }
 
 
 template<class Type>
-Foam::Function1s::Table<Type>::Table
-(
-    const word& name,
-    const unitSet& xUnits,
-    const unitSet& valueUnits,
-    const dictionary& dict
-)
+Foam::Function1Types::Table<Type>::Table(const Table<Type>& tbl)
 :
-    Table(name, {xUnits, valueUnits}, dict)
-{}
-
-
-template<class Type>
-Foam::Function1s::Table<Type>::Table
-(
-    const word& name,
-    const unitSets& units,
-    Istream& is
-)
-:
-    FieldFunction1<Type, Table<Type>>(name),
-    boundsHandling_(tableBase::boundsHandling::clamp),
-    interpolationScheme_(linearInterpolationWeights::typeName),
-    reader_(new TableReaders::Embedded<scalar, Type>()),
-    values_(TableReaders::Embedded<scalar, Type>().read(units, is))
-{
-    check();
-}
-
-
-template<class Type>
-Foam::Function1s::Table<Type>::Table(const Table<Type>& tbl)
-:
-    FieldFunction1<Type, Table<Type>>(tbl),
-    boundsHandling_(tbl.boundsHandling_),
-    interpolationScheme_(tbl.interpolationScheme_),
-    reader_(tbl.reader_, false),
-    values_(tbl.values_),
-    tableSamplesPtr_(tbl.tableSamplesPtr_),
-    interpolatorPtr_(tbl.interpolatorPtr_)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::Function1s::Table<Type>::~Table()
+    TableBase<Type>(tbl),
+    fName_(tbl.fName_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Type Foam::Function1s::Table<Type>::value
-(
-    const scalar xArg
-) const
+void Foam::Function1Types::Table<Type>::writeData(Ostream& os) const
 {
-    scalar x(xArg);
+    Function1<Type>::writeData(os);
+    os.endEntry();
 
-    checkX(x);
+    os.beginBlock(word(this->name() + "Coeffs"));
 
-    const scalar x0 = values_.first().first();
-    const scalar x1 = values_.last().first();
+    // Note: for TableBase write the dictionary entries it needs but not
+    // the values themselves
+    TableBase<Type>::writeEntries(os);
 
-    Type y = Zero;
-
-    switch (boundsHandling_)
+    if (fName_.empty())
     {
-        case tableBase::boundsHandling::clamp:
-        {
-            // Integration weights clamp by default, so do nothing
-            break;
-        }
-        case tableBase::boundsHandling::zero:
-        {
-            // Return zero if outside the range
-            if (x <= x0 || x >= x1)
-            {
-                return Zero;
-            }
-            break;
-        }
-        case tableBase::boundsHandling::repeat:
-        {
-            // Shift the value into the range of the table
-            const scalar n = floor((x - x0)/(x1 - x0));
-            x -= n*(x1 - x0);
-            break;
-        }
-        default:
-        {
-            break;
-        }
+        os.writeEntry("values", this->table_);
+    }
+    else
+    {
+        os.writeEntry("file", fName_);
     }
 
-    // Evaluate
-    interpolator().valueWeights(x, indices_, weights_);
-    forAll(indices_, i)
-    {
-        y += weights_[i]*values_[indices_[i]].second();
-    }
-
-    return y;
-}
-
-
-template<class Type>
-Type Foam::Function1s::Table<Type>::integral
-(
-    const scalar xAarg,
-    const scalar xBarg
-) const
-{
-    scalar xA(xAarg), xB(xBarg);
-
-    checkX(xA);
-    checkX(xB);
-
-    const scalar x0 = values_.first().first();
-    const scalar x1 = values_.last().first();
-
-    Type sumY = Zero;
-
-    switch (boundsHandling_)
-    {
-        case tableBase::boundsHandling::clamp:
-        {
-            // Integration weights clamp by default, so do nothing
-            break;
-        }
-        case tableBase::boundsHandling::zero:
-        {
-            // Actually clamp to remove any integral components from the ends
-            xA = min(max(xA, x0), x1);
-            xB = min(max(xB, x0), x1);
-            break;
-        }
-        case tableBase::boundsHandling::repeat:
-        {
-            // Shift the values into the range of the table and add any
-            // repetitions necessary to the integral
-            const scalar nA = floor((xA - x0)/(x1 - x0));
-            const scalar nB = floor((xB - x0)/(x1 - x0));
-            if (nA != nB)
-            {
-                interpolator().integrationWeights(x0, x1, indices_, weights_);
-                forAll(indices_, i)
-                {
-                    sumY += (nB - nA)*weights_[i]*values_[indices_[i]].second();
-                }
-            }
-            xA -= nA*(x1 - x0);
-            xB -= nB*(x1 - x0);
-            break;
-        }
-        default:
-        {
-            break;
-        }
-    }
-
-    // Integrate between the bounds
-    interpolator().integrationWeights(xA, xB, indices_, weights_);
-    forAll(indices_, i)
-    {
-       sumY += weights_[i]*values_[indices_[i]].second();
-    }
-
-    return sumY;
-}
-
-
-template<class Type>
-Foam::tmp<Foam::scalarField>
-Foam::Function1s::Table<Type>::x() const
-{
-    tmp<scalarField> tfld(new scalarField(values_.size(), 0.0));
-    scalarField& fld = tfld.ref();
-
-    forAll(values_, i)
-    {
-        fld[i] = values_[i].first();
-    }
-
-    return tfld;
-}
-
-
-template<class Type>
-Foam::tmp<Foam::Field<Type>>
-Foam::Function1s::Table<Type>::y() const
-{
-    tmp<Field<Type>> tfld(new Field<Type>(values_.size(), Zero));
-    Field<Type>& fld = tfld.ref();
-
-    forAll(values_, i)
-    {
-        fld[i] = values_[i].second();
-    }
-
-    return tfld;
-}
-
-
-template<class Type>
-void Foam::Function1s::Table<Type>::write
-(
-    Ostream& os,
-    const unitSets& units
-) const
-{
-    writeEntryIfDifferent
-    (
-        os,
-        "outOfBounds",
-        tableBase::boundsHandlingNames[tableBase::boundsHandling::clamp],
-        tableBase::boundsHandlingNames[boundsHandling_]
-    );
-
-    writeEntryIfDifferent
-    (
-        os,
-        "interpolationScheme",
-        linearInterpolationWeights::typeName,
-        interpolationScheme_
-    );
-
-    reader_->write(os, units, values_);
+    os.endBlock();
 }
 
 

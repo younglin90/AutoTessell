@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::DICGaussSeidelSmoother
+
+Group
+    grpLduMatrixSmoothers
 
 Description
     Combined DIC/GaussSeidel smoother for symmetric matrices in which DIC
@@ -53,7 +59,7 @@ class DICGaussSeidelSmoother
 :
     public lduMatrix::smoother
 {
-    // Private Data
+    // Private data
 
         DICSmoother dicSmoother_;
 
@@ -84,8 +90,17 @@ public:
         //- Smooth the solution for a given number of sweeps
         virtual void smooth
         (
-            scalarField& psi,
+            solveScalarField& psi,
             const scalarField& Source,
+            const direction cmpt,
+            const label nSweeps
+        ) const;
+
+        //- Smooth the solution for a given number of sweeps
+        virtual void scalarSmooth
+        (
+            solveScalarField& psi,
+            const solveScalarField& Source,
             const direction cmpt,
             const label nSweeps
         ) const;

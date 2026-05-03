@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "ifEntry.H"
-#include "addToRunTimeSelectionTable.H"
+#include "Switch.H"
 #include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -33,65 +36,91 @@ namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(ifEntry, 0);
-    addToRunTimeSelectionTable(functionEntry, ifEntry, dictionary);
+    defineTypeNameAndDebug(ifEntry, 0);
 
-    addToMemberFunctionSelectionTable
+    addNamedToMemberFunctionSelectionTable
     (
         functionEntry,
         ifEntry,
         execute,
-        primitiveEntryIstream
+        dictionaryIstream,
+        if
     );
+} // End namespace functionEntries
+} // End namespace Foam
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+bool Foam::functionEntries::ifEntry::isTrue(ITstream& its)
+{
+    Switch logic;
+
+    if (its.front().isScalar())
+    {
+        // Use default rounding tolerance
+        logic = Switch(its.front().scalarToken());
+    }
+    else
+    {
+        its >> logic;
+    }
+
+    return logic;
 }
-}
 
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-Foam::functionEntries::ifEntry::ifEntry
+bool Foam::functionEntries::ifEntry::execute
 (
-    const label lineNumber,
-    const dictionary& parentDict,
+    DynamicList<filePos>& stack,
+    dictionary& parentDict,
     Istream& is
 )
-:
-    ifeqEntry
-    (
-        typeName,
-        lineNumber,
-        parentDict,
-        is,
-        functionEntry::readArgList(typeName, is)
-    )
-{}
+{
+    const label nNested = stack.size();
+
+    stack.push_back(filePos(is.name(), is.lineNumber()));
+
+    // Read line
+    string line;
+    dynamic_cast<ISstream&>(is).getLine(line);
+    line += ';';
+
+    IStringStream lineStream(line);
+    const primitiveEntry e("ifEntry", parentDict, lineStream);
+
+    const bool doIf = ifEntry::isTrue(e.stream());
+
+    // Info<< "Using #" << typeName << " " << Switch::name(doIf)
+    //     << " at line " << stack.back().second()
+    //     << " in file " << stack.back().first() << endl;
+
+    const bool ok = ifeqEntry::execute(doIf, stack, parentDict, is);
+
+    if (stack.size() != nNested)
+    {
+        FatalIOErrorInFunction(parentDict)
+            << "Did not find matching #endif for condition starting"
+            << " at line " << stack.back().second()
+            << " in file " << stack.back().first() << exit(FatalIOError);
+    }
+
+    return ok;
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::functionEntries::ifEntry::execute
 (
-    dictionary& contextDict,
+    dictionary& parentDict,
     Istream& is
 )
 {
     DynamicList<filePos> stack(10);
-    return execute(stack, contextDict, contextDict, is);
-}
-
-
-bool Foam::functionEntries::ifEntry::execute
-(
-    const dictionary& contextDict,
-    primitiveEntry& contextEntry,
-    Istream& is
-)
-{
-    DynamicList<filePos> stack(10);
-    return ifEntry(is.lineNumber(), contextDict, is).execute
-    (
-        stack, contextDict, contextEntry, is
-    );
+    return execute(stack, parentDict, is);
 }
 
 

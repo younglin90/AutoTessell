@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -53,14 +55,14 @@ class Callback;
 
 
 /*---------------------------------------------------------------------------*\
-                      Class CallbackRegistry Declaration
+                       Class CallbackRegistry Declaration
 \*---------------------------------------------------------------------------*/
 
 TemplateName(CallbackRegistry);
 
 
 /*---------------------------------------------------------------------------*\
-                      Class CallbackRegistry Declaration
+                       Class CallbackRegistry Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class CallbackType>
@@ -69,6 +71,14 @@ class CallbackRegistry
     public CallbackRegistryName,
     public UIDLList<CallbackType>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        CallbackRegistry(const CallbackRegistry&) = delete;
+
+        //- No copy assignment
+        void operator=(const CallbackRegistry&) = delete;
+
 
 public:
 
@@ -77,18 +87,9 @@ public:
         //- Construct null
         CallbackRegistry();
 
-        //- Disallow default bitwise copy construction
-        CallbackRegistry(const CallbackRegistry&) = delete;
-
 
     //- Destructor
     virtual ~CallbackRegistry();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const CallbackRegistry&) = delete;
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2018 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,15 +25,43 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+inline const Foam::coordinateSystem& Foam::porosityModel::csys() const
+{
+    return *csysPtr_;
+}
+
+
+inline Foam::label Foam::porosityModel::fieldIndex(const label i) const
+{
+    return (csysPtr_->uniform() ? 0 : i);
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
 inline const Foam::word& Foam::porosityModel::name() const
 {
     return name_;
 }
 
 
-inline const Foam::word& Foam::porosityModel::zoneName() const
+inline bool Foam::porosityModel::active() const
 {
-    return zoneName_;
+    return active_;
+}
+
+
+inline const Foam::dictionary& Foam::porosityModel::dict() const
+{
+    return dict_;
+}
+
+
+inline const Foam::labelList& Foam::porosityModel::cellZoneIDs() const
+{
+    return cellZoneIDs_;
 }
 
 

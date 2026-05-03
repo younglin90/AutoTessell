@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::advectiveFvPatchField
+
+Group
+    grpOutletBoundaryConditions
 
 Description
     This boundary condition provides an advective outflow condition, based on
@@ -64,9 +69,9 @@ Usage
     }
     \endverbatim
 
-    Note:
-        If \c lInf is specified, \c fieldInf will be required; \c rho is only
-        required in the case of a mass-based flux.
+Note
+    If \c lInf is specified, \c fieldInf will be required; \c rho is only
+    required in the case of a mass-based flux.
 
 SourceFiles
     advectiveFvPatchField.C
@@ -84,7 +89,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class advectiveFvPatchField Declaration
+                  Class advectiveFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -94,13 +99,13 @@ class advectiveFvPatchField
 {
 protected:
 
-    // Private Data
+    // Private data
 
         //- Name of the flux transporting the field
         word phiName_;
 
         //- Name of the density field used to normalise the mass flux
-        //  if necessary
+        //- if necessary
         word rhoName_;
 
         //- Field value of the far-field
@@ -118,11 +123,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        advectiveFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         advectiveFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -132,34 +144,40 @@ public:
         (
             const advectiveFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        advectiveFvPatchField(const advectiveFvPatchField&) = delete;
+        //- Construct as copy
+        advectiveFvPatchField
+        (
+            const advectiveFvPatchField&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         advectiveFvPatchField
         (
             const advectiveFvPatchField&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new advectiveFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -200,12 +218,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchField<Type>::operator=;
 };
 
 

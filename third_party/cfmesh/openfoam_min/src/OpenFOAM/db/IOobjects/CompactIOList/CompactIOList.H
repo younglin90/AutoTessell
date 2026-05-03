@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ Class
     Foam::CompactIOList
 
 Description
-    A List of objects of type \<Type\> with automated input and output using
+    A List of objects of type \<T\> with automated input and output using
     a compact storage. Behaves like IOList except when binary output in
     case it writes a CompactListList.
 
@@ -36,283 +39,104 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef CompactIOList_H
-#define CompactIOList_H
+#ifndef Foam_CompactIOList_H
+#define Foam_CompactIOList_H
 
 #include "IOList.H"
-#include "regIOobject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    template<class> class CompactIOContainer,
-    class Type
->
-class CompactIOListBase;
+// Forward Declarations
+template<class T, class BaseType> class CompactIOList;
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    template<class> class CompactIOContainer,
-    class Type
->
-void writeEntry
-(
-    Ostream&,
-    const CompactIOListBase<Container, IOContainer, CompactIOContainer, Type>&
-);
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    template<class> class CompactIOContainer,
-    class Type
->
-Istream& operator>>
+template<class T, class BaseType> Istream& operator>>
 (
     Istream&,
-    CompactIOListBase<Container, IOContainer, CompactIOContainer, Type>&
+    CompactIOList<T, BaseType>&
 );
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    template<class> class CompactIOContainer,
-    class Type
->
-Ostream& operator<<
+template<class T, class BaseType> Ostream& operator<<
 (
     Ostream&,
-    const CompactIOListBase<Container, IOContainer, CompactIOContainer, Type>&
+    const CompactIOList<T, BaseType>&
 );
-
-
-/*---------------------------------------------------------------------------*\
-                        Class CompactIOListBase Declaration
-\*---------------------------------------------------------------------------*/
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    template<class> class CompactIOContainer,
-    class Type
->
-class CompactIOListBase
-:
-    public regIOobject,
-    public Container<Type>
-{
-    // Private Member Functions
-
-        //- Does the container have too many elements to represent with the
-        //  current integer size type?
-        bool overflows() const;
-
-        //- Convert the data to a compact representation
-        void convertToCompact
-        (
-            labelList& start,
-            List<typename Type::value_type>& elems
-        ) const;
-
-        //- Convert the data from a compact representation
-        void convertFromCompact
-        (
-            const labelList& start,
-            const List<typename Type::value_type>& elems
-        );
-
-        //- Read according to header type
-        void readFromStream(const bool read = true);
-
-
-public:
-
-    // Constructors
-
-        //- Construct from IOobject
-        CompactIOListBase(const IOobject&);
-
-        //- Construct from IOobject; does local processor require reading?
-        CompactIOListBase(const IOobject&, const bool read);
-
-        //- Construct from IOobject and size of CompactIOListBase
-        CompactIOListBase(const IOobject&, const label);
-
-        //- Construct from IOobject and a Container
-        CompactIOListBase(const IOobject&, const Container<Type>&);
-
-        //- Move construct by transferring the Container contents
-        CompactIOListBase(const IOobject&, Container<Type>&&);
-
-        //- Move constructor
-        CompactIOListBase
-        (
-            CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&&
-        );
-
-
-    //- Destructor
-    virtual ~CompactIOListBase();
-
-
-    // Member Functions
-
-        //- WriteObject function. Changes the write type depending on whether
-        //  the output is compact or not.
-        virtual bool writeObject
-        (
-            IOstream::streamFormat,
-            IOstream::versionNumber,
-            IOstream::compressionType,
-            const bool write
-        ) const;
-
-        //- WriteData function required for regIOobject write operation
-        virtual bool writeData(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment operators
-        using Container<Type>::operator=;
-
-         //- Assign to another CompactIOList
-        void operator=
-        (
-            const CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&
-        );
-
-        //- Move-assign to another CompactIOList
-        void operator=
-        (
-            CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&&
-        );
-
-
-    // IOstream functions
-
-        //- Write list to Ostream
-        friend void writeEntry
-        <
-            Container,
-            IOContainer,
-            CompactIOContainer,
-            Type
-        >
-        (
-            Ostream&,
-            const CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&
-        );
-
-
-    // IOstream Operators
-
-        //- Read list from Istream
-        friend Istream& operator>>
-        <
-            Container,
-            IOContainer,
-            CompactIOContainer,
-            Type
-        >
-        (
-            Istream&,
-            CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&
-        );
-
-        // Write list to Ostream
-        friend Ostream& operator<<
-        <
-            Container,
-            IOContainer,
-            CompactIOContainer,
-            Type
-         >
-        (
-            Ostream&,
-            const CompactIOListBase
-            <
-                Container,
-                IOContainer,
-                CompactIOContainer,
-                Type
-            >&
-        );
-};
-
 
 /*---------------------------------------------------------------------------*\
                         Class CompactIOList Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Type>
+template<class T, class BaseType>
 class CompactIOList
 :
-    public CompactIOListBase<List, IOList, CompactIOList, Type>
+    public regIOobject,
+    public List<T>
 {
+    // Private Member Functions
+
+        //- Read if IOobject flags set. Return true if read.
+        //- Reads according to the header type.
+        //  Return true if read.
+        bool readIOcontents();
+
+        //- Has too many elements in it?
+        bool overflows() const;
+
 
 public:
 
+    //- The underlying content type
+    typedef List<T> content_type;
+
     //- Runtime type information
-    TypeName("ListList");
+    TypeName("CompactList");
 
 
     // Constructors
 
-        //- Inherit constructors
-        using
-            CompactIOListBase<List, IOList, CompactIOList, Type>::
-            CompactIOListBase;
+        //- Default copy construct
+        CompactIOList(const CompactIOList&) = default;
+
+        //- Construct from IOobject
+        explicit CompactIOList(const IOobject& io);
+
+        //- Construct from IOobject and zero size (if not read)
+        CompactIOList(const IOobject& io, Foam::zero);
+
+        //- Construct from IOobject and default length of CompactIOList
+        CompactIOList(const IOobject& io, const label len);
+
+        //- Construct from IOobject and List content
+        CompactIOList(const IOobject& io, const UList<T>& content);
+
+        //- Construct by transferring the List content
+        CompactIOList(const IOobject& io, List<T>&& content);
+
+
+    //- Destructor
+    virtual ~CompactIOList() = default;
+
+
+    // Member Functions
+
+        //- Write using stream options. Checks for overflow in binary
+        virtual bool writeObject
+        (
+            IOstreamOption streamOpt,
+            const bool writeOnProc
+        ) const;
+
+        virtual bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using
-            CompactIOListBase<List, IOList, CompactIOList, Type>::
-            operator=;
+        //- Copy assignment of entries
+        void operator=(const CompactIOList<T, BaseType>& rhs);
+
+        //- Copy or move assignment of entries
+        using List<T>::operator=;
 };
 
 

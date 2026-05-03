@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,8 +30,21 @@ Class
 Description
     A collection of tools for triSurface.
 
+Note
+    The curvature calculation is an implementation of the algorithm from:
+    \verbatim
+        "Estimating Curvatures and their Derivatives on Triangle Meshes"
+        by S. Rusinkiewicz
+        3DPVT'04 Proceedings of the 3D Data Processing,
+        Visualization, and Transmission, 2nd International Symposium
+        Pages 486-493
+        http://gfx.cs.princeton.edu/pubs/_2004_ECA/curvpaper.pdf
+    \endverbatim
+
 SourceFiles
     triSurfaceTools.C
+    triSurfaceCloseness.C
+    triSurfaceCurvature.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -37,11 +53,15 @@ SourceFiles
 
 #include "boolList.H"
 #include "pointField.H"
+#include "vectorField.H"
+#include "triadFieldFwd.H"
 #include "DynamicList.H"
 #include "HashSet.H"
+#include "Map.H"
 #include "FixedList.H"
+#include "Pair.H"
 #include "vector2D.H"
-#include "triPointRef.H"
+#include "triangle.H"
 #include "surfaceLocation.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -49,16 +69,19 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class triSurface;
+// Forward Declarations
+class boundBox;
 class edge;
 class labelledTri;
 class polyBoundaryMesh;
 class plane;
-class boundBox;
+class triSurface;
+class face;
+class Time;
+template<class Face> class MeshedSurface;
 
 /*---------------------------------------------------------------------------*\
-                       Class triSurfaceTools Declaration
+                           Class triSurfaceTools Declaration
 \*---------------------------------------------------------------------------*/
 
 class triSurfaceTools
@@ -140,8 +163,8 @@ class triSurfaceTools
                 const triSurface& surf,
                 const label edgeI,
                 const labelHashSet& collapsedFaces,
-                HashTable<label, label, Hash<label>>& edgeToEdge,
-                HashTable<label, label, Hash<label>>& edgeToFace
+                Map<label>& edgeToEdge,
+                Map<label>& edgeToFace
             );
 
             //- Calculates (cos of) angle across edgeI of facei,
@@ -153,8 +176,8 @@ class triSurfaceTools
                 const label v1,
                 const point& pt,
                 const labelHashSet& collapsedFaces,
-                const HashTable<label, label, Hash<label>>& edgeToEdge,
-                const HashTable<label, label, Hash<label>>& edgeToFace,
+                const Map<label>& edgeToEdge,
+                const Map<label>& edgeToFace,
                 const label facei,
                 const label edgeI
             );
@@ -169,8 +192,8 @@ class triSurfaceTools
                 const label v1,
                 const point& pt,
                 const labelHashSet& collapsedFaces,
-                const HashTable<label, label, Hash<label>>& edgeToEdge,
-                const HashTable<label, label, Hash<label>>& edgeToFace
+                const Map<label>& edgeToEdge,
+                const Map<label>& edgeToFace
             );
 
             //- Like collapseMinCosAngle but return true for value < minCos
@@ -180,18 +203,18 @@ class triSurfaceTools
                 const label v1,
                 const point& pt,
                 const labelHashSet& collapsedFaces,
-                const HashTable<label, label, Hash<label>>& edgeToEdge,
-                const HashTable<label, label, Hash<label>>& edgeToFace,
+                const Map<label>& edgeToEdge,
+                const Map<label>& edgeToFace,
                 const scalar minCos
             );
 
             ////- Checks if edge collapse creates triangles on top of each
             ////  other
-            // static bool collapseCreatesDuplicates
+            //static bool collapseCreatesDuplicates
             //(
             //    const triSurface& surf,
             //    const label edgeI,
-            //    const HashTable<bool, label, Hash<label>>& collapsedFaces
+            //    const Map<bool>& collapsedFaces
             //);
 
         // Tracking
@@ -277,16 +300,6 @@ public:
             const triSurface& surf,
             const edge& e
         );
-
-        ////- Order vertices consistent with face
-        // static void orderVertices
-        //(
-        //    const labelledTri& f,
-        //    const label v1,
-        //    const label v2,
-        //    label& vA,
-        //    label& vB
-        //);
 
         //- Get face connected to edge not facei
         static label otherFace
@@ -467,10 +480,12 @@ public:
         //- Simple triangulation of (selected patches of) boundaryMesh. Needs
         //  polyMesh (or polyBoundaryMesh) since only at this level are the
         //  triangles on neighbouring patches connected.
+        //  Return faceMap from triI to faceI
         static triSurface triangulate
         (
             const polyBoundaryMesh& mBesh,
             const labelHashSet& includePatches,
+            labelList& faceMap,
             const bool verbose = false
         );
 
@@ -498,12 +513,16 @@ public:
 
     // Triangulation and interpolation
 
+        //- Do unconstrained Delaunay of points. Returns triSurface with 3D
+        //  points with z=0. All triangles in region 0.
+        static triSurface delaunay2D(const List<vector2D>&);
+
         //- Calculate linear interpolation weights for point (guaranteed to be
         //  inside triangle)
         static void calcInterpolationWeights
         (
-            const triPointRef&,
-            const point&,
+            const triPointRef& tri,
+            const point& p,
             FixedList<scalar, 3>& weights
         );
 
@@ -518,13 +537,105 @@ public:
         (
             const triSurface& s,
             const pointField& samplePts,
-            List<FixedList<label, 3>>& verts,
-            List<FixedList<scalar, 3>>& weights
+            List<FixedList<label, 3>>& allVerts,
+            List<FixedList<scalar, 3>>& allWeights
         );
 
-        //- Do unconstrained Delaunay of points. Returns triSurface with 3D
-        //  points with z=0. All triangles in region 0.
-        static triSurface delaunay2D(const List<vector2D>&);
+
+    // Curvature
+
+        //- Weighting for normals of faces attached to vertex
+        static scalar vertexNormalWeight
+        (
+            const triFace& f,
+            const label pI,
+            const vector& fN,
+            const UList<point>& points
+        );
+
+        //- Weighted average of normals of attached faces
+        static tmp<vectorField> vertexNormals(const triSurface& surf);
+
+        //- Local coordinate-system for each point normal
+        static tmp<triadField> vertexTriads
+        (
+            const triSurface& surf,
+            const vectorField& pointNormals
+        );
+
+        //- Surface curvatures at the vertex points
+        static tmp<scalarField> curvatures
+        (
+            const triSurface& surf,
+            const vectorField& pointNormals,
+            const triadField& pointTriads
+        );
+
+        //- Surface curvatures at the vertex points
+        static tmp<scalarField> curvatures
+        (
+            const triSurface& surf
+        );
+
+        //- Write surface curvature at the vertex points and return the field
+        static tmp<scalarField> writeCurvature
+        (
+            const Time& runTime,
+            const word& basename,
+            const triSurface& surf
+        );
+
+
+    // Closeness
+
+        //- Check and write internal/external closeness fields
+        static Pair<tmp<scalarField>> writeCloseness
+        (
+            const Time& runTime,
+            const word& basename,
+            const triSurface& surf,
+            const scalar internalAngleTolerance = 45,
+            const scalar externalAngleTolerance = 10
+        );
+
+
+    // Feature Proximity
+
+        //- Calculate feature proximity
+        scalarField featureProximity
+        (
+            const triSurface& surf,
+            const scalar searchDistance
+        );
+
+        //- Check and write internal/external closeness fields
+        static void writeFeatureProximity
+        (
+            const Time& runTime,
+            const word& basename,
+            const triSurface& surf,
+            const bool writeVTK,
+            const scalar searchDistance
+        );
+
+
+    // Surface checking functionality
+
+        //- Check single triangle for (topological) validity
+        static bool validTri
+        (
+            const triSurface&,
+            const label facei,
+            const bool verbose = true
+        );
+
+        //- Check single triangle for (topological) validity
+        static bool validTri
+        (
+            const MeshedSurface<face>&,
+            const label facei,
+            const bool verbose = true
+        );
 
 
     // Tracking

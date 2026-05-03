@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,7 +39,6 @@ SourceFiles
 
 #include "processorCyclicPolyPatch.H"
 #include "processorFvPatch.H"
-#include "cyclicFvPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,7 +46,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class processorCyclicFvPatch Declaration
+                           Class processorCyclicFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorCyclicFvPatch
@@ -54,9 +55,7 @@ class processorCyclicFvPatch
 {
     // Private Data
 
-        //- Reference to the corresponding processorCyclicPolyPatch
-        const processorCyclicPolyPatch& processorCyclicPoly_;
-
+        const processorCyclicPolyPatch& procPolyPatch_;
 
 public:
 
@@ -70,36 +69,40 @@ public:
         processorCyclicFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
         :
             processorFvPatch(patch, bm),
-            processorCyclicPoly_(refCast<const processorCyclicPolyPatch>(patch))
+            procPolyPatch_(refCast<const processorCyclicPolyPatch>(patch))
         {}
 
 
-    // Member Functions
+    // Member functions
 
         //- Return message tag used for sending
         virtual int tag() const
         {
             // Allocate from Pstream?
-            return processorCyclicPoly_.tag();
+            return procPolyPatch_.tag();
         }
 
-        //- Return the referring patch ID
-        label referPatchIndex() const
+        const processorCyclicPolyPatch& procPolyPatch() const
         {
-            return processorCyclicPoly_.referPatchIndex();
+            return procPolyPatch_;
         }
 
-        //- Return a reference to the referring patch
-        const cyclicFvPatch& referPatch() const
+        //- Are the cyclic planes parallel
+        virtual bool parallel() const
         {
-            const fvPatch& fvp = this->boundaryMesh()[referPatchIndex()];
-            return refCast<const cyclicFvPatch>(fvp);
+            return procPolyPatch_.parallel();
         }
 
-        //- Return transformation between the coupled patches
-        virtual const transformer& transform() const
+        //- Return face transformation tensor
+        virtual const tensorField& forwardT() const
         {
-            return processorCyclicPoly_.transform();
+            return procPolyPatch_.forwardT();
+        }
+
+        //- Return neighbour-cell transformation tensor
+        virtual const tensorField& reverseT() const
+        {
+            return procPolyPatch_.reverseT();
         }
 };
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +27,19 @@ Class
     Foam::scalarRanges
 
 Description
-    A List of scalarRange.
+    A collection of scalar bounds to be used as a unary predicate.
+
+SeeAlso
+    Foam::predicates::scalars
 
 SourceFiles
     scalarRanges.C
+    scalarRangesI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef scalarRanges_H
-#define scalarRanges_H
+#ifndef Foam_scalarRanges_H
+#define Foam_scalarRanges_H
 
 #include "scalarRange.H"
 #include "List.H"
@@ -55,27 +61,51 @@ public:
 
     // Constructors
 
-        //- Construct Null
-        scalarRanges();
+        //- Inherit constructors from List of scalarRange
+        using List<scalarRange>::List;
 
-        //- Construct from Istream.
-        //  The list items are comma-delimited.
-        scalarRanges(Istream&);
+        //- Default construct
+        constexpr scalarRanges() noexcept = default;
+
+        //- Construct by parsing string using the parse() static method
+        //- with optional reporting if any range fails to parse
+        explicit scalarRanges(const std::string& str, bool report = true)
+        :
+            List<scalarRange>(scalarRanges::parse(str, report))
+        {}
+
+
+    // Static Constructors
+
+        //- Construct by parsing string for scalar ranges
+        //- with optional reporting if any range fails to parse.
+        //  The individual items are space, comma or semicolon delimited.
+        static scalarRanges parse(const std::string& str, bool report = true);
+
 
     // Member Functions
 
-        //- Return true if the given value is within the ranges
-        bool selected(const scalar) const;
+        //- True if the value is contained by any of the sub-ranges
+        bool contains(const scalar value) const
+        {
+            for (const scalarRange& range : *this)
+            {
+                if (range.contains(value))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
-        //- Return the set of selected entries in the given list
-        //  that are within the ranges
-        List<bool> selected(const List<scalar>&) const;
+        //- True if the value is matched by any of the sub-ranges
+        bool match(const scalar value) const { return contains(value); }
 
-        //- Select a list of values that are within the ranges
-        List<scalar> select(const List<scalar>&) const;
 
-        //- Select a list of values that are within the ranges
-        void inplaceSelect(List<scalar>&) const;
+    // Member Operators
+
+        //- For use as a predicate, same as contains()
+        bool operator()(const scalar value) const { return contains(value); }
 };
 
 

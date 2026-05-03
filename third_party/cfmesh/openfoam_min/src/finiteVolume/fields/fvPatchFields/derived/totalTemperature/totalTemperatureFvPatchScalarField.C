@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "totalTemperatureFvPatchScalarField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 #include "surfaceFields.H"
 
@@ -34,25 +37,50 @@ License
 Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    fixedValueFvPatchScalarField(p, iF),
+    UName_("U"),
+    phiName_("phi"),
+    psiName_("thermo:psi"),
+    gamma_(0.0),
+    T0_(p.size(), Zero)
+{}
+
+
+Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
+(
+    const totalTemperatureFvPatchScalarField& ptf,
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchScalarField(ptf, p, iF, mapper),
+    UName_(ptf.UName_),
+    phiName_(ptf.phiName_),
+    psiName_(ptf.psiName_),
+    gamma_(ptf.gamma_),
+    T0_(ptf.T0_, mapper)
+{}
+
+
+Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchScalarField(p, iF, dict, false),
-    UName_(dict.lookupOrDefault<word>("U", "U")),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
-    psiName_(dict.lookupOrDefault<word>("psi", "psi")),
-    gamma_(dict.lookup<scalar>("gamma", dimless)),
-    T0_("T0", dimTemperature, dict, p.size())
+    fixedValueFvPatchScalarField(p, iF, dict, IOobjectOption::NO_READ),
+    UName_(dict.getOrDefault<word>("U", "U")),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
+    psiName_(dict.getOrDefault<word>("psi", "thermo:psi")),
+    gamma_(dict.get<scalar>("gamma")),
+    T0_("T0", dict, p.size())
 {
-    if (dict.found("value"))
-    {
-        fvPatchField<scalar>::operator=
-        (
-            scalarField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
+    if (!this->readValueEntry(dict))
     {
         fvPatchField<scalar>::operator=(T0_);
     }
@@ -61,25 +89,22 @@ Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
 
 Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
 (
-    const totalTemperatureFvPatchScalarField& ptf,
-    const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const totalTemperatureFvPatchScalarField& tppsf
 )
 :
-    fixedValueFvPatchScalarField(ptf, p, iF, mapper),
-    UName_(ptf.UName_),
-    phiName_(ptf.phiName_),
-    psiName_(ptf.psiName_),
-    gamma_(ptf.gamma_),
-    T0_(mapper(ptf.T0_))
+    fixedValueFvPatchScalarField(tppsf),
+    UName_(tppsf.UName_),
+    phiName_(tppsf.phiName_),
+    psiName_(tppsf.psiName_),
+    gamma_(tppsf.gamma_),
+    T0_(tppsf.T0_)
 {}
 
 
 Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
 (
     const totalTemperatureFvPatchScalarField& tppsf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedValueFvPatchScalarField(tppsf, iF),
@@ -93,32 +118,28 @@ Foam::totalTemperatureFvPatchScalarField::totalTemperatureFvPatchScalarField
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::totalTemperatureFvPatchScalarField::map
+void Foam::totalTemperatureFvPatchScalarField::autoMap
 (
-    const fvPatchScalarField& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& m
 )
 {
-    fixedValueFvPatchScalarField::map(ptf, mapper);
-
-    const totalTemperatureFvPatchScalarField& tiptf =
-        refCast<const totalTemperatureFvPatchScalarField>(ptf);
-
-    mapper(T0_, tiptf.T0_);
+    fixedValueFvPatchScalarField::autoMap(m);
+    T0_.autoMap(m);
 }
 
 
-void Foam::totalTemperatureFvPatchScalarField::reset
+void Foam::totalTemperatureFvPatchScalarField::rmap
 (
-    const fvPatchScalarField& ptf
+    const fvPatchScalarField& ptf,
+    const labelList& addr
 )
 {
-    fixedValueFvPatchScalarField::reset(ptf);
+    fixedValueFvPatchScalarField::rmap(ptf, addr);
 
     const totalTemperatureFvPatchScalarField& tiptf =
         refCast<const totalTemperatureFvPatchScalarField>(ptf);
 
-    T0_.reset(tiptf.T0_);
+    T0_.rmap(tiptf.T0_, addr);
 }
 
 
@@ -129,20 +150,20 @@ void Foam::totalTemperatureFvPatchScalarField::updateCoeffs()
         return;
     }
 
-    const fvPatchVectorField& Up =
-        patch().lookupPatchField<volVectorField, vector>(UName_);
+    const auto& Up =
+        patch().lookupPatchField<volVectorField>(UName_);
 
-    const fvsPatchField<scalar>& phip =
-        patch().lookupPatchField<surfaceScalarField, scalar>(phiName_);
+    const auto& phip =
+        patch().lookupPatchField<surfaceScalarField>(phiName_);
 
-    const fvPatchField<scalar>& psip =
-        patch().lookupPatchField<volScalarField, scalar>(psiName_);
+    const auto& psip =
+        patch().lookupPatchField<volScalarField>(psiName_);
 
     scalar gM1ByG = (gamma_ - 1.0)/gamma_;
 
     operator==
     (
-        T0_/(1.0 + 0.5*psip*gM1ByG*neg(phip)*magSqr(Up))
+        T0_/(1.0 + 0.5*psip*gM1ByG*(neg(phip))*magSqr(Up))
     );
 
     fixedValueFvPatchScalarField::updateCoeffs();
@@ -151,13 +172,13 @@ void Foam::totalTemperatureFvPatchScalarField::updateCoeffs()
 
 void Foam::totalTemperatureFvPatchScalarField::write(Ostream& os) const
 {
-    fvPatchScalarField::write(os);
-    writeEntryIfDifferent<word>(os, "U", "U", UName_);
-    writeEntryIfDifferent<word>(os, "phi", "phi", phiName_);
-    writeEntryIfDifferent<word>(os, "psi", "psi", psiName_);
-    writeEntry(os, "gamma", gamma_);
-    writeEntry(os, "T0", T0_);
-    writeEntry(os, "value", *this);
+    fvPatchField<scalar>::write(os);
+    os.writeEntryIfDifferent<word>("U", "U", UName_);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    os.writeEntryIfDifferent<word>("psi", "thermo:psi", psiName_);
+    os.writeEntry("gamma", gamma_);
+    T0_.writeEntry("T0", os);
+    fvPatchField<scalar>::writeValueEntry(os);
 }
 
 

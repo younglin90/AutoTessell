@@ -1,9 +1,14 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
+    Copyright (C) 2020 PCOpt/NTUA
+    Copyright (C) 2020 FOSS GP
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,32 +36,33 @@ License
 
 Foam::IOobject Foam::IOMRFZoneList::createIOobject
 (
-    const fvMesh& mesh
+    const fvMesh& mesh,
+    const word& solverName
 ) const
 {
-    typeIOobject<IOdictionary> io
+    IOobject io
     (
-        "MRFProperties",
+        "MRFProperties" + solverName,
         mesh.time().constant(),
         mesh,
         IOobject::MUST_READ,
         IOobject::NO_WRITE
     );
 
-    if (io.headerOk())
+    if (io.typeHeaderOk<IOdictionary>(true))
     {
-        Info<< indentOrNl
-            << "Constructing MRF zones from " << io.name()
-            << endl;
+        Info<< "Creating MRF zone list from " << io.name() << endl;
 
-        io.readOpt() = IOobject::MUST_READ_IF_MODIFIED;
-        return io;
+        io.readOpt(IOobject::MUST_READ_IF_MODIFIED);
     }
     else
     {
-        io.readOpt() = IOobject::NO_READ;
-        return io;
+        Info<< "No MRF models present" << nl << endl;
+
+        io.readOpt(IOobject::NO_READ);
     }
+
+    return io;
 }
 
 
@@ -64,10 +70,11 @@ Foam::IOobject Foam::IOMRFZoneList::createIOobject
 
 Foam::IOMRFZoneList::IOMRFZoneList
 (
-    const fvMesh& mesh
+    const fvMesh& mesh,
+    const word& solverName
 )
 :
-    IOdictionary(createIOobject(mesh)),
+    IOdictionary(createIOobject(mesh, solverName)),
     MRFZoneList(mesh, *this)
 {}
 
@@ -79,10 +86,8 @@ bool Foam::IOMRFZoneList::read()
         MRFZoneList::read(*this);
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,14 +45,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class biLinearFitPolynomial Declaration
+                     Class biLinearFitPolynomial Declaration
 \*---------------------------------------------------------------------------*/
 
 class biLinearFitPolynomial
 {
 public:
 
-    // Member Functions
+    // Member functions
 
         static label nTerms(const direction dim)
         {

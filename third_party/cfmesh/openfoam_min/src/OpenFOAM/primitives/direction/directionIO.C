@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2018-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,55 +33,56 @@ License
 
 Foam::direction Foam::readDirection(Istream& is)
 {
-    direction val;
+    direction val(0);
     is >> val;
 
     return val;
 }
 
 
-Foam::Istream& Foam::operator>>(Istream& is, direction& d)
+Foam::Istream& Foam::operator>>(Istream& is, direction& val)
 {
     token t(is);
 
     if (!t.good())
     {
+        FatalIOErrorInFunction(is)
+            << "Bad token - could not get uint8/direction"
+            << exit(FatalIOError);
         is.setBad();
         return is;
     }
 
     if (t.isLabel())
     {
-        d = direction(t.labelToken());
+        val = direction(t.labelToken());
     }
     else
     {
-        is.setBad();
         FatalIOErrorInFunction(is)
-            << "wrong token type - expected direction, found " << t.info()
+            << "Wrong token type - expected label (uint8/direction), found "
+            << t.info()
             << exit(FatalIOError);
-
+        is.setBad();
         return is;
     }
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, direction&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const direction d)
+Foam::Ostream& Foam::operator<<(Ostream& os, const direction val)
 {
-    os.write(label(d));
-    os.check("Ostream& operator<<(Ostream&, const direction)");
+    os.write(label(val));
+    os.check(FUNCTION_NAME);
     return os;
 }
 
 
-std::ostream& Foam::operator<<(std::ostream& os, const direction d)
+std::ostream& Foam::operator<<(std::ostream& os, const direction val)
 {
-    os << int(d);
+    os << int(val);
     return os;
 }
 

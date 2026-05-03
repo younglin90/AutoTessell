@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,10 +38,9 @@ SourceFiles
 #ifndef AC3DsurfaceFormatCore_H
 #define AC3DsurfaceFormatCore_H
 
-#include "IFstream.H"
-#include "Ostream.H"
-#include "OFstream.H"
-#include "MeshedSurface.H"
+#include "Fstream.H"
+#include "surfZone.H"
+#include "StringStream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -48,27 +50,40 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class AC3DsurfaceFormatCore Declaration
+             Class fileFormats::AC3DsurfaceFormatCore Declaration
 \*---------------------------------------------------------------------------*/
 
 class AC3DsurfaceFormatCore
 {
 protected:
 
-    // Protected Member Functions
+    // Protected Static Member Functions
 
-        //- Read a type via IStringStream
+        //- Read a type from string
         template<class Type>
-        static Type parse(const string&);
+        static Type parse(const string& str)
+        {
+            IStringStream is(str);
+
+            Type t;
+            is >> t;
+
+            return t;
+        }
 
         //- Read cmd, args from IFstream
-        static bool readCmd(IFstream&, string& cmd, string& args);
+        //  The cmd is the content up to the first space, args is the balance
+        //  of the line (after the space).
+        //  \return if the command was read
+        static bool readCmd(IFstream& is, string& cmd, string& args);
 
-        //- Cue up to cmd, reading args
+        //- Read up to a line starting with cmd. Sets args to rest of line.
+        //
+        //  \return true if found, false if stream is not good anymore.
         static bool cueTo(IFstream&, const string& cmd, string& args);
 
-        //- Cue up to cmd, reading args or exit with a FatalError
-        //  returns the command args
+        //- Like cueTo(), but FatalError if not found.
+        //  \return the command args on success
         static string cueToOrDie
         (
             IFstream&,
@@ -76,8 +91,8 @@ protected:
             const string& errorMsg=string::null
         );
 
-        //- Write header with materials
-        static void writeHeader(Ostream&, const UList<surfZone>&);
+        //- Write header with materials for each zone
+        static void writeHeader(Ostream& os, const UList<surfZone>& zones);
 };
 
 
@@ -85,12 +100,6 @@ protected:
 
 } // End namespace fileFormats
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "AC3DsurfaceFormatCoreTemplates.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

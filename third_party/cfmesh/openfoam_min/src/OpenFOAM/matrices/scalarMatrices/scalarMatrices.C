@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,41 +29,6 @@ License
 #include "scalarMatrices.H"
 #include "SVD.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-defineCompoundTypeName(RectangularMatrix<scalar>, scalarRectangularMatrix);
-addCompoundToRunTimeSelectionTable
-(
-    RectangularMatrix<scalar>,
-    scalarRectangularMatrix
-);
-
-defineCompoundTypeName(SquareMatrix<scalar>, scalarSquareMatrix);
-addCompoundToRunTimeSelectionTable(SquareMatrix<scalar>, scalarSquareMatrix);
-
-defineCompoundTypeName
-(
-    SymmetricSquareMatrix<scalar>,
-    scalarSymmetricSquareMatrix
-);
-addCompoundToRunTimeSelectionTable
-(
-    SymmetricSquareMatrix<scalar>,
-    scalarSymmetricSquareMatrix
-);
-
-defineCompoundTypeName(DiagonalMatrix<scalar>, scalarDiagonalMatrix);
-addCompoundToRunTimeSelectionTable
-(
-    DiagonalMatrix<scalar>,
-    scalarDiagonalMatrix
-);
-
-}
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::LUDecompose
@@ -81,17 +49,20 @@ void Foam::LUDecompose
     label& sign
 )
 {
-    const label m = matrix.m();
-    scalarList vv(m);
+    const label size = matrix.m();
+
+    pivotIndices.resize_nocopy(size);
+
+    List<scalar> vv(size);
     sign = 1;
 
-    for (label i=0; i<m; i++)
+    for (label i = 0; i < size; ++i)
     {
         scalar largestCoeff = 0.0;
         scalar temp;
         const scalar* __restrict__ matrixi = matrix[i];
 
-        for (label j=0; j<m; j++)
+        for (label j = 0; j < size; ++j)
         {
             if ((temp = mag(matrixi[j])) > largestCoeff)
             {
@@ -108,16 +79,16 @@ void Foam::LUDecompose
         vv[i] = 1.0/largestCoeff;
     }
 
-    for (label j=0; j<m; j++)
+    for (label j = 0; j < size; ++j)
     {
         scalar* __restrict__ matrixj = matrix[j];
 
-        for (label i=0; i<j; i++)
+        for (label i = 0; i < j; ++i)
         {
             scalar* __restrict__ matrixi = matrix[i];
 
             scalar sum = matrixi[j];
-            for (label k=0; k<i; k++)
+            for (label k = 0; k < i; ++k)
             {
                 sum -= matrixi[k]*matrix(k, j);
             }
@@ -127,12 +98,12 @@ void Foam::LUDecompose
         label iMax = 0;
 
         scalar largestCoeff = 0.0;
-        for (label i=j; i<m; i++)
+        for (label i = j; i < size; ++i)
         {
             scalar* __restrict__ matrixi = matrix[i];
             scalar sum = matrixi[j];
 
-            for (label k=0; k<j; k++)
+            for (label k = 0; k < j; ++k)
             {
                 sum -= matrixi[k]*matrix(k, j);
             }
@@ -153,9 +124,9 @@ void Foam::LUDecompose
         {
             scalar* __restrict__ matrixiMax = matrix[iMax];
 
-            for (label k=0; k<m; k++)
+            for (label k = 0; k < size; ++k)
             {
-                Swap(matrixj[k], matrixiMax[k]);
+                std::swap(matrixj[k], matrixiMax[k]);
             }
 
             sign *= -1;
@@ -164,14 +135,14 @@ void Foam::LUDecompose
 
         if (matrixj[j] == 0.0)
         {
-            matrixj[j] = small;
+            matrixj[j] = SMALL;
         }
 
-        if (j != m-1)
+        if (j != size-1)
         {
             scalar rDiag = 1.0/matrixj[j];
 
-            for (label i=j+1; i<m; i++)
+            for (label i = j + 1; i < size; ++i)
             {
                 matrix(i, j) *= rDiag;
             }
@@ -183,26 +154,26 @@ void Foam::LUDecompose
 void Foam::LUDecompose(scalarSymmetricSquareMatrix& matrix)
 {
     // Store result in upper triangular part of matrix
-    label size = matrix.m();
+    const label size = matrix.m();
 
     // Set upper triangular parts to zero.
-    for (label j=0; j<size; j++)
+    for (label j = 0; j < size; ++j)
     {
-        for (label k=j + 1; k<size; k++)
+        for (label k = j + 1; k < size; ++k)
         {
             matrix(j, k) = 0.0;
         }
     }
 
-    for (label j=0; j<size; j++)
+    for (label j = 0; j < size; ++j)
     {
         scalar d = 0.0;
 
-        for (label k=0; k<j; k++)
+        for (label k = 0; k < j; ++k)
         {
             scalar s = 0.0;
 
-            for (label i=0; i<k; i++)
+            for (label i = 0; i < k; ++i)
             {
                 s += matrix(i, k)*matrix(i, j);
             }
@@ -256,16 +227,16 @@ void Foam::multiply
             << abort(FatalError);
     }
 
-    ans = scalarRectangularMatrix(A.m(), C.n(), scalar(0));
+    ans = scalarRectangularMatrix(A.m(), C.n(), Foam::zero{});
 
-    for (label i=0; i<A.m(); i++)
+    for (label i = 0; i < A.m(); ++i)
     {
-        for (label g = 0; g < C.n(); g++)
+        for (label g = 0; g < C.n(); ++g)
         {
-            for (label l=0; l<C.m(); l++)
+            for (label l = 0; l < C.m(); ++l)
             {
                 scalar ab = 0;
-                for (label j=0; j<A.n(); j++)
+                for (label j = 0; j < A.n(); ++j)
                 {
                     ab += A(i, j)*B(j, l);
                 }
@@ -300,13 +271,13 @@ void Foam::multiply
             << abort(FatalError);
     }
 
-    ans = scalarRectangularMatrix(A.m(), C.n(), scalar(0));
+    ans = scalarRectangularMatrix(A.m(), C.n(), Zero);
 
-    for (label i=0; i<A.m(); i++)
+    for (label i = 0; i < A.m(); ++i)
     {
-        for (label g=0; g<C.n(); g++)
+        for (label g = 0; g < C.n(); ++g)
         {
-            for (label l=0; l<C.m(); l++)
+            for (label l = 0; l < C.m(); ++l)
             {
                 ans(i, g) += C(l, g) * A(i, l)*B[l];
             }
@@ -343,11 +314,11 @@ void Foam::multiply
 
     ans = scalarSquareMatrix(size, Zero);
 
-    for (label i=0; i<size; i++)
+    for (label i = 0; i < size; ++i)
     {
-        for (label g=0; g<size; g++)
+        for (label g = 0; g < size; ++g)
         {
-            for (label l=0; l<size; l++)
+            for (label l = 0; l < size; ++l)
             {
                 ans(i, g) += C(l, g)*A(i, l)*B[l];
             }
@@ -356,6 +327,7 @@ void Foam::multiply
 }
 
 
+//- Pseudo-inverse algorithm for scalar matrices, using Moore-Penrose inverse
 Foam::scalarRectangularMatrix Foam::SVDinv
 (
     const scalarRectangularMatrix& A,

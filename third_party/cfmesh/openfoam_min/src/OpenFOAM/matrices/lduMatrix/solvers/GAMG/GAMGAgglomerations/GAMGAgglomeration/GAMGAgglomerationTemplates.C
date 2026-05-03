@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,54 +27,10 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "GAMGAgglomeration.H"
-#include "distributionMap.H"
+#include "mapDistribute.H"
 #include "globalIndex.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<class Type>
-void Foam::GAMGAgglomeration::gatherList
-(
-    const label comm,
-    const labelList& procIDs,
-    const Type& myVal,
-    List<Type>& allVals,
-    const int tag
-)
-{
-    if (Pstream::myProcNo(comm) == procIDs[0])
-    {
-        allVals.setSize(procIDs.size());
-
-        allVals[0] = myVal;
-        for (label i=1; i<procIDs.size(); i++)
-        {
-            IPstream fromSlave
-            (
-                Pstream::commsTypes::scheduled,
-                procIDs[i],
-                0,
-                tag,
-                comm
-            );
-
-            fromSlave >> allVals[i];
-        }
-    }
-    else
-    {
-        OPstream toMaster
-        (
-            Pstream::commsTypes::scheduled,
-            procIDs[0],
-            0,
-            tag,
-            comm
-        );
-        toMaster << myVal;
-    }
-}
-
 
 template<class Type>
 void Foam::GAMGAgglomeration::restrictField
@@ -112,11 +71,12 @@ void Foam::GAMGAgglomeration::restrictField
 
     restrictField(cf, ff, fineToCoarse);
 
-    label coarseLevelIndex = fineLevelIndex+1;
+    const label coarseLevelIndex = fineLevelIndex+1;
 
     if (procAgglom && hasProcMesh(coarseLevelIndex))
     {
-        label fineComm = UPstream::parent(procCommunicator_[coarseLevelIndex]);
+        const label coarseComm =
+            UPstream::parent(procCommunicator_[coarseLevelIndex]);
 
         const List<label>& procIDs = agglomProcIDs(coarseLevelIndex);
         const labelList& offsets = cellOffsets(coarseLevelIndex);
@@ -124,11 +84,11 @@ void Foam::GAMGAgglomeration::restrictField
         globalIndex::gather
         (
             offsets,
-            fineComm,
+            coarseComm,
             procIDs,
             cf,
             UPstream::msgType(),
-            Pstream::commsTypes::nonBlocking // Pstream::commsTypes::scheduled
+            Pstream::commsTypes::nonBlocking    //Pstream::commsTypes::scheduled
         );
     }
 }
@@ -178,19 +138,17 @@ void Foam::GAMGAgglomeration::prolongField
 {
     const labelList& fineToCoarse = restrictAddressing_[levelIndex];
 
-    label coarseLevelIndex = levelIndex+1;
+    const label coarseLevelIndex = levelIndex+1;
 
     if (procAgglom && hasProcMesh(coarseLevelIndex))
     {
-        label coarseComm = UPstream::parent
-        (
-            procCommunicator_[coarseLevelIndex]
-        );
+        const label coarseComm =
+            UPstream::parent(procCommunicator_[coarseLevelIndex]);
 
         const List<label>& procIDs = agglomProcIDs(coarseLevelIndex);
         const labelList& offsets = cellOffsets(coarseLevelIndex);
 
-        label localSize = nCells_[levelIndex];
+        const label localSize = nCells_[levelIndex];
 
         Field<Type> allCf(localSize);
         globalIndex::scatter
@@ -201,7 +159,7 @@ void Foam::GAMGAgglomeration::prolongField
             cf,
             allCf,
             UPstream::msgType(),
-            Pstream::commsTypes::nonBlocking // Pstream::commsTypes::scheduled
+            Pstream::commsTypes::nonBlocking    //Pstream::commsTypes::scheduled
         );
 
         forAll(fineToCoarse, i)
@@ -215,6 +173,58 @@ void Foam::GAMGAgglomeration::prolongField
         {
             ff[i] = cf[fineToCoarse[i]];
         }
+    }
+}
+
+
+template<class Type>
+const Foam::Field<Type>& Foam::GAMGAgglomeration::prolongField
+(
+    Field<Type>& ff,
+    Field<Type>& allCf,      // work storage
+    const Field<Type>& cf,
+    const label levelIndex
+) const
+{
+    const labelList& fineToCoarse = restrictAddressing_[levelIndex];
+
+    const label coarseLevelIndex = levelIndex+1;
+
+    if (hasProcMesh(coarseLevelIndex))
+    {
+        const label coarseComm =
+            UPstream::parent(procCommunicator_[coarseLevelIndex]);
+
+        const List<label>& procIDs = agglomProcIDs(coarseLevelIndex);
+        const labelList& offsets = cellOffsets(coarseLevelIndex);
+
+        const label localSize = nCells_[levelIndex];
+        allCf.resize_nocopy(localSize);
+
+        globalIndex::scatter
+        (
+            offsets,
+            coarseComm,
+            procIDs,
+            cf,
+            allCf,
+            UPstream::msgType(),
+            Pstream::commsTypes::nonBlocking    //Pstream::commsTypes::scheduled
+        );
+
+        forAll(fineToCoarse, i)
+        {
+            ff[i] = allCf[fineToCoarse[i]];
+        }
+        return allCf;
+    }
+    else
+    {
+        forAll(fineToCoarse, i)
+        {
+            ff[i] = cf[fineToCoarse[i]];
+        }
+        return cf;
     }
 }
 

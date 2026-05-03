@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +28,117 @@ License
 
 #include "flowRateOutletVelocityFvPatchVectorField.H"
 #include "volFields.H"
+#include "one.H"
 #include "addToRunTimeSelectionTable.H"
 
-// * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::flowRateOutletVelocityFvPatchVectorField::
+flowRateOutletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    flowRate_(nullptr),
+    rhoName_("rho"),
+    rhoOutlet_(0),
+    volumetric_(false)
+{}
+
+
+Foam::flowRateOutletVelocityFvPatchVectorField::
+flowRateOutletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchField<vector>(p, iF, dict, IOobjectOption::NO_READ),
+    flowRate_(nullptr),
+    rhoName_("rho"),
+    rhoOutlet_(dict.getOrDefault<scalar>("rhoOutlet", -VGREAT)),
+    volumetric_(false)
+{
+    flowRate_ =
+        Function1<scalar>::NewIfPresent("volumetricFlowRate", dict, &db());
+
+    if (flowRate_)
+    {
+        volumetric_ = true;
+    }
+    else
+    {
+        dict.readIfPresent("rho", rhoName_);
+        flowRate_ =
+            Function1<scalar>::NewIfPresent("massFlowRate", dict, &db());
+    }
+
+    if (!flowRate_)
+    {
+        FatalIOErrorInFunction(dict)
+            << "Please supply either 'volumetricFlowRate' or"
+            << " 'massFlowRate' (optional: with 'rho')" << nl
+            << exit(FatalIOError);
+    }
+
+    // Value field required if mass based
+    if (!this->readValueEntry(dict))
+    {
+        evaluate(Pstream::commsTypes::buffered);
+    }
+}
+
+
+Foam::flowRateOutletVelocityFvPatchVectorField::
+flowRateOutletVelocityFvPatchVectorField
+(
+    const flowRateOutletVelocityFvPatchVectorField& ptf,
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoOutlet_(ptf.rhoOutlet_),
+    volumetric_(ptf.volumetric_)
+{}
+
+
+Foam::flowRateOutletVelocityFvPatchVectorField::
+flowRateOutletVelocityFvPatchVectorField
+(
+    const flowRateOutletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoOutlet_(ptf.rhoOutlet_),
+    volumetric_(ptf.volumetric_)
+{}
+
+
+Foam::flowRateOutletVelocityFvPatchVectorField::
+flowRateOutletVelocityFvPatchVectorField
+(
+    const flowRateOutletVelocityFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(ptf, iF),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoOutlet_(ptf.rhoOutlet_),
+    volumetric_(ptf.volumetric_)
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class RhoType>
 void Foam::flowRateOutletVelocityFvPatchVectorField::updateValues
@@ -35,6 +146,8 @@ void Foam::flowRateOutletVelocityFvPatchVectorField::updateValues
     const RhoType& rho
 )
 {
+    const scalar t = db().time().timeOutputValue();
+
     const vectorField n(patch().nf());
 
     // Extrapolate patch velocity
@@ -49,10 +162,10 @@ void Foam::flowRateOutletVelocityFvPatchVectorField::updateValues
     // Remove any reverse flow
     nUp = max(nUp, scalar(0));
 
-    const scalar flowRate = flowRate_->value(time().value());
+    const scalar flowRate = flowRate_->value(t);
     const scalar estimatedFlowRate = gSum(rho*(this->patch().magSf()*nUp));
 
-    if (estimatedFlowRate/flowRate > 0.5)
+    if (estimatedFlowRate > 0.5*flowRate)
     {
         nUp *= (mag(flowRate)/mag(estimatedFlowRate));
     }
@@ -69,103 +182,6 @@ void Foam::flowRateOutletVelocityFvPatchVectorField::updateValues
 }
 
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::flowRateOutletVelocityFvPatchVectorField::
-flowRateOutletVelocityFvPatchVectorField
-(
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    flowRate_(),
-    volumetric_(),
-    rhoName_("rho"),
-    rhoOutlet_(dict.lookupOrDefault<scalar>("rhoOutlet", dimDensity, -vGreat))
-{
-    if (dict.found("volumetricFlowRate"))
-    {
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "volumetricFlowRate",
-                time().userUnits(),
-                dimVolumetricFlux,
-                dict
-            );
-        volumetric_ = true;
-    }
-    else if (dict.found("massFlowRate"))
-    {
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "massFlowRate",
-                time().userUnits(),
-                dimMassFlux,
-                dict
-            );
-        volumetric_ = false;
-        rhoName_ = word(dict.lookupOrDefault<word>("rho", "rho"));
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Please supply either 'volumetricFlowRate' or"
-            << " 'massFlowRate' and 'rho'" << exit(FatalIOError);
-    }
-
-    // Value field required if mass based
-    if (dict.found("value"))
-    {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        evaluate(Pstream::commsTypes::blocking);
-    }
-}
-
-
-Foam::flowRateOutletVelocityFvPatchVectorField::
-flowRateOutletVelocityFvPatchVectorField
-(
-    const flowRateOutletVelocityFvPatchVectorField& ptf,
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    flowRate_(ptf.flowRate_, false),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_),
-    rhoOutlet_(ptf.rhoOutlet_)
-{}
-
-
-Foam::flowRateOutletVelocityFvPatchVectorField::
-flowRateOutletVelocityFvPatchVectorField
-(
-    const flowRateOutletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
-)
-:
-    fixedValueFvPatchField<vector>(ptf, iF),
-    flowRate_(ptf.flowRate_, false),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_),
-    rhoOutlet_(ptf.rhoOutlet_)
-{}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
 void Foam::flowRateOutletVelocityFvPatchVectorField::updateCoeffs()
 {
     if (updated())
@@ -175,15 +191,15 @@ void Foam::flowRateOutletVelocityFvPatchVectorField::updateCoeffs()
 
     if (volumetric_ || rhoName_ == "none")
     {
-        updateValues(one());
+        updateValues(one{});
     }
     else
     {
         // Mass flow-rate
         if (db().foundObject<volScalarField>(rhoName_))
         {
-            const fvPatchField<scalar>& rhop =
-                patch().lookupPatchField<volScalarField, scalar>(rhoName_);
+            const auto& rhop =
+                patch().lookupPatchField<volScalarField>(rhoName_);
 
             updateValues(rhop);
         }
@@ -209,13 +225,13 @@ void Foam::flowRateOutletVelocityFvPatchVectorField::updateCoeffs()
 void Foam::flowRateOutletVelocityFvPatchVectorField::write(Ostream& os) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, time().userUnits(), units::any, flowRate_());
+    flowRate_->writeData(os);
     if (!volumetric_)
     {
-        writeEntryIfDifferent<word>(os, "rho", "rho", rhoName_);
-        writeEntryIfDifferent<scalar>(os, "rhoOutlet", -vGreat, rhoOutlet_);
+        os.writeEntryIfDifferent<word>("rho", "rho", rhoName_);
+        os.writeEntryIfDifferent<scalar>("rhoOutlet", -VGREAT, rhoOutlet_);
     }
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

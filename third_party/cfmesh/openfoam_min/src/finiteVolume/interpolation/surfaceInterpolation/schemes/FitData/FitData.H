@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,7 +42,7 @@ SourceFiles
 #ifndef FitData_H
 #define FitData_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "fvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -48,14 +51,24 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class FitData Declaration
+                    Class FitData Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class FitDataType, class ExtendedStencil, class Polynomial>
 class FitData
 :
-    public DemandDrivenMeshObject<fvMesh, MoveableMeshObject, FitDataType>
+    public MeshObject<fvMesh, MoveableMeshObject, FitDataType>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            fvMesh,
+            MoveableMeshObject,
+            FitDataType
+        > MeshObject_type;
+
+
     // Private Data
 
         //- The stencil the fit is based on
@@ -82,14 +95,18 @@ class FitData
 
 protected:
 
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        FitDataType
-    >;
+        //- Find the normal direction (i) and j and k directions for face faci
+        void findFaceDirs
+        (
+            vector& idir,        // value changed in return
+            vector& jdir,        // value changed in return
+            vector& kdir,        // value changed in return
+            const label faci
+        );
 
-    // Protected Constructors
+public:
+
+    // Constructors
 
         //- Construct from components
         FitData
@@ -102,25 +119,11 @@ protected:
         );
 
 
-    // Protected Member Functions
-
-        //- Find the normal direction (i) and j and k directions for face faci
-        void findFaceDirs
-        (
-            vector& idir,        // value changed in return
-            vector& jdir,        // value changed in return
-            vector& kdir,        // value changed in return
-            const label faci
-        );
-
-public:
-
     //- Destructor
-    virtual ~FitData()
-    {}
+    virtual ~FitData() = default;
 
 
-    // Member Functions
+    // Member functions
 
         //- Return reference to the stencil
         const ExtendedStencil& stencil() const

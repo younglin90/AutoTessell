@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,85 +30,194 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "volFields.H"
 #include "one.H"
-#include "patchPatchDist.H"
-#include "wallPolyPatch.H"
+#include "Switch.H"
 
-// * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-void Foam::flowRateInletVelocityFvPatchVectorField::setWallDist()
+Foam::flowRateInletVelocityFvPatchVectorField::
+flowRateInletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    flowRate_(nullptr),
+    rhoName_("rho"),
+    rhoInlet_(0),
+    volumetric_(false),
+    extrapolateProfile_(false)
+{}
+
+
+Foam::flowRateInletVelocityFvPatchVectorField::
+flowRateInletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchField<vector>(p, iF, dict, IOobjectOption::NO_READ),
+    flowRate_(nullptr),
+    rhoName_("rho"),
+    rhoInlet_(dict.getOrDefault<scalar>("rhoInlet", -VGREAT)),
+    volumetric_(false),
+    extrapolateProfile_
+    (
+        dict.getOrDefault<Switch>("extrapolateProfile", false)
+    )
 {
-    if (profile_.valid())
+    flowRate_ =
+        Function1<scalar>::NewIfPresent("volumetricFlowRate", dict, &db());
+
+    if (flowRate_)
     {
-        const labelHashSet otherPatchIDs
-        (
-            patch().poly().boundaryMesh().findIndices<wallPolyPatch>()
-        );
-
-        const patchPatchDist pwd(patch().poly(), otherPatchIDs);
-
-        y_ = pwd/gMax(pwd);
-    }
-
-    area_ = gSum(patch().magSf());
-}
-
-
-Foam::tmp<Foam::scalarField>
-Foam::flowRateInletVelocityFvPatchVectorField::profile()
-{
-    if (profile_.valid())
-    {
-        return profile_->value(y_);
+        volumetric_ = true;
     }
     else
     {
-        return tmp<scalarField>(new scalarField(size(), scalar(1)));
+        dict.readIfPresent("rho", rhoName_);
+        flowRate_ =
+            Function1<scalar>::NewIfPresent("massFlowRate", dict, &db());
+    }
+
+    if (!flowRate_)
+    {
+        FatalIOErrorInFunction(dict)
+            << "Please supply either 'volumetricFlowRate' or"
+            << " 'massFlowRate' (optional: with 'rho')" << nl
+            << exit(FatalIOError);
+    }
+
+    // Value field required if mass based
+    if (!this->readValueEntry(dict))
+    {
+        evaluate(Pstream::commsTypes::buffered);
     }
 }
 
 
-template<class ScaleType, class AlphaType, class RhoType>
+Foam::flowRateInletVelocityFvPatchVectorField::
+flowRateInletVelocityFvPatchVectorField
+(
+    const flowRateInletVelocityFvPatchVectorField& ptf,
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoInlet_(ptf.rhoInlet_),
+    volumetric_(ptf.volumetric_),
+    extrapolateProfile_(ptf.extrapolateProfile_)
+{}
+
+
+Foam::flowRateInletVelocityFvPatchVectorField::
+flowRateInletVelocityFvPatchVectorField
+(
+    const flowRateInletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoInlet_(ptf.rhoInlet_),
+    volumetric_(ptf.volumetric_),
+    extrapolateProfile_(ptf.extrapolateProfile_)
+{}
+
+
+Foam::flowRateInletVelocityFvPatchVectorField::
+flowRateInletVelocityFvPatchVectorField
+(
+    const flowRateInletVelocityFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(ptf, iF),
+    flowRate_(ptf.flowRate_.clone()),
+    rhoName_(ptf.rhoName_),
+    rhoInlet_(ptf.rhoInlet_),
+    volumetric_(ptf.volumetric_),
+    extrapolateProfile_(ptf.extrapolateProfile_)
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class RhoType>
 void Foam::flowRateInletVelocityFvPatchVectorField::updateValues
 (
-    const ScaleType& scale,
-    const AlphaType& alpha,
     const RhoType& rho
 )
 {
-    const scalarField profile(this->profile());
+    const scalar t = db().time().timeOutputValue();
 
-    const scalar avgU =
-       scale
-      *flowRate_->value(time().value())
-      /gSum(alpha*rho*profile*patch().magSf());
+    const vectorField n(patch().nf());
 
-    operator==(- avgU*profile*patch().nf());
+    if (extrapolateProfile_)
+    {
+        vectorField Up(this->patchInternalField());
+
+        // Patch normal extrapolated velocity
+        scalarField nUp(n & Up);
+
+        // Remove the normal component of the extrapolate patch velocity
+        Up -= nUp*n;
+
+        // Remove any reverse flow
+        nUp = min(nUp, scalar(0));
+
+        const scalar flowRate = flowRate_->value(t);
+        const scalar estimatedFlowRate = -gSum(rho*(this->patch().magSf()*nUp));
+
+        if (estimatedFlowRate > 0.5*flowRate)
+        {
+            nUp *= (mag(flowRate)/mag(estimatedFlowRate));
+        }
+        else
+        {
+            nUp -= ((flowRate - estimatedFlowRate)/gSum(rho*patch().magSf()));
+        }
+
+        // Add the corrected normal component of velocity to the patch velocity
+        Up += nUp*n;
+
+        // Correct the patch velocity
+        this->operator==(Up);
+    }
+    else
+    {
+        const scalar avgU = -flowRate_->value(t)/gSum(rho*patch().magSf());
+        operator==(avgU*n);
+    }
 }
 
 
-template<class AlphaType>
-void Foam::flowRateInletVelocityFvPatchVectorField::updateValues
-(
-    const AlphaType& alpha
-)
+void Foam::flowRateInletVelocityFvPatchVectorField::updateCoeffs()
 {
-    if (meanVelocity_)
+    if (updated())
     {
-        updateValues(area_, alpha, one());
+        return;
     }
-    else if (volumetric_ || rhoName_ == "none")
+
+    if (volumetric_ || rhoName_ == "none")
     {
-        updateValues(one(), alpha, one());
+        updateValues(one{});
     }
     else
     {
         // Mass flow-rate
         if (db().foundObject<volScalarField>(rhoName_))
         {
-            const fvPatchField<scalar>& rhop =
-                patch().lookupPatchField<volScalarField, scalar>(rhoName_);
+            const auto& rhop =
+                patch().lookupPatchField<volScalarField>(rhoName_);
 
-            updateValues(one(), alpha, rhop);
+            updateValues(rhop);
         }
         else
         {
@@ -118,197 +230,8 @@ void Foam::flowRateInletVelocityFvPatchVectorField::updateValues
                     << exit(FatalError);
             }
 
-            updateValues(one(), alpha, rhoInlet_);
+            updateValues(rhoInlet_);
         }
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::flowRateInletVelocityFvPatchVectorField::
-flowRateInletVelocityFvPatchVectorField
-(
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    flowRate_(),
-    meanVelocity_(),
-    volumetric_(),
-    profile_(),
-    rhoName_("rho"),
-    rhoInlet_(dict.lookupOrDefault<scalar>("rhoInlet", dimDensity, -vGreat)),
-    alphaName_(dict.lookupOrDefault<word>("alpha", word::null)),
-    y_(),
-    area_(-vGreat)
-{
-    if (dict.found("meanVelocity"))
-    {
-        meanVelocity_ = true;
-        volumetric_ = false;
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "meanVelocity",
-                time().userUnits(),
-                dimVelocity,
-                dict
-            );
-    }
-    else if (dict.found("volumetricFlowRate"))
-    {
-        meanVelocity_ = false;
-        volumetric_ = true;
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "volumetricFlowRate",
-                time().userUnits(),
-                dimVolumetricFlux,
-                dict
-            );
-    }
-    else if (dict.found("massFlowRate"))
-    {
-        meanVelocity_ = false;
-        volumetric_ = false;
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "massFlowRate",
-                time().userUnits(),
-                dimMassFlux,
-                dict
-            );
-        rhoName_ = word(dict.lookupOrDefault<word>("rho", "rho"));
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Please supply 'meanVelocity', 'volumetricFlowRate' or"
-            << " 'massFlowRate' and 'rho'" << exit(FatalIOError);
-    }
-
-    if (dict.found("profile"))
-    {
-        profile_ = Function1<scalar>::New("profile", dimless, dimless, dict);
-    }
-
-    if (!p.time().completeCase() || dict.found("value"))
-    {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        evaluate(Pstream::commsTypes::blocking);
-    }
-}
-
-
-Foam::flowRateInletVelocityFvPatchVectorField::
-flowRateInletVelocityFvPatchVectorField
-(
-    const flowRateInletVelocityFvPatchVectorField& ptf,
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    flowRate_(ptf.flowRate_, false),
-    meanVelocity_(ptf.meanVelocity_),
-    volumetric_(ptf.volumetric_),
-    profile_(ptf.profile_, false),
-    rhoName_(ptf.rhoName_),
-    rhoInlet_(ptf.rhoInlet_),
-    alphaName_(ptf.alphaName_),
-    y_(),
-    area_(-vGreat)
-{}
-
-
-Foam::flowRateInletVelocityFvPatchVectorField::
-flowRateInletVelocityFvPatchVectorField
-(
-    const flowRateInletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
-)
-:
-    fixedValueFvPatchField<vector>(ptf, iF),
-    flowRate_(ptf.flowRate_, false),
-    meanVelocity_(ptf.meanVelocity_),
-    volumetric_(ptf.volumetric_),
-    profile_(ptf.profile_, false),
-    rhoName_(ptf.rhoName_),
-    rhoInlet_(ptf.rhoInlet_),
-    alphaName_(ptf.alphaName_),
-    y_(ptf.y_),
-    area_(ptf.area_)
-{}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-void Foam::flowRateInletVelocityFvPatchVectorField::map
-(
-    const fvPatchVectorField& ptf,
-    const fieldMapper& mapper
-)
-{
-    fixedValueFvPatchVectorField::map(ptf, mapper);
-
-    y_.clear();
-    area_ = -vGreat;
-}
-
-
-void Foam::flowRateInletVelocityFvPatchVectorField::reset
-(
-    const fvPatchVectorField& ptf
-)
-{
-    fixedValueFvPatchVectorField::reset(ptf);
-
-    y_.clear();
-    area_ = -vGreat;
-}
-
-
-void Foam::flowRateInletVelocityFvPatchVectorField::updateCoeffs()
-{
-    if (updated())
-    {
-        return;
-    }
-
-    if (!patch().time().completeCase())
-    {
-        FatalErrorInFunction
-            << "Cannot evaluate flow rate on a non-parallel processor case"
-            << exit(FatalError);
-    }
-
-    if (area_ < 0)
-    {
-        setWallDist();
-    }
-
-    if (alphaName_ != word::null)
-    {
-        const fvPatchField<scalar>& alphap =
-            patch().lookupPatchField<volScalarField, scalar>(alphaName_);
-
-        updateValues(alphap);
-    }
-    else
-    {
-        updateValues(one());
     }
 
     fixedValueFvPatchVectorField::updateCoeffs();
@@ -318,18 +241,17 @@ void Foam::flowRateInletVelocityFvPatchVectorField::updateCoeffs()
 void Foam::flowRateInletVelocityFvPatchVectorField::write(Ostream& os) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, time().userUnits(), units::any, flowRate_());
-    if (profile_.valid())
-    {
-        writeEntry(os, profile_());
-    }
+    flowRate_->writeData(os);
     if (!volumetric_)
     {
-        writeEntryIfDifferent<word>(os, "rho", "rho", rhoName_);
-        writeEntryIfDifferent<scalar>(os, "rhoInlet", -vGreat, rhoInlet_);
+        os.writeEntryIfDifferent<word>("rho", "rho", rhoName_);
+        os.writeEntryIfDifferent<scalar>("rhoInlet", -VGREAT, rhoInlet_);
     }
-    writeEntryIfDifferent<word>(os, "alpha", word::null, alphaName_);
-    writeEntry(os, "value", *this);
+    if (extrapolateProfile_)
+    {
+        os.writeEntry("extrapolateProfile", extrapolateProfile_);
+    }
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

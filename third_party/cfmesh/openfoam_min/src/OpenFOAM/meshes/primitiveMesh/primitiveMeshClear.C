@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -104,24 +106,19 @@ void Foam::primitiveMesh::printAllocated() const
         Pout<< "    Cell-centres" << endl;
     }
 
-    if (faceCentresPtr_)
-    {
-        Pout<< "    Face-centres" << endl;
-    }
-
     if (cellVolumesPtr_)
     {
         Pout<< "    Cell-volumes" << endl;
     }
 
+    if (faceCentresPtr_)
+    {
+        Pout<< "    Face-centres" << endl;
+    }
+
     if (faceAreasPtr_)
     {
         Pout<< "    Face-areas" << endl;
-    }
-
-    if (magFaceAreasPtr_)
-    {
-        Pout<< "    Mag-face-areas" << endl;
     }
 }
 
@@ -136,10 +133,23 @@ void Foam::primitiveMesh::clearGeom()
     }
 
     deleteDemandDrivenData(cellCentresPtr_);
-    deleteDemandDrivenData(faceCentresPtr_);
     deleteDemandDrivenData(cellVolumesPtr_);
+    deleteDemandDrivenData(faceCentresPtr_);
     deleteDemandDrivenData(faceAreasPtr_);
-    deleteDemandDrivenData(magFaceAreasPtr_);
+}
+
+
+void Foam::primitiveMesh::clearCellGeom()
+{
+    if (debug)
+    {
+        Pout<< "primitiveMesh::clearCellGeom() : "
+            << "clearing cell centres and volumes"
+            << endl;
+    }
+
+    deleteDemandDrivenData(cellCentresPtr_);
+    deleteDemandDrivenData(cellVolumesPtr_);
 }
 
 

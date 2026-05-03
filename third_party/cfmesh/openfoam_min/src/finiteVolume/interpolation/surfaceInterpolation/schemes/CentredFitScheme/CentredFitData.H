@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,7 +48,7 @@ namespace Foam
 class extendedCentredCellToFaceStencil;
 
 /*---------------------------------------------------------------------------*\
-                       Class CentredFitData Declaration
+                    Class CentredFitData Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Polynomial>
@@ -58,7 +61,7 @@ class CentredFitData
         Polynomial
     >
 {
-    // Private Data
+    // Private data
 
         //- For each cell in the mesh store the values which multiply the
         //  values of the stencil to obtain the gradient for each direction
@@ -90,11 +93,10 @@ public:
 
 
     //- Destructor
-    virtual ~CentredFitData()
-    {}
+    virtual ~CentredFitData() = default;
 
 
-    // Member Functions
+    // Member functions
 
         //- Return reference to fit coefficients
         const List<scalarList>& coeffs() const

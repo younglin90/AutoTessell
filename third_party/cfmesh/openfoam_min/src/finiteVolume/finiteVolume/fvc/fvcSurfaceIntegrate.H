@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Namespace fvc functions Declaration
+                     Namespace fvc functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvc
@@ -56,47 +58,33 @@ namespace fvc
     void surfaceIntegrate
     (
         Field<Type>&,
-        const SurfaceField<Type>&
+        const GeometricField<Type, fvsPatchField, surfaceMesh>&
     );
 
     template<class Type>
-    tmp<VolInternalField<Type>>
+    tmp<GeometricField<Type, fvPatchField, volMesh>>
     surfaceIntegrate
     (
-        const SurfaceField<Type>&
+        const GeometricField<Type, fvsPatchField, surfaceMesh>&
     );
 
     template<class Type>
-    tmp<VolInternalField<Type>>
+    tmp<GeometricField<Type, fvPatchField, volMesh>>
     surfaceIntegrate
     (
-        const tmp<SurfaceField<Type>>&
+        const tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>&
     );
 
     template<class Type>
-    tmp<VolField<Type>>
-    surfaceIntegrateExtrapolate
+    tmp<GeometricField<Type, fvPatchField, volMesh>> surfaceSum
     (
-        const SurfaceField<Type>&
+        const GeometricField<Type, fvsPatchField, surfaceMesh>&
     );
 
     template<class Type>
-    tmp<VolField<Type>>
-    surfaceIntegrateExtrapolate
+    tmp<GeometricField<Type, fvPatchField, volMesh>> surfaceSum
     (
-        const tmp<SurfaceField<Type>>&
-    );
-
-    template<class Type>
-    tmp<VolInternalField<Type>> surfaceSum
-    (
-        const SurfaceField<Type>&
-    );
-
-    template<class Type>
-    tmp<VolInternalField<Type>> surfaceSum
-    (
-        const tmp<SurfaceField<Type>>&
+        const tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>&
     );
 }
 

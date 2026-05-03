@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -60,6 +62,18 @@ template<>
 const Foam::labelSymmTensor Foam::labelSymmTensor::vsType::min
 (
     labelSymmTensor::uniform(-labelMax)
+);
+
+template<>
+const Foam::labelSymmTensor Foam::labelSymmTensor::vsType::rootMax
+(
+    labelSymmTensor::uniform(::sqrt(double(labelMax)))
+);
+
+template<>
+const Foam::labelSymmTensor Foam::labelSymmTensor::vsType::rootMin
+(
+    labelSymmTensor::uniform(-::sqrt(double(labelMax)))
 );
 
 template<>

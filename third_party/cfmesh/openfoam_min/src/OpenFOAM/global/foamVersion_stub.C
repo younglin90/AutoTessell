@@ -16,7 +16,6 @@ namespace Foam
 namespace foamVersion
 {
 
-// extern symbols declared in foamVersion.H — provide minimal definitions.
 const int api = 2406;
 const std::string patch = "0";
 const std::string build = "vendored";

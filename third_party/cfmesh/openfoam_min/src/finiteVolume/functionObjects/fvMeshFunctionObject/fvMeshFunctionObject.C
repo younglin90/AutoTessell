@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -55,17 +57,12 @@ Foam::functionObjects::fvMeshFunctionObject::fvMeshFunctionObject
 Foam::functionObjects::fvMeshFunctionObject::fvMeshFunctionObject
 (
     const word& name,
-    const objectRegistry& obr
+    const objectRegistry& obr,
+    const dictionary& dict
 )
 :
-    regionFunctionObject(name, obr),
+    regionFunctionObject(name, obr, dict),
     mesh_(refCast<const fvMesh>(obr_))
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::functionObjects::fvMeshFunctionObject::~fvMeshFunctionObject()
 {}
 
 

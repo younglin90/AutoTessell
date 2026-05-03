@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::GAMGPreconditioner
+
+Group
+    grpLduMatrixPreconditioners
 
 Description
     Geometric agglomerated algebraic multigrid preconditioner.
@@ -46,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class GAMGPreconditioner Declaration
+                           Class GAMGPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 class GAMGPreconditioner
@@ -55,7 +61,8 @@ class GAMGPreconditioner
     public lduMatrix::preconditioner
 {
 protected:
-    // Protected data
+
+    // Protected Data
 
         //- Number of V-cycles to perform
         label nVcycles_;
@@ -80,7 +87,7 @@ public:
 
 
     //- Destructor
-    virtual ~GAMGPreconditioner();
+    virtual ~GAMGPreconditioner() = default;
 
 
     // Member Functions
@@ -88,8 +95,8 @@ public:
         //- Return wA the preconditioned form of residual rA
         virtual void precondition
         (
-            scalarField& wA,
-            const scalarField& rA,
+            solveScalarField& wA,
+            const solveScalarField& rA,
             const direction cmpt=0
         ) const;
 };

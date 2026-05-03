@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,20 +42,20 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 curl
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     word nameCurlVf = "curl(" + vf.name() + ')';
 
-    // Gausses theorem curl
-    // tmp<VolField<Type>> tcurlVf =
-    // fvc::surfaceIntegrateExtrapolate(vf.mesh().Sf() ^ fvc::interpolate(vf));
+    // Gauss's theorem curl
+    // tmp<GeometricField<Type, fvPatchField, volMesh>> tcurlVf =
+    //     fvc::surfaceIntegrate(vf.mesh().Sf() ^ fvc::interpolate(vf));
 
     // Calculate curl as the Hodge dual of the skew-symmetric part of grad
-    tmp<VolField<Type>> tcurlVf =
+    tmp<GeometricField<Type, fvPatchField, volMesh>> tcurlVf =
         2.0*(*skew(fvc::grad(vf, nameCurlVf)));
 
     tcurlVf.ref().rename(nameCurlVf);
@@ -63,13 +65,13 @@ curl
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 curl
 (
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
-    tmp<VolField<Type>> Curl(fvc::curl(tvf()));
+    tmp<GeometricField<Type, fvPatchField, volMesh>> Curl(fvc::curl(tvf()));
     tvf.clear();
     return Curl;
 }

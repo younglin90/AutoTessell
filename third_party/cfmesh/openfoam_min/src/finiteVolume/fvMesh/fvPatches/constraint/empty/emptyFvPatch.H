@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,14 +47,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class emptyFvPatch Declaration
+                           Class emptyFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class emptyFvPatch
 :
     public fvPatch
 {
-    // Private Data
+    // Private data
 
         //- face-cell addressing
         const labelList::subList faceCells_;

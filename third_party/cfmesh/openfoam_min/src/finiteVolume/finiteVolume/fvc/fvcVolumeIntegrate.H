@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -49,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Namespace fvc functions Declaration
+                     Namespace fvc functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvc
@@ -57,52 +59,52 @@ namespace fvc
     template<class Type>
     tmp<Field<Type>> volumeIntegrate
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<Field<Type>> volumeIntegrate
     (
-        const tmp<VolField<Type>>&
+        const tmp<GeometricField<Type, fvPatchField, volMesh>>&
     );
 
 
     template<class Type>
     tmp<Field<Type>> volumeIntegrate
     (
-        const DimensionedField<Type, fvMesh>&
+        const DimensionedField<Type, volMesh>&
     );
 
     template<class Type>
     tmp<Field<Type>> volumeIntegrate
     (
-        const tmp<DimensionedField<Type, fvMesh>>&
+        const tmp<DimensionedField<Type, volMesh>>&
     );
 
 
     template<class Type>
     dimensioned<Type> domainIntegrate
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     dimensioned<Type> domainIntegrate
     (
-        const tmp<VolField<Type>>&
+        const tmp<GeometricField<Type, fvPatchField, volMesh>>&
     );
 
 
     template<class Type>
     dimensioned<Type> domainIntegrate
     (
-        const DimensionedField<Type, fvMesh>&
+        const DimensionedField<Type, volMesh>&
     );
 
     template<class Type>
     dimensioned<Type> domainIntegrate
     (
-        const tmp<DimensionedField<Type, fvMesh>>&
+        const tmp<DimensionedField<Type, volMesh>>&
     );
 }
 

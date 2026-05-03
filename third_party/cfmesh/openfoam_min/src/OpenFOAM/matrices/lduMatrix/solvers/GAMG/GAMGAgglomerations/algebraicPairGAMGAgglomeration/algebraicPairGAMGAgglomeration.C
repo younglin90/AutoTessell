@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016,2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,15 +55,19 @@ Foam::algebraicPairGAMGAgglomeration::algebraicPairGAMGAgglomeration
 :
     pairGAMGAgglomeration(matrix.mesh(), controlDict)
 {
-    const lduMesh& mesh = matrix.mesh();
-
     if (matrix.hasLower())
     {
-        agglomerate(mesh, max(mag(matrix.upper()), mag(matrix.lower())));
+        agglomerate
+        (
+            nCellsInCoarsestLevel_,
+            0,
+            max(mag(matrix.upper()), mag(matrix.lower())),
+            true
+        );
     }
     else
     {
-        agglomerate(mesh, mag(matrix.upper()));
+        agglomerate(nCellsInCoarsestLevel_, 0, mag(matrix.upper()), true);
     }
 }
 

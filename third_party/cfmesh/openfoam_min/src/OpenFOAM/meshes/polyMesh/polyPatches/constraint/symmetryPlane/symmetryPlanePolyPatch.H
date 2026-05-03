@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,14 +45,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class symmetryPlanePolyPatch Declaration
+                      Class symmetryPlanePolyPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class symmetryPlanePolyPatch
 :
     public polyPatch
 {
-    // Private Data
+    // Private data
 
         //- Symmetry plane normal
         vector n_;
@@ -79,7 +81,8 @@ public:
             const label size,
             const label start,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct from dictionary
@@ -88,7 +91,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
         //- Construct as copy, resetting the boundary mesh
@@ -106,6 +110,16 @@ public:
             const polyBoundaryMesh& bm,
             const label index,
             const label newSize,
+            const label newStart
+        );
+
+        //- Construct given the original patch and a map
+        symmetryPlanePolyPatch
+        (
+            const symmetryPlanePolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
             const label newStart
         );
 
@@ -131,14 +145,31 @@ public:
             );
         }
 
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
+        {
+            return autoPtr<polyPatch>
+            (
+                new symmetryPlanePolyPatch
+                (
+                    *this,
+                    bm,
+                    index,
+                    mapAddressing,
+                    newStart
+                )
+            );
+        }
+
 
     // Member Functions
-
-        //- Return true as this patch is a constraint type
-        virtual bool constraint() const
-        {
-            return true;
-        }
 
         //- Return symmetry plane normal
         const vector& n() const

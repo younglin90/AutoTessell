@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::upwind
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
-    Upwind interpolation scheme class.
+    Upwind differencing scheme class.
 
 SourceFiles
     upwind.C
@@ -53,6 +58,11 @@ class upwind
 :
     public limitedSurfaceInterpolationScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const upwind&) = delete;
+
 
 public:
 
@@ -101,14 +111,23 @@ public:
         //- Return the interpolation limiter
         virtual tmp<surfaceScalarField> limiter
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
-            return surfaceScalarField::New
+            return tmp<surfaceScalarField>::New
             (
-                "upwindLimiter",
+                IOobject
+                (
+                    "upwindLimiter",
+                    this->mesh().time().timeName(),
+                    this->mesh().time().timeName(),
+                    this->mesh().thisDb(),
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                ),
                 this->mesh(),
-                dimensionedScalar(dimless, 0)
+                dimensionedScalar(dimless, Zero)
             );
         }
 
@@ -121,17 +140,11 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return weights();
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const upwind&) = delete;
 };
 
 

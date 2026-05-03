@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -72,20 +74,18 @@ namespace physicoChemical
     //- Atomic mass unit
     extern const dimensionedScalar mu;
 
-    //- Avagadro number: default SI units: [1/mol]
+    //- Avagadro number
     extern const dimensionedScalar NA;
-
-    //- Avagadro number: default SI units: [1/kmol]
-    extern const dimensionedScalar NNA;
 
     //- Boltzmann constant
     extern const dimensionedScalar k;
 }
 
+//- Standard values
 namespace standard
 {
     //- Standard pressure
-    extern const dimensionedScalar pStd;
+    extern const dimensionedScalar Pstd;
 
     //- Standard temperature
     extern const dimensionedScalar Tstd;

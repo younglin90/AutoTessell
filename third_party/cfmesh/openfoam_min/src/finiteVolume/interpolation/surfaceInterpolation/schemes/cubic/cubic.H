@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::cubic
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
     Cubic interpolation scheme class derived from linear and returns
     linear weighting factors but also applies an explicit correction.
@@ -37,7 +42,7 @@ SourceFiles
 #define cubic_H
 
 #include "linear.H"
-#include "gradScheme.H"
+#include "gaussGrad.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,7 +50,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                            Class cubic Declaration
+                           Class cubic Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -53,9 +58,13 @@ class cubic
 :
     public linear<Type>
 {
-    // Private Data
+    // Private Member Functions
 
-        word gradSchemeName_;
+        //- No copy construct
+        cubic(const cubic&) = delete;
+
+        //- No copy assignment
+        void operator=(const cubic&) = delete;
 
 
 public:
@@ -69,19 +78,17 @@ public:
         //- Construct from mesh
         cubic(const fvMesh& mesh)
         :
-            linear<Type>(mesh),
-            gradSchemeName_("grad")
+            linear<Type>(mesh)
         {}
 
         //- Construct from mesh and Istream
         cubic
         (
             const fvMesh& mesh,
-            Istream& schemeData
+            Istream&
         )
         :
-            linear<Type>(mesh),
-            gradSchemeName_(schemeData)
+            linear<Type>(mesh)
         {}
 
         //- Construct from mesh, faceFlux and Istream
@@ -89,15 +96,11 @@ public:
         (
             const fvMesh& mesh,
             const surfaceScalarField&,
-            Istream& schemeData
+            Istream&
         )
         :
-            linear<Type>(mesh),
-            gradSchemeName_(schemeData)
+            linear<Type>(mesh)
         {}
-
-        //- Disallow default bitwise copy construction
-        cubic(const cubic&) = delete;
 
 
     // Member Functions
@@ -109,10 +112,10 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -125,18 +128,26 @@ public:
                 lambda*(scalar(1) - lambda*(scalar(3) - scalar(2)*lambda))
             );
 
-            const surfaceScalarField kVecN(-sqr(scalar(1) - lambda)*lambda);
-            const surfaceScalarField kVecP(sqr(lambda)*(scalar(1) - lambda));
+            const surfaceScalarField kVecP(sqr(scalar(1) - lambda)*lambda);
+            const surfaceScalarField kVecN(sqr(lambda)*(lambda - scalar(1)));
 
-            tmp<SurfaceField<Type>> tsfCorr
+            tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tsfCorr
             (
-                SurfaceField<Type>::New
+                new GeometricField<Type, fvsPatchField, surfaceMesh>
                 (
-                    "cubic::correction(" + vf.name() +')',
-                    surfaceInterpolationScheme<Type>::interpolate(vf, -kSc, kSc)
+                    IOobject
+                    (
+                        "cubic::correction(" + vf.name() +')',
+                        mesh.time().timeName(),
+                        mesh,
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        IOobject::NO_REGISTER
+                    ),
+                    surfaceInterpolationScheme<Type>::interpolate(vf, kSc, -kSc)
                 )
             );
-            SurfaceField<Type>& sfCorr =
+            GeometricField<Type, fvsPatchField, surfaceMesh>& sfCorr =
                 tsfCorr.ref();
 
             for (direction cmpt=0; cmpt<pTraits<Type>::nComponents; cmpt++)
@@ -155,20 +166,17 @@ public:
                             >::type
                         >::interpolate
                         (
-                            fv::gradScheme<typename pTraits<Type>::cmptType>::
-                            New
-                            (
-                                mesh,
-                                mesh.schemes().grad(gradSchemeName_)
-                            )().grad(vf.component(cmpt)),
+                            fv::gaussGrad
+                            <typename pTraits<Type>::cmptType>(mesh)
+                           .grad(vf.component(cmpt)),
                             kVecP,
                             kVecN
-                        ) & mesh.delta()
-                    )
+                        ) & mesh.Sf()
+                    )/mesh.magSf()/mesh.surfaceInterpolation::deltaCoeffs()
                 );
             }
 
-            typename SurfaceField<Type>::
+            typename GeometricField<Type, fvsPatchField, surfaceMesh>::
                 Boundary& sfCorrbf = sfCorr.boundaryFieldRef();
 
             forAll(sfCorrbf, pi)
@@ -181,12 +189,6 @@ public:
 
             return tsfCorr;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const cubic&) = delete;
 };
 
 

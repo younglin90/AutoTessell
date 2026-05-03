@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ SourceFiles
 
 #include "extendedCentredCellToCellStencil.H"
 #include "CPCCellToCellStencil.H"
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -48,25 +51,29 @@ namespace Foam
 
 class centredCPCCellToCellStencilObject
 :
-    public DemandDrivenMeshObject
+    public MeshObject
     <
         fvMesh,
-        MoveableMeshObject,
+        TopologicalMeshObject,
         centredCPCCellToCellStencilObject
     >,
     public extendedCentredCellToCellStencil
 {
+    // Private Typedefs
 
-protected:
+        typedef MeshObject
+        <
+            fvMesh,
+            TopologicalMeshObject,
+            centredCPCCellToCellStencilObject
+        > MeshObject_type;
 
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        centredCPCCellToCellStencilObject
-    >;
+public:
 
-    // Protected Constructors
+    TypeName("centredCPCCellToCellStencil");
+
+
+    // Constructors
 
         //- Construct from uncompacted cell stencil
         explicit centredCPCCellToCellStencilObject
@@ -74,29 +81,13 @@ protected:
             const fvMesh& mesh
         )
         :
-            DemandDrivenMeshObject
-            <
-                fvMesh,
-                MoveableMeshObject,
-                centredCPCCellToCellStencilObject
-            >(mesh),
+            MeshObject_type(mesh),
             extendedCentredCellToCellStencil(CPCCellToCellStencil(mesh))
         {}
 
 
-public:
-
-    TypeName("centredCPCCellToCellStencil");
-
     //- Destructor
-    virtual ~centredCPCCellToCellStencilObject()
-    {}
-
-    //- Update for mesh motion
-    virtual bool movePoints()
-    {
-        return true;
-    }
+    virtual ~centredCPCCellToCellStencilObject() = default;
 };
 
 

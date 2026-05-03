@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,16 +28,51 @@ License
 
 #include "IOobject.H"
 #include "dictionary.H"
+#include "foamVersion.H"
+#include "fileOperation.H"
+#include "Pstream.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-bool Foam::IOobject::headerOk()
+Foam::IOstreamOption Foam::IOobject::parseHeader(const dictionary& headerDict)
 {
-    return typeHeaderOk<IOobject>(false);
+    IOstreamOption streamOpt;  // == (ASCII, currentVersion)
+
+    // Treat "version" as optional
+    {
+        token tok;
+        if (headerDict.readIfPresent("version", tok))
+        {
+            streamOpt.version(tok);
+        }
+    }
+
+    // Treat "format" as mandatory, could also as optional
+    streamOpt.format(headerDict.get<word>("format"));
+
+    headerClassName_ = headerDict.get<word>("class");
+
+    const word headerObject(headerDict.get<word>("object"));
+
+    // The "note" entry is optional
+    headerDict.readIfPresent("note", note_);
+
+    // The "arch" information may be missing
+    string arch;
+    if (headerDict.readIfPresent("arch", arch))
+    {
+        unsigned val = foamVersion::labelByteSize(arch);
+        if (val) sizeofLabel_ = static_cast<unsigned char>(val);
+
+        val = foamVersion::scalarByteSize(arch);
+        if (val) sizeofScalar_ = static_cast<unsigned char>(val);
+    }
+
+    return streamOpt;
 }
 
 
-bool Foam::IOobject::readHeader(Istream& is)
+bool Foam::IOobject::readHeader(dictionary& headerDict, Istream& is)
 {
     if (IOobject::debug)
     {
@@ -44,11 +82,11 @@ bool Foam::IOobject::readHeader(Istream& is)
     // Check Istream not already bad
     if (!is.good())
     {
-        if (rOpt_ == MUST_READ || rOpt_ == MUST_READ_IF_MODIFIED)
+        if (isReadRequired())
         {
             FatalIOErrorInFunction(is)
                 << " stream not open for reading essential object from file "
-                << is.name()
+                << is.relativeName()
                 << exit(FatalIOError);
         }
 
@@ -56,7 +94,7 @@ bool Foam::IOobject::readHeader(Istream& is)
         {
             SeriousIOErrorInFunction(is)
                 << " stream not open for reading from file "
-                << is.name() << endl;
+                << is.relativeName() << endl;
         }
 
         return false;
@@ -64,64 +102,52 @@ bool Foam::IOobject::readHeader(Istream& is)
 
     token firstToken(is);
 
-    if
-    (
-        is.good()
-     && firstToken.isWord()
-     && firstToken.wordToken() == foamFile
-    )
+    if (is.good() && firstToken.isWord("FoamFile"))
     {
-        dictionary headerDict(is);
+        headerDict.read(is, false);  // Read sub-dictionary content
 
-        IOstream::versionNumber ver = IOstream::currentVersion;
-        headerDict.readIfPresent("version", ver);
-        is.version(ver);
+        IOstreamOption streamOpt = parseHeader(headerDict);
 
-        is.format(headerDict.lookup("format"));
-
-        headerClassName_ = word(headerDict.lookup("class"));
-
-        const word headerObject(headerDict.lookup("object"));
-        if (IOobject::debug && headerObject != name())
-        {
-            IOWarningInFunction(is)
-                << " object renamed from "
-                << name() << " to " << headerObject
-                << " for file " << is.name() << endl;
-        }
-
-        // The note entry is optional
-        headerDict.readIfPresent("note", note_);
+        is.format(streamOpt.format());
+        is.version(streamOpt.version());
+        is.setLabelByteSize(sizeofLabel_);
+        is.setScalarByteSize(sizeofScalar_);
     }
     else
     {
-        if (IOobject::debug)
-        {
-            IOWarningInFunction(is)
-                << "First token could not be read "
-                   "or is not the keyword 'FoamFile'"
-                << nl << nl << "Check header is of the form:" << nl << endl;
+        IOWarningInFunction(is)
+            << "First token could not be read or is not 'FoamFile'"
+            << nl << nl
+            << "Check header is of the form:" << nl << endl;
 
-            writeHeader(Info);
-        }
+        writeHeader(Info);
+
+        // Mark as not read
+        headerClassName_.clear();
 
         return false;
     }
 
     // Check stream is still OK
-    if (is.good())
+    objState_ = (is.good() ? objectState::GOOD : objectState::BAD);
+
+    if (IOobject::debug)
     {
-        objState_ = GOOD;
+        Info<< " .... read - state: "
+            << (objState_ == objectState::GOOD ? "good" : "bad")
+            << endl;
+
     }
-    else
+
+    if (objState_ == objectState::BAD)
     {
-        if (rOpt_ == MUST_READ || rOpt_ == MUST_READ_IF_MODIFIED)
+        if (isReadRequired())
         {
             FatalIOErrorInFunction(is)
                 << " stream failure while reading header"
                 << " on line " << is.lineNumber()
-                << " of file " << is.name()
-                << " for essential object" << name()
+                << " of file " << is.relativeName()
+                << " for essential object:" << name()
                 << exit(FatalIOError);
         }
 
@@ -130,20 +156,119 @@ bool Foam::IOobject::readHeader(Istream& is)
             InfoInFunction
                 << "Stream failure while reading header"
                 << " on line " << is.lineNumber()
-                << " of file " << is.name() << endl;
+                << " of file " << is.relativeName() << endl;
         }
-
-        objState_ = BAD;
 
         return false;
     }
 
-    if (IOobject::debug)
+    return true;
+}
+
+
+bool Foam::IOobject::readHeader(Istream& is)
+{
+    dictionary headerDict;
+    return IOobject::readHeader(headerDict, is);
+}
+
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+bool Foam::IOobject::readAndCheckHeader
+(
+    const bool isGlobal,
+    const word& typeName,
+    const bool checkType,
+    const bool search,
+    const bool verbose
+)
+{
+    // Mark as not yet read. cf, IOobject::readHeader()
+    headerClassName_.clear();
+
+    // Everyone check or just master
+    const bool masterOnly
+    (
+        isGlobal
+     && (
+            IOobject::fileModificationChecking == IOobject::timeStampMaster
+         || IOobject::fileModificationChecking == IOobject::inotifyMaster
+        )
+    );
+
+    const auto& handler = Foam::fileHandler();
+
+    // Determine local status
+    bool ok = false;
+
+    if (masterOnly)
     {
-        Info<< " .... read" << endl;
+        if (UPstream::master())
+        {
+            // Force master-only header reading
+            const bool oldParRun = UPstream::parRun(false);
+            const fileName fName
+            (
+                handler.filePath(isGlobal, *this, typeName, search)
+            );
+            ok = handler.readHeader(*this, fName, typeName);
+            UPstream::parRun(oldParRun);
+
+            if
+            (
+                ok && checkType
+             && !typeName.empty() && headerClassName_ != typeName
+            )
+            {
+                ok = false;
+                if (verbose)
+                {
+                    WarningInFunction
+                        << "Unexpected class name \"" << headerClassName_
+                        << "\" expected \"" << typeName
+                        << "\" when reading " << fName << endl;
+                }
+            }
+        }
+
+        // If masterOnly make sure all processors know about the read
+        // information. Note: should ideally be inside fileHandler...
+        Pstream::broadcasts
+        (
+            UPstream::worldComm,
+            ok,
+            headerClassName_,
+            note_
+        );
+    }
+    else
+    {
+        // All read header
+        const fileName fName
+        (
+            handler.filePath(isGlobal, *this, typeName, search)
+        );
+        ok = handler.readHeader(*this, fName, typeName);
+
+        if
+        (
+            ok && checkType
+         && !typeName.empty() && headerClassName_ != typeName
+        )
+        {
+            ok = false;
+            if (verbose)
+            {
+                WarningInFunction
+                    << "Unexpected class name \"" << headerClassName_
+                    << "\" expected \"" << typeName
+                    << "\" when reading " << fName << endl;
+            }
+        }
     }
 
-    return true;
+    return ok;
 }
 
 

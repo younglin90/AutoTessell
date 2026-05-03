@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::pressureDirectedInletOutletVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
-    This velocity inlet/outlet boundary condition is applied to pressure
+    This velocity inlet/outlet boundary condition is applied to velocity
     boundaries where the pressure is specified.  A zero-gradient condition is
     applied for outflow (as defined by the flux); for inflow, the velocity
     is obtained from the flux with the specified inlet direction.
@@ -46,15 +51,15 @@ Usage
         phi             phi;
         rho             rho;
         inletDirection  uniform (1 0 0);
-        value           uniform (0 0 0);
+        value           uniform 0;
     }
     \endverbatim
 
-    Note:
-        Sign conventions:
-      - positive flux (out of domain): apply zero-gradient condition
-      - negative flux (into of domain): derive from the flux with specified
-        direction
+Note
+    Sign conventions:
+    - positive flux (out of domain): apply zero-gradient condition
+    - negative flux (into of domain): derive from the flux with specified
+      direction
 
 See also
     Foam::mixedFvPatchVectorField
@@ -83,7 +88,7 @@ class pressureDirectedInletOutletVelocityFvPatchVectorField
 :
     public mixedFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Flux field name
         word phiName_;
@@ -103,11 +108,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        pressureDirectedInletOutletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         pressureDirectedInletOutletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -118,49 +130,43 @@ public:
         (
             const pressureDirectedInletOutletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         pressureDirectedInletOutletVelocityFvPatchVectorField
         (
             const pressureDirectedInletOutletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         pressureDirectedInletOutletVelocityFvPatchVectorField
         (
             const pressureDirectedInletOutletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new pressureDirectedInletOutletVelocityFvPatchVectorField
-                (
-                    *this,
-                    iF
-                )
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
-
-            //- Return true: this patch field is altered by assignment
-            virtual bool assignable() const
-            {
-                return true;
-            }
+        //- True: this patch field is altered by assignment
+        virtual bool assignable() const { return true; }
 
 
         // Access
@@ -192,12 +198,18 @@ public:
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchVectorField&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchVectorField&,
+                const labelList&
+            );
 
 
         //- Update the coefficients associated with the patch field
@@ -207,12 +219,9 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const fvPatchField<vector>& pvf);
-
-        //- Inherit assignment
-        using mixedFvPatchVectorField::operator=;
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +46,7 @@ namespace Foam
 
 
 /*---------------------------------------------------------------------------*\
-                           Class BinSum Declaration
+                          Class BinSum Declaration
 \*---------------------------------------------------------------------------*/
 
 template
@@ -57,7 +59,7 @@ class BinSum
 :
     public List
 {
-    // Private Data
+    // Private data
 
         const IndexType min_;
 
@@ -71,7 +73,6 @@ class BinSum
 
         //- Sum of >= highest bin
         typename List::value_type highSum_;
-
 
 public:
 

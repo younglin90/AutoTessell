@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,36 +27,26 @@ Class
     Foam::functionEntries::ifEntry
 
 Description
-    Conditional parsing of and within dictionary entries.
+    Conditional parsing of dictionary entries.
 
     E.g.
     \verbatim
-        Uinlet 15;
+        U_inlet 15;
 
-        #if (#calc "${Uinlet} < 10")
+        #if #calc "${U_inlet} < 10"
             ..
         #else
             ..
-        #endif
-
-        pOutlet #if (#calc "${Uinlet} < 10") 0 #else 100 #endif;
-
-        fluid       waterAndSludge;
-
-        #if (#calc #{$fluid == "waterAndSludge" || $fluid == "waterAndSand" #})
-            mixture     multicomponentMixture;
-        #else
-            mixture     pureMixture;
         #endif
     \endverbatim
 
-    The condition should return any boolean representation supported by
-    \c Switch i.e 0, 1, true, false, on, off, yes, no.
+    Note:
+    - only supports single line, '\' is not supported
+    - condition should be readable as a \c Switch
+      (0,1, true, false, etc.) or a scalar (0.0, ...)
 
 See also
     Foam::functionEntries::ifeqEntry
-    Foam::functionEntries::elseEntry
-    Foam::functionEntries::endifEntry
     Foam::Switch
 
 SourceFiles
@@ -62,8 +54,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef ifEntry_H
-#define ifEntry_H
+#ifndef functionEntries_ifEntry_H
+#define functionEntries_ifEntry_H
 
 #include "ifeqEntry.H"
 
@@ -75,7 +67,7 @@ namespace functionEntries
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class ifEntry Declaration
+                          Class ifEntry Declaration
 \*---------------------------------------------------------------------------*/
 
 class ifEntry
@@ -86,61 +78,26 @@ class ifEntry
 
     // Private Member Functions
 
-        //- Execute the functionEntry in the given context
-        template<class Context>
-        bool execute
+        //- Test first token (label, scalar, word) for true/false
+        static bool isTrue(ITstream& is);
+
+        //- Execute the functionEntry in a sub-dict context
+        static bool execute
         (
             DynamicList<filePos>& stack,
-            const dictionary& contextDict,
-            Context& context,
+            dictionary& parentDict,
             Istream& is
-        ) const;
-
+        );
 
 public:
 
     //- Runtime type information
-    FunctionTypeName("#if");
-
-
-    // Constructors
-
-        //- Construct from line number, dictionary and Istream
-        ifEntry
-        (
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Copy construct
-        ifEntry(const ifEntry&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new ifEntry(*this));
-        }
-
+    ClassName("if");
 
     // Member Functions
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream& is);
-
-        //- Expand the functionEntry into the contextEntry
-        static bool execute
-        (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
-        );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const ifEntry&) = delete;
+        //- Execute the functionEntry in a sub-dict context
+        static bool execute(dictionary& parentDict, Istream& is);
 };
 
 
@@ -148,13 +105,6 @@ public:
 
 } // End namespace functionEntries
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "ifEntryTemplates.C"
-    #include "ifeqEntryTemplates.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

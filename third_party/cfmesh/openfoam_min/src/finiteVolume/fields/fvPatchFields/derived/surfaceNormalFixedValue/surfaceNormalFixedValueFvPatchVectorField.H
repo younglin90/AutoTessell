@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +27,18 @@ License
 Class
     Foam::surfaceNormalFixedValueFvPatchVectorField
 
-Description
-    Surface-normal fixed value vector boundary condition
+Group
+    grpGenericBoundaryConditions grpInletBoundaryConditions
 
-    in which the vector field is obtained by scaling the patch normals
-    by the scalar field provided.
+Description
+    This boundary condition provides a surface-normal vector boundary condition
+    by its magnitude.
 
 Usage
     \table
-        Property     | Description             | Required    | Default value
-        refValue     | reference value         | yes         |
+        Property     | Description                          | Required | Default
+        refValue     | reference value                      | yes |
+        ramp         | time-based ramping                   | no  |
     \endtable
 
     Example of the boundary condition specification:
@@ -45,9 +50,9 @@ Usage
     }
     \endverbatim
 
-    Note:
-        Sign conventions:
-      - the value is positive for outward-pointing vectors
+Note
+    Sign conventions:
+    - the value is positive for outward-pointing vectors
 
 See also
     Foam::fixedValueFvPatchField
@@ -62,6 +67,7 @@ SourceFiles
 
 #include "fvPatchFields.H"
 #include "fixedValueFvPatchFields.H"
+#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -80,6 +86,9 @@ class surfaceNormalFixedValueFvPatchVectorField
 
         scalarField refValue_;
 
+        //- Optional time ramping
+        autoPtr<Function1<scalar>> ramp_;
+
 
 public:
 
@@ -89,11 +98,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        surfaceNormalFixedValueFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         surfaceNormalFixedValueFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -104,50 +120,55 @@ public:
         (
             const surfaceNormalFixedValueFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         surfaceNormalFixedValueFvPatchVectorField
         (
             const surfaceNormalFixedValueFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         surfaceNormalFixedValueFvPatchVectorField
         (
             const surfaceNormalFixedValueFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new surfaceNormalFixedValueFvPatchVectorField
-                (
-                    *this,
-                    iF
-                )
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchVectorField&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchVectorField&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -158,12 +179,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

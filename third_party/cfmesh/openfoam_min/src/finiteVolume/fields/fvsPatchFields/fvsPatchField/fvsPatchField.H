@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,80 +44,213 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvsPatchField_H
-#define fvsPatchField_H
+#ifndef Foam_fvsPatchField_H
+#define Foam_fvsPatchField_H
 
 #include "fvPatch.H"
 #include "DimensionedField.H"
-#include "fvPatchFieldMapperFwd.H"
+#include "fieldTypes.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
-
-class objectRegistry;
+// Forward Declarations
 class dictionary;
-class fieldMapper;
+class objectRegistry;
+class fvPatchFieldMapper;
 class surfaceMesh;
 
-
-// Forward declaration of friend functions and operators
-
-template<class Type>
-class fvsPatchField;
-
-template<class Type>
-class calculatedFvsPatchField;
-
-template<class Type>
-class slicedFvsPatchField;
+template<class Type> class fvsPatchField;
+template<class Type> class calculatedFvsPatchField;
 
 template<class Type>
 Ostream& operator<<(Ostream&, const fvsPatchField<Type>&);
 
 
 /*---------------------------------------------------------------------------*\
-                            Class patch Declaration
+                      Class fvsPatchFieldBase Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Type>
-class fvsPatchField
-:
-    public Field<Type>
+//- Template invariant parts for fvsPatchField
+class fvsPatchFieldBase
 {
     // Private Data
 
         //- Reference to patch
         const fvPatch& patch_;
 
-        //- Reference to internal field
-        const DimensionedField<Type, surfaceMesh>& internalField_;
+protected:
+
+    // Protected Member Functions
+
+        //- Read dictionary entries.
+        //  Useful when initially constructed without a dictionary
+        virtual void readDict(const dictionary& dict);
+
+        //- Set updated state. This is a no-op for fvsPatchField
+        void setUpdated(bool state) noexcept
+        {}
+
+        //- Set matrix manipulated state. This is a no-op for fvsPatchField
+        void setManipulated(bool state) noexcept
+        {}
 
 
 public:
 
-    // Public Typedefs
-
-        //- The patch type
-        typedef fvPatch Patch;
-
-        //- The calculated patch field type
-        typedef calculatedFvsPatchField<Type> Calculated;
-
-        //- The sliced patch field type
-        typedef slicedFvsPatchField<Type> Sliced;
-
+    //- Debug switch to disallow the use of generic fvsPatchField
+    static int disallowGenericPatchField;
 
     //- Runtime type information
     TypeName("fvsPatchField");
 
 
-    //- Debug switch to disallow the use of genericFvsPatchField
-    static int disallowGenericFvsPatchField;
+    // Constructors
 
+        //- Construct from patch
+        explicit fvsPatchFieldBase(const fvPatch& p);
+
+        //- Construct from patch and dictionary (unused)
+        fvsPatchFieldBase(const fvPatch& p, const dictionary& dict);
+
+        //- Copy construct with new patch
+        fvsPatchFieldBase(const fvsPatchFieldBase& rhs, const fvPatch& p);
+
+        //- Copy construct
+        fvsPatchFieldBase(const fvsPatchFieldBase& rhs);
+
+
+    //- Destructor
+    virtual ~fvsPatchFieldBase() = default;
+
+
+    // Static Member Functions
+
+        //- The type name for \c empty patch fields
+        static const word& emptyType() noexcept
+        {
+            return Foam::fieldTypes::emptyType;
+        }
+
+        //- The type name for \c calculated patch fields
+        static const word& calculatedType() noexcept
+        {
+            return Foam::fieldTypes::calculatedType;
+        }
+
+
+    // Member Functions
+
+    // Attributes
+
+        //- True if the patch field fixes a value.
+        //  Needed to check if a level has to be specified while solving
+        //  Poissons equations.
+        virtual bool fixesValue() const
+        {
+            return false;
+        }
+
+        //- True if the patch field is coupled
+        virtual bool coupled() const
+        {
+            return false;
+        }
+
+
+    // Access
+
+        //- The associated objectRegistry
+        const objectRegistry& db() const;
+
+        //- Return the patch
+        const fvPatch& patch() const noexcept
+        {
+            return patch_;
+        }
+
+
+    // Solution
+
+        //- True if the boundary condition has already been updated.
+        //- This is always true for fvsPatchField
+        bool updated() const noexcept
+        {
+            return true;
+        }
+
+        //- True if the matrix has already been manipulated
+        bool manipulatedMatrix() const noexcept
+        {
+            return false;
+        }
+
+
+    // Check
+
+        //- Check that patches are identical
+        void checkPatch(const fvsPatchFieldBase& rhs) const;
+};
+
+
+/*---------------------------------------------------------------------------*\
+                        Class fvsPatchField Declaration
+\*---------------------------------------------------------------------------*/
+
+template<class Type>
+class fvsPatchField
+:
+    public fvsPatchFieldBase,
+    public Field<Type>
+{
+public:
+
+    // Public Data Types
+
+        //- The patch type for the patch field
+        typedef fvPatch Patch;
+
+        //- The value_type for the patch field
+        typedef Type value_type;
+
+        //- The internal field type associated with the patch field
+        typedef DimensionedField<Type, surfaceMesh> Internal;
+
+        //- Type for a \em calculated patch
+        typedef calculatedFvsPatchField<Type> Calculated;
+
+
+private:
+
+    // Private Data
+
+        //- Reference to internal field
+        const DimensionedField<Type, surfaceMesh>& internalField_;
+
+
+protected:
+
+    // Protected Member Functions
+
+        //- Read the "value" entry into \c *this.
+        //  The reading can be optional (default), mandatory etc.
+        //  \returns True on success
+        bool readValueEntry
+        (
+            const dictionary& dict,
+            IOobjectOption::readOption readOpt = IOobjectOption::LAZY_READ
+        );
+
+        //- Write \c *this field as a "value" entry
+        void writeValueEntry(Ostream& os) const
+        {
+            Field<Type>::writeEntry("value", os);
+        }
+
+
+public:
 
     // Declare run-time constructor selection tables
 
@@ -134,6 +270,20 @@ public:
         (
             tmp,
             fvsPatchField,
+            patchMapper,
+            (
+                const fvsPatchField<Type>& ptf,
+                const fvPatch& p,
+                const DimensionedField<Type, surfaceMesh>& iF,
+                const fvPatchFieldMapper& m
+            ),
+            (dynamic_cast<const fvsPatchFieldType&>(ptf), p, iF, m)
+        );
+
+        declareRunTimeSelectionTable
+        (
+            tmp,
+            fvsPatchField,
             dictionary,
             (
                 const fvPatch& p,
@@ -141,20 +291,6 @@ public:
                 const dictionary& dict
             ),
             (p, iF, dict)
-        );
-
-        declareRunTimeSelectionTable
-        (
-            tmp,
-            fvsPatchField,
-            patchMapper,
-            (
-                const fvsPatchField<Type>& ptf,
-                const fvPatch& p,
-                const DimensionedField<Type, surfaceMesh>& iF,
-                const fieldMapper& m
-            ),
-            (dynamic_cast<const fvsPatchFieldType&>(ptf), p, iF, m)
         );
 
 
@@ -167,12 +303,28 @@ public:
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct from patch and internal field and patch field
+        //- Construct from patch, internal field and value
         fvsPatchField
         (
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const Field<Type>&
+            const Type& value
+        );
+
+        //- Construct from patch, internal field and patch field
+        fvsPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, surfaceMesh>&,
+            const Field<Type>& pfld
+        );
+
+        //- Construct from patch, internal field and patch field
+        fvsPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, surfaceMesh>&,
+            Field<Type>&& pfld
         );
 
         //- Construct from patch, internal field and dictionary
@@ -180,9 +332,26 @@ public:
         (
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const dictionary&,
-            const bool valueRequired=true
+            const dictionary& dict,
+            //! The "value" entry (default: mandatory)
+            IOobjectOption::readOption requireValue = IOobjectOption::MUST_READ
         );
+
+        //- Construct, forwarding to readOption variant
+        fvsPatchField
+        (
+            const fvPatch& p,
+            const DimensionedField<Type, surfaceMesh>& iF,
+            const dictionary& dict,
+            const bool needValue
+        )
+        :
+            fvsPatchField
+            (
+                p, iF, dict,
+                (needValue? IOobjectOption::MUST_READ : IOobjectOption::NO_READ)
+            )
+        {}
 
         //- Construct by mapping the given fvsPatchField onto a new patch
         fvsPatchField
@@ -190,35 +359,29 @@ public:
             const fvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&,
-            const bool mappingRequired=true
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        fvsPatchField(const fvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        fvsPatchField(const fvsPatchField<Type>&);
 
-        //- Disallow clone without setting internal field reference
-        tmp<fvsPatchField<Type>> clone() const
-        {
-            // Temporarily reinstate the clone() function pending a rewrite of
-            // the mapping of surfaceFields in fvMeshDistribute
-            return tmp<fvsPatchField<Type>>
-            (
-                new fvsPatchField<Type>(*this, internalField_)
-            );
-
-            // NotImplemented;
-            // return tmp<fvsPatchField<Type>>(nullptr);
-        }
-
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fvsPatchField
         (
             const fvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Clone patch field with its own internal field reference
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return tmp<fvsPatchField<Type>>
+            (
+                new fvsPatchField<Type>(*this, this->internalField_)
+            );
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
@@ -230,29 +393,29 @@ public:
             );
         }
 
-        //- Construct and return a clone onto a new patch
-        //  setting internal field reference
-        virtual tmp<fvsPatchField<Type>> clone
+
+    // Factory Methods
+
+        //- Clone a patch field, optionally with internal field reference etc.
+        template<class DerivedPatchField, class... Args>
+        static tmp<fvsPatchField<Type>> Clone
         (
-            const fvPatch& patch,
-            const DimensionedField<Type, surfaceMesh>& iF
-        ) const
+            const DerivedPatchField& pf,
+            Args&&... args
+        )
         {
             return tmp<fvsPatchField<Type>>
             (
-                new fvsPatchField<Type>(patch, iF, *this)
+                new DerivedPatchField(pf, std::forward<Args>(args)...)
             );
         }
-
-
-    // Selectors
 
         //- Return a pointer to a new patchField created on freestore given
         //  patch and internal field
         //  (does not set the patch field values)
         static tmp<fvsPatchField<Type>> New
         (
-            const word&,
+            const word& patchFieldType,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&
         );
@@ -263,7 +426,7 @@ public:
         //  Allows override of constraint type
         static tmp<fvsPatchField<Type>> New
         (
-            const word&,
+            const word& patchFieldType,
             const word& actualPatchType,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&
@@ -276,7 +439,7 @@ public:
             const fvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
         //- Return a pointer to a new patchField created on freestore
@@ -292,128 +455,97 @@ public:
         //  freestore without setting patchField values
         static tmp<fvsPatchField<Type>> NewCalculatedType
         (
-            const fvPatch&
+            const fvPatch& p
         );
 
         //- Return a pointer to a new calculatedFvsPatchField created on
         //  freestore without setting patchField values
-        template<class Type2>
+        template<class AnyType>
         static tmp<fvsPatchField<Type>> NewCalculatedType
         (
-            const fvsPatchField<Type2>&
+            const fvsPatchField<AnyType>& pf
         );
 
 
     //- Destructor
-    virtual ~fvsPatchField()
-    {}
+    virtual ~fvsPatchField() = default;
 
 
     // Member Functions
 
-        // Attributes
+    // Access
 
-            //- Return the type of the calculated for of fvsPatchField
-            static const word& calculatedType();
+        //- Return const-reference to the dimensioned internal field
+        const DimensionedField<Type, surfaceMesh>& internalField()
+        const noexcept
+        {
+            return internalField_;
+        }
 
-            //- Return true if this patch field fixes a value.
-            //  Needed to check if a level has to be specified while solving
-            //  Poissons equations.
-            virtual bool fixesValue() const
-            {
-                return false;
-            }
-
-            //- Return true if this patch field is coupled
-            virtual bool coupled() const
-            {
-                return false;
-            }
-
-            //- Return true if this overrides the underlying constraint type
-            bool overridesConstraint() const
-            {
-                if (type() == patch_.type())
-                {
-                    return false;
-                }
-
-                typename patchConstructorTable::iterator patchTypeCstrIter
-                    = patchConstructorTablePtr_->find(patch_.type());
-
-                return
-                    patchTypeCstrIter
-                 != patchConstructorTablePtr_->end();
-            }
+        //- Return const-reference to the internal field values
+        const Field<Type>& primitiveField() const noexcept
+        {
+            return internalField_;
+        }
 
 
-        // Access
+    // Mapping Functions
 
-            //- Return local objectRegistry
-            const objectRegistry& db() const;
+        //- Map (and resize as needed) from self given a mapping object
+        virtual void autoMap
+        (
+            const fvPatchFieldMapper&
+        );
 
-            //- Return time
-            const Time& time() const;
-
-            //- Return patch
-            const fvPatch& patch() const
-            {
-                return patch_;
-            }
-
-            //- Return dimensioned internal field reference
-            const DimensionedField<Type, surfaceMesh>&
-            internalField() const
-            {
-                return internalField_;
-            }
-
-            //- Return internal field reference
-            const Field<Type>& primitiveField() const
-            {
-                return internalField_;
-            }
+        //- Reverse map the given fvsPatchField onto this fvsPatchField
+        virtual void rmap
+        (
+            const fvsPatchField<Type>&,
+            const labelList&
+        );
 
 
-        // Evaluation functions
+        // Evaluation Functions
 
-            //- Initialise return of the patchField on the opposite patch of a
-            //  coupled patch
-            virtual void initPatchNeighbourField
+            //- Initialise the evaluation of the patch field
+            virtual void initEvaluate
             (
-                const Pstream::commsTypes commsType
-            ) const
+                const Pstream::commsTypes commsType =
+                    Pstream::commsTypes::buffered
+            )
             {}
 
-            //- Return patchField on the opposite patch of a coupled patch
-            virtual tmp<Field<Type>> patchNeighbourField
+            //- Evaluate the patch field, sets Updated to false
+            virtual void evaluate
             (
-                const Pstream::commsTypes commsType
-            ) const
-            {
-                NotImplemented;
-                return *this;
-            }
+                const Pstream::commsTypes commsType =
+                    Pstream::commsTypes::buffered
+            )
+            {}
+
+            //- Initialise the evaluation of the patch field after a local
+            //  operation
+            virtual void initEvaluateLocal
+            (
+                const Pstream::commsTypes commsType =
+                    Pstream::commsTypes::buffered
+            )
+            {}
+
+            //- Evaluate the patch field after a local operation (e.g. *=)
+            virtual void evaluateLocal
+            (
+                const Pstream::commsTypes commsType =
+                    Pstream::commsTypes::buffered
+            )
+            {}
 
 
-        // Mapping functions
+        //- Write the patch "type"
+        virtual void write(Ostream& os) const;
 
-            //- Map the given fvsPatchField onto this fvsPatchField
-            virtual void map(const fvsPatchField<Type>&, const fieldMapper&);
-
-            //- Reset the fvsPatchField to the given fvsPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvsPatchField<Type>&);
-
-
-        //- Write
-        virtual void write(Ostream&) const;
-
-
-        // Check
-
-            //- Check fvsPatchField<Type> against given fvsPatchField<Type>
-            void check(const fvsPatchField<Type>&) const;
+        //- Check against given patch field
+        void check(const fvsPatchField<Type>&) const;
 
 
     // Member Operators
@@ -445,8 +577,13 @@ public:
         virtual void operator==(const Field<Type>&);
         virtual void operator==(const Type&);
 
+        // Prevent automatic comparison rewriting (c++20)
+        bool operator!=(const fvsPatchField<Type>&) const = delete;
+        bool operator!=(const Field<Type>&) const = delete;
+        bool operator!=(const Type&) const = delete;
 
-    // Ostream operator
+
+    // Ostream Operator
 
         friend Ostream& operator<< <Type>(Ostream&, const fvsPatchField<Type>&);
 };
@@ -460,87 +597,12 @@ public:
 
 #ifdef NoRepository
     #include "fvsPatchField.C"
+    #include "fvsPatchFieldNew.C"
     #include "calculatedFvsPatchField.H"
 #endif
 
-
-#define makeFvsPatchField(fvsPatchTypeField)                                   \
-    defineNamedTemplateTypeNameAndDebug(fvsPatchTypeField, 0);                 \
-    template<>                                                                 \
-    int fvsPatchTypeField::disallowGenericFvsPatchField                        \
-    (                                                                          \
-        debug::debugSwitch("disallowGenericFvsPatchField", 0)                  \
-    );                                                                         \
-    defineTemplateRunTimeSelectionTable(fvsPatchTypeField, patch);             \
-    defineTemplateRunTimeSelectionTable(fvsPatchTypeField, patchMapper);       \
-    defineTemplateRunTimeSelectionTable(fvsPatchTypeField, dictionary);
-
-
-#define addToFvsPatchFieldRunTimeSelection(PatchTypeField, typePatchTypeField) \
-    addToRunTimeSelectionTable                                                 \
-    (                                                                          \
-        PatchTypeField,                                                        \
-        typePatchTypeField,                                                    \
-        patch                                                                  \
-    );                                                                         \
-    addToRunTimeSelectionTable                                                 \
-    (                                                                          \
-        PatchTypeField,                                                        \
-        typePatchTypeField,                                                    \
-        patchMapper                                                            \
-    );                                                                         \
-    addToRunTimeSelectionTable                                                 \
-    (                                                                          \
-        PatchTypeField,                                                        \
-        typePatchTypeField,                                                    \
-        dictionary                                                             \
-    );
-
-
-// For non-templated patch fields
-#define makeFvsPatchTypeField(PatchTypeField, typePatchTypeField)              \
-    defineTypeNameAndDebug(typePatchTypeField, 0);                             \
-    addToFvsPatchFieldRunTimeSelection(PatchTypeField, typePatchTypeField)
-
-
-// For templated patch fields
-#define makeTemplateFvsPatchTypeField(fieldType, type)                         \
-    defineNamedTemplateTypeNameAndDebug                                        \
-    (                                                                          \
-        CAT4(type, FvsPatch, CAPITALIZE(fieldType), Field),                    \
-        0                                                                      \
-    );                                                                         \
-    addToFvsPatchFieldRunTimeSelection                                         \
-    (                                                                          \
-        CAT3(fvsPatch, CAPITALIZE(fieldType), Field),                          \
-        CAT4(type, FvsPatch, CAPITALIZE(fieldType), Field)                     \
-    )
-
-
-#define makeFvsPatchFields(type)                                               \
-    FOR_ALL_FIELD_TYPES(makeTemplateFvsPatchTypeField, type)
-
-
-#define makeFvsPatchFieldTypeName(fieldType, type)                             \
-    defineNamedTemplateTypeNameAndDebug                                        \
-    (                                                                          \
-        CAT4(type, FvsPatch, CAPITALIZE(fieldType), Field),                    \
-        0                                                                      \
-    );
-
-
-#define makeFvsPatchFieldTypeNames(type)                                       \
-    FOR_ALL_FIELD_TYPES(makeFvsPatchFieldTypeName, type)
-
-
-#define makeFvsPatchTypeFieldTypedef(fieldType, type)                          \
-    typedef type##FvsPatchField<fieldType>                                     \
-        CAT4(type, FvsPatch, CAPITALIZE(fieldType), Field);
-
-
-#define makeFvsPatchTypeFieldTypedefs(type)                                    \
-    FOR_ALL_FIELD_TYPES(makeFvsPatchTypeFieldTypedef, type)
-
+// Runtime selection macros
+#include "fvsPatchFieldMacros.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,11 +25,35 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::decompositionConstraints::singleProcessorFaceSetsConstraint
+    Foam::decompositionConstraints::singleProcessorFaceSets
 
 Description
     Constraint to keep all cells connected to face or point of faceSet on
     a single processor.
+
+    \heading Dictionary parameters
+    \table
+        Property    | Description                       | Required  | Default
+        type        | singleProcessorFaceSets           | yes   |
+        sets        | List of sets and processers       | yes   |
+    \endtable
+
+    Example,
+    \verbatim
+    constraints
+    {
+        procs
+        {
+            type    singleProcessorFaceSets;
+            sets
+            (
+                (faceSet1   0)
+                (faceSet5   12)
+                (faceSet25 510)
+            );
+        }
+    }
+    \endverbatim
 
 SourceFiles
     singleProcessorFaceSetsConstraint.C
@@ -43,22 +70,25 @@ SourceFiles
 
 namespace Foam
 {
-
 namespace decompositionConstraints
 {
 
 /*---------------------------------------------------------------------------*\
-              Class singleProcessorFaceSetsConstraint Declaration
+                   Class singleProcessorFaceSets Declaration
 \*---------------------------------------------------------------------------*/
 
-class singleProcessorFaceSetsConstraint
+class singleProcessorFaceSets
 :
     public decompositionConstraint
 {
-    // Private Data
+    // Private data
 
         //- List of faceSet+processor
         List<Tuple2<word, label>> setNameAndProcs_;
+
+        //- Report names of sets and processor numnbers
+        void printInfo() const;
+
 
 public:
 
@@ -68,28 +98,26 @@ public:
 
     // Constructors
 
-        //- Construct with generic dictionary with optional entry for type
-        singleProcessorFaceSetsConstraint
-        (
-            const dictionary& constraintsDict,
-            const word& type
-        );
+        //- Construct with constraint dictionary
+        explicit singleProcessorFaceSets(const dictionary& dict);
 
-        //- Construct from components
-        singleProcessorFaceSetsConstraint
+        //- Copy construct from components
+        explicit singleProcessorFaceSets
         (
             const List<Tuple2<word, label>>& setNameAndProcs
         );
 
+        //- Read construct a List of (setName processor)
+        explicit singleProcessorFaceSets(Istream& is);
+
 
     //- Destructor
-    virtual ~singleProcessorFaceSetsConstraint()
-    {}
+    virtual ~singleProcessorFaceSets() = default;
 
 
     // Member Functions
 
-        //- Add my constraints to list of constraints
+        //- Add this constraint to list of constraints
         virtual void add
         (
             const polyMesh& mesh,
@@ -99,7 +127,7 @@ public:
             List<labelPair>& explicitConnections
         ) const;
 
-        //- Apply any additional post-decomposition constraints
+        //- Add this constraint post-decomposition
         virtual void apply
         (
             const polyMesh& mesh,

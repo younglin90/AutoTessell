@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,7 +44,7 @@ addToRunTimeSelectionTable(fvPatch, wedgeFvPatch, polyPatch);
 wedgeFvPatch::wedgeFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
 :
     fvPatch(patch, bm),
-    wedgePoly_(refCast<const wedgePolyPatch>(patch))
+    wedgePolyPatch_(refCast<const wedgePolyPatch>(patch))
 {}
 
 

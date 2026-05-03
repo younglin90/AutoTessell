@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,74 +32,104 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::
-variableHeightFlowRateInletVelocityFvPatchVectorField
+Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
+::variableHeightFlowRateInletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    flowRate_(),
+    alphaName_("none")
+{}
+
+
+Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
+::variableHeightFlowRateInletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
     fixedValueFvPatchField<vector>(p, iF, dict),
-    flowRate_
-    (
-        Function1<scalar>::New
-        (
-            "flowRate",
-            time().userUnits(),
-            dimVolumetricFlux,
-            dict
-        )
-    ),
+    flowRate_(Function1<scalar>::New("flowRate", dict, &db())),
     alphaName_(dict.lookup("alpha"))
 {}
 
 
-Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::
-variableHeightFlowRateInletVelocityFvPatchVectorField
+Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
+::variableHeightFlowRateInletVelocityFvPatchVectorField
 (
     const variableHeightFlowRateInletVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    flowRate_(ptf.flowRate_, false),
+    flowRate_(ptf.flowRate_.clone()),
     alphaName_(ptf.alphaName_)
 {}
 
 
-Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::
-variableHeightFlowRateInletVelocityFvPatchVectorField
+Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
+::variableHeightFlowRateInletVelocityFvPatchVectorField
+(
+    const variableHeightFlowRateInletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    flowRate_(ptf.flowRate_.clone()),
+    alphaName_(ptf.alphaName_)
+{}
+
+
+Foam::variableHeightFlowRateInletVelocityFvPatchVectorField
+::variableHeightFlowRateInletVelocityFvPatchVectorField
 (
     const variableHeightFlowRateInletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchField<vector>(ptf, iF),
-    flowRate_(ptf.flowRate_, false),
+    flowRate_(ptf.flowRate_.clone()),
     alphaName_(ptf.alphaName_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::
-updateCoeffs()
+void Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::updateCoeffs()
 {
     if (updated())
     {
         return;
     }
 
-    scalarField alphap =
-        patch().lookupPatchField<volScalarField, scalar>(alphaName_);
+    const auto& mesh = patch().boundaryMesh().mesh();
+    auto& alpha = mesh.lookupObjectRef<volScalarField>(alphaName_);
+
+    // Update alpha boundary (if needed) due to mesh changes
+    if (!mesh.upToDatePoints(alpha))
+    {
+        auto& alphabf = alpha.boundaryFieldRef();
+
+        if (!alphabf[patch().index()].updated())
+        {
+            DebugInfo<< "Updating alpha BC due to mesh changes" << endl;
+            alphabf.evaluateSelected(labelList({ patch().index() }));
+        }
+    }
+
+    scalarField alphap(alpha.boundaryField()[patch().index()]);
 
     alphap = max(alphap, scalar(0));
     alphap = min(alphap, scalar(1));
 
-    scalar flowRate = flowRate_->value(time().value());
+    const scalar t = db().time().timeOutputValue();
+    scalar flowRate = flowRate_->value(t);
 
     // a simpler way of doing this would be nice
     scalar avgU = -flowRate/gSum(patch().magSf()*alphap);
@@ -115,9 +148,9 @@ void Foam::variableHeightFlowRateInletVelocityFvPatchVectorField::write
 ) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, time().userUnits(), dimVolumetricFlux, flowRate_());
-    writeEntry(os, "alpha", alphaName_);
-    writeEntry(os, "value", *this);
+    flowRate_->writeData(os);
+    os.writeEntry("alpha", alphaName_);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

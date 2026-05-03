@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::zeroGradientFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition applies a zero-gradient condition from the patch
     internal field onto the patch faces.
@@ -42,8 +47,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef zeroGradientFvPatchField_H
-#define zeroGradientFvPatchField_H
+#ifndef Foam_zeroGradientFvPatchField_H
+#define Foam_zeroGradientFvPatchField_H
 
 #include "fvPatchField.H"
 
@@ -53,7 +58,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class zeroGradientFvPatchField Declaration
+                 Class zeroGradientFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -61,11 +66,10 @@ class zeroGradientFvPatchField
 :
     public fvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
-    TypeName("zeroGradient");
+    TypeName("zeroGradient");  // fieldTypes::zeroGradientTypeName_()
 
 
     // Constructors
@@ -74,77 +78,71 @@ public:
         zeroGradientFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         zeroGradientFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping the given zeroGradientFvPatchField<Type>
-        //  onto a new patch
+        //- Construct by mapping the given zeroGradient patch field
+        //- onto a new patch
         zeroGradientFvPatchField
         (
             const zeroGradientFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         zeroGradientFvPatchField
         (
             const zeroGradientFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         zeroGradientFvPatchField
         (
             const zeroGradientFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new zeroGradientFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
-
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
-
+    // Member functions
 
         // Evaluation functions
 
             //- Return gradient at boundary
             virtual tmp<Field<Type>> snGrad() const
             {
-                return tmp<Field<Type>>
-                (
-                    new Field<Type>(this->size(), Zero)
-                );
+                return tmp<Field<Type>>::New(this->size(), Zero);
             }
 
             //- Evaluate the patch field
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return the matrix diagonal coefficients corresponding to the
@@ -168,12 +166,6 @@ public:
             //- Return the matrix source coefficients corresponding to the
             //  evaluation of the gradient of this patchField
             virtual tmp<Field<Type>> gradientBoundaryCoeffs() const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvPatchField<Type>::operator=;
 };
 
 

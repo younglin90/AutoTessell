@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,110 +43,110 @@ namespace fv
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateDdtScheme<Type>::fvcDdt
 (
     const dimensioned<Type>& dt
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "ddt("+dt.name()+')',
-        mesh(),
-        dimensioned<Type>
+        IOobject
         (
-            "0",
-            dt.dimensions()/dimTime,
-            Zero
-        )
+            "ddt("+dt.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb()
+        ),
+        mesh(),
+        dimensioned<Type>(dt.dimensions()/dimTime, Zero)
     );
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateDdtScheme<Type>::fvcDdt
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "ddt("+vf.name()+')',
-        mesh(),
-        dimensioned<Type>
+        IOobject
         (
-            "0",
-            vf.dimensions()/dimTime,
-            Zero
-        )
+            "ddt("+vf.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb()
+        ),
+        mesh(),
+        dimensioned<Type>(vf.dimensions()/dimTime, Zero)
     );
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateDdtScheme<Type>::fvcDdt
 (
     const dimensionedScalar& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "ddt("+rho.name()+','+vf.name()+')',
-        mesh(),
-        dimensioned<Type>
+        IOobject
         (
-            "0",
-            rho.dimensions()*vf.dimensions()/dimTime,
-            Zero
-        )
+            "ddt("+rho.name()+','+vf.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb()
+        ),
+        mesh(),
+        dimensioned<Type>(rho.dimensions()*vf.dimensions()/dimTime, Zero)
     );
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateDdtScheme<Type>::fvcDdt
 (
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "ddt("+rho.name()+','+vf.name()+')',
-        mesh(),
-        dimensioned<Type>
+        IOobject
         (
-            "0",
-            rho.dimensions()*vf.dimensions()/dimTime,
-            Zero
-        )
+            "ddt("+rho.name()+','+vf.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb()
+        ),
+        mesh(),
+        dimensioned<Type>(rho.dimensions()*vf.dimensions()/dimTime, Zero)
     );
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateDdtScheme<Type>::fvcDdt
 (
     const volScalarField& alpha,
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "ddt("+alpha.name()+','+rho.name()+','+vf.name()+')',
-        mesh(),
-        dimensioned<Type>
+        IOobject
         (
-            "0",
-            rho.dimensions()*vf.dimensions()/dimTime,
-            Zero
-        )
+            "ddt("+alpha.name()+','+rho.name()+','+vf.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb()
+        ),
+        mesh(),
+        dimensioned<Type>(rho.dimensions()*vf.dimensions()/dimTime, Zero)
     );
 }
 
@@ -152,17 +155,19 @@ template<class Type>
 tmp<fvMatrix<Type>>
 steadyStateDdtScheme<Type>::fvmDdt
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return tmp<fvMatrix<Type>>
+    tmp<fvMatrix<Type>> tfvm
     (
         new fvMatrix<Type>
         (
             vf,
-            vf.dimensions()*dimVolume/dimTime
+            vf.dimensions()*dimVol/dimTime
         )
     );
+
+    return tfvm;
 }
 
 
@@ -171,17 +176,19 @@ tmp<fvMatrix<Type>>
 steadyStateDdtScheme<Type>::fvmDdt
 (
     const dimensionedScalar& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return tmp<fvMatrix<Type>>
+    tmp<fvMatrix<Type>> tfvm
     (
         new fvMatrix<Type>
         (
             vf,
-            rho.dimensions()*vf.dimensions()*dimVolume/dimTime
+            rho.dimensions()*vf.dimensions()*dimVol/dimTime
         )
     );
+
+    return tfvm;
 }
 
 
@@ -190,17 +197,19 @@ tmp<fvMatrix<Type>>
 steadyStateDdtScheme<Type>::fvmDdt
 (
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return tmp<fvMatrix<Type>>
+    tmp<fvMatrix<Type>> tfvm
     (
         new fvMatrix<Type>
         (
             vf,
-            rho.dimensions()*vf.dimensions()*dimVolume/dimTime
+            rho.dimensions()*vf.dimensions()*dimVol/dimTime
         )
     );
+
+    return tfvm;
 }
 
 
@@ -210,21 +219,19 @@ steadyStateDdtScheme<Type>::fvmDdt
 (
     const volScalarField& alpha,
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return tmp<fvMatrix<Type>>
+    tmp<fvMatrix<Type>> tfvm
     (
         new fvMatrix<Type>
         (
             vf,
-            alpha.dimensions()
-           *rho.dimensions()
-           *vf.dimensions()
-           *dimVolume
-           /dimTime
+            alpha.dimensions()*rho.dimensions()*vf.dimensions()*dimVol/dimTime
         )
     );
+
+    return tfvm;
 }
 
 
@@ -232,21 +239,29 @@ template<class Type>
 tmp<typename steadyStateDdtScheme<Type>::fluxFieldType>
 steadyStateDdtScheme<Type>::fvcDdtUfCorr
 (
-    const VolField<Type>& U,
-    const SurfaceField<Type>& Uf
+    const GeometricField<Type, fvPatchField, volMesh>& U,
+    const GeometricField<Type, fvsPatchField, surfaceMesh>& Uf
 )
 {
-    return fluxFieldType::New
+    tmp<fluxFieldType> tCorr
     (
-        "ddtCorr(" + U.name() + ',' + Uf.name() + ')',
-        mesh(),
-        dimensioned<typename flux<Type>::type>
+        new fluxFieldType
         (
-            "0",
-            Uf.dimensions()*dimArea/dimTime,
-            Zero
+            IOobject
+            (
+                "ddtCorr(" + U.name() + ',' + Uf.name() + ')',
+                mesh().time().timeName(),
+                mesh().thisDb()
+            ),
+            mesh(),
+            Foam::zero{},  // value
+            Uf.dimensions()*dimArea/dimTime
         )
     );
+
+    tCorr.ref().setOriented();
+
+    return tCorr;
 }
 
 
@@ -254,21 +269,29 @@ template<class Type>
 tmp<typename steadyStateDdtScheme<Type>::fluxFieldType>
 steadyStateDdtScheme<Type>::fvcDdtPhiCorr
 (
-    const VolField<Type>& U,
+    const GeometricField<Type, fvPatchField, volMesh>& U,
     const fluxFieldType& phi
 )
 {
-    return fluxFieldType::New
+    tmp<fluxFieldType> tCorr
     (
-        "ddtCorr(" + U.name() + ',' + phi.name() + ')',
-        mesh(),
-        dimensioned<typename flux<Type>::type>
+        new fluxFieldType
         (
-            "0",
-            phi.dimensions()/dimTime,
-            Zero
+            IOobject
+            (
+                "ddtCorr(" + U.name() + ',' + phi.name() + ')',
+                mesh().time().timeName(),
+                mesh().thisDb()
+            ),
+            mesh(),
+            Foam::zero{},  // value
+            phi.dimensions()/dimTime
         )
     );
+
+    tCorr.ref().setOriented();
+
+    return tCorr;
 }
 
 
@@ -277,21 +300,31 @@ tmp<typename steadyStateDdtScheme<Type>::fluxFieldType>
 steadyStateDdtScheme<Type>::fvcDdtUfCorr
 (
     const volScalarField& rho,
-    const VolField<Type>& U,
-    const SurfaceField<Type>& rhoUf
+    const GeometricField<Type, fvPatchField, volMesh>& U,
+    const GeometricField<Type, fvsPatchField, surfaceMesh>& Uf
 )
 {
-    return fluxFieldType::New
+    tmp<fluxFieldType> tCorr
     (
-        "ddtCorr(" + rho.name() + ',' + U.name() + ',' + rhoUf.name() + ')',
-        mesh(),
-        dimensioned<typename flux<Type>::type>
+        new fluxFieldType
         (
-            "0",
-            rhoUf.dimensions()*dimArea/dimTime,
-            Zero
+            IOobject
+            (
+                "ddtCorr("
+              + rho.name()
+              + ',' + U.name() + ',' + Uf.name() + ')',
+                mesh().time().timeName(),
+                mesh().thisDb()
+            ),
+            mesh(),
+            Foam::zero{},  // value
+            Uf.dimensions()*dimArea/dimTime
         )
     );
+
+    tCorr.ref().setOriented();
+
+    return tCorr;
 }
 
 
@@ -300,50 +333,59 @@ tmp<typename steadyStateDdtScheme<Type>::fluxFieldType>
 steadyStateDdtScheme<Type>::fvcDdtPhiCorr
 (
     const volScalarField& rho,
-    const VolField<Type>& U,
+    const GeometricField<Type, fvPatchField, volMesh>& U,
     const fluxFieldType& phi
 )
 {
-    return fluxFieldType::New
+    tmp<fluxFieldType> tCorr
     (
-        "ddtCorr(" + rho.name() + ',' + U.name() + ',' + phi.name() + ')',
-        mesh(),
-        dimensioned<typename flux<Type>::type>
+        new fluxFieldType
         (
-            "0",
-            phi.dimensions()/dimTime,
-            Zero
+            IOobject
+            (
+                "ddtCorr("
+              + rho.name()
+              + ',' + U.name() + ',' + phi.name() + ')',
+                mesh().time().timeName(),
+                mesh().thisDb()
+            ),
+            mesh(),
+            Foam::zero{},  // value
+            phi.dimensions()/dimTime
         )
     );
+
+    tCorr.ref().setOriented();
+
+    return tCorr;
 }
 
 
 template<class Type>
 tmp<surfaceScalarField> steadyStateDdtScheme<Type>::meshPhi
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return surfaceScalarField::New
+    auto tphi
     (
-        "meshPhi",
-        mesh(),
-        dimensionedScalar(dimVolume/dimTime, 0)
+        tmp<surfaceScalarField>::New
+        (
+            IOobject
+            (
+                "meshPhi",
+                mesh().time().timeName(),
+                mesh().thisDb(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                IOobject::NO_REGISTER
+            ),
+            mesh(),
+            dimensionedScalar(dimVolume/dimTime, Zero)
+        )
     );
-}
-
-
-template<class Type>
-tmp<scalarField> steadyStateDdtScheme<Type>::meshPhi
-(
-    const VolField<Type>&,
-    const label patchi
-)
-{
-    return tmp<scalarField>
-    (
-        new scalarField(mesh().boundary()[patchi].size(), 0)
-    );
+    tphi.ref().setOriented();
+    return tphi;
 }
 
 

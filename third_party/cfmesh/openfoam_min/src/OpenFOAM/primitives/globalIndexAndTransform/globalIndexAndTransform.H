@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,11 +43,11 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef globalIndexAndTransform_H
-#define globalIndexAndTransform_H
+#ifndef Foam_globalIndexAndTransform_H
+#define Foam_globalIndexAndTransform_H
 
 #include "labelPair.H"
-#include "transformer.H"
+#include "vectorTensorTransform.H"
 #include "HashSet.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -53,8 +55,8 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class polyMesh;
-
 
 /*---------------------------------------------------------------------------*\
                    Class globalIndexAndTransform Declaration
@@ -64,7 +66,7 @@ class globalIndexAndTransform
 {
 public:
 
-    // Public classes
+    // Public Classes
 
         //- Less function class used in sorting encoded transforms and indices
         //  Minimum of:
@@ -88,7 +90,7 @@ public:
 
 private:
 
-    // Private Data
+    // Private data
 
         //- Reference to mesh
         const polyMesh& mesh_;
@@ -98,13 +100,13 @@ private:
         //  stores the two transforms, not the eight permutations.
         //  Any point can not be on more than three transforms but overall
         //  the mesh can have more than three.
-        List<transformer> transforms_;
+        List<vectorTensorTransform> transforms_;
 
         //- The permutations of the transforms, stored for lookup
         //  efficiency.  If there are n transforms, then there are
         //  (3^n) permutations, including the no-transformation
         //  transform.
-        List<transformer> transformPermutations_;
+        List<vectorTensorTransform> transformPermutations_;
 
         //- Index of identity transform.
         label nullTransformIndex_;
@@ -133,9 +135,9 @@ private:
         //  sign of the match, or 0 if none matches.
         label matchTransform
         (
-            const List<transformer>& refTransforms,
+            const List<vectorTensorTransform>& refTransforms,
             label& matchedRefTransformI,
-            const transformer& testTransform,
+            const vectorTensorTransform& testTransform,
             scalar tolerance,
             bool checkBothSigns
         ) const;
@@ -150,6 +152,12 @@ private:
             const labelPair& patchTrafo
         ) const;
 
+        //- No copy construct
+        globalIndexAndTransform(const globalIndexAndTransform&) = delete;
+
+        //- No copy assignment
+        void operator=(const globalIndexAndTransform&) = delete;
+
 
 public:
 
@@ -160,10 +168,7 @@ public:
     // Constructors
 
         //- Construct from components
-        globalIndexAndTransform(const polyMesh& mesh);
-
-        //- Disallow default bitwise copy construction
-        globalIndexAndTransform(const globalIndexAndTransform&) = delete;
+        explicit globalIndexAndTransform(const polyMesh& mesh);
 
 
     // Member Functions
@@ -187,7 +192,7 @@ public:
             const label transformIndex,
             const label patchi,
             const bool isSendingSide = true,
-            const scalar tol = small
+            const scalar tol = SMALL
         ) const;
 
         //- Combine two transformIndices
@@ -239,10 +244,10 @@ public:
         inline label nIndependentTransforms() const;
 
         //- Return access to the stored independent transforms
-        inline const List<transformer>& transforms() const;
+        inline const List<vectorTensorTransform>& transforms() const;
 
         //- Return access to the permuted transforms
-        inline const List<transformer>&
+        inline const List<vectorTensorTransform>&
         transformPermutations() const;
 
         //- Return the transformIndex (index in transformPermutations)
@@ -254,7 +259,7 @@ public:
 
         //- Access the overall (permuted) transform corresponding
         //  to the transformIndex
-        inline const transformer& transform
+        inline const vectorTensorTransform& transform
         (
             label transformIndex
         ) const;
@@ -277,12 +282,6 @@ public:
             const labelHashSet& patchIs,
             const point& pt
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const globalIndexAndTransform&) = delete;
 };
 
 

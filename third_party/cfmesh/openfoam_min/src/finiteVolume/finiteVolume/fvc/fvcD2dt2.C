@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,32 +42,32 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 d2dt2
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fv::d2dt2Scheme<Type>::New
     (
         vf.mesh(),
-        vf.mesh().schemes().ddt("d2dt2(" + vf.name() + ')')
+        vf.mesh().ddtScheme("d2dt2(" + vf.name() + ')')
     ).ref().fvcD2dt2(vf);
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 d2dt2
 (
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fv::d2dt2Scheme<Type>::New
     (
         vf.mesh(),
-        vf.mesh().schemes().ddt("d2dt2(" + rho.name() + ',' + vf.name() + ')')
+        vf.mesh().ddtScheme("d2dt2(" + rho.name() + ',' + vf.name() + ')')
     ).ref().fvcD2dt2(rho, vf);
 }
 

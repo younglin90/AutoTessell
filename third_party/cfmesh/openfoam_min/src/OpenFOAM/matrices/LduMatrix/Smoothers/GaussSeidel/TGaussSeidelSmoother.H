@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class TGaussSeidelSmoother Declaration
+                           Class TGaussSeidelSmoother Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -51,7 +53,7 @@ class TGaussSeidelSmoother
 :
     public LduMatrix<Type, DType, LUType>::smoother
 {
-    // Private Data
+    // Private data
 
         //- The inverse (reciprocal for scalars) diagonal
         Field<DType> rD_;

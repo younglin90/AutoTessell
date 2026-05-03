@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,8 +39,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorPolyPatch_H
-#define processorPolyPatch_H
+#ifndef Foam_processorPolyPatch_H
+#define Foam_processorPolyPatch_H
 
 #include "coupledPolyPatch.H"
 #include "polyBoundaryMesh.H"
@@ -50,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class processorPolyPatch Declaration
+                           Class processorPolyPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorPolyPatch
@@ -72,12 +75,12 @@ class processorPolyPatch
         vectorField neighbFaceCellCentres_;
 
         //- Corresponding neighbouring local point label for every local point
-        //  (so localPoints()[i] == neighb.localPoints()[nbrPoints_[i]])
-        mutable autoPtr<labelList> nbrPointsPtr_;
+        //  (so localPoints()[i] == neighb.localPoints()[neighbPoints_[i]])
+        mutable autoPtr<labelList> neighbPointsPtr_;
 
         //- Corresponding neighbouring local edge label for every local edge
-        //  (so edges()[i] == neighb.edges()[nbrEdges_[i]])
-        mutable autoPtr<labelList> nbrEdgesPtr_;
+        //  (so edges()[i] == neighb.edges()[neighbEdges_[i]])
+        mutable autoPtr<labelList> neighbEdgesPtr_;
 
 protected:
 
@@ -92,17 +95,35 @@ protected:
             const label index,
             const polyBoundaryMesh& bm,
             const int myProcNo,
-            const int neighbProcNo
+            const int neighbProcNo,
+            const transformType transform = UNKNOWN,  // transformation type
+            const word& patchType = typeName
         );
 
 
     // Protected Member functions
 
         //- Initialise the calculation of the patch geometry
-        void initCalcGeometry(PstreamBuffers&);
+        void initGeometry(PstreamBuffers&);
 
         //- Calculate the patch geometry
         void calcGeometry(PstreamBuffers&);
+
+        //- Calculate the patch geometry with externally
+        //  provided geometry
+        virtual void calcGeometry
+        (
+            const primitivePatch& referPatch,
+            const pointField& thisCtrs,
+            const vectorField& thisAreas,
+            const pointField& thisCc,
+            const pointField& nbrCtrs,
+            const vectorField& nbrAreas,
+            const pointField& nbrCc
+        )
+        {
+            NotImplemented;
+        }
 
         //- Initialise the patches for moving points
         void initMovePoints(PstreamBuffers&, const pointField&);
@@ -111,10 +132,10 @@ protected:
         void movePoints(PstreamBuffers&, const pointField&);
 
         //- Initialise the update of the patch topology
-        virtual void initTopoChange(PstreamBuffers&);
+        virtual void initUpdateMesh(PstreamBuffers&);
 
         //- Update of the patch topology
-        virtual void topoChange(PstreamBuffers&);
+        virtual void updateMesh(PstreamBuffers&);
 
 
 public:
@@ -133,7 +154,9 @@ public:
             const label index,
             const polyBoundaryMesh& bm,
             const int myProcNo,
-            const int neighbProcNo
+            const int neighbProcNo,
+            const transformType transform = UNKNOWN,  // transformation type
+            const word& patchType = typeName
         );
 
         //- Construct from dictionary
@@ -142,7 +165,8 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh&
+            const polyBoundaryMesh&,
+            const word& patchType
         );
 
         //- Construct as copy, resetting the boundary mesh
@@ -156,6 +180,16 @@ public:
             const polyBoundaryMesh& bm,
             const label index,
             const label newSize,
+            const label newStart
+        );
+
+        //- Construct given the original patch and a map
+        processorPolyPatch
+        (
+            const processorPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
             const label newStart
         );
 
@@ -188,40 +222,61 @@ public:
             );
         }
 
+        //- Construct and return a clone, resetting the face list
+        //  and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
+        {
+            return autoPtr<polyPatch>
+            (
+                new processorPolyPatch
+                (
+                    *this,
+                    bm,
+                    index,
+                    mapAddressing,
+                    newStart
+                )
+            );
+        }
+
 
     //- Destructor
     virtual ~processorPolyPatch();
 
 
-    // Member Functions
+    // Static Functions
 
-        //- Return true as this patch is a constraint type
-        virtual bool constraint() const
-        {
-            return true;
-        }
+        //- Return the name of a processorPolyPatch ("procBoundary..")
+        //- constructed from the pair of processor IDs.
+        static word newName
+        (
+            const label myProcNo,
+            const label neighbProcNo
+        );
+
+
+    // Member Functions
 
         //- Return true only if this is a parallel run
         virtual bool coupled() const
         {
-            if (Pstream::parRun())
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            return UPstream::parRun();
         }
 
         //- Return processor number
-        int myProcNo() const
+        int myProcNo() const noexcept
         {
             return myProcNo_;
         }
 
         //- Return neighbour processor number
-        int neighbProcNo() const
+        int neighbProcNo() const noexcept
         {
             return neighbProcNo_;
         }
@@ -238,59 +293,68 @@ public:
             return !owner();
         }
 
-        //- Return the name of a processorPolyPatch
-        //  constructed from the processor IDs
-        static word newName
-        (
-            const label myProcNo,
-            const label neighbProcNo
-        );
-
         //- Return processor-neighbour patch face centres
-        const vectorField& neighbFaceCentres() const
+        const vectorField& neighbFaceCentres() const noexcept
         {
             return neighbFaceCentres_;
         }
 
         //- Return processor-neighbour patch face areas
-        const vectorField& neighbFaceAreas() const
+        const vectorField& neighbFaceAreas() const noexcept
         {
             return neighbFaceAreas_;
         }
 
         //- Return processor-neighbour patch neighbour cell centres
-        const vectorField& neighbFaceCellCentres() const
+        const vectorField& neighbFaceCellCentres() const noexcept
         {
             return neighbFaceCellCentres_;
         }
 
         //- Return neighbour point labels. WIP.
-        const labelList& nbrPoints() const;
+        const labelList& neighbPoints() const;
 
         //- Return neighbour edge labels. WIP.
-        const labelList& nbrEdges() const;
+        const labelList& neighbEdges() const;
 
         //- Return message tag to use for communication
         virtual int tag() const
         {
-            return Pstream::msgType();
+            return UPstream::msgType();
         }
 
         //- Return communicator used for communication
         virtual label comm() const
         {
-            return mesh().comm();
+            return boundaryMesh().mesh().comm();
         }
 
-        //- Return null transform between processor patches
-        virtual const transformer& transform() const
-        {
-            return transformer::null;
-        }
+        //- Transform a patch-based position from other side to this side
+        virtual void transformPosition(pointField& l) const
+        {}
 
-        //- Initialise ordering for primitivePatch. Does not
+        //- Transform a patch-based position from other side to this side
+        virtual void transformPosition(point&, const label facei) const
+        {}
+
+        //- Initialize ordering for primitivePatch. Does not
         //  refer to *this (except for name() and type() etc.)
         virtual void initOrder(PstreamBuffers&, const primitivePatch&) const;
+
+        //- Returns rotation.
+        //    -1 : no match
+        //     0 : match
+        //    >0 : match if rotated clockwise by this amount
+        static label matchFace
+        (
+            const face& localFace,
+            const pointField& localPts,
+            const face& masterFace,
+            const pointField& masterPts,
+            const bool sameOrientation,
+            const scalar absTolSqr,
+            scalar& matchDistSqr
+        );
 
         //- Return new ordering for primitivePatch.
         //  Ordering is -faceMap: for every face

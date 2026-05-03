@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,11 +29,12 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
+#include "surfaceInterpolation.H"
 #include "fvMesh.H"
 #include "volFields.H"
 #include "surfaceFields.H"
-#include "demandDrivenData.H"
 #include "coupledFvPatch.H"
+#include "basicFvGeometryScheme.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -44,10 +48,12 @@ namespace Foam
 
 void Foam::surfaceInterpolation::clearOut()
 {
-    deleteDemandDrivenData(weights_);
-    deleteDemandDrivenData(deltaCoeffs_);
-    deleteDemandDrivenData(nonOrthDeltaCoeffs_);
-    deleteDemandDrivenData(nonOrthCorrectionVectors_);
+    // TBD: potential to apply partial clear out only?
+    // Move to fvGeometryScheme?
+    weights_.clear();
+    deltaCoeffs_.clear();
+    nonOrthDeltaCoeffs_.clear();
+    nonOrthCorrectionVectors_.clear();
 }
 
 
@@ -56,6 +62,7 @@ void Foam::surfaceInterpolation::clearOut()
 Foam::surfaceInterpolation::surfaceInterpolation(const fvMesh& fvm)
 :
     mesh_(fvm),
+    geometryPtr_(nullptr),
     weights_(nullptr),
     deltaCoeffs_(nullptr),
     nonOrthDeltaCoeffs_(nullptr),
@@ -73,27 +80,47 @@ Foam::surfaceInterpolation::~surfaceInterpolation()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::surfaceScalarField&
-Foam::surfaceInterpolation::weights() const
+const Foam::fvGeometryScheme& Foam::surfaceInterpolation::geometry() const
 {
-    if (!weights_)
+    if (!geometryPtr_)
     {
-        makeWeights();
+        geometryPtr_ = fvGeometryScheme::New
+        (
+            mesh_,
+            mesh_.schemesDict().subOrEmptyDict("geometry"),
+            basicFvGeometryScheme::typeName
+        );
     }
 
-    return (*weights_);
+    return geometryPtr_();
 }
 
 
-const Foam::surfaceScalarField&
-Foam::surfaceInterpolation::deltaCoeffs() const
+void Foam::surfaceInterpolation::geometry(tmp<fvGeometryScheme>& schemePtr)
+{
+    geometryPtr_ = schemePtr;
+}
+
+
+const Foam::surfaceScalarField& Foam::surfaceInterpolation::weights() const
+{
+    if (!weights_)
+    {
+        weights_.reset(geometry().weights().ptr());
+    }
+
+    return weights_();
+}
+
+
+const Foam::surfaceScalarField& Foam::surfaceInterpolation::deltaCoeffs() const
 {
     if (!deltaCoeffs_)
     {
-        makeDeltaCoeffs();
+        deltaCoeffs_.reset(geometry().deltaCoeffs().ptr());
     }
 
-    return (*deltaCoeffs_);
+    return deltaCoeffs_();
 }
 
 
@@ -102,10 +129,10 @@ Foam::surfaceInterpolation::nonOrthDeltaCoeffs() const
 {
     if (!nonOrthDeltaCoeffs_)
     {
-        makeNonOrthDeltaCoeffs();
+        nonOrthDeltaCoeffs_.reset(geometry().nonOrthDeltaCoeffs().ptr());
     }
 
-    return (*nonOrthDeltaCoeffs_);
+    return nonOrthDeltaCoeffs_();
 }
 
 
@@ -114,330 +141,59 @@ Foam::surfaceInterpolation::nonOrthCorrectionVectors() const
 {
     if (!nonOrthCorrectionVectors_)
     {
-        makeNonOrthCorrectionVectors();
+        nonOrthCorrectionVectors_.reset
+        (
+            geometry().nonOrthCorrectionVectors().ptr()
+        );
     }
 
-    return (*nonOrthCorrectionVectors_);
+    return nonOrthCorrectionVectors_();
 }
 
 
 bool Foam::surfaceInterpolation::movePoints()
 {
-    deleteDemandDrivenData(weights_);
-    deleteDemandDrivenData(deltaCoeffs_);
-    deleteDemandDrivenData(nonOrthDeltaCoeffs_);
-    deleteDemandDrivenData(nonOrthCorrectionVectors_);
+    if (debug)
+    {
+        Pout<< "surfaceInterpolation::movePoints() : "
+            << "Updating geometric properties using the fvGeometryScheme"
+            << endl;
+    }
+
+    // Do any primitive geometry calculation
+    const_cast<fvGeometryScheme&>(geometry()).movePoints();
+
+    clearOut();
 
     return true;
 }
 
 
-void Foam::surfaceInterpolation::makeWeights() const
+void Foam::surfaceInterpolation::updateGeom()
 {
     if (debug)
     {
-        Pout<< "surfaceInterpolation::makeWeights() : "
-            << "Constructing weighting factors for face interpolation"
-            << endl;
+        Pout<< "surfaceInterpolation::updateGeom() : "
+            << "Updating geometric properties" << endl;
     }
 
-    weights_ = new surfaceScalarField
-    (
-        IOobject
-        (
-            "weights",
-            mesh_.pointsInstance(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false // Do not register
-        ),
-        mesh_,
-        dimless
-    );
-    surfaceScalarField& weights = *weights_;
+    const_cast<fvGeometryScheme&>(geometry()).movePoints();
 
-    // Set local references to mesh data
-    const labelUList& owner = mesh_.owner();
-    const labelUList& neighbour = mesh_.neighbour();
-    const surfaceVectorField& Sf = mesh_.Sf();
-    const surfaceVectorField& Cf = mesh_.Cf();
-    const volVectorField& C = mesh_.C();
-
-    // ... and reference to the internal field of the weighting factors
-    scalarField& w = weights.primitiveFieldRef();
-
-    forAll(owner, facei)
-    {
-        // Note: mag in the dot-product.
-        // For all valid meshes, the non-orthogonality will be less that
-        // 90 deg and the dot-product will be positive.  For invalid
-        // meshes (d & s <= 0), this will stabilise the calculation
-        // but the result will be poor.
-        const scalar SfdOwn = mag(Sf[facei]&(Cf[facei] - C[owner[facei]]));
-        const scalar SfdNei = mag(Sf[facei]&(C[neighbour[facei]] - Cf[facei]));
-        const scalar SfdOwnNei = SfdOwn + SfdNei;
-
-        if (SfdNei/vGreat < SfdOwnNei)
-        {
-            w[facei] = SfdNei/SfdOwnNei;
-        }
-        else
-        {
-            const scalar dOwn = mag(Cf[facei] - C[owner[facei]]);
-            const scalar dNei = mag(C[neighbour[facei]] - Cf[facei]);
-            const scalar dOwnNei = dOwn + dNei;
-
-            w[facei] = dNei/dOwnNei;
-        }
-    }
-
-    surfaceScalarField::Boundary& wBf =
-        weights.boundaryFieldRef();
-
-    forAll(mesh_.boundary(), patchi)
-    {
-        mesh_.boundary()[patchi].makeWeights(wBf[patchi]);
-    }
-
-    if (debug)
-    {
-        Pout<< "surfaceInterpolation::makeWeights() : "
-            << "Finished constructing weighting factors for face interpolation"
-            << endl;
-    }
+    clearOut();
 }
 
 
-void Foam::surfaceInterpolation::makeDeltaCoeffs() const
+void Foam::surfaceInterpolation::updateMesh(const mapPolyMesh& mpm)
 {
     if (debug)
     {
-        Pout<< "surfaceInterpolation::makeDeltaCoeffs() : "
-            << "Constructing interpolation factors array for face gradient"
-            << endl;
+        Pout<< "surfaceInterpolation::updateMesh() : "
+            << "Updating geometric properties" << endl;
     }
 
-    // Force the construction of the weighting factors
-    // needed to make sure deltaCoeffs are calculated for parallel runs.
-    weights();
+    const_cast<fvGeometryScheme&>(geometry()).updateMesh(mpm);
 
-    deltaCoeffs_ = new surfaceScalarField
-    (
-        IOobject
-        (
-            "deltaCoeffs",
-            mesh_.pointsInstance(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false // Do not register
-        ),
-        mesh_,
-        dimless/dimLength
-    );
-    surfaceScalarField& deltaCoeffs = *deltaCoeffs_;
-
-
-    // Set local references to mesh data
-    const volVectorField& C = mesh_.C();
-    const labelUList& owner = mesh_.owner();
-    const labelUList& neighbour = mesh_.neighbour();
-
-    forAll(owner, facei)
-    {
-        deltaCoeffs[facei] = 1.0/mag(C[neighbour[facei]] - C[owner[facei]]);
-    }
-
-    surfaceScalarField::Boundary& deltaCoeffsBf =
-        deltaCoeffs.boundaryFieldRef();
-
-    forAll(deltaCoeffsBf, patchi)
-    {
-        deltaCoeffsBf[patchi] = 1.0/mag(mesh_.boundary()[patchi].delta());
-    }
-}
-
-
-void Foam::surfaceInterpolation::makeNonOrthDeltaCoeffs() const
-{
-    if (debug)
-    {
-        Pout<< "surfaceInterpolation::makeNonOrthDeltaCoeffs() : "
-            << "Constructing interpolation factors array for face gradient"
-            << endl;
-    }
-
-    // Force the construction of the weighting factors
-    // needed to make sure deltaCoeffs are calculated for parallel runs.
-    weights();
-
-    nonOrthDeltaCoeffs_ = new surfaceScalarField
-    (
-        IOobject
-        (
-            "nonOrthDeltaCoeffs",
-            mesh_.pointsInstance(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false // Do not register
-        ),
-        mesh_,
-        dimless/dimLength
-    );
-    surfaceScalarField& nonOrthDeltaCoeffs = *nonOrthDeltaCoeffs_;
-
-
-    // Set local references to mesh data
-    const volVectorField& C = mesh_.C();
-    const labelUList& owner = mesh_.owner();
-    const labelUList& neighbour = mesh_.neighbour();
-    const surfaceVectorField& Sf = mesh_.Sf();
-    const surfaceScalarField& magSf = mesh_.magSf();
-
-    forAll(owner, facei)
-    {
-        vector delta = C[neighbour[facei]] - C[owner[facei]];
-        vector unitArea = Sf[facei]/magSf[facei];
-
-        // Standard cell-centre distance form
-        // NonOrthDeltaCoeffs[facei] = (unitArea & delta)/magSqr(delta);
-
-        // Slightly under-relaxed form
-        // NonOrthDeltaCoeffs[facei] = 1.0/mag(delta);
-
-        // More under-relaxed form
-        // NonOrthDeltaCoeffs[facei] = 1.0/(mag(unitArea & delta) + vSmall);
-
-        // Stabilised form for bad meshes
-        nonOrthDeltaCoeffs[facei] = 1.0/max(unitArea & delta, 0.05*mag(delta));
-    }
-
-    surfaceScalarField::Boundary& nonOrthDeltaCoeffsBf =
-        nonOrthDeltaCoeffs.boundaryFieldRef();
-
-    forAll(nonOrthDeltaCoeffsBf, patchi)
-    {
-        vectorField delta(mesh_.boundary()[patchi].delta());
-
-        nonOrthDeltaCoeffsBf[patchi] =
-            1.0/max(mesh_.boundary()[patchi].nf() & delta, 0.05*mag(delta));
-    }
-}
-
-
-void Foam::surfaceInterpolation::makeNonOrthCorrectionVectors() const
-{
-    if (debug)
-    {
-        Pout<< "surfaceInterpolation::makeNonOrthCorrectionVectors() : "
-            << "Constructing non-orthogonal correction vectors"
-            << endl;
-    }
-
-    nonOrthCorrectionVectors_ = new surfaceVectorField
-    (
-        IOobject
-        (
-            "nonOrthCorrectionVectors",
-            mesh_.pointsInstance(),
-            mesh_,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false // Do not register
-        ),
-        mesh_,
-        dimless
-    );
-    surfaceVectorField& corrVecs = *nonOrthCorrectionVectors_;
-
-    // Set local references to mesh data
-    const volVectorField& C = mesh_.C();
-    const labelUList& owner = mesh_.owner();
-    const labelUList& neighbour = mesh_.neighbour();
-    const surfaceVectorField& Sf = mesh_.Sf();
-    const surfaceScalarField& magSf = mesh_.magSf();
-    const surfaceScalarField& NonOrthDeltaCoeffs = nonOrthDeltaCoeffs();
-
-    forAll(owner, facei)
-    {
-        vector unitArea = Sf[facei]/magSf[facei];
-        vector delta = C[neighbour[facei]] - C[owner[facei]];
-
-        corrVecs[facei] = unitArea - delta*NonOrthDeltaCoeffs[facei];
-    }
-
-    // Boundary correction vectors set to zero for boundary patches
-    // and calculated consistently with internal corrections for
-    // coupled patches
-
-    surfaceVectorField::Boundary& corrVecsBf =
-        corrVecs.boundaryFieldRef();
-
-    forAll(corrVecsBf, patchi)
-    {
-        fvsPatchVectorField& patchCorrVecs = corrVecsBf[patchi];
-
-        if (!patchCorrVecs.coupled())
-        {
-            patchCorrVecs = Zero;
-        }
-        else
-        {
-            const fvsPatchScalarField& patchNonOrthDeltaCoeffs
-                = NonOrthDeltaCoeffs.boundaryField()[patchi];
-
-            const fvPatch& p = patchCorrVecs.patch();
-
-            const vectorField patchDeltas(mesh_.boundary()[patchi].delta());
-
-            forAll(p, patchFacei)
-            {
-                vector unitArea =
-                    Sf.boundaryField()[patchi][patchFacei]
-                   /magSf.boundaryField()[patchi][patchFacei];
-
-                const vector& delta = patchDeltas[patchFacei];
-
-                patchCorrVecs[patchFacei] =
-                    unitArea - delta*patchNonOrthDeltaCoeffs[patchFacei];
-            }
-        }
-    }
-
-    if (debug)
-    {
-        Pout<< "surfaceInterpolation::makeNonOrthCorrectionVectors() : "
-            << "Finished constructing non-orthogonal correction vectors"
-            << endl;
-    }
-}
-
-
-void Foam::surfaceInterpolation::printAllocated() const
-{
-    Pout<< "surfaceInterpolation allocated :" << endl;
-
-    if (weights_)
-    {
-        Pout<< "    Weights" << endl;
-    }
-
-    if (deltaCoeffs_)
-    {
-        Pout<< "    Delta coefficients" << endl;
-    }
-
-    if (nonOrthDeltaCoeffs_)
-    {
-        Pout<< "    Non-orthogonal delta coefficients" << endl;
-    }
-
-    if (nonOrthCorrectionVectors_)
-    {
-        Pout<< "    Non-orthogonal correction vectors" << endl;
-    }
+    clearOut();
 }
 
 

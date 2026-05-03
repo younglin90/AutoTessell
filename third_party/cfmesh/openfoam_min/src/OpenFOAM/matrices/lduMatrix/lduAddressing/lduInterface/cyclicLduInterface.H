@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,11 +35,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cyclicLduInterface_H
-#define cyclicLduInterface_H
+#ifndef Foam_cyclicLduInterface_H
+#define Foam_cyclicLduInterface_H
 
 #include "lduInterface.H"
-#include "transformer.H"
 #include "primitiveFieldsFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -45,21 +47,25 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class cyclicLduInterface Declaration
+                  Class cyclicLduInterface Declaration
 \*---------------------------------------------------------------------------*/
 
 class cyclicLduInterface
 {
-
 public:
 
     //- Runtime type information
-    TypeName("cyclicLduInterface");
+    TypeNameNoDebug("cyclicLduInterface");
+
 
     // Constructors
 
+        //- Default construct
+        cyclicLduInterface() noexcept = default;
+
+
     //- Destructor
-    virtual ~cyclicLduInterface();
+    virtual ~cyclicLduInterface() = default;
 
 
     // Member Functions
@@ -67,15 +73,18 @@ public:
         // Access
 
             //- Return neighbour
-            virtual label nbrPatchIndex() const = 0;
+            virtual label neighbPatchID() const = 0;
 
             virtual bool owner() const = 0;
 
             //- Return processor number
-            virtual const cyclicLduInterface& nbrPatch() const = 0;
+            virtual const cyclicLduInterface& neighbPatch() const = 0;
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const = 0;
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const = 0;
+
+            //- Return face reverse transformation tensor
+            virtual const tensorField& reverseT() const = 0;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -98,9 +101,9 @@ inline Foam::cellInfo::cellInfo()
 {}
 
 
-inline Foam::cellInfo::cellInfo(const label type)
+inline Foam::cellInfo::cellInfo(const label ctype)
 :
-    type_(type)
+    type_(ctype)
 {}
 
 
@@ -113,6 +116,7 @@ inline bool Foam::cellInfo::valid(TrackingData& td) const
 }
 
 
+// No geometric data so never any problem on cyclics
 template<class TrackingData>
 inline bool Foam::cellInfo::sameGeometry
 (
@@ -120,24 +124,50 @@ inline bool Foam::cellInfo::sameGeometry
     const cellInfo& w2,
     const scalar tol,
     TrackingData& td
-)
- const
+) const
 {
     return true;
 }
 
 
+// No geometric data.
 template<class TrackingData>
-inline void Foam::cellInfo::transform
+inline void Foam::cellInfo::leaveDomain
 (
+    const polyMesh&,
     const polyPatch& patch,
     const label patchFacei,
-    const transformer& transform,
+    const point& faceCentre,
     TrackingData& td
 )
 {}
 
 
+// No geometric data.
+template<class TrackingData>
+inline void Foam::cellInfo::transform
+(
+    const polyMesh&,
+    const tensor& rotTensor,
+    TrackingData& td
+)
+{}
+
+
+// No geometric data.
+template<class TrackingData>
+inline void Foam::cellInfo::enterDomain
+(
+    const polyMesh&,
+    const polyPatch& patch,
+    const label patchFacei,
+    const point& faceCentre,
+    TrackingData& td
+)
+{}
+
+
+// Update this with neighbour information
 template<class TrackingData>
 inline bool Foam::cellInfo::updateCell
 (
@@ -161,6 +191,7 @@ inline bool Foam::cellInfo::updateCell
 }
 
 
+// Update this with neighbour information
 template<class TrackingData>
 inline bool Foam::cellInfo::updateFace
 (
@@ -184,6 +215,7 @@ inline bool Foam::cellInfo::updateFace
 }
 
 
+// Update this with neighbour information
 template<class TrackingData>
 inline bool Foam::cellInfo::updateFace
 (
@@ -219,13 +251,19 @@ inline bool Foam::cellInfo::equal
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline bool Foam::cellInfo::operator==(const Foam::cellInfo& rhs) const
+inline bool Foam::cellInfo::operator==
+(
+    const cellInfo& rhs
+) const
 {
-    return type() == rhs.type();
+    return type_ == rhs.type_;
 }
 
 
-inline bool Foam::cellInfo::operator!=(const Foam::cellInfo& rhs) const
+inline bool Foam::cellInfo::operator!=
+(
+    const cellInfo& rhs
+) const
 {
     return !(*this == rhs);
 }

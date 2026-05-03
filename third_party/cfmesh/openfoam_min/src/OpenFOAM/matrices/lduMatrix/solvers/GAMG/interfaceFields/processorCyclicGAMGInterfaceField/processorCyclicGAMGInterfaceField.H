@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,13 +45,25 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-              Class processorCyclicGAMGInterfaceField Declaration
+               Class processorCyclicGAMGInterfaceField Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorCyclicGAMGInterfaceField
 :
     public processorGAMGInterfaceField
 {
+    // Private Member Functions
+
+        //- No copy construct
+        processorCyclicGAMGInterfaceField
+        (
+            const processorCyclicGAMGInterfaceField&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const processorCyclicGAMGInterfaceField&) = delete;
+
+
 public:
 
     //- Runtime type information
@@ -69,25 +83,32 @@ public:
         processorCyclicGAMGInterfaceField
         (
             const GAMGInterface& GAMGCp,
+            const bool doTransform,
             const int rank
         );
 
-        //- Disallow default bitwise copy construction
+        //- Construct from GAMG interface and Istream
         processorCyclicGAMGInterfaceField
         (
-            const processorCyclicGAMGInterfaceField&
-        ) = delete;
+            const GAMGInterface& GAMGCp,
+            Istream& is
+        );
+
+        //- Construct by assembling and return a clone.
+        virtual autoPtr<GAMGInterfaceField> clone
+        (
+            const GAMGInterface& GAMGCp,
+            const UPtrList<lduInterfaceField>& other
+        ) const
+        {
+            NotImplemented;
+            return nullptr;
+        }
 
 
     // Destructor
 
         virtual ~processorCyclicGAMGInterfaceField();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const processorCyclicGAMGInterfaceField&) = delete;
 };
 
 

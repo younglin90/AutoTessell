@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +27,15 @@ License
 Class
     Foam::sampledSurface
 
+Group
+    grpUtilitiesFunctionObjects
+
 Description
     An abstract class for surfaces with sampling.
 
     The constructors for the derived classes should generally start in a
     'expired' condition (ie, needsUpdate() == true) and rely on a
-    subsequent call to the update() method to complete the initialisation.
+    subsequent call to the update() method to complete the initialization.
     Delaying the final construction as late as possible allows the
     construction of surfaces that may depend on intermediate calculation
     results (eg, iso-surfaces) and also avoids the unnecessary
@@ -40,26 +46,42 @@ Description
     implementation should do nothing when the surface is already
     up-to-date.
 
+    Any sampler is assumed to work for the standard volume field types.
+    Some may also support surface fields.
+
+    Dictionary entries:
+    \table
+        Property    | Description                           | Required | Default
+        name        | Alternative name                      | no  |
+        enabled     | Enable/disable the surface?           | no  | yes
+        interpolate | Interpolate to nodes instead of faces | no  | false
+        invariant   | Invariant with geometry change (use with caution!) | no  | false
+    \endtable
+
+Note
+    The invariant switch is an advanced feature to declare that the surface
+    is unaffected by changes in the general mesh geometry. For example, if
+    sampling on a static patch while some other motion occurs elsewhere. If
+    used improperly, there is a significant possibility for problems
+    (caveat emptor).
+
 SourceFiles
     sampledSurface.C
     sampledSurfaceTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef sampledSurface_H
-#define sampledSurface_H
+#ifndef Foam_sampledSurface_H
+#define Foam_sampledSurface_H
 
-#include "pointField.H"
-#include "word.H"
-#include "labelList.H"
-#include "faceList.H"
+#include "polySurface.H"
 #include "typeInfo.H"
 #include "runTimeSelectionTables.H"
 #include "autoPtr.H"
+#include "polyMesh.H"
 #include "volFieldsFwd.H"
 #include "surfaceFieldsFwd.H"
-#include "polyMesh.H"
-#include "coordinateSystems.H"
+#include "surfaceMesh.H"
 #include "interpolation.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -67,97 +89,82 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
-class sampledSurface;
-
-Ostream& operator<<(Ostream&, const sampledSurface&);
-
-
 /*---------------------------------------------------------------------------*\
                        Class sampledSurface Declaration
 \*---------------------------------------------------------------------------*/
 
 class sampledSurface
+:
+    public meshedSurf
 {
     // Private Data
 
-        //- Name of sample surface
+        //- The name of the sample surface
         word name_;
 
         //- Reference to mesh
         const polyMesh& mesh_;
 
-        //- Do we intend to interpolate the information?
-        const bool interpolate_;
+        //- Should surface sampling be enabled?
+        bool enabled_;
 
+        //- Geometry is invariant (never changes)
+        bool invariant_;
 
-    // Demand-driven data
+        //- Is point vs cell data
+        bool isPointData_;
 
-        //- Face area vectors
-        mutable vectorField* SfPtr_;
-
-        //- Mag face area vectors
-        mutable scalarField* magSfPtr_;
-
-        //- Face centres
-        mutable vectorField* CfPtr_;
-
-        //- Total surface area
+        //- Total surface area (demand-driven)
         mutable scalar area_;
-
-
-    // Make geometric data
-
-        //- Make Sf
-        void makeSf() const;
-
-        //- Make magSf
-        void makeMagSf() const;
-
-        //- Make Cf
-        void makeCf() const;
-
-
-    // Service methods
-
-        //- Check field size matches surface size
-        template<class Type>
-        bool checkFieldSize(const Field<Type>&) const;
-
-        //- Project field onto surface
-        template<class ReturnType, class Type>
-        void project
-        (
-            Field<ReturnType>&,
-            const Field<Type>&
-        ) const;
-
-        //- Project field onto surface
-        template<class ReturnType, class Type>
-        void project
-        (
-            Field<ReturnType>&,
-            const tmp<Field<Type>>&
-        ) const;
-
-        //- Project field onto surface
-        template<class ReturnType, class Type>
-        tmp<Field<ReturnType>> project(const tmp<Field<Type>>&) const;
 
 
 protected:
 
-    // Protected Member functions
+    // Protected Member Functions
 
+        //- Loop for sampling volume elements to faces.
+        //  The defaultValue is used for invalid (negative) elements
+        template<class Type>
+        static tmp<Field<Type>> sampleOnFaces
+        (
+            const interpolation<Type>& sampler,
+            const labelUList& elements,
+            const faceList& fcs,
+            const pointField& pts,
+            const Type& defaultValue = Type(Zero)
+        );
+
+
+        //- Loop for interpolating volume elements to face points.
+        template<class Type>
+        static tmp<Field<Type>> sampleOnPoints
+        (
+            const interpolation<Type>& interpolator,
+            const labelUList& elements,
+            const faceList& fcs,
+            const pointField& pts
+        );
+
+
+        //- Create cell values by averaging the point values
+        template<class Type>
+        static tmp<VolumeField<Type>> pointAverage
+        (
+            const PointField<Type>& pfld
+        );
+
+
+        //- Additional cleanup when clearing the geometry
         virtual void clearGeom() const;
+
+        //- Construct null
+        explicit sampledSurface(const word& name, std::nullptr_t);
 
 
 public:
 
     //- Runtime type information
     TypeName("sampledSurface");
-
 
     //- Declare run-time constructor selection table
     declareRunTimeSelectionTable
@@ -174,9 +181,7 @@ public:
     );
 
 
-    // iNew helper class
-
-        //- Class used for the PtrLists read-construction
+        //- PtrList read-construction helper
         class iNew
         {
             //- Reference to the volume mesh
@@ -199,29 +204,57 @@ public:
         };
 
 
+        //- PtrList read-construction helper that captures dictionaries used
+        //- during creation.
+        class iNewCapture
+        {
+            //- Reference to the volume mesh
+            const polyMesh& mesh_;
+
+            //- Captured (recorded) dictionaries
+            DynamicList<dictionary>& capture_;
+
+        public:
+
+            iNewCapture(const polyMesh& mesh, DynamicList<dictionary>& capture)
+            :
+                mesh_(mesh),
+                capture_(capture)
+            {}
+
+            autoPtr<sampledSurface> operator()(Istream& is) const
+            {
+                word name(is);
+                dictionary& dict = capture_.emplace_back(is);
+
+                return sampledSurface::New(name, mesh_, dict);
+            }
+        };
+
+
     // Constructors
 
         //- Construct from name, mesh
         sampledSurface
         (
             const word& name,
-            const polyMesh&,
-            const bool interpolate = false
+            const polyMesh& mesh,
+            const bool interpolateToPoints = false
         );
 
         //- Construct from dictionary
         sampledSurface
         (
             const word& name,
-            const polyMesh&,
-            const dictionary&
+            const polyMesh& mesh,
+            const dictionary& dict
         );
 
         //- Clone
         autoPtr<sampledSurface> clone() const
         {
             NotImplemented;
-            return autoPtr<sampledSurface>(nullptr);
+            return nullptr;
         }
 
 
@@ -231,43 +264,60 @@ public:
         static autoPtr<sampledSurface> New
         (
             const word& name,
-            const polyMesh&,
-            const dictionary&
+            const polyMesh& mesh,
+            const dictionary& dict
         );
 
 
-    //- Destructor
+    //- Destructor - calls clearGeom()
     virtual ~sampledSurface();
 
 
     // Member Functions
 
+    // Access
+
         //- Access to the underlying mesh
-        const polyMesh& mesh() const
+        const polyMesh& mesh() const noexcept
         {
             return mesh_;
         }
 
         //- Name of surface
-        const word& name() const
+        const word& name() const noexcept
         {
             return name_;
         }
 
-        //- Interpolation requested for surface
-        bool interpolate() const
+        //- Surface is enabled
+        bool enabled() const noexcept
         {
-            return interpolate_;
+            return enabled_;
         }
+
+        //- Surface is invariant with geometry change (caution)
+        bool invariant() const noexcept
+        {
+            return invariant_;
+        }
+
+        //- Using interpolation to surface points
+        bool isPointData() const noexcept
+        {
+            return isPointData_;
+        }
+
+        //- Change point/cell representation, may trigger an expire().
+        //  \return old value
+        virtual bool isPointData(const bool on);
 
         //- Does the surface need an update?
         virtual bool needsUpdate() const = 0;
 
-        //- Return the list of fields required
-        virtual wordList fields() const
-        {
-            return wordList::null();
-        }
+        //- Mark the surface as needing an update.
+        //  May also free up unneeded data.
+        //  Return false if surface was already marked as expired.
+        virtual bool expire() = 0;
 
         //- Update the surface as required.
         //  Do nothing (and return false) if no update was required
@@ -279,106 +329,207 @@ public:
         //- Faces of surface
         virtual const faceList& faces() const = 0;
 
-        //- Return face area vectors
-        virtual const vectorField& Sf() const;
+        //- Face area vectors
+        virtual const vectorField& Sf() const = 0;
 
-        //- Return face area magnitudes
-        virtual const scalarField& magSf() const;
+        //- Face area magnitudes
+        virtual const scalarField& magSf() const = 0;
 
-        //- Return face centres as vectorField
-        virtual const vectorField& Cf() const;
+        //- Face centres
+        virtual const vectorField& Cf() const = 0;
 
         //- The total surface area
         scalar area() const;
 
-        //- Integration of a field across the surface
-        template<class Type>
-        Type integrate(const Field<Type>&) const;
-
-        //- Integration of a field across the surface
-        template<class Type>
-        Type integrate(const tmp<Field<Type>>&) const;
-
-        //- Area-averaged value of a field across the surface
-        template<class Type>
-        Type average(const Field<Type>&) const;
-
-        //- Project field onto surface
-        tmp<Field<scalar>> project(const Field<scalar>&) const;
-
-        //- Project field onto surface
-        tmp<Field<scalar>> project(const Field<vector>&) const;
-
-        //- Project field onto surface
-        tmp<Field<vector>> project(const Field<sphericalTensor>&) const;
-
-        //- Project field onto surface
-        tmp<Field<vector>> project(const Field<symmTensor>&) const;
-
-        //- Project field onto surface
-        tmp<Field<vector>> project(const Field<tensor>&) const;
-
-        //- Area-averaged value of a field across the surface
-        template<class Type>
-        Type average(const tmp<Field<Type>>&) const;
-
-        //- Sample field on the surface's faces
-        #define DEFINE_SAMPLE(Type, nullArg)                                   \
-            virtual tmp<Field<Type>> sample                                    \
-            (                                                                  \
-                const VolField<Type>&                                          \
-            ) const = 0;                                                       \
-                                                                               \
-            virtual tmp<Field<Type>> sample                                    \
-            (                                                                  \
-                const SurfaceField<Type>&                                      \
-            ) const;
-        FOR_ALL_FIELD_TYPES(DEFINE_SAMPLE);
-        #undef DEFINE_SAMPLE
-
-        //- Interpolate field to the surface's points
-        #define DEFINE_INTERPOLATE(Type, nullArg)                              \
-            virtual tmp<Field<Type>> interpolate                               \
-            (                                                                  \
-                const interpolation<Type>&                                     \
-            ) const = 0;
-        FOR_ALL_FIELD_TYPES(DEFINE_INTERPOLATE);
-        #undef DEFINE_INTERPOLATE
+        //- If element ids/order of the original surface are available
+        virtual bool hasFaceIds() const
+        {
+            return false;
+        }
 
 
-        // Mesh Change
+    // General registry storage (optional)
 
-            //- Update for mesh point-motion
-            virtual void movePoints() = 0;
+        //- Get surface from registry if available.
+        //  \param obr The objectRegistry to use
+        //  \param lookupName Optional lookup name, use surface name if empty
+        //  \return surface or nullptr
+        polySurface* getRegistrySurface
+        (
+            const objectRegistry& obr,
+            word lookupName = ""
+        ) const;
 
-            //- Update topology using the given map
-            virtual void topoChange(const polyTopoChangeMap&) = 0;
+        //- Copy surface into registry.
+        //  \param obr The objectRegistry to use
+        //  \param lookupName Optional lookup name, use surface name if empty
+        //  \return surface or nullptr it surface should not be stored
+        polySurface* storeRegistrySurface
+        (
+            objectRegistry& obr,
+            word lookupName = ""
+        ) const;
 
-            //- Update from another mesh using the given map
-            virtual void mapMesh(const polyMeshMap&) = 0;
+        //- Remove surface from registry.
+        //  \param obr The objectRegistry to use
+        //  \param lookupName Optional lookup name, use surface name if empty
+        //  \return True if surface existed and was removed
+        bool removeRegistrySurface
+        (
+            objectRegistry& obr,
+            word lookupName = ""
+        ) const;
 
-            //- Redistribute or update using the given distribution map
-            virtual void distribute(const polyDistributionMap&) = 0;
+        //- Copy/store sampled field onto registered surface (if it exists)
+        template<class Type, class GeoMeshType>
+        bool storeRegistryField
+        (
+            const objectRegistry& obr,
+            const word& fieldName,
+            const dimensionSet& dims,
+            const Field<Type>& values,
+            word lookupName = ""
+        ) const;
+
+        //- Move/store sampled field onto registered surface (if it exists)
+        template<class Type, class GeoMeshType>
+        bool storeRegistryField
+        (
+            const objectRegistry& obr,
+            const word& fieldName,
+            const dimensionSet& dims,
+            Field<Type>&& values,
+            word lookupName = ""
+        ) const;
 
 
-        // Edit
+    // Sample (faces)
 
-            //- Rename
-            virtual void rename(const word& newName)
-            {
-                name_ = newName;
-            }
+        //- Sample volume field onto surface faces
+        virtual tmp<scalarField> sample
+        (
+            const interpolation<scalar>& sampler
+        ) const = 0;
+
+        //- Sample volume field onto surface faces
+        virtual tmp<vectorField> sample
+        (
+            const interpolation<vector>& sampler
+        ) const = 0;
+
+        //- Sample volume field onto surface faces
+        virtual tmp<sphericalTensorField> sample
+        (
+            const interpolation<sphericalTensor>& sampler
+        ) const = 0;
+
+        //- Sample volume field onto surface faces
+        virtual tmp<symmTensorField> sample
+        (
+            const interpolation<symmTensor>& sampler
+        ) const = 0;
+
+        //- Sample volume field onto surface faces
+        virtual tmp<tensorField> sample
+        (
+            const interpolation<tensor>& sampler
+        ) const = 0;
 
 
-        // Write
+        //- Can it sample surface-fields?
+        virtual bool withSurfaceFields() const;
 
-            //- Write
-            virtual void print(Ostream&) const;
 
-            //- Ostream operator
-            friend Ostream& operator<<(Ostream&, const sampledSurface&);
+        //- Sample surface field onto surface
+        virtual tmp<scalarField> sample
+        (
+            const surfaceScalarField& sField
+        ) const;
+
+        //- Sample surface field onto surface
+        virtual tmp<vectorField> sample
+        (
+            const surfaceVectorField& sField
+        ) const;
+
+        //- Sample surface field onto surface
+        virtual tmp<sphericalTensorField> sample
+        (
+            const surfaceSphericalTensorField& sField
+        ) const;
+
+        //- Sample surface field onto surface
+        virtual tmp<symmTensorField> sample
+        (
+            const surfaceSymmTensorField& sField
+        ) const;
+
+        //- Sample surface field onto surface
+        virtual tmp<tensorField> sample
+        (
+            const surfaceTensorField& sField
+        ) const;
+
+
+    // Interpolate (points)
+
+        //- Interpolate volume field onto surface points
+        virtual tmp<scalarField> interpolate
+        (
+            const interpolation<scalar>& interpolator
+        ) const = 0;
+
+        //- Interpolate volume field onto surface points
+        virtual tmp<vectorField> interpolate
+        (
+            const interpolation<vector>& interpolator
+        ) const = 0;
+
+        //- Interpolate volume field onto surface points
+        virtual tmp<sphericalTensorField> interpolate
+        (
+            const interpolation<sphericalTensor>& interpolator
+        ) const = 0;
+
+        //- Interpolate volume field onto surface points
+        virtual tmp<symmTensorField> interpolate
+        (
+            const interpolation<symmTensor>& interpolator
+        ) const = 0;
+
+        //- Interpolate volume field onto surface points
+        virtual tmp<tensorField> interpolate
+        (
+            const interpolation<tensor>& interpolator
+        ) const = 0;
+
+
+    // Edit
+
+        //- Rename
+        virtual void rename(const word& newName)
+        {
+            name_ = newName;
+        }
+
+
+    // Write
+
+        //- Print information
+        virtual void print(Ostream& os, int level=0) const;
+
+
+    // Housekeeping
+
+        //- Same as isPointData()
+        bool interpolate() const noexcept { return isPointData_; }
 };
 
+
+// Global Operators
+
+//- Ostream operator
+Ostream& operator<<(Ostream& os, const sampledSurface& s);
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

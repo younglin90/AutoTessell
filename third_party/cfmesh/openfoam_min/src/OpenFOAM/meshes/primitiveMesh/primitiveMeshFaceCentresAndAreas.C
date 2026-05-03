@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,7 +34,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "primitiveMesh.H"
-
+#include "primitiveMeshTools.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -40,16 +43,15 @@ void Foam::primitiveMesh::calcFaceCentresAndAreas() const
     if (debug)
     {
         Pout<< "primitiveMesh::calcFaceCentresAndAreas() : "
-            << "Calculating face centres and face areas"
+            << "Calculating face centres and areas"
             << endl;
     }
 
-    // It is an error to attempt to recalculate faceCentres
-    // if the pointer is already set
-    if (faceCentresPtr_ || faceAreasPtr_ || magFaceAreasPtr_)
+    // These are always calculated in tandem, but only once.
+    if (faceCentresPtr_ || faceAreasPtr_)
     {
         FatalErrorInFunction
-            << "Face centres or face areas already calculated"
+            << "Face centres and areas already calculated"
             << abort(FatalError);
     }
 
@@ -59,38 +61,13 @@ void Foam::primitiveMesh::calcFaceCentresAndAreas() const
     faceAreasPtr_ = new vectorField(nFaces());
     vectorField& fAreas = *faceAreasPtr_;
 
-    magFaceAreasPtr_ = new scalarField(nFaces());
-    scalarField& magfAreas = *magFaceAreasPtr_;
-
-    makeFaceCentresAndAreas(points(), fCtrs, fAreas, magfAreas);
+    primitiveMeshTools::makeFaceCentresAndAreas(*this, points(), fCtrs, fAreas);
 
     if (debug)
     {
         Pout<< "primitiveMesh::calcFaceCentresAndAreas() : "
-            << "Finished calculating face centres and face areas"
+            << "Finished calculating face centres and areas"
             << endl;
-    }
-}
-
-
-void Foam::primitiveMesh::makeFaceCentresAndAreas
-(
-    const pointField& p,
-    vectorField& fCtrs,
-    vectorField& fAreas,
-    scalarField& magfAreas
-) const
-{
-    const faceList& fs = faces();
-
-    forAll(fs, facei)
-    {
-        const Tuple2<vector, point> areaAndCentre =
-            face::areaAndCentre(UIndirectList<point>(p, fs[facei]));
-
-        fCtrs[facei] = areaAndCentre.second();
-        fAreas[facei] = areaAndCentre.first();
-        magfAreas[facei] = max(mag(fAreas[facei]), rootVSmall);
     }
 }
 
@@ -101,7 +78,8 @@ const Foam::vectorField& Foam::primitiveMesh::faceCentres() const
 {
     if (!faceCentresPtr_)
     {
-        calcFaceCentresAndAreas();
+        //calcFaceCentresAndAreas();
+        const_cast<primitiveMesh&>(*this).updateGeom();
     }
 
     return *faceCentresPtr_;
@@ -112,21 +90,11 @@ const Foam::vectorField& Foam::primitiveMesh::faceAreas() const
 {
     if (!faceAreasPtr_)
     {
-        calcFaceCentresAndAreas();
+        //calcFaceCentresAndAreas();
+        const_cast<primitiveMesh&>(*this).updateGeom();
     }
 
     return *faceAreasPtr_;
-}
-
-
-const Foam::scalarField& Foam::primitiveMesh::magFaceAreas() const
-{
-    if (!magFaceAreasPtr_)
-    {
-        calcFaceCentresAndAreas();
-    }
-
-    return *magFaceAreasPtr_;
 }
 
 

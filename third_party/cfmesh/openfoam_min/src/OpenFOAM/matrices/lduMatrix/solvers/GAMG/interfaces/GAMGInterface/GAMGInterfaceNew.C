@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,21 +46,21 @@ Foam::autoPtr<Foam::GAMGInterface> Foam::GAMGInterface::New
 {
     const word coupleType(fineInterface.type());
 
-    lduInterfaceConstructorTable::iterator cstrIter =
-        lduInterfaceConstructorTablePtr_->find(coupleType);
+    auto* ctorPtr = lduInterfaceConstructorTable(coupleType);
 
-    if (cstrIter == lduInterfaceConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalErrorInFunction
-            << "Unknown GAMGInterface type " << coupleType << ".\n"
-            << "Valid GAMGInterface types are :"
-            << lduInterfaceConstructorTablePtr_->sortedToc()
-            << exit(FatalError);
+        FatalErrorInLookup
+        (
+            "GAMGInterface",
+            coupleType,
+            *lduInterfaceConstructorTablePtr_
+        ) << exit(FatalError);
     }
 
     return autoPtr<GAMGInterface>
     (
-        cstrIter()
+        ctorPtr
         (
             index,
             coarseInterfaces,
@@ -79,19 +82,19 @@ Foam::autoPtr<Foam::GAMGInterface> Foam::GAMGInterface::New
     Istream& is
 )
 {
-    IstreamConstructorTable::iterator cstrIter =
-        IstreamConstructorTablePtr_->find(coupleType);
+    auto* ctorPtr = IstreamConstructorTable(coupleType);
 
-    if (cstrIter == IstreamConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalErrorInFunction
-            << "Unknown GAMGInterface type " << coupleType << ".\n"
-            << "Valid GAMGInterface types are :"
-            << IstreamConstructorTablePtr_->sortedToc()
-            << exit(FatalError);
+        FatalErrorInLookup
+        (
+            "GAMGInterface",
+            coupleType,
+            *IstreamConstructorTablePtr_
+        ) << exit(FatalError);
     }
 
-    return autoPtr<GAMGInterface>(cstrIter()(index, coarseInterfaces, is));
+    return autoPtr<GAMGInterface>(ctorPtr(index, coarseInterfaces, is));
 }
 
 

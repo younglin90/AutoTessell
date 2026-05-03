@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,151 +27,58 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "indexedOctree.H"
-#include "linePointRef.H"
+#include "line.H"
 #include "OFstream.H"
 #include "ListOps.H"
 #include "memInfo.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::scalar Foam::indexedOctree<Type>::perturbTol_ = 10*small;
-
-
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
-
-template<class Type>
-bool Foam::indexedOctree<Type>::overlaps
-(
-    const point& p0,
-    const point& p1,
-    const scalar nearestDistSqr,
-    const point& sample
-)
-{
-    boundBox bb(p0, p1);
-
-    return bb.overlaps(sample, nearestDistSqr);
-}
-
-
-template<class Type>
-bool Foam::indexedOctree<Type>::overlaps
-(
-    const treeBoundBox& parentBb,
-    const direction octant,
-    const scalar nearestDistSqr,
-    const point& sample
-)
-{
-    //- Accelerated version of
-    //     treeBoundBox subBb(parentBb.subBbox(mid, octant))
-    //     overlaps
-    //     (
-    //          subBb.min(),
-    //          subBb.max(),
-    //          nearestDistSqr,
-    //          sample
-    //     )
-
-    const point& min = parentBb.min();
-    const point& max = parentBb.max();
-
-    point other;
-
-    if (octant & treeBoundBox::octantBit::rightHalf)
-    {
-        other.x() = max.x();
-    }
-    else
-    {
-        other.x() = min.x();
-    }
-
-    if (octant & treeBoundBox::octantBit::topHalf)
-    {
-        other.y() = max.y();
-    }
-    else
-    {
-        other.y() = min.y();
-    }
-
-    if (octant & treeBoundBox::octantBit::frontHalf)
-    {
-        other.z() = max.z();
-    }
-    else
-    {
-        other.z() = min.z();
-    }
-
-    const point mid(0.5*(min+max));
-
-    return overlaps(mid, other, nearestDistSqr, sample);
-}
-
 
 template<class Type>
 void Foam::indexedOctree<Type>::divide
 (
-    const labelList& indices,
+    const labelUList& indices,
     const treeBoundBox& bb,
-    labelListList& result
+    FixedList<labelList, 8>& dividedIndices
 ) const
 {
-    List<DynamicList<label>> subIndices(8);
-    for (direction octant = 0; octant < subIndices.size(); octant++)
-    {
-        subIndices[octant].setCapacity(indices.size()/8);
-    }
+    // Scratch array
+    DynamicList<label> contains(indices.size());
 
-    // Precalculate bounding boxes.
-    FixedList<treeBoundBox, 8> subBbs;
-    for (direction octant = 0; octant < subBbs.size(); octant++)
+    for (direction octant = 0; octant < 8; ++octant)
     {
-        subBbs[octant] = bb.subBbox(octant);
-    }
+        const treeBoundBox subBbs(bb.subBbox(octant));
 
-    forAll(indices, i)
-    {
-        label shapeI = indices[i];
+        contains.clear();
 
-        for (direction octant = 0; octant < 8; octant++)
+        for (const label index : indices)
         {
-            if (shapes_.overlaps(shapeI, subBbs[octant]))
+            if (shapes_.overlaps(index, subBbs))
             {
-                subIndices[octant].append(shapeI);
+                contains.push_back(index);
             }
         }
-    }
 
-    result.setSize(8);
-    for (direction octant = 0; octant < subIndices.size(); octant++)
-    {
-        result[octant].transfer(subIndices[octant]);
+        // The sub-divided indices:
+        dividedIndices[octant] = contains;
     }
 }
 
 
 template<class Type>
-typename Foam::indexedOctree<Type>::node
+Foam::indexedOctreeBase::node
 Foam::indexedOctree<Type>::divide
 (
     const treeBoundBox& bb,
     DynamicList<labelList>& contents,
-    const label contentI
+    label contentIndex
 ) const
 {
-    const labelList& indices = contents[contentI];
-
-    node nod;
-
     if
     (
-        bb.min()[0] >= bb.max()[0]
-     || bb.min()[1] >= bb.max()[1]
-     || bb.min()[2] >= bb.max()[2]
+        bb.min().x() >= bb.max().x()
+     || bb.min().y() >= bb.max().y()
+     || bb.min().z() >= bb.max().z()
     )
     {
         FatalErrorInFunction
@@ -176,38 +86,41 @@ Foam::indexedOctree<Type>::divide
             << abort(FatalError);
     }
 
+    // Divide the indices into 8 (possibly empty) subsets.
+    // Replace current contentIndex with the first (non-empty) subset.
+    // Append the rest.
+
+    const labelList& indices = contents[contentIndex];
+
+    FixedList<labelList, 8> dividedIndices;
+    divide(indices, bb, dividedIndices);
+
+    node nod;
     nod.bb_ = bb;
     nod.parent_ = -1;
 
-    labelListList dividedIndices(8);
-    divide(indices, bb, dividedIndices);
+    bool replaceNode = true;
 
-    // Have now divided the indices into 8 (possibly empty) subsets.
-    // Replace current contentI with the first (non-empty) subset.
-    // Append the rest.
-    bool replaced = false;
-
-    for (direction octant = 0; octant < dividedIndices.size(); octant++)
+    for (direction octant = 0; octant < 8; ++octant)
     {
-        labelList& subIndices = dividedIndices[octant];
+        auto& subIndices = dividedIndices[octant];
 
         if (subIndices.size())
         {
-            if (!replaced)
+            if (replaceNode)
             {
-                contents[contentI].transfer(subIndices);
-                nod.subNodes_[octant] = contentPlusOctant(contentI, octant);
-                replaced = true;
+                // Replace existing
+                contents[contentIndex] = std::move(subIndices);
+                replaceNode = false;
             }
             else
             {
-                // Store at end of contents.
-                // note dummy append + transfer trick
-                label sz = contents.size();
-                contents.append(labelList(0));
-                contents[sz].transfer(subIndices);
-                nod.subNodes_[octant] = contentPlusOctant(sz, octant);
+                // Append to contents
+                contentIndex = contents.size();
+                contents.push_back(std::move(subIndices));
             }
+
+            nod.subNodes_[octant] = contentPlusOctant(contentIndex, octant);
         }
         else
         {
@@ -224,7 +137,7 @@ template<class Type>
 void Foam::indexedOctree<Type>::splitNodes
 (
     const label minSize,
-    DynamicList<indexedOctree<Type>::node>& nodes,
+    DynamicList<indexedOctreeBase::node>& nodes,
     DynamicList<labelList>& contents
 ) const
 {
@@ -235,12 +148,7 @@ void Foam::indexedOctree<Type>::splitNodes
     // moved so make sure not to keep any references!
     for (label nodeI = 0; nodeI < currentSize; nodeI++)
     {
-        for
-        (
-            direction octant = 0;
-            octant < nodes[nodeI].subNodes_.size();
-            octant++
-        )
+        for (direction octant = 0; octant < node::nChildren; ++octant)
         {
             labelBits index = nodes[nodeI].subNodes_[octant];
 
@@ -263,7 +171,7 @@ void Foam::indexedOctree<Type>::splitNodes
                     node subNode(divide(bb, contents, contentI));
                     subNode.parent_ = nodeI;
                     label sz = nodes.size();
-                    nodes.append(subNode);
+                    nodes.push_back(subNode);
                     nodes[nodeI].subNodes_[octant] = nodePlusOctant(sz, octant);
                 }
             }
@@ -291,7 +199,7 @@ Foam::label Foam::indexedOctree<Type>::compactContents
 
     if (level < compactLevel)
     {
-        for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+        for (direction octant = 0; octant < node::nChildren; ++octant)
         {
             labelBits index = nod.subNodes_[octant];
 
@@ -313,7 +221,7 @@ Foam::label Foam::indexedOctree<Type>::compactContents
     else if (level == compactLevel)
     {
         // Compact all content on this level
-        for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+        for (direction octant = 0; octant < node::nChildren; ++octant)
         {
             labelBits index = nod.subNodes_[octant];
 
@@ -351,9 +259,9 @@ Foam::volumeType Foam::indexedOctree<Type>::calcVolumeType
 
     const node& nod = nodes_[nodeI];
 
-    volumeType myType = volumeType::unknown;
+    volumeType myType = volumeType::UNKNOWN;
 
-    for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+    for (direction octant = 0; octant < node::nChildren; ++octant)
     {
         volumeType subType;
 
@@ -368,7 +276,7 @@ Foam::volumeType Foam::indexedOctree<Type>::calcVolumeType
         {
             // Contents. Depending on position in box might be on either
             // side.
-            subType = volumeType::mixed;
+            subType = volumeType::MIXED;
         }
         else
         {
@@ -376,21 +284,21 @@ Foam::volumeType Foam::indexedOctree<Type>::calcVolumeType
             // of its bounding box.
             const treeBoundBox subBb = nod.bb_.subBbox(octant);
 
-            subType = shapes_.getVolumeType(*this, subBb.midpoint());
+            subType = shapes_.getVolumeType(*this, subBb.centre());
         }
 
         // Store octant type
-        nodeTypes_.set((nodeI<<3)+octant, subType);
+        nodeTypes_.set(labelBits::pack(nodeI, octant), subType);
 
         // Combine sub node types into type for treeNode. Result is 'mixed' if
         // types differ among subnodes.
-        if (myType == volumeType::unknown)
+        if (myType == volumeType::UNKNOWN)
         {
             myType = subType;
         }
         else if (subType != myType)
         {
-            myType = volumeType::mixed;
+            myType = volumeType::MIXED;
         }
     }
     return myType;
@@ -408,22 +316,25 @@ Foam::volumeType Foam::indexedOctree<Type>::getVolumeType
 
     direction octant = nod.bb_.subOctant(sample);
 
-    volumeType octantType = volumeType::type(nodeTypes_.get((nodeI<<3)+octant));
+    volumeType octantType = volumeType::type
+    (
+        nodeTypes_.get(labelBits::pack(nodeI, octant))
+    );
 
-    if (octantType == volumeType::inside)
+    if (octantType == volumeType::INSIDE)
     {
         return octantType;
     }
-    else if (octantType == volumeType::outside)
+    else if (octantType == volumeType::OUTSIDE)
     {
         return octantType;
     }
-    else if (octantType == volumeType::unknown)
+    else if (octantType == volumeType::UNKNOWN)
     {
         // Can happen for e.g. non-manifold surfaces.
         return octantType;
     }
-    else if (octantType == volumeType::mixed)
+    else if (octantType == volumeType::MIXED)
     {
         labelBits index = nod.subNodes_[octant];
 
@@ -439,30 +350,26 @@ Foam::volumeType Foam::indexedOctree<Type>::getVolumeType
             // Content. Defer to shapes.
             return volumeType(shapes_.getVolumeType(*this, sample));
         }
-        else
-        {
-            // Empty node. Cannot have 'mixed' as its type since not divided
-            // up and has no items inside it.
-            FatalErrorInFunction
-                << "Sample:" << sample << " node:" << nodeI
-                << " with bb:" << nodes_[nodeI].bb_ << nl
-                << "Empty subnode has invalid volume type mixed."
-                << abort(FatalError);
 
-            return volumeType::unknown;
-        }
-    }
-    else
-    {
+        // Empty node. Cannot have 'mixed' as its type since not divided
+        // up and has no items inside it.
         FatalErrorInFunction
-            << "Sample:" << sample << " at node:" << nodeI
-            << " octant:" << octant
-            << " with bb:" << nod.bb_.subBbox(octant) << nl
-            << "Node has invalid volume type " << octantType
+            << "Sample:" << sample << " node:" << nodeI
+            << " with bb:" << nodes_[nodeI].bb_ << nl
+            << "Empty subnode has invalid volume type MIXED."
             << abort(FatalError);
 
-        return volumeType::unknown;
+        return volumeType::UNKNOWN;
     }
+
+    FatalErrorInFunction
+        << "Sample:" << sample << " at node:" << nodeI
+        << " octant:" << octant
+        << " with bb:" << nod.bb_.subBbox(octant) << nl
+        << "Node has invalid volume type " << octantType
+        << abort(FatalError);
+
+    return volumeType::UNKNOWN;
 }
 
 
@@ -475,11 +382,11 @@ Foam::volumeType Foam::indexedOctree<Type>::getSide
 {
     if ((outsideNormal&vec) >= 0)
     {
-        return volumeType::outside;
+        return volumeType::OUTSIDE;
     }
     else
     {
-        return volumeType::inside;
+        return volumeType::INSIDE;
     }
 }
 
@@ -501,14 +408,10 @@ void Foam::indexedOctree<Type>::findNearest
     const node& nod = nodes_[nodeI];
 
     // Determine order to walk through octants
-    FixedList<direction, 8> octantOrder;
-    nod.bb_.searchOrder(sample, octantOrder);
-
     // Go into all suboctants (one containing sample first) and update nearest.
-    for (direction i = 0; i < 8; i++)
-    {
-        direction octant = octantOrder[i];
 
+    for (const direction octant : nod.bb_.searchOrder(sample))
+    {
         labelBits index = nod.subNodes_[octant];
 
         if (isNode(index))
@@ -517,7 +420,7 @@ void Foam::indexedOctree<Type>::findNearest
 
             const treeBoundBox& subBb = nodes_[subNodeI].bb_;
 
-            if (overlaps(subBb.min(), subBb.max(), nearestDistSqr, sample))
+            if (subBb.overlaps(sample, nearestDistSqr))
             {
                 findNearest
                 (
@@ -534,16 +437,7 @@ void Foam::indexedOctree<Type>::findNearest
         }
         else if (isContent(index))
         {
-            if
-            (
-                overlaps
-                (
-                    nod.bb_,
-                    octant,
-                    nearestDistSqr,
-                    sample
-                )
-            )
+            if (nod.bb_.subOverlaps(octant, sample, nearestDistSqr))
             {
                 fnOp
                 (
@@ -579,14 +473,10 @@ void Foam::indexedOctree<Type>::findNearest
     const treeBoundBox& nodeBb = nod.bb_;
 
     // Determine order to walk through octants
-    FixedList<direction, 8> octantOrder;
-    nod.bb_.searchOrder(ln.centre(), octantOrder);
-
     // Go into all suboctants (one containing sample first) and update nearest.
-    for (direction i = 0; i < 8; i++)
-    {
-        direction octant = octantOrder[i];
 
+    for (const direction octant : nod.bb_.searchOrder(ln.centre()))
+    {
         labelBits index = nod.subNodes_[octant];
 
         if (isNode(index))
@@ -611,9 +501,7 @@ void Foam::indexedOctree<Type>::findNearest
         }
         else if (isContent(index))
         {
-            const treeBoundBox subBb(nodeBb.subBbox(octant));
-
-            if (subBb.overlaps(tightest))
+            if (nodeBb.subOverlaps(octant, tightest))
             {
                 fnOp
                 (
@@ -647,11 +535,9 @@ Foam::treeBoundBox Foam::indexedOctree<Type>::subBbox
         // Use stored bb
         return nodes_[getNode(index)].bb_;
     }
-    else
-    {
-        // Calculate subBb
-        return nod.bb_.subBbox(octant);
-    }
+
+    // Calculate subBb
+    return nod.bb_.subBbox(octant);
 }
 
 
@@ -678,13 +564,13 @@ Foam::point Foam::indexedOctree<Type>::pushPoint
             if (mag(pt[dir]-bb.min()[dir]) < mag(perturbVec[dir]))
             {
                 // Close to 'left' side. Push well beyond left side.
-                scalar perturbDist = perturbVec[dir] + rootVSmall;
+                scalar perturbDist = perturbVec[dir] + ROOTVSMALL;
                 perturbedPt[dir] = bb.min()[dir] + perturbDist;
             }
             else if (mag(pt[dir]-bb.max()[dir]) < mag(perturbVec[dir]))
             {
                 // Close to 'right' side. Push well beyond right side.
-                scalar perturbDist = perturbVec[dir] + rootVSmall;
+                scalar perturbDist = perturbVec[dir] + ROOTVSMALL;
                 perturbedPt[dir] = bb.max()[dir] - perturbDist;
             }
         }
@@ -695,12 +581,12 @@ Foam::point Foam::indexedOctree<Type>::pushPoint
         {
             if (mag(pt[dir]-bb.min()[dir]) < mag(perturbVec[dir]))
             {
-                scalar perturbDist = perturbVec[dir] + rootVSmall;
+                scalar perturbDist = perturbVec[dir] + ROOTVSMALL;
                 perturbedPt[dir] = bb.min()[dir] - perturbDist;
             }
             else if (mag(pt[dir]-bb.max()[dir]) < mag(perturbVec[dir]))
             {
-                scalar perturbDist = perturbVec[dir] + rootVSmall;
+                scalar perturbDist = perturbVec[dir] + ROOTVSMALL;
                 perturbedPt[dir] = bb.max()[dir] + perturbDist;
             }
         }
@@ -715,8 +601,12 @@ Foam::point Foam::indexedOctree<Type>::pushPoint
                 << " to:" << perturbedPt
                 << " wanted side:" << pushInside
                 << " obtained side:" << bb.contains(perturbedPt)
-                << " of bb:" << bb
-                << abort(FatalError);
+                << " of bb:" << bb << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -747,72 +637,72 @@ Foam::point Foam::indexedOctree<Type>::pushPoint
             << abort(FatalError);
     }
 
-    if (faceID & treeBoundBox::faceBit::left)
     {
-        if (pushInside)
+        constexpr direction dir(0);  // vector::X
+
+        if (faceID & treeBoundBox::LEFTBIT)
         {
-            perturbedPt[0] = bb.min()[0] + (perturbVec[0] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.min()[dir] + (perturbVec[dir] + ROOTVSMALL))
+              : (bb.min()[dir] - (perturbVec[dir] + ROOTVSMALL))
+            );
         }
-        else
+        else if (faceID & treeBoundBox::RIGHTBIT)
         {
-            perturbedPt[0] = bb.min()[0] - (perturbVec[0] + rootVSmall);
-        }
-    }
-    else if (faceID & treeBoundBox::faceBit::right)
-    {
-        if (pushInside)
-        {
-            perturbedPt[0] = bb.max()[0] - (perturbVec[0] + rootVSmall);
-        }
-        else
-        {
-            perturbedPt[0] = bb.max()[0] + (perturbVec[0] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.max()[dir] - (perturbVec[dir] + ROOTVSMALL))
+              : (bb.max()[dir] + (perturbVec[dir] + ROOTVSMALL))
+            );
         }
     }
 
-    if (faceID & treeBoundBox::faceBit::bottom)
     {
-        if (pushInside)
+        constexpr direction dir(1);  // vector::Y
+
+        if (faceID & treeBoundBox::BOTTOMBIT)
         {
-            perturbedPt[1] = bb.min()[1] + (perturbVec[1] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.min()[dir] + (perturbVec[dir] + ROOTVSMALL))
+              : (bb.min()[dir] - (perturbVec[dir] + ROOTVSMALL))
+            );
         }
-        else
+        else if (faceID & treeBoundBox::TOPBIT)
         {
-            perturbedPt[1] = bb.min()[1] - (perturbVec[1] + rootVSmall);
-        }
-    }
-    else if (faceID & treeBoundBox::faceBit::top)
-    {
-        if (pushInside)
-        {
-            perturbedPt[1] = bb.max()[1] - (perturbVec[1] + rootVSmall);
-        }
-        else
-        {
-            perturbedPt[1] = bb.max()[1] + (perturbVec[1] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.max()[dir] - (perturbVec[dir] + ROOTVSMALL))
+              : (bb.max()[dir] + (perturbVec[dir] + ROOTVSMALL))
+            );
         }
     }
 
-    if (faceID & treeBoundBox::faceBit::back)
     {
-        if (pushInside)
+        constexpr direction dir(2);  // vector::Z
+
+        if (faceID & treeBoundBox::BACKBIT)
         {
-            perturbedPt[2] = bb.min()[2] + (perturbVec[2] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.min()[dir] + (perturbVec[dir] + ROOTVSMALL))
+              : (bb.min()[dir] - (perturbVec[dir] + ROOTVSMALL))
+            );
         }
-        else
+        else if (faceID & treeBoundBox::FRONTBIT)
         {
-            perturbedPt[2] = bb.min()[2] - (perturbVec[2] + rootVSmall);
-        }
-    }
-    else if (faceID & treeBoundBox::faceBit::front)
-    {
-        if (pushInside)
-        {
-            perturbedPt[2] = bb.max()[2] - (perturbVec[2] + rootVSmall);
-        }
-        else
-        {
-            perturbedPt[2] = bb.max()[2] + (perturbVec[2] + rootVSmall);
+            perturbedPt[dir] =
+            (
+                pushInside
+              ? (bb.max()[dir] - (perturbVec[dir] + ROOTVSMALL))
+              : (bb.max()[dir] + (perturbVec[dir] + ROOTVSMALL))
+            );
         }
     }
 
@@ -825,8 +715,12 @@ Foam::point Foam::indexedOctree<Type>::pushPoint
                 << " to:" << perturbedPt
                 << " wanted side:" << pushInside
                 << " obtained side:" << bb.contains(perturbedPt)
-                << " of bb:" << bb
-                << abort(FatalError);
+                << " of bb:" << bb << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -848,7 +742,12 @@ Foam::point Foam::indexedOctree<Type>::pushPointIntoFace
         {
             FatalErrorInFunction
                 << " bb:" << bb << endl
-                << "does not contain point " << pt << abort(FatalError);
+                << "does not contain point " << pt << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -862,31 +761,31 @@ Foam::point Foam::indexedOctree<Type>::pushPointIntoFace
     direction nFaces = 0;
     FixedList<direction, 3> faceIndices;
 
-    if (ptFaceID & treeBoundBox::faceBit::left)
+    if (ptFaceID & treeBoundBox::LEFTBIT)
     {
-        faceIndices[nFaces++] = treeBoundBox::faceId::left;
+        faceIndices[nFaces++] = treeBoundBox::LEFT;
     }
-    else if (ptFaceID & treeBoundBox::faceBit::right)
+    else if (ptFaceID & treeBoundBox::RIGHTBIT)
     {
-        faceIndices[nFaces++] = treeBoundBox::faceId::right;
-    }
-
-    if (ptFaceID & treeBoundBox::faceBit::bottom)
-    {
-        faceIndices[nFaces++] = treeBoundBox::faceId::bottom;
-    }
-    else if (ptFaceID & treeBoundBox::faceBit::top)
-    {
-        faceIndices[nFaces++] = treeBoundBox::faceId::top;
+        faceIndices[nFaces++] = treeBoundBox::RIGHT;
     }
 
-    if (ptFaceID & treeBoundBox::faceBit::back)
+    if (ptFaceID & treeBoundBox::BOTTOMBIT)
     {
-        faceIndices[nFaces++] = treeBoundBox::faceId::back;
+        faceIndices[nFaces++] = treeBoundBox::BOTTOM;
     }
-    else if (ptFaceID & treeBoundBox::faceBit::front)
+    else if (ptFaceID & treeBoundBox::TOPBIT)
     {
-        faceIndices[nFaces++] = treeBoundBox::faceId::front;
+        faceIndices[nFaces++] = treeBoundBox::TOP;
+    }
+
+    if (ptFaceID & treeBoundBox::BACKBIT)
+    {
+        faceIndices[nFaces++] = treeBoundBox::BACK;
+    }
+    else if (ptFaceID & treeBoundBox::FRONTBIT)
+    {
+        faceIndices[nFaces++] = treeBoundBox::FRONT;
     }
 
 
@@ -932,35 +831,35 @@ Foam::point Foam::indexedOctree<Type>::pushPointIntoFace
 
     // 2. Snap it back onto the preferred face
 
-    if (keepFaceID == treeBoundBox::faceId::left)
+    if (keepFaceID == treeBoundBox::LEFT)
     {
         facePoint.x() = bb.min().x();
-        faceID = treeBoundBox::faceBit::left;
+        faceID = treeBoundBox::LEFTBIT;
     }
-    else if (keepFaceID == treeBoundBox::faceId::right)
+    else if (keepFaceID == treeBoundBox::RIGHT)
     {
         facePoint.x() = bb.max().x();
-        faceID = treeBoundBox::faceBit::right;
+        faceID = treeBoundBox::RIGHTBIT;
     }
-    else if (keepFaceID == treeBoundBox::faceId::bottom)
+    else if (keepFaceID == treeBoundBox::BOTTOM)
     {
         facePoint.y() = bb.min().y();
-        faceID = treeBoundBox::faceBit::bottom;
+        faceID = treeBoundBox::BOTTOMBIT;
     }
-    else if (keepFaceID == treeBoundBox::faceId::top)
+    else if (keepFaceID == treeBoundBox::TOP)
     {
         facePoint.y() = bb.max().y();
-        faceID = treeBoundBox::faceBit::top;
+        faceID = treeBoundBox::TOPBIT;
     }
-    else if (keepFaceID == treeBoundBox::faceId::back)
+    else if (keepFaceID == treeBoundBox::BACK)
     {
         facePoint.z() = bb.min().z();
-        faceID = treeBoundBox::faceBit::back;
+        faceID = treeBoundBox::BACKBIT;
     }
-    else if (keepFaceID == treeBoundBox::faceId::front)
+    else if (keepFaceID == treeBoundBox::FRONT)
     {
         facePoint.z() = bb.max().z();
-        faceID = treeBoundBox::faceBit::front;
+        faceID = treeBoundBox::FRONTBIT;
     }
 
 
@@ -970,19 +869,28 @@ Foam::point Foam::indexedOctree<Type>::pushPointIntoFace
         {
             FatalErrorInFunction
                 << "Pushed point from " << pt
-                << " on face:" << ptFaceID << " of bb:" << bb << endl
+                << " on face:" << ptFaceID << " of bb:" << bb << nl
                 << "onto " << facePoint
                 << " on face:" << faceID
                 << " which is not consistent with geometric face "
-                << bb.faceBits(facePoint)
-                << abort(FatalError);
+                << bb.faceBits(facePoint) << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
         if (bb.posBits(facePoint) != 0)
         {
             FatalErrorInFunction
-                << " bb:" << bb << endl
+                << " bb:" << bb << nl
                 << "does not contain perturbed point "
-                << facePoint << abort(FatalError);
+                << facePoint << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -1014,7 +922,7 @@ bool Foam::indexedOctree<Type>::walkToParent
     // Find octant nodeI is in.
     parentOctant = 255;
 
-    for (direction i = 0; i < parentNode.subNodes_.size(); i++)
+    for (direction i = 0; i < node::nChildren; ++i)
     {
         labelBits index = parentNode.subNodes_[i];
 
@@ -1048,7 +956,7 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
 {
     // Gets current position as node and octant in this node and walks in the
     // direction given by the facePointBits (combination of
-    // treeBoundBox::left, top etc.)  Returns false if edge of tree hit.
+    // treeBoundBox::LEFTBIT, TOPBIT etc.)  Returns false if edge of tree hit.
 
     label oldNodeI = nodeI;
     direction oldOctant = octant;
@@ -1058,42 +966,42 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
     // on the right.
 
     // Coordinate direction to test
-    const direction X = treeBoundBox::octantBit::rightHalf;
-    const direction Y = treeBoundBox::octantBit::topHalf;
-    const direction Z = treeBoundBox::octantBit::frontHalf;
+    const direction X = treeBoundBox::RIGHTHALF;
+    const direction Y = treeBoundBox::TOPHALF;
+    const direction Z = treeBoundBox::FRONTHALF;
 
     direction octantMask = 0;
     direction wantedValue = 0;
 
-    if ((faceID & treeBoundBox::faceBit::left) != 0)
+    if ((faceID & treeBoundBox::LEFTBIT) != 0)
     {
         // We want to go left so check if in right octant (i.e. x-bit is set)
         octantMask |= X;
         wantedValue |= X;
     }
-    else if ((faceID & treeBoundBox::faceBit::right) != 0)
+    else if ((faceID & treeBoundBox::RIGHTBIT) != 0)
     {
         octantMask |= X;  // wantedValue already 0
     }
 
-    if ((faceID & treeBoundBox::faceBit::bottom) != 0)
+    if ((faceID & treeBoundBox::BOTTOMBIT) != 0)
     {
         // Want to go down so check for y-bit set.
         octantMask |= Y;
         wantedValue |= Y;
     }
-    else if ((faceID & treeBoundBox::faceBit::top) != 0)
+    else if ((faceID & treeBoundBox::TOPBIT) != 0)
     {
         // Want to go up so check for y-bit not set.
         octantMask |= Y;
     }
 
-    if ((faceID & treeBoundBox::faceBit::back) != 0)
+    if ((faceID & treeBoundBox::BACKBIT) != 0)
     {
         octantMask |= Z;
         wantedValue |= Z;
     }
-    else if ((faceID & treeBoundBox::faceBit::front) != 0)
+    else if ((faceID & treeBoundBox::FRONTBIT) != 0)
     {
         octantMask |= Z;
     }
@@ -1113,7 +1021,7 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
     // +---+-+-+
     //        \
     //
-    // e.g. ray is at (a) in octant 0(or 4) with faceIDs : left+top.
+    // e.g. ray is at (a) in octant 0(or 4) with faceIDs : LEFTBIT+TOPBIT.
     // If we would be in octant 1(or 5) we could go to the correct octant
     // in the same node by just flipping the x and y bits (exoring).
     // But if we are not in octant 1/5 we have to go up until we are.
@@ -1122,7 +1030,7 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
     // - the checked bits have to be  : wantedValue = ?01
     */
 
-    // Pout<< "For point " << facePoint << endl;
+    //Pout<< "For point " << facePoint << endl;
 
     // Go up until we have chance to cross to the wanted direction
     while (wantedValue != (octant & octantMask))
@@ -1196,13 +1104,13 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
             return false;
         }
 
-        // Pout<< "    walked from node:" << nodeI << " octant:" << octant
+        //Pout<< "    walked from node:" << nodeI << " octant:" << octant
         //    << " bb:" << nodes_[nodeI].bb_.subBbox(octant) << endl
         //    << "    to:" << parentNodeI << " octant:" << parentOctant
         //    << " bb:" << nodes_[parentNodeI].bb_.subBbox(parentOctant)
         //    << endl;
         //
-        // Pout<< "    octantMask:" << octantMask
+        //Pout<< "    octantMask:" << octantMask
         //    << " wantedValue:" << wantedValue << endl;
 
         nodeI = parentNodeI;
@@ -1214,7 +1122,7 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
     // right half we now jump to the left half.
     octant ^= octantMask;
 
-    // Pout<< "    to node:" << nodeI << " octant:" << octant
+    //Pout<< "    to node:" << nodeI << " octant:" << octant
     //    << " subBb:" <<subBbox(nodeI, octant) << endl;
 
 
@@ -1228,8 +1136,12 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
                 << "When searching for " << facePoint
                 << " ended up in node:" << nodeI
                 << " octant:" << octant
-                << " with bb:" << subBb
-                << abort(FatalError);
+                << " with bb:" << subBb << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -1255,12 +1167,16 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
         {
             FatalErrorInFunction
                 << "Did not go to neighbour when searching for " << facePoint
-                << endl
+                << nl
                 << "    starting from face:" << faceString(faceID)
                 << " node:" << nodeI
                 << " octant:" << octant
-                << " bb:" << subBb
-                << abort(FatalError);
+                << " bb:" << subBb << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
 
         if (!subBb.contains(facePoint))
@@ -1269,8 +1185,12 @@ bool Foam::indexedOctree<Type>::walkToNeighbour
                 << "When searching for " << facePoint
                 << " ended up in node:" << nodeI
                 << " octant:" << octant
-                << " bb:" << subBb
-                << abort(FatalError);
+                << " bb:" << subBb << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -1291,32 +1211,32 @@ Foam::word Foam::indexedOctree<Type>::faceString
     {
         desc = "noFace";
     }
-    if (faceID & treeBoundBox::faceBit::left)
+    if (faceID & treeBoundBox::LEFTBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "left";
     }
-    if (faceID & treeBoundBox::faceBit::right)
+    if (faceID & treeBoundBox::RIGHTBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "right";
     }
-    if (faceID & treeBoundBox::faceBit::bottom)
+    if (faceID & treeBoundBox::BOTTOMBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "bottom";
     }
-    if (faceID & treeBoundBox::faceBit::top)
+    if (faceID & treeBoundBox::TOPBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "top";
     }
-    if (faceID & treeBoundBox::faceBit::back)
+    if (faceID & treeBoundBox::BACKBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "back";
     }
-    if (faceID & treeBoundBox::faceBit::front)
+    if (faceID & treeBoundBox::FRONTBIT)
     {
         if (!desc.empty()) desc += "+";
         desc += "front";
@@ -1360,8 +1280,13 @@ void Foam::indexedOctree<Type>::traverseNode
         {
             FatalErrorInFunction
                 << "Node:" << nodeI << " octant:" << octant
-                << " bb:" << octantBb << endl
-                << "does not contain point " << start << abort(FatalError);
+                << " bb:" << octantBb << nl
+                << "does not contain point " << start << nl;
+
+            if (debug > 1)
+            {
+                FatalError << abort(FatalError);
+            }
         }
     }
 
@@ -1392,9 +1317,8 @@ void Foam::indexedOctree<Type>::traverseNode
                     {
                         // Hit so pt is nearer than nearestPoint.
                         // Update hit info
-                        hitInfo.setHit();
+                        hitInfo.hitPoint(pt);
                         hitInfo.setIndex(shapeI);
-                        hitInfo.setPoint(pt);
                         return;
                     }
                 }
@@ -1424,9 +1348,8 @@ void Foam::indexedOctree<Type>::traverseNode
                         // Hit so pt is nearer than nearestPoint.
                         nearestPoint = pt;
                         // Update hit info
-                        hitInfo.setHit();
+                        hitInfo.hitPoint(pt);
                         hitInfo.setIndex(shapeI);
-                        hitInfo.setPoint(pt);
                     }
                 }
 
@@ -1449,8 +1372,8 @@ void Foam::indexedOctree<Type>::traverseNode
     point pt;
     bool intersected = octantBb.intersects
     (
-        end,            // treeStart,
-        (start-end),    // treeVec,
+        end,            //treeStart,
+        (start-end),    //treeVec,
 
         end,
         start,
@@ -1521,10 +1444,10 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
             << " bb:" << subBbox(nodeI, octant) << endl;
     }
 
-    // Current position. Initialise to miss
+    // Current position. Initialize to miss
     pointIndexHit hitInfo(false, treeStart, -1);
 
-    // while (true)
+    //while (true)
     label i = 0;
     for (; i < 100000; i++)
     {
@@ -1540,14 +1463,14 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
             (
                 octantBb,
                 treeVec,
-                hitInfo.rawPoint()
+                hitInfo.point()
             )
         );
 
         if (verbose)
         {
             Pout<< "iter:" << i
-                << " at current:" << hitInfo.rawPoint()
+                << " at current:" << hitInfo.point()
                 << " (perturbed:" << startPoint << ")" << endl
                 << "    node:" << nodeI
                 << " octant:" << octant
@@ -1584,7 +1507,7 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
             break;
         }
 
-        if (hitFaceID == 0 || hitInfo.rawPoint() == treeEnd)
+        if (hitFaceID == 0 || hitInfo.point() == treeEnd)
         {
             // endpoint inside the tree. Return miss.
             break;
@@ -1597,7 +1520,7 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
             (
                 octantBb,
                 hitFaceID,
-                hitInfo.rawPoint(),
+                hitInfo.point(),
                 false                   // push outside of octantBb
             )
         );
@@ -1606,7 +1529,7 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
         {
             Pout<< "    iter:" << i
                 << " hit face:" << faceString(hitFaceID)
-                << " at:" << hitInfo.rawPoint() << nl
+                << " at:" << hitInfo.point() << nl
                 << "    node:" << nodeI
                 << " octant:" << octant
                 << " bb:" << subBbox(nodeI, octant) << nl
@@ -1637,10 +1560,10 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
         if (verbose)
         {
             const treeBoundBox octantBb(subBbox(nodeI, octant));
-            Pout<< "    walked for point:" << hitInfo.rawPoint() << endl
+            Pout<< "    walked for point:" << hitInfo.point() << endl
                 << "    to neighbour node:" << nodeI
                 << " octant:" << octant
-                << " face:" << faceString(octantBb.faceBits(hitInfo.rawPoint()))
+                << " face:" << faceString(octantBb.faceBits(hitInfo.point()))
                 << " of octantBb:" << octantBb << endl
                 << endl;
         }
@@ -1660,7 +1583,7 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
                 startNodeI,
                 startOctant,
                 fiOp,
-                true            // verbose,
+                true            //verbose,
             );
         }
         if (debug)
@@ -1760,17 +1683,19 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLine
 
 
 template<class Type>
-void Foam::indexedOctree<Type>::findBox
+bool Foam::indexedOctree<Type>::findBox
 (
     const label nodeI,
     const treeBoundBox& searchBox,
-    labelHashSet& elements
+    labelHashSet* elements
 ) const
 {
     const node& nod = nodes_[nodeI];
     const treeBoundBox& nodeBb = nod.bb_;
 
-    for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+    bool foundAny = false;
+
+    for (direction octant = 0; octant < node::nChildren; ++octant)
     {
         labelBits index = nod.subNodes_[octant];
 
@@ -1780,45 +1705,55 @@ void Foam::indexedOctree<Type>::findBox
 
             if (subBb.overlaps(searchBox))
             {
-                findBox(getNode(index), searchBox, elements);
+                if (findBox(getNode(index), searchBox, elements))
+                {
+                    // Early exit if not storing results
+                    if (!elements) return true;
+
+                    foundAny = true;
+                }
             }
         }
         else if (isContent(index))
         {
-            const treeBoundBox subBb(nodeBb.subBbox(octant));
-
-            if (subBb.overlaps(searchBox))
+            if (nodeBb.subOverlaps(octant, searchBox))
             {
                 const labelList& indices = contents_[getContent(index)];
 
-                forAll(indices, i)
+                for (const label index : indices)
                 {
-                    label shapeI = indices[i];
-
-                    if (shapes_.overlaps(shapeI, searchBox))
+                    if (shapes_.overlaps(index, searchBox))
                     {
-                        elements.insert(shapeI);
+                        // Early exit if not storing results
+                        if (!elements) return true;
+
+                        foundAny = true;
+                        elements->insert(index);
                     }
                 }
             }
         }
     }
+
+    return foundAny;
 }
 
 
 template<class Type>
-void Foam::indexedOctree<Type>::findSphere
+bool Foam::indexedOctree<Type>::findSphere
 (
     const label nodeI,
     const point& centre,
     const scalar radiusSqr,
-    labelHashSet& elements
+    labelHashSet* elements
 ) const
 {
     const node& nod = nodes_[nodeI];
     const treeBoundBox& nodeBb = nod.bb_;
 
-    for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+    bool foundAny = false;
+
+    for (direction octant = 0; octant < node::nChildren; ++octant)
     {
         labelBits index = nod.subNodes_[octant];
 
@@ -1828,29 +1763,37 @@ void Foam::indexedOctree<Type>::findSphere
 
             if (subBb.overlaps(centre, radiusSqr))
             {
-                findSphere(getNode(index), centre, radiusSqr, elements);
+                if (findSphere(getNode(index), centre, radiusSqr, elements))
+                {
+                    // Early exit if not storing results
+                    if (!elements) return true;
+
+                    foundAny = true;
+                }
             }
         }
         else if (isContent(index))
         {
-            const treeBoundBox subBb(nodeBb.subBbox(octant));
-
-            if (subBb.overlaps(centre, radiusSqr))
+            if (nodeBb.subOverlaps(octant, centre, radiusSqr))
             {
                 const labelList& indices = contents_[getContent(index)];
 
-                forAll(indices, i)
+                for (const label index : indices)
                 {
-                    label shapeI = indices[i];
-
-                    if (shapes_.overlaps(shapeI, centre, radiusSqr))
+                    if (shapes_.overlaps(index, centre, radiusSqr))
                     {
-                        elements.insert(shapeI);
+                        // Early exit if not storing results
+                        if (!elements) return true;
+
+                        foundAny = true;
+                        elements->insert(index);
                     }
                 }
             }
         }
     }
+
+    return foundAny;
 }
 
 
@@ -1886,7 +1829,7 @@ void Foam::indexedOctree<Type>::findNear
             {
                 const node& nod2 = tree2.nodes()[tree2.getNode(index2)];
 
-                for (direction i2 = 0; i2 < nod2.subNodes_.size(); i2++)
+                for (direction i2 = 0; i2 < node::nChildren; ++i2)
                 {
                     labelBits subIndex2 = nod2.subNodes_[i2];
                     const treeBoundBox subBb2
@@ -1914,7 +1857,7 @@ void Foam::indexedOctree<Type>::findNear
         else if (tree2.isContent(index2))
         {
             // index2 is leaf, index1 not yet.
-            for (direction i1 = 0; i1 < nod1.subNodes_.size(); i1++)
+            for (direction i1 = 0; i1 < node::nChildren; ++i1)
             {
                 labelBits subIndex1 = nod1.subNodes_[i1];
                 const treeBoundBox subBb1
@@ -1954,7 +1897,7 @@ void Foam::indexedOctree<Type>::findNear
 
             if (bb2.overlaps(searchBox))
             {
-                for (direction i2 = 0; i2 < nod2.subNodes_.size(); i2++)
+                for (direction i2 = 0; i2 < node::nChildren; ++i2)
                 {
                     labelBits subIndex2 = nod2.subNodes_[i2];
                     const treeBoundBox subBb2
@@ -2029,6 +1972,31 @@ void Foam::indexedOctree<Type>::findNear
 
 
 template<class Type>
+Foam::label Foam::indexedOctree<Type>::countLeafs(const label nodeI) const
+{
+    label total = 0;
+
+    const node& nod = nodes_[nodeI];
+
+    for (direction octant = 0; octant < node::nChildren; ++octant)
+    {
+        labelBits index = nod.subNodes_[octant];
+
+        if (isNode(index))
+        {
+            total += countLeafs(getNode(index));
+        }
+        else if (isContent(index))
+        {
+            ++total;
+        }
+    }
+
+    return total;
+}
+
+
+template<class Type>
 Foam::label Foam::indexedOctree<Type>::countElements
 (
     const labelBits index
@@ -2043,7 +2011,7 @@ Foam::label Foam::indexedOctree<Type>::countElements
 
         const node& nod = nodes_[nodeI];
 
-        for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+        for (direction octant = 0; octant < node::nChildren; ++octant)
         {
             nElems += countElements(nod.subNodes_[octant]);
         }
@@ -2065,14 +2033,46 @@ template<class Type>
 void Foam::indexedOctree<Type>::writeOBJ
 (
     const label nodeI,
+    Ostream& os,
+    label& vertIndex,
+    const bool leavesOnly,
+    const bool writeLinesOnly
+) const
+{
+    const node& nod = nodes_[nodeI];
+    const treeBoundBox& bb = nod.bb_;
+
+    for (direction octant = 0; octant < node::nChildren; ++octant)
+    {
+        const treeBoundBox subBb(bb.subBbox(octant));
+
+        labelBits index = nod.subNodes_[octant];
+
+        if (isNode(index))
+        {
+            label subNodeI = getNode(index);
+
+            writeOBJ(subNodeI, os, vertIndex, leavesOnly, writeLinesOnly);
+        }
+        else if (isContent(index))
+        {
+            indexedOctreeBase::writeOBJ(os, subBb, vertIndex, writeLinesOnly);
+        }
+        else if (isEmpty(index) && !leavesOnly)
+        {
+            indexedOctreeBase::writeOBJ(os, subBb, vertIndex, writeLinesOnly);
+        }
+    }
+}
+
+
+template<class Type>
+void Foam::indexedOctree<Type>::writeOBJ
+(
+    const label nodeI,
     const direction octant
 ) const
 {
-    OFstream str
-    (
-        "node" + Foam::name(nodeI) + "_octant" + Foam::name(octant) + ".obj"
-    );
-
     labelBits index = nodes_[nodeI].subNodes_[octant];
 
     treeBoundBox subBb;
@@ -2086,24 +2086,28 @@ void Foam::indexedOctree<Type>::writeOBJ
         subBb = nodes_[nodeI].bb_.subBbox(octant);
     }
 
+    OFstream os
+    (
+        "node" + Foam::name(nodeI) + "_octant" + Foam::name(octant) + ".obj"
+    );
+
     Pout<< "dumpContentNode : writing node:" << nodeI << " octant:" << octant
-        << " to " << str.name() << endl;
+        << " to " << os.name() << endl;
 
-    // Dump bounding box
-    pointField bbPoints(subBb.points());
+    bool writeLinesOnly(false);
+    label vertIndex(0);
+    indexedOctreeBase::writeOBJ(os, subBb, vertIndex, writeLinesOnly);
+}
 
-    forAll(bbPoints, i)
+
+template<class Type>
+void Foam::indexedOctree<Type>::writeOBJ(Ostream& os) const
+{
+    if (!nodes_.empty())
     {
-        const point& pt = bbPoints[i];
-
-        str<< "v " << pt.x() << ' ' << pt.y() << ' ' << pt.z() << endl;
-    }
-
-    forAll(treeBoundBox::edges, i)
-    {
-        const edge& e = treeBoundBox::edges[i];
-
-        str<< "l " << e[0] + 1 << ' ' << e[1] + 1 << nl;
+        label vertIndex(0);
+        // leavesOnly=true, writeLinesOnly=false
+        writeOBJ(0, os, vertIndex, true, false);
     }
 }
 
@@ -2114,9 +2118,9 @@ template<class Type>
 Foam::indexedOctree<Type>::indexedOctree(const Type& shapes)
 :
     shapes_(shapes),
-    nodes_(0),
-    contents_(0),
-    nodeTypes_(0)
+    nodes_(),
+    contents_(),
+    nodeTypes_()
 {}
 
 
@@ -2125,13 +2129,13 @@ Foam::indexedOctree<Type>::indexedOctree
 (
     const Type& shapes,
     const List<node>& nodes,
-    const labelListList& contents
+    const List<labelList>& contents
 )
 :
     shapes_(shapes),
     nodes_(nodes),
     contents_(contents),
-    nodeTypes_(0)
+    nodeTypes_()
 {}
 
 
@@ -2146,18 +2150,18 @@ Foam::indexedOctree<Type>::indexedOctree
 )
 :
     shapes_(shapes),
-    nodes_(0),
-    contents_(0),
-    nodeTypes_(0)
+    nodes_(),
+    contents_(),
+    nodeTypes_()
 {
-    int oldMemSize = 0;
+    int64_t oldMemSize = 0;
     if (debug)
     {
-        Pout<< "indexedOctree<Type>::indexedOctree:" << nl
+        Pout<< "indexedOctree::indexedOctree:" << nl
             << "    shapes:" << shapes.size() << nl
             << "    bb:" << bb << nl
             << endl;
-        oldMemSize = memInfo().size();
+        oldMemSize = Foam::memInfo{}.size();
     }
 
     if (shapes.size() == 0)
@@ -2168,11 +2172,11 @@ Foam::indexedOctree<Type>::indexedOctree
     // Start off with one node with all shapes in it.
     DynamicList<node> nodes(label(shapes.size() / maxLeafRatio));
     DynamicList<labelList> contents(label(shapes.size() / maxLeafRatio));
-    contents.append(identityMap(shapes.size()));
+    contents.push_back(identity(shapes.size()));
 
     // Create topnode.
     node topNode(divide(bb, contents, 0));
-    nodes.append(topNode);
+    nodes.push_back(topNode);
 
 
     // Now have all contents at level 1. Create levels by splitting levels
@@ -2184,26 +2188,34 @@ Foam::indexedOctree<Type>::indexedOctree
     {
         // Count number of references into shapes (i.e. contents)
         label nEntries = 0;
-        forAll(contents, i)
+        label minEntries = shapes.size();
+        label maxEntries = 0;
+        for (const auto& subContents : contents)
         {
-            nEntries += contents[i].size();
+            const label num = subContents.size();
+
+            nEntries += num;
+            minEntries = min(minEntries, num);
+            maxEntries = max(maxEntries, num);
         }
 
         if (debug)
         {
-            Pout<< "indexedOctree<Type>::indexedOctree:" << nl
+            Pout<< "indexedOctree::indexedOctree:" << nl
                 << "    nLevels:" << nLevels << nl
-                << "    nEntries per treeLeaf:" << nEntries/contents.size()
-                << nl
-                << "    nEntries per shape (duplicity):"
-                << nEntries/shapes.size()
-                << nl
+                << "    nEntries:" << nEntries << nl
+                << "    - min per leaf: " << minEntries << nl
+                << "    - max per leaf: " << maxEntries << nl
+                << "    - avg per leaf: "
+                << scalar(nEntries)/contents.size() << nl
+                << "    - per shape (duplicity): "
+                << scalar(nEntries)/shapes_.size() << nl
                 << endl;
         }
 
         if
         (
-            // nEntries < maxLeafRatio*contents.size()
+            //nEntries < maxLeafRatio*contents.size()
          // ||
             nEntries > maxDuplicity*shapes.size()
         )
@@ -2273,15 +2285,20 @@ Foam::indexedOctree<Type>::indexedOctree
     if (debug)
     {
         label nEntries = 0;
-        forAll(contents_, i)
+        label minEntries = shapes.size();
+        label maxEntries = 0;
+        for (const auto& subContents : contents_)
         {
-            nEntries += contents_[i].size();
+            const label num = subContents.size();
+
+            nEntries += num;
+            minEntries = min(minEntries, num);
+            maxEntries = max(maxEntries, num);
         }
 
-        label memSize = memInfo().size();
+        int64_t memSize = Foam::memInfo{}.size();
 
-
-        Pout<< "indexedOctree<Type>::indexedOctree"
+        Pout<< "indexedOctree::indexedOctree"
             << " : finished construction of tree of:" << shapes.typeName
             << nl
             << "    bb:" << this->bb() << nl
@@ -2289,11 +2306,13 @@ Foam::indexedOctree<Type>::indexedOctree
             << "    nLevels:" << nLevels << nl
             << "    treeNodes:" << nodes_.size() << nl
             << "    nEntries:" << nEntries << nl
-            << "        per treeLeaf:"
+            << "    - min per leaf:" << minEntries << nl
+            << "    - max per leaf:" << maxEntries << nl
+            << "    - avg per leaf:"
             << scalar(nEntries)/contents.size() << nl
-            << "        per shape (duplicity):"
+            << "    - per shape (duplicity):"
             << scalar(nEntries)/shapes.size() << nl
-            << "    total memory:" << memSize-oldMemSize
+            << "    total memory:" << memSize-oldMemSize << nl
             << endl;
     }
 }
@@ -2309,18 +2328,11 @@ Foam::indexedOctree<Type>::indexedOctree
     shapes_(shapes),
     nodes_(is),
     contents_(is),
-    nodeTypes_(0)
+    nodeTypes_()
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::scalar& Foam::indexedOctree<Type>::perturbTol()
-{
-    return perturbTol_;
-}
-
 
 template<class Type>
 Foam::pointIndexHit Foam::indexedOctree<Type>::findNearest
@@ -2484,21 +2496,94 @@ Foam::pointIndexHit Foam::indexedOctree<Type>::findLineAny
 
 
 template<class Type>
+bool Foam::indexedOctree<Type>::overlaps
+(
+    const treeBoundBox& searchBox
+) const
+{
+    // start node=0, do not store
+    return !nodes_.empty() && findBox(0, searchBox, nullptr);
+}
+
+
+template<class Type>
+Foam::label Foam::indexedOctree<Type>::findBox
+(
+    const treeBoundBox& searchBox,
+    labelHashSet& elements
+) const
+{
+    elements.clear();
+
+    if (!nodes_.empty())
+    {
+        // Some arbitrary minimal size estimate (eg, 1/100 are found)
+        label estimatedCount(max(128, (shapes_.size() / 100)));
+        elements.reserve(estimatedCount);
+
+        // start node=0, store results
+        findBox(0, searchBox, &elements);
+    }
+
+    return elements.size();
+}
+
+
+template<class Type>
 Foam::labelList Foam::indexedOctree<Type>::findBox
 (
     const treeBoundBox& searchBox
 ) const
 {
-    // Storage for labels of shapes inside bb. Size estimate.
-    labelHashSet elements(shapes_.size() / 100);
-
-    if (nodes_.size())
+    if (nodes_.empty())
     {
-        findBox(0, searchBox, elements);
+        return labelList();
     }
 
+    labelHashSet elements(0);
+
+    findBox(searchBox, elements);
+
+    //TBD: return sorted ? elements.sortedToc() : elements.toc();
     return elements.toc();
 }
+
+
+template<class Type>
+bool Foam::indexedOctree<Type>::overlaps
+(
+    const point& centre,
+    const scalar radiusSqr
+) const
+{
+    // start node=0, do not store
+    return !nodes_.empty() && findSphere(0, centre, radiusSqr, nullptr);
+}
+
+
+template<class Type>
+Foam::label Foam::indexedOctree<Type>::findSphere
+(
+    const point& centre,
+    const scalar radiusSqr,
+    labelHashSet& elements
+) const
+{
+    elements.clear();
+
+    if (!nodes_.empty())
+    {
+        // Some arbitrary minimal size estimate (eg, 1/100 are found)
+        label estimatedCount(max(128, (shapes_.size() / 100)));
+        elements.reserve(estimatedCount);
+
+        // start node=0, store results
+        findSphere(0, centre, radiusSqr, &elements);
+    }
+
+    return elements.size();
+}
+
 
 
 template<class Type>
@@ -2508,14 +2593,16 @@ Foam::labelList Foam::indexedOctree<Type>::findSphere
     const scalar radiusSqr
 ) const
 {
-    // Storage for labels of shapes inside bb. Size estimate.
-    labelHashSet elements(shapes_.size() / 100);
-
-    if (nodes_.size())
+    if (nodes_.empty())
     {
-        findSphere(0, centre, radiusSqr, elements);
+        return labelList();
     }
 
+    labelHashSet elements(0);
+
+    findSphere(centre, radiusSqr, elements);
+
+    //TBD: return sorted ? elements.sortedToc() : elements.toc();
     return elements.toc();
 }
 
@@ -2534,16 +2621,6 @@ Foam::labelBits Foam::indexedOctree<Type>::findNode
     }
 
     const node& nod = nodes_[nodeI];
-
-    if (debug)
-    {
-        if (!nod.bb_.contains(sample))
-        {
-            FatalErrorInFunction
-                << "Cannot find " << sample << " in node " << nodeI
-                << abort(FatalError);
-        }
-    }
 
     direction octant = nod.bb_.subOctant(sample);
 
@@ -2568,12 +2645,7 @@ Foam::labelBits Foam::indexedOctree<Type>::findNode
 
 
 template<class Type>
-template<class ... Args>
-Foam::label Foam::indexedOctree<Type>::findInside
-(
-    const point& sample,
-    const Args& ... args
-) const
+Foam::label Foam::indexedOctree<Type>::findInside(const point& sample) const
 {
     if (nodes_.empty())
     {
@@ -2595,7 +2667,7 @@ Foam::label Foam::indexedOctree<Type>::findInside
         {
             label shapeI = indices[elemI];
 
-            if (shapes_.contains(shapeI, sample, args ...))
+            if (shapes_.contains(shapeI, sample))
             {
                 return shapeI;
             }
@@ -2614,7 +2686,7 @@ const Foam::labelList& Foam::indexedOctree<Type>::findIndices
 {
     if (nodes_.empty())
     {
-        return emptyList<label>();
+        return labelList::null();
     }
 
     labelBits index = findNode(0, sample);
@@ -2628,10 +2700,8 @@ const Foam::labelList& Foam::indexedOctree<Type>::findIndices
     {
         return contents_[getContent(contentIndex)];
     }
-    else
-    {
-        return emptyList<label>();
-    }
+
+    return labelList::null();
 }
 
 
@@ -2643,7 +2713,7 @@ Foam::volumeType Foam::indexedOctree<Type>::getVolumeType
 {
     if (nodes_.empty())
     {
-        return volumeType::unknown;
+        return volumeType::UNKNOWN;
     }
 
     if (nodeTypes_.size() != 8*nodes_.size())
@@ -2651,36 +2721,36 @@ Foam::volumeType Foam::indexedOctree<Type>::getVolumeType
         // Calculate type for every octant of node.
 
         nodeTypes_.setSize(8*nodes_.size());
-        nodeTypes_ = volumeType::unknown;
+        nodeTypes_ = volumeType::UNKNOWN;
 
         calcVolumeType(0);
 
         if (debug)
         {
-            label nUnknown = 0;
-            label nMixed = 0;
-            label nInside = 0;
-            label nOutside = 0;
+            label nUNKNOWN = 0;
+            label nMIXED = 0;
+            label nINSIDE = 0;
+            label nOUTSIDE = 0;
 
             forAll(nodeTypes_, i)
             {
                 volumeType type = volumeType::type(nodeTypes_.get(i));
 
-                if (type == volumeType::unknown)
+                if (type == volumeType::UNKNOWN)
                 {
-                    nUnknown++;
+                    nUNKNOWN++;
                 }
-                else if (type == volumeType::mixed)
+                else if (type == volumeType::MIXED)
                 {
-                    nMixed++;
+                    nMIXED++;
                 }
-                else if (type == volumeType::inside)
+                else if (type == volumeType::INSIDE)
                 {
-                    nInside++;
+                    nINSIDE++;
                 }
-                else if (type == volumeType::outside)
+                else if (type == volumeType::OUTSIDE)
                 {
-                    nOutside++;
+                    nOUTSIDE++;
                 }
                 else
                 {
@@ -2688,14 +2758,14 @@ Foam::volumeType Foam::indexedOctree<Type>::getVolumeType
                 }
             }
 
-            Pout<< "indexedOctree<Type>::getVolumeType : "
+            Pout<< "indexedOctree::getVolumeType : "
                 << " bb:" << bb()
                 << " nodes_:" << nodes_.size()
                 << " nodeTypes_:" << nodeTypes_.size()
-                << " nUnknown:" << nUnknown
-                << " nMixed:" << nMixed
-                << " nInside:" << nInside
-                << " nOutside:" << nOutside
+                << " nUNKNOWN:" << nUNKNOWN
+                << " nMIXED:" << nMIXED
+                << " nINSIDE:" << nINSIDE
+                << " nOUTSIDE:" << nOUTSIDE
                 << endl;
         }
     }
@@ -2713,18 +2783,21 @@ void Foam::indexedOctree<Type>::findNear
     CompareOp& cop
 ) const
 {
-    findNear
-    (
-        nearDist,
-        true,
-        *this,
-        nodePlusOctant(0, 0),
-        bb(),
-        tree2,
-        nodePlusOctant(0, 0),
-        tree2.bb(),
-        cop
-    );
+    if (!nodes_.empty())
+    {
+        findNear
+        (
+            nearDist,
+            true,
+            *this,
+            nodePlusOctant(0, 0),
+            bb(),
+            tree2,
+            nodePlusOctant(0, 0),
+            tree2.bb(),
+            cop
+        );
+    }
 }
 
 
@@ -2736,6 +2809,11 @@ void Foam::indexedOctree<Type>::print
     const label nodeI
 ) const
 {
+    if (nodes_.empty())
+    {
+        return;
+    }
+
     const node& nod = nodes_[nodeI];
     const treeBoundBox& bb = nod.bb_;
 
@@ -2743,7 +2821,7 @@ void Foam::indexedOctree<Type>::print
         << "parent:" << nod.parent_ << nl
         << "n:" << countElements(nodePlusOctant(nodeI, 0)) << nl;
 
-    for (direction octant = 0; octant < nod.subNodes_.size(); octant++)
+    for (direction octant = 0; octant < node::nChildren; ++octant)
     {
         const treeBoundBox subBb(bb.subBbox(octant));
 
@@ -2798,6 +2876,19 @@ void Foam::indexedOctree<Type>::print
             os  << "octant:" << octant << " empty:" << subBb << endl;
         }
     }
+}
+
+
+template<class Type>
+Foam::label Foam::indexedOctree<Type>::nLeafs() const
+{
+    if (nodes_.size() < 2)
+    {
+        // If 0 or 1 nodes, treat directly as content nodes
+        return nodes_.size();
+    }
+
+    return countLeafs(0);
 }
 
 

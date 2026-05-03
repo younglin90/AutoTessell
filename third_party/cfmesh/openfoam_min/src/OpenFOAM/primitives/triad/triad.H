@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,8 @@ Class
     Foam::triad
 
 Description
-    Representation of a 3D Cartesian coordinate system as a Vector of vectors.
+    Representation of a 3D Cartesian coordinate system as a Vector of
+    row vectors.
 
 See also
     Foam::quaternion
@@ -36,8 +40,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef triad_H
-#define triad_H
+#ifndef Foam_triad_H
+#define Foam_triad_H
 
 #include "vector.H"
 #include "tensor.H"
@@ -48,47 +52,41 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
+// Forward Declarations
 class triad;
-Istream& operator>>(Istream&, triad&);
-Ostream& operator<<(Ostream&, const triad&);
-
 class quaternion;
+inline Istream& operator>>(Istream&, triad&);
+inline Ostream& operator<<(Ostream&, const triad&);
 
 /*---------------------------------------------------------------------------*\
-                            Class triad Declaration
+                           Class triad Declaration
 \*---------------------------------------------------------------------------*/
 
 class triad
 :
     public Vector<vector>
 {
-
 public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct as 'unset'
         inline triad();
 
         //- Construct from components
         inline triad(const Vector<vector>& vv);
 
-        //- Construct from coordinate axes
+        //- Construct from coordinate axes (row vectors)
         inline triad(const vector& x, const vector& y, const vector& z);
+
+        //- Construct from a tensor
+        inline triad(const tensor& t);
 
         //- Construct from a primary axis with the other two unset
         inline triad(const vector& pa);
 
         //- Construct from a quaternion
         triad(const quaternion& q);
-
-        //- Construct from a tensor
-        triad(const tensor& t);
 
         //- Construct from Istream
         inline triad(Istream&);
@@ -114,10 +112,11 @@ public:
         //- Return the vector orthogonal to the two provided
         static inline vector orthogonal(const vector& v1, const vector& v2);
 
-        //- Orthogonalise this triad so that it is ortho-normal
+        //- Inplace orthogonalise so that it is ortho-normal
         void orthogonalise();
 
         //- Normalise each set axis vector to have a unit magnitude
+        //  Uses vector::normalise with handling of small magnitudes.
         void normalise();
 
         //- Align this triad with the given vector v
@@ -130,12 +129,27 @@ public:
         //- Convert to a quaternion
         operator quaternion() const;
 
+        //- Return transpose
+        inline triad T() const;
+
+
+    // Column-vector access.
+
+        //- Extract vector for column 0
+        inline vector cx() const;
+
+        //- Extract vector for column 1
+        inline vector cy() const;
+
+        //- Extract vector for column 2
+        inline vector cz() const;
+
 
     // Member Operators
 
-        inline void operator=(const Vector<vector>&);
+        inline void operator=(const Vector<vector>& vv);
 
-        void operator=(const tensor& t);
+        inline void operator=(const tensor& t);
 
         //- Add the triad t2 to this triad
         //  without normalising or orthogonalising
@@ -144,19 +158,33 @@ public:
 
     // IOstream Operators
 
-        inline friend Istream& operator>>(Istream&, triad&);
-        inline friend Ostream& operator<<(Ostream&, const triad&);
+        friend Istream& operator>>(Istream&, triad&);
+        friend Ostream& operator<<(Ostream&, const triad&);
+
+
+    // Housekeeping
+
+        //- Same as orthogonalise
+        void orthogonalize() { this->orthogonalise(); }
+
+        //- Same as normalise
+        void normalize() { this->normalise(); }
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for triad
+template<> struct is_contiguous<triad> : std::true_type {};
+
+//- Contiguous 'scalar' data for triad
+template<> struct is_contiguous_scalar<triad> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
 //- Return a quantity of the difference between two triads
 scalar diff(const triad& A, const triad& B);
-
-//- Data associated with quaternion type are contiguous
-template<>
-inline bool contiguous<triad>() {return true;}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

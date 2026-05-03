@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,12 +40,10 @@ scalar meanCoNum = 0.0;
         fvc::surfaceSum(mag(phi))().primitiveField()/rho.primitiveField()
     );
 
-    CoNum = 0.5*gMax(sumPhi/mesh.V().primitiveField())*runTime.deltaTValue();
+    CoNum = 0.5*gMax(sumPhi/mesh.V().field())*runTime.deltaTValue();
 
     meanCoNum =
-        0.5
-       *(gSum(sumPhi)/gSum(mesh.V().primitiveField()))
-       *runTime.deltaTValue();
+        0.5*(gSum(sumPhi)/gSum(mesh.V().field()))*runTime.deltaTValue();
 }
 
 Info<< "Courant Number mean: " << meanCoNum

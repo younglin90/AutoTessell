@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,7 +37,7 @@ Foam::LList<LListBase, T>::LList(const LList<LListBase, T>& lst)
 {
     for (const T& val : lst)
     {
-        this->append(val);
+        this->push_back(val);
     }
 }
 
@@ -44,7 +47,7 @@ Foam::LList<LListBase, T>::LList(LList<LListBase, T>&& lst)
 :
     LListBase()
 {
-    transfer(lst);
+    LListBase::transfer(lst);
 }
 
 
@@ -55,10 +58,12 @@ Foam::LList<LListBase, T>::LList(std::initializer_list<T> lst)
 {
     for (const T& val : lst)
     {
-        this->append(val);
+        this->push_back(val);
     }
 }
 
+
+// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
 Foam::LList<LListBase, T>::~LList()
@@ -70,14 +75,26 @@ Foam::LList<LListBase, T>::~LList()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-void Foam::LList<LListBase, T>::clear()
+void Foam::LList<LListBase, T>::pop_front(label n)
 {
-    label oldSize = this->size();
-    for (label i=0; i<oldSize; ++i)
+    if (n > this->size())
     {
-        this->removeHead();
+        n = this->size();
     }
 
+    while (n > 0)
+    {
+        link* p = static_cast<link*>(LListBase::removeHead());
+        delete p;
+        --n;
+    }
+}
+
+
+template<class LListBase, class T>
+void Foam::LList<LListBase, T>::clear()
+{
+    this->pop_front(this->size());
     LListBase::clear();
 }
 
@@ -99,7 +116,7 @@ void Foam::LList<LListBase, T>::operator=(const LList<LListBase, T>& lst)
 
     for (const T& val : lst)
     {
-        this->append(val);
+        this->push_back(val);
     }
 }
 
@@ -107,7 +124,9 @@ void Foam::LList<LListBase, T>::operator=(const LList<LListBase, T>& lst)
 template<class LListBase, class T>
 void Foam::LList<LListBase, T>::operator=(LList<LListBase, T>&& lst)
 {
-    transfer(lst);
+    this->clear();
+
+    LListBase::transfer(lst);
 }
 
 
@@ -118,13 +137,9 @@ void Foam::LList<LListBase, T>::operator=(std::initializer_list<T> lst)
 
     for (const T& val : lst)
     {
-        this->append(val);
+        this->push_back(val);
     }
 }
 
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-#include "LListIO.C"
 
 // ************************************************************************* //

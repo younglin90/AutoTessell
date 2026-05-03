@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2021-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,34 +40,7 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
-
-void Foam::mappedPolyPatch::calcGeometry(PstreamBuffers& pBufs)
-{
-    polyPatch::calcGeometry(pBufs);
-    mappedPatchBase::clearOut(false);
-}
-
-
-void Foam::mappedPolyPatch::movePoints
-(
-    PstreamBuffers& pBufs,
-    const pointField& p
-)
-{
-    polyPatch::movePoints(pBufs, p);
-    mappedPatchBase::clearOut(true);
-}
-
-
-void Foam::mappedPolyPatch::topoChange(PstreamBuffers& pBufs)
-{
-    polyPatch::topoChange(pBufs);
-    mappedPatchBase::clearOut(false);
-}
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * * * * * //
 
 Foam::mappedPolyPatch::mappedPolyPatch
 (
@@ -72,18 +48,66 @@ Foam::mappedPolyPatch::mappedPolyPatch
     const label size,
     const label start,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, size, start, index, bm),
+    polyPatch(name, size, start, index, bm, patchType),
     mappedPatchBase(static_cast<const polyPatch&>(*this))
 {
     //  mapped is not constraint type so add mapped group explicitly
-    if (findIndex(inGroups(), typeName) == -1)
-    {
-        inGroups().append(typeName);
-    }
+    addGroup(typeName);
 }
+
+
+Foam::mappedPolyPatch::mappedPolyPatch
+(
+    const word& name,
+    const label size,
+    const label start,
+    const label index,
+    const word& sampleRegion,
+    const mappedPatchBase::sampleMode mode,
+    const word& samplePatch,
+    const vectorField& offset,
+    const polyBoundaryMesh& bm
+)
+:
+    polyPatch(name, size, start, index, bm, typeName),
+    mappedPatchBase
+    (
+        static_cast<const polyPatch&>(*this),
+        sampleRegion,
+        mode,
+        samplePatch,
+        offset
+    )
+{}
+
+
+Foam::mappedPolyPatch::mappedPolyPatch
+(
+    const word& name,
+    const label size,
+    const label start,
+    const label index,
+    const word& sampleRegion,
+    const mappedPatchBase::sampleMode mode,
+    const word& samplePatch,
+    const vector& offset,
+    const polyBoundaryMesh& bm
+)
+:
+    polyPatch(name, size, start, index, bm, typeName),
+    mappedPatchBase
+    (
+        static_cast<const polyPatch&>(*this),
+        sampleRegion,
+        mode,
+        samplePatch,
+        offset
+    )
+{}
 
 
 Foam::mappedPolyPatch::mappedPolyPatch
@@ -91,17 +115,15 @@ Foam::mappedPolyPatch::mappedPolyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, dict, index, bm),
-    mappedPatchBase(*this, dict, transformType::specified)
+    polyPatch(name, dict, index, bm, patchType),
+    mappedPatchBase(*this, dict)
 {
     //  mapped is not constraint type so add mapped group explicitly
-    if (findIndex(inGroups(), typeName) == -1)
-    {
-        inGroups().append(typeName);
-    }
+    addGroup(typeName);
 }
 
 
@@ -130,6 +152,20 @@ Foam::mappedPolyPatch::mappedPolyPatch
 {}
 
 
+Foam::mappedPolyPatch::mappedPolyPatch
+(
+    const mappedPolyPatch& pp,
+    const polyBoundaryMesh& bm,
+    const label index,
+    const labelUList& mapAddressing,
+    const label newStart
+)
+:
+    polyPatch(pp, bm, index, mapAddressing, newStart),
+    mappedPatchBase(*this, pp, mapAddressing)
+{}
+
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::mappedPolyPatch::~mappedPolyPatch()
@@ -137,6 +173,56 @@ Foam::mappedPolyPatch::~mappedPolyPatch()
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+void Foam::mappedPolyPatch::initGeometry(PstreamBuffers& pBufs)
+{
+    polyPatch::initGeometry(pBufs);
+    mappedPatchBase::initGeometry(pBufs);
+}
+
+
+void Foam::mappedPolyPatch::calcGeometry(PstreamBuffers& pBufs)
+{
+    polyPatch::calcGeometry(pBufs);
+    mappedPatchBase::calcGeometry(pBufs);
+}
+
+
+void Foam::mappedPolyPatch::initMovePoints
+(
+    PstreamBuffers& pBufs,
+    const pointField& p
+)
+{
+    polyPatch::initMovePoints(pBufs, p);
+    mappedPatchBase::initMovePoints(pBufs, p);
+}
+
+
+void Foam::mappedPolyPatch::movePoints
+(
+    PstreamBuffers& pBufs,
+    const pointField& p
+)
+{
+    polyPatch::movePoints(pBufs, p);
+    mappedPatchBase::movePoints(pBufs, p);
+}
+
+
+void Foam::mappedPolyPatch::initUpdateMesh(PstreamBuffers& pBufs)
+{
+    polyPatch::initUpdateMesh(pBufs);
+    mappedPatchBase::initUpdateMesh(pBufs);
+}
+
+
+void Foam::mappedPolyPatch::updateMesh(PstreamBuffers& pBufs)
+{
+    polyPatch::updateMesh(pBufs);
+    mappedPatchBase::updateMesh(pBufs);
+}
+
 
 void Foam::mappedPolyPatch::write(Ostream& os) const
 {

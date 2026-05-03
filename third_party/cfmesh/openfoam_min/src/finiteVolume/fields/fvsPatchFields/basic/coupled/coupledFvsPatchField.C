@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "coupledFvsPatchField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::coupledFvsPatchField<Type>::coupledFvsPatchField
@@ -55,10 +58,11 @@ Foam::coupledFvsPatchField<Type>::coupledFvsPatchField
 (
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const dictionary& dict
+    const dictionary& dict,
+    IOobjectOption::readOption requireValue
 )
 :
-    fvsPatchField<Type>(p, iF, dict)
+    fvsPatchField<Type>(p, iF, dict, requireValue)
 {}
 
 
@@ -68,10 +72,20 @@ Foam::coupledFvsPatchField<Type>::coupledFvsPatchField
     const coupledFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     fvsPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::coupledFvsPatchField<Type>::coupledFvsPatchField
+(
+    const coupledFvsPatchField<Type>& ptf
+)
+:
+    fvsPatchField<Type>(ptf)
 {}
 
 
@@ -92,7 +106,7 @@ template<class Type>
 void Foam::coupledFvsPatchField<Type>::write(Ostream& os) const
 {
     fvsPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvsPatchField<Type>::writeValueEntry(os);
 }
 
 

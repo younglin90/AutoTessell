@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,8 +29,8 @@ License
 #include "OFstreamCollator.H"
 #include "OFstream.H"
 #include "decomposedBlockData.H"
+#include "dictionary.H"
 #include "masterUncollatedFileOperation.H"
-#include "OSspecific.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -42,33 +45,30 @@ namespace Foam
 bool Foam::OFstreamCollator::writeFile
 (
     const label comm,
-    const word& typeName,
+    const word& objectType,
     const fileName& fName,
     const string& masterData,
     const labelUList& recvSizes,
-    const PtrList<SubList<char>>& slaveData,    // optional slave data
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool append
+    const UPtrList<SubList<char>>& slaveData,    // optional slave data
+    IOstreamOption streamOpt,
+    IOstreamOption::atomicType atomic,
+    IOstreamOption::appendType append,
+    const dictionary& headerEntries
 )
 {
     if (debug)
     {
-        Pout<< "OFstreamCollator : Writing master " << masterData.size()
-            << " bytes to " << fName
-            << " using comm " << comm << endl;
-        if (slaveData.size())
+        Pout<< "OFstreamCollator : Writing master " << label(masterData.size())
+            << " bytes to " << fName << " using comm " << comm
+            << " and " << slaveData.size() << " sub-ranks" << endl;
+
+        forAll(slaveData, proci)
         {
-            Pout<< "OFstreamCollator :  Slave data" << endl;
-            forAll(slaveData, proci)
+            if (slaveData.set(proci))
             {
-                if (slaveData.set(proci))
-                {
-                    Pout<< "    " << proci
-                        << " size:" << slaveData[proci].size()
-                        << endl;
-                }
+                Pout<< "    " << proci
+                    << " size:" << slaveData[proci].size()
+                    << endl;
             }
         }
     }
@@ -77,34 +77,40 @@ bool Foam::OFstreamCollator::writeFile
     if (UPstream::master(comm))
     {
         Foam::mkDir(fName.path());
-        osPtr.reset
-        (
-            new OFstream
-            (
-                fName,
-                fmt,
-                ver,
-                cmp,
-                append
-            )
-        );
+        osPtr.reset(new OFstream(atomic, fName, streamOpt, append));
+        auto& os = *osPtr;
 
-        // We don't have IOobject so have to use static IOobject::writeHeader
-        if (!append)
+        if (append == IOstreamOption::NO_APPEND)
         {
-            OSstream& os = osPtr();
-            IOobject::writeHeader
+            // No IOobject so cannot use IOobject::writeHeader
+
+            // FoamFile
+            decomposedBlockData::writeHeader
             (
                 os,
-                ver,
-                fmt,
-                typeName,
-                "",
-                fName,
-                fName.name()
+                streamOpt,      // streamOpt for container
+                objectType,
+                "",             // note
+                "",             // location (leave empty instead inaccurate)
+                fName.name(),   // object name
+                headerEntries
             );
         }
     }
+
+    // Assuming threaded writing hides any slowness so we
+    // can use scheduled communication to send the data to
+    // the master processor in order. However can be unstable
+    // for some mpi so default is non-blocking.
+    const UPstream::commsTypes myCommsType
+    (
+        (
+            fileOperations::masterUncollatedFileOperation::
+                maxMasterFileBufferSize == 0
+        )
+      ? UPstream::commsTypes::scheduled
+      : UPstream::commsTypes::nonBlocking
+    );
 
 
     UList<char> slice
@@ -113,32 +119,22 @@ bool Foam::OFstreamCollator::writeFile
         label(masterData.size())
     );
 
-    // Assuming threaded writing hides any slowness so we
-    // can use scheduled communication to send the data to
-    // the master processor in order. However can be unstable
-    // for some mpi so default is non-blocking.
-
-    List<std::streamoff> start;
+    List<std::streamoff> blockOffset;
     decomposedBlockData::writeBlocks
     (
         comm,
         osPtr,
-        start,
+        blockOffset,
         slice,
         recvSizes,
         slaveData,
-        (
-            fileOperations::masterUncollatedFileOperation::
-                maxMasterFileBufferSize == 0
-          ? UPstream::commsTypes::scheduled
-          : UPstream::commsTypes::nonBlocking
-        ),
+        myCommsType,
         false       // do not reduce return state
     );
 
-    if (osPtr.valid() && !osPtr().good())
+    if (osPtr && !osPtr->good())
     {
-        FatalIOErrorInFunction(osPtr())
+        FatalIOErrorInFunction(*osPtr)
             << "Failed writing to " << fName << exit(FatalIOError);
     }
 
@@ -149,15 +145,12 @@ bool Foam::OFstreamCollator::writeFile
         if (UPstream::master(comm))
         {
             off_t sum = 0;
-            forAll(recvSizes, i)
+            for (const label recv : recvSizes)
             {
-                sum += recvSizes[i];
+                sum += recv;
             }
-            // Use ostringstream to display long int (until writing these is
-            // supported)
-            std::ostringstream os;
-            os << sum;
-            Pout<< " (overall " << os.str() << ")";
+            // Use std::to_string to display long int
+            Pout<< " (overall " << std::to_string(sum) << ')';
         }
         Pout<< " to " << fName
             << " using comm " << comm << endl;
@@ -194,7 +187,7 @@ void* Foam::OFstreamCollator::writeAll(void *threadarg)
             PtrList<SubList<char>> slaveData;
             if (ptr->slaveData_.size())
             {
-                slaveData.setSize(ptr->slaveData_.size());
+                slaveData.resize(ptr->slaveData_.size());
                 forAll(slaveData, proci)
                 {
                     if (ptr->slaveData_.set(proci))
@@ -215,26 +208,26 @@ void* Foam::OFstreamCollator::writeAll(void *threadarg)
             bool ok = writeFile
             (
                 ptr->comm_,
-                ptr->typeName_,
-                ptr->filePath_,
+                ptr->objectType_,
+                ptr->pathName_,
                 ptr->data_,
                 ptr->sizes_,
                 slaveData,
-                ptr->format_,
-                ptr->version_,
-                ptr->compression_,
-                ptr->append_
+                ptr->streamOpt_,
+                ptr->atomic_,
+                ptr->append_,
+                ptr->headerEntries_
             );
             if (!ok)
             {
-                FatalIOErrorInFunction(ptr->filePath_)
-                    << "Failed writing " << ptr->filePath_
+                FatalIOErrorInFunction(ptr->pathName_)
+                    << "Failed writing " << ptr->pathName_
                     << exit(FatalIOError);
             }
 
             delete ptr;
         }
-        // sleep(1);
+        //sleep(1);
     }
 
     if (debug)
@@ -260,7 +253,7 @@ void Foam::OFstreamCollator::waitForBufferSpace(const off_t wantedSize) const
 
         {
             std::lock_guard<std::mutex> guard(mutex_);
-            forAllConstIter(FIFOStack<writeData*>, objects_, iter)
+            forAllConstIters(objects_, iter)
             {
                 totalSize += iter()->size();
             }
@@ -302,7 +295,7 @@ Foam::OFstreamCollator::OFstreamCollator(const off_t maxBufferSize)
         UPstream::allocateCommunicator
         (
             localComm_,
-            identityMap(UPstream::nProcs(localComm_))
+            labelRange(UPstream::nProcs(localComm_))
         )
     )
 {}
@@ -322,7 +315,7 @@ Foam::OFstreamCollator::OFstreamCollator
         UPstream::allocateCommunicator
         (
             localComm_,
-            identityMap(UPstream::nProcs(localComm_))
+            labelRange(UPstream::nProcs(localComm_))
         )
     )
 {}
@@ -332,20 +325,17 @@ Foam::OFstreamCollator::OFstreamCollator
 
 Foam::OFstreamCollator::~OFstreamCollator()
 {
-    if (thread_.valid())
+    if (thread_)
     {
         if (debug)
         {
             Pout<< "~OFstreamCollator : Waiting for write thread" << endl;
         }
-        thread_().join();
-        thread_.clear();
+        thread_->join();
+        thread_.reset(nullptr);
     }
 
-    if (threadComm_ != -1)
-    {
-        UPstream::freeCommunicator(threadComm_);
-    }
+    UPstream::freeCommunicator(threadComm_);
 }
 
 
@@ -353,14 +343,14 @@ Foam::OFstreamCollator::~OFstreamCollator()
 
 bool Foam::OFstreamCollator::write
 (
-    const word& typeName,
+    const word& objectType,
     const fileName& fName,
     const string& data,
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool append,
-    const bool useThread
+    IOstreamOption streamOpt,
+    IOstreamOption::atomicType atomic,
+    IOstreamOption::appendType append,
+    const bool useThread,
+    const dictionary& headerEntries
 )
 {
     // Determine (on master) sizes to receive. Note: do NOT use thread
@@ -371,13 +361,15 @@ bool Foam::OFstreamCollator::write
     off_t totalSize = 0;
     label maxLocalSize = 0;
     {
-        for (label proci = 0; proci < recvSizes.size(); proci++)
+        if (UPstream::master(localComm_))
         {
-            totalSize += recvSizes[proci];
-            maxLocalSize = max(maxLocalSize, recvSizes[proci]);
+            for (const label recvSize : recvSizes)
+            {
+                totalSize += recvSize;
+                maxLocalSize = max(maxLocalSize, recvSize);
+            }
         }
-        Pstream::scatter(totalSize, Pstream::msgType(), localComm_);
-        Pstream::scatter(maxLocalSize, Pstream::msgType(), localComm_);
+        Pstream::broadcasts(localComm_, totalSize, maxLocalSize);
     }
 
     if (!useThread || maxBufferSize_ == 0 || maxLocalSize > maxBufferSize_)
@@ -392,15 +384,15 @@ bool Foam::OFstreamCollator::write
         return writeFile
         (
             localComm_,
-            typeName,
+            objectType,
             fName,
             data,
             recvSizes,
             dummySlaveData,
-            fmt,
-            ver,
-            cmp,
-            append
+            streamOpt,
+            atomic,
+            append,
+            headerEntries
         );
     }
     else if (totalSize <= maxBufferSize_)
@@ -428,7 +420,7 @@ bool Foam::OFstreamCollator::write
             new writeData
             (
                 threadComm_,        // Note: comm not actually used anymore
-                typeName,
+                objectType,
                 fName,
                 (
                     Pstream::master(localComm_)
@@ -436,10 +428,10 @@ bool Foam::OFstreamCollator::write
                   : string::null
                 ),
                 recvSizes,
-                fmt,
-                ver,
-                cmp,
-                append
+                streamOpt,
+                atomic,
+                append,
+                headerEntries
             )
         );
         writeData& fileAndData = fileAndDataPtr();
@@ -453,7 +445,7 @@ bool Foam::OFstreamCollator::write
         // Gather all data onto master. Is done in local communicator since
         // not in write thread. Note that we do not store in contiguous
         // buffer since that would limit to 2G chars.
-        label startOfRequests = Pstream::nRequests();
+        const label startOfRequests = UPstream::nRequests();
         if (Pstream::master(localComm_))
         {
             for (label proci = 1; proci < slaveData.size(); proci++)
@@ -463,8 +455,8 @@ bool Foam::OFstreamCollator::write
                 (
                     UPstream::commsTypes::nonBlocking,
                     proci,
-                    reinterpret_cast<char*>(slaveData[proci].begin()),
-                    slaveData[proci].byteSize(),
+                    slaveData[proci].data(),
+                    slaveData[proci].size_bytes(),
                     Pstream::msgType(),
                     localComm_
                 );
@@ -478,8 +470,8 @@ bool Foam::OFstreamCollator::write
                 (
                     UPstream::commsTypes::nonBlocking,
                     0,
-                    reinterpret_cast<const char*>(slice.begin()),
-                    slice.byteSize(),
+                    slice.cdata(),
+                    slice.size_bytes(),
                     Pstream::msgType(),
                     localComm_
                 )
@@ -488,11 +480,11 @@ bool Foam::OFstreamCollator::write
                 FatalErrorInFunction
                     << "Cannot send outgoing message. "
                     << "to:" << 0 << " nBytes:"
-                    << label(slice.byteSize())
+                    << label(slice.size_bytes())
                     << Foam::abort(FatalError);
             }
         }
-        Pstream::waitRequests(startOfRequests);
+        UPstream::waitRequests(startOfRequests);
 
         {
             std::lock_guard<std::mutex> guard(mutex_);
@@ -503,14 +495,14 @@ bool Foam::OFstreamCollator::write
             // Start thread if not running
             if (!threadRunning_)
             {
-                if (thread_.valid())
+                if (thread_)
                 {
                     if (debug)
                     {
                         Pout<< "OFstreamCollator : Waiting for write thread"
                             << endl;
                     }
-                    thread_().join();
+                    thread_->join();
                 }
 
                 if (debug)
@@ -558,27 +550,27 @@ bool Foam::OFstreamCollator::write
                 new writeData
                 (
                     threadComm_,
-                    typeName,
+                    objectType,
                     fName,
                     data,
                     recvSizes,
-                    fmt,
-                    ver,
-                    cmp,
-                    append
+                    streamOpt,
+                    atomic,
+                    append,
+                    headerEntries
                 )
             );
 
             if (!threadRunning_)
             {
-                if (thread_.valid())
+                if (thread_)
                 {
                     if (debug)
                     {
                         Pout<< "OFstreamCollator : Waiting for write thread"
                             << endl;
                     }
-                    thread_().join();
+                    thread_->join();
                 }
 
                 if (debug)

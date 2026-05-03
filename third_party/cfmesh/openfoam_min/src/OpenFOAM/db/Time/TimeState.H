@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef TimeState_H
-#define TimeState_H
+#ifndef Foam_TimeState_H
+#define Foam_TimeState_H
 
 #include "dimensionedScalar.H"
 
@@ -42,64 +45,110 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class Time;
-
-
 /*---------------------------------------------------------------------------*\
-                          Class TimeState Declaration
+                           Class TimeState Declaration
 \*---------------------------------------------------------------------------*/
 
 class TimeState
 :
     public dimensionedScalar
 {
-    // Private Data
+    // Private Member Functions
+
+        // //- Dimensions for 1/time
+        // inline static dimensionSet dimInvTime()
+        // {
+        //     return dimensionSet(0, 0, -1, 0, 0, 0, 0);
+        // }
+
+
+protected:
+
+    // Protected Data
 
         label timeIndex_;
-        scalar deltaT_;
-        scalar deltaTSave_;
-        scalar deltaT0_;
-        bool deltaTchanged_;
         label writeTimeIndex_;
+
+        scalar deltaT_;
+        scalar deltaT0_;
+        scalar deltaTSave_;
+
+        bool deltaTchanged_;
         bool writeTime_;
+
+
+    // Protected Member Functions
+
+        //- Reset some of TimeState (name, value, index)
+        void resetTimeState
+        (
+            const word& newName,
+            const scalar newValue,
+            const label newIndex
+        )
+        {
+            dimensionedScalar::name() = newName;
+            dimensionedScalar::value() = newValue;
+            timeIndex_ = newIndex;
+        }
 
 
 public:
 
-    //- Declare friendship with the Time class
-    friend class Time;
-
-
     // Constructors
 
+        //- Construct a zero time state, using the current time formatting
         TimeState();
+
+
+    //- Destructor
+    virtual ~TimeState() = default;
 
 
     // Member Functions
 
-        // Access
+    // Conversion
 
-            //- Return current time index
-            inline label timeIndex() const;
+        //- Convert the user-time (e.g. CA deg) to real-time (s).
+        virtual scalar userTimeToTime(const scalar theta) const;
 
-            //- Return time step value
-            inline scalar deltaTValue() const;
-
-            //- Return old time step value
-            inline scalar deltaT0Value() const;
-
-            //- Return time step
-            inline dimensionedScalar deltaT() const;
-
-            //- Return old time step
-            inline dimensionedScalar deltaT0() const;
+        //- Convert the real-time (s) into user-time (e.g. CA deg)
+        virtual scalar timeToUserTime(const scalar t) const;
 
 
-        // Check
+    // Access
 
-            //- Return true if this is a write time
-            inline bool writeTime() const;
+        //- Return the current user-time value.
+        //- (ie, after applying any timeToUserTime() conversion)
+        inline scalar timeOutputValue() const;
+
+        //- Return the current time name
+        inline const word& timeName() const noexcept;
+
+        //- Return the current time index
+        inline label timeIndex() const noexcept;
+
+        //- Return time step value
+        inline scalar deltaTValue() const noexcept;
+
+        //- Return old time step value
+        inline scalar deltaT0Value() const noexcept;
+
+        //- Return time step
+        inline dimensionedScalar deltaT() const;
+
+        //- Return old time step
+        inline dimensionedScalar deltaT0() const;
+
+        //- True if this is a write interval
+        inline bool writeTime() const noexcept;
+
+
+    // Housekeeping
+
+        //- Deprecated(2016-05) return true if this is a write time.
+        //  \deprecated(2016-05) - use writeTime() method
+        bool outputTime() const noexcept { return this->writeTime(); }
 };
 
 

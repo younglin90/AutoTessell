@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,53 +31,38 @@ Description
     System bool
 
 SourceFiles
-    boolIO.C
+    bool.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef bool_H
-#define bool_H
-
-#include "word.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-class Istream;
-class Ostream;
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-//- Return a word representation of a bool
-word name(const bool);
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Istream& operator>>(Istream&, bool&);
-Ostream& operator<<(Ostream&, const bool);
-
-bool readBool(Istream&);
-
-inline void writeEntry(Ostream& os, const bool value)
-{
-    os << value;
-}
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+#ifndef Foam_primitives_bool_H
+#define Foam_primitives_bool_H
 
 #include "pTraits.H"
 #include "direction.H"
 
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
 namespace Foam
 {
 
-// template specialisation for pTraits<bool>
+// IOstream Operators
+
+//- Read bool from stream using Foam::Switch(Istream&)
+Istream& operator>>(Istream& is, bool& b);
+
+//- Write bool to a stream as an label (integer) value
+Ostream& operator<<(Ostream& os, const bool b);
+
+//- Read bool from stream using Foam::Switch(Istream&)
+bool readBool(Istream& is);
+
+
+/*---------------------------------------------------------------------------*\
+                         Specialization pTraits<bool>
+\*---------------------------------------------------------------------------*/
+
+//- Template specialisation for pTraits\<bool\>
 template<>
 class pTraits<bool>
 {
@@ -82,20 +70,25 @@ class pTraits<bool>
 
 public:
 
-    //- Component type
-    typedef bool cmptType;
+    // Typedefs
+
+        //- Component type
+        typedef bool cmptType;
+
+        //- Magnitude type
+        typedef bool magType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Dimensionality of space
-        static const direction dim = 3;
+        static constexpr direction dim = 3;
 
         //- Rank of bool is 0
-        static const direction rank = 0;
+        static constexpr direction rank = 0;
 
         //- Number of components in bool is 1
-        static const direction nComponents = 1;
+        static constexpr direction nComponents = 1;
 
 
     // Static Data Members
@@ -108,26 +101,23 @@ public:
 
     // Constructors
 
-        //- Construct from primitive
-        explicit pTraits(const bool&);
+        //- Copy construct from primitive
+        explicit pTraits(bool val) noexcept
+        :
+            p_(val)
+        {}
 
-        //- Construct from Istream
-        pTraits(Istream&);
+        //- Read construct from Istream
+        explicit pTraits(Istream& is);
 
 
     // Member Functions
 
-        //- Access to the bool value
-        operator bool() const
-        {
-            return p_;
-        }
+        //- Return the value
+        operator bool() const noexcept { return p_; }
 
-        //- Access to the bool value
-        operator bool&()
-        {
-            return p_;
-        }
+        //- Access the value
+        operator bool&() noexcept { return p_; }
 };
 
 

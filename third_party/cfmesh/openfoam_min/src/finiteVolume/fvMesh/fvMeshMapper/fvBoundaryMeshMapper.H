@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +31,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvBoundaryMeshMapper_H
-#define fvBoundaryMeshMapper_H
+#ifndef Foam_fvBoundaryMeshMapper_H
+#define Foam_fvBoundaryMeshMapper_H
 
 #include "PtrList.H"
 #include "fvPatchMapper.H"
@@ -49,6 +51,21 @@ class fvBoundaryMeshMapper
     public PtrList<fvPatchMapper>
 {
 public:
+
+    // Public Types
+
+        //- The patch mapper type
+        typedef fvPatchMapper mapper_type;
+
+
+    // Generated Methods
+
+        //- No copy construct
+        fvBoundaryMeshMapper(const fvBoundaryMeshMapper&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvBoundaryMeshMapper&) = delete;
+
 
     // Constructors
 
@@ -76,15 +93,6 @@ public:
                 );
             }
         }
-
-        //- Disallow default bitwise copy construction
-        fvBoundaryMeshMapper(const fvBoundaryMeshMapper&) = delete;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvBoundaryMeshMapper&) = delete;
 };
 
 

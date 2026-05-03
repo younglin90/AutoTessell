@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,20 +28,19 @@ Class
     Foam::decompositionMethod
 
 Description
-    Abstract base class for decomposition
+    Abstract base class for domain decomposition
 
 SourceFiles
     decompositionMethod.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef decompositionMethod_H
-#define decompositionMethod_H
+#ifndef Foam_decompositionMethod_H
+#define Foam_decompositionMethod_H
 
 #include "polyMesh.H"
 #include "CompactListList.H"
 #include "decompositionConstraint.H"
-#include "IOdictionary.H"
 
 namespace Foam
 {
@@ -49,11 +51,43 @@ namespace Foam
 
 class decompositionMethod
 {
+    // Private Member Functions
+
+        //- Check (and warn) about existence of old constraint syntax.
+        //  The syntax changed MAY-2014.
+        //
+        //  \return true if this model name was found in the decompDict_
+        //      but not previously added with the newer syntax.
+        bool constraintCompat(const word& modelType) const;
+
+        //- Set PtrList of constraints by reading decompDict_.
+        void readConstraints();
+
+
 protected:
 
-    // Protected data
+        //- Selection type when handling the coefficients dictionary.
+        //  To be used as a bit-mask for findCoeffsDict
+        enum selectionType
+        {
+            DEFAULT = 0,   //!< Default request
+            EXACT   = 1,   //!< No fallback to "coeffs" if main name not found
+            MANDATORY = 2, //!< Fatal if dictionary could not be found
+            NULL_DICT = 4, //!< On failure, return dictionary::null instead
+                           //!< of the top-level enclosing dictionary.
+        };
 
-        label nProcessors_;
+
+    // Protected Data
+
+        //- Top-level decomposition dictionary (eg, decomposeParDict)
+        const dictionary& decompDict_;
+
+        //- Region-specific decomposition dictionary information
+        const dictionary& decompRegionDict_;
+
+        //- Number of domains for the decomposition
+        label nDomains_;
 
         //- Optional constraints
         PtrList<decompositionConstraint> constraints_;
@@ -61,23 +95,59 @@ protected:
 
     // Protected Member Functions
 
-        //- Return the number of weights per point
-        label nWeights
+        //- Locate coeffsName dictionary or the fallback "coeffs" dictionary
+        //- within an enclosing dictionary.
+        //
+        //  \param select choose to include "coeffs" in the search, make
+        //      failure a FatalError, return dictionary::null instead on
+        //      failure.
+        //
+        //  \return the coefficients dictionary found. If nothing was found,
+        //  return the enclosing dictionary or
+        //  dictionary::null (depending on the select parameter).
+        static const dictionary& findCoeffsDict
         (
-            const pointField& points,
-            const scalarField& pointWeights
+            const dictionary& dict,
+            const word& coeffsName,
+            int select = selectionType::DEFAULT
+        );
+
+
+        //- Locate coeffsName dictionary or the fallback "coeffs" dictionary.
+        //  Searches both the region-specific decomposition dictionary
+        //  and the top-level decomposition dictionary.
+        //
+        //  \param select choose to include "coeffs" in the search, make
+        //      failure a FatalError, return dictionary::null instead on
+        //      failure.
+        //
+        //  \return the coefficients dictionary found. If nothing was found,
+        //  return the top-level (non-region) dictionary or
+        //  dictionary::null (depending on the select parameter).
+        const dictionary& findCoeffsDict
+        (
+            const word& coeffsName,
+            int select = selectionType::DEFAULT
         ) const;
 
-        //- Check the weights against the points
-        //  and return the number of weights per point
-        label checkWeights
-        (
-            const pointField& points,
-            const scalarField& pointWeights
-        ) const;
+
+    // Constructors
+
+        //- Construct with specified number of domains,
+        //- no coefficients or constraints
+        explicit decompositionMethod(const label numDomains);
 
 
 public:
+
+    // Generated Methods
+
+        //- No copy construct
+        decompositionMethod(const decompositionMethod&) = delete;
+
+        //- No copy assignment
+        void operator=(const decompositionMethod&) = delete;
+
 
     //- Runtime type information
     TypeName("decompositionMethod");
@@ -89,257 +159,249 @@ public:
         (
             autoPtr,
             decompositionMethod,
-            decomposer,
+            dictionary,
             (
-                const dictionary& decompositionDict,
-                const dictionary& methodDict
+                const dictionary& decompDict,
+                const word& regionName
             ),
-            (decompositionDict, methodDict)
+            (decompDict, regionName)
         );
 
-        declareRunTimeSelectionTable
+
+    // Static Methods
+
+        //- Return region-specific or top-level \c numberOfSubdomains entry.
+        //  The region-specific version is found within the "regions"
+        //  sub-dictionary.
+        static label nDomains
         (
-            autoPtr,
-            decompositionMethod,
-            distributor,
-            (
-                const dictionary& decompositionDict,
-                const dictionary& methodDict
-            ),
-            (decompositionDict, methodDict)
+            const dictionary& decompDict,
+            const word& regionName = ""
+        );
+
+        //- Return an optional region-specific dictionary
+        //- from "regions" sub-dictionary, or dictionary::null on failure
+        static const dictionary& optionalRegionDict
+        (
+            const dictionary& decompDict,
+            const word& regionName
+        );
+
+
+    // Selectors
+
+        //- Return a reference to the selected decomposition method,
+        //- optionally region-specific
+        static autoPtr<decompositionMethod> New
+        (
+            const dictionary& decompDict,
+            const word& regionName = ""
         );
 
 
     // Constructors
 
-        //- Construct given the decomposition dictionary
-        decompositionMethod(const dictionary& decompositionDict);
-
-        //- Disallow default bitwise copy construction
-        decompositionMethod(const decompositionMethod&) = delete;
-
-
-    // Selectors
-
-        //- Return a reference to the selected decomposition method
-        static autoPtr<decompositionMethod> NewDecomposer
+        //- Construct given the decomposition dictionary,
+        //- optionally region-specific
+        explicit decompositionMethod
         (
-            const dictionary& decompositionDict
-        );
-
-        //- Return a reference to the selected decomposition method
-        static autoPtr<decompositionMethod> NewDistributor
-        (
-            const dictionary& decompositionDict
+            const dictionary& decompDict,
+            const word& regionName = ""
         );
 
 
     //- Destructor
-    virtual ~decompositionMethod()
-    {}
+    virtual ~decompositionMethod() = default;
 
 
     // Member Functions
 
-        label nDomains() const
+        //- Number of domains
+        label nDomains() const noexcept
         {
-            return nProcessors_;
+            return nDomains_;
         }
 
-        //- Read and return the decomposeParDict
-        static IOdictionary decomposeParDict(const Time& time);
+        //- True if the method is purely geometric,
+        //- often using cell centre points
+        virtual bool geometric() const { return false; }
+
+        //- Is method parallel aware?
+        //  (i.e. does it synchronize domains across proc boundaries)
+        virtual bool parallelAware() const = 0;
+
+        // //- Is internally method parallel aware
+        // virtual bool parallelNative() const  { return false; }
 
 
-        // No topology (implemented by geometric decomposers)
+    // No topology (implemented by geometric decomposers)
 
-            //- Return for every coordinate the wanted processor number.
-            virtual labelList decompose
-            (
-                const pointField& points,
-                const scalarField& pointWeights
-            )
-            {
-                NotImplemented;
-                return labelList(0);
-            }
-
-            //- Like decompose but with uniform weights on the points
-            virtual labelList decompose(const pointField&)
-            {
-                NotImplemented;
-                return labelList(0);
-            }
+        //- Return the wanted processor number for every coordinate,
+        //- using uniform or specified point weights.
+        virtual labelList decompose
+        (
+            const pointField& points,
+            const scalarField& pointWeights = scalarField::null()
+        ) const;
 
 
-        // Topology provided by mesh
+    // Topology provided by mesh
 
-            //- Return for every coordinate the wanted processor number. Use the
-            //  mesh connectivity (if needed)
-            virtual labelList decompose
-            (
-                const polyMesh& mesh,
-                const pointField& points,
-                const scalarField& pointWeights
-            ) = 0;
+        //- Return for every coordinate the wanted processor number,
+        //- using uniform or specified point weights.
+        //  Use the mesh connectivity (if needed)
+        virtual labelList decompose
+        (
+            const polyMesh& mesh,
+            const pointField& points,
+            const scalarField& pointWeights = scalarField::null()
+        ) const = 0;
 
-            //- Like decompose but with uniform weights on the points
-            virtual labelList decompose(const polyMesh&, const pointField&);
-
-            //- Return for every coordinate the wanted processor number. Gets
-            //  passed agglomeration map (from fine to coarse cells) and coarse
-            //  cell location. Can be overridden by decomposers that provide
-            //  this functionality natively. Coarse cells are local to the
-            //  processor (if in parallel). If you want to have coarse cells
-            //  spanning processors use the globalCellCells instead.
-            virtual labelList decompose
-            (
-                const polyMesh& mesh,
-                const labelList& cellToRegion,
-                const pointField& regionPoints,
-                const scalarField& regionWeights
-            );
-
-            //- Like decompose but with uniform weights on the regions
-            virtual labelList decompose
-            (
-                const polyMesh& mesh,
-                const labelList& cellToRegion,
-                const pointField& regionPoints
-            );
+        //- Return for every coordinate the wanted processor number.
+        //  Gets passed agglomeration map (from fine to coarse cells)
+        //  and coarse cell
+        //  location. Can be overridden by decomposers that provide this
+        //  functionality natively. Coarse cells are local to the processor
+        //  (if in parallel). If you want to have coarse cells spanning
+        //  processors use the globalCellCells instead.
+        virtual labelList decompose
+        (
+            const polyMesh& mesh,
+            const labelList& cellToRegion,
+            const pointField& regionPoints,
+            const scalarField& regionWeights = scalarField::null()
+        ) const;
 
 
-        // Topology provided explicitly addressing
+    // Topology provided explicitly
 
-            //- Return for every coordinate the wanted processor number.
-            //  The connectivity is equal to mesh.cellCells() except for
-            //  - in parallel the cell numbers are global cell numbers
-            //    (starting
-            //    from 0 at processor0 and then incrementing all through the
-            //    processors)
-            //  - the connections are across coupled patches
-            virtual labelList decompose
-            (
-                const labelListList& globalCellCells,
-                const pointField& cellCentres,
-                const scalarField& cellWeights
-            ) = 0;
+        //- Return for every coordinate the wanted processor number.
+        //  The connectivity is equal to mesh.cellCells() except for
+        //  - in parallel the cell numbers are global cell numbers
+        //    (starting
+        //    from 0 at processor0 and then incrementing all through the
+        //    processors)
+        //  - the connections are across coupled patches
+        virtual labelList decompose
+        (
+            const CompactListList<label>& globalCellCells,
+            const pointField& cc,
+            const scalarField& cWeights = scalarField::null()
+        ) const = 0;
 
-            //- Like decompose but with uniform weights on the cells
-            virtual labelList decompose
-            (
-                const labelListList& globalCellCells,
-                const pointField& cellCentres
-            );
-
-
-        // Other
-
-            //- Convert the given scalar weights to labels
-            //  in the range 0-labelMax/2
-            //  Removes 0 weights and updates nWeights accordingly
-            static labelList scaleWeights
-            (
-                const scalarField& weights,
-                label& nWeights,
-                const bool distributed = true
-            );
-
-            //- Helper: determine (local or global) cellCells from mesh
-            //  agglomeration. Agglomeration is local to the processor.
-            //  local  : connections are in local indices. Coupled across
-            //           cyclics but not processor patches.
-            //  global : connections are in global indices. Coupled across
-            //            cyclics and processor patches.
-            static void calcCellCells
-            (
-                const polyMesh& mesh,
-                const labelList& agglom,
-                const label nLocalCoarse,
-                const bool global,
-                CompactListList<label>& cellCells
-            );
-
-            //- Helper: determine (local or global) cellCells and face weights
-            //  from mesh agglomeration.
-            //  Uses mag of faceArea as weights
-            static void calcCellCells
-            (
-                const polyMesh& mesh,
-                const labelList& agglom,
-                const label nLocalCoarse,
-                const bool parallel,
-                CompactListList<label>& cellCells,
-                CompactListList<scalar>& cellCellWeights
-            );
-
-            //- Helper: extract constraints:
-            //  blockedface: existing faces where owner and neighbour on same
-            //               proc
-            //  explicitConnections: sets of boundary faces  ,,     ,,
-            //  specifiedProcessorFaces: groups of faces with all cells on
-            //  same processor.
-            void setConstraints
-            (
-                const polyMesh& mesh,
-                boolList& blockedFace,
-                PtrList<labelList>& specifiedProcessorFaces,
-                labelList& specifiedProcessor,
-                List<labelPair>& explicitConnections
-            );
-
-            //- Helper: apply constraints to a decomposition. This gives
-            //  constraints opportunity to modify decomposition in case
-            //  the native decomposition method has not obeyed all constraints
-            void applyConstraints
-            (
-                const polyMesh& mesh,
-                const boolList& blockedFace,
-                const PtrList<labelList>& specifiedProcessorFaces,
-                const labelList& specifiedProcessor,
-                const List<labelPair>& explicitConnections,
-                labelList& finalDecomp
-            );
-
-            //- Decompose a mesh with constraints
-            //  Constraints:
-            //  - blockedFace : whether owner and neighbour should be on same
-            //    processor
-            //  - specifiedProcessorFaces, specifiedProcessor : sets of faces
-            //    that should go to same processor (as specified in
-            //    specifiedProcessor, can be -1)
-            //  - explicitConnections : connections between baffle faces
-            //    (blockedFace should be false on these). Owner and
-            //    neighbour on same processor.
-            //  Set all to zero size to have unconstrained decomposition.
-            virtual labelList decompose
-            (
-                const polyMesh& mesh,
-                const scalarField& cellWeights,
-                const boolList& blockedFace,
-                const PtrList<labelList>& specifiedProcessorFaces,
-                const labelList& specifiedProcessor,
-                const List<labelPair>& explicitConnections
-            );
-
-            //- Decompose a mesh. Apply all constraints from decomposeParDict
-            //  ('preserveFaceZones' etc). Calls either
-            //  - no constraints, empty weights:
-            //      decompose(mesh, cellCentres())
-            //  - no constraints, set weights:
-            //      decompose(mesh, cellCentres(), cellWeights)
-            //  - valid constraints:
-            //      decompose(mesh, cellToRegion, regionPoints, regionWeights)
-            labelList decompose
-            (
-                const polyMesh& mesh,
-                const scalarField& cellWeights
-            );
+        //- Return for every coordinate the wanted processor number.
+        //  The connectivity is equal to mesh.cellCells() except for
+        //  - in parallel the cell numbers are global cell numbers
+        //    (starting
+        //    from 0 at processor0 and then incrementing all through the
+        //    processors)
+        //  - the connections are across coupled patches
+        virtual labelList decompose
+        (
+            const labelListList& globalCellCells,
+            const pointField& cc,
+            const scalarField& cWeights = scalarField::null()
+        ) const = 0;
 
 
-    // Member Operators
+    // Other
 
-        //- Disallow default bitwise assignment
-        void operator=(const decompositionMethod&) = delete;
+        //- Helper: extract constraints:
+        //  blockedface: existing faces where owner and neighbour on same
+        //               proc
+        //  explicitConnections: sets of boundary faces  ,,     ,,
+        //  specifiedProcessorFaces: groups of faces with all cells on
+        //  same processor.
+        void setConstraints
+        (
+            const polyMesh& mesh,
+            boolList& blockedFace,
+            PtrList<labelList>& specifiedProcessorFaces,
+            labelList& specifiedProcessor,
+            List<labelPair>& explicitConnections
+        ) const;
+
+        //- Helper: apply constraints to a decomposition.
+        //  This gives constraints opportunity to modify decomposition in case
+        //  the native decomposition method has not obeyed all constraints
+        void applyConstraints
+        (
+            const polyMesh& mesh,
+            const boolList& blockedFace,
+            const PtrList<labelList>& specifiedProcessorFaces,
+            const labelList& specifiedProcessor,
+            const List<labelPair>& explicitConnections,
+            labelList& finalDecomp
+        ) const;
+
+        // Decompose a mesh with constraints:
+        // - blockedFace : whether owner and neighbour should be on same
+        //   processor
+        // - specifiedProcessorFaces, specifiedProcessor : sets of faces
+        //   that should go to same processor (as specified in
+        //   specifiedProcessor, can be -1)
+        // - explicitConnections : connections between baffle faces
+        //   (blockedFace should be false on these). Owner and
+        //   neighbour on same processor.
+        // Set all to zero size to have unconstrained decomposition.
+        virtual labelList decompose
+        (
+            const polyMesh& mesh,
+            const scalarField& cellWeights,
+            const boolList& blockedFace,
+            const PtrList<labelList>& specifiedProcessorFaces,
+            const labelList& specifiedProcessor,
+            const List<labelPair>& explicitConnections
+        ) const;
+
+
+        //- Decompose a mesh.
+        //  Apply all constraints from decomposeParDict
+        //  ('preserveFaceZones' etc). Calls either
+        //  - no constraints, empty weights:
+        //      decompose(mesh, cellCentres())
+        //  - no constraints, set weights:
+        //      decompose(mesh, cellCentres(), cellWeights)
+        //  - valid constraints:
+        //      decompose(mesh, cellToRegion, regionPoints, regionWeights)
+        labelList decompose
+        (
+            const polyMesh& mesh,
+            const scalarField& cWeights
+        ) const;
+
+
+    // Housekeeping
+
+        //- Determine (local or global) cellCells from mesh agglomeration.
+        //  Agglomeration is local to the processor.
+        //  local  : connections are in local indices. Coupled across
+        //           cyclics but not processor patches.
+        //  global : connections are in global indices. Coupled across
+        //            cyclics and processor patches.
+        FOAM_DEPRECATED_STRICT(2023-11, "globalMeshData::calcCellCells()")
+        static void calcCellCells
+        (
+            const polyMesh& mesh,
+            const labelList& agglom,
+            const label nLocalCoarse,
+            const bool parallel,  //!< Use global cell ids in parallel
+            CompactListList<label>& cellCells
+        );
+
+        //- Determine (local or global) cellCells and face weights
+        //- from mesh agglomeration.
+        //  Uses mag of faceArea as weights
+        FOAM_DEPRECATED_STRICT(2023-11, "globalMeshData::calcCellCells()")
+        static void calcCellCells
+        (
+            const polyMesh& mesh,
+            const labelList& agglom,
+            const label nLocalCoarse,
+            const bool parallel,  //!< Use global cell ids in parallel
+            CompactListList<label>& cellCells,
+            CompactListList<scalar>& cellCellWeights
+        );
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,309 +31,194 @@ License
 
 // * * * * * * * * * * * * * Static Member Data  * * * * * * * * * * * * * * //
 
-const Foam::NamedEnum<Foam::timeControl::timeControls, 9>
-Foam::timeControl::timeControlNames_
-{
-    "timeStep",
-    "writeTime",
-    "outputTime",
-    "adjustableRunTime",
-    "runTime",
-    "runTimes",
-    "clockTime",
-    "cpuTime",
-    "none"
-};
-
-
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
-
-Foam::label Foam::timeControl::roundDown(const scalar t)
-{
-    return t < 0 ? label(t) - 1 : label(t);
-}
+const Foam::Enum
+<
+    Foam::timeControl::timeControls
+>
+Foam::timeControl::controlNames_
+({
+    { timeControl::ocNone, "none" },
+    { timeControl::ocAlways, "always" },
+    { timeControl::ocTimeStep, "timeStep" },
+    { timeControl::ocWriteTime, "writeTime" },
+    { timeControl::ocWriteTime, "outputTime" },
+    { timeControl::ocRunTime, "runTime" },
+    { timeControl::ocAdjustableRunTime, "adjustable" },
+    { timeControl::ocAdjustableRunTime, "adjustableRunTime" },
+    { timeControl::ocClockTime, "clockTime" },
+    { timeControl::ocCpuTime, "cpuTime" },
+    { timeControl::ocOnEnd, "onEnd" },
+});
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::timeControl::timeControl
 (
-    const Time& t,
+    const Time& runTime,
+    const word& prefix
+)
+:
+    time_(runTime),
+    prefix_(prefix),
+    timeControl_(ocAlways),
+    intInterval_(0),
+    interval_(0),
+    executionIndex_(0)
+{}
+
+
+Foam::timeControl::timeControl
+(
+    const Time& runTime,
     const dictionary& dict,
     const word& prefix
 )
 :
-    time_(t),
-    prefix_(prefix),
-    timeControl_(timeControls::timeStep),
-    startTime_(time_.beginTime().value()),
-    endTime_(vGreat),
-    beginTime_(time_.beginTime().value()),
-    intervalSteps_(0),
-    interval_(-1),
-    timeDelta_(0),
-    executionIndex_(0)
+    timeControl(runTime, prefix)
 {
     read(dict);
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-Foam::timeControl::~timeControl()
-{}
+bool Foam::timeControl::entriesPresent
+(
+    const dictionary& dict,
+    const word& prefix
+)
+{
+    const word controlName(prefix + "Control");
+
+    return dict.found(controlName);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+void Foam::timeControl::clear()
+{
+    timeControl_ = ocAlways;
+    intInterval_ = 0;
+    interval_ = 0;
+    executionIndex_ = 0;
+}
+
+
 void Foam::timeControl::read(const dictionary& dict)
 {
-    dict.readIfPresent("startTime", time().userUnits(), startTime_);
-    dict.readIfPresent("endTime", time().userUnits(), endTime_);
-    dict.readIfPresent("beginTime", time().userUnits(), beginTime_);
+    // Default is timeStep
+    timeControl_ = ocTimeStep;
+    intInterval_ = 0;
+    interval_ = 0;
 
     word controlName(prefix_ + "Control");
     word intervalName(prefix_ + "Interval");
 
-    // For backward compatibility support the deprecated 'outputControl' option
-    // now superseded by 'writeControl' for compatibility with Time
-    if (prefix_ == "write" && dict.found("outputControl"))
+    if (prefix_ == "write")
     {
-        IOWarningInFunction(dict)
-            << "Using deprecated 'outputControl'" << nl
-            << "    Please use 'writeControl' with 'writeInterval'"
-            << endl;
+        // TBD: Could have   timeControl_ = ocWriteTime;
 
-        // Change to the old names for this option
-        controlName = "outputControl";
-        intervalName = "outputInterval";
+        if (dict.found("outputControl"))
+        {
+            // Accept deprecated 'outputControl' instead of 'writeControl'
+
+            // Change to the old names for this option
+            controlName = "outputControl";
+            intervalName = "outputInterval";
+
+            IOWarningInFunction(dict)
+                << "Found deprecated 'outputControl'" << nl
+                << "    Use 'writeControl' with 'writeInterval'"
+                << endl;
+            error::warnAboutAge("keyword", 1606);
+        }
     }
 
-    if (dict.found(controlName))
-    {
-        timeControl_ = timeControlNames_.read(dict.lookup(controlName));
-    }
-    else
-    {
-        timeControl_ = timeControls::timeStep;
-    }
+
+    timeControl_ = controlNames_.getOrDefault(controlName, dict, timeControl_);
 
     switch (timeControl_)
     {
-        case timeControls::timeStep:
+        case ocTimeStep:
+        case ocWriteTime:
         {
-            intervalSteps_ = dict.lookupOrDefault<label>(intervalName, 0);
+            intInterval_ = dict.getOrDefault<label>(intervalName, 0);
+            interval_ = intInterval_;  // Mirrored as scalar (for output)
             break;
         }
 
-        case timeControls::writeTime:
-        case timeControls::outputTime:
+        case ocClockTime:
+        case ocRunTime:
+        case ocCpuTime:
+        case ocAdjustableRunTime:
         {
-            intervalSteps_ = dict.lookupOrDefault<label>(intervalName, 1);
-            break;
-        }
-
-        case timeControls::adjustableRunTime:
-        case timeControls::runTime:
-        {
-            interval_ = dict.lookup<scalar>(intervalName, time_.userUnits());
-            executionIndex_ =
-                roundDown
-                (
-                    (
-                        max(time_.value(), startTime_)
-                      - beginTime_
-                      - 0.5*time_.deltaTValue()
-                    )
-                   /interval_
-                );
-            break;
-        }
-
-        case timeControls::runTimes:
-        {
-            const word timesName(prefix_ + "Times");
-            const word frequenciesName(prefix_ + "Frequencies");
-            const bool repeat = dict.lookupOrDefault(prefix_ + "Repeat", false);
-
-            timeDelta_ =
-                dict.lookupOrDefault
-                (
-                    "timeDelta",
-                    units::none,
-                    scalar(1e-3*time_.userDeltaTValue())
-                );
-
-            if (dict.found(timesName))
-            {
-                times_ = dict.lookup<scalarList>(timesName, units::none);
-            }
-            else if (dict.found(frequenciesName))
-            {
-                List<Pair<scalar>> frequencies(dict.lookup(frequenciesName));
-
-                const scalar userEndTime =
-                    time_.timeToUserTime(time_.endTime().value());
-
-                if (!repeat)
-                {
-                    frequencies.append
-                    (
-                        {userEndTime, frequencies.last().second()}
-                    );
-                }
-
-                const scalar frequenciesDuration =
-                    frequencies.last().first() - frequencies.first().first();
-
-                DynamicList<scalar> times(1, frequencies[0].first());
-                label i = 0;
-                label repeati = 0;
-                while (times[i] < userEndTime)
-                {
-                    for(label pi=0; pi<frequencies.size()-1; pi++)
-                    {
-                        while
-                        (
-                            times[i]
-                          < frequencies[pi + 1].first()
-                          + repeati*frequenciesDuration - timeDelta_
-                        )
-                        {
-                            times(i + 1) = times[i] + frequencies[pi].second();
-                            i++;
-                        }
-                    }
-                    repeati++;
-                }
-
-                times_ = times;
-            }
-            else
-            {
-                FatalErrorInFunction
-                    << "Undefined " << timesName
-                    << " or " << frequenciesName << " for output control: "
-                    << timeControlNames_[timeControl_] << nl
-                    << exit(FatalError);
-            }
-
-            forAll(times_, i)
-            {
-                timeIndices_.insert
-                (
-                    int64_t((times_[i] + timeDelta_/2.0)/timeDelta_)
-                );
-            }
-
-            intervalSteps_ = dict.lookupOrDefault<label>(intervalName, 1);
-            break;
-        }
-
-        case timeControls::clockTime:
-        case timeControls::cpuTime:
-        {
-            interval_ = dict.lookup<scalar>(intervalName, time_.userUnits());
-            break;
-        }
-
-        case timeControls::none:
-        {
+            const scalar userTime = dict.get<scalar>(intervalName);
+            interval_ = time_.userTimeToTime(userTime);
             break;
         }
 
         default:
         {
-            FatalErrorInFunction
-                << "Undefined output control: "
-                << timeControlNames_[timeControl_] << nl
-                << exit(FatalError);
             break;
         }
     }
-}
-
-
-bool Foam::timeControl::active() const
-{
-    return
-        timeControl_ != timeControls::none
-     && time_.value() >= startTime_ - 0.5*time_.deltaTValue()
-     && time_.value() <= endTime_;
 }
 
 
 bool Foam::timeControl::execute()
 {
-    if (!active())
-    {
-        return false;
-    }
-
     switch (timeControl_)
     {
-        case timeControls::timeStep:
+        case ocNone:
+        {
+            return false;
+            break;
+        }
+
+        case ocAlways:
+        {
+            return true;
+            break;
+        }
+
+        case ocTimeStep:
         {
             return
-                intervalSteps_ <= 1
-             || time_.timeIndex() % intervalSteps_ == 0;
-            break;
-        }
-
-        case timeControls::writeTime:
-        case timeControls::outputTime:
-        {
-            if
             (
-                time_.writeTime()
-             || time_.timeIndex() == time_.startTimeIndex()
-            )
-            {
-                const bool execute =
-                    intervalSteps_ <= 1
-                 || executionIndex_ % intervalSteps_ == 0;
-                executionIndex_++;
-                return execute;
-            }
-            break;
-        }
-
-        case timeControls::runTime:
-        case timeControls::adjustableRunTime:
-        {
-            const label executionIndex =
-                roundDown
-                (
-                    (
-                        time_.value()
-                      - beginTime_
-                      + 0.5*time_.deltaTValue()
-                    )
-                   /interval_
-                );
-            if (executionIndex > executionIndex_)
-            {
-                executionIndex_ = executionIndex;
-                return true;
-            }
-            break;
-        }
-
-        case timeControls::runTimes:
-        {
-            return timeIndices_.found
-            (
-                (time_.userTimeValue() + timeDelta_/2)/timeDelta_
+                (intInterval_ <= 1)
+             || !(time_.timeIndex() % intInterval_)
             );
+            break;
         }
 
-        case timeControls::clockTime:
+        case ocWriteTime:
         {
-            const label executionIndex = label
+            if (time_.writeTime())
+            {
+                ++executionIndex_;
+                return
+                (
+                    (intInterval_ <= 1)
+                 || !(executionIndex_ % intInterval_)
+                );
+            }
+            break;
+        }
+
+        case ocRunTime:
+        case ocAdjustableRunTime:
+        {
+            label executionIndex = label
             (
-                returnReduce(label(time_.elapsedClockTime()), maxOp<label>())
+                (
+                    (time_.value() - time_.startTime().value())
+                  + 0.5*time_.deltaTValue()
+                )
                /interval_
             );
+
             if (executionIndex > executionIndex_)
             {
                 executionIndex_ = executionIndex;
@@ -339,9 +227,9 @@ bool Foam::timeControl::execute()
             break;
         }
 
-        case timeControls::cpuTime:
+        case ocCpuTime:
         {
-            const label executionIndex = label
+            label executionIndex = label
             (
                 returnReduce(time_.elapsedCpuTime(), maxOp<double>())
                /interval_
@@ -354,92 +242,39 @@ bool Foam::timeControl::execute()
             break;
         }
 
-        case timeControls::none:
+        case ocClockTime:
         {
-            return false;
+            label executionIndex = label
+            (
+                returnReduce(time_.elapsedClockTime(), maxOp<double>())
+               /interval_
+            );
+            if (executionIndex > executionIndex_)
+            {
+                executionIndex_ = executionIndex;
+                return true;
+            }
+            break;
+        }
+
+        case ocOnEnd:
+        {
+            scalar endTime = time_.endTime().value() - 0.5*time_.deltaTValue();
+            return time_.value() > endTime;
+            break;
         }
 
         default:
         {
             FatalErrorInFunction
-                << "Undefined output control: "
-                << timeControlNames_[timeControl_] << nl
-                << exit(FatalError);
+                << "Undefined time control: "
+                << controlNames_[timeControl_] << nl
+                << abort(FatalError);
             break;
         }
     }
 
     return false;
-}
-
-
-Foam::scalar Foam::timeControl::timeToNextAction()
-{
-    if (time_.value() > endTime_) return vGreat;
-
-    switch (timeControl_)
-    {
-        case timeControls::timeStep:
-        case timeControls::writeTime:
-        case timeControls::outputTime:
-        case timeControls::runTime:
-        case timeControls::clockTime:
-        case timeControls::cpuTime:
-        case timeControls::none:
-        {
-            return vGreat;
-            break;
-        }
-
-        case timeControls::adjustableRunTime:
-        {
-            return
-                (executionIndex_ + 1)*interval_
-              - (time_.value() - beginTime_);
-            break;
-        }
-
-        case timeControls::runTimes:
-        {
-            scalar realTimeToNextAction = vGreat;
-
-            forAll(times_, i)
-            {
-                if
-                (
-                    time_.userTimeToTime(times_[i]) < startTime_
-                 || time_.userTimeToTime(times_[i]) > endTime_
-                ) continue;
-
-                const scalar userTimeToThisAction =
-                    times_[i] - time_.userTimeValue();
-
-                if (userTimeToThisAction > timeDelta_)
-                {
-                    realTimeToNextAction =
-                        min
-                        (
-                            realTimeToNextAction,
-                            time_.userTimeToTime(userTimeToThisAction)
-                        );
-                }
-            }
-
-            return realTimeToNextAction;
-            break;
-        }
-
-        default:
-        {
-            FatalErrorInFunction
-                << "Undefined output control: "
-                << timeControlNames_[timeControl_] << nl
-                << exit(FatalError);
-            break;
-        }
-    }
-
-    return vGreat;
 }
 
 

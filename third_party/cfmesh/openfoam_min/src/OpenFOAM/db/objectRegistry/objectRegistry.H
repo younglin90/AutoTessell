@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2019 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,16 +32,18 @@ Description
 
 SourceFiles
     objectRegistry.C
+    objectRegistryTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef objectRegistry_H
-#define objectRegistry_H
+#ifndef Foam_objectRegistry_H
+#define Foam_objectRegistry_H
 
 #include "HashTable.H"
-#include "regIOobject.H"
-#include "wordReList.H"
 #include "HashSet.H"
+#include "UPtrList.H"
+#include "regIOobject.H"
+#include "wordRes.H"
 #include "Pair.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -67,33 +72,105 @@ class objectRegistry
         fileName dbDir_;
 
         //- Current event
-        mutable uint64_t event_;
-
-        //- Table of temporary object names with current state
-        mutable HashTable<Pair<bool>> cacheTemporaryObjects_;
+        mutable label event_;
 
         //- State of cacheTemporaryObjects_, set true after reading
-        mutable bool cacheTemporaryObjectsSet_;
+        mutable bool cacheTemporaryObjectsActive_;
+
+        //- Names of temporary object with current state
+        mutable HashTable<Pair<bool>> cacheTemporaryObjects_;
 
         //- Accumulated list of temporary objects available to cache
         //  Used to provide diagnostics in case the requested object is not
         //  available
-        mutable HashSet<word> temporaryObjects_;
-
-        mutable List<regIOobject*> dependents_;
+        mutable wordHashSet temporaryObjects_;
 
 
     // Private Member Functions
 
         //- Is the objectRegistry parent_ different from time_
         //  Used to terminate searching within the ancestors
-        bool parentNotTime() const;
+        bool parentNotTime() const noexcept;
 
-        //- Read the cacheTemporaryObjects list from controlDict
+        //- Read the cacheTemporaryObjects list from Time controlDict
         void readCacheTemporaryObjects() const;
 
-        //- Delete the current cached object before caching a new object
-        void deleteCachedObject(regIOobject& cachedOb) const;
+        //- Delete the cached object. Eg, before caching a new object
+        //- A nullptr is ignored.
+        void deleteCachedObject(regIOobject* io) const;
+
+        //- Templated implementation for count()
+        //  The number of items with a matching class
+        template<class MatchPredicate1, class MatchPredicate2>
+        static label countImpl
+        (
+            const objectRegistry& list,
+            const MatchPredicate1& matchClass,
+            const MatchPredicate2& matchName
+        );
+
+        //- Templated implementation for count()
+        //  The number of items with a matching class
+        template<class Type, class MatchPredicate>
+        static label countTypeImpl
+        (
+            const objectRegistry& list,
+            const MatchPredicate& matchName
+        );
+
+        //- Templated implementation for classes()
+        template<class MatchPredicate>
+        static HashTable<wordHashSet> classesImpl
+        (
+            const objectRegistry& list,
+            const MatchPredicate& matchName
+        );
+
+        //- Templated implementation for names(), sortedNames()
+        template<class MatchPredicate1, class MatchPredicate2>
+        static wordList namesImpl
+        (
+            const objectRegistry& list,
+            const MatchPredicate1& matchClass,
+            const MatchPredicate2& matchName,
+            const bool doSort
+        );
+
+        //- Templated implementation for names(), sortedNames()
+        template<class Type, class MatchPredicate>
+        static wordList namesTypeImpl
+        (
+            const objectRegistry& list,
+            const MatchPredicate& matchName,
+            const bool doSort
+        );
+
+        //- Templated implementation for csorted()/sorted()
+        //  Called with 'Type' or 'const Type'
+        template<class Type, class MatchPredicate>
+        static UPtrList<Type> objectsTypeImpl
+        (
+            const bool strict,         // Check with isType<Type>
+            const objectRegistry& list,
+            const MatchPredicate& matchName,
+            const bool doSort          // Sort the list by name
+        );
+
+        //- Templated implementation for lookupClass()
+        //  Called with 'Type' or 'const Type'
+        template<class Type>
+        static HashTable<Type*> lookupClassTypeImpl
+        (
+            const bool strict,  // Check with isType<Type>
+            const objectRegistry& list
+        );
+
+
+        //- No copy construct
+        objectRegistry(const objectRegistry&) = delete;
+
+        //- No copy assignment
+        void operator=(const objectRegistry&) = delete;
 
 
 public:
@@ -104,223 +181,591 @@ public:
 
     // Constructors
 
-        //- Construct the time objectRegistry given an initial estimate
-        //  for the number of entries
-        objectRegistry
+        //- Construct the time objectRegistry,
+        //- with estimated table capacity (default: 128)
+        explicit objectRegistry
         (
             const Time& db,
-            const label nIoObjects = 128
+            const label initialCapacity = 128
         );
 
-        //- Construct a sub-registry given an IObject to describe the registry
-        //  and an initial estimate for the number of entries
-        objectRegistry
+        //- Construct sub-registry given an IObject to describe the registry,
+        //- with estimated table capacity (default: 128)
+        explicit objectRegistry
         (
             const IOobject& io,
-            const fileName& dbDir,
-            const label nIoObjects = 128
+            const label initialCapacity = 128
         );
 
-        //- Construct a sub-registry given an IObject to describe the registry
-        //  and an initial estimate for the number of entries
-        objectRegistry
-        (
-            const IOobject& io,
-            const label nIoObjects = 128
-        );
 
-        //- Move constructor
-        objectRegistry(objectRegistry&&) = default;
-
-        //- Disallow default bitwise copy construction
-        objectRegistry(const objectRegistry&) = delete;
-
-
-    //- Destructor
+    //- Destructor, with checkOut() for all objects that are ownedByRegistry
     virtual ~objectRegistry();
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return time
-            const Time& time() const
-            {
-                return time_;
-            }
+        //- Return the object registry
+        const objectRegistry& thisDb() const noexcept
+        {
+            return *this;
+        }
 
-            //- Return the parent objectRegistry
-            const objectRegistry& parent() const
-            {
-                return parent_;
-            }
+        //- Return the parent objectRegistry
+        const objectRegistry& parent() const noexcept
+        {
+            return parent_;
+        }
 
-            //- Local directory path of this objectRegistry relative to the time
-            const fileName& dbDir() const
-            {
-                return dbDir_;
-            }
+        //- Return time registry
+        const Time& time() const noexcept
+        {
+            return time_;
+        }
 
-            using regIOobject::path;
+        //- True if the registry is Time
+        bool isTimeDb() const noexcept;
 
-            //- Return complete path with alternative instance and local
-            fileName path
-            (
-                const word& instance,
-                const fileName& local = ""
-            ) const;
-
-            using HashTable<regIOobject*>::toc;
-            using HashTable<regIOobject*>::sortedToc;
-
-            //- Return the list of names of IOobjects of given class name
-            wordList toc(const word& className) const;
-
-            //- Return the sorted list of names of IOobjects of given class name
-            wordList sortedToc(const word& className) const;
-
-            //- Return the list of names of the IOobjects of given type
-            template<class Type>
-            wordList toc() const;
-
-            //- Return the list of objects whose name matches the input regExp
-            template<class Type>
-            wordList toc(const wordRe& name) const;
-
-            //- Return the list of objects whose name matches the input regExp
-            template<class Type>
-            wordList toc(const wordReList& name) const;
-
-            //- Lookup and return a const sub-objectRegistry. Optionally create
-            //  it if it does not exist.
-            const objectRegistry& subRegistry
-            (
-                const word& name,
-                const bool forceCreate = false
-            ) const;
-
-            //- Lookup and return all objects of the given Type
-            template<class Type>
-            HashTable<const Type*> lookupClass(const bool strict = false) const;
-
-            //- Lookup and return all objects of the given Type
-            template<class Type>
-            HashTable<Type*> lookupClass(const bool strict = false);
-
-            //- Is the named Type in registry
-            template<class Type>
-            bool foundObject(const word& name) const;
-
-            //- Lookup and return the object of the given Type and name
-            template<class Type>
-            const Type& lookupObject(const word& name) const;
-
-            //- Lookup and return the object reference of the given Type
-            template<class Type>
-            Type& lookupObjectRef(const word& name) const;
-
-            //- Is the Type in registry
-            //  the name is derived from the type name and given group
-            template<class Type>
-            bool foundType(const word& group = word::null) const;
-
-            //- Lookup and return the object of the given Type
-            //  the name is derived from the type name and given group
-            template<class Type>
-            const Type& lookupType(const word& group = word::null) const;
-
-            //- Return new event number.
-            uint64_t getEvent() const;
-
-            //- Return the objectRegistry
-            //  Required for consistent interface for DemandDrivenMeshObject
-            //  instantiated on objectRegistry
-            const objectRegistry& db() const
-            {
-                return *this;
-            }
+        //- Local directory path of this objectRegistry relative to the time
+        virtual const fileName& dbDir() const
+        {
+            return dbDir_;
+        }
 
 
-        // Edit
+    // Helper Functions
 
-            //- Rename
-            virtual void rename(const word& newName);
+        //- Create an IOobject at the current time instance (timeName)
+        //- with the specified options
+        IOobject newIOobject
+        (
+            const word& name,       //!< The object name
+            IOobjectOption ioOpt    //!< The IOobject options
+        ) const;
 
-            //- Add an regIOobject to registry
-            bool checkIn(regIOobject&) const;
-
-            //- Remove an regIOobject from registry
-            bool checkOut(regIOobject&) const;
-
-            //- Remove all regIOobject owned by the registry
-            void clear();
-
-            //- Add the given name to the cacheTemporaryObjects set
-            void cacheTemporary(const word& name) const;
-
-            //- Cache the given object
-            template<class Object>
-            bool cacheTemporaryObject(Object& ob) const;
-
-            //- Return true if given name is in the cacheTemporaryObjects set
-            bool temporaryObjectCached(const word& name) const;
-
-            //- Reset the cache state of the given object
-            //  in the cacheTemporaryObjects set
-            void resetCacheTemporaryObject(const regIOobject& ob) const;
-
-            //- Check that all objects in the cacheTemporaryObjects set
-            //  were cached
-            bool checkCacheTemporaryObjects() const;
+        //- Create an IOobject at the current time instance (timeName).
+        //  By default the object is NO_READ/NO_WRITE/NO_REGISTER
+        IOobject newIOobject
+        (
+            //! The object name
+            const word& name,
+            //! The read option (default: NO_READ)
+            IOobjectOption::readOption rOpt = IOobjectOption::NO_READ,
+            //! The write option (default: NO_WRITE)
+            IOobjectOption::writeOption wOpt = IOobjectOption::NO_WRITE,
+            //! The register option (default: NO_REGISTER)
+            IOobjectOption::registerOption regOpt = IOobjectOption::NO_REGISTER
+        ) const;
 
 
-        // Reading
+    // Summary of classes
 
-            //- Return true if any of the object's files have been modified
-            virtual bool modified() const;
+        //- A summary hash of classes used and their associated object names.
+        //  Behaviour and usage as per IOobjectList::classes
+        HashTable<wordHashSet> classes() const;
 
-            //- Cache pointers to objects who's dependencies have been modified
-            virtual bool dependenciesModified() const;
-
-            //- Read object if modified
-            virtual bool readIfModified();
-
-            //- Read dependent objects
-            virtual bool read();
-
-            //- Read the objects that have been modified
-            void readModifiedObjects();
+        //- A summary hash of classes used and their associated object names,
+        //- restricted to objects that have a matching object name.
+        template<class MatchPredicate>
+        HashTable<wordHashSet> classes(const MatchPredicate& matchName) const;
 
 
-        // Writing
+    // List-wise access (unsorted)
 
-            //- Print the list of object names and their type
-            //  to the given stream
-            void printToc(Ostream& os) const;
+        //- Return unsorted list of objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, bool Strict=false>
+        UPtrList<const Type> cobjects() const;
 
-            //- writeData function required by regIOobject but not used
-            //  for this class, writeObject is used instead
-            virtual bool writeData(Ostream&) const
-            {
-                NotImplemented;
-                return false;
-            }
+        //- Return unsorted list of objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, bool Strict=false>
+        UPtrList<Type> objects();
 
-            //- Write the objects
-            virtual bool writeObject
-            (
-                IOstream::streamFormat fmt,
-                IOstream::versionNumber ver,
-                IOstream::compressionType cmp,
-                const bool write
-            ) const;
+        //- Return unsorted list of objects with a class satisfying
+        //- \c isA\<Type\> that also have a matching object name.
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, class MatchPredicate>
+        UPtrList<const Type> cobjects(const MatchPredicate& matchName) const;
+
+        //- Return sorted list of objects with a class satisfying \c isA\<Type\>
+        //- that also have a matching object name.
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, class MatchPredicate>
+        UPtrList<Type> objects(const MatchPredicate& matchName);
 
 
-    // Member Operators
+    // List-wise access (sorted)
 
-        //- Disallow default bitwise assignment
-        void operator=(const objectRegistry&) = delete;
+        //- Return sorted list of objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, bool Strict=false>
+        UPtrList<const Type> csorted() const;
+
+        //- Return sorted list of objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, bool Strict=false>
+        UPtrList<Type> sorted();
+
+        //- Return sorted list of objects
+        //  The lifetime of the returned content cannot exceed the parent!
+        UPtrList<const regIOobject> csorted() const
+        {
+            return csorted<regIOobject>();
+        }
+
+        //- Return sorted list of objects
+        //  The lifetime of the returned content cannot exceed the parent!
+        UPtrList<regIOobject> sorted()
+        {
+            return sorted<regIOobject>();
+        }
+
+        //- Return sorted list of objects with a class satisfying
+        //- \c isA\<Type\> that also have a matching object name.
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, class MatchPredicate>
+        UPtrList<const Type> csorted(const MatchPredicate& matchName) const;
+
+        //- Return sorted list of objects with a class satisfying
+        //- \c isA\<Type\> that also have a matching object name.
+        //  The lifetime of the returned content cannot exceed the parent!
+        template<class Type, class MatchPredicate>
+        UPtrList<Type> sorted(const MatchPredicate& matchName);
+
+
+    // Number of items
+
+        //- The number of objects of the given class name
+        //  \note uses the class type() method
+        label count(const char* clsName) const;
+
+        //- The number of objects of the given class name
+        //  \note uses the class type() method
+        template<class MatchPredicate>
+        label count(const MatchPredicate& matchClass) const;
+
+        //- The number of objects of the given class name
+        //  \note uses the class type() method
+        template<class MatchPredicate1, class MatchPredicate2>
+        label count
+        (
+            const MatchPredicate1& matchClass,
+            const MatchPredicate2& matchName
+        ) const;
+
+        //- The names of objects with a class satisfying \c isA\<Type\>
+        //
+        //  \param strict use \c isType\<Type\> instead of \c isA\<Type\>
+        //
+        //  \note The values of \c count\<Type\>() and \c count(Type::typeName)
+        //      may be inconsistent, since they use different mechanisms for
+        //      testing the class type.
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type>
+        label count(const bool strict = false) const;
+
+        //- The names of objects with a class satisfying \c isA\<Type\>
+        //- that also have a matching object name.
+        //
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type, class MatchPredicate>
+        label count(const MatchPredicate& matchName) const;
+
+
+    // Summary of names
+
+        //- The unsorted names of all objects
+        wordList names() const;
+
+        //- The unsorted names of objects with the given class name.
+        //  \note uses the class type() method
+        wordList names(const char* clsName) const;
+
+        //- The unsorted names of objects with a matching class name
+        //  \note uses the class type() method
+        template<class MatchPredicate>
+        wordList names(const MatchPredicate& matchClass) const;
+
+        //- The unsorted names of objects with a matching class name
+        //- that also have a matching object name.
+        //  \note uses the class type() method
+        template<class MatchPredicate1, class MatchPredicate2>
+        wordList names
+        (
+            const MatchPredicate1& matchClass,
+            const MatchPredicate2& matchName
+        ) const;
+
+        //- The unsorted names of objects with a class satisfying \c isA\<Type\>
+        //
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type>
+        wordList names() const;
+
+        //- The unsorted names of objects with a class satisfying \c isA\<Type\>
+        //- that also have a matching object name.
+        //
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type, class MatchPredicate>
+        wordList names(const MatchPredicate& matchName) const;
+
+
+    // Summary of names (sorted)
+
+        //- The sorted names of all objects
+        wordList sortedNames() const;
+
+        //- The sorted names of objects with the given class name.
+        //  \note uses the class type() method
+        wordList sortedNames(const char* clsName) const;
+
+        //- The sorted names objects with a matching class name
+        //  \note uses the class type() method
+        template<class MatchPredicate>
+        wordList sortedNames(const MatchPredicate& matchClass) const;
+
+        //- The sorted names of objects with a matching class name
+        //- that also have a matching object name.
+        //  \note uses the class type() method
+        template<class MatchPredicate1, class MatchPredicate2>
+        wordList sortedNames
+        (
+            const MatchPredicate1& matchClass,
+            const MatchPredicate2& matchName
+        ) const;
+
+        //- The sorted names of objects with a class satisfying \c isA\<Type\>
+        //
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type>
+        wordList sortedNames() const;
+
+        //- The sorted names of objects with a class satisfying \c isA\<Type\>
+        //- that also have a matching object name.
+        //
+        //  \note If \a Type is \c void, no isA check is used (always true).
+        template<class Type, class MatchPredicate>
+        wordList sortedNames(const MatchPredicate& matchName) const;
+
+
+    // Lookup
+
+        //- Lookup and return a const sub-objectRegistry.
+        //
+        //  \param forceCreate create it if it does not exist.
+        //  \param recursive search parent registries.
+        const objectRegistry& subRegistry
+        (
+            const word& name,
+            const bool forceCreate = false,
+            const bool recursive = false
+        ) const;
+
+
+        //- Return all objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        template<class Type, bool Strict=false>
+        HashTable<const Type*> lookupClass() const;
+
+        //- Return all objects with a class satisfying
+        //- \c isA\<Type\> or \c isType\<Type\> (with Strict)
+        template<class Type, bool Strict=false>
+        HashTable<Type*> lookupClass();
+
+        //- Return all objects with a class satisfying \c isA\<Type\>
+        //
+        //  \param strict use \c isType\<Type\> instead of \c isA\<Type\>
+        template<class Type>
+        HashTable<const Type*> lookupClass(const bool strict) const;
+
+        //- Return all objects with a class satisfying \c isA\<Type\>
+        //
+        //  \param strict use \c isType\<Type\> instead of \c isA\<Type\>
+        template<class Type>
+        HashTable<Type*> lookupClass(const bool strict);
+
+        //- Return const pointer to the regIOobject.
+        //
+        //  \param recursive search parent registries
+        //
+        //  \return nullptr if the object was not found.
+        const regIOobject* cfindIOobject
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Does the registry contain the regIOobject object (by name).
+        //
+        //  \param name the object name
+        //  \param recursive search parent registries
+        bool contains(const word& name, const bool recursive = false) const;
+
+        //- Is the named Type found?
+        //
+        //  \param recursive search parent registries
+        template<class Type>
+        bool foundObject
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Return const pointer to the object of the given Type.
+        //
+        //  \param recursive search parent registries
+        //
+        //  \return nullptr if the object was not found or had incorrect type.
+        template<class Type>
+        const Type* cfindObject
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Return const pointer to the object of the given Type.
+        //
+        //  \param recursive search parent registries
+        //
+        //  \return nullptr if the object was not found or had incorrect type.
+        template<class Type>
+        const Type* findObject
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Return non-const pointer to the object of the given Type.
+        //
+        //  \param recursive search parent registries
+        //
+        //  \return nullptr if the object was not found or had incorrect type.
+        template<class Type>
+        Type* findObject
+        (
+            const word& name,
+            const bool recursive = false
+        );
+
+        //- Return non-const pointer to the object of the given Type,
+        //- using a const-cast to have it behave like a mutable.
+        //  Exercise caution when using.
+        //
+        //  \param recursive search parent registries.
+        //
+        //  \return nullptr if the object was not found or had incorrect type.
+        template<class Type>
+        Type* getObjectPtr
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Lookup and return const reference to the object
+        //- of the given Type. Fatal if not found or the wrong type.
+        //
+        //  \param recursive search parent registries.
+        template<class Type>
+        const Type& lookupObject
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+        //- Lookup and return non-const reference to the object
+        //- of the given Type. Fatal if not found or the wrong type.
+        //
+        //  \param recursive search parent registries.
+        template<class Type>
+        Type& lookupObjectRef
+        (
+            const word& name,
+            const bool recursive = false
+        ) const;
+
+
+    // Events
+
+        //- Return new event number.
+        label getEvent() const;
+
+
+    // Edit
+
+        //- Add a regIOobject to registry. A nullptr is ignored.
+        bool checkIn(regIOobject* io) const;
+
+        //- Add a regIOobject to registry
+        bool checkIn(regIOobject& io) const;
+
+        //- Remove a regIOobject from registry and free memory if the
+        //- object is ownedByRegistry. A nullptr is ignored.
+        bool checkOut(regIOobject* io) const;
+
+        //- Remove a regIOobject from registry and free memory if the
+        //- object is ownedByRegistry.
+        bool checkOut(regIOobject& io) const;
+
+        //- Remove a regIOobject by name from registry and free memory if the
+        //- object is ownedByRegistry
+        bool checkOut(const word& key) const;
+
+        //- Clear all entries from the registry
+        //  Performs a checkOut() for all objects that are ownedByRegistry
+        void clear();
+
+        //- Clear all entries from the registry and the table itself.
+        void clearStorage();
+
+        //- Erase an entry specified by the given iterator.
+        //  Performs a checkOut() if the object was ownedByRegistry.
+        //  \return True if the entry existed and was removed
+        bool erase(const iterator& iter);
+
+        //- Erase an entry specified by the given key
+        //  Performs a checkOut() if the object was ownedByRegistry.
+        //  \return True if the entry existed and was removed
+        bool erase(const word& key);
+
+        //- Remove entries given by the listed keys
+        //  Performs a checkOut() for all objects that are ownedByRegistry.
+        //  \return The number of items removed
+        label erase(std::initializer_list<word> keys);
+
+        //- Remove entries given by the listed keys
+        //  Performs a checkOut() for all objects that are ownedByRegistry.
+        //  \return The number of items removed
+        label erase(const UList<word>& keys);
+
+        //- Rename
+        virtual void rename(const word& newName);
+
+
+    // Temporaries
+
+        //FUTURE //- Add given name to the set of temporary objects to cache
+        //FUTURE void addTemporaryObject(const word& name) const;
+
+        //- True if given name is in the cacheTemporaryObjects set
+        bool is_cacheTemporaryObject(const word& name) const;
+
+        //- True if name of object is in the cacheTemporaryObjects set
+        bool is_cacheTemporaryObject(const regIOobject* io) const;
+
+        //- True if name of object is in the cacheTemporaryObjects set
+        bool is_cacheTemporaryObject(const regIOobject& io) const;
+
+        //- Cache the given object. Moves content and stores
+        template<class Type>
+        bool cacheTemporaryObject(Type& obj) const;
+
+        //- Reset the cache state of the given object (nullptr is ignored)
+        void resetCacheTemporaryObject(const regIOobject* io) const;
+
+        //- Reset the cache state of the given object
+        //- in the cacheTemporaryObjects set
+        void resetCacheTemporaryObject(const regIOobject& io) const;
+
+        //- Check that all objects specified in the cacheTemporaryObjects
+        //- were also cached
+        bool checkCacheTemporaryObjects() const;
+
+
+    // Reading
+
+        //- Return true if any of the object's files have been modified
+        virtual bool modified() const;
+
+        //- Read the objects that have been modified
+        void readModifiedObjects();
+
+        //- Read object if modified
+        virtual bool readIfModified();
+
+
+    // Writing
+
+        //- The writeData function is required by regIOobject but not used.
+        //  For this class, write is used instead
+        virtual bool writeData(Ostream&) const
+        {
+            NotImplemented;
+            return false;
+        }
+
+        //- Write the objects using stream options
+        virtual bool writeObject
+        (
+            IOstreamOption streamOpt,
+            const bool writeOnProc
+        ) const;
+
+
+    // Housekeeping
+
+        //- Same as contains()
+        bool found(const word& name, bool recursive = false) const
+        {
+            return this->contains(name, recursive);
+        }
+
+        //- Deprecated(2018-10) find object
+        //  \deprecated(2018-10) - use findObject() method
+        template<class Type>
+        FOAM_DEPRECATED_FOR(2018-10, "findObject / cfindObject() methods")
+        const Type* lookupObjectPtr
+        (
+            const word& name,
+            bool recursive = false
+        ) const
+        {
+            return this->cfindObject<Type>(name, recursive);
+        }
+
+        //- Deprecated(2018-10) get object pointer, ignoring constness
+        //  \deprecated(2018-10) - use getObjectPtr() method
+        template<class Type>
+        FOAM_DEPRECATED_FOR(2018-10, "getObjectPtr() method")
+        Type* lookupObjectRefPtr
+        (
+            const word& name,
+            bool recursive = false
+        ) const
+        {
+            return this->getObjectPtr<Type>(name, recursive);
+        }
+
+        //- Deprecated(2023-07) use csorted() method
+        //  \deprecated(2023-07) - use csorted() method
+        template<class Type>
+        FOAM_DEPRECATED_FOR(2023-07, "csorted() method")
+        UPtrList<const Type> sorted() const
+        {
+            return csorted<Type>();
+        }
+
+        //- Deprecated(2023-07) use csorted() method
+        //  \deprecated(2023-07) - use csorted() method
+        FOAM_DEPRECATED_FOR(2023-07, "csorted() method")
+        UPtrList<const regIOobject> sorted() const
+        {
+            return csorted<regIOobject>();
+        }
+
+        //- Deprecated(2023-07) use csorted() method
+        //  \deprecated(2023-07) - use csorted() method
+        template<class Type, class MatchPredicate>
+        FOAM_DEPRECATED_FOR(2023-07, "csorted() method")
+        UPtrList<const Type> sorted(const MatchPredicate& matchName) const
+        {
+            return csorted<Type>(matchName);
+        }
 };
 
 

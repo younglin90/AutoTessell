@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2019 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,7 +33,7 @@ License
 // Note: the use of this tolerance is ad-hoc, there may be extreme
 // cases where the resulting tetrahedra still have particle tracking
 // problems, or tets with lower quality may track OK.
-const Foam::scalar Foam::polyMeshTetDecomposition::minTetQuality = sqr(small);
+const Foam::scalar Foam::polyMeshTetDecomposition::minTetQuality = sqr(SMALL);
 
 
 // * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
@@ -51,7 +54,7 @@ Foam::scalar Foam::polyMeshTetDecomposition::minQuality
     const face& f = mesh.faces()[fI];
     const point& tetBasePt = pPts[f[faceBasePtI]];
 
-    scalar thisBaseMinTetQuality = vGreat;
+    scalar thisBaseMinTetQuality = VGREAT;
 
     for (label tetPtI = 1; tetPtI < f.size() - 1; tetPtI++)
     {
@@ -88,6 +91,45 @@ Foam::scalar Foam::polyMeshTetDecomposition::minQuality
 }
 
 
+Foam::scalar Foam::polyMeshTetDecomposition::minQuality
+(
+    const polyMesh& mesh,
+    const label facei,
+    const label faceBasePtI
+)
+{
+    const scalar ownQuality =
+        minQuality
+        (
+            mesh,
+            mesh.cellCentres()[mesh.faceOwner()[facei]],
+            facei,
+            true,
+            faceBasePtI
+        );
+
+    if (mesh.isInternalFace(facei))
+    {
+        const scalar neiQuality =
+            minQuality
+            (
+                mesh,
+                mesh.cellCentres()[mesh.faceNeighbour()[facei]],
+                facei,
+                false,
+                faceBasePtI
+            );
+
+        if (neiQuality < ownQuality)
+        {
+            return neiQuality;
+        }
+    }
+
+    return ownQuality;
+}
+
+
 Foam::label Foam::polyMeshTetDecomposition::findSharedBasePoint
 (
     const polyMesh& mesh,
@@ -109,10 +151,10 @@ Foam::label Foam::polyMeshTetDecomposition::findSharedBasePoint
 
     forAll(f, faceBasePtI)
     {
-        scalar minQ = minQuality(mesh, oCc, fI, true, faceBasePtI);
-        minQ = min(minQ, minQuality(mesh, nCc, fI, false, faceBasePtI));
+        scalar ownQuality = minQuality(mesh, oCc, fI, true, faceBasePtI);
+        scalar neiQuality = minQuality(mesh, nCc, fI, false, faceBasePtI);
 
-        if (minQ > tol)
+        if (min(ownQuality, neiQuality) > tol)
         {
             return faceBasePtI;
         }
@@ -194,30 +236,29 @@ Foam::labelList Foam::polyMeshTetDecomposition::findFaceBasePts
 
     labelList tetBasePtIs(mesh.nFaces(), -1);
 
-    label nInternalFaces = mesh.nInternalFaces();
+    const label nInternalFaces = mesh.nInternalFaces();
 
-    for (label fI = 0; fI < nInternalFaces; fI++)
+    for (label fI = 0; fI < nInternalFaces; ++fI)
     {
         tetBasePtIs[fI] = findSharedBasePoint(mesh, fI, tol, report);
     }
 
-    pointField neighbourCellCentres(mesh.nFaces() - nInternalFaces);
+    pointField neighbourCellCentres(mesh.nBoundaryFaces());
 
-    for(label facei = nInternalFaces; facei < mesh.nFaces(); facei++)
+    for (label facei = nInternalFaces; facei < mesh.nFaces(); ++facei)
     {
-        neighbourCellCentres[facei - nInternalFaces] =
-            pC[pOwner[facei]];
+        neighbourCellCentres[facei - nInternalFaces] = pC[pOwner[facei]];
     }
 
     syncTools::swapBoundaryFacePositions(mesh, neighbourCellCentres);
 
-    const polyBoundaryMesh& patches = mesh.boundary();
+    const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
     SubList<label> boundaryFaceTetBasePtIs
     (
         tetBasePtIs,
-        mesh.nFaces() - nInternalFaces,
-        nInternalFaces
+        mesh.nBoundaryFaces(),
+        mesh.nInternalFaces()
     );
 
     for
@@ -227,14 +268,14 @@ Foam::labelList Foam::polyMeshTetDecomposition::findFaceBasePts
         fI++, bFI++
     )
     {
-        const label patchi = mesh.boundary().patchIndices()[bFI];
+        const label patchi = mesh.boundaryMesh().patchID()[bFI];
 
         if (patches[patchi].coupled())
         {
-            const coupledPolyPatch& pp =
+            const coupledPolyPatch& cpp =
                 refCast<const coupledPolyPatch>(patches[patchi]);
 
-            if (pp.owner())
+            if (cpp.owner())
             {
                 boundaryFaceTetBasePtIs[bFI] = findSharedBasePoint
                 (
@@ -287,7 +328,7 @@ Foam::labelList Foam::polyMeshTetDecomposition::findFaceBasePts
         {
             FatalErrorInFunction
                 << "Coupled face base point exchange failure for face "
-                << fI
+                << fI << " at " << mesh.faceCentres()[fI]
                 << abort(FatalError);
         }
 
@@ -299,11 +340,11 @@ Foam::labelList Foam::polyMeshTetDecomposition::findFaceBasePts
             continue;
         }
 
-        const label patchi = mesh.boundary().patchIndices()[bFI];
+        const label patchi = mesh.boundaryMesh().patchID()[bFI];
 
         if (patches[patchi].coupled())
         {
-            const coupledPolyPatch& pp =
+            const coupledPolyPatch& cpp =
                 refCast<const coupledPolyPatch>(patches[patchi]);
 
             // Calculated base points on coupled faces are those of
@@ -328,7 +369,7 @@ Foam::labelList Foam::polyMeshTetDecomposition::findFaceBasePts
             // +: 6 - 1 = 5
             // #: 6 - 2 = 4
 
-            if (!pp.owner())
+            if (!cpp.owner())
             {
                 bFTetBasePtI = mesh.faces()[fI].size() - bFTetBasePtI;
             }
@@ -349,15 +390,15 @@ bool Foam::polyMeshTetDecomposition::checkFaceTets
 {
     const labelList& own = mesh.faceOwner();
     const labelList& nei = mesh.faceNeighbour();
-    const polyBoundaryMesh& patches = mesh.boundary();
+    const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
     const vectorField& cc = mesh.cellCentres();
     const vectorField& fc = mesh.faceCentres();
 
     // Calculate coupled cell centre
-    pointField neiCc(mesh.nFaces() - mesh.nInternalFaces());
+    pointField neiCc(mesh.nBoundaryFaces());
 
-    for (label facei = mesh.nInternalFaces(); facei < mesh.nFaces(); facei++)
+    for (label facei = mesh.nInternalFaces(); facei < mesh.nFaces(); ++facei)
     {
         neiCc[facei - mesh.nInternalFaces()] = cc[own[facei]];
     }
@@ -435,8 +476,7 @@ bool Foam::polyMeshTetDecomposition::checkFaceTets
         }
         else
         {
-            const label patchi =
-                patches.patchIndices()[facei - mesh.nInternalFaces()];
+            const label patchi = patches.patchID(facei);
 
             if (patches[patchi].coupled())
             {
@@ -488,36 +528,34 @@ bool Foam::polyMeshTetDecomposition::checkFaceTets
 
         return true;
     }
-    else
-    {
-        if (report)
-        {
-            Info<< "    Face tets OK." << endl;
-        }
 
-        return false;
+    if (report)
+    {
+        Info<< "    Face tets OK." << endl;
     }
+
+    return false;
 }
 
 
 Foam::List<Foam::tetIndices> Foam::polyMeshTetDecomposition::faceTetIndices
 (
     const polyMesh& mesh,
-    label fI,
-    label cI
+    label facei,
+    label celli
 )
 {
     const faceList& pFaces = mesh.faces();
 
-    const face& f = pFaces[fI];
+    const face& f = pFaces[facei];
 
     label nTets = f.size() - 2;
 
     List<tetIndices> faceTets(nTets);
 
-    for (label tetPtI = 1; tetPtI < f.size() - 1; tetPtI ++)
+    for (label tetPti = 1; tetPti < f.size() - 1; ++tetPti)
     {
-        faceTets[tetPtI - 1] = tetIndices(cI, fI, tetPtI);
+        faceTets[tetPti - 1] = tetIndices(celli, facei, tetPti);
     }
 
     return faceTets;
@@ -527,28 +565,26 @@ Foam::List<Foam::tetIndices> Foam::polyMeshTetDecomposition::faceTetIndices
 Foam::List<Foam::tetIndices> Foam::polyMeshTetDecomposition::cellTetIndices
 (
     const polyMesh& mesh,
-    label cI
+    label celli
 )
 {
     const faceList& pFaces = mesh.faces();
     const cellList& pCells = mesh.cells();
 
-    const cell& thisCell = pCells[cI];
+    const cell& thisCell = pCells[celli];
 
     label nTets = 0;
 
-    forAll(thisCell, cFI)
+    for (const label facei : thisCell)
     {
-        nTets += pFaces[thisCell[cFI]].size() - 2;
+        nTets += pFaces[facei].size() - 2;
     }
 
     DynamicList<tetIndices> cellTets(nTets);
 
-    forAll(thisCell, cFI)
+    for (const label facei : thisCell)
     {
-        label fI = thisCell[cFI];
-
-        cellTets.append(faceTetIndices(mesh, fI, cI));
+        cellTets.append(faceTetIndices(mesh, facei, celli));
     }
 
     return cellTets;
@@ -558,27 +594,26 @@ Foam::List<Foam::tetIndices> Foam::polyMeshTetDecomposition::cellTetIndices
 Foam::tetIndices Foam::polyMeshTetDecomposition::findTet
 (
     const polyMesh& mesh,
-    label cI,
+    label celli,
     const point& pt
 )
 {
     const faceList& pFaces = mesh.faces();
     const cellList& pCells = mesh.cells();
 
-    const cell& thisCell = pCells[cI];
+    const cell& thisCell = pCells[celli];
 
     tetIndices tetContainingPt;
 
 
-    forAll(thisCell, cFI)
+    for (const label facei : thisCell)
     {
-        label fI = thisCell[cFI];
-        const face& f = pFaces[fI];
+        const face& f = pFaces[facei];
 
-        for (label tetPtI = 1; tetPtI < f.size() - 1; tetPtI++)
+        for (label tetPti = 1; tetPti < f.size() - 1; ++tetPti)
         {
             // Get tetIndices of face triangle
-            tetIndices faceTetIs(cI, fI, tetPtI);
+            tetIndices faceTetIs(celli, facei, tetPti);
 
             // Check if inside
             if (faceTetIs.tet(mesh).inside(pt))
@@ -595,6 +630,159 @@ Foam::tetIndices Foam::polyMeshTetDecomposition::findTet
     }
 
     return tetContainingPt;
+}
+
+
+Foam::labelList Foam::polyMeshTetDecomposition::adjustTetBasePtIs
+(
+    const polyMesh& mesh,
+    const bool report
+)
+{
+    // Determine points used by two faces on the same cell
+    const cellList& cells = mesh.cells();
+    const faceList& faces = mesh.faces();
+    const labelList& faceOwn = mesh.faceOwner();
+    const labelList& faceNei = mesh.faceNeighbour();
+
+
+    // Get face triangulation base point
+    labelList tetBasePtIs(mesh.tetBasePtIs());
+
+
+    // Pre-filter: mark all cells with illegal base points
+    bitSet problemCells(cells.size());
+
+    forAll(tetBasePtIs, facei)
+    {
+        if (tetBasePtIs[facei] == -1)
+        {
+            problemCells.set(faceOwn[facei]);
+
+            if (mesh.isInternalFace(facei))
+            {
+                problemCells.set(faceNei[facei]);
+            }
+        }
+    }
+
+
+    // Mark all points that are shared by just two faces within an adjacent
+    // problem cell as problematic
+    bitSet problemPoints(mesh.points().size());
+
+    {
+        // Number of times a point occurs in a cell.
+        // Used to detect dangling vertices (count = 2)
+        Map<label> pointCount;
+
+        // Analyse problem cells for points shared by two faces only
+        for (const label celli : problemCells)
+        {
+            pointCount.clear();
+
+            for (const label facei : cells[celli])
+            {
+                for (const label pointi : faces[facei])
+                {
+                    ++pointCount(pointi);
+                }
+            }
+
+            forAllConstIters(pointCount, iter)
+            {
+                if (iter.val() == 1)
+                {
+                    FatalErrorInFunction
+                        << "point:" << iter.key()
+                        << " at:" << mesh.points()[iter.key()]
+                        << " only used by one face" << nl
+                        << exit(FatalError);
+                }
+                else if (iter.val() == 2)
+                {
+                    problemPoints.set(iter.key());
+                }
+            }
+        }
+    }
+
+
+    // For all faces which form a part of a problem-cell, check if the base
+    // point is adjacent to any problem points. If it is, re-calculate the base
+    // point so that it is not.
+    label nAdapted = 0;
+    forAll(tetBasePtIs, facei)
+    {
+        if
+        (
+            problemCells.test(faceOwn[facei])
+         || (mesh.isInternalFace(facei) && problemCells.test(faceNei[facei]))
+        )
+        {
+            const face& f = faces[facei];
+
+            // Check if either of the points adjacent to the base point is a
+            // problem point. If not, the existing base point can be retained.
+            const label fp0 = tetBasePtIs[facei] < 0 ? 0 : tetBasePtIs[facei];
+
+            if
+            (
+                !problemPoints.test(f.rcValue(fp0))
+             && !problemPoints.test(f.fcValue(fp0))
+            )
+            {
+                continue;
+            }
+
+            // A new base point is required. Pick the point that results in the
+            // least-worst tet and which is not adjacent to any problem points.
+            scalar maxQ = -GREAT;
+            label maxFp = -1;
+            forAll(f, fp)
+            {
+                if
+                (
+                    !problemPoints.test(f.rcValue(fp))
+                 && !problemPoints.test(f.fcValue(fp))
+                )
+                {
+                    const scalar q = minQuality(mesh, facei, fp);
+                    if (q > maxQ)
+                    {
+                        maxQ = q;
+                        maxFp = fp;
+                    }
+                }
+            }
+
+            if (maxFp != -1)
+            {
+                // Success! Set the new base point
+                tetBasePtIs[facei] = maxFp;
+            }
+            else
+            {
+                // No point was found on face that would not result in some
+                // duplicate triangle. Do what? Continue and hope? Spit an
+                // error? Silently or noisily reduce the filtering level?
+
+                tetBasePtIs[facei] = 0;
+            }
+
+            ++nAdapted;
+        }
+    }
+
+    syncTools::syncFaceList(mesh, tetBasePtIs, maxEqOp<label>());
+
+    if (report && returnReduceOr(nAdapted))
+    {
+        Pout<< "Adapted starting point of triangulation on "
+            << nAdapted << " faces." << endl;
+    }
+
+    return tetBasePtIs;
 }
 
 

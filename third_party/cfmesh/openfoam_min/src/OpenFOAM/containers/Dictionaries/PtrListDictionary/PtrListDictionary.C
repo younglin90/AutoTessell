@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,30 +26,22 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "PtrListDictionary.H"
-#include "UPtrListDictionary.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class T>
 Foam::PtrListDictionary<T>::PtrListDictionary(const label size)
 :
-    DictionaryBase<PtrList<T>, T>(2*size)
+    dict_type(2*size)
 {
-    PtrList<T>::setSize(size);
+    PtrList<T>::resize(size);
 }
 
 
 template<class T>
 Foam::PtrListDictionary<T>::PtrListDictionary(const PtrListDictionary& dict)
 :
-    DictionaryBase<PtrList<T>, T>(dict)
-{}
-
-
-template<class T>
-Foam::PtrListDictionary<T>::PtrListDictionary(PtrListDictionary&& dict)
-:
-    DictionaryBase<PtrList<T>, T>(move(dict))
+    dict_type(dict)
 {}
 
 
@@ -55,124 +49,37 @@ template<class T>
 template<class INew>
 Foam::PtrListDictionary<T>::PtrListDictionary(Istream& is, const INew& iNew)
 :
-    DictionaryBase<PtrList<T>, T>(is, iNew)
+    dict_type(is, iNew)
 {}
 
 
 template<class T>
 Foam::PtrListDictionary<T>::PtrListDictionary(Istream& is)
 :
-    DictionaryBase<PtrList<T>, T>(is)
+    dict_type(is)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class T>
-Foam::label Foam::PtrListDictionary<T>::findIndex(const word& key) const
-{
-    forAll(*this, i)
-    {
-        if (operator[](i).keyword() == key)
-        {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-
-template<class T>
-Foam::List<Foam::label> Foam::PtrListDictionary<T>::findIndices
+inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
 (
-    const wordRe& key
-) const
-{
-    List<label> indices;
-
-    if (!key.empty())
-    {
-        if (key.isPattern())
-        {
-            indices = findStrings(key, this->toc());
-        }
-        else
-        {
-            indices.setSize(this->size());
-            label nFound = 0;
-            forAll(*this, i)
-            {
-                if (key == operator[](i).keyword())
-                {
-                    indices[nFound++] = i;
-                }
-            }
-            indices.setSize(nFound);
-        }
-    }
-
-    return indices;
-}
-
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append
-(
+    const label i,
     const word& key,
     T* ptr
 )
 {
-    if (!DictionaryBase<PtrList<T>, T>::hashedTs_.insert(key, ptr))
+    autoPtr<T> old(PtrList<T>::set(i, ptr));
+
+    if (!dict_type::addHashEntry(key, ptr))
     {
         FatalErrorInFunction
             << "Cannot insert with key '" << key << "' into hash-table"
             << abort(FatalError);
     }
-    return PtrList<T>::append(ptr);
-}
 
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append
-(
-    const word& key,
-    const autoPtr<T>& aptr
-)
-{
-    return append(key, const_cast<autoPtr<T>&>(aptr).ptr());
-}
-
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append
-(
-    const word& key,
-    const tmp<T>& t
-)
-{
-    return append(key, const_cast<tmp<T>&>(t).ptr());
-}
-
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append(T* ptr)
-{
-    append(ptr->keyword(), ptr);
-}
-
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append(const autoPtr<T>& aptr)
-{
-    append(aptr->keyword(), aptr);
-}
-
-
-template<class T>
-inline void Foam::PtrListDictionary<T>::append(const tmp<T>& t)
-{
-    append(t->keyword(), t);
+    return old;
 }
 
 
@@ -181,22 +88,10 @@ inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
 (
     const label i,
     const word& key,
-    T* ptr
+    autoPtr<T>& ptr
 )
 {
-    if (ptr == nullptr)
-    {
-        // Remove key from hash table if the pointer is null
-        DictionaryBase<PtrList<T>, T>::hashedTs_.erase(key);
-    }
-    else if (!DictionaryBase<PtrList<T>, T>::hashedTs_.set(key, ptr))
-    {
-        FatalErrorInFunction
-            << "Cannot set with key '" << key << "' into hash-table"
-            << abort(FatalError);
-    }
-
-    return PtrList<T>::set(i, ptr);
+    return this->set(i, key, ptr.release());
 }
 
 
@@ -205,138 +100,10 @@ inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
 (
     const label i,
     const word& key,
-    const autoPtr<T>& aptr
+    tmp<T>& ptr
 )
 {
-    return set(i, key, const_cast<autoPtr<T>&>(aptr).ptr());
-}
-
-
-template<class T>
-inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
-(
-    const label i,
-    const word& key,
-    const tmp<T>& t
-)
-{
-    return set(i, key, const_cast<tmp<T>&>(t).ptr());
-}
-
-
-template<class T>
-inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
-(
-    const label i,
-    T* ptr
-)
-{
-    return set(i, ptr->keyword(), ptr);
-}
-
-
-template<class T>
-inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
-(
-    const label i,
-    const autoPtr<T>& aptr
-)
-{
-    return set(i, aptr->keyword(), aptr);
-}
-
-
-template<class T>
-inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::set
-(
-    const label i,
-    const tmp<T>& t
-)
-{
-    return set(i, t->keyword(), t);
-}
-
-
-template<class T>
-inline Foam::autoPtr<T> Foam::PtrListDictionary<T>::remove(const word& key)
-{
-    autoPtr<T> ptr(set(findIndex(key), key, nullptr));
-    this->shrink();
-    return ptr;
-}
-
-
-template<class T>
-template<class T2>
-Foam::UPtrListDictionary<T2> Foam::PtrListDictionary<T>::convert()
-{
-    UPtrListDictionary<T2> result(this->size());
-
-    forAll(*this, i)
-    {
-        result.set
-        (
-            i,
-            this->operator()(i)->keyword(),
-            dynamic_cast<T2*>(this->operator()(i))
-        );
-    }
-
-    return result;
-}
-
-
-template<class T>
-template<class T2>
-Foam::UPtrListDictionary<T2>
-Foam::PtrListDictionary<T>::lookupType()
-{
-    UPtrListDictionary<T2> result(this->size());
-
-    label n = 0;
-    forAll(*this, i)
-    {
-        if (isA<T2>(*this->operator()(i)))
-        {
-            result.set
-            (
-                n++,
-                this->operator()(i)->keyword(),
-                dynamic_cast<T2*>(this->operator()(i))
-            );
-        }
-    }
-
-    result.setSize(n);
-
-    return result;
-}
-
-
-template<class T>
-template<class T2>
-Foam::UPtrListDictionary<const T2>
-Foam::PtrListDictionary<T>::lookupType() const
-{
-    UPtrListDictionary<const T2> result(this->size());
-
-    label n = 0;
-    forAll(*this, i)
-    {
-        if (isA<T2>(*this->operator()(i)))
-        {
-            result.set
-            (
-                n++,
-                this->operator()(i)->keyword(),
-                dynamic_cast<const T2*>(this->operator()(i))
-            );
-        }
-    }
-
-    result.setSize(n);
-
-    return result;
+    return this->set(i, key, ptr.ptr());  // release or clone
 }
 
 

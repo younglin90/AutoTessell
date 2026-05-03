@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::skewCorrected
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     Skewness-corrected interpolation scheme that applies an explicit
@@ -47,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class skewCorrected Declaration
+                       Class skewCorrected Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -55,9 +60,18 @@ class skewCorrected
 :
     public surfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private member data
 
         tmp<surfaceInterpolationScheme<Type>> tScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        skewCorrected(const skewCorrected&) = delete;
+
+        //- No copy assignment
+        void operator=(const skewCorrected&) = delete;
 
 
 public:
@@ -98,16 +112,13 @@ public:
             )
         {}
 
-        //- Disallow default bitwise copy construction
-        skewCorrected(const skewCorrected&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             return tScheme_().weights(vf);
@@ -121,28 +132,28 @@ public:
              || skewCorrectionVectors::New(this->mesh()).skew();
         }
 
-        tmp<SurfaceField<Type>>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         skewCorrection
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
 
             const skewCorrectionVectors& scv = skewCorrectionVectors::New(mesh);
 
-            tmp<SurfaceField<Type>> tsfCorr
+            tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tsfCorr
             (
-                SurfaceField<Type>::New
+                new GeometricField<Type, fvsPatchField, surfaceMesh>
                 (
-                    "skewCorrected::skewCorrection(" + vf.name() + ')',
-                    mesh,
-                    dimensioned<Type>
+                    IOobject
                     (
-                        vf.name(),
-                        vf.dimensions(),
-                        Zero
-                    )
+                        "skewCorrected::skewCorrection(" + vf.name() + ')',
+                        mesh.time().timeName(),
+                        mesh
+                    ),
+                    mesh,
+                    dimensioned<Type>(vf.dimensions(), Zero)
                 )
             );
 
@@ -171,10 +182,10 @@ public:
 
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             if
@@ -196,18 +207,12 @@ public:
             else
             {
                 return
-                    tmp<SurfaceField<Type>>
+                    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
                     (
                         nullptr
                     );
             }
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const skewCorrected&) = delete;
 };
 
 

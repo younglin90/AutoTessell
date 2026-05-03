@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +26,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "includeFuncEntry.H"
-#include "addToRunTimeSelectionTable.H"
+#include "functionObjectList.H"
+#include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -32,73 +35,34 @@ namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(includeFuncEntry, 0);
-    addToRunTimeSelectionTable(functionEntry, includeFuncEntry, dictionary);
-}
-}
-
-
-Foam::fileName Foam::functionEntries::includeFuncEntry::functionObjectDictPath
-(
-    "caseDicts/functions"
-);
-
-
-Foam::fileName
-Foam::functionEntries::includeFuncEntry::functionObjectTemplatePath
-(
-    "caseDicts/functionTemplates"
-);
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::functionEntries::includeFuncEntry::includeFuncEntry
-(
-    const functionName& functionType,
-    const label lineNumber,
-    const dictionary& parentDict,
-    Istream& is
-)
-:
-    functionEntry
+    addNamedToMemberFunctionSelectionTable
     (
-        functionType,
-        lineNumber,
-        parentDict,
-        is,
-        readFuncNameArgList(functionType, is)
-    )
-{}
-
-
-Foam::functionEntries::includeFuncEntry::includeFuncEntry
-(
-    const label lineNumber,
-    const dictionary& parentDict,
-    Istream& is
-)
-:
-    includeFuncEntry(typeName, lineNumber, parentDict, is)
-{}
+        functionEntry,
+        includeFuncEntry,
+        execute,
+        dictionaryIstream,
+        includeFunc
+    );
+} // End namespace functionEntries
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::functionEntries::includeFuncEntry::execute
 (
-    dictionary& contextDict,
+    dictionary& parentDict,
     Istream& is
 )
 {
-    return readConfigFile
+    const word fNameArgs(is);
+    HashSet<wordRe> selectedFields;
+
+    return functionObjectList::readFunctionObject
     (
-        "function",
-        // Read line containing the function name and the optional arguments
-        funcNameArgs(),
-        contextDict,
-        functionObjectDictPath,
-        "system"
+        fNameArgs,
+        parentDict,
+        selectedFields
     );
 }
 

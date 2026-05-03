@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,6 +40,10 @@ Description
 \*---------------------------------------------------------------------------*/
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifndef CREATE_TIME
+    #define CREATE_TIME createTime.H
+#endif
 
 #ifndef CREATE_MESH
     #define CREATE_MESH createMesh.H
@@ -74,36 +81,66 @@ if (argList::postProcess(argc, argv))
 
     #include "setRootCase.H"
 
-    if (args.optionFound("list"))
+    if (args.found("list"))
     {
-        Info<< nl
-            << "Available configured functionObjects:"
-            << listAllConfigFiles
-               (
-                   functionEntries::includeFuncEntry::functionObjectDictPath
-               )
-            << endl;
+        functionObjectList::list();
         return 0;
     }
 
-    #include "createTime.H"
-    const Foam::instantList timeDirs =
-        Foam::timeSelector::select0(runTime, args);
+    #include INCLUDE_FILE(CREATE_TIME)
+    Foam::instantList timeDirs = Foam::timeSelector::select0(runTime, args);
     #include INCLUDE_FILE(CREATE_MESH)
 
     #ifndef NO_CONTROL
     #include INCLUDE_FILE(CREATE_CONTROL)
     #endif
 
+    // Externally stored dictionary for functionObjectList
+    // if not constructed from runTime
+    dictionary functionsDict;
+
+    HashSet<wordRe> selectedFields;
+
+    // Construct functionObjectList
+    autoPtr<functionObjectList> functionsPtr
+    (
+        functionObjectList::New(args, runTime, functionsDict, selectedFields)
+    );
+
     forAll(timeDirs, timei)
     {
         runTime.setTime(timeDirs[timei], timei);
 
-        Info<< "Time = " << runTime.userTimeName() << endl;
+        Info<< "Time = " << runTime.timeName() << endl;
 
-        mesh.readUpdate();
+        switch (mesh.readUpdate())
+        {
+            case polyMesh::POINTS_MOVED:
+            {
+                functionsPtr->movePoints(mesh);
+                break;
+            }
+            case polyMesh::TOPO_CHANGE:
+            case polyMesh::TOPO_PATCH_CHANGE:
+            {
+                mapPolyMesh mpm(mesh);
+                functionsPtr->updateMesh(mpm);
+                break;
+            }
+            case polyMesh::UNCHANGED:
+            {
+                // No additional work
+                break;
+            }
+            default:
+            {
+                FatalErrorIn(args.executable())
+                    << "Unhandled enumeration"
+                    << abort(FatalError);
+            }
+        }
 
-        FatalIOError.throwExceptions();
+        FatalIOError.throwing(true);
 
         try
         {
@@ -117,21 +154,21 @@ if (argList::postProcess(argc, argv))
             #include INCLUDE_FILE(CREATE_FIELDS_3)
             #endif
 
-            // Construct functionObjectList
-            autoPtr<functionObjectList> functionsPtr
-            (
-                functionObjectList::New(args, runTime)
-            );
-
             functionsPtr->execute();
+
+            // Execute the functionObject 'end()' function for the last time
+            if (timei == timeDirs.size()-1)
+            {
+                functionsPtr->end();
+            }
+
+            // Report to output (avoid overwriting values from simulation)
+            profiling::print(Info);
         }
-        catch (IOerror& err)
+        catch (const Foam::IOerror& err)
         {
             Warning<< err << endl;
         }
-
-        // Clear the objects owned by the mesh
-        mesh.objectRegistry::clear();
 
         Info<< endl;
     }

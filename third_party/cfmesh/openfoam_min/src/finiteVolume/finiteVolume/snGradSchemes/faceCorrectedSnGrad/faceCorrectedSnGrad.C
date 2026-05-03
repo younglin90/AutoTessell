@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,35 +30,35 @@ License
 #include "volPointInterpolation.H"
 #include "triangle.H"
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::fv::faceCorrectedSnGrad<Type>::~faceCorrectedSnGrad()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::SurfaceField<Type>>
+Foam::tmp<Foam::GeometricField<Type, Foam::fvsPatchField, Foam::surfaceMesh>>
 Foam::fv::faceCorrectedSnGrad<Type>::fullGradCorrection
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     const fvMesh& mesh = this->mesh();
 
-    PointField<Type> pvf
+    GeometricField<Type, pointPatchField, pointMesh> pvf
     (
         volPointInterpolation::New(mesh).interpolate(vf)
     );
 
-    // construct SurfaceField<Type>
-    tmp<SurfaceField<Type>> tsfCorr
+    // construct GeometricField<Type, fvsPatchField, surfaceMesh>
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tsfCorr
     (
-        SurfaceField<Type>::New
+        new GeometricField<Type, fvsPatchField, surfaceMesh>
         (
-            "snGradCorr("+vf.name()+')',
+            IOobject
+            (
+                "snGradCorr("+vf.name()+')',
+                vf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
             mesh,
             vf.dimensions()*mesh.nonOrthDeltaCoeffs().dimensions()
         )
@@ -80,31 +83,29 @@ Foam::fv::faceCorrectedSnGrad<Type>::fullGradCorrection
 
         const face& fi = faces[facei];
 
-        vector nf(Sf[facei]/magSf[facei]);
+        const vector nf(Sf[facei]/magSf[facei]);
 
-        for (label pi=0; pi<fi.size(); pi++)
+        for (label pi = 0; pi < fi.size(); ++pi)
         {
             // Next point index
-            label pj = (pi+1)%fi.size();
+            const label pj = fi.fcIndex(pi);
 
             // Edge normal in plane of face
-            vector edgen(nf^(points[fi[pj]] - points[fi[pi]]));
+            const vector edgen(nf^(points[fi[pj]] - points[fi[pi]]));
 
             // Edge centre field value
-            Type pvfe(0.5*(pvf[fi[pj]] + pvf[fi[pi]]));
+            const Type pvfe(0.5*(pvf[fi[pj]] + pvf[fi[pi]]));
 
             // Integrate face gradient
             fgrad += edgen*pvfe;
         }
 
-        // Finalise face-gradient by dividing by face area
+        // Finalize face-gradient by dividing by face area
         fgrad /= magSf[facei];
 
         // Calculate correction vector
         vector dCorr(C[neighbour[facei]] - C[owner[facei]]);
         dCorr /= (nf & dCorr);
-
-        // if (mag(dCorr) > 2) dCorr *= 2/mag(dCorr);
 
         sfCorr[facei] = dCorr&fgrad;
     }
@@ -116,27 +117,34 @@ Foam::fv::faceCorrectedSnGrad<Type>::fullGradCorrection
 
 
 template<class Type>
-Foam::tmp<Foam::SurfaceField<Type>>
+Foam::tmp<Foam::GeometricField<Type, Foam::fvsPatchField, Foam::surfaceMesh>>
 Foam::fv::faceCorrectedSnGrad<Type>::correction
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     const fvMesh& mesh = this->mesh();
 
-    // construct SurfaceField<Type>
-    tmp<SurfaceField<Type>> tssf
+    // construct GeometricField<Type, fvsPatchField, surfaceMesh>
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tssf
     (
-        SurfaceField<Type>::New
+        new GeometricField<Type, fvsPatchField, surfaceMesh>
         (
-            "snGradCorr("+vf.name()+')',
+            IOobject
+            (
+                "snGradCorr("+vf.name()+')',
+                vf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
             mesh,
             vf.dimensions()*mesh.nonOrthDeltaCoeffs().dimensions()
         )
     );
-    SurfaceField<Type>& ssf = tssf.ref();
+    GeometricField<Type, fvsPatchField, surfaceMesh>& ssf = tssf.ref();
 
-    for (direction cmpt = 0; cmpt < pTraits<Type>::nComponents; cmpt++)
+    for (direction cmpt = 0; cmpt < pTraits<Type>::nComponents; ++cmpt)
     {
         ssf.replace
         (

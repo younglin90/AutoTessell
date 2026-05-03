@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,78 +27,58 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "fvPatch.H"
-#include "objectRegistry.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::Field<Type>> Foam::fvPatch::patchInternalField
+void Foam::fvPatch::patchInternalField
 (
-    const UList<Type>& f
+    const UList<Type>& internalData,
+    const labelUList& addressing,
+    Field<Type>& pfld
 ) const
 {
-    tmp<Field<Type>> tpif(new Field<Type>(size()));
-    Field<Type>& pif = tpif.ref();
+    const label len = this->size();
 
-    const labelUList& faceCells = this->faceCells();
+    pfld.resize_nocopy(len);
 
-    forAll(pif, facei)
+    for (label i = 0; i < len; ++i)
     {
-        pif[facei] = f[faceCells[facei]];
+        pfld[i] = internalData[addressing[i]];
     }
-
-    return tpif;
 }
 
 
 template<class Type>
 void Foam::fvPatch::patchInternalField
 (
-    const UList<Type>& f,
-    Field<Type>& pif
+    const UList<Type>& internalData,
+    Field<Type>& pfld
 ) const
 {
-    pif.setSize(size());
-
-    const labelUList& faceCells = this->faceCells();
-
-    forAll(pif, facei)
-    {
-        pif[facei] = f[faceCells[facei]];
-    }
+    patchInternalField(internalData, this->faceCells(), pfld);
 }
 
 
-template<class GeometricField, class Type>
+template<class Type>
+Foam::tmp<Foam::Field<Type>> Foam::fvPatch::patchInternalField
+(
+    const UList<Type>& internalData
+) const
+{
+    auto tpfld = tmp<Field<Type>>::New();
+    patchInternalField(internalData, this->faceCells(), tpfld.ref());
+    return tpfld;
+}
+
+
+template<class GeometricField, class AnyType>
 const typename GeometricField::Patch& Foam::fvPatch::patchField
 (
     const GeometricField& gf
 ) const
 {
-    return gf.boundaryField()[index()];
-}
-
-
-template<class GeometricField, class Type>
-typename GeometricField::Patch& Foam::fvPatch::patchField
-(
-    GeometricField& gf
-) const
-{
-    return gf.boundaryFieldRef()[index()];
-}
-
-
-template<class GeometricField, class Type>
-const typename GeometricField::Patch& Foam::fvPatch::lookupPatchField
-(
-    const word& name
-) const
-{
-    return patchField<GeometricField, Type>
-    (
-        db().template lookupObject<GeometricField>(name)
-    );
+    return gf.boundaryField()[this->index()];
 }
 
 

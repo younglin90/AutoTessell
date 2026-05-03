@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +30,7 @@ Description
     Cell zip-up tool. This function modifies the list of faces such
     that all the cells are topologically closed.  Note that, while
     this operation is perfectly sensible for correct meshes, it may
-    lead to arbitrary errors if the mesh is originally broken.
+    lead to arbitryary errors if the mesh is originally broken.
 
 SourceFiles
     polyMeshZipUpCells.C

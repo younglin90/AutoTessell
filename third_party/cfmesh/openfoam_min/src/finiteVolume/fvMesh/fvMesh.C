@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017,2022 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,32 +29,17 @@ License
 #include "fvMesh.H"
 #include "volFields.H"
 #include "surfaceFields.H"
-#include "pointFields.H"
 #include "slicedVolFields.H"
 #include "slicedSurfaceFields.H"
 #include "SubField.H"
 #include "demandDrivenData.H"
-#include "zonesGenerator.H"
 #include "fvMeshLduAddressing.H"
-#include "fvMeshTopoChanger.H"
-#include "fvMeshDistributor.H"
-#include "fvMeshMover.H"
-#include "fvMeshStitcher.H"
-#include "nonConformalFvPatch.H"
-#include "polyFacesFvsPatchLabelField.H"
-#include "polyTopoChangeMap.H"
+#include "mapPolyMesh.H"
 #include "MapFvFields.H"
 #include "fvMeshMapper.H"
-#include "pointMesh.H"
-#include "pointMeshMapper.H"
-#include "MapPointField.H"
-#include "meshObjects.H"
-#include "HashPtrTable.H"
-#include "CompactListList.H"
-
-#include "fvcSurfaceIntegrate.H"
-#include "fvcReconstruct.H"
-#include "surfaceInterpolate.H"
+#include "mapClouds.H"
+#include "MeshObject.H"
+#include "fvMatrix.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -60,100 +48,64 @@ namespace Foam
     defineTypeNameAndDebug(fvMesh, 0);
 }
 
-const Foam::HashSet<Foam::word> Foam::fvMesh::geometryFields
-{
-    "Vc",
-    "Vc0",
-    "Vc00",
-    "Sf",
-    "magSf",
-    "Cc",
-    "Cf",
-    "meshPhi",
-    "meshPhi_0"
-};
-
-const Foam::HashSet<Foam::word> Foam::fvMesh::curGeometryFields
-{
-    "Vc",
-    "Sf",
-    "magSf",
-    "Cc",
-    "Cf"
-};
-
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-void Foam::fvMesh::clearFvGeomNotOldVol()
+void Foam::fvMesh::clearGeomNotOldVol()
 {
-    DebugInFunction << "Clearing current-time FV geometry" << endl;
-
-    meshObjects::clearUpto
+    meshObject::clearUpto
     <
         fvMesh,
-        DeletableMeshObject,
+        GeometricMeshObject,
         MoveableMeshObject
     >(*this);
 
-    meshObjects::clearUpto
+    meshObject::clearUpto
     <
         lduMesh,
-        DeletableMeshObject,
+        GeometricMeshObject,
         MoveableMeshObject
     >(*this);
 
     deleteDemandDrivenData(VPtr_);
-    deleteDemandDrivenData(SfSlicePtr_);
     deleteDemandDrivenData(SfPtr_);
-    deleteDemandDrivenData(magSfSlicePtr_);
     deleteDemandDrivenData(magSfPtr_);
-    deleteDemandDrivenData(CSlicePtr_);
     deleteDemandDrivenData(CPtr_);
-    deleteDemandDrivenData(CfSlicePtr_);
     deleteDemandDrivenData(CfPtr_);
-}
-
-
-void Foam::fvMesh::clearFvGeom()
-{
-    DebugInFunction << "Clearing FV Geometry" << endl;
-
-    clearFvGeomNotOldVol();
-
-    deleteDemandDrivenData(phiPtr_);
-    deleteDemandDrivenData(V0Ptr_);
-    deleteDemandDrivenData(V00Ptr_);
 }
 
 
 void Foam::fvMesh::updateGeomNotOldVol()
 {
-    bool haveV = (VPtr_ != nullptr);
-    bool haveSf = (SfSlicePtr_ != nullptr || SfPtr_ != nullptr);
-    bool haveMagSf = (magSfSlicePtr_ != nullptr || magSfPtr_ != nullptr);
-    bool haveCP = (CSlicePtr_ != nullptr || CPtr_ != nullptr);
-    bool haveCf = (CfSlicePtr_ != nullptr || CfPtr_ != nullptr);
+    const bool haveV = (VPtr_ != nullptr);
+    const bool haveSf = (SfPtr_ != nullptr);
+    const bool haveMagSf = (magSfPtr_ != nullptr);
+    const bool haveCP = (CPtr_ != nullptr);
+    const bool haveCf = (CfPtr_ != nullptr);
 
-    clearFvGeomNotOldVol();
+    clearGeomNotOldVol();
 
     // Now recreate the fields
     if (haveV)
     {
         (void)V();
     }
+
     if (haveSf)
     {
         (void)Sf();
     }
+
     if (haveMagSf)
     {
         (void)magSf();
     }
+
     if (haveCP)
     {
         (void)C();
     }
+
     if (haveCf)
     {
         (void)Cf();
@@ -161,95 +113,15 @@ void Foam::fvMesh::updateGeomNotOldVol()
 }
 
 
-void Foam::fvMesh::storeOldTimeFields()
-{
-    storeOldTimeFields<PointField>();
-    storeOldTimeFields<VolField>();
-    storeOldTimeFields<SurfaceField>();
-}
-
-
-void Foam::fvMesh::nullOldestTimeFields()
-{
-    nullOldestTimeFields<PointField>();
-    nullOldestTimeFields<VolField>();
-    nullOldestTimeFields<SurfaceField>();
-}
-
-
-void Foam::fvMesh::printAllocated() const
-{
-    polyMesh::printAllocated();
-
-    Pout<< "fvMesh allocated :" << endl;
-
-    if (lduPtr_)
-    {
-        Pout<< "    Ldu Addressing" << endl;
-    }
-
-    if (polyFacesBfPtr_)
-    {
-        Pout<< "    Poly-faces boundary field" << endl;
-    }
-
-    if (polyBFacePatchesPtr_)
-    {
-        Pout<< "    Poly-boundary-face to fv-patch and fv-patch-face map"
-            << endl;
-    }
-
-    if (ownerBfPtr_)
-    {
-        Pout<< "    Owner boundary field" << endl;
-    }
-
-    if (V0Ptr_)
-    {
-        Pout<< "    Old-time cell volumes field" << endl;
-    }
-
-    if (V00Ptr_)
-    {
-        Pout<< "    Old-old-time cell volumes field" << endl;
-    }
-
-    if (SfPtr_)
-    {
-        Pout<< "    Non-sliced face areas field" << endl;
-    }
-
-    if (magSfPtr_)
-    {
-        Pout<< "    Non-sliced face area magnitudes field" << endl;
-    }
-
-    if (CPtr_)
-    {
-        Pout<< "    Non-sliced cell centres field" << endl;
-    }
-
-    if (CfPtr_)
-    {
-        Pout<< "    Non-sliced face centres field" << endl;
-    }
-
-    if (phiPtr_)
-    {
-        Pout<< "    Mesh flux field" << endl;
-    }
-
-    surfaceInterpolation::printAllocated();
-}
-
-
 void Foam::fvMesh::clearGeom()
 {
-    DebugInFunction << "Clearing geometry" << endl;
+    clearGeomNotOldVol();
 
-    clearFvGeom();
+    deleteDemandDrivenData(V0Ptr_);
+    deleteDemandDrivenData(V00Ptr_);
 
-    polyMesh::clearGeom();
+    // Mesh motion flux cannot be deleted here because the old-time flux
+    // needs to be saved.
 }
 
 
@@ -259,22 +131,22 @@ void Foam::fvMesh::clearAddressing(const bool isMeshUpdate)
 
     if (isMeshUpdate)
     {
-        // Part of a mesh update. Keep meshObjects that have an topoChange
+        // Part of a mesh update. Keep meshObjects that have an updateMesh
         // callback
-        meshObjects::clearUpto
+        meshObject::clearUpto
         <
             fvMesh,
-            DeletableMeshObject,
-            TopoChangeableMeshObject
+            TopologicalMeshObject,
+            UpdateableMeshObject
         >
         (
             *this
         );
-        meshObjects::clearUpto
+        meshObject::clearUpto
         <
             lduMesh,
-            DeletableMeshObject,
-            TopoChangeableMeshObject
+            TopologicalMeshObject,
+            UpdateableMeshObject
         >
         (
             *this
@@ -282,175 +154,221 @@ void Foam::fvMesh::clearAddressing(const bool isMeshUpdate)
     }
     else
     {
-        meshObjects::clear<fvMesh, DeletableMeshObject>(*this);
-        meshObjects::clear<lduMesh, DeletableMeshObject>(*this);
+        meshObject::clear<fvMesh, TopologicalMeshObject>(*this);
+        meshObject::clear<lduMesh, TopologicalMeshObject>(*this);
     }
-
     deleteDemandDrivenData(lduPtr_);
-    deleteDemandDrivenData(polyFacesBfIOPtr_);
-    deleteDemandDrivenData(polyFacesBfPtr_);
-    deleteDemandDrivenData(polyBFaceOffsetsPtr_);
-    deleteDemandDrivenData(polyBFaceOffsetPatchesPtr_);
-    deleteDemandDrivenData(polyBFaceOffsetPatchFacesPtr_);
-    deleteDemandDrivenData(polyBFacePatchesPtr_);
-    deleteDemandDrivenData(polyBFacePatchFacesPtr_);
-    deleteDemandDrivenData(ownerBfPtr_);
 }
 
 
-void Foam::fvMesh::clearOut()
+void Foam::fvMesh::storeOldVol(const scalarField& V)
 {
-    clearFvGeom();
-
-    surfaceInterpolation::clearOut();
-
-    clearAddressing();
-
-    polyMesh::clearOut();
-}
-
-
-Foam::wordList Foam::fvMesh::polyFacesPatchTypes() const
-{
-    wordList wantedPatchTypes
-    (
-        boundary().size(),
-        polyFacesFvsPatchLabelField::typeName
-    );
-
-    forAll(boundary(), patchi)
+    if (curTimeIndex_ < time().timeIndex())
     {
-        const fvPatch& fvp = boundary()[patchi];
+        DebugInFunction
+            << " Storing old time volumes since from time " << curTimeIndex_
+            << " and time now " << time().timeIndex()
+            << " V:" << V.size() << endl;
 
-        if (isA<nonConformalFvPatch>(fvp))
+        if (V00Ptr_ && V0Ptr_)
         {
-            wantedPatchTypes[patchi] =
-                refCast<const nonConformalFvPatch>(fvp).polyFacesType();
+            // Copy V0 into V00 storage
+            *V00Ptr_ = *V0Ptr_;
+        }
+
+        if (!V0Ptr_)
+        {
+            V0Ptr_ = new DimensionedField<scalar, volMesh>
+            (
+                IOobject
+                (
+                    "V0",
+                    this->time().timeName(),
+                    *this,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                ),
+                *this,
+                dimVolume
+            );
+            // Note: V0 now sized with current mesh, not with (potentially
+            //       different size) V.
+            V0Ptr_->scalarField::resize_nocopy(V.size());
+        }
+
+        // Copy V into V0 storage
+        V0Ptr_->scalarField::operator=(V);
+
+        curTimeIndex_ = time().timeIndex();
+
+        if (debug)
+        {
+            InfoInFunction
+                << " Stored old time volumes V0:" << V0Ptr_->size()
+                << endl;
+
+            if (V00Ptr_)
+            {
+                InfoInFunction
+                    << " Stored oldold time volumes V00:" << V00Ptr_->size()
+                    << endl;
+            }
         }
     }
-
-    return wantedPatchTypes;
 }
 
 
-Foam::surfaceLabelField::Boundary& Foam::fvMesh::polyFacesBfRef()
+void Foam::fvMesh::clearOutLocal(const bool isMeshUpdate)
 {
-    if (!polyFacesBfPtr_)
-    {
-        polyFacesBf();
-    }
+    clearGeom();
+    surfaceInterpolation::clearOut();
 
-    setPolyFacesBfInstance(time().name());
+    clearAddressing(isMeshUpdate);
 
-    return *polyFacesBfPtr_;
+    // Clear mesh motion flux
+    phiPtr_.reset(nullptr);
+}
+
+
+void Foam::fvMesh::clearOut(const bool isMeshUpdate)
+{
+    clearOutLocal(isMeshUpdate);
+
+    polyMesh::clearOut(isMeshUpdate);
+}
+
+
+void Foam::fvMesh::clearMeshPhi()
+{
+    // Clear mesh motion flux
+    phiPtr_.reset(nullptr);
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::fvMesh::fvMesh
-(
-    const IOobject& io,
-    const bool doPost
-    // const bool doZones
-)
+Foam::fvMesh::fvMesh(const IOobject& io, const bool doInit)
 :
-    polyMesh(io),
-    surfaceMesh(*this),
+    polyMesh(io, doInit),
+    fvSchemes(static_cast<const objectRegistry&>(*this)),
     surfaceInterpolation(*this),
-    boundary_(*this, poly().boundary()),
-    stitcher_(nullptr),
-    topoChanger_(nullptr),
-    distributor_(nullptr),
-    mover_(nullptr),
+    fvSolution(static_cast<const objectRegistry&>(*this)),
+    boundary_(*this, boundaryMesh()),
     lduPtr_(nullptr),
-    polyFacesBfIOPtr_(nullptr),
-    polyFacesBfPtr_(nullptr),
-    polyBFaceOffsetsPtr_(nullptr),
-    polyBFaceOffsetPatchesPtr_(nullptr),
-    polyBFaceOffsetPatchFacesPtr_(nullptr),
-    polyBFacePatchesPtr_(nullptr),
-    polyBFacePatchFacesPtr_(nullptr),
-    ownerBfPtr_(nullptr),
     curTimeIndex_(time().timeIndex()),
     VPtr_(nullptr),
     V0Ptr_(nullptr),
     V00Ptr_(nullptr),
-    SfSlicePtr_(nullptr),
     SfPtr_(nullptr),
-    magSfSlicePtr_(nullptr),
     magSfPtr_(nullptr),
-    CSlicePtr_(nullptr),
     CPtr_(nullptr),
-    CfSlicePtr_(nullptr),
     CfPtr_(nullptr),
     phiPtr_(nullptr)
 {
     DebugInFunction << "Constructing fvMesh from IOobject" << endl;
 
-    if (doPost)
+    if (doInit)
     {
-        postConstruct(true, true, stitchType::geometric);
+        fvMesh::init(false);    // do not initialise lower levels
     }
 }
 
 
-Foam::fvMesh::fvMesh
-(
-    const IOobject& io,
-    pointField&& points,
-    const cellShapeList& shapes,
-    const faceListList& boundaryFaces,
-    const wordList& boundaryPatchNames,
-    const PtrList<dictionary>& boundaryDicts,
-    const word& defaultBoundaryPatchName,
-    const word& defaultBoundaryPatchType,
-    const bool syncPar
-)
-:
-    polyMesh
-    (
-        io,
-        std::move(points),
-        shapes,
-        boundaryFaces,
-        boundaryPatchNames,
-        boundaryDicts,
-        defaultBoundaryPatchName,
-        defaultBoundaryPatchType,
-        syncPar
-    ),
-    surfaceMesh(*this),
-    surfaceInterpolation(*this),
-    boundary_(*this, poly().boundary()),
-    stitcher_(nullptr),
-    topoChanger_(nullptr),
-    distributor_(nullptr),
-    mover_(nullptr),
-    lduPtr_(nullptr),
-    polyFacesBfIOPtr_(nullptr),
-    polyFacesBfPtr_(nullptr),
-    polyBFaceOffsetsPtr_(nullptr),
-    polyBFaceOffsetPatchesPtr_(nullptr),
-    polyBFaceOffsetPatchFacesPtr_(nullptr),
-    polyBFacePatchesPtr_(nullptr),
-    polyBFacePatchFacesPtr_(nullptr),
-    ownerBfPtr_(nullptr),
-    curTimeIndex_(time().timeIndex()),
-    VPtr_(nullptr),
-    V0Ptr_(nullptr),
-    V00Ptr_(nullptr),
-    SfSlicePtr_(nullptr),
-    SfPtr_(nullptr),
-    magSfSlicePtr_(nullptr),
-    magSfPtr_(nullptr),
-    CSlicePtr_(nullptr),
-    CPtr_(nullptr),
-    CfSlicePtr_(nullptr),
-    CfPtr_(nullptr),
-    phiPtr_(nullptr)
+bool Foam::fvMesh::init(const bool doInit)
 {
-    DebugInFunction << "Constructing fvMesh from shapes" << endl;
+    if (doInit)
+    {
+        // Construct basic geometry calculation engine. Note: do before
+        // doing anything with primitiveMesh::cellCentres etc.
+        (void)geometry();
+
+        // Initialise my data
+        polyMesh::init(doInit);
+    }
+
+    // Read some optional fields
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~
+    // For redistributePar + fileHandler can have master processor
+    // find the file but not the subprocs.
+
+    IOobject rio
+    (
+        "none",
+        this->time().timeName(),
+        *this,
+        IOobject::LAZY_READ,
+        IOobject::NO_WRITE,
+        IOobject::NO_REGISTER
+    );
+
+
+    // Read old cell volumes (if present) and set the storage of V00
+    rio.resetHeader("V0");
+    if (returnReduceOr(rio.typeHeaderOk<regIOobject>(false)))
+    {
+        DebugInFunction
+            << "Detected V0: " << rio.objectRelPath() << nl;
+
+        V0Ptr_ = new DimensionedField<scalar, volMesh>
+        (
+            rio,
+            *this,
+            dimensionedScalar(dimVol, Foam::zero{})
+        );
+
+        // Set the moving flag early in case demand-driven geometry
+        // construction checks for it
+        moving(true);
+
+        (void)V00();
+    }
+
+
+    // Read mesh fluxes (if present) and set the mesh to be moving
+    rio.resetHeader("meshPhi");
+    if (returnReduceOr(rio.typeHeaderOk<regIOobject>(false)))
+    {
+        DebugInFunction
+            << "Detected meshPhi: " << rio.objectRelPath() << nl;
+
+        // Clear mesh motion flux
+        phiPtr_.reset(nullptr);
+
+        phiPtr_ = std::make_unique<surfaceScalarField>
+        (
+            rio,
+            *this,
+            dimensionedScalar(dimVol/dimTime, Foam::zero{})
+        );
+
+        // Set the moving flag early in case demand-driven geometry
+        // construction checks for it
+        moving(true);
+
+        // The mesh is now considered moving so the old-time cell volumes
+        // will be required for the time derivatives so if they haven't been
+        // read initialise to the current cell volumes
+        if (!V0Ptr_)
+        {
+            V0Ptr_ = new DimensionedField<scalar, volMesh>
+            (
+                IOobject
+                (
+                    "V0",
+                    this->time().timeName(),
+                    *this,
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                ),
+                V()
+            );
+        }
+    }
+
+    // Assume something changed
+    return true;
 }
 
 
@@ -473,33 +391,18 @@ Foam::fvMesh::fvMesh
         std::move(allNeighbour),
         syncPar
     ),
-    surfaceMesh(*this),
+    fvSchemes(static_cast<const objectRegistry&>(*this)),
     surfaceInterpolation(*this),
-    boundary_(*this, poly().boundary()),
-    stitcher_(nullptr),
-    topoChanger_(nullptr),
-    distributor_(nullptr),
-    mover_(nullptr),
+    fvSolution(static_cast<const objectRegistry&>(*this)),
+    boundary_(*this),
     lduPtr_(nullptr),
-    polyFacesBfIOPtr_(nullptr),
-    polyFacesBfPtr_(nullptr),
-    polyBFaceOffsetsPtr_(nullptr),
-    polyBFaceOffsetPatchesPtr_(nullptr),
-    polyBFaceOffsetPatchFacesPtr_(nullptr),
-    polyBFacePatchesPtr_(nullptr),
-    polyBFacePatchFacesPtr_(nullptr),
-    ownerBfPtr_(nullptr),
     curTimeIndex_(time().timeIndex()),
     VPtr_(nullptr),
     V0Ptr_(nullptr),
     V00Ptr_(nullptr),
-    SfSlicePtr_(nullptr),
     SfPtr_(nullptr),
-    magSfSlicePtr_(nullptr),
     magSfPtr_(nullptr),
-    CSlicePtr_(nullptr),
     CPtr_(nullptr),
-    CfSlicePtr_(nullptr),
     CfPtr_(nullptr),
     phiPtr_(nullptr)
 {
@@ -524,33 +427,18 @@ Foam::fvMesh::fvMesh
         std::move(cells),
         syncPar
     ),
-    surfaceMesh(*this),
+    fvSchemes(static_cast<const objectRegistry&>(*this)),
     surfaceInterpolation(*this),
+    fvSolution(static_cast<const objectRegistry&>(*this)),
     boundary_(*this),
-    stitcher_(nullptr),
-    topoChanger_(nullptr),
-    distributor_(nullptr),
-    mover_(nullptr),
     lduPtr_(nullptr),
-    polyFacesBfIOPtr_(nullptr),
-    polyFacesBfPtr_(nullptr),
-    polyBFaceOffsetsPtr_(nullptr),
-    polyBFaceOffsetPatchesPtr_(nullptr),
-    polyBFaceOffsetPatchFacesPtr_(nullptr),
-    polyBFacePatchesPtr_(nullptr),
-    polyBFacePatchFacesPtr_(nullptr),
-    ownerBfPtr_(nullptr),
     curTimeIndex_(time().timeIndex()),
     VPtr_(nullptr),
     V0Ptr_(nullptr),
     V00Ptr_(nullptr),
-    SfSlicePtr_(nullptr),
     SfPtr_(nullptr),
-    magSfSlicePtr_(nullptr),
     magSfPtr_(nullptr),
-    CSlicePtr_(nullptr),
     CPtr_(nullptr),
-    CfSlicePtr_(nullptr),
     CfPtr_(nullptr),
     phiPtr_(nullptr)
 {
@@ -558,43 +446,132 @@ Foam::fvMesh::fvMesh
 }
 
 
-Foam::fvMesh::fvMesh(fvMesh&& mesh)
+Foam::fvMesh::fvMesh(const IOobject& io, const Foam::zero, const bool syncPar)
 :
-    polyMesh(Foam::move(mesh)),
-    surfaceMesh(*this),
-    surfaceInterpolation(Foam::move(mesh)),
-    boundary_(Foam::move(mesh.boundary_)),
-    stitcher_(Foam::move(mesh.stitcher_)),
-    topoChanger_(Foam::move(mesh.topoChanger_)),
-    distributor_(Foam::move(mesh.distributor_)),
-    mover_(Foam::move(mesh.mover_)),
-    lduPtr_(Foam::move(mesh.lduPtr_)),
-    polyFacesBfIOPtr_(Foam::move(mesh.polyFacesBfIOPtr_)),
-    polyFacesBfPtr_(Foam::move(mesh.polyFacesBfPtr_)),
-    polyBFaceOffsetsPtr_(Foam::move(mesh.polyBFaceOffsetsPtr_)),
-    polyBFaceOffsetPatchesPtr_(Foam::move(mesh.polyBFaceOffsetPatchesPtr_)),
-    polyBFaceOffsetPatchFacesPtr_
+    fvMesh(io, pointField(), faceList(), labelList(), labelList(), syncPar)
+{}
+
+
+Foam::fvMesh::fvMesh
+(
+    const IOobject& io,
+    const fvMesh& baseMesh,
+    const Foam::zero,
+    const bool syncPar
+)
+:
+    fvMesh
     (
-        Foam::move(mesh.polyBFaceOffsetPatchFacesPtr_)
+        io,
+        baseMesh,
+        pointField(),
+        faceList(),
+        labelList(),  // owner
+        labelList(),  // neighbour
+        syncPar
+    )
+{}
+
+
+Foam::fvMesh::fvMesh
+(
+    const IOobject& io,
+    const fvMesh& baseMesh,
+    pointField&& points,
+    faceList&& faces,
+    labelList&& allOwner,
+    labelList&& allNeighbour,
+    const bool syncPar
+)
+:
+    polyMesh
+    (
+        io,
+        std::move(points),
+        std::move(faces),
+        std::move(allOwner),
+        std::move(allNeighbour),
+        syncPar
     ),
-    polyBFacePatchesPtr_(Foam::move(mesh.polyBFacePatchesPtr_)),
-    polyBFacePatchFacesPtr_(Foam::move(mesh.polyBFacePatchFacesPtr_)),
-    ownerBfPtr_(Foam::move(mesh.ownerBfPtr_)),
-    curTimeIndex_(mesh.curTimeIndex_),
-    VPtr_(Foam::move(mesh.VPtr_)),
-    V0Ptr_(Foam::move(mesh.V0Ptr_)),
-    V00Ptr_(Foam::move(mesh.V00Ptr_)),
-    SfSlicePtr_(Foam::move(mesh.SfSlicePtr_)),
-    SfPtr_(Foam::move(mesh.SfPtr_)),
-    magSfSlicePtr_(Foam::move(mesh.magSfSlicePtr_)),
-    magSfPtr_(Foam::move(mesh.magSfPtr_)),
-    CSlicePtr_(Foam::move(mesh.CSlicePtr_)),
-    CPtr_(Foam::move(mesh.CPtr_)),
-    CfSlicePtr_(Foam::move(mesh.CfSlicePtr_)),
-    CfPtr_(Foam::move(mesh.CfPtr_)),
-    phiPtr_(Foam::move(mesh.phiPtr_))
+    fvSchemes
+    (
+        static_cast<const objectRegistry&>(*this),
+        io.readOpt(),
+        static_cast<const dictionary*>(baseMesh.hasSchemes())
+    ),
+    surfaceInterpolation(*this),
+    fvSolution
+    (
+        static_cast<const objectRegistry&>(*this),
+        io.readOpt(),
+        static_cast<const dictionary*>(baseMesh.hasSolution())
+    ),
+    boundary_(*this),
+    lduPtr_(nullptr),
+    curTimeIndex_(time().timeIndex()),
+    VPtr_(nullptr),
+    V0Ptr_(nullptr),
+    V00Ptr_(nullptr),
+    SfPtr_(nullptr),
+    magSfPtr_(nullptr),
+    CPtr_(nullptr),
+    CfPtr_(nullptr),
+    phiPtr_(nullptr)
 {
-    DebugInFunction << "Move-constructing fvMesh" << endl;
+    DebugInFunction << "Constructing fvMesh as copy and primitives" << endl;
+
+    // Reset mesh data
+    data().reset(baseMesh.data());
+}
+
+
+Foam::fvMesh::fvMesh
+(
+    const IOobject& io,
+    const fvMesh& baseMesh,
+    pointField&& points,
+    faceList&& faces,
+    cellList&& cells,
+    const bool syncPar
+)
+:
+    polyMesh
+    (
+        io,
+        std::move(points),
+        std::move(faces),
+        std::move(cells),
+        syncPar
+    ),
+    fvSchemes
+    (
+        static_cast<const objectRegistry&>(*this),
+        io.readOpt(),
+        static_cast<const dictionary*>(baseMesh.hasSchemes())
+    ),
+    surfaceInterpolation(*this),
+    fvSolution
+    (
+        static_cast<const objectRegistry&>(*this),
+        io.readOpt(),
+        static_cast<const dictionary*>(baseMesh.hasSolution())
+    ),
+    boundary_(*this),
+    lduPtr_(nullptr),
+    curTimeIndex_(time().timeIndex()),
+    VPtr_(nullptr),
+    V0Ptr_(nullptr),
+    V00Ptr_(nullptr),
+    SfPtr_(nullptr),
+    magSfPtr_(nullptr),
+    CPtr_(nullptr),
+    CfPtr_(nullptr),
+    phiPtr_(nullptr)
+{
+    DebugInFunction << "Constructing fvMesh as copy and primitives" << endl;
+
+    // Reset mesh data
+    data().reset(baseMesh.data());
 }
 
 
@@ -608,155 +585,100 @@ Foam::fvMesh::~fvMesh()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::fvMesh::postConstruct
+const Foam::fvSchemes* Foam::fvMesh::hasSchemes() const
+{
+    return static_cast<const fvSchemes*>(this);
+}
+
+
+const Foam::fvSolution* Foam::fvMesh::hasSolution() const
+{
+    return static_cast<const fvSolution*>(this);
+}
+
+
+const Foam::fvSchemes& Foam::fvMesh::schemes() const
+{
+    return static_cast<const fvSchemes&>(*this);
+}
+
+
+Foam::fvSchemes& Foam::fvMesh::schemes()
+{
+    return static_cast<fvSchemes&>(*this);
+}
+
+
+const Foam::fvSolution& Foam::fvMesh::solution() const
+{
+    return static_cast<const fvSolution&>(*this);
+}
+
+
+Foam::fvSolution& Foam::fvMesh::solution()
+{
+    return static_cast<fvSolution&>(*this);
+}
+
+
+Foam::SolverPerformance<Foam::scalar> Foam::fvMesh::solve
 (
-    const bool changers,
-    const bool zones,
-    const stitchType stitch
-)
+    fvMatrix<scalar>& m,
+    const dictionary& dict
+) const
 {
-    // Construct the stitcher
-    stitcher_.set(fvMeshStitcher::New(*this, changers).ptr());
-
-    // Stitch or Re-stitch if necessary
-    if (stitch != stitchType::none)
-    {
-        stitcher_->connect(false, stitch == stitchType::geometric, true);
-    }
-
-    // Construct changers
-    if (changers)
-    {
-        topoChanger_.set(fvMeshTopoChanger::New(*this).ptr());
-        distributor_.set(fvMeshDistributor::New(*this).ptr());
-        mover_.set(fvMeshMover::New(*this).ptr());
-
-        // Check the existence of the cell volumes and read if present
-        // and set the storage of V00
-        if (fileHandler().isFile(time().timePath()/"Vc0"))
-        {
-            V0Ptr_ = new DimensionedField<scalar, fvMesh>
-            (
-                IOobject
-                (
-                    "Vc0",
-                    time().name(),
-                    *this,
-                    IOobject::MUST_READ,
-                    IOobject::NO_WRITE,
-                    true
-                ),
-                *this
-            );
-
-            V00();
-        }
-
-        // Check the existence of the mesh fluxes and read if present
-        if (fileHandler().isFile(time().timePath()/"meshPhi"))
-        {
-            phiPtr_ = new surfaceScalarField
-            (
-                IOobject
-                (
-                    "meshPhi",
-                    time().name(),
-                    *this,
-                    IOobject::MUST_READ,
-                    IOobject::NO_WRITE,
-                    true
-                ),
-                *this
-            );
-        }
-    }
-
-    // Generate the zones after the mesh manipulators have been constructed
-    // to support motion-specific zone generators requiring access to the mover
-    if (zones)
-    {
-        zonesGenerator::New(*this);
-    }
+    // Redirect to fvMatrix solver
+    return m.solveSegregatedOrCoupled(dict);
 }
 
 
-bool Foam::fvMesh::topoChanging() const
+Foam::SolverPerformance<Foam::vector> Foam::fvMesh::solve
+(
+    fvMatrix<vector>& m,
+    const dictionary& dict
+) const
 {
-    return topoChanger_.valid() && topoChanger_->dynamic();
+    // Redirect to fvMatrix solver
+    return m.solveSegregatedOrCoupled(dict);
 }
 
 
-bool Foam::fvMesh::distributing() const
+Foam::SolverPerformance<Foam::sphericalTensor> Foam::fvMesh::solve
+(
+    fvMatrix<sphericalTensor>& m,
+    const dictionary& dict
+) const
 {
-    return distributor_.valid() && distributor_->dynamic();
+    // Redirect to fvMatrix solver
+    return m.solveSegregatedOrCoupled(dict);
 }
 
 
-bool Foam::fvMesh::dynamic() const
+Foam::SolverPerformance<Foam::symmTensor> Foam::fvMesh::solve
+(
+    fvMatrix<symmTensor>& m,
+    const dictionary& dict
+) const
 {
-    return
-        (topoChanger_.valid() && topoChanger_->dynamic())
-     || (mover_.valid() && mover_->dynamic());
+    // Redirect to fvMatrix solver
+    return m.solveSegregatedOrCoupled(dict);
 }
 
 
-bool Foam::fvMesh::update()
+Foam::SolverPerformance<Foam::tensor> Foam::fvMesh::solve
+(
+    fvMatrix<tensor>& m,
+    const dictionary& dict
+) const
 {
-    if
-    (
-        stitcher_->stitches()
-     || topoChanger_->dynamic()
-     || distributor_->dynamic()
-    )
-    {
-        nullOldestTimeFields();
-    }
-
-    // Remove the oldest cell volume field
-    if (V00Ptr_)
-    {
-        nullDemandDrivenData(V00Ptr_);
-    }
-    else
-    {
-        nullDemandDrivenData(V0Ptr_);
-    }
-
-    // Remove the oldest mesh flux field
-    if (phiPtr_)
-    {
-        phiPtr_->nullOldestTime();
-    }
-
-    // Set topoChanged_ false before any mesh change. Topo-changing can switch
-    // on and off during a run.
-    topoChanged_ = false;
-
-    topoChanged_ = topoChanger_->update();
-
-    const bool distributed = distributor_->update();
-
-    return topoChanged_ || distributed;
-}
-
-
-bool Foam::fvMesh::move()
-{
-    // Do not set moving_ false before any mesh motion. Once the mesh starts
-    // moving it is considered to be moving for the rest of the run.
-    const bool moved = mover_->update();
-
-    curTimeIndex_ = time().timeIndex();
-
-    stitcher_->connect(true, true, false);
-
-    return moved;
+    // Redirect to fvMatrix solver
+    return m.solveSegregatedOrCoupled(dict);
 }
 
 
 void Foam::fvMesh::addFvPatches
 (
-    const List<polyPatch*>& p,
+    polyPatchList& plist,
     const bool validBoundary
 )
 {
@@ -767,9 +689,21 @@ void Foam::fvMesh::addFvPatches
             << abort(FatalError);
     }
 
-    // first add polyPatches
-    addPatches(p, validBoundary);
-    boundary_.addPatches(poly().boundary());
+    addPatches(plist, validBoundary);
+    boundary_.addPatches(boundaryMesh());
+}
+
+
+void Foam::fvMesh::addFvPatches
+(
+    const List<polyPatch*>& p,
+    const bool validBoundary
+)
+{
+    // Acquire ownership of the pointers
+    polyPatchList plist(const_cast<List<polyPatch*>&>(p));
+
+    addFvPatches(plist, validBoundary);
 }
 
 
@@ -779,159 +713,46 @@ void Foam::fvMesh::removeFvBoundary()
 
     // Remove fvBoundaryMesh data first.
     boundary_.clear();
-    boundary_.setSize(0);
     polyMesh::removeBoundary();
 
     clearOut();
 }
 
 
-void Foam::fvMesh::swap(fvMesh& otherMesh)
+Foam::polyMesh::readUpdateState Foam::fvMesh::readUpdate()
 {
-    // Clear the sliced fields
-    clearFvGeom();
+    DebugInFunction << "Updating fvMesh";
 
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
+    polyMesh::readUpdateState state = polyMesh::readUpdate();
 
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    polyMesh::swap(otherMesh);
-
-    auto updatePatches = []
-    (
-        const polyPatchList& patches,
-        fvBoundaryMesh& boundaryMesh
-    )
+    if (state == polyMesh::TOPO_PATCH_CHANGE)
     {
-        boundaryMesh.setSize(patches.size());
+        DebugInfo << "Boundary and topological update" << endl;
 
-        forAll(patches, patchi)
-        {
-            // Construct new processor patches, as the decomposition may have
-            // changed. Leave other patches as is.
+        boundary_.readUpdate(boundaryMesh());
 
-            if (isA<processorPolyPatch>(patches[patchi]))
-            {
-                boundaryMesh.set
-                (
-                    patchi,
-                    fvPatch::New
-                    (
-                        patches[patchi],
-                        boundaryMesh
-                    )
-                );
-            }
-        }
-    };
+        clearOut();
 
-    updatePatches(poly().boundary(), boundary_);
-    updatePatches(otherMesh.poly().boundary(), otherMesh.boundary_);
-}
-
-
-Foam::fvMesh::readUpdateState Foam::fvMesh::readUpdate
-(
-    const stitchType stitch
-)
-{
-    // Determine if this update moves forward in time. If so, searching back in
-    // time for data files will only go back as far as the previous instance.
-    const fileName instance0 = instance();
-    const bool forward = readUpdateIsForward();
-
-    // Update the polyMesh and the mesh instance
-    const polyMesh::readUpdateState state = polyMesh::readUpdate();
-
-    DebugInFunction << "Updating the fvMesh:" << endl;
-
-    if (debug)
+    }
+    else if (state == polyMesh::TOPO_CHANGE)
     {
-        switch (state)
-        {
-            case polyMesh::TOPO_PATCH_CHANGE:
-                Info<< "    Boundary and topological change" << endl;
-                break;
-            case polyMesh::TOPO_CHANGE:
-                Info<< "    Topological change" << endl;
-                break;
-            case polyMesh::POINTS_MOVED:
-                Info<< "    Point motion" << endl;
-                break;
-            default:
-                Info<< "    No change" << endl;
-                break;
-        }
+        DebugInfo << "Topological update" << endl;
+
+        // fvMesh::clearOut() but without the polyMesh::clearOut
+        clearOutLocal();
+    }
+    else if (state == polyMesh::POINTS_MOVED)
+    {
+        DebugInfo << "Point motion update" << endl;
+
+        clearGeom();
+    }
+    else
+    {
+        DebugInfo << "No update" << endl;
     }
 
-    const bool reStitch =
-        stitcher_.valid()
-     && stitcher_->stitches()
-     && stitch != stitchType::none
-     && (
-            !conformal()
-         || time().findInstance
-            (
-                dbDir()/typeName,
-                "polyFaces",
-                IOobject::READ_IF_PRESENT,
-                forward ? word(instance0) : word::null
-            )
-         != (forward ? instance0 : polyFacesBfIOPtr_->instance())
-        );
-
-    if (reStitch)
-    {
-        stitcher_->disconnect(false, false);
-    }
-    else if (state != polyMesh::UNCHANGED)
-    {
-        conform();
-    }
-
-    switch (state)
-    {
-        case polyMesh::TOPO_PATCH_CHANGE:
-            boundary_.readUpdate(poly().boundary());
-            clearOut();
-            break;
-        case polyMesh::TOPO_CHANGE:
-            clearOut();
-            break;
-        case polyMesh::POINTS_MOVED:
-            clearFvGeom();
-            break;
-        default:
-            break;
-    }
-
-    if (reStitch && stitch != stitchType::none)
-    {
-        stitcher_->connect(false, stitch == stitchType::geometric, true);
-    }
-
-    // Return the corresponding fvMesh read update state
-    switch (state)
-    {
-        case polyMesh::UNCHANGED:
-            return reStitch ? STITCHED : UNCHANGED;
-        case polyMesh::POINTS_MOVED:
-            return reStitch ? STITCHED : POINTS_MOVED;
-        case polyMesh::TOPO_CHANGE:
-            return TOPO_CHANGE;
-        case polyMesh::TOPO_PATCH_CHANGE:
-            return TOPO_PATCH_CHANGE;
-    }
-
-    return UNCHANGED;
-}
-
-
-const Foam::fvBoundaryMesh& Foam::fvMesh::boundary() const
-{
-    return boundary_;
+    return state;
 }
 
 
@@ -939,378 +760,225 @@ const Foam::lduAddressing& Foam::fvMesh::lduAddr() const
 {
     if (!lduPtr_)
     {
+        DebugInFunction
+            << "Calculating fvMeshLduAddressing from nFaces:"
+            << nFaces() << endl;
+
         lduPtr_ = new fvMeshLduAddressing(*this);
+
+        return *lduPtr_;
     }
 
     return *lduPtr_;
 }
 
 
-bool Foam::fvMesh::conformal() const
+Foam::lduInterfacePtrsList Foam::fvMesh::interfaces() const
 {
-    return !(polyFacesBfPtr_ && SfPtr_);
+    return boundary().interfaces();
 }
 
 
-const Foam::surfaceLabelField::Boundary& Foam::fvMesh::polyFacesBf() const
-{
-    if (!polyFacesBfPtr_)
-    {
-        polyFacesBfIOPtr_ =
-            new IOobject
-            (
-                "polyFaces",
-                facesInstance(),
-                typeName,
-                *this,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            );
-
-        polyFacesBfPtr_ =
-            new surfaceLabelField::Boundary
-            (
-                boundary(),
-                surfaceLabelField::null(),
-                polyFacesPatchTypes(),
-                poly().boundary().types()
-            );
-    }
-
-    return *polyFacesBfPtr_;
-}
-
-
-const Foam::UCompactListList<Foam::label>&
-Foam::fvMesh::polyBFacePatches() const
-{
-    if (!polyBFacePatchesPtr_)
-    {
-        const label nPolyBFaces = nFaces() - nInternalFaces();
-
-        // Count face-poly-bFaces to get the offsets
-        polyBFaceOffsetsPtr_ = new labelList(nPolyBFaces + 1, 0);
-        labelList& offsets = *polyBFaceOffsetsPtr_;
-        forAll(boundary(), patchi)
-        {
-            forAll(boundary()[patchi], patchFacei)
-            {
-                const label polyBFacei =
-                    (
-                        polyFacesBfPtr_
-                      ? (*polyFacesBfPtr_)[patchi][patchFacei]
-                      : boundary()[patchi].start() + patchFacei
-                    )
-                  - nInternalFaces();
-
-                offsets[polyBFacei + 1] ++;
-            }
-        }
-        for (label polyBFacei = 0; polyBFacei < nPolyBFaces; ++ polyBFacei)
-        {
-            offsets[polyBFacei + 1] += offsets[polyBFacei];
-        }
-
-        // Set the poly-bFace patches and patch-faces, using the offsets as
-        // counters
-        polyBFaceOffsetPatchesPtr_ = new labelList(offsets.last());
-        polyBFaceOffsetPatchFacesPtr_ = new labelList(offsets.last());
-        labelUList& patches = *polyBFaceOffsetPatchesPtr_;
-        labelUList& patchFaces = *polyBFaceOffsetPatchFacesPtr_;
-        forAll(boundary(), patchi)
-        {
-            forAll(boundary()[patchi], patchFacei)
-            {
-                const label polyBFacei =
-                    (
-                        polyFacesBfPtr_
-                      ? (*polyFacesBfPtr_)[patchi][patchFacei]
-                      : boundary()[patchi].start() + patchFacei
-                    )
-                  - nInternalFaces();
-                patches[offsets[polyBFacei]] = patchi;
-                patchFaces[offsets[polyBFacei]] = patchFacei;
-                offsets[polyBFacei] ++;
-            }
-        }
-
-        // Restore the offsets by removing the count
-        for
-        (
-            label polyBFacei = nPolyBFaces - 1;
-            polyBFacei >= 0;
-            -- polyBFacei
-        )
-        {
-            offsets[polyBFacei + 1] = offsets[polyBFacei];
-        }
-        offsets[0] = 0;
-
-        // List-lists
-        polyBFacePatchesPtr_ =
-            new UCompactListList<label>(offsets, patches);
-        polyBFacePatchFacesPtr_ =
-            new UCompactListList<label>(offsets, patchFaces);
-    }
-
-    return *polyBFacePatchesPtr_;
-}
-
-
-const Foam::UCompactListList<Foam::label>&
-Foam::fvMesh::polyBFacePatchFaces() const
-{
-    if (!polyBFacePatchFacesPtr_)
-    {
-        polyBFacePatches();
-    }
-
-    return *polyBFacePatchFacesPtr_;
-}
-
-
-const Foam::surfaceLabelField::Boundary& Foam::fvMesh::ownerBf() const
-{
-    if (!ownerBfPtr_)
-    {
-        ownerBfPtr_ =
-            new surfaceLabelField::Boundary
-            (
-                boundary(),
-                surfaceLabelField::null(),
-                wordList
-                (
-                    boundary().size(),
-                    calculatedFvsPatchLabelField::typeName
-                ),
-                poly().boundary().types()
-            );
-
-        forAll(boundary(), patchi)
-        {
-            (*ownerBfPtr_)[patchi] =
-                labelField(faceOwner(), polyFacesBf()[patchi]);
-        }
-    }
-
-    return *ownerBfPtr_;
-}
-
-
-const Foam::fvMeshStitcher& Foam::fvMesh::stitcher() const
-{
-    return stitcher_();
-}
-
-
-Foam::fvMeshStitcher& Foam::fvMesh::stitcher()
-{
-    return stitcher_();
-}
-
-
-const Foam::fvMeshTopoChanger& Foam::fvMesh::topoChanger() const
-{
-    return topoChanger_();
-}
-
-
-const Foam::fvMeshDistributor& Foam::fvMesh::distributor() const
-{
-    return distributor_();
-}
-
-
-const Foam::fvMeshMover& Foam::fvMesh::mover() const
-{
-    return mover_();
-}
-
-
-void Foam::fvMesh::mapFields(const polyTopoChangeMap& map)
+void Foam::fvMesh::mapFields(const mapPolyMesh& meshMap)
 {
     DebugInFunction
-        << " nOldCells:" << map.nOldCells()
+        << " nOldCells:" << meshMap.nOldCells()
         << " nCells:" << nCells()
-        << " nOldFaces:" << map.nOldFaces()
+        << " nOldFaces:" << meshMap.nOldFaces()
         << " nFaces:" << nFaces()
         << endl;
 
     // We require geometric properties valid for the old mesh
     if
     (
-        map.cellMap().size() != nCells()
-     || map.faceMap().size() != nFaces()
+        meshMap.cellMap().size() != nCells()
+     || meshMap.faceMap().size() != nFaces()
     )
     {
         FatalErrorInFunction
-            << "polyTopoChangeMap does not correspond to the old mesh."
+            << "mapPolyMesh does not correspond to the old mesh."
             << " nCells:" << nCells()
-            << " cellMap:" << map.cellMap().size()
-            << " nOldCells:" << map.nOldCells()
+            << " cellMap:" << meshMap.cellMap().size()
+            << " nOldCells:" << meshMap.nOldCells()
             << " nFaces:" << nFaces()
-            << " faceMap:" << map.faceMap().size()
-            << " nOldFaces:" << map.nOldFaces()
+            << " faceMap:" << meshMap.faceMap().size()
+            << " nOldFaces:" << meshMap.nOldFaces()
             << exit(FatalError);
     }
 
-    // Create a fv mapper
-    const fvMeshMapper fvMap(*this, map);
+    // Create a mapper
+    const fvMeshMapper mapper(*this, meshMap);
 
     // Map all the volFields in the objectRegistry
-    #define mapVolFieldType(Type, nullArg)                                     \
-        MapGeometricFields<Type, fvMeshMapper, fvMesh>(fvMap);
-    FOR_ALL_FIELD_TYPES(mapVolFieldType);
+    MapGeometricFields<scalar, fvPatchField, fvMeshMapper, volMesh>
+    (mapper);
+    MapGeometricFields<vector, fvPatchField, fvMeshMapper, volMesh>
+    (mapper);
+    MapGeometricFields<sphericalTensor, fvPatchField, fvMeshMapper, volMesh>
+    (mapper);
+    MapGeometricFields<symmTensor, fvPatchField, fvMeshMapper, volMesh>
+    (mapper);
+    MapGeometricFields<tensor, fvPatchField, fvMeshMapper, volMesh>
+    (mapper);
 
     // Map all the surfaceFields in the objectRegistry
-    #define mapSurfaceFieldType(Type, nullArg)                                 \
-        MapGeometricFields<Type, fvMeshMapper, surfaceMesh>(fvMap);
-    FOR_ALL_FIELD_TYPES(mapSurfaceFieldType);
+    MapGeometricFields<scalar, fvsPatchField, fvMeshMapper, surfaceMesh>
+    (mapper);
+    MapGeometricFields<vector, fvsPatchField, fvMeshMapper, surfaceMesh>
+    (mapper);
+    MapGeometricFields
+    <
+        sphericalTensor, fvsPatchField, fvMeshMapper, surfaceMesh
+    >
+    (mapper);
+    MapGeometricFields<symmTensor, fvsPatchField, fvMeshMapper, surfaceMesh>
+    (mapper);
+    MapGeometricFields<tensor, fvsPatchField, fvMeshMapper, surfaceMesh>
+    (mapper);
 
     // Map all the dimensionedFields in the objectRegistry
-    #define mapVolInternalFieldType(Type, nullArg)                             \
-        MapDimensionedFields<Type, fvMeshMapper, fvMesh>(fvMap);
-    FOR_ALL_FIELD_TYPES(mapVolInternalFieldType);
+    MapDimensionedFields<scalar, fvMeshMapper, volMesh>(mapper);
+    MapDimensionedFields<vector, fvMeshMapper, volMesh>(mapper);
+    MapDimensionedFields<sphericalTensor, fvMeshMapper, volMesh>(mapper);
+    MapDimensionedFields<symmTensor, fvMeshMapper, volMesh>(mapper);
+    MapDimensionedFields<tensor, fvMeshMapper, volMesh>(mapper);
 
-    if (pointMesh::found(*this))
+    // Map all the clouds in the objectRegistry
+    mapClouds(*this, meshMap);
+
+
+    const labelList& cellMap = meshMap.cellMap();
+
+    // Map the old volume. Just map to new cell labels.
+    if (V0Ptr_)
     {
-        // Create the pointMesh mapper
-        const pointMeshMapper mapper(pointMesh::New(*this), map);
+        scalarField& V0 = *V0Ptr_;
 
-        #define mapPointFieldType(Type, nullArg)                               \
-            MapGeometricFields<Type, pointMeshMapper, pointMesh>(mapper);
-        FOR_ALL_FIELD_TYPES(mapPointFieldType);
+        scalarField savedV0(V0);
+        V0.resize_nocopy(nCells());
+
+        forAll(V0, i)
+        {
+            if (cellMap[i] > -1)
+            {
+                V0[i] = savedV0[cellMap[i]];
+            }
+            else
+            {
+                V0[i] = 0.0;
+            }
+        }
+
+        // Inject volume of merged cells
+        label nMerged = 0;
+        forAll(meshMap.reverseCellMap(), oldCelli)
+        {
+            label index = meshMap.reverseCellMap()[oldCelli];
+
+            if (index < -1)
+            {
+                label celli = -index-2;
+
+                V0[celli] += savedV0[oldCelli];
+
+                nMerged++;
+            }
+        }
+
+        DebugInfo
+            << "Mapping old time volume V0. Merged "
+            << nMerged << " out of " << nCells() << " cells" << endl;
+    }
+
+
+    // Map the old-old volume. Just map to new cell labels.
+    if (V00Ptr_)
+    {
+        scalarField& V00 = *V00Ptr_;
+
+        scalarField savedV00(V00);
+        V00.resize_nocopy(nCells());
+
+        forAll(V00, i)
+        {
+            if (cellMap[i] > -1)
+            {
+                V00[i] = savedV00[cellMap[i]];
+            }
+            else
+            {
+                V00[i] = 0.0;
+            }
+        }
+
+        // Inject volume of merged cells
+        label nMerged = 0;
+        forAll(meshMap.reverseCellMap(), oldCelli)
+        {
+            label index = meshMap.reverseCellMap()[oldCelli];
+
+            if (index < -1)
+            {
+                label celli = -index-2;
+
+                V00[celli] += savedV00[oldCelli];
+                nMerged++;
+            }
+        }
+
+        DebugInfo
+            << "Mapping old time volume V00. Merged "
+            << nMerged << " out of " << nCells() << " cells" << endl;
     }
 }
 
 
-void Foam::fvMesh::preChange()
+void Foam::fvMesh::movePoints(const pointField& p)
 {
-    stitcher_->disconnect(true, true);
-}
+    DebugInFunction << endl;
 
-
-void Foam::fvMesh::setPoints(const pointField& p)
-{
-    polyMesh::setPoints(p);
-
-    clearFvGeom();
-
-    // Update other local data
-    surfaceInterpolation::movePoints();
-
-    meshObjects::movePoints<fvMesh>(*this);
-    meshObjects::movePoints<lduMesh>(*this);
-
-    const_cast<Time&>(time()).functionObjects().movePoints(*this);
-}
-
-
-Foam::tmp<Foam::scalarField> Foam::fvMesh::movePoints(const pointField& p)
-{
-    preChange();
-
-    // Set the mesh to be moving. This remains true for the rest of the run.
-    moving_ = true;
-
-    // Create old-time volumes, if necessary, at the start of a new timestep
+    // Grab old time volumes if the time has been incremented
+    // This will update V0, V00
     if (curTimeIndex_ < time().timeIndex())
     {
-        if (V00Ptr_ && notNull(V00Ptr_))
-        {
-            FatalErrorInFunction
-                << "Old-old volumes should not be maintained across mesh "
-                << "changes" << exit(FatalError);
-        }
-
-        // If old-old-volumes are necessary then copy them from the old-volumes
-        if (Foam::isNull(V00Ptr_))
-        {
-            V00Ptr_ = new DimensionedField<scalar, fvMesh>
-            (
-                IOobject
-                (
-                    "Vc00",
-                    time().name(),
-                    *this,
-                    IOobject::NO_READ,
-                    IOobject::NO_WRITE,
-                    true
-                ),
-                V0()
-            );
-        }
-
-        // Copy old-volumes from the volumes
-        if (!V0Ptr_ || Foam::isNull(V0Ptr_))
-        {
-            V0Ptr_ = new DimensionedField<scalar, fvMesh>
-            (
-                IOobject
-                (
-                    "Vc0",
-                    time().name(),
-                    *this,
-                    IOobject::NO_READ,
-                    IOobject::NO_WRITE,
-                    true
-                ),
-                V()
-            );
-        }
-        else
-        {
-            V0Ptr_->scalarField::operator=(V());
-        }
+        storeOldVol(V());
     }
 
-    // Create mesh motion flux, if necessary
+
+    // Move the polyMesh and initialise the mesh motion fluxes field
+    // Note: mesh flux updated by the fvGeometryScheme
+
     if (!phiPtr_)
     {
-        phiPtr_ = new surfaceScalarField
+        DebugInFunction<< "Creating initial meshPhi field" << endl;
+
+        // Create mesh motion flux
+        phiPtr_ = std::make_unique<surfaceScalarField>
         (
             IOobject
             (
                 "meshPhi",
-                this->time().name(),
+                this->time().timeName(),
                 *this,
                 IOobject::NO_READ,
                 IOobject::NO_WRITE,
-                true
+                IOobject::NO_REGISTER
             ),
             *this,
-            dimVolume/dimTime
+            dimensionedScalar(dimVolume/dimTime, Foam::zero{})
         );
     }
     else
     {
-        phiPtr_->storeOldTimes();
+        // Grab old time mesh motion fluxes if the time has been incremented
+        if (phiPtr_->timeIndex() != time().timeIndex())
+        {
+            DebugInFunction<< "Accessing old-time meshPhi field" << endl;
+            phiPtr_->oldTime();
+        }
     }
 
-    surfaceScalarField& phi = *phiPtr_;
-
-    // Move the polyMesh and set the mesh motion fluxes to the swept-volumes
-
-    scalar rDeltaT = 1.0/time().deltaTValue();
-
-    tmp<scalarField> tsweptVols = polyMesh::movePoints(p);
-
-    scalarField& sweptVols = tsweptVols.ref();
-
-    phi.primitiveFieldRef() =
-        scalarField::subField(sweptVols, nInternalFaces());
-    phi.primitiveFieldRef() *= rDeltaT;
-
-    const fvPatchList& patches = boundary();
-
-    surfaceScalarField::Boundary& phibf = phi.boundaryFieldRef();
-
-    forAll(patches, patchi)
-    {
-        phibf[patchi] = patches[patchi].patchSlice(sweptVols);
-        phibf[patchi] *= rDeltaT;
-    }
+    polyMesh::movePoints(p);
 
     // Update or delete the local geometric properties as early as possible so
     // they can be used if necessary. These get recreated here instead of
@@ -1321,463 +989,137 @@ Foam::tmp<Foam::scalarField> Foam::fvMesh::movePoints(const pointField& p)
     updateGeomNotOldVol();
 
     // Update other local data
-    surfaceInterpolation::movePoints();
+    boundary_.movePoints();
 
-    meshObjects::movePoints<fvMesh>(*this);
-    meshObjects::movePoints<lduMesh>(*this);
+    // Clear weights, deltaCoeffs, nonOrthoDeltaCoeffs, nonOrthCorrectionVectors
+    surfaceInterpolation::clearOut();
 
-    const_cast<Time&>(time()).functionObjects().movePoints(*this);
-
-    return tsweptVols;
+    meshObject::movePoints<fvMesh>(*this);
+    meshObject::movePoints<lduMesh>(*this);
 }
 
 
-void Foam::fvMesh::topoChange(const polyTopoChangeMap& map)
+void Foam::fvMesh::updateGeom()
 {
-    if (!conformal())
-    {
-        FatalErrorInFunction
-            << "The mesh was not disconnected prior to topology change"
-            << exit(FatalError);
-    }
+    DebugInFunction << endl;
+
+    // Let surfaceInterpolation handle geometry calculation. Note: this does
+    // lower levels updateGeom
+    surfaceInterpolation::updateGeom();
+}
+
+
+void Foam::fvMesh::updateMesh(const mapPolyMesh& mpm)
+{
+    DebugInFunction << endl;
 
     // Update polyMesh. This needs to keep volume existent!
-    polyMesh::topoChange(map);
+    polyMesh::updateMesh(mpm);
+
+    // Our slice of the addressing is no longer valid
+    deleteDemandDrivenData(lduPtr_);
+
+    if (VPtr_)
+    {
+        // Grab old time volumes if the time has been incremented
+        // This will update V0, V00
+        storeOldVol(mpm.oldCellVolumes());
+
+        // Few checks
+        if (VPtr_ && (VPtr_->size() != mpm.nOldCells()))
+        {
+            FatalErrorInFunction
+                << "V:" << VPtr_->size()
+                << " not equal to the number of old cells "
+                << mpm.nOldCells()
+                << exit(FatalError);
+        }
+        if (V0Ptr_ && (V0Ptr_->size() != mpm.nOldCells()))
+        {
+            FatalErrorInFunction
+                << "V0:" << V0Ptr_->size()
+                << " not equal to the number of old cells "
+                << mpm.nOldCells()
+                << exit(FatalError);
+        }
+        if (V00Ptr_ && (V00Ptr_->size() != mpm.nOldCells()))
+        {
+            FatalErrorInFunction
+                << "V0:" << V00Ptr_->size()
+                << " not equal to the number of old cells "
+                << mpm.nOldCells()
+                << exit(FatalError);
+        }
+    }
+
+
+    // Clear mesh motion flux (note: could instead save & map like volumes)
+    if (phiPtr_)
+    {
+        // Mesh moving and topology change. Recreate meshPhi
+        phiPtr_.reset(nullptr);
+
+        // Create mesh motion flux
+        phiPtr_ = std::make_unique<surfaceScalarField>
+        (
+            IOobject
+            (
+                "meshPhi",
+                this->time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                IOobject::NO_REGISTER
+            ),
+            *this,
+            dimensionedScalar(dimVolume/dimTime, Foam::zero{})
+        );
+    }
 
     // Clear the sliced fields
-    clearFvGeomNotOldVol();
-
-    // Check that we're not trying to maintain old-time mesh geometry
-    if (V0Ptr_ && Foam::notNull(V0Ptr_))
-    {
-        FatalErrorInFunction
-            << "It is not possible to use mesh motion, topology change, and "
-            << "second order time schemes simultaneously"
-            << exit(FatalError);
-    }
+    clearGeomNotOldVol();
 
     // Map all fields
-    mapFields(map);
+    mapFields(mpm);
 
     // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
+    surfaceInterpolation::updateMesh(mpm);
 
     // Clear any non-updateable addressing
     clearAddressing(true);
 
-    meshObjects::topoChange<fvMesh>(*this, map);
-    meshObjects::topoChange<lduMesh>(*this, map);
-
-    const_cast<Time&>(time()).functionObjects().topoChange(map);
-
-    if (stitcher_.valid())
-    {
-        stitcher_->topoChange(map);
-    }
-
-    if (topoChanger_.valid())
-    {
-        topoChanger_->topoChange(map);
-    }
-
-    if (distributor_.valid())
-    {
-        distributor_->topoChange(map);
-    }
-
-    if (mover_.valid())
-    {
-        mover_->topoChange(map);
-    }
-}
-
-
-void Foam::fvMesh::mapMesh(const polyMeshMap& map)
-{
-    if (!conformal())
-    {
-        FatalErrorInFunction
-            << "The mesh was not disconnected prior to mesh-to-mesh mapping"
-            << exit(FatalError);
-    }
-
-    // Distribute polyMesh data
-    polyMesh::mapMesh(map);
-
-    // Clear the sliced fields
-    clearFvGeomNotOldVol();
-
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
-
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    meshObjects::mapMesh<fvMesh>(*this, map);
-    meshObjects::mapMesh<lduMesh>(*this, map);
-
-    const_cast<Time&>(time()).functionObjects().mapMesh(map);
-
-    stitcher_->mapMesh(map);
-    topoChanger_->mapMesh(map);
-    distributor_->mapMesh(map);
-    mover_->mapMesh(map);
-}
-
-
-void Foam::fvMesh::distribute(const polyDistributionMap& map)
-{
-    if (!conformal())
-    {
-        FatalErrorInFunction
-            << "The mesh was not disconnected prior to distribution"
-            << exit(FatalError);
-    }
-
-    // Distribute polyMesh data
-    polyMesh::distribute(map);
-
-    // Clear the sliced fields
-    clearFvGeomNotOldVol();
-
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
-
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    meshObjects::distribute<fvMesh>(*this, map);
-    meshObjects::distribute<lduMesh>(*this, map);
-
-    const_cast<Time&>(time()).functionObjects().distribute(map);
-
-    stitcher_->distribute(map);
-    topoChanger_->distribute(map);
-    distributor_->distribute(map);
-    mover_->distribute(map);
-}
-
-
-void Foam::fvMesh::setPolyFacesBfInstance(const fileName& inst)
-{
-    if (!polyFacesBfPtr_)
-    {
-        return;
-    }
-
-    polyFacesBfIOPtr_->instance() = inst;
-    polyFacesBfIOPtr_->writeOpt() = IOobject::AUTO_WRITE;
-}
-
-
-const Foam::fileName& Foam::fvMesh::polyFacesBfInstance() const
-{
-    if (!polyFacesBfPtr_)
-    {
-        return facesInstance();
-    }
-
-    return polyFacesBfIOPtr_->instance();
-}
-
-
-void Foam::fvMesh::conform(const surfaceScalarField& phi)
-{
-    // Clear the geometry fields
-    clearFvGeomNotOldVol();
-
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
-
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    // Modify the mesh fluxes, if necessary
-    if (notNull(phi) && phiPtr_)
-    {
-        for (label i = 0; i <= phi.nOldTimes(); ++ i)
-        {
-            phiRef().oldTimeRef(i) == phi.oldTime(i);
-        }
-    }
-}
-
-
-void Foam::fvMesh::unconform
-(
-    const surfaceLabelField::Boundary& polyFacesBf,
-    const surfaceVectorField& Sf,
-    const surfaceVectorField& Cf,
-    const surfaceScalarField& phi,
-    const bool sync
-)
-{
-    // Clear the geometry fields
-    clearFvGeomNotOldVol();
-
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
-
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    // Create non-sliced copies of geometry fields
-    SfRef();
-    magSfRef();
-    CRef();
-    CfRef();
-
-    // Set the topology
-    forAll(polyFacesBf, patchi)
-    {
-        polyFacesBfRef()[patchi].reset(polyFacesBf[patchi]);
-    }
-
-    // Set the face geometry
-    SfRef() == Sf;
-    magSfRef() == max(mag(Sf), dimensionedScalar(dimArea, rootVSmall));
-    CRef().boundaryFieldRef() == Cf.boundaryField();
-    CfRef() == Cf;
-
-    // Communicate processor-coupled cell geometry. Cell-centre processor patch
-    // fields must contain the (transformed) cell-centre locations on the other
-    // side of the coupling. This is so that non-conformal patches can
-    // construct weights and deltas without reference to the poly mesh
-    // geometry.
-    //
-    // Note that the initEvaluate/evaluate communication does a transformation,
-    // but it is wrong in this instance. A vector field gets transformed as if
-    // it were a displacement, but the cell-centres need a positional
-    // transformation. That's why there's the un-transform and re-transform bit
-    // below just after the evaluate call.
-    //
-    // This transform handling is a bit of a hack. It would be nicer to have a
-    // field attribute which identifies a field as needing a positional
-    // transformation, and for it to apply automatically within the coupled
-    // patch field. However, at the moment, the cell centres field is the only
-    // vol-field containing an absolute position, so the hack is functionally
-    // sufficient for now.
-    if (sync && time().completeCase())
-    {
-        volVectorField::Boundary& CBf = CRef().boundaryFieldRef();
-
-        const label nReq = Pstream::nRequests();
-
-        forAll(CBf, patchi)
-        {
-            if (isA<processorFvPatch>(CBf[patchi].patch()))
-            {
-                CBf[patchi].initEvaluate(Pstream::defaultCommsType);
-            }
-        }
-
-        if
-        (
-            Pstream::parRun()
-         && Pstream::defaultCommsType == Pstream::commsTypes::nonBlocking
-        )
-        {
-            Pstream::waitRequests(nReq);
-        }
-
-        forAll(CBf, patchi)
-        {
-            if (isA<processorFvPatch>(CBf[patchi].patch()))
-            {
-                CBf[patchi].evaluate(Pstream::defaultCommsType);
-
-                const transformer& t =
-                    refCast<const processorFvPatch>(CBf[patchi].patch())
-                   .transform();
-
-                t.invTransform(CBf[patchi], CBf[patchi]);
-                t.transformPosition(CBf[patchi], CBf[patchi]);
-            }
-        }
-    }
-
-    // Modify the mesh fluxes, if necessary
-    if (notNull(phi) && phiPtr_)
-    {
-        for (label i = 0; i <= phi.nOldTimes(); ++ i)
-        {
-            phiRef().oldTimeRef(i) == phi.oldTime(i);
-        }
-    }
-}
-
-
-void Foam::fvMesh::addPatch
-(
-    const label insertPatchi,
-    const polyPatch& patch
-)
-{
-    // Remove my local data (see topoChange)
-    // Clear mesh motion flux
-    deleteDemandDrivenData(phiPtr_);
-
-    // Clear the sliced fields
-    clearFvGeomNotOldVol();
-
-    // Clear the current volume and other geometry factors
-    surfaceInterpolation::clearOut();
-
-    // Clear any non-updateable addressing
-    clearAddressing(true);
-
-    const label boundarySize0 = boundary_.size();
-
-    polyMesh::addPatch(insertPatchi, patch);
-
-    boundary_.setSize(boundarySize0 + 1);
-    boundary_.set
-    (
-        insertPatchi,
-        fvPatch::New
-        (
-            poly().boundary()[insertPatchi],
-            boundary_
-        )
-    );
-
-    #define AddPatchFieldsType(Type, FieldType, DefaultPatchFieldType)         \
-        AddPatchFields<FieldType<Type>>                                        \
-        (                                                                      \
-            const_cast<objectRegistry&>(db()),                                 \
-            insertPatchi,                                                      \
-            DefaultPatchFieldType                                              \
-        );
-    FOR_ALL_FIELD_TYPES
-    (
-        AddPatchFieldsType,
-        VolField,
-        extrapolatedCalculatedFvPatchField<scalar>::typeName
-    );
-    FOR_ALL_FIELD_TYPES
-    (
-        AddPatchFieldsType,
-        SurfaceField,
-        calculatedFvsPatchField<scalar>::typeName
-    );
-    #undef AddPatchFieldsType
-}
-
-
-void Foam::fvMesh::reorderPatches
-(
-    const labelUList& newToOld,
-    const bool validBoundary
-)
-{
-    polyMesh::reorderPatches(newToOld, validBoundary);
-
-    boundary_.shuffle(newToOld, validBoundary);
-
-    #define ReorderPatchFieldsType(Type, FieldType)                            \
-        ReorderPatchFields<FieldType<Type>>                                    \
-        (                                                                      \
-            const_cast<objectRegistry&>(db()),                             \
-            newToOld                                                           \
-        );
-    FOR_ALL_FIELD_TYPES(ReorderPatchFieldsType, VolField);
-    FOR_ALL_FIELD_TYPES(ReorderPatchFieldsType, SurfaceField);
-    #undef ReorderPatchFieldsType
+    meshObject::updateMesh<fvMesh>(*this, mpm);
+    meshObject::updateMesh<lduMesh>(*this, mpm);
 }
 
 
 bool Foam::fvMesh::writeObject
 (
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool write
+    IOstreamOption streamOpt,
+    const bool writeOnProc
 ) const
 {
     bool ok = true;
-
-    if (!conformal() && polyFacesBfIOPtr_->writeOpt() == IOobject::AUTO_WRITE)
+    if (phiPtr_)
     {
-        // Create a full surface field with the polyFacesBf boundary field to
-        // write to disk. Make the internal field uniform to save disk space.
-
-        surfaceLabelField polyFaces
-        (
-            *polyFacesBfIOPtr_,
-            *this,
-            dimless,
-            labelField(nInternalFaces(), -1),
-            *polyFacesBfPtr_
-        );
-
-        ok = ok & polyFaces.write(write);
+        ok = phiPtr_->write(writeOnProc);
+        // NOTE: The old old time mesh phi might be necessary for certain
+        // solver smooth restart using second order time schemes.
+        //ok = phiPtr_->oldTime().write();
+    }
+    if (V0Ptr_ && V0Ptr_->writeOpt() == IOobject::AUTO_WRITE)
+    {
+        // For second order restarts we need to write V0
+        ok = V0Ptr_->write(writeOnProc);
     }
 
-    // Write geometry out at a higher precision
-    unsigned int precision0 =
-        IOstream::defaultPrecision(IOstream::fullPrecision());
-
-    // Write the mesh flux if old-old-time volumes exist
-    if (phiPtr_ && V00Ptr_)
-    {
-        ok = ok && phiPtr_->write(write);
-    }
-
-    // Write old-time volumes if old-old-time volumes exist
-    if (V0Ptr_ && V00Ptr_)
-    {
-        ok = ok && V0Ptr_->write(write);
-    }
-
-    // Restore the default precision
-    IOstream::defaultPrecision(precision0);
-
-    if (stitcher_.valid())
-    {
-        stitcher_->write(write);
-    }
-
-    if (topoChanger_.valid())
-    {
-        topoChanger_->write(write);
-    }
-
-    if (distributor_.valid())
-    {
-        distributor_->write(write);
-    }
-
-    if (mover_.valid())
-    {
-        mover_->write(write);
-    }
-
-    return ok && polyMesh::writeObject(fmt, ver, cmp, write);
+    return ok && polyMesh::writeObject(streamOpt, writeOnProc);
 }
 
 
-bool Foam::fvMesh::writeMesh() const
+bool Foam::fvMesh::write(const bool writeOnProc) const
 {
-    bool ok = true;
-
-    if (!conformal() && polyFacesBfIOPtr_->writeOpt() == IOobject::AUTO_WRITE)
-    {
-        // Create a full surface field with the polyFacesBf boundary field to
-        // write to disk. Make the internal field uniform to save disk space.
-
-        surfaceLabelField polyFaces
-        (
-            *polyFacesBfIOPtr_,
-            *this,
-            dimless,
-            labelField(nInternalFaces(), -1),
-            *polyFacesBfPtr_
-        );
-
-        ok = ok & polyFaces.write();
-    }
-
-    return ok && polyMesh::writeMesh();
+    return polyMesh::write(writeOnProc);
 }
 
 
@@ -1789,49 +1131,17 @@ Foam::fvMesh::validComponents<Foam::sphericalTensor>() const
 }
 
 
-const Foam::fvSchemes& Foam::fvMesh::schemes() const
-{
-    if (!fvSchemes_.valid())
-    {
-        fvSchemes_ = new fvSchemes(*this);
-    }
-
-    return fvSchemes_;
-}
-
-
-const Foam::fvSolution& Foam::fvMesh::solution() const
-{
-    if (!fvSolution_.valid())
-    {
-        fvSolution_ = new fvSolution(*this);
-    }
-
-    return fvSolution_;
-}
-
-
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-bool Foam::fvMesh::operator!=(const fvMesh& bm) const
+bool Foam::fvMesh::operator!=(const fvMesh& rhs) const
 {
-    return &bm != this;
+    return &rhs != this;
 }
 
 
-bool Foam::fvMesh::operator==(const fvMesh& bm) const
+bool Foam::fvMesh::operator==(const fvMesh& rhs) const
 {
-    return &bm == this;
-}
-
-
-
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
-
-const Foam::fvMesh& Foam::region(const dictionary& dict)
-{
-    const IOobject& io = refCast<const IOobject>(dict);
-    return refCast<const fvMesh>(io.db());
+    return &rhs == this;
 }
 
 

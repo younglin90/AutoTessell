@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "rotatingTotalPressureFvPatchScalarField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 #include "surfaceFields.H"
 
@@ -35,44 +38,61 @@ Foam::rotatingTotalPressureFvPatchScalarField::
 rotatingTotalPressureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    totalPressureFvPatchScalarField(p, iF),
+    omega_()
+{}
+
+
+Foam::rotatingTotalPressureFvPatchScalarField::
+rotatingTotalPressureFvPatchScalarField
+(
+    const rotatingTotalPressureFvPatchScalarField& ptf,
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    totalPressureFvPatchScalarField(ptf, p, iF, mapper),
+    omega_(ptf.omega_.clone())
+{}
+
+
+Foam::rotatingTotalPressureFvPatchScalarField::
+rotatingTotalPressureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
     totalPressureFvPatchScalarField(p, iF, dict),
-    origin_(dict.lookup<vector>("origin")),
-    axis_(dict.lookup<vector>("axis")),
-    omega_(time(), dict)
+    omega_(Function1<vector>::New("omega", dict, &db()))
 {}
 
 
 Foam::rotatingTotalPressureFvPatchScalarField::
 rotatingTotalPressureFvPatchScalarField
 (
-    const rotatingTotalPressureFvPatchScalarField& psf,
-    const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const rotatingTotalPressureFvPatchScalarField& rtppsf
 )
 :
-    totalPressureFvPatchScalarField(psf, p, iF, mapper),
-    origin_(psf.origin_),
-    axis_(psf.axis_),
-    omega_(psf.omega_)
+    totalPressureFvPatchScalarField(rtppsf),
+    omega_(rtppsf.omega_.clone())
 {}
 
 
 Foam::rotatingTotalPressureFvPatchScalarField::
 rotatingTotalPressureFvPatchScalarField
 (
-    const rotatingTotalPressureFvPatchScalarField& psf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const rotatingTotalPressureFvPatchScalarField& rtppsf,
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
-    totalPressureFvPatchScalarField(psf, iF),
-    origin_(psf.origin_),
-    axis_(psf.axis_),
-    omega_(psf.omega_)
+    totalPressureFvPatchScalarField(rtppsf, iF),
+    omega_(rtppsf.omega_.clone())
 {}
 
 
@@ -85,31 +105,27 @@ void Foam::rotatingTotalPressureFvPatchScalarField::updateCoeffs()
         return;
     }
 
-    const scalar omega = omega_.value(time().value());
+    const scalar t = this->db().time().timeOutputValue();
+    const vector om = omega_->value(t);
 
-    const fvsPatchField<scalar>& phip =
-        patch().lookupPatchField<surfaceScalarField, scalar>(phiName_);
+    vector axisHat = om/mag(om);
+    tmp<vectorField> rotationVelocity =
+        om ^ (patch().Cf() - axisHat*(axisHat & patch().Cf()));
 
     const vectorField Up
     (
-        patch().lookupPatchField<volVectorField, vector>(UName_)
-      + omega*((patch().Cf() - origin_) ^ (axis_/mag(axis_)))
+        patch().lookupPatchField<volVectorField>(UName())
+      + rotationVelocity
     );
 
-    dynamicPressureFvPatchScalarField::updateCoeffs
-    (
-        p0_,
-        -0.5*neg(phip)*magSqr(Up)
-    );
+    totalPressureFvPatchScalarField::updateCoeffs(p0(), Up);
 }
 
 
 void Foam::rotatingTotalPressureFvPatchScalarField::write(Ostream& os) const
 {
     totalPressureFvPatchScalarField::write(os);
-    writeEntry(os, "origin", origin_);
-    writeEntry(os, "axis", axis_);
-    writeEntry(os, omega_);
+    omega_->writeData(os);
 }
 
 

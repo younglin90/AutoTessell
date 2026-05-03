@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,23 +34,46 @@ template<class Type>
 Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<Type>(p, iF),
+    refValueFunc_(nullptr)
+{}
+
+
+template<class Type>
+Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const Field<Type>& fld
+)
+:
+    fixedValueFvPatchField<Type>(p, iF, fld),
+    refValueFunc_(nullptr)
+{}
+
+
+template<class Type>
+Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<Type>(p, iF, dict, false),
-    uniformValue_
-    (
-        Function1<Type>::New
-        (
-            "uniformValue",
-            this->time().userUnits(),
-            iF.dimensions(),
-            dict
-        )
-    )
+    fixedValueFvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ),
+    refValueFunc_(PatchFunction1<Type>::New(p.patch(), "uniformValue", dict))
 {
-    this->evaluate();
+    if (!this->readValueEntry(dict))
+    {
+        // Ensure field has reasonable initial values
+        this->extrapolateInternal();
+
+        // Evaluate to assign a value
+        this->evaluate();
+    }
 }
 
 
@@ -56,37 +82,90 @@ Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
 (
     const uniformFixedValueFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    fixedValueFvPatchField<Type>(ptf, p, iF, mapper, false), // Don't map
-    uniformValue_(ptf.uniformValue_, false)
+    fixedValueFvPatchField<Type>(p, iF),   // Don't map
+    refValueFunc_(ptf.refValueFunc_.clone(p.patch()))
 {
-    // Evaluate since value not mapped
-    this->evaluate();
+    if (mapper.direct() && !mapper.hasUnmapped())
+    {
+        // Use mapping instead of re-evaluation
+        this->map(ptf, mapper);
+    }
+    else
+    {
+        // Evaluate since value not mapped
+        this->evaluate();
+    }
 }
 
 
 template<class Type>
 Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
 (
+    const uniformFixedValueFvPatchField<Type>& ptf
+)
+:
+    fixedValueFvPatchField<Type>(ptf),
+    refValueFunc_(ptf.refValueFunc_.clone(this->patch().patch()))
+{}
+
+
+template<class Type>
+Foam::uniformFixedValueFvPatchField<Type>::uniformFixedValueFvPatchField
+(
     const uniformFixedValueFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fixedValueFvPatchField<Type>(ptf, iF),
-    uniformValue_(ptf.uniformValue_, false)
+    refValueFunc_(ptf.refValueFunc_.clone(this->patch().patch()))
+{}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class Type>
+void Foam::uniformFixedValueFvPatchField<Type>::autoMap
+(
+    const fvPatchFieldMapper& mapper
+)
 {
-    // Evaluate the profile if defined
-    if (ptf.uniformValue_.valid())
+    fixedValueFvPatchField<Type>::autoMap(mapper);
+
+    if (refValueFunc_)
     {
-        this->evaluate();
+        refValueFunc_().autoMap(mapper);
+
+        if (refValueFunc_().constant())
+        {
+            // If mapper is not dependent on time we're ok to evaluate
+            this->evaluate();
+        }
     }
 }
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+template<class Type>
+void Foam::uniformFixedValueFvPatchField<Type>::rmap
+(
+    const fvPatchField<Type>& ptf,
+    const labelList& addr
+)
+{
+    fixedValueFvPatchField<Type>::rmap(ptf, addr);
+
+    const uniformFixedValueFvPatchField& tiptf =
+        refCast<const uniformFixedValueFvPatchField>(ptf);
+
+    if (refValueFunc_ && tiptf.refValueFunc_)
+    {
+        refValueFunc_().rmap(tiptf.refValueFunc_(), addr);
+    }
+}
+
 
 template<class Type>
 void Foam::uniformFixedValueFvPatchField<Type>::updateCoeffs()
@@ -96,11 +175,9 @@ void Foam::uniformFixedValueFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    fvPatchField<Type>::operator==
-    (
-        uniformValue_->value(this->time().value())
-    );
+    const scalar t = this->db().time().timeOutputValue();
 
+    fvPatchField<Type>::operator==(refValueFunc_->value(t));
     fixedValueFvPatchField<Type>::updateCoeffs();
 }
 
@@ -109,14 +186,11 @@ template<class Type>
 void Foam::uniformFixedValueFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry
-    (
-        os,
-        this->time().userUnits(),
-        this->internalField().dimensions(),
-        uniformValue_()
-    );
-    writeEntry(os, "value", *this);
+    if (refValueFunc_)
+    {
+        refValueFunc_->writeData(os);
+    }
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

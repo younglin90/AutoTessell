@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::UMISTLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    UMIST interpolation scheme.
+    UMIST differencing scheme.
 
     Used in conjunction with the template class LimitedScheme.
 
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class UMISTLimiter Declaration
+                           Class UMISTLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>

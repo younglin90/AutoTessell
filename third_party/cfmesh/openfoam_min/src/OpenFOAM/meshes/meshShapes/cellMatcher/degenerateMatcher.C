@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "degenerateMatcher.H"
+#include "primitiveMesh.H"
 #include "ListOps.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -36,6 +39,8 @@ Foam::pyrMatcher Foam::degenerateMatcher::pyr;
 Foam::tetMatcher Foam::degenerateMatcher::tet;
 
 
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
 Foam::cellShape Foam::degenerateMatcher::match
 (
     const faceList& faces,
@@ -44,36 +49,34 @@ Foam::cellShape Foam::degenerateMatcher::match
     const labelList& cellFaces
 )
 {
-    // Recognise in order of assumed occurrence.
+    // Recognize in order of assumed occurrence.
 
     if (hex.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(hex.model(), hex.vertLabels());
     }
-    else if (tet.matchShape(false, faces, owner, celli, cellFaces))
+    if (tet.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(tet.model(), tet.vertLabels());
     }
-    else if (prism.matchShape(false, faces, owner, celli, cellFaces))
+    if (prism.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(prism.model(), prism.vertLabels());
     }
-    else if (pyr.matchShape(false, faces, owner, celli, cellFaces))
+    if (pyr.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(pyr.model(), pyr.vertLabels());
     }
-    else if (wedge.matchShape(false, faces, owner, celli, cellFaces))
+    if (wedge.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(wedge.model(), wedge.vertLabels());
     }
-    else if (tetWedge.matchShape(false, faces, owner, celli, cellFaces))
+    if (tetWedge.matchShape(false, faces, owner, celli, cellFaces))
     {
         return cellShape(tetWedge.model(), tetWedge.vertLabels());
     }
-    else
-    {
-        return cellShape(*(cellModeller::lookup(0)), labelList(0));
-    }
+
+    return cellShape(cellModel::ref(cellModel::UNKNOWN), labelList());
 }
 
 
@@ -84,9 +87,9 @@ Foam::cellShape Foam::degenerateMatcher::match(const faceList& faces)
     return match
     (
         faces,
-        labelList(faces.size(), 0),    // cell 0 is owner of all faces
-        0,                             // cell 0
-        identityMap(faces.size())         // cell 0 consists of all faces
+        labelList(faces.size(), Zero),  // cell 0 is owner of all faces
+        0,                              // cell 0
+        identity(faces.size())          // cell 0 consists of all faces
     );
 }
 

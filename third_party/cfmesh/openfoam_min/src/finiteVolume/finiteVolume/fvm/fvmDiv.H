@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,16 +40,15 @@ SourceFiles
 #include "volFieldsFwd.H"
 #include "surfaceFieldsFwd.H"
 #include "surfaceInterpolationScheme.H"
+#include "fvMatrix.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-template<class Type> class fvMatrix;
-
 /*---------------------------------------------------------------------------*\
-                      Namespace fvm functions Declaration
+                     Namespace fvm functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvm
@@ -56,7 +57,7 @@ namespace fvm
     tmp<fvMatrix<Type>> div
     (
         const surfaceScalarField&,
-        const VolField<Type>&,
+        const GeometricField<Type, fvPatchField, volMesh>&,
         const word& name
     );
 
@@ -64,7 +65,7 @@ namespace fvm
     tmp<fvMatrix<Type>> div
     (
         const tmp<surfaceScalarField>&,
-        const VolField<Type>&,
+        const GeometricField<Type, fvPatchField, volMesh>&,
         const word& name
     );
 
@@ -73,24 +74,14 @@ namespace fvm
     tmp<fvMatrix<Type>> div
     (
         const surfaceScalarField&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> div
     (
         const tmp<surfaceScalarField>&,
-        const VolField<Type>&
-    );
-
-    //- Return the explicit div matrix
-    //  containing the div(flux) source
-    //  and the cached flux if fluxRequired
-    template<class Type>
-    tmp<fvMatrix<Type>> divc
-    (
-        const tmp<SurfaceField<Type>>& flux,
-        const VolField<Type>& vf
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 }
 

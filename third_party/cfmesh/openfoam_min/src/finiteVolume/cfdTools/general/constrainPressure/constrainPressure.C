@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,7 +30,7 @@ License
 #include "volFields.H"
 #include "surfaceFields.H"
 #include "geometricOneField.H"
-#include "fixedFluxPressureFvPatchScalarField.H"
+#include "updateableSnGrad.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,21 +52,19 @@ void Foam::constrainPressure
     const volVectorField::Boundary& UBf = U.boundaryField();
     const surfaceScalarField::Boundary& phiHbyABf =
         phiHbyA.boundaryField();
-    const typename RAUType::Boundary& rhorAUBf =
-        rhorAU.boundaryField();
-    const surfaceVectorField::Boundary& SfBf =
-        mesh.Sf().boundaryField();
+    const typename RAUType::Boundary& rhorAUBf = rhorAU.boundaryField();
+    const surfaceVectorField::Boundary& SfBf = mesh.Sf().boundaryField();
     const surfaceScalarField::Boundary& magSfBf =
         mesh.magSf().boundaryField();
 
     forAll(pBf, patchi)
     {
-        if (isA<fixedFluxPressureFvPatchScalarField>(pBf[patchi]))
+        typedef updateablePatchTypes::updateableSnGrad snGradType;
+        const auto* snGradPtr = isA<snGradType>(pBf[patchi]);
+
+        if (snGradPtr)
         {
-            refCast<fixedFluxPressureFvPatchScalarField>
-            (
-                pBf[patchi]
-            ).updateCoeffs
+            const_cast<snGradType&>(*snGradPtr).updateSnGrad
             (
                 (
                     phiHbyABf[patchi]

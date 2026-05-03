@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +27,15 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "collatedFileOperation.H"
+#include "addToRunTimeSelectionTable.H"
+#include "Pstream.H"
 #include "Time.H"
 #include "threadedCollatedOFstream.H"
 #include "decomposedBlockData.H"
+#include "registerSwitch.H"
 #include "masterOFstream.H"
 #include "OFstream.H"
-#include "addToRunTimeSelectionTable.H"
+#include "foamVersion.H"
 
 /* * * * * * * * * * * * * * * Static Member Data  * * * * * * * * * * * * * */
 
@@ -44,17 +50,29 @@ namespace fileOperations
         collatedFileOperation,
         word
     );
+    addToRunTimeSelectionTable
+    (
+        fileOperation,
+        collatedFileOperation,
+        comm
+    );
 
     float collatedFileOperation::maxThreadFileBufferSize
     (
-        debug::floatOptimisationSwitch("maxThreadFileBufferSize", 1e9)
+        debug::floatOptimisationSwitch("maxThreadFileBufferSize", 0)
+    );
+    registerOptSwitch
+    (
+        "maxThreadFileBufferSize",
+        float,
+        collatedFileOperation::maxThreadFileBufferSize
     );
 
-    // Mark as needing threaded mpi
+    // Threaded MPI: depending on buffering
     addNamedToRunTimeSelectionTable
     (
         fileOperationInitialise,
-        collatedFileOperationInitialise,
+        fileOperationInitialise_collated,
         word,
         collated
     );
@@ -62,139 +80,117 @@ namespace fileOperations
 }
 
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
-Foam::labelList Foam::fileOperations::collatedFileOperation::ioRanks()
-{
-    labelList ioRanks;
-
-    string ioRanksString(getEnv("FOAM_IORANKS"));
-    if (!ioRanksString.empty())
-    {
-        IStringStream is(ioRanksString);
-        is >> ioRanks;
-    }
-
-    return ioRanks;
-}
-
-
-bool Foam::fileOperations::collatedFileOperation::isMasterRank
+void Foam::fileOperations::collatedFileOperation::printBanner
 (
-    const label proci
-)
-const
+    const bool withRanks
+) const
 {
-    if (Pstream::parRun())
+    DetailInfo
+        << "I/O    : " << this->type();
+
+    if (mag(maxThreadFileBufferSize) > 1)
     {
-        return Pstream::master(comm_);
+        // FUTURE: deprecate or remove threading?
+        DetailInfo
+            << " [threaded] (maxThreadFileBufferSize = "
+            << maxThreadFileBufferSize << ")." << nl
+            << "         Requires buffer large enough to collect all data"
+               " or MPI thread support." << nl
+            << "         To avoid MPI threading [slow], set"
+               " (maxThreadFileBufferSize = 0) in" << nl
+            << "         OpenFOAM etc/controlDict" << endl;
     }
     else
     {
-        // Use any IO ranks
-        if (ioRanks_.size())
+        DetailInfo
+            << " [unthreaded] (maxThreadFileBufferSize = 0)." << nl;
+
+        if (mag(maxMasterFileBufferSize) < 1)
         {
-            // Find myself in IO rank
-            return findIndex(ioRanks_, proci) != -1;
+            DetailInfo
+                << "         With scheduled transfer" << nl;
+        }
+        else if (maxMasterFileBufferSize >= 1)
+        {
+            DetailInfo
+                << "         With non-blocking transfer,"
+                   " buffer-size = " << maxMasterFileBufferSize << nl;
         }
         else
         {
-            // Assume all in single communicator
-            return proci == 0;
+            DetailInfo
+                << "         With non-blocking transfer,"
+                   " minimal buffer size" << nl;
         }
     }
+
+    if (withRanks)
+    {
+        fileOperation::printRanks();
+    }
+
+    //- fileModificationChecking already set by base class (masterUncollated)
+    // if (IOobject::fileModificationChecking == IOobject::timeStampMaster)
+    // {
+    //     WarningInFunction
+    //         << "Resetting fileModificationChecking to timeStamp" << endl;
+    // }
+    // else if (IOobject::fileModificationChecking == IOobject::inotifyMaster)
+    // {
+    //     WarningInFunction
+    //         << "Resetting fileModificationChecking to inotify" << endl;
+    // }
 }
 
 
 bool Foam::fileOperations::collatedFileOperation::appendObject
 (
     const regIOobject& io,
-    const fileName& filePath,
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp
+    const fileName& pathName,
+    IOstreamOption streamOpt
 ) const
 {
-    // Append to processors/ file
+    // Append to processorsNN/ file
 
-    label proci = detectProcessorPath(io.objectPath());
+    const label proci = detectProcessorPath(io.objectPath());
 
     if (debug)
     {
         Pout<< "collatedFileOperation::writeObject :"
             << " For local object : " << io.name()
             << " appending processor " << proci
-            << " data to " << filePath << endl;
+            << " data to " << pathName << endl;
     }
-
     if (proci == -1)
     {
         FatalErrorInFunction
-            << "Not a valid processor path " << filePath
+            << "Invalid processor path: " << pathName
             << exit(FatalError);
     }
 
-    const bool isMaster = isMasterRank(proci);
+    const bool isIOmaster = fileOperation::isIOrank(proci);
 
-    // Determine the local rank if the filePath is a per-rank one
-    label localProci = proci;
+    // Update meta-data for current state
+    if (isIOmaster)
     {
-        fileName path, procDir, local;
-        label groupStart, groupSize, nProcs;
-        splitProcessorPath
-        (
-            filePath,
-            path,
-            procDir,
-            local,
-            groupStart,
-            groupSize,
-            nProcs
-        );
-        if (groupSize > 0 && groupStart != -1)
-        {
-            localProci = proci-groupStart;
-        }
+        const_cast<regIOobject&>(io).updateMetaData();
     }
-
-
-    // Create string from all data to write
-    string buf;
-    {
-        OStringStream os(fmt, ver);
-        if (isMaster)
-        {
-            if (!io.writeHeader(os))
-            {
-                return false;
-            }
-        }
-
-        // Write the data to the Ostream
-        if (!io.writeData(os))
-        {
-            return false;
-        }
-
-        if (isMaster)
-        {
-            IOobject::writeEndDivider(os);
-        }
-
-        buf = os.str();
-    }
-
 
     // Note: cannot do append + compression. This is a limitation
     // of ogzstream (or rather most compressed formats)
+    //
+    // File should always be created as non-atomic
+    // (consistency between append/non-append)
 
     OFstream os
     (
-        filePath,
-        IOstream::BINARY,
-        ver,
-        IOstream::UNCOMPRESSED, // no compression
-        !isMaster
+        pathName,
+        // UNCOMPRESSED (binary only)
+        IOstreamOption(IOstreamOption::BINARY, streamOpt.version()),
+        // Append on sub-ranks
+        (isIOmaster ? IOstreamOption::NO_APPEND : IOstreamOption::APPEND_APP)
     );
 
     if (!os.good())
@@ -204,195 +200,110 @@ bool Foam::fileOperations::collatedFileOperation::appendObject
             << exit(FatalIOError);
     }
 
-    if (isMaster)
+    if (isIOmaster)
     {
-        IOobject::writeHeader
+        decomposedBlockData::writeHeader(os, streamOpt, io);
+    }
+
+    std::streamoff blockOffset = decomposedBlockData::writeBlockEntry
+    (
+        os,
+        streamOpt,
+        io,
+        proci,
+        isIOmaster  // With FoamFile header on master
+    );
+
+    return (blockOffset >= 0) && os.good();
+}
+
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Construction helper: self/world/local communicator and IO ranks
+static Tuple2<label, labelList> getCommPattern()
+{
+    // Default is COMM_WORLD (single master)
+    Tuple2<label, labelList> commAndIORanks
+    (
+        UPstream::worldComm,
+        fileOperation::getGlobalIORanks()
+    );
+
+    if (UPstream::parRun() && commAndIORanks.second().size() > 1)
+    {
+        // Multiple masters: ranks for my IO range
+        commAndIORanks.first() = UPstream::allocateCommunicator
         (
-            os,
-            os.version(),
-            os.format(),
-            decomposedBlockData::typeName,
-            string(),
-            filePath,
-            filePath.name()
+            UPstream::worldComm,
+            fileOperation::subRanks(commAndIORanks.second())
         );
     }
 
-    // Write data
-    UList<char> slice
-    (
-        const_cast<char*>(buf.data()),
-        label(buf.size())
-    );
-    os << nl << "// Processor" << localProci << nl << slice << nl;
-
-    return os.good();
+    return commAndIORanks;
 }
+
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::fileOperations::collatedFileOperation::collatedFileOperation
-(
-    const bool verbose
-)
-:
-    masterUncollatedFileOperation
-    (
-        (
-            ioRanks().size()
-          ? UPstream::allocateCommunicator
-            (
-                UPstream::worldComm,
-                subRanks(Pstream::nProcs())
-            )
-          : UPstream::worldComm
-        ),
-        false
-    ),
-    myComm_(comm_),
-    writer_(maxThreadFileBufferSize, comm_),
-    nProcs_(Pstream::nProcs()),
-    ioRanks_(ioRanks())
+void Foam::fileOperations::collatedFileOperation::init(bool verbose)
 {
+    verbose = (verbose && Foam::infoDetailLevel > 0);
+
     if (verbose)
     {
-        InfoHeader
-            << "I/O    : " << typeName
-            << " (maxThreadFileBufferSize " << maxThreadFileBufferSize
-            << ')' << endl;
-
-        if (maxThreadFileBufferSize == 0)
-        {
-            InfoHeader
-                << "         Threading not activated "
-                   "since maxThreadFileBufferSize = 0." << nl
-                << "         Writing may run slowly for large file sizes."
-                << endl;
-        }
-        else
-        {
-            InfoHeader
-                << "         Threading activated "
-                   "since maxThreadFileBufferSize > 0." << nl
-                << "         Requires large enough buffer to collect all data"
-                    " or thread support " << nl
-                << "         enabled in MPI. If thread support cannot be "
-                   "enabled, deactivate" << nl
-                << "         threading by setting maxThreadFileBufferSize "
-                    "to 0 in" << nl
-                << "         $FOAM_ETC/controlDict"
-                << endl;
-        }
-
-        if (ioRanks_.size())
-        {
-            // Print a bit of information
-            stringList ioRanks(Pstream::nProcs());
-            if (Pstream::master(comm_))
-            {
-                ioRanks[Pstream::myProcNo()] = hostName()+"."+name(pid());
-            }
-            Pstream::gatherList(ioRanks);
-
-            InfoHeader << "         IO nodes:" << endl;
-            forAll(ioRanks, proci)
-            {
-                if (!ioRanks[proci].empty())
-                {
-                    InfoHeader << "             " << ioRanks[proci] << endl;
-                }
-            }
-        }
-
-
-        if
-        (
-            regIOobject::fileModificationChecking
-         == regIOobject::inotifyMaster
-        )
-        {
-            WarningInFunction
-                << "Resetting fileModificationChecking to inotify" << endl;
-        }
-
-        if
-        (
-            regIOobject::fileModificationChecking
-         == regIOobject::timeStampMaster
-        )
-        {
-            WarningInFunction
-                << "Resetting fileModificationChecking to timeStamp" << endl;
-        }
+        this->printBanner(ioRanks_.size());
     }
 }
 
 
 Foam::fileOperations::collatedFileOperation::collatedFileOperation
 (
-    const label comm,
-    const labelList& ioRanks,
-    const word& typeName,
-    const bool verbose
+    bool verbose
 )
 :
-    masterUncollatedFileOperation(comm, false),
-    myComm_(-1),
-    writer_(maxThreadFileBufferSize, comm),
-    nProcs_(Pstream::nProcs()),
-    ioRanks_(ioRanks)
+    masterUncollatedFileOperation
+    (
+        getCommPattern(),
+        false,  // distributedRoots
+        false   // verbose
+    ),
+    managedComm_(getManagedComm(comm_)),  // Possibly locally allocated
+    writer_(mag(maxThreadFileBufferSize), comm_)
 {
-    if (verbose)
-    {
-        InfoHeader
-            << "I/O    : " << typeName
-            << " (maxThreadFileBufferSize " << maxThreadFileBufferSize
-            << ')' << endl;
+    init(verbose);
+}
 
-        if (maxThreadFileBufferSize == 0)
-        {
-            InfoHeader
-                << "         Threading not activated "
-                   "since maxThreadFileBufferSize = 0." << nl
-                << "         Writing may run slowly for large file sizes."
-                << endl;
-        }
-        else
-        {
-            InfoHeader
-                << "         Threading activated "
-                   "since maxThreadFileBufferSize > 0." << nl
-                << "         Requires large enough buffer to collect all data"
-                    " or thread support " << nl
-                << "         enabled in MPI. If thread support cannot be "
-                   "enabled, deactivate" << nl
-                << "         threading by setting maxThreadFileBufferSize "
-                    "to 0 in" << nl
-                << "         $FOAM_ETC/controlDict"
-                << endl;
-        }
 
-        if
-        (
-            regIOobject::fileModificationChecking
-         == regIOobject::inotifyMaster
-        )
-        {
-            WarningInFunction
-                << "Resetting fileModificationChecking to inotify" << endl;
-        }
+Foam::fileOperations::collatedFileOperation::collatedFileOperation
+(
+    const Tuple2<label, labelList>& commAndIORanks,
+    const bool distributedRoots,
+    bool verbose
+)
+:
+    masterUncollatedFileOperation
+    (
+        commAndIORanks,
+        distributedRoots,
+        false   // verbose
+    ),
+    managedComm_(-1),  // Externally managed
+    writer_(mag(maxThreadFileBufferSize), comm_)
+{
+    init(verbose);
+}
 
-        if
-        (
-            regIOobject::fileModificationChecking
-         == regIOobject::timeStampMaster
-        )
-        {
-            WarningInFunction
-                << "Resetting fileModificationChecking to timeStamp" << endl;
-        }
-    }
+
+void Foam::fileOperations::collatedFileOperation::storeComm() const
+{
+    // From externally -> locally managed
+    managedComm_ = getManagedComm(comm_);
 }
 
 
@@ -400,10 +311,10 @@ Foam::fileOperations::collatedFileOperation::collatedFileOperation
 
 Foam::fileOperations::collatedFileOperation::~collatedFileOperation()
 {
-    if (myComm_ != -1 && myComm_ != UPstream::worldComm)
-    {
-        UPstream::freeCommunicator(myComm_);
-    }
+    // Wait for any outstanding file operations
+    flush();
+
+    UPstream::freeCommunicator(managedComm_);
 }
 
 
@@ -411,13 +322,14 @@ Foam::fileOperations::collatedFileOperation::~collatedFileOperation()
 
 Foam::fileName Foam::fileOperations::collatedFileOperation::objectPath
 (
-    const IOobject& io
+    const IOobject& io,
+    const word& typeName
 ) const
 {
     // Replacement for objectPath
     if (io.time().processorCase())
     {
-        return masterUncollatedFileOperation::relativeObjectPath
+        return masterUncollatedFileOperation::localObjectPath
         (
             io,
             fileOperation::PROCOBJECT,
@@ -427,7 +339,7 @@ Foam::fileName Foam::fileOperations::collatedFileOperation::objectPath
     }
     else
     {
-        return masterUncollatedFileOperation::relativeObjectPath
+        return masterUncollatedFileOperation::localObjectPath
         (
             io,
             fileOperation::OBJECT,
@@ -441,19 +353,22 @@ Foam::fileName Foam::fileOperations::collatedFileOperation::objectPath
 bool Foam::fileOperations::collatedFileOperation::writeObject
 (
     const regIOobject& io,
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool write
+    IOstreamOption streamOpt,
+    const bool writeOnProc
 ) const
 {
     const Time& tm = io.time();
     const fileName& inst = io.instance();
 
+    // Update meta-data for current state
+    const_cast<regIOobject&>(io).updateMetaData();
+
     if (inst.isAbsolute() || !tm.processorCase())
     {
-        mkDir(io.path());
-        fileName filePath(io.objectPath());
+        // Note: delay mkdir to masterOFstream so it does not get created
+        //       if not needed (e.g. when running distributed)
+
+        const fileName pathName(io.objectPath());
 
         if (debug)
         {
@@ -463,82 +378,81 @@ bool Foam::fileOperations::collatedFileOperation::writeObject
                 << endl;
         }
 
+        // Note: currently still NON_ATOMIC (Dec-2022)
         masterOFstream os
         (
-            filePath,
-            fmt,
-            ver,
-            cmp,
-            false,
-            write
+            comm_,
+            pathName,
+            streamOpt,
+            IOstreamOption::NO_APPEND,
+            writeOnProc
         );
 
-        // If any of these fail, return (leave error handling to Ostream class)
-        if (!os.good())
-        {
-            return false;
-        }
-        if (!io.writeHeader(os))
-        {
-            return false;
-        }
-        // Write the data to the Ostream
-        if (!io.writeData(os))
-        {
-            return false;
-        }
-        IOobject::writeEndDivider(os);
+        // If any of these fail, return
+        // (leave error handling to Ostream class)
 
-        return true;
+        const bool ok =
+        (
+            os.good()
+         && io.writeHeader(os)
+         && io.writeData(os)
+        );
+
+        if (ok)
+        {
+            IOobject::writeEndDivider(os);
+        }
+
+        return ok;
     }
     else
     {
         // Construct the equivalent processors/ directory
-        fileName path(processorsPath(io, inst, processorsDir(io)));
+        const fileName path(processorsPath(io, inst, processorsDir(io)));
 
-        mkDir(path);
-        fileName filePath(path/io.name());
+        // Note: delay mkdir to masterOFstream so it does not get created
+        //       if not needed (e.g. when running distributed)
 
-        if (io.global())
+        const fileName pathName(path/io.name());
+
+        if (io.global() || io.globalObject())
         {
             if (debug)
             {
                 Pout<< "collatedFileOperation::writeObject :"
                     << " For global object : " << io.name()
-                    << " falling back to master-only output to " << filePath
+                    << " falling back to master-only output to " << pathName
                     << endl;
             }
 
+            // Note: currently still NON_ATOMIC (Dec-2022)
             masterOFstream os
             (
-                filePath,
-                fmt,
-                ver,
-                cmp,
-                false,
-                write
+                comm_,
+                pathName,
+                streamOpt,
+                IOstreamOption::NO_APPEND,
+                writeOnProc
             );
 
-            // If any of these fail, return (leave error handling to Ostream
-            // class)
-            if (!os.good())
-            {
-                return false;
-            }
-            if (!io.writeHeader(os))
-            {
-                return false;
-            }
-            // Write the data to the Ostream
-            if (!io.writeData(os))
-            {
-                return false;
-            }
-            IOobject::writeEndDivider(os);
+            // If any of these fail, return
+            // (leave error handling to Ostream class)
 
-            return true;
+            const bool ok =
+            (
+                os.good()
+             && io.writeHeader(os)
+             && io.writeData(os)
+            );
+
+            if (ok)
+            {
+                IOobject::writeEndDivider(os);
+            }
+
+            return ok;
         }
-        else if (!Pstream::parRun())
+        else if (!UPstream::parRun())
         {
             // Special path for e.g. decomposePar. Append to
             // processorsDDD/ file
@@ -546,22 +460,23 @@ bool Foam::fileOperations::collatedFileOperation::writeObject
             {
                 Pout<< "collatedFileOperation::writeObject :"
                     << " For object : " << io.name()
-                    << " appending to " << filePath << endl;
+                    << " appending to " << pathName << endl;
             }
 
-            return appendObject(io, filePath, fmt, ver, cmp);
+            mkDir(path);
+            return appendObject(io, pathName, streamOpt);
         }
         else
         {
             // Re-check static maxThreadFileBufferSize variable to see
             // if needs to use threading
-            bool useThread = (maxThreadFileBufferSize > 0);
+            const bool useThread = (mag(maxThreadFileBufferSize) > 1);
 
             if (debug)
             {
                 Pout<< "collatedFileOperation::writeObject :"
                     << " For object : " << io.name()
-                    << " starting collating output to " << filePath
+                    << " starting collating output to " << pathName
                     << " useThread:" << useThread << endl;
             }
 
@@ -570,37 +485,41 @@ bool Foam::fileOperations::collatedFileOperation::writeObject
                 writer_.waitAll();
             }
 
+            // Note: currently still NON_ATOMIC (Dec-2022)
             threadedCollatedOFstream os
             (
                 writer_,
-                filePath,
-                fmt,
-                ver,
-                cmp,
+                pathName,
+                streamOpt,
                 useThread
             );
 
-            // If any of these fail, return (leave error handling to Ostream
-            // class)
-            if (!os.good())
+            bool ok = os.good();
+
+            if (UPstream::master(comm_))
             {
-                return false;
-            }
-            if (Pstream::master(comm_) && !io.writeHeader(os))
-            {
-                return false;
-            }
-            // Write the data to the Ostream
-            if (!io.writeData(os))
-            {
-                return false;
-            }
-            if (Pstream::master(comm_))
-            {
-                IOobject::writeEndDivider(os);
+                // Suppress comment banner
+                const bool old = IOobject::bannerEnabled(false);
+
+                ok = ok && io.writeHeader(os);
+
+                IOobject::bannerEnabled(old);
+
+                // Additional header content
+                dictionary dict;
+                decomposedBlockData::writeExtraHeaderContent
+                (
+                    dict,
+                    streamOpt,
+                    io
+                );
+                os.setHeaderEntries(dict);
             }
 
-            return true;
+            ok = ok && io.writeData(os);
+            // No end divider for collated output
+
+            return ok;
         }
     }
 }
@@ -623,17 +542,17 @@ Foam::word Foam::fileOperations::collatedFileOperation::processorsDir
     const fileName& fName
 ) const
 {
-    if (Pstream::parRun())
+    if (UPstream::parRun())
     {
         const List<int>& procs(UPstream::procID(comm_));
 
-        word procDir(processorsBaseDir+Foam::name(Pstream::nProcs()));
+        word procDir(processorsBaseDir+Foam::name(nProcs_));
 
-        if (procs.size() != Pstream::nProcs())
+        if (procs.size() != nProcs_)
         {
             procDir +=
               + "_"
-              + Foam::name(procs[0])
+              + Foam::name(procs.first())
               + "-"
               + Foam::name(procs.last());
         }
@@ -653,27 +572,32 @@ Foam::word Foam::fileOperations::collatedFileOperation::processorsDir
                 // Find lowest io rank
                 label minProc = 0;
                 label maxProc = nProcs_-1;
-                forAll(ioRanks_, i)
+                for (const label ranki : ioRanks_)
                 {
-                    if (ioRanks_[i] >= nProcs_)
+                    if (ranki >= nProcs_)
                     {
                         break;
                     }
-                    else if (ioRanks_[i] <= proci)
+                    else if (ranki <= proci)
                     {
-                        minProc = ioRanks_[i];
+                        minProc = ranki;
                     }
                     else
                     {
-                        maxProc = ioRanks_[i]-1;
+                        maxProc = ranki-1;
                         break;
                     }
                 }
-                procDir +=
-                  + "_"
-                  + Foam::name(minProc)
-                  + "-"
-                  + Foam::name(maxProc);
+
+                // Add range if not all processors
+                if (maxProc-minProc+1 != nProcs_)
+                {
+                    procDir +=
+                      + "_"
+                      + Foam::name(minProc)
+                      + "-"
+                      + Foam::name(maxProc);
+                }
             }
         }
 
@@ -687,19 +611,7 @@ Foam::word Foam::fileOperations::collatedFileOperation::processorsDir
     const IOobject& io
 ) const
 {
-    return processorsDir(io.objectPath(false));
-}
-
-
-void Foam::fileOperations::collatedFileOperation::setNProcs(const label nProcs)
-{
-    nProcs_ = nProcs;
-
-    if (debug)
-    {
-        Pout<< "collatedFileOperation::setNProcs :"
-            << " Setting number of processors to " << nProcs_ << endl;
-    }
+    return processorsDir(io.objectPath());
 }
 
 

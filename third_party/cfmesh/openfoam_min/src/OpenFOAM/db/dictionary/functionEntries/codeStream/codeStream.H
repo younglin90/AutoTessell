@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,185 +28,88 @@ Class
     Foam::functionEntries::codeStream
 
 Description
-    Compiles and executes C++ OpenFOAM code string expressions
-
-    inserting the result into the dictionary or dictionary entry.
-
-    \c \#codeStream reads three entries: \c code, \c codeInclude (optional),
-    \c codeOptions (optional) to generate the library source code stored in the
-    local \c dynamicCode directory with a subdirectory name corresponding to the
-    SHA1 of the code.  The code is then compiled into a dynamically loaded
-    library libcodeStream_<SHA1>.so stored in the
-    \c dynamicCode/platforms/$WM_OPTIONS/lib directory using 'wmake libso'.
-    The resulting library is loaded in executed with arguments
+    Dictionary entry that contains C++ OpenFOAM code that is compiled to
+    generate the entry itself. So
+    - codeStream reads three entries: 'code', 'codeInclude' (optional),
+    'codeOptions' (optional)
+    and uses those to generate library sources inside \c codeStream/
+    - these get compiled using 'wmake libso'
+    - the resulting library is loaded in executed with as arguments
     \code
         (const dictionary& dict, Ostream& os)
     \endcode
-    where the dictionary is the current dictionary.  The code writes results to
-    the current entry via the \c Ostream \c os.
+    where the dictionary is the current dictionary.
+    - the code has to write into Ostream which is then used to construct
+    the actual dictionary entry.
 
-    The verbatim string format \c \#{ ... \c \#} is used to allow multi-line
-    input without the need to escape the newlines.
 
-    Dictionary entries constructed with \c \#codeStream can conveniently access
-    and use typed variables.  This means calculations involving vectors and
-    tensors and list etc. are possible.  To access a variable and construct it
-    as a given type within a \c \#codeStream entry, put the type immediately
-    after the $ symbol inside angled brackets <>. So, $<vector>var or
-    $<vector>{var} substitutes a variable named var as a vector.
+    E.g. to set the internal field of a field:
 
-    The variable values are looked-up at run-time making the code corresponding
-    to each \c \#codeStream independent of the values in the dictionary and of
-    each other.  Hence the \c \#codeStream code does not need to be recompiled
-    when the values in the dictionary are changed, only if the code is changed.
-
-Usage
-    Example to set the internal field of a field:
     \verbatim
-        internalField  #codeStream
-        {
-            code
-            #{
-                const IOdictionary& d = static_cast<const IOdictionary&>(dict);
-                const fvMesh& mesh = refCast<const fvMesh>(d.db());
-                scalarField fld(mesh.nCells(), 12.34);
-                writeEntry(os, "", fld);
-            #};
+    internalField  #codeStream
+    {
+        code
+        #{
+            const IOdictionary& d = static_cast<const IOdictionary&>(dict);
+            const fvMesh& mesh = refCast<const fvMesh>(d.db());
+            scalarField fld(mesh.nCells(), 12.34);
+            fld.writeEntry("", os);
+        #};
 
-            //- Optional:
-            codeInclude
-            #{
-                #include "volFields.H"
-            #};
+        //- Optional:
+        codeInclude
+        #{
+            #include "fvCFD.H"
+        #};
 
-            //- Optional:
-            codeOptions
-            #{
-                -I$(LIB_SRC)/finiteVolume/lnInclude
-            #};
-        };
+        //- Optional:
+        codeOptions
+        #{
+            -I$(LIB_SRC)/finiteVolume/lnInclude
+        #};
+    };
     \endverbatim
 
-    Example to rotate a list of points around an axis by a given angle
-    \verbatim
-        points  ((3 0 0) (2 1 1) (1 2 2) (0 3 3));
-        rotation
-        {
-            axis    (0 1 1);
-            angle   45;
-        }
 
-        #codeStream
-        {
-            codeInclude
-            #{
-                #include "pointField.H"
-                #include "transform.H"
-            #};
+    Note the \c \#{ ... \c \#} syntax is a 'verbatim' input mode that allows
+    inputting strings with embedded newlines.
 
-            code
-            #{
-                const pointField points($<List<point>>points);
-                const vector axis = $<vector>!rotation/axis;
-                const scalar angle = degToRad($!rotation/angle);
-                os << "pointsRotated" << nl
-                   << (Ra(axis, angle) & points)() << ";";
-            #};
-        };
-    \endverbatim
+    Limitations:
+    - '~' symbol not allowed inside the code sections.
+    - probably some other limitations (uses string::expand which expands
+      \c \$ and \c ~ sequences)
 
-    Example Compute the centre and trianglation of a polygon
-    \verbatim
-       polygon  ((0 0 0) (1 0 0) (2 1 0) (0 2 0) (-1 1 0));
+Note
+    The code to be compiled is stored under the local \c codeStream directory
+    with a subdirectory name corresponding to the SHA1 of the contents.
 
-       #codeStream
-       {
-           codeInclude
-           #{
-               #include "polygonTriangulate.H"
-           #};
-
-           code
-           #{
-               const List<point> polygon($<List<point>>polygon);
-               writeEntry(os, "polygonCentre", face::centre(polygon));
-
-               polygonTriangulate triEngine;
-               triEngine.triangulate(polygon);
-               os << "polygonTris" << ' ' << triEngine.triPoints() << ";";
-           #};
-        };
-    \endverbatim
-
-    Example to generate a single block blockMeshDict for use with snappyHexMesh
-    with no redundant information
-    \verbatim
-        min         (-2.5 -1.2 -3.0);   // Minimum coordinates of the block
-        max         (2.5 1.2 3.0);      // Maximum coordinates of the block
-        nCellsByL   33.3333;            // Number of cells per unit length
-
-        // Calculate the number of cells in each block direction
-        nCells      #calc
-      "Vector<label>($nCellsByL*($<vector>max - $<vector>min) + vector::one/2)";
-
-        // Generate the vertices using a boundBox
-        vertices    #codeStream
-        {
-            codeInclude
-            #{
-                #include "boundBox.H"
-            #};
-
-            code
-            #{
-                os << boundBox($<vector>min, $<vector>max).points();
-            #};
-        };
-
-        blocks
-        (
-            hex (0 1 2 3 4 5 6 7) $nCells simpleGrading (1 1 1)
-        );
-
-        defaultPatch
-        {
-            type patch;
-        }
-
-        boundary
-        ();
-    \endverbatim
-
-See also
-    Foam::functionEntries::calcEntry
+    The corresponding library code is located under the local
+    \c codeStream/platforms/$WM_OPTIONS/lib directory in a library
+    \c libcodeStream_SHA1.so
 
 SourceFiles
     codeStream.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef codeStream_H
-#define codeStream_H
+#ifndef functionEntries_codeStream_H
+#define functionEntries_codeStream_H
 
 #include "functionEntry.H"
-#include "OTstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class dlLibraryTable;
 
 namespace functionEntries
 {
 
-// Forward declaration of friend classes
-class codeDict;
-class streamEntry;
+// Forward Declarations
 class calcEntry;
-class codeBlockEntry;
-class codeBlockStreamEntry;
 
 /*---------------------------------------------------------------------------*\
                          Class codeStream Declaration
@@ -213,143 +119,53 @@ class codeStream
 :
     public functionEntry
 {
-    //- Interpreter function type
-    typedef void (*streamingFunctionType)(Ostream&, const dictionary&);
+protected:
+
+        //- Interpreter function type
+        typedef void (*streamingFunctionType)(Ostream&, const dictionary&);
 
 
-    // Private Member Functions
+    // Protected Member Functions
 
-        //- Helper function: parent (of parent etc.) of dictionary up to the top
-        static const dictionary& topDict(const dictionary&);
+        //- Helper: access IOobject for master-only-reading functionality
+        static bool doingMasterOnlyReading(const dictionary& dict);
 
-        //- Return true for master only reading of global dictionary
-        static bool masterOnlyRead
-        (
-            const word& typeName,
-            const dictionary& dict
-        );
-
-        //- Return the code string
-        static string codeString
-        (
-            const word& typeName,
-            const word& templateFunctionName,
-            const label index,
-            const dictionary& codeDict,
-            Istream&
-        );
-
-        //- Return the code string
-        static string codeString
-        (
-            const label index,
-            const dictionary& codeDict,
-            Istream&
-        );
-
-        //- Construct, compile, load and return streaming function
-        static void* compile
-        (
-            const word& typeName,
-            const dictionary& contextDict,
-            const dictionary& codeDict,
-            const word& codeOptions,
-            const wordList& compileFiles,
-            word& codeName
-        );
+        //- Helper function: access to dlLibraryTable of Time
+        static dlLibraryTable& libs(const dictionary& dict);
 
         //- Construct, compile, load and return streaming function
         static streamingFunctionType getFunction
         (
-            const dictionary& contextDict,
+            const dictionary& parentDict,
             const dictionary& codeDict
         );
 
-        //- Compile and execute the code and return the result in an OTstream
-        static OTstream resultStream
-        (
-            const dictionary& contextDict,
-            Istream& is
-        );
+
+        //- Evaluate dynamically compiled code, returning result as string
+        static string evaluate(const dictionary& parentDict, Istream& is);
 
 
 public:
 
-    // Static Data Members
-
-        //- Keywords associated with source code
-        static const wordList codeKeys;
-
-        //- Name of the dictionary variables in the source code
-        static const wordList codeDictVars;
-
-        //- Name of the code options file to be used
-        static const word codeOptions;
-
-        //- Name of the C code template to be used
-        static const wordList compileFiles;
-
-
-    // Related types
-
-        //- Declare friendship with the calcEntry class
-        friend class codeDict;
-        friend class streamEntry;
-        friend class calcEntry;
-        friend class codeBlockEntry;
-        friend class codeBlockStreamEntry;
-
+    //- Name of the C code template to be used
+    static constexpr const char* const codeTemplateC = "codeStreamTemplate.C";
 
     //- Runtime type information
-    FunctionTypeName("#codeStream");
-
-
-    // Constructors
-
-        //- Construct from function type and parent dictionary
-        codeStream
-        (
-            const functionName&,
-            const label lineNumber,
-            const dictionary&
-        );
-
-        //- Construct from line number, dictionary and Istream
-        codeStream
-        (
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Copy construct
-        codeStream(const codeStream&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new codeStream(*this));
-        }
+    ClassName("codeStream");
 
 
     // Member Functions
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream&);
-
-        //- Expand the functionEntry into the contextEntry
+        //- Execute in a primitiveEntry context
         static bool execute
         (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
         );
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const codeStream&) = delete;
+        //- Execute in a sub-dict context
+        static bool execute(dictionary& parentDict, Istream& is);
 };
 
 

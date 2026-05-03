@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::MUSCLLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    van Leer's MUSCL interpolation scheme.
+    van Leer's MUSCL differencing scheme.
 
     Used in conjunction with the template class LimitedScheme.
 
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class MUSCLLimiter Declaration
+                           Class MUSCLLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -76,7 +81,7 @@ public:
             faceFlux, phiP, phiN, gradcP, gradcN, d
         );
 
-        return max(min(min(2*r, 0.5*r + 0.5), 2), 0);
+        return clamp(min(2*r, 0.5*r + 0.5), 0, 2);
     }
 };
 

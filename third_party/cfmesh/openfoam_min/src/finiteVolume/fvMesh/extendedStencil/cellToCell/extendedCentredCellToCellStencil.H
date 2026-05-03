@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,13 +54,25 @@ class extendedCentredCellToCellStencil
 :
     public extendedCellToCellStencil
 {
-    // Private Data
+    // Private data
 
         //- Swap map for getting neighbouring data
-        autoPtr<distributionMap> mapPtr_;
+        autoPtr<mapDistribute> mapPtr_;
 
         //- Per cell the stencil.
         labelListList stencil_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        extendedCentredCellToCellStencil
+        (
+            const extendedCentredCellToCellStencil&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const extendedCentredCellToCellStencil&) = delete;
 
 
 public:
@@ -68,19 +82,13 @@ public:
         //- Construct from uncompacted cell stencil
         explicit extendedCentredCellToCellStencil(const cellToCellStencil&);
 
-        //- Disallow default bitwise copy construction
-        extendedCentredCellToCellStencil
-        (
-            const extendedCentredCellToCellStencil&
-        ) = delete;
-
 
     // Member Functions
 
         //- Return reference to the parallel distribution map
-        const distributionMap& map() const
+        const mapDistribute& map() const
         {
-            return mapPtr_();
+            return *mapPtr_;
         }
 
         //- Return reference to the stencil
@@ -96,7 +104,7 @@ public:
         template<class Type>
         void collectData
         (
-            const VolField<Type>& fld,
+            const GeometricField<Type, fvPatchField, volMesh>& fld,
             List<List<Type>>& stencilFld
         ) const
         {
@@ -111,10 +119,17 @@ public:
 
         //- Sum vol field contributions to create cell values
         template<class Type, class WeightType>
-        tmp<VolField<typename outerProduct<WeightType, Type>::type>>
-        weightedSum
+        tmp
+        <
+            GeometricField
+            <
+                typename outerProduct<WeightType, Type>::type,
+                fvPatchField,
+                volMesh
+            >
+        > weightedSum
         (
-            const VolField<Type>& fld,
+            const GeometricField<Type, fvPatchField, volMesh>& fld,
             const List<List<WeightType>>& stencilWeights
         ) const
         {
@@ -126,12 +141,6 @@ public:
                 stencilWeights
             );
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const extendedCentredCellToCellStencil&) = delete;
 };
 
 

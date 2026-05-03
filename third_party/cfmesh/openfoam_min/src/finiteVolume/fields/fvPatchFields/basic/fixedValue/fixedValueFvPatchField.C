@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +28,13 @@ License
 
 #include "fixedValueFvPatchField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(p, iF)
@@ -42,12 +45,24 @@ template<class Type>
 Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict,
-    const bool valueRequired
+    const DimensionedField<Type, volMesh>& iF,
+    const Type& value
 )
 :
-    fvPatchField<Type>(p, iF, dict, valueRequired)
+    fvPatchField<Type>(p, iF, value)
+{}
+
+
+template<class Type>
+Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict,
+    IOobjectOption::readOption requireValue
+)
+:
+    fvPatchField<Type>(p, iF, dict, requireValue)
 {}
 
 
@@ -56,23 +71,42 @@ Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
 (
     const fixedValueFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper,
-    const bool mappingRequired
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    fvPatchField<Type>(ptf, p, iF, mapper, mappingRequired)
-{}
+    fvPatchField<Type>(ptf, p, iF, mapper)
+{
+    if (notNull(iF) && mapper.hasUnmapped())
+    {
+        WarningInFunction
+            << "On field " << iF.name() << " patch " << p.name()
+            << " patchField " << this->type()
+            << " : mapper does not map all values." << nl
+            << "    To avoid this warning fully specify the mapping in derived"
+            << " patch fields." << endl;
+    }
+}
 
 
 template<class Type>
 Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
 (
     const fixedValueFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(ptf, iF)
+{}
+
+
+template<class Type>
+Foam::fixedValueFvPatchField<Type>::fixedValueFvPatchField
+(
+    const fixedValueFvPatchField<Type>& ptf
+)
+:
+    fixedValueFvPatchField<Type>(ptf, ptf.internalField())
 {}
 
 
@@ -85,10 +119,7 @@ Foam::fixedValueFvPatchField<Type>::valueInternalCoeffs
     const tmp<scalarField>&
 ) const
 {
-    return tmp<Field<Type>>
-    (
-        new Field<Type>(this->size(), Zero)
-    );
+    return tmp<Field<Type>>::New(this->size(), Foam::zero{});
 }
 
 
@@ -123,7 +154,7 @@ template<class Type>
 void Foam::fixedValueFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

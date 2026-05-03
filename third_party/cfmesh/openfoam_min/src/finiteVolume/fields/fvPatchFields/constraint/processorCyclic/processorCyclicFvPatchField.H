@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::processorCyclicFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition enables processor communication across cyclic
     patches.
@@ -33,7 +38,7 @@ Usage
     \verbatim
     <patchName>
     {
-        type            processorCyclic;
+        type            processor;
     }
     \endverbatim
 
@@ -48,8 +53,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorCyclicFvPatchField_H
-#define processorCyclicFvPatchField_H
+#ifndef Foam_processorCyclicFvPatchField_H
+#define Foam_processorCyclicFvPatchField_H
 
 #include "processorCyclicFvPatch.H"
 #include "processorFvPatchField.H"
@@ -85,14 +90,14 @@ public:
         processorCyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch and internal field and patch field
         processorCyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const Field<Type>&
         );
 
@@ -100,7 +105,7 @@ public:
         processorCyclicFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -110,75 +115,55 @@ public:
         (
             const processorCyclicFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        processorCyclicFvPatchField
-        (
-            const processorCyclicFvPatchField<Type>&
-        ) = delete;
+        //- Construct as copy
+        processorCyclicFvPatchField(const processorCyclicFvPatchField<Type>&);
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         processorCyclicFvPatchField
         (
             const processorCyclicFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchField<Type>> clone
-        (
-            const DimensionedField<Type, fvMesh>& iF
-        ) const
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new processorCyclicFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this);
         }
 
-        //- Construct and return a clone onto a new patch
-        //  setting internal field reference
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const fvPatch& patch,
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new processorCyclicFvPatchField<Type>(patch, iF, *this)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     //- Destructor
-    virtual ~processorCyclicFvPatchField();
+    virtual ~processorCyclicFvPatchField() = default;
 
 
     // Member Functions
 
         // Access
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
+            //- Does the patch field perform the transformation
+            virtual bool doTransform() const
             {
-                return procPatch_.transform();
+                return (pTraits<Type>::rank && !procPatch_.parallel());
             }
 
-            //- Return rank of component for transform
-            virtual int rank() const
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
             {
-                return pTraits<Type>::rank;
+                return procPatch_.forwardT();
             }
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using processorFvPatchField<Type>::operator=;
 };
 
 

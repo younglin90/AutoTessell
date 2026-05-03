@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,18 +28,18 @@ Class
     Foam::IOList
 
 Description
-    A List of objects of type \<Type\> with automated input and output.
+    A List of objects of type \<T\> with automated input and output.
 
 SourceFiles
     IOList.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef IOList_H
-#define IOList_H
+#ifndef Foam_IOList_H
+#define Foam_IOList_H
 
-#include "regIOobject.H"
 #include "List.H"
+#include "regIOobject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,87 +47,24 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class IOListBase Declaration
-\*---------------------------------------------------------------------------*/
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-class IOListBase
-:
-    public regIOobject,
-    public Container<Type>
-{
-
-public:
-
-    // Public Static Data
-
-        //- Does this object support re-reading?
-        static const bool rereading = false;
-
-
-    // Constructors
-
-        //- Construct from IOobject
-        IOListBase(const IOobject&);
-
-        //- Construct from IOobject; does local processor require reading?
-        IOListBase(const IOobject&, const bool read);
-
-        //- Construct from IOobject and size (does not set values)
-        IOListBase(const IOobject&, const label size);
-
-        //- Construct from IOobject and a Container
-        IOListBase(const IOobject&, const Container<Type>&);
-
-        //- Move construct by transferring the Container contents
-        IOListBase(const IOobject&, Container<Type>&&);
-
-        //- Copy constructor
-        IOListBase(const IOListBase<Container, IOContainer, Type>&);
-
-        //- Move constructor
-        IOListBase(IOListBase<Container, IOContainer, Type>&&);
-
-
-    //- Destructor
-    virtual ~IOListBase();
-
-
-    // Member Functions
-
-        //- WriteData function required for regIOobject write operation
-        virtual bool writeData(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment operators
-        using Container<Type>::operator=;
-
-        //- Assign to another IOList
-        void operator=(const IOListBase<Container, IOContainer, Type>&);
-
-        //- Move-assign to another IOList
-        void operator=(IOListBase<Container, IOContainer, Type>&&);
-};
-
-
-/*---------------------------------------------------------------------------*\
                            Class IOList Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Type>
+template<class T>
 class IOList
 :
-    public IOListBase<List, IOList, Type>
+    public regIOobject,
+    public List<T>
 {
+    // Private Member Functions
+
+        //- Read if IOobject flags set. Return true if read.
+        bool readIOcontents();
 
 public:
+
+    //- The underlying content type
+    typedef List<T> content_type;
 
     //- Runtime type information
     TypeName("List");
@@ -132,14 +72,114 @@ public:
 
     // Constructors
 
-        //- Inherit constructors
-        using IOListBase<List, IOList, Type>::IOListBase;
+        //- Default copy construct
+        IOList(const IOList&) = default;
+
+        //- Construct from IOobject
+        explicit IOList(const IOobject& io);
+
+        //- Construct from IOobject and zero size (if not read)
+        IOList(const IOobject& io, Foam::zero);
+
+        //- Construct from IOobject and list size (if not read)
+        IOList(const IOobject& io, const label len);
+
+        //- Construct from IOobject and a copy of content
+        IOList(const IOobject& io, const UList<T>& content);
+
+        //- Construct by transferring the content
+        IOList(const IOobject& io, List<T>&& content);
+
+
+    // Factory Methods
+
+        //- Read and return contents. The IOobject is never registered
+        static List<T> readContents(const IOobject& io);
+
+
+    //- Destructor
+    virtual ~IOList() = default;
+
+
+    // Member Functions
+
+        //- The writeData method for regIOobject write operation
+        virtual bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using IOListBase<List, IOList, Type>::operator=;
+        //- Copy assignment of entries
+        void operator=(const IOList<T>& rhs);
+
+        //- Copy or move assignment of entries
+        using List<T>::operator=;
+};
+
+
+/*---------------------------------------------------------------------------*\
+                          Class IOListRef Declaration
+\*---------------------------------------------------------------------------*/
+
+//- A IOList wrapper for writing external data.
+template<class T>
+class IOListRef
+:
+    public regIOobject
+{
+    // Private Data
+
+        //- Reference to the external content
+        refPtr<List<T>> contentRef_;
+
+
+public:
+
+    //- The underlying content type
+    typedef List<T> content_type;
+
+
+    //- Type is identical to IOList
+    virtual const word& type() const
+    {
+        return IOList<T>::typeName;
+    }
+
+
+    // Generated Methods
+
+        //- No default construct
+        IOListRef() = delete;
+
+        //- No copy construct
+        IOListRef(const IOListRef&) = delete;
+
+        //- No copy assignment
+        void operator=(const IOListRef&) = delete;
+
+
+    // Constructors
+
+        //- Construct from IOobject and const data reference
+        IOListRef(const IOobject& io, const List<T>& content);
+
+
+    //- Destructor
+    virtual ~IOListRef() = default;
+
+
+    // Member Functions
+
+        //- Allow cast to const content
+        //  Fatal if content is not set
+        operator const List<T>&() const
+        {
+            return contentRef_.cref();
+        }
+
+        //- The writeData method for regIOobject write operation
+        //  Fatal if content is not set
+        virtual bool writeData(Ostream& os) const;
 };
 
 

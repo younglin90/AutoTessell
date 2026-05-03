@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2017 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,7 +51,8 @@ void Foam::GAMGProcAgglomeration::printStats
     {
         if (agglom.hasMeshLevel(levelI))
         {
-            os  << agglom.meshLevel(levelI).info() << endl;
+            os  << "Level " << levelI << " mesh:"
+                << agglom.meshLevel(levelI).info() << endl;
         }
         else
         {
@@ -103,7 +107,7 @@ void Foam::GAMGProcAgglomeration::printStats
                 << nl
                 << "    procAgglomMap:" << agglom.procAgglomMap_[levelI]
                 << nl
-                << "    procIDs:" << agglom.agglomProcIndices_[levelI]
+                << "    procIDs:" << agglom.agglomProcIDs_[levelI]
                 << nl
                 << "    comm:" << agglom.procCommunicator_[levelI]
                 << endl;
@@ -123,26 +127,25 @@ Foam::labelListList Foam::GAMGProcAgglomeration::globalCellCells
     const lduAddressing& addr = mesh.lduAddr();
     lduInterfacePtrsList interfaces = mesh.interfaces();
 
-    const label myProcID = Pstream::myProcNo(mesh.comm());
+    const label myProci = UPstream::myProcNo(mesh.comm());
 
-    globalIndex globalNumbering
+    const globalIndex globalNumbering
     (
         addr.size(),
-        Pstream::msgType(),
         mesh.comm(),
-        Pstream::parRun()
+        UPstream::parRun()
     );
 
-    labelList globalIndices(addr.size());
-    forAll(globalIndices, celli)
-    {
-        globalIndices[celli] = globalNumbering.toGlobal(myProcID, celli);
-    }
-
+    const labelList globalIndices
+    (
+        Foam::identity(globalNumbering.range(myProci))
+    );
 
     // Get the interface cells
     PtrList<labelList> nbrGlobalCells(interfaces.size());
     {
+        const label startOfRequests = UPstream::nRequests();
+
         // Initialise transfer of restrict addressing on the interface
         forAll(interfaces, inti)
         {
@@ -156,10 +159,7 @@ Foam::labelListList Foam::GAMGProcAgglomeration::globalCellCells
             }
         }
 
-        if (Pstream::parRun())
-        {
-            Pstream::waitRequests();
-        }
+        UPstream::waitRequests(startOfRequests);
 
         forAll(interfaces, inti)
         {
@@ -273,7 +273,7 @@ bool Foam::GAMGProcAgglomeration::agglomerate
     const lduMesh& levelMesh = agglom_.meshLevels_[fineLevelIndex];
     label levelComm = levelMesh.comm();
 
-    if (Pstream::myProcNo(levelComm) != -1)
+    if (fineLevelIndex > 0 && Pstream::myProcNo(levelComm) != -1)
     {
         // Collect meshes and restrictAddressing onto master
         // Overwrites the fine mesh (meshLevels_[index-1]) and addressing
@@ -285,7 +285,7 @@ bool Foam::GAMGProcAgglomeration::agglomerate
             agglomProcIDs,
             procAgglomComm,
 
-            fineLevelIndex               // fine level index
+            fineLevelIndex               //fine level index
         );
 
         // Combine restrict addressing only onto master
@@ -342,7 +342,7 @@ bool Foam::GAMGProcAgglomeration::agglomerate
 Foam::GAMGProcAgglomeration::GAMGProcAgglomeration
 (
     GAMGAgglomeration& agglom,
-    const dictionary& dict
+    const dictionary& controlDict
 )
 :
     agglom_(agglom)
@@ -351,38 +351,47 @@ Foam::GAMGProcAgglomeration::GAMGProcAgglomeration
 
 Foam::autoPtr<Foam::GAMGProcAgglomeration> Foam::GAMGProcAgglomeration::New
 (
+    const word& type,
     GAMGAgglomeration& agglom,
-    const dictionary& dict
+    const dictionary& controlDict
 )
 {
-    const word type(dict.lookup("agglomerator"));
+    DebugInFunction << "Constructing GAMGProcAgglomeration" << endl;
 
-    if (debug)
-    {
-        InfoInFunction << "Constructing GAMGProcAgglomeration " << type << endl;
-    }
+    auto* ctorPtr = GAMGAgglomerationConstructorTable(type);
 
-    GAMGAgglomerationConstructorTable::iterator cstrIter =
-        GAMGAgglomerationConstructorTablePtr_->find(type);
-
-    if (cstrIter == GAMGAgglomerationConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
         FatalErrorInFunction
             << "Unknown GAMGProcAgglomeration type "
             << type << " for GAMGAgglomeration " << agglom.type() << nl << nl
-            << "Valid GAMGProcAgglomeration types are :" << endl
+            << "Valid GAMGProcAgglomeration types :" << endl
             << GAMGAgglomerationConstructorTablePtr_->sortedToc()
             << exit(FatalError);
     }
 
-    return autoPtr<GAMGProcAgglomeration>(cstrIter()(agglom, dict));
+    return autoPtr<GAMGProcAgglomeration>(ctorPtr(agglom, controlDict));
 }
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::GAMGProcAgglomeration::~GAMGProcAgglomeration()
-{}
+{
+    clearCommunicators();
+}
+
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+void Foam::GAMGProcAgglomeration::clearCommunicators()
+{
+    forAllReverse(comms_, i)
+    {
+        UPstream::freeCommunicator(comms_[i]);
+    }
+    comms_.clear();
+}
 
 
 // ************************************************************************* //

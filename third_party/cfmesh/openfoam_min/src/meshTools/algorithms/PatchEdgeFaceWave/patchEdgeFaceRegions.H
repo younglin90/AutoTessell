@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,10 +29,12 @@ Class
 
 Description
     Transport of regions for use in PatchEdgeFaceWave.
+
     Set element to -1 to denote blocked.
 
 SourceFiles
     patchEdgeFaceRegionsI.H
+    patchEdgeFaceRegions.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -46,17 +51,11 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyMesh;
-
-
-// Forward declaration of friend functions and operators
-
 class patchEdgeFaceRegions;
-
 Istream& operator>>(Istream&, patchEdgeFaceRegions&);
 Ostream& operator<<(Ostream&, const patchEdgeFaceRegions&);
-
 
 /*---------------------------------------------------------------------------*\
                     Class patchEdgeFaceRegions Declaration
@@ -73,27 +72,33 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline patchEdgeFaceRegions();
 
         //- Construct from regions
-        inline patchEdgeFaceRegions(const labelList&);
+        inline patchEdgeFaceRegions(const labelList& regions);
 
         //- Construct from regions (on edge)
-        inline patchEdgeFaceRegions(const labelPair&);
+        inline patchEdgeFaceRegions(const labelPair& regions);
 
 
     // Member Functions
 
         // Access
 
-            inline const labelList& regions() const;
+            const labelList& regions() const
+            {
+                return regions_;
+            }
+            labelList& regions()
+            {
+                return regions_;
+            }
 
 
-        // Needed by meshWave
+        // Needed by MeshWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value.
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
@@ -114,7 +119,7 @@ public:
             (
                 const polyMesh& mesh,
                 const Patch& patch,
-                const label edgei,
+                const label edgeI,
                 const label facei,
                 const patchEdgeFaceRegions& faceInfo,
                 const scalar tol,
@@ -140,36 +145,30 @@ public:
                 const polyMesh& mesh,
                 const Patch& patch,
                 const label facei,
-                const label edgei,
+                const label edgeI,
                 const patchEdgeFaceRegions& edgeInfo,
                 const scalar tol,
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const patchEdgeFaceRegions&, TrackingData&) const;
 
 
     // Member Operators
 
-        // Needed for List IO
+        //- Test for equality
         inline bool operator==(const patchEdgeFaceRegions&) const;
+
+        //- Test for inequality
         inline bool operator!=(const patchEdgeFaceRegions&) const;
 
 
     // IOstream Operators
 
-        inline friend Ostream& operator<<
-        (
-            Ostream&,
-            const patchEdgeFaceRegions&
-        );
-        inline friend Istream& operator>>
-        (
-            Istream&,
-            patchEdgeFaceRegions&
-        );
+        friend Ostream& operator<<(Ostream&, const patchEdgeFaceRegions&);
+        friend Istream& operator>>(Istream&, patchEdgeFaceRegions&);
 };
 
 

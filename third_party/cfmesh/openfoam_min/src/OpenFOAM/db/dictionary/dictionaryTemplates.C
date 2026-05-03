@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,524 +28,482 @@ License
 
 #include "dictionary.H"
 #include "primitiveEntry.H"
-#include "dictionaryEntry.H"
-#include "unitSet.H"
-
-// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
-
-template<class ... Entries>
-std::tuple<const Entries& ...> Foam::dictionary::entries
-(
-    const Entries& ... entries
-)
-{
-    return std::tuple<const Entries& ...>(entries ...);
-}
-
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-template<class ... Entries, size_t ... Indices>
-void Foam::dictionary::set
+template<class T>
+void Foam::dictionary::reportDefault
 (
-    const std::tuple<const Entries& ...>& entries,
-    const std::integer_sequence<size_t, Indices ...>&
-)
+    const word& keyword,
+    const T& deflt,
+    const bool added
+) const
 {
-    set(std::get<Indices>(entries) ...);
-}
+    if (writeOptionalEntries > 1)
+    {
+        FatalIOError(dictionary::executableName(), *this)
+            << "No optional entry: " << keyword
+            << " Default: " << deflt << nl
+            << exit(FatalIOError);
+    }
 
+    OSstream& os = InfoErr.stream(reportingOutput.get());
 
-template<class ... Entries>
-void Foam::dictionary::set
-(
-    const std::tuple<const Entries& ...>& entries
-)
-{
-    set(entries, std::make_integer_sequence<size_t, sizeof ... (Entries)>());
-}
+    // Tag with "-- " prefix to make the message stand out
+    os  << "-- Executable: "
+        << dictionary::executableName()
+        << " Dictionary: ";
 
+    // Double-quote dictionary and entry for more reliably parsing,
+    // especially if the keyword contains regular expressions.
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+    if (this->isNullDict())
+    {
+        // Output as "", but could have "(null)" etc
+        os << token::DQUOTE << token::DQUOTE;
+    }
+    else
+    {
+        os.writeQuoted(this->relativeName(), true);
+    }
 
-template<class ... Entries>
-Foam::dictionary::dictionary(const std::tuple<const Entries& ...>& entries)
-:
-    dictionary()
-{
-    set(entries);
-}
+    os  << " Entry: ";
+    os.writeQuoted(keyword, true);
+    os  << " Default: " << deflt;
 
-
-template<class ... Entries>
-Foam::dictionary::dictionary
-(
-    const fileName& name,
-    const std::tuple<const Entries& ...>& entries
-)
-:
-    dictionary(name)
-{
-    set(entries);
-}
-
-
-template<class ... Entries>
-Foam::dictionary::dictionary
-(
-    const fileName& name,
-    const dictionary& parentDict,
-    const std::tuple<const Entries& ...>& entries
-)
-:
-    dictionary(name, parentDict)
-{
-    set(entries);
-}
-
-
-template<class ... Entries>
-Foam::dictionary::dictionary
-(
-    const dictionary& dict,
-    const std::tuple<const Entries& ...>& entries
-)
-:
-    dictionary(dict)
-{
-    set(entries);
+    if (added)
+    {
+        os  << " Added: true";
+    }
+    os  << nl;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class T>
-T Foam::dictionary::lookup
-(
-    const word& keyword,
-    bool recursive,
-    bool patternMatch
-) const
+template<class Compare>
+Foam::wordList Foam::dictionary::sortedToc(const Compare& comp) const
 {
-    const entry* entryPtr = lookupEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr == nullptr)
-    {
-        FatalIOErrorInFunction(*this)
-            << "keyword " << keyword << " is undefined in dictionary "
-            << name() << exit(FatalIOError);
-    }
-
-    return Foam::readAndMaybeConvert<T>(entryPtr->stream());
-}
-
-
-template<class T, class DefaultUnits>
-T Foam::dictionary::lookup
-(
-    const word& keyword,
-    const DefaultUnits& defaultUnits,
-    bool recursive,
-    bool patternMatch
-) const
-{
-    const entry* entryPtr = lookupEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr == nullptr)
-    {
-        FatalIOErrorInFunction(*this)
-            << "keyword " << keyword << " is undefined in dictionary "
-            << name() << exit(FatalIOError);
-    }
-
-    return Foam::readAndConvert<T>(entryPtr->stream(), defaultUnits);
+    return hashedEntries_.sortedToc(comp);
 }
 
 
 template<class T>
-T Foam::dictionary::lookupBackwardsCompatible
-(
-    const wordList& keywords,
-    bool recursive,
-    bool patternMatch
-) const
+Foam::entry* Foam::dictionary::add(const keyType& k, const T& v, bool overwrite)
 {
-    const entry* entryPtr =
-        lookupEntryPtrBackwardsCompatible(keywords, recursive, patternMatch);
-
-    if (entryPtr)
-    {
-        return Foam::readAndMaybeConvert<T>(entryPtr->stream());
-    }
-    else
-    {
-        // Generate error message using the first keyword
-        return lookup<T>(keywords[0], recursive, patternMatch);
-    }
-}
-
-
-template<class T, class DefaultUnits>
-T Foam::dictionary::lookupBackwardsCompatible
-(
-    const wordList& keywords,
-    const DefaultUnits& defaultUnits,
-    bool recursive,
-    bool patternMatch
-) const
-{
-    const entry* entryPtr =
-        lookupEntryPtrBackwardsCompatible(keywords, recursive, patternMatch);
-
-    if (entryPtr)
-    {
-        return Foam::readAndConvert<T>(entryPtr->stream(), defaultUnits);
-    }
-    else
-    {
-        // Generate error message using the first keyword
-        return lookup<T>(keywords[0], recursive, patternMatch);
-    }
+    return add(new primitiveEntry(k, v), overwrite);
 }
 
 
 template<class T>
-T Foam::dictionary::lookupOrDefault
-(
-    const word& keyword,
-    const T& defaultValue
-) const
+Foam::entry* Foam::dictionary::set(const keyType& k, const T& v)
 {
-    const entry* entryPtr = lookupEntryPtr(keyword, false, false);
-
-    if (entryPtr)
-    {
-        return Foam::readAndMaybeConvert<T>(entryPtr->stream());
-    }
-    else
-    {
-        if (haveDefaults(*this))
-        {
-            defaults(*this).add
-            (
-                new primitiveEntry(keyword, defaultValue),
-                true
-            );
-        }
-
-        return defaultValue;
-    }
-}
-
-
-template<class T, class DefaultUnits>
-T Foam::dictionary::lookupOrDefault
-(
-    const word& keyword,
-    const DefaultUnits& defaultUnits,
-    const T& defaultValue
-) const
-{
-    const entry* entryPtr = lookupEntryPtr(keyword, false, false);
-
-    if (entryPtr)
-    {
-        return Foam::readAndConvert<T>(entryPtr->stream(), defaultUnits);
-    }
-    else
-    {
-        if (haveDefaults(*this))
-        {
-            defaults(*this).add
-            (
-                new primitiveEntry(keyword, defaultValue),
-                true
-            );
-        }
-
-        return defaultValue;
-    }
+    return set(new primitiveEntry(k, v));
 }
 
 
 template<class T>
-T Foam::dictionary::lookupOrDefaultBackwardsCompatible
+T Foam::dictionary::get
 (
-    const wordList& keywords,
-    const T& defaultValue
+    const word& keyword,
+    enum keyType::option matchOpt
 ) const
 {
-    const entry* entryPtr =
-        lookupEntryPtrBackwardsCompatible(keywords, false, false);
-
-    if (entryPtr)
-    {
-        return Foam::readAndMaybeConvert<T>(entryPtr->stream());
-    }
-    else
-    {
-        // Generate debugging messages using the first keyword
-        return lookupOrDefault<T>(keywords[0], defaultValue);
-    }
+    T val;
+    readEntry<T>(keyword, val, matchOpt);
+    return val;
 }
 
 
-template<class T, class DefaultUnits>
-T Foam::dictionary::lookupOrDefaultBackwardsCompatible
+template<class T, class Predicate>
+T Foam::dictionary::getCheck
 (
-    const wordList& keywords,
-    const DefaultUnits& defaultUnits,
-    const T& defaultValue
+    const word& keyword,
+    const Predicate& pred,
+    enum keyType::option matchOpt
 ) const
 {
-    const entry* entryPtr =
-        lookupEntryPtrBackwardsCompatible(keywords, false, false);
-
-    if (entryPtr)
-    {
-        return Foam::readAndConvert<T>(entryPtr->stream(), defaultUnits);
-    }
-    else
-    {
-        // Generate debugging messages using the first keyword
-        return lookupOrDefault<T>(keywords[0], defaultValue);
-    }
+    T val;
+    readCheck<T, Predicate>(keyword, val, pred, matchOpt);
+    return val;
 }
 
 
 template<class T>
-T Foam::dictionary::lookupOrAddDefault
+T Foam::dictionary::getCompat
 (
     const word& keyword,
-    const T& defaultValue
+    std::initializer_list<std::pair<const char*,int>> compat,
+    enum keyType::option matchOpt
+) const
+{
+    T val;
+    readCompat<T>(keyword, compat, val, matchOpt);
+    return val;
+}
+
+
+template<class T>
+T Foam::dictionary::getOrDefault
+(
+    const word& keyword,
+    const T& deflt,
+    enum keyType::option matchOpt
+) const
+{
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
+
+    if (eptr)
+    {
+        T val;
+
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        return val;
+    }
+    else if (writeOptionalEntries)
+    {
+        reportDefault(keyword, deflt);
+    }
+
+    return deflt;
+}
+
+
+template<class T>
+T Foam::dictionary::getOrAdd
+(
+    const word& keyword,
+    const T& deflt,
+    enum keyType::option matchOpt
 )
 {
-    const entry* entryPtr = lookupEntryPtr(keyword, false, false);
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
 
-    if (entryPtr)
+    if (eptr)
     {
-        return Foam::readAndMaybeConvert<T>(entryPtr->stream());
-    }
-    else
-    {
-        if (haveDefaults(*this))
-        {
-            defaults(*this).add
-            (
-                new primitiveEntry(keyword, defaultValue),
-                true
-            );
-        }
+        T val;
 
-        add(new primitiveEntry(keyword, defaultValue));
-        return defaultValue;
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        return val;
     }
+    else if (writeOptionalEntries)
+    {
+        reportDefault(keyword, deflt, true);  // Added
+    }
+
+    add(new primitiveEntry(keyword, deflt));
+    return deflt;
 }
 
 
-template<class T>
-bool Foam::dictionary::readIfPresent
+template<class T, class Predicate>
+T Foam::dictionary::getCheckOrDefault
 (
     const word& keyword,
-    T& val,
-    bool recursive,
-    bool patternMatch
+    const T& deflt,
+    const Predicate& pred,
+    enum keyType::option matchOpt
 ) const
 {
-    const entry* entryPtr = lookupEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr)
-    {
-        val = Foam::readAndMaybeConvert<T>(entryPtr->stream());
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-
-template<class T, class DefaultUnits>
-bool Foam::dictionary::readIfPresent
-(
-    const word& keyword,
-    const DefaultUnits& defaultUnits,
-    T& val,
-    bool recursive,
-    bool patternMatch
-) const
-{
-    const entry* entryPtr = lookupEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr)
-    {
-        val = Foam::readAndConvert<T>(entryPtr->stream(), defaultUnits);
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-
-template<class T>
-T Foam::dictionary::lookupScoped
-(
-    const word& keyword,
-    bool recursive,
-    bool patternMatch
-) const
-{
-    const entry* entryPtr =
-        lookupScopedEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr == nullptr)
+    #ifdef FULLDEBUG
+    if (!pred(deflt))
     {
         FatalIOErrorInFunction(*this)
-            << "keyword " << keyword << " is undefined in dictionary "
-            << name() << exit(FatalIOError);
-    }
-
-    return pTraits<T>(entryPtr->stream());
-}
-
-
-template<class T>
-const T& Foam::dictionary::lookupCompoundScoped
-(
-    const word& keyword,
-    bool recursive,
-    bool patternMatch
-) const
-{
-    const entry* entryPtr =
-        lookupScopedEntryPtr(keyword, recursive, patternMatch);
-
-    if (entryPtr == nullptr)
-    {
-        FatalIOErrorInFunction
-        (
-            *this
-        )   << "keyword " << keyword << " is undefined in dictionary "
+            << "Entry '" << keyword << "' with invalid default in dictionary "
             << name()
             << exit(FatalIOError);
     }
+    #endif
 
-    token firstToken(entryPtr->stream());
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
 
-    return dynamicCast<const token::Compound<T>>(firstToken.compoundToken());
+    if (eptr)
+    {
+        T val;
+
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        if (!pred(val))
+        {
+            raiseBadInput(is, keyword);
+        }
+
+        return val;
+    }
+    else if (writeOptionalEntries)
+    {
+        reportDefault(keyword, deflt);
+    }
+
+    return deflt;
+}
+
+
+template<class T, class Predicate>
+T Foam::dictionary::getCheckOrAdd
+(
+    const word& keyword,
+    const T& deflt,
+    const Predicate& pred,
+    enum keyType::option matchOpt
+)
+{
+    #ifdef FULLDEBUG
+    if (!pred(deflt))
+    {
+        FatalIOErrorInFunction(*this)
+            << "Entry '" << keyword << "' with invalid default in dictionary "
+            << name()
+            << exit(FatalIOError);
+    }
+    #endif
+
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
+
+    if (eptr)
+    {
+        T val;
+
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        if (!pred(val))
+        {
+            raiseBadInput(is, keyword);
+        }
+
+        return val;
+    }
+    else if (writeOptionalEntries)
+    {
+        reportDefault(keyword, deflt, true);  // Added
+    }
+
+    add(new primitiveEntry(keyword, deflt));
+    return deflt;
 }
 
 
 template<class T>
-void Foam::dictionary::add(const keyType& k, const T& t, bool overwrite)
+bool Foam::dictionary::readEntry
+(
+    const word& keyword,
+    T& val,
+    enum keyType::option matchOpt,
+    IOobjectOption::readOption readOpt
+) const
 {
-    add(new primitiveEntry(k, t), overwrite);
+    if (readOpt == IOobjectOption::NO_READ)
+    {
+        return false;
+    }
+
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
+
+    if (eptr)
+    {
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        return true;
+    }
+    else if (IOobjectOption::isReadRequired(readOpt))
+    {
+        FatalIOErrorInFunction(*this)
+            << "Entry '" << keyword << "' not found in dictionary "
+            << name() << nl
+            << exit(FatalIOError);
+    }
+
+    return false;
+}
+
+
+template<class T, class Predicate>
+bool Foam::dictionary::readCheck
+(
+    const word& keyword,
+    T& val,
+    const Predicate& pred,
+    enum keyType::option matchOpt,
+    IOobjectOption::readOption readOpt
+) const
+{
+    if (readOpt == IOobjectOption::NO_READ)
+    {
+        return false;
+    }
+
+    const entry* eptr = csearch(keyword, matchOpt).ptr();
+
+    if (eptr)
+    {
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        if (!pred(val))
+        {
+            raiseBadInput(is, keyword);
+        }
+
+        return true;
+    }
+    else if (IOobjectOption::isReadRequired(readOpt))
+    {
+        FatalIOErrorInFunction(*this)
+            << "Entry '" << keyword << "' not found in dictionary "
+            << name() << nl
+            << exit(FatalIOError);
+    }
+
+    return false;
 }
 
 
 template<class T>
-void Foam::dictionary::set(const keyType& k, const T& t)
-{
-    set(new primitiveEntry(k, t));
-}
-
-
-template<class ... Entries>
-void Foam::dictionary::set
+bool Foam::dictionary::readCompat
 (
-    const keyType& k,
-    const std::tuple<const Entries& ...>& entries
-)
+    const word& keyword,
+    std::initializer_list<std::pair<const char*,int>> compat,
+    T& val,
+    enum keyType::option matchOpt,
+    IOobjectOption::readOption readOpt
+) const
 {
-    set(new dictionaryEntry(k, *this, entries));
-}
-
-
-template<class ... Entries>
-void Foam::dictionary::set(const entry& e, const Entries& ... entries)
-{
-    set(e);
-    set(entries ...);
-}
-
-
-template<class T, class ... Entries>
-void Foam::dictionary::set
-(
-    const keyType& k,
-    const T& t,
-    const Entries& ... entries
-)
-{
-    set(k, t);
-    set(entries ...);
-}
-
-
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-template<class EntryType>
-void Foam::writeEntry
-(
-    Ostream& os,
-    const word& entryName,
-    const EntryType& value
-)
-{
-    writeKeyword(os, entryName);
-    writeEntry(os, value);
-    os << token::END_STATEMENT << endl;
-}
-
-
-template<class EntryType, class DefaultUnits>
-void Foam::writeEntry
-(
-    Ostream& os,
-    const word& entryName,
-    const DefaultUnits& defaultUnits,
-    const EntryType& value
-)
-{
-    writeKeyword(os, entryName);
-    writeEntry(os, defaultUnits, value);
-    os << token::END_STATEMENT << endl;
-}
-
-
-template<class EntryType>
-void Foam::writeEntryIfDifferent
-(
-    Ostream& os,
-    const word& entryName,
-    const EntryType& value1,
-    const EntryType& value2
-)
-{
-    if (value1 != value2)
+    if (readOpt == IOobjectOption::NO_READ)
     {
-        writeEntry(os, entryName, value2);
+        return false;
     }
+
+    const entry* eptr = csearchCompat(keyword, compat, matchOpt).ptr();
+
+    if (eptr)
+    {
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        return true;
+    }
+    else if (IOobjectOption::isReadRequired(readOpt))
+    {
+        FatalIOErrorInFunction(*this)
+            << "Entry '" << keyword << "' not found in dictionary "
+            << name() << nl
+            << exit(FatalIOError);
+    }
+
+    return false;
 }
 
 
-template<class EntryType, class DefaultUnits>
-void Foam::writeEntryIfDifferent
+template<class T>
+bool Foam::dictionary::readIfPresent
 (
-    Ostream& os,
-    const word& entryName,
-    const DefaultUnits& defaultUnits,
-    const EntryType& value1,
-    const EntryType& value2
-)
+    const word& keyword,
+    T& val,
+    enum keyType::option matchOpt
+) const
 {
-    if (value1 != value2)
+    // Reading is optional
+    return readEntry<T>
+    (
+        keyword,
+        val,
+        matchOpt,
+        IOobjectOption::READ_IF_PRESENT
+    );
+}
+
+
+template<class T, class Predicate>
+bool Foam::dictionary::readCheckIfPresent
+(
+    const word& keyword,
+    T& val,
+    const Predicate& pred,
+    enum keyType::option matchOpt
+) const
+{
+    // Reading is optional
+    return readCheck<T, Predicate>
+    (
+        keyword,
+        val,
+        pred,
+        matchOpt,
+        IOobjectOption::READ_IF_PRESENT
+    );
+}
+
+
+template<class T>
+T Foam::dictionary::getOrDefaultCompat
+(
+    const word& keyword,
+    std::initializer_list<std::pair<const char*,int>> compat,
+    const T& deflt,
+    enum keyType::option matchOpt
+) const
+{
+    const entry* eptr = csearchCompat(keyword, compat, matchOpt).ptr();
+
+    if (eptr)
     {
-        writeEntry(os, entryName, defaultUnits, value2);
+        T val;
+
+        ITstream& is = eptr->stream();
+        is >> val;
+
+        checkITstream(is, keyword);
+
+        return val;
     }
+    else if (writeOptionalEntries)
+    {
+        reportDefault(keyword, deflt);
+    }
+
+    return deflt;
+}
+
+
+template<class T>
+bool Foam::dictionary::readIfPresentCompat
+(
+    const word& keyword,
+    std::initializer_list<std::pair<const char*,int>> compat,
+    T& val,
+    enum keyType::option matchOpt
+) const
+{
+    // Reading is optional
+    return readCompat<T>
+    (
+        keyword,
+        compat,
+        val,
+        matchOpt,
+        IOobjectOption::READ_IF_PRESENT
+    );
 }
 
 

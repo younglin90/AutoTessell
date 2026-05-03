@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,9 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "removeEntry.H"
-#include "stringListOps.H"
-#include "addToRunTimeSelectionTable.H"
+#include "dictionary.H"
+#include "wordRes.H"
+#include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -33,47 +37,51 @@ namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(removeEntry, 0);
-    addToRunTimeSelectionTable(functionEntry, removeEntry, dictionary);
-}
-}
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::functionEntries::removeEntry::removeEntry
-(
-    const label lineNumber,
-    const dictionary& parentDict,
-    Istream& is
-)
-:
-    functionEntry
+    addNamedToMemberFunctionSelectionTable
     (
-        typeName,
-        lineNumber,
-        parentDict,
-        is,
-        readArgOrList(typeName, is)
-    ),
-    patterns_(readList<wordRe>(stream()))
-{}
+        functionEntry,
+        removeEntry,
+        execute,
+        dictionaryIstream,
+        remove
+    );
+} // End namespace functionEntries
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::functionEntries::removeEntry::execute
 (
-    dictionary& contextDict,
+    dictionary& parentDict,
     Istream& is
 )
 {
-    const wordList dictKeys = contextDict.toc();
-    const labelList indices = findStrings(patterns_, dictKeys);
+    const wordRes patterns(functionEntry::readStringList<wordRe>(is));
 
-    forAll(indices, i)
+    for (const wordRe& key : patterns)
     {
-        contextDict.remove(dictKeys[indices[i]]);
+        if (key.isLiteral() && key.contains('/'))
+        {
+            // Remove scoped keyword, or keyword in the local scope
+            auto finder(parentDict.searchScoped(key, keyType::LITERAL));
+
+            if (finder.good())
+            {
+                finder.context().remove(finder.ptr()->keyword());
+            }
+        }
+        else
+        {
+            // Remove by pattern
+            const wordList dictKeys = parentDict.toc();
+            const labelList indices = wordRes::matching(key, dictKeys);
+
+            for (const auto idx : indices)
+            {
+                parentDict.remove(dictKeys[idx]);
+            }
+        }
     }
 
     return true;

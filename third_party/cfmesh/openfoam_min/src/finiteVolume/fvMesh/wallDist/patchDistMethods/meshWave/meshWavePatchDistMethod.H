@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,17 +34,14 @@ Description
     For regular/un-distorted meshes this method is accurate but for skewed,
     non-orthogonal meshes it is approximate with the error increasing with the
     degree of mesh distortion.  The distance from the near-wall cells to the
-    boundary may optionally be corrected for mesh distortion by setting a
-    number of correction iterations.
+    boundary may optionally be corrected for mesh distortion by setting
+    correctWalls = true.
 
     Example of the wallDist specification in fvSchemes:
     \verbatim
         wallDist
         {
             method meshWave;
-
-            // Number of corrections
-            nCorrectors 3;
 
             // Optional entry enabling the calculation
             // of the normal-to-wall field
@@ -78,14 +78,26 @@ class meshWave
 :
     public patchDistMethod
 {
-    // Private Data
+protected:
+
+    // Protected Member Data
 
         //- Do accurate distance calculation for near-wall cells.
-        const label nCorrectors_;
+        const bool correctWalls_;
 
-        //- Minimum fraction of a poly face considered to be a valid location
-        //  from which to measure distance
-        const scalar minFaceFraction_;
+        //- Number of unset cells and faces.
+        mutable label nUnset_;
+
+
+private:
+
+    // Private Member Functions
+
+        //- No copy construct
+        meshWave(const meshWave&) = delete;
+
+        //- No copy assignment
+        void operator=(const meshWave&) = delete;
 
 
 public:
@@ -105,18 +117,16 @@ public:
             const labelHashSet& patchIDs
         );
 
-        //- Construct from mesh, fixed-value patch set, and number of wall
-        //  correction iterations
+        //- Construct from mesh, fixed-value patch set and flag specifying
+        //  whether or not to correct wall.
+        //  Calculate for all cells. correctWalls : correct wall (face&point)
+        //  cells for correct distance, searching neighbours.
         meshWave
         (
             const fvMesh& mesh,
             const labelHashSet& patchIDs,
-            const label nCorrectors = 2,
-            const scalar minFaceFraction = 1e-1
+            const bool correctWalls = true
         );
-
-        //- Disallow default bitwise copy construction
-        meshWave(const meshWave&) = delete;
 
 
     // Member Functions
@@ -126,12 +136,6 @@ public:
 
         //- Correct the given distance-to-patch and normal-to-patch fields
         virtual bool correct(volScalarField& y, volVectorField& n);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const meshWave&) = delete;
 };
 
 

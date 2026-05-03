@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::variableHeightFlowRateFvPatchScalarField
+
+Group
+    grpInletBoundaryConditions
 
 Description
     This boundary condition provides a phase fraction condition based on the
@@ -62,8 +67,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef variableHeightFlowRateFvPatchField_H
-#define variableHeightFlowRateFvPatchField_H
+#ifndef variableHeightFlowRateFvPatchScalarField_H
+#define variableHeightFlowRateFvPatchScalarField_H
 
 #include "mixedFvPatchFields.H"
 
@@ -103,11 +108,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        variableHeightFlowRateFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         variableHeightFlowRateFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -117,49 +129,46 @@ public:
         (
             const variableHeightFlowRateFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         variableHeightFlowRateFvPatchScalarField
         (
             const variableHeightFlowRateFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         variableHeightFlowRateFvPatchScalarField
         (
             const variableHeightFlowRateFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<scalar>>
-            (
-                new variableHeightFlowRateFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchScalarField::operator=;
 };
 
 

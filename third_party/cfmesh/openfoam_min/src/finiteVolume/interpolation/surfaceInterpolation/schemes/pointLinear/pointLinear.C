@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,21 +33,21 @@ License
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::SurfaceField<Type>>
+Foam::tmp<Foam::GeometricField<Type, Foam::fvsPatchField, Foam::surfaceMesh>>
 Foam::pointLinear<Type>::
 correction
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     const fvMesh& mesh = this->mesh();
 
-    PointField<Type> pvf
+    GeometricField<Type, pointPatchField, pointMesh> pvf
     (
         volPointInterpolation::New(mesh).interpolate(vf)
     );
 
-    tmp<SurfaceField<Type>> tsfCorr =
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tsfCorr =
         linearInterpolate(vf);
 
     Field<Type>& sfCorr = tsfCorr.ref().primitiveFieldRef();
@@ -65,7 +67,7 @@ correction
 
         const face& f = faces[facei];
 
-        scalar at = triangle<point, const point&>
+        scalar at = triPointRef
         (
             pi,
             points[f[0]],
@@ -82,7 +84,7 @@ correction
 
         for (label pointi=1; pointi<f.size(); pointi++)
         {
-            at = triangle<point, const point&>
+            at = triPointRef
             (
                 pi,
                 points[f[pointi]],
@@ -103,7 +105,7 @@ correction
     }
 
 
-    typename SurfaceField<Type>::
+    typename GeometricField<Type, fvsPatchField, surfaceMesh>::
         Boundary& bSfCorr = tsfCorr.ref().boundaryFieldRef();
 
     forAll(bSfCorr, patchi)
@@ -127,7 +129,7 @@ correction
 
                 const face& f = faces[facei+fvp.start()];
 
-                scalar at = triangle<point, const point&>
+                scalar at = triPointRef
                 (
                     pi,
                     points[f[0]],
@@ -144,7 +146,7 @@ correction
 
                 for (label pointi=1; pointi<f.size(); pointi++)
                 {
-                    at = triangle<point, const point&>
+                    at = triPointRef
                     (
                         pi,
                         points[f[pointi]],

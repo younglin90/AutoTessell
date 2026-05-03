@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::limiterBlended
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     Blends two specified schemes using the limiter function provided by a
@@ -49,7 +54,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class limiterBlended Declaration
+                           Class limiterBlended Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -67,6 +72,13 @@ class limiterBlended
 
         //- Scheme 2
         tmp<surfaceInterpolationScheme<Type>> tScheme2_;
+
+
+        //- No copy construct
+        limiterBlended(const limiterBlended&) = delete;
+
+        //- No copy assignment
+        void operator=(const limiterBlended&) = delete;
 
 
 public:
@@ -124,16 +136,13 @@ public:
             )
         {}
 
-        //- Disallow default bitwise copy construction
-        limiterBlended(const limiterBlended&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField blendingFactor
@@ -148,8 +157,8 @@ public:
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction
-        tmp<SurfaceField<Type>>
-        interpolate(const VolField<Type>& vf) const
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
+        interpolate(const GeometricField<Type, fvPatchField, volMesh>& vf) const
         {
             surfaceScalarField blendingFactor
             (
@@ -171,10 +180,10 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  for the given field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField blendingFactor
@@ -213,18 +222,9 @@ public:
             }
             else
             {
-                return tmp<SurfaceField<Type>>
-                (
-                    nullptr
-                );
+                return nullptr;
             }
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const limiterBlended&) = delete;
 };
 
 

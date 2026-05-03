@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +36,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef transformFieldField_H
-#define transformFieldField_H
+#ifndef Foam_transformFieldField_H
+#define Foam_transformFieldField_H
 
 #include "transform.H"
 #include "tensorFieldField.H"
@@ -46,63 +49,127 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-template<template<class> class Field, class Type>
-void transform
-(
-    FieldField<Field, Type>&,
-    const FieldField<Field, tensor>&,
-    const FieldField<Field, Type>&
-);
-
-template<template<class> class Field, class Type>
-tmp<FieldField<Field, Type>> transform
-(
-    const FieldField<Field, tensor>&,
-    const FieldField<Field, Type>&
-);
-
-template<template<class> class Field, class Type>
-tmp<FieldField<Field, Type>> transform
-(
-    const FieldField<Field, tensor>&,
-    const tmp<FieldField<Field, Type>>&
-);
-
-template<template<class> class Field, class Type>
-tmp<FieldField<Field, Type>> transform
-(
-    const tmp<FieldField<Field, tensor>>&,
-    const FieldField<Field, Type>&
-);
-
-template<template<class> class Field, class Type>
-tmp<FieldField<Field, Type>> transform
-(
-    const tmp<FieldField<Field, tensor>>&,
-    const tmp<FieldField<Field, Type>>&
-);
-
+// transform()
 
 template<template<class> class Field, class Type>
 void transform
 (
-    FieldField<Field, Type>&,
-    const tensor&,
-    const FieldField<Field, Type>&
+    FieldField<Field, Type>& result,
+    const tensor& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+void transform
+(
+    FieldField<Field, Type>& result,
+    const FieldField<Field, tensor>& rot,
+    const FieldField<Field, Type>& fld
 );
 
 template<template<class> class Field, class Type>
 tmp<FieldField<Field, Type>> transform
 (
-    const tensor&,
-    const FieldField<Field, Type>&
+    const FieldField<Field, tensor>& rot,
+    const FieldField<Field, Type>& fld
 );
 
 template<template<class> class Field, class Type>
 tmp<FieldField<Field, Type>> transform
 (
-    const tensor&,
-    const tmp<FieldField<Field, Type>>&
+    const FieldField<Field, tensor>& rot,
+    const tmp<FieldField<Field, Type>>& tfld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> transform
+(
+    const tmp<FieldField<Field, tensor>>& trot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> transform
+(
+    const tmp<FieldField<Field, tensor>>& trot,
+    const tmp<FieldField<Field, Type>>& tfld
+);
+
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> transform
+(
+    const tensor& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> transform
+(
+    const tensor& rot,
+    const tmp<FieldField<Field, Type>>& tfld
+);
+
+
+// invTransform()
+
+template<template<class> class Field, class Type>
+void invTransform
+(
+    FieldField<Field, Type>& result,
+    const tensor& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+void invTransform
+(
+    FieldField<Field, Type>& result,
+    const FieldField<Field, tensor>& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const FieldField<Field, tensor>& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const FieldField<Field, tensor>& rot,
+    const tmp<FieldField<Field, Type>>& tfld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const tmp<FieldField<Field, tensor>>& trot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const tmp<FieldField<Field, tensor>>& trot,
+    const tmp<FieldField<Field, Type>>& tfld
+);
+
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const tensor& rot,
+    const FieldField<Field, Type>& fld
+);
+
+template<template<class> class Field, class Type>
+tmp<FieldField<Field, Type>> invTransform
+(
+    const tensor& rot,
+    const tmp<FieldField<Field, Type>>& tfld
 );
 
 

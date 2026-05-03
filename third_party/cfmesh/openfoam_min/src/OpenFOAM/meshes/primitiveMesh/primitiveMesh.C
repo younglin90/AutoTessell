@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,13 +27,12 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "primitiveMesh.H"
-#include "demandDrivenData.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
-    defineTypeNameAndDebug(primitiveMesh, 0);
+defineTypeNameAndDebug(primitiveMesh, 0);
 }
 
 
@@ -69,8 +71,7 @@ Foam::primitiveMesh::primitiveMesh()
     cellCentresPtr_(nullptr),
     faceCentresPtr_(nullptr),
     cellVolumesPtr_(nullptr),
-    faceAreasPtr_(nullptr),
-    magFaceAreasPtr_(nullptr)
+    faceAreasPtr_(nullptr)
 {}
 
 
@@ -110,8 +111,7 @@ Foam::primitiveMesh::primitiveMesh
     cellCentresPtr_(nullptr),
     faceCentresPtr_(nullptr),
     cellVolumesPtr_(nullptr),
-    faceAreasPtr_(nullptr),
-    magFaceAreasPtr_(nullptr)
+    faceAreasPtr_(nullptr)
 {}
 
 
@@ -137,7 +137,7 @@ bool Foam::primitiveMesh::calcPointOrder
     // Internal points are points that are not used by a boundary face.
 
     // Map from old to new position
-    oldToNew.setSize(nPoints);
+    oldToNew.resize_nocopy(nPoints);
     oldToNew = -1;
 
 
@@ -145,14 +145,12 @@ bool Foam::primitiveMesh::calcPointOrder
     // from 0 inside oldToNew. (shifted up later on)
 
     label nBoundaryPoints = 0;
-    for (label facei = nInternalFaces; facei < faces.size(); facei++)
+    for (label facei = nInternalFaces; facei < faces.size(); ++facei)
     {
         const face& f = faces[facei];
 
-        forAll(f, fp)
+        for (label pointi : f)
         {
-            label pointi = f[fp];
-
             if (oldToNew[pointi] == -1)
             {
                 oldToNew[pointi] = nBoundaryPoints++;
@@ -185,10 +183,8 @@ bool Foam::primitiveMesh::calcPointOrder
     {
         const face& f = faces[facei];
 
-        forAll(f, fp)
+        for (label pointi : f)
         {
-            label pointi = f[fp];
-
             if (oldToNew[pointi] == -1)
             {
                 if (pointi >= nInternalPoints)
@@ -281,56 +277,55 @@ void Foam::primitiveMesh::reset
 }
 
 
-void Foam::primitiveMesh::reset
+void Foam::primitiveMesh::resetGeometry
 (
-    const label nPoints,
-    const label nInternalFaces,
-    const label nFaces,
-    const label nCells,
-    cellList&& clst
+    pointField&& faceCentres,
+    pointField&& faceAreas,
+    pointField&& cellCentres,
+    scalarField&& cellVolumes
 )
 {
-    reset
+    if
     (
-        nPoints,
-        nInternalFaces,
-        nFaces,
-        nCells
-    );
+        faceCentres.size() != nFaces_
+     || faceAreas.size() != nFaces_
+     || cellCentres.size() != nCells_
+     || cellVolumes.size() != nCells_
+    )
+    {
+        FatalErrorInFunction
+            << "Wrong sizes of passed in face/cell data"
+            << abort(FatalError);
+    }
 
-    cfPtr_ = new cellList(move(clst));
+    // Remove old geometry
+    clearGeom();
+
+    faceCentresPtr_ = new pointField(std::move(faceCentres));
+    faceAreasPtr_ = new pointField(std::move(faceAreas));
+    cellCentresPtr_ = new pointField(std::move(cellCentres));
+    cellVolumesPtr_ = new scalarField(std::move(cellVolumes));
+
+    if (debug)
+    {
+        Pout<< "primitiveMesh::resetGeometry : geometry reset for"
+            << " nFaces:" << faceCentresPtr_->size()
+            << " nCells:" << cellCentresPtr_->size() << endl;
+    }
 }
 
 
-Foam::tmp<Foam::scalarField> Foam::primitiveMesh::movePoints
+void Foam::primitiveMesh::movePoints
 (
     const pointField& newPoints,
     const pointField& oldPoints
 )
 {
-    if (newPoints.size() <  nPoints() || oldPoints.size() < nPoints())
-    {
-        FatalErrorInFunction
-            << "Cannot move points: size of given point list smaller "
-            << "than the number of active points"
-            << abort(FatalError);
-    }
-
-    // Create swept volumes
-    const faceList& f = faces();
-
-    tmp<scalarField> tsweptVols(new scalarField(f.size()));
-    scalarField& sweptVols = tsweptVols.ref();
-
-    forAll(f, facei)
-    {
-        sweptVols[facei] = f[facei].sweptVol(oldPoints, newPoints);
-    }
+    // Note: the following clearout is now handled by the fvGeometryScheme
+    // triggered by the call to updateGeom() in polyMesh::movePoints
 
     // Force recalculation of all geometric data with new points
-    clearGeom();
-
-    return tsweptVols;
+    //clearGeom();
 }
 
 
@@ -342,6 +337,22 @@ const Foam::cellShapeList& Foam::primitiveMesh::cellShapes() const
     }
 
     return *cellShapesPtr_;
+}
+
+
+void Foam::primitiveMesh::updateGeom()
+{
+    if (!faceCentresPtr_ || !faceAreasPtr_)
+    {
+        // These are always calculated in tandem, but only once
+        calcFaceCentresAndAreas();
+    }
+
+    if (!cellCentresPtr_ || !cellVolumesPtr_)
+    {
+        // These are always calculated in tandem, but only once
+        calcCellCentresAndVols();
+    }
 }
 
 

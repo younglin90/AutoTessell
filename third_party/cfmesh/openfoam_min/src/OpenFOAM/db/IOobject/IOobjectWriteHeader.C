@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,27 +24,222 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-    Writes the header description of the File to the stream
-    associated with the File.
-
 \*---------------------------------------------------------------------------*/
 
 #include "IOobject.H"
+#include "dictionary.H"
 #include "objectRegistry.H"
+#include "foamVersion.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Like Ostream::writeEntry, but with fewer spaces
+template<class T>
+static inline void writeHeaderEntry
+(
+    Ostream& os,
+    const word& key,
+    const T& value
+)
+{
+    os.indent();
+    os.write(key);
+
+    label padding = (12 - label(key.size()));
+
+    // Write padding spaces (always at least one)
+    do
+    {
+        os.write(char(token::SPACE));
+    }
+    while (--padding > 0);
+
+    os << value << char(token::END_STATEMENT) << nl;
+}
+
+} // End namespace Foam
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+// A banner corresponding to this:
+//
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  VERSION                               |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+
+Foam::Ostream&
+Foam::IOobject::writeBanner(Ostream& os, const bool noSyntaxHint)
+{
+    // The version padded with spaces to fit after "Version:  "
+    // - initialized with zero-length string to detect if it has been populated
+    static char paddedVersion[39] = "";
+
+    if (!*paddedVersion)
+    {
+        // Populate: like strncpy but without trailing '\0'
+
+        const std::string apiValue(std::to_string(Foam::foamVersion::api));
+
+        std::size_t len = apiValue.length();
+        if (len > 38)
+        {
+            len = 38;
+        }
+
+        std::memset(paddedVersion, ' ', 38);
+        std::memcpy(paddedVersion, apiValue.c_str(), len);
+        paddedVersion[38] = '\0';
+    }
+
+    os  <<
+        "/*--------------------------------";
+
+    if (noSyntaxHint)
+    {
+        // Without syntax hint
+        os  << "---------";
+    }
+    else
+    {
+        // With syntax hint
+        os  << "*- C++ -*";
+    }
+
+    os  <<
+        "----------------------------------*\\\n"
+        "| =========                 |"
+        "                                                 |\n"
+        "| \\\\      /  F ield         |"
+        " OpenFOAM: The Open Source CFD Toolbox           |\n"
+        "|  \\\\    /   O peration     |"
+        " Version:  " << paddedVersion << "|\n"
+        "|   \\\\  /    A nd           |"
+        " Website:  www.openfoam.com                      |\n"
+        "|    \\\\/     M anipulation  |"
+        "                                                 |\n"
+        "\\*-----------------------------------------"
+        "----------------------------------*/\n";
+
+    return os;
+}
+
+
+Foam::Ostream& Foam::IOobject::writeDivider(Ostream& os)
+{
+    os  <<
+        "// * * * * * * * * * * * * * * * * * "
+        "* * * * * * * * * * * * * * * * * * * * //\n";
+
+    return os;
+}
+
+
+Foam::Ostream& Foam::IOobject::writeEndDivider(Ostream& os)
+{
+    os  << "\n\n"
+        "// *****************************************"
+        "******************************** //\n";
+
+    return os;
+}
+
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+void Foam::IOobject::writeHeaderContent
+(
+    Ostream& os,
+    const IOobject& io,
+    const word& objectType,
+    const dictionary* metaDataDict
+)
+{
+    // Standard header entries
+    writeHeaderEntry(os, "version", os.version());
+    writeHeaderEntry(os, "format", os.format());
+    writeHeaderEntry(os, "arch", foamVersion::buildArch);
+
+    if (!io.note().empty())
+    {
+        writeHeaderEntry(os, "note", io.note());
+    }
+
+    if (objectType.empty())
+    {
+        // Empty type not allowed - use 'dictionary' fallback
+        writeHeaderEntry(os, "class", word("dictionary"));
+    }
+    else
+    {
+        writeHeaderEntry(os, "class", objectType);
+    }
+
+    writeHeaderEntry(os, "location", io.instance()/io.db().dbDir()/io.local());
+    writeHeaderEntry(os, "object", io.name());
+
+    // Meta-data (if any)
+    if (metaDataDict && !metaDataDict->empty())
+    {
+        metaDataDict->writeEntry("meta", os);
+    }
+}
+
+
+void Foam::IOobject::writeHeaderContent
+(
+    dictionary& dict,
+    const IOobject& io,
+    const word& objectType,
+    IOstreamOption streamOpt,
+    const dictionary* metaDataDict
+)
+{
+    // Standard header entries
+    dict.set("version", streamOpt.version());
+    dict.set("format", streamOpt.format());
+    dict.set("arch", foamVersion::buildArch);
+
+    if (!io.note().empty())
+    {
+        dict.set("note", io.note());
+    }
+
+    if (objectType.empty())
+    {
+        // Empty type not allowed - use 'dictionary' fallback
+        dict.set("class", word("dictionary"));
+    }
+    else
+    {
+        dict.set("class", objectType);
+    }
+
+    dict.set("location", io.instance()/io.db().dbDir()/io.local());
+    dict.set("object", io.name());
+
+    // Deep-copy of meta-data (if any)
+    if (metaDataDict && !metaDataDict->empty())
+    {
+        dict.add("meta", *metaDataDict);
+    }
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::IOobject::writeHeader
 (
     Ostream& os,
-    const IOstream::versionNumber version,
-    const IOstream::streamFormat format,
-    const word& type,
-    const string& note,
-    const fileName& location,
-    const word& name
-)
+    const word& objectType
+) const
 {
     if (!os.good())
     {
@@ -52,78 +250,64 @@ bool Foam::IOobject::writeHeader
         return false;
     }
 
-    writeBanner(os) << foamFile << "\n{\n";
-
-    if (version != IOstream::currentVersion)
+    if (IOobject::bannerEnabled())
     {
-        os  << "    version     " << version << ";\n";
+        IOobject::writeBanner(os);
     }
 
-    os  << "    format      " << format << ";\n"
-        << "    class       " << type << ";\n";
+    os.beginBlock("FoamFile");
 
-    if (note.size())
+    // Standard header entries
+    IOobject::writeHeaderContent
+    (
+        os,
+        *this,
+        objectType,
+        this->findMetaData()
+    );
+
+    os.endBlock();
+
+    if (IOobject::bannerEnabled())
     {
-        os  << "    note        " << note << ";\n";
+        IOobject::writeDivider(os) << nl;
     }
-
-    if (location.size())
-    {
-        os  << "    location    " << location << ";\n";
-    }
-
-    os  << "    object      " << name << ";\n"
-        << "}" << nl;
-
-    writeDivider(os) << nl;
 
     return true;
 }
 
 
-bool Foam::IOobject::writeHeader
-(
-    Ostream& os,
-    const dictionary& foamFileDict
-)
-{
-    return writeHeader
-    (
-        os,
-        foamFileDict.lookupOrDefault<IOstream::versionNumber>
-        (
-            "version",
-            IOstream::currentVersion
-        ),
-        foamFileDict.found("format")
-      ? IOstream::formatEnum(foamFileDict.lookup<word>("format"))
-      : IOstream::ASCII,
-        foamFileDict.lookupOrDefault<word>("class", dictionary::typeName),
-        foamFileDict.lookupOrDefault<string>("note", string::null),
-        foamFileDict.lookupOrDefault<fileName>("location", fileName::null),
-        foamFileDict.lookupOrDefault<word>("name", os.name().name())
-    );
-}
-
-
-bool Foam::IOobject::writeHeader(Ostream& os, const word& type) const
-{
-    return writeHeader
-    (
-        os,
-        os.version(),
-        os.format(),
-        type,
-        note(),
-        instance()/db().dbDir()/local(),
-        name()
-    );
-}
-
-
 bool Foam::IOobject::writeHeader(Ostream& os) const
 {
-    return writeHeader(os, type());
+    return IOobject::writeHeader(os, this->type());
+}
+
+
+void Foam::IOobject::writeHeader
+(
+    dictionary& dict,
+    const word& objectType,
+    IOstreamOption streamOpt
+) const
+{
+    IOobject::writeHeaderContent
+    (
+        dict,
+        *this,
+        objectType,
+        streamOpt,
+        this->findMetaData()
+    );
+}
+
+
+void Foam::IOobject::writeHeader
+(
+    dictionary& dict,
+    IOstreamOption streamOpt
+) const
+{
+    IOobject::writeHeader(dict, this->type(), streamOpt);
 }
 
 

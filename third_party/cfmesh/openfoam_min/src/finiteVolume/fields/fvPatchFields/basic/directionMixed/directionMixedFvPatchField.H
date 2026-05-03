@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::directionMixedFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     Base class for direction-mixed boundary conditions.
 
@@ -43,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class directionMixedFvPatchField Declaration
+                  Class directionMixedFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -51,7 +56,7 @@ class directionMixedFvPatchField
 :
     public transformFvPatchField<Type>
 {
-    // Private Data
+    // Private data
 
         //- Value field
         Field<Type> refValue_;
@@ -75,74 +80,73 @@ public:
         directionMixedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         directionMixedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given directionMixedFvPatchField
-        //  onto a new patch
+        //- Construct by mapping given directionMixedFvPatchField onto
+        //  a new patch
         directionMixedFvPatchField
         (
             const directionMixedFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
         //- Construct as copy setting internal field reference
         directionMixedFvPatchField
         (
             const directionMixedFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new directionMixedFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
 
-            //- Return true: this patch field fixes a value.
-            //  Needed to check if a level has to be specified while solving
-            //  Poissons equations.
-            virtual bool fixesValue() const
-            {
-                return true;
-            }
-
-            //- Return false: this patch field is not altered by assignment
-            virtual bool assignable() const
-            {
-                return false;
-            }
+        //- False: this patch field is not altered by assignment.
+        virtual bool assignable() const { return false; }
 
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         // Return defining fields
@@ -187,7 +191,7 @@ public:
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return face-gradient transform diagonal
@@ -198,19 +202,17 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
-
-        virtual void operator=(const UList<Type>&) {}
+    // Member operators
 
         virtual void operator=(const fvPatchField<Type>&) {}
         virtual void operator+=(const fvPatchField<Type>&) {}
         virtual void operator-=(const fvPatchField<Type>&) {}
-        virtual void operator*=(const fvPatchField<scalar>&) {}
-        virtual void operator/=(const fvPatchField<scalar>&) {}
+        virtual void operator*=(const fvPatchField<Type>&) {}
+        virtual void operator/=(const fvPatchField<Type>&) {}
 
+        virtual void operator=(const Field<Type>&) {}
         virtual void operator+=(const Field<Type>&) {}
         virtual void operator-=(const Field<Type>&) {}
-
         virtual void operator*=(const Field<scalar>&) {}
         virtual void operator/=(const Field<scalar>&) {}
 

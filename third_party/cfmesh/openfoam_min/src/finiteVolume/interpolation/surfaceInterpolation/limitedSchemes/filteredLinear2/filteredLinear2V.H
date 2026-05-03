@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +28,7 @@ Class
 
 Description
     Class to generate weighting factors for the filteredLinear2V
-    interpolation scheme.
+    differencing scheme.
 
     The aim is to remove high-frequency modes with "staggering"
     characteristics from vector fields by comparing the face gradient in
@@ -51,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class filteredLinear2VLimiter Declaration
+                 Class filteredLinear2VLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -59,7 +61,7 @@ class filteredLinear2VLimiter
 :
     public LimiterFunc
 {
-    // Private Data
+    // Private data
 
         // Scaling coefficient for the gradient ratio,
         // 0 = linear
@@ -131,17 +133,17 @@ public:
         {
             limiter = l_
                 - k_*min(max(df - tdcP, 0), max(df - tdcN, 0))
-                /(max(mag(df), max(mag(tdcP), mag(tdcN))) + vSmall);
+                /(max(mag(df), max(mag(tdcP), mag(tdcN))) + VSMALL);
         }
         else
         {
             limiter = l_
                 - k_*min(max(tdcP - df, 0), max(tdcN - df, 0))
-                /(max(mag(df), max(mag(tdcP), mag(tdcN))) + vSmall);
+                /(max(mag(df), max(mag(tdcP), mag(tdcN))) + VSMALL);
         }
 
         // Limit the limiter between linear and upwind
-        return max(min(limiter, 1), 0);
+        return clamp(limiter, zero_one{});
     }
 };
 

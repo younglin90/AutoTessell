@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::fixedFluxPressureFvPatchScalarField
+
+Group
+    grpInletBoundaryConditions grpWallBoundaryConditions
 
 Description
     This boundary condition sets the pressure gradient to the provided value
@@ -50,6 +56,7 @@ SourceFiles
 
 #include "fvPatchFields.H"
 #include "fixedGradientFvPatchFields.H"
+#include "updateableSnGrad.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -62,9 +69,10 @@ namespace Foam
 
 class fixedFluxPressureFvPatchScalarField
 :
-    public fixedGradientFvPatchScalarField
+    public fixedGradientFvPatchScalarField,
+    public updateablePatchTypes::updateableSnGrad
 {
-    // Private Data
+    // Private data
 
         //- Current time index (used for updating)
         label curTimeIndex_;
@@ -78,11 +86,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedFluxPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedFluxPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -92,68 +107,49 @@ public:
         (
             const fixedFluxPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedFluxPressureFvPatchScalarField
         (
             const fixedFluxPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedFluxPressureFvPatchScalarField
         (
             const fixedFluxPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new fixedFluxPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
-        // Mapping functions
+        //- Update the patch pressure gradient field from the given snGradp
+        virtual void updateSnGrad(const scalarField& snGradp);
 
-            //- Map the given fvPatchField onto this fvPatchField
-            void map
-            (
-                const fixedFluxPressureFvPatchScalarField&,
-                const fieldMapper&
-            );
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchScalarField&, const fieldMapper&);
-
-
-        // Evaluation functions
-
-            //- Update the patch pressure gradient field from the given snGradp
-            virtual void updateCoeffs(const scalarField& snGradp);
-
-            //- Update the patch pressure gradient field
-            virtual void updateCoeffs();
-
+        //- Update the patch pressure gradient field
+        virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedGradientFvPatchScalarField::operator=;
 };
 
 
@@ -171,14 +167,14 @@ namespace Foam
     inline void setSnGrad
     (
         volScalarField::Boundary& bf,
-        const FieldField<surfaceMesh::PatchField, scalar>& snGrad
+        const FieldField<fvsPatchField, scalar>& snGrad
     )
     {
         forAll(bf, patchi)
         {
             if (isA<GradBC>(bf[patchi]))
             {
-                refCast<GradBC>(bf[patchi]).updateCoeffs(snGrad[patchi]);
+                refCast<GradBC>(bf[patchi]).updateSnGrad(snGrad[patchi]);
             }
         }
     }
@@ -187,7 +183,7 @@ namespace Foam
     inline void setSnGrad
     (
         volScalarField::Boundary& bf,
-        const tmp<FieldField<surfaceMesh::PatchField, scalar>>& tsnGrad
+        const tmp<FieldField<fvsPatchField, scalar>>& tsnGrad
     )
     {
         setSnGrad<GradBC>(bf, tsnGrad());

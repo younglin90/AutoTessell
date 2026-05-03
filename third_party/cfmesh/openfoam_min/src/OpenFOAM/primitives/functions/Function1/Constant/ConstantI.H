@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,27 +31,27 @@ License
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-inline Type Foam::Function1s::Constant<Type>::value(const scalar x) const
+inline void Foam::Function1Types::Constant<Type>::reset(const Type& val)
+{
+    value_ = val;
+}
+
+
+template<class Type>
+inline Type Foam::Function1Types::Constant<Type>::value(const scalar) const
 {
     return value_;
 }
 
 
 template<class Type>
-inline Type Foam::Function1s::Constant<Type>::integral
+inline Type Foam::Function1Types::Constant<Type>::integrate
 (
     const scalar x1,
     const scalar x2
 ) const
 {
-    return (x2 - x1)*value_;
-}
-
-
-template<class Type>
-inline bool Foam::Function1s::Constant<Type>::constant() const
-{
-    return true;
+    return Type((x2 - x1)*value_);
 }
 
 

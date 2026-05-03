@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,17 +26,20 @@ License
 Class
     Foam::waveSurfacePressureFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    This is a pressure boundary condition, the value of which is calculated as
+    This is a pressure boundary condition, whose value is calculated as
     the hydrostatic pressure based on a given displacement:
 
         \f[
-            p_rgh = -\rho*g*\zeta
+            p = -\rho*g*\zeta
         \f]
 
     \vartable
-        \rho  | density [kg/m^3]
-        g     | acceleration due to gravity [m/s^2]
+        \rho  | density [kg/m3]
+        g     | acceleration due to gravity [m/s2]
         \zeta | wave amplitude [m]
     \endvartable
 
@@ -57,7 +62,7 @@ Usage
         phi             phi;
         rho             rho;
         zeta            zeta;
-        value           uniform 0;  // Initial value
+        value           uniform 0;  // place holder
     }
     \endverbatim
 
@@ -76,7 +81,7 @@ SourceFiles
 #define waveSurfacePressureFvPatchScalarField_H
 
 #include "fixedValueFvPatchFields.H"
-#include "NamedEnum.H"
+#include "Enum.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -106,7 +111,7 @@ public:
 
 private:
 
-    // Private Data
+    // Private data
 
         //- Flux field name
         word phiName_;
@@ -118,7 +123,7 @@ private:
         word rhoName_;
 
         //- Time scheme type names
-        static const NamedEnum<ddtSchemeType, 3> ddtSchemeTypeNames_;
+        static const Enum<ddtSchemeType> ddtSchemeTypeNames_;
 
 
 public:
@@ -129,11 +134,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        waveSurfacePressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         waveSurfacePressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -143,37 +155,40 @@ public:
         (
             const waveSurfacePressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         waveSurfacePressureFvPatchScalarField
         (
             const waveSurfacePressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         waveSurfacePressureFvPatchScalarField
         (
             const waveSurfacePressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new waveSurfacePressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -183,12 +198,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

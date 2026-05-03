@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,17 +46,17 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class symmetryPlaneFvPatch Declaration
+                           Class symmetryPlaneFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class symmetryPlaneFvPatch
 :
     public fvPatch
 {
-    // Private Data
+    // Private data
 
         //- Local reference cast into the symmetryPlane patch
-        const symmetryPlanePolyPatch& symmetryPlanePoly_;
+        const symmetryPlanePolyPatch& symmetryPlanePolyPatch_;
 
 
 public:
@@ -69,7 +71,7 @@ public:
         symmetryPlaneFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
         :
             fvPatch(patch, bm),
-            symmetryPlanePoly_
+            symmetryPlanePolyPatch_
             (
                 refCast<const symmetryPlanePolyPatch>(patch)
             )
@@ -81,7 +83,7 @@ public:
         //- Return symmetry plane normal
         const vector& n() const
         {
-            return symmetryPlanePoly_.n();
+            return symmetryPlanePolyPatch_.n();
         }
 };
 

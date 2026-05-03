@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,15 +32,24 @@ License
 
 namespace Foam
 {
-defineTypeNameAndDebug(surfaceRegistry, 0);
+    defineTypeNameAndDebug(surfaceRegistry, 0);
 }
 
-
 const Foam::word Foam::surfaceRegistry::prefix("surfaces");
+
 Foam::word Foam::surfaceRegistry::defaultName("default");
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::surfaceRegistry::surfaceRegistry
+(
+    const objectRegistry& obr
+)
+:
+    surfaceRegistry(obr, surfaceRegistry::defaultName)
+{}
+
 
 Foam::surfaceRegistry::surfaceRegistry
 (
@@ -50,20 +61,15 @@ Foam::surfaceRegistry::surfaceRegistry
     (
         IOobject
         (
-            ( surfName.size() ? surfName : defaultName ),
-            obr.time().name(),
-            prefix,
+            (surfName.empty() ? surfaceRegistry::defaultName : surfName),
+            obr.time().timeName(),
+            surfaceRegistry::prefix,
             obr,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
+            IOobjectOption::NO_READ,
+            IOobjectOption::NO_WRITE,
+            IOobjectOption::REGISTER
         )
     )
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::surfaceRegistry::~surfaceRegistry()
 {}
 
 

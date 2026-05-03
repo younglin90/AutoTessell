@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,23 +37,19 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PtrListDictionary_H
-#define PtrListDictionary_H
+#ifndef Foam_PtrListDictionary_H
+#define Foam_PtrListDictionary_H
 
 #include "DictionaryBase.H"
 #include "PtrList.H"
-#include "wordRe.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-template<class T>
-class UPtrListDictionary;
-
 /*---------------------------------------------------------------------------*\
-                      Class PtrListDictionary Declaration
+                        Class PtrListDictionary Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class T>
@@ -59,107 +57,38 @@ class PtrListDictionary
 :
     public DictionaryBase<PtrList<T>, T>
 {
-
 public:
 
-    // Related types
-
-        //- Declare friendship with the UPtrListDictionary class
-        friend class UPtrListDictionary<T>;
+    //- The template instance used for the dictionary content
+    typedef DictionaryBase<PtrList<T>, T> dict_type;
 
 
     // Constructors
 
         //- Construct given initial list size
-        PtrListDictionary(const label size);
+        explicit PtrListDictionary(const label size);
 
-        //- Copy constructor
-        PtrListDictionary(const PtrListDictionary&);
-
-        //- Move constructor
-        PtrListDictionary(PtrListDictionary&&);
+        //- Copy construct
+        PtrListDictionary(const PtrListDictionary& dict);
 
         //- Construct from Istream using given Istream constructor class
         template<class INew>
-        PtrListDictionary(Istream&, const INew&);
+        PtrListDictionary(Istream& is, const INew& inew);
 
         //- Construct from Istream
-        PtrListDictionary(Istream&);
+        explicit PtrListDictionary(Istream& is);
 
 
-    // Member Functions
+    // Member functions
 
-        // Access
+        //- Set element to pointer provided and return old element
+        autoPtr<T> set(const label i, const word& key, T* ptr);
 
-            //- Return the index of the given the key or -1 if not found
-            label findIndex(const word& key) const;
+        //- Set element to autoPtr value provided and return old element
+        autoPtr<T> set(const label i, const word& key, autoPtr<T>& ptr);
 
-            //- Return the indices for all matches
-            //  of the given key regular expression
-            List<label> findIndices(const wordRe& key) const;
-
-
-        // Edit
-
-            //- Append an element at the end of the list
-            inline void append(const word& key, T*);
-
-            //- Append an element at the end of the list
-            inline void append(const word& key, const autoPtr<T>&);
-
-            //- Append an element at the end of the list
-            inline void append(const word& key, const tmp<T>&);
-
-            //- Append an element at the end of the list
-            //  using the element's keyword as the key
-            inline void append(T*);
-
-            //- Append an element at the end of the list
-            //  using the element's keyword as the key
-            inline void append(const autoPtr<T>&);
-
-            //- Append an element at the end of the list
-            //  using the element's keyword as the key
-            inline void append(const tmp<T>&);
-
-            //- Set element to pointer provided and return old element
-            autoPtr<T> set(const label, const word& key, T*);
-
-            //- Set element to autoPtr value provided and return old element
-            autoPtr<T> set(const label, const word& key, const autoPtr<T>&);
-
-            //- Set element to tmp value provided and return old element
-            autoPtr<T> set(const label, const word& key, const tmp<T>&);
-
-            //- Set element to pointer provided and return old element
-            //  using the element's keyword as the key
-            autoPtr<T> set(const label, T*);
-
-            //- Set element to autoPtr value provided and return old element
-            //  using the element's keyword as the key
-            autoPtr<T> set(const label, const autoPtr<T>&);
-
-            //- Set element to tmp value provided and return old element
-            //  using the element's keyword as the key
-            autoPtr<T> set(const label, const tmp<T>&);
-
-            //- Remove an entry from the list and return
-            autoPtr<T> remove(const word& key);
-
-
-        // Conversion
-
-            //- Convert to list of different type
-            template<class T2>
-            UPtrListDictionary<T2> convert();
-
-            //- Lookup and return the sub-list of the given type
-            template<class T2>
-            UPtrListDictionary<T2> lookupType();
-
-            //- Lookup and return the sub-list of the given type
-            template<class T2>
-            UPtrListDictionary<const T2> lookupType() const;
+        //- Set element to tmp value provided and return old element
+        autoPtr<T> set(const label i, const word& key, tmp<T>& ptr);
 
 
     // Member Operators
@@ -169,13 +98,13 @@ public:
         //- Find and return entry
         const T& operator[](const word& key) const
         {
-            return *DictionaryBase<PtrList<T>, T>::operator[](key);
+            return *(dict_type::lookup(key));
         }
 
         //- Find and return entry
         T& operator[](const word& key)
         {
-            return *DictionaryBase<PtrList<T>, T>::operator[](key);
+            return *(dict_type::lookup(key));
         }
 };
 

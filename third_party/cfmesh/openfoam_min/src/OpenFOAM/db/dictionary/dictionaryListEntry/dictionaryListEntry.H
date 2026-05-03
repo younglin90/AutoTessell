@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,13 +37,12 @@ Description
     comment. Can be used to e.g. manipulate polyMesh/boundary files.
 
 SourceFiles
-    dictionaryListEntry.C
     dictionaryListEntryIO.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dictionaryListEntry_H
-#define dictionaryListEntry_H
+#ifndef Foam_dictionaryListEntry_H
+#define Foam_dictionaryListEntry_H
 
 #include "dictionaryEntry.H"
 
@@ -49,11 +51,13 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 class dictionaryListEntry;
+Ostream& operator<<(Ostream& os, const dictionaryListEntry& e);
 
-Ostream& operator<<(Ostream&, const dictionaryListEntry&);
+template<>
+Ostream& operator<<(Ostream&, const InfoProxy<dictionaryListEntry>&);
 
 
 /*---------------------------------------------------------------------------*\
@@ -64,28 +68,25 @@ class dictionaryListEntry
 :
     public dictionaryEntry
 {
-    // Private Member Functions
-
-        //- Returns size of dictionary without FoamFile
-        static label realSize(const dictionary&);
-
-
 public:
+
+    // Generated Methods
+
+        //- No copy construct
+        dictionaryListEntry(const dictionaryListEntry&) = delete;
+
 
     // Constructors
 
         //- Construct from the parent dictionary and Istream
-        dictionaryListEntry(const dictionary& parentDict, Istream&);
+        dictionaryListEntry(const dictionary& parentDict, Istream& is);
 
         //- Construct as copy for the given parent dictionary
         dictionaryListEntry
         (
             const dictionary& parentDict,
-            const dictionaryListEntry&
+            const dictionaryListEntry& dictEnt
         );
-
-        //- Disallow bitwise copy
-        dictionaryListEntry(const dictionary&) = delete;
 
         autoPtr<entry> clone(const dictionary& parentDict) const
         {
@@ -96,24 +97,17 @@ public:
     // Member Functions
 
         //- Write
-        virtual void write(Ostream&) const;
+        virtual void write(Ostream& os) const;
 
-        //- Return info proxy.
-        //  Used to print token information to a stream
-        InfoProxy<dictionaryListEntry> info() const
-        {
-            return *this;
-        }
+        //- Return info proxy,
+        //- used to print token information to a stream
+        InfoProxy<dictionaryListEntry> info() const noexcept { return *this; }
 
 
-    // Ostream operator
+    // Ostream Operator
 
-        friend Ostream& operator<<(Ostream&, const dictionaryListEntry&);
+        friend Ostream& operator<<(Ostream& os, const dictionaryListEntry& e);
 };
-
-
-template<>
-Ostream& operator<<(Ostream&, const InfoProxy<dictionaryListEntry>&);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

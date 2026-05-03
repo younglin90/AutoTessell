@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +30,7 @@ License
 template<class T>
 inline const T Foam::SVD::sign(const T& a, const T& b)
 {
-    // return b >= 0 ? (a >= 0 ? a : -a) : (a >= 0 ? -a : a);
+    //return b >= 0 ? (a >= 0 ? a : -a) : (a >= 0 ? -a : a);
     return b >= 0 ? a : -a;
 }
 
@@ -71,7 +73,7 @@ inline Foam::scalar Foam::SVD::minNonZeroS() const
     for (label i=1; i<S_.size(); i++)
     {
         scalar s = S_[i];
-        if (s > vSmall && s < minS) minS = s;
+        if (s > VSMALL && s < minS) minS = s;
     }
     return minS;
 }

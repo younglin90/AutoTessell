@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,13 +50,14 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Polynomial_H
-#define Polynomial_H
+#ifndef Foam_Polynomial_H
+#define Foam_Polynomial_H
 
 #include "word.H"
 #include "scalar.H"
 #include "Ostream.H"
 #include "VectorSpace.H"
+#include <initializer_list>
 #include <type_traits>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -61,21 +65,11 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-template<int PolySize>
-class Polynomial;
-
-// Forward declaration of friend functions
-template<int PolySize>
-Ostream& operator<<
-(
-    Ostream&,
-    const Polynomial<PolySize>&
-);
-
+// Forward Declarations
+template<int PolySize> class Polynomial;
 
 /*---------------------------------------------------------------------------*\
-                         Class Polynomial Declaration
+                        Class Polynomial Declaration
 \*---------------------------------------------------------------------------*/
 
 template<int PolySize>
@@ -96,15 +90,22 @@ class Polynomial
 
 public:
 
-    typedef Polynomial<PolySize> polyType;
+    // Public Typedefs
 
-    typedef Polynomial<PolySize+1> intPolyType;
+        typedef Polynomial<PolySize> polyType;
+        typedef Polynomial<PolySize+1> intPolyType;
+
+
+    // Generated Methods: copy construct, copy assignment
 
 
     // Constructors
 
-        //- Construct null, with all coefficients = 0.0
+        //- Default construct, with all coefficients = 0
         Polynomial();
+
+        //- Construct from an initializer list of coefficients
+        Polynomial(std::initializer_list<scalar> coeffs);
 
         //- Construct from C-array of coefficients
         explicit Polynomial(const scalar coeffs[PolySize]);
@@ -113,10 +114,10 @@ public:
         explicit Polynomial(const UList<scalar>& coeffs);
 
         //- Construct from Istream
-        Polynomial(Istream&);
+        explicit Polynomial(Istream& is);
 
         //- Construct from name and Istream
-        Polynomial(const word& name, Istream&);
+        Polynomial(const word& name, Istream& is);
 
 
     // Member Functions
@@ -124,10 +125,10 @@ public:
         // Access
 
             //- Return true if the log term is active
-            bool logActive() const;
+            bool logActive() const noexcept;
 
             //- Return the log coefficient
-            scalar logCoeff() const;
+            scalar logCoeff() const noexcept;
 
 
         // Evaluation
@@ -150,12 +151,7 @@ public:
             polyType integralMinus1(const scalar intConstant = 0.0) const;
 
 
-    //- Ostream Operator
-    friend Ostream& operator<< <PolySize>
-    (
-        Ostream&,
-        const Polynomial&
-    );
+    // IOstream Operators - uses VectorSpace operators
 };
 
 
@@ -167,7 +163,6 @@ public:
 
 #ifdef NoRepository
     #include "Polynomial.C"
-    #include "PolynomialIO.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

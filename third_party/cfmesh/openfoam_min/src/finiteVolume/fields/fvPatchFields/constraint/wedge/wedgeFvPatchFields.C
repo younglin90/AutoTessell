@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,18 +27,39 @@ License
 
 #include "wedgeFvPatchFields.H"
 #include "addToRunTimeSelectionTable.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
+#include "volFields.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-makeNullConstructablePatchFields(wedge);
+namespace Foam
+{
+    makePatchFields(wedge);
+}
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Foam
+// * * * * * * * * * * * * * * * Specialisations * * * * * * * * * * * * * * //
+
+template<>
+Foam::tmp<Foam::scalarField>
+Foam::wedgeFvPatchField<Foam::scalar>::snGrad() const
+{
+    return tmp<scalarField>::New(size(), Zero);
+}
+
+
+template<>
+void Foam::wedgeFvPatchField<Foam::scalar>::evaluate
+(
+    const Pstream::commsTypes
+)
+{
+    if (!updated())
+    {
+        updateCoeffs();
+    }
+
+    this->operator==(patchInternalField());
+}
+
 
 // ************************************************************************* //

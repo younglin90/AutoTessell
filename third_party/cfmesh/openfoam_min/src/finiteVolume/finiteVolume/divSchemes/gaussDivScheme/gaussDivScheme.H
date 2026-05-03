@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::fv::gaussDivScheme
 
+Group
+    grpFvDivSchemes
+
 Description
-    Basic second-order div using face interpolated values and Gauss' theorem.
+    Basic second-order div using face-gradients and Gauss' theorem.
 
 SourceFiles
     gaussDivScheme.C
@@ -56,6 +61,14 @@ class gaussDivScheme
 :
     public fv::divScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        gaussDivScheme(const gaussDivScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const gaussDivScheme&) = delete;
+
 
 public:
 
@@ -77,23 +90,17 @@ public:
             divScheme<Type>(mesh, is)
         {}
 
-        //- Disallow default bitwise copy construction
-        gaussDivScheme(const gaussDivScheme&) = delete;
-
 
     // Member Functions
 
-
-        tmp<VolField<typename innerProduct<vector, Type>::type>> fvcDiv
+        tmp
+        <
+            GeometricField
+            <typename innerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > fvcDiv
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const gaussDivScheme&) = delete;
 };
 
 

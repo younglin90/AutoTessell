@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,7 +32,7 @@ License
 
 void Foam::polyMesh::initMesh()
 {
-    DebugInFunction << "Initialising primitiveMesh" << endl;
+    DebugInFunction << "initialising primitiveMesh" << endl;
 
     // For backward compatibility check if the neighbour array is the same
     // length as the owner and shrink to remove the -1s padding
@@ -60,7 +63,7 @@ void Foam::polyMesh::initMesh()
         {
             FatalErrorInFunction
                 << "Illegal cell label " << owner_[facei]
-                << " in neighbour addressing for face " << facei
+                << " in owner addressing for face " << facei
                 << exit(FatalError);
         }
         nCells = max(nCells, owner_[facei]);
@@ -90,11 +93,13 @@ void Foam::polyMesh::initMesh()
         nCells
     );
 
-    string meshInfo =
+    const string meshInfo
+    (
         "nPoints:" + Foam::name(nPoints())
       + "  nCells:" + Foam::name(this->nCells())
       + "  nFaces:" + Foam::name(nFaces())
-      + "  nInternalFaces:" + Foam::name(nInternalFaces());
+      + "  nInternalFaces:" + Foam::name(nInternalFaces())
+    );
 
     owner_.note() = meshInfo;
     neighbour_.note() = meshInfo;
@@ -157,11 +162,13 @@ void Foam::polyMesh::initMesh(cellList& c)
         c
     );
 
-    string meshInfo =
-        "nPoints: " + Foam::name(nPoints())
-      + " nCells: " + Foam::name(nCells())
-      + " nFaces: " + Foam::name(nFaces())
-      + " nInternalFaces: " + Foam::name(this->nInternalFaces());
+    const string meshInfo
+    (
+        "nPoints:" + Foam::name(nPoints())
+      + "  nCells:" + Foam::name(nCells())
+      + "  nFaces:" + Foam::name(nFaces())
+      + "  nInternalFaces:" + Foam::name(this->nInternalFaces())
+    );
 
     owner_.note() = meshInfo;
     neighbour_.note() = meshInfo;

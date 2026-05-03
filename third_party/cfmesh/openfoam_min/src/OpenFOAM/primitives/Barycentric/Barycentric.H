@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,18 @@ Class
     Foam::Barycentric
 
 Description
-    Templated 3D Barycentric derived from VectorSpace. Has 4 components, one of
-    which is redundant.
+    Templated 3D Barycentric derived from VectorSpace.
+    Has 4 components, one of which is redundant.
 
 SourceFiles
     BarycentricI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Barycentric_H
-#define Barycentric_H
+#ifndef Foam_Barycentric_H
+#define Foam_Barycentric_H
 
+#include "contiguous.H"
 #include "VectorSpace.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -54,29 +58,34 @@ class Barycentric
 {
 public:
 
-    //- Equivalent type of labels used for valid component indexing
-    typedef Barycentric<label> labelType;
+    // Typedefs
+
+        //- Equivalent type of labels used for valid component indexing
+        typedef Barycentric<label> labelType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Rank of Barycentric is 1
-        static const direction rank = 1;
+        static constexpr direction rank = 1;
 
 
     //- Component labeling enumeration
     enum components { A, B, C, D };
 
 
+    // Generated Methods: copy construct/assignment
+
+        //- Default construct
+        Barycentric() = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline Barycentric();
-
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline Barycentric(const Foam::zero);
 
-        //- Construct given four components
+        //- Construct from components
         inline Barycentric
         (
             const Cmpt& va,
@@ -85,21 +94,45 @@ public:
             const Cmpt& vd
         );
 
+        //- Construct from three components, calculate fourth component
+        inline Barycentric(const Cmpt& va, const Cmpt& vb, const Cmpt& vc);
+
 
     // Member Functions
 
-        // Access
+    // Component Access
 
-            inline const Cmpt& a() const;
-            inline const Cmpt& b() const;
-            inline const Cmpt& c() const;
-            inline const Cmpt& d() const;
+        const Cmpt& a() const noexcept { return this->v_[A]; }
+        const Cmpt& b() const noexcept { return this->v_[B]; }
+        const Cmpt& c() const noexcept { return this->v_[C]; }
+        const Cmpt& d() const noexcept { return this->v_[D]; }
 
-            inline Cmpt& a();
-            inline Cmpt& b();
-            inline Cmpt& c();
-            inline Cmpt& d();
+        Cmpt& a() noexcept { return this->v_[A]; }
+        Cmpt& b() noexcept { return this->v_[B]; }
+        Cmpt& c() noexcept { return this->v_[C]; }
+        Cmpt& d() noexcept { return this->v_[D]; }
+
+
+    // Operations
+
+        //- Scalar-product of \c this with another Barycentric.
+        inline Cmpt inner(const Barycentric<Cmpt>& b2) const;
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Data are contiguous if component type is contiguous
+template<class Cmpt>
+struct is_contiguous<Barycentric<Cmpt>> : is_contiguous<Cmpt> {};
+
+//- Data are contiguous label if component type is label
+template<class Cmpt>
+struct is_contiguous_label<Barycentric<Cmpt>> : is_contiguous_label<Cmpt> {};
+
+//- Data are contiguous scalar if component type is scalar
+template<class Cmpt>
+struct is_contiguous_scalar<Barycentric<Cmpt>> : is_contiguous_scalar<Cmpt> {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

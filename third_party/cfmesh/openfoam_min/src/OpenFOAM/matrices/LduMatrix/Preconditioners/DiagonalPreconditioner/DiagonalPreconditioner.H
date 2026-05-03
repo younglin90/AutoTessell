@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class DiagonalPreconditioner Declaration
+                           Class DiagonalPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -54,10 +57,19 @@ class DiagonalPreconditioner
 :
     public LduMatrix<Type, DType, LUType>::preconditioner
 {
-    // Private Data
+    // Private data
 
         //- The inverse (reciprocal for scalar) diagonal
         Field<DType> rD;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        DiagonalPreconditioner(const DiagonalPreconditioner&) = delete;
+
+        //- No copy assignment
+        void operator=(const DiagonalPreconditioner&) = delete;
 
 
 public:
@@ -75,14 +87,10 @@ public:
             const dictionary& preconditionerDict
         );
 
-        //- Disallow default bitwise copy construction
-        DiagonalPreconditioner(const DiagonalPreconditioner&) = delete;
-
 
     // Destructor
 
-        virtual ~DiagonalPreconditioner()
-        {}
+        virtual ~DiagonalPreconditioner() = default;
 
 
     // Member Functions
@@ -108,12 +116,6 @@ public:
         {
             return(precondition(wT, rT));
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const DiagonalPreconditioner&) = delete;
 };
 
 

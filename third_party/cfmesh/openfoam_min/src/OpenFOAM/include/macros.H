@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -53,9 +56,12 @@ Description
 //- Map 'name' to 'Name' via the predefined macro CAPITALIZE_name
 #define CAPITALIZE(name) CAPITALIZE_##name
 
-//- Convert macro expression to a string
-#define STR_(x) #x
-#define STR(x) STR_(x)
+//- Helper macro for STRING_QUOTE
+#define STRINGIFY(content) #content
+
+//- Macro to stringify macro contents
+#define STRING_QUOTE(input) STRINGIFY(input)
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

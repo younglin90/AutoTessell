@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,27 +33,36 @@ template<class Type>
 Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<Type>(p, iF),
+    ranGen_(label(0)),
+    fluctuationScale_(Zero),
+    referenceField_(p.size()),
+    alpha_(0.1),
+    curTimeIndex_(-1)
+{}
+
+
+template<class Type>
+Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<Type>(p, iF, dict, false),
+    fixedValueFvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ),
     ranGen_(label(0)),
-    fluctuationScale_(dict.lookup<Type>("fluctuationScale", units::fraction)),
-    referenceField_("referenceField", iF.dimensions(), dict, p.size()),
-    alpha_(dict.lookupOrDefault<scalar>("alpha", units::fraction, 0.1)),
+    fluctuationScale_(dict.get<Type>("fluctuationScale")),
+    referenceField_("referenceField", dict, p.size()),
+    alpha_(dict.getOrDefault<scalar>("alpha", 0.1)),
     curTimeIndex_(-1)
 {
-    if (dict.found("value"))
+    if (!this->readValueEntry(dict))
     {
-        fixedValueFvPatchField<Type>::operator==
-        (
-            Field<Type>("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        fixedValueFvPatchField<Type>::operator==(referenceField_);
+        fvPatchField<Type>::operator=(referenceField_);
     }
 }
 
@@ -61,14 +72,29 @@ Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
 (
     const turbulentInletFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<Type>(ptf, p, iF, mapper),
     ranGen_(label(0)),
     fluctuationScale_(ptf.fluctuationScale_),
-    referenceField_(mapper(ptf.referenceField_)),
+    referenceField_(ptf.referenceField_, mapper),
+    alpha_(ptf.alpha_),
+    curTimeIndex_(-1)
+{}
+
+
+template<class Type>
+Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
+(
+    const turbulentInletFvPatchField<Type>& ptf
+)
+:
+    fixedValueFvPatchField<Type>(ptf),
+    ranGen_(ptf.ranGen_),
+    fluctuationScale_(ptf.fluctuationScale_),
+    referenceField_(ptf.referenceField_),
     alpha_(ptf.alpha_),
     curTimeIndex_(-1)
 {}
@@ -78,7 +104,7 @@ template<class Type>
 Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
 (
     const turbulentInletFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fixedValueFvPatchField<Type>(ptf, iF),
@@ -93,33 +119,29 @@ Foam::turbulentInletFvPatchField<Type>::turbulentInletFvPatchField
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::turbulentInletFvPatchField<Type>::map
+void Foam::turbulentInletFvPatchField<Type>::autoMap
 (
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& m
 )
 {
-    fixedValueFvPatchField<Type>::map(ptf, mapper);
-
-    const turbulentInletFvPatchField<Type>& tiptf =
-        refCast<const turbulentInletFvPatchField<Type>>(ptf);
-
-    mapper(referenceField_, tiptf.referenceField_);
+    fixedValueFvPatchField<Type>::autoMap(m);
+    referenceField_.autoMap(m);
 }
 
 
 template<class Type>
-void Foam::turbulentInletFvPatchField<Type>::reset
+void Foam::turbulentInletFvPatchField<Type>::rmap
 (
-    const fvPatchField<Type>& ptf
+    const fvPatchField<Type>& ptf,
+    const labelList& addr
 )
 {
-    fixedValueFvPatchField<Type>::reset(ptf);
+    fixedValueFvPatchField<Type>::rmap(ptf, addr);
 
     const turbulentInletFvPatchField<Type>& tiptf =
         refCast<const turbulentInletFvPatchField<Type>>(ptf);
 
-    referenceField_.reset(tiptf.referenceField_);
+    referenceField_.rmap(tiptf.referenceField_, addr);
 }
 
 
@@ -131,7 +153,7 @@ void Foam::turbulentInletFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    if (curTimeIndex_ != this->time().timeIndex())
+    if (curTimeIndex_ != this->db().time().timeIndex())
     {
         Field<Type>& patchField = *this;
 
@@ -139,7 +161,7 @@ void Foam::turbulentInletFvPatchField<Type>::updateCoeffs()
 
         forAll(patchField, facei)
         {
-            randomField[facei] = ranGen_.sample01<Type>();
+            ranGen_.randomise01<Type>(randomField[facei]);
         }
 
         // Correction-factor to compensate for the loss of RMS fluctuation
@@ -158,7 +180,7 @@ void Foam::turbulentInletFvPatchField<Type>::updateCoeffs()
                 )*mag(referenceField_)
             );
 
-        curTimeIndex_ = this->time().timeIndex();
+        curTimeIndex_ = this->db().time().timeIndex();
     }
 
     fixedValueFvPatchField<Type>::updateCoeffs();
@@ -169,10 +191,10 @@ template<class Type>
 void Foam::turbulentInletFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, "fluctuationScale", fluctuationScale_);
-    writeEntry(os, "referenceField", referenceField_);
-    writeEntry(os, "alpha", alpha_);
-    writeEntry(os, "value", *this);
+    os.writeEntry("fluctuationScale", fluctuationScale_);
+    referenceField_.writeEntry("referenceField", os);
+    os.writeEntry("alpha", alpha_);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

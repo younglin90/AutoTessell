@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::UpwindFitScheme
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
     Upwind biased fit surface interpolation scheme that applies an explicit
     correction to linear.
@@ -42,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class UpwindFitScheme Declaration
+                           Class UpwindFitScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class Polynomial, class Stencil>
@@ -62,6 +67,15 @@ class UpwindFitScheme
 
         //- Weights for central stencil
         const scalar centralWeight_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        UpwindFitScheme(const UpwindFitScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const UpwindFitScheme&) = delete;
 
 
 public:
@@ -98,9 +112,6 @@ public:
             centralWeight_(1000)
         {}
 
-        //- Disallow default bitwise copy construction
-        UpwindFitScheme(const UpwindFitScheme&) = delete;
-
 
     // Member Functions
 
@@ -111,10 +122,10 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -122,7 +133,7 @@ public:
             const extendedUpwindCellToFaceStencil& stencil = Stencil::New
             (
                 mesh,
-                false,          // pureUpwind
+                false,          //pureUpwind
                 scalar(0.5)
             );
 
@@ -131,7 +142,7 @@ public:
             (
                 mesh,
                 stencil,
-                true,           // calculate as offset to linear
+                true,           //calculate as offset to linear
                 linearLimitFactor_,
                 centralWeight_
             );
@@ -141,12 +152,6 @@ public:
 
             return stencil.weightedSum(faceFlux_, vf, fo, fn);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const UpwindFitScheme&) = delete;
 };
 
 

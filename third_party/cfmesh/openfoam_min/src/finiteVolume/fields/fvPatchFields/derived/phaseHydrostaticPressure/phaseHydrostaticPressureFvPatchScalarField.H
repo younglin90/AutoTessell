@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::phaseHydrostaticPressureFvPatchScalarField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition provides a phase-based hydrostatic pressure
     condition, calculated as:
@@ -36,13 +41,13 @@ Description
     \vartable
         p_{hyd} | hyrostatic pressure [Pa]
         p_{ref} | reference pressure [Pa]
-        x_{ref} | reference point in Cartesian co-ordinates
+        x_{ref} | reference point in Cartesian coordinates
         \rho    | density (assumed uniform)
-        g       | acceleration due to gravity [m/s^2]
+        g       | acceleration due to gravity [m/s2]
     \endtable
 
     The values are assigned according to the phase-fraction field:
-    - 1: apply \$fp_{hyd}\$f
+    - 1: apply \f$p_{hyd}\f$
     - 0: apply a zero-gradient condition
 
 Usage
@@ -119,11 +124,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        phaseHydrostaticPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         phaseHydrostaticPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -133,45 +145,43 @@ public:
         (
             const phaseHydrostaticPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         phaseHydrostaticPressureFvPatchScalarField
         (
             const phaseHydrostaticPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         phaseHydrostaticPressureFvPatchScalarField
         (
             const phaseHydrostaticPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new phaseHydrostaticPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
-
-            //- Return true: this patch field is altered by assignment
-            virtual bool assignable() const
-            {
-                return true;
-            }
+        //- True: this patch field is altered by assignment
+        virtual bool assignable() const { return true; }
 
 
         // Access
@@ -234,12 +244,9 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const fvPatchScalarField& pvf);
-
-        //- Inherit assignment
-        using mixedFvPatchScalarField::operator=;
 };
 
 

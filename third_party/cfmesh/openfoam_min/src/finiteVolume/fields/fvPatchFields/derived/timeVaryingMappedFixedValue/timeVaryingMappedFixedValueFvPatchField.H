@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,27 +26,18 @@ License
 Class
     Foam::timeVaryingMappedFixedValueFvPatchField
 
+Group
+    grpInletBoundaryConditions grpCoupledBoundaryConditions
+
 Description
     This boundary conditions interpolates the values from a set of supplied
     points in space and time.
 
-    By default the data files should be provide in
-    constant/boundaryData/\<patch name\>/ directory:
+    Supplied data should be specified in constant/boundaryData/\<patchname\>/
       - points             : pointField of locations
       - \<time\>/\<field\> : field of values at time \<time\>
 
-    Alternatively the names and locations of the points and field files may be
-    specified explicitly via the optional dictionary entries:
-      - dataDir \<optional top-level directory of the points and field data>;
-      - points \<optional path including name of points file relative to
-                 dataDir\>;
-      - sample \<optional name of the sub-directory in the time directories
-                containing the fields\>;
-    This is particularly useful when mapping data from another case for which
-    the \c sample \c functionObject is used to obtain the patch field data for
-    mapping.
-
-    The default mode of operation (mapMethod planarInterpolation) is to project
+    The default mode of operation (mapMethod = planar) is to project
     the points onto a plane (constructed from the first three points) and
     construct a 2D triangulation and finds for the face centres the triangle it
     is in and the weights to the 3 vertices.
@@ -56,52 +49,36 @@ Description
 
 Usage
     \table
-        Property     | Description                | Required    | Default value
-        setAverage   | Switch to activate setting of average value | no | false
+        Property     | Description                      | Required | Default
+        setAverage   | Use average value                | no | false
         perturb      | Perturb points for regular geometries | no | 1e-5
-        fieldTable   | Alternative field name to sample | no| this field name
-        mapMethod    | Type of mapping            | no | planarInterpolation
-        offset       | Offset to mapped values    | no | Zero
-        dataDir      | Top-level directory of the points and field data \\
-                         | no | constant/boundaryData/\<patch name\>
-        points       | Path including name of points file relative to dataDir \\
-                         | no | points
-        sample       | Name of the sub-directory in the time directories \\
-                         containing the fields | no | ""
+        points       | Name of points file              | no | points
+        fieldTable   | Alternative field name to sample | no | this field name
+        mapMethod    | Type of mapping                  | no | planar
+        offset       | Offset to mapped values          | no | Zero
     \endtable
 
     \verbatim
-    <patch name>
+    <patchName>
     {
         type            timeVaryingMappedFixedValue;
-    }
-    \endverbatim
-
-    \verbatim
-    <patch name>
-    {
-        type            timeVaryingMappedFixedValue;
-        dataDir         "../<source case name>/postProcessing/sample";
-        points          "0/<sample name>/faceCentres";
-        sample          <sample name>;
     }
     \endverbatim
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::timeVaryingMappedFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     timeVaryingMappedFixedValueFvPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef timeVaryingMappedFixedValueFvPatchField_H
-#define timeVaryingMappedFixedValueFvPatchField_H
+#ifndef Foam_timeVaryingMappedFixedValueFvPatchField_H
+#define Foam_timeVaryingMappedFixedValueFvPatchField_H
 
 #include "fixedValueFvPatchFields.H"
-#include "timeVaryingMappedFvPatchField.H"
+#include "MappedFile.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -109,7 +86,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-           Class timeVaryingMappedFixedValueFvPatchField Declaration
+          Class timeVaryingMappedFixedValueFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -119,7 +96,7 @@ class timeVaryingMappedFixedValueFvPatchField
 {
     // Private Data
 
-        timeVaryingMappedFvPatchField<Type> fieldMapper_;
+        autoPtr<PatchFunction1Types::MappedFile<Type>> uniformValue_;
 
 
 public:
@@ -130,11 +107,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        timeVaryingMappedFixedValueFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         timeVaryingMappedFixedValueFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -144,46 +128,55 @@ public:
         (
             const timeVaryingMappedFixedValueFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         timeVaryingMappedFixedValueFvPatchField
         (
             const timeVaryingMappedFixedValueFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         timeVaryingMappedFixedValueFvPatchField
         (
             const timeVaryingMappedFixedValueFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new timeVaryingMappedFixedValueFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -194,12 +187,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchField<Type>::operator=;
 };
 
 

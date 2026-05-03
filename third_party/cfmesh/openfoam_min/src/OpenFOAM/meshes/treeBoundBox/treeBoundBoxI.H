@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,13 +27,19 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "treeBoundBox.H"
-#include "randomGenerator.H"
+#include "Random.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::treeBoundBox::treeBoundBox()
+inline Foam::treeBoundBox::treeBoundBox(const Foam::zero_one)
 :
-    boundBox()
+    boundBox(zero_one{})
+{}
+
+
+inline Foam::treeBoundBox::treeBoundBox(const point& p)
+:
+    boundBox(p)
 {}
 
 
@@ -40,7 +49,7 @@ inline Foam::treeBoundBox::treeBoundBox(const point& min, const point& max)
 {}
 
 
-inline Foam::treeBoundBox::treeBoundBox(const boundBox& bb)
+inline Foam::treeBoundBox::treeBoundBox(const Pair<point>& bb)
 :
     boundBox(bb)
 {}
@@ -52,27 +61,15 @@ inline Foam::treeBoundBox::treeBoundBox(Istream& is)
 {}
 
 
-inline Foam::treeBoundBox::treeBoundBox(const dictionary& dict)
-:
-    boundBox(dict)
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline Foam::scalar Foam::treeBoundBox::typDim() const
-{
-    return avgDim();
-}
-
 
 inline Foam::point Foam::treeBoundBox::corner(const direction octant) const
 {
     return point
     (
-        (octant & octantBit::rightHalf) ? max().x() : min().x(),
-        (octant & octantBit::topHalf)   ? max().y() : min().y(),
-        (octant & octantBit::frontHalf) ? max().z() : min().z()
+        (octant & RIGHTHALF) ? max().x() : min().x(),
+        (octant & TOPHALF)   ? max().y() : min().y(),
+        (octant & FRONTHALF) ? max().z() : min().z()
     );
 }
 
@@ -80,7 +77,7 @@ inline Foam::point Foam::treeBoundBox::corner(const direction octant) const
 // Returns octant in which point resides. Reverse of subBbox.
 inline Foam::direction Foam::treeBoundBox::subOctant(const point& pt) const
 {
-    return subOctant(midpoint(), pt);
+    return subOctant(centre(), pt);
 }
 
 
@@ -96,17 +93,17 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 
     if (pt.x() > mid.x())
     {
-        octant |= octantBit::rightHalf;
+        octant |= treeBoundBox::RIGHTHALF;
     }
 
     if (pt.y() > mid.y())
     {
-        octant |= octantBit::topHalf;
+        octant |= treeBoundBox::TOPHALF;
     }
 
     if (pt.z() > mid.z())
     {
-        octant |= octantBit::frontHalf;
+        octant |= treeBoundBox::FRONTHALF;
     }
 
     return octant;
@@ -121,7 +118,7 @@ inline Foam::direction Foam::treeBoundBox::subOctant
     bool& onEdge
 ) const
 {
-    return subOctant(midpoint(), pt, onEdge);
+    return subOctant(centre(), pt, onEdge);
 }
 
 
@@ -139,7 +136,7 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 
     if (pt.x() > mid.x())
     {
-        octant |= octantBit::rightHalf;
+        octant |= treeBoundBox::RIGHTHALF;
     }
     else if (pt.x() == mid.x())
     {
@@ -148,7 +145,7 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 
     if (pt.y() > mid.y())
     {
-        octant |= octantBit::topHalf;
+        octant |= treeBoundBox::TOPHALF;
     }
     else if (pt.y() == mid.y())
     {
@@ -157,7 +154,7 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 
     if (pt.z() > mid.z())
     {
-        octant |= octantBit::frontHalf;
+        octant |= treeBoundBox::FRONTHALF;
     }
     else if (pt.z() == mid.z())
     {
@@ -185,40 +182,40 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 
     if (pt.x() > mid.x())
     {
-        octant |= octantBit::rightHalf;
+        octant |= treeBoundBox::RIGHTHALF;
     }
     else if (pt.x() == mid.x())
     {
         onEdge = true;
         if (dir.x() > 0)
         {
-            octant |= octantBit::rightHalf;
+            octant |= treeBoundBox::RIGHTHALF;
         }
     }
 
     if (pt.y() > mid.y())
     {
-        octant |= octantBit::topHalf;
+        octant |= treeBoundBox::TOPHALF;
     }
     else if (pt.y() == mid.y())
     {
         onEdge = true;
         if (dir.y() > 0)
         {
-            octant |= octantBit::topHalf;
+            octant |= treeBoundBox::TOPHALF;
         }
     }
 
     if (pt.z() > mid.z())
     {
-        octant |= octantBit::frontHalf;
+        octant |= treeBoundBox::FRONTHALF;
     }
     else if (pt.z() == mid.z())
     {
         onEdge = true;
         if (dir.z() > 0)
         {
-            octant |= octantBit::frontHalf;
+            octant |= treeBoundBox::FRONTHALF;
         }
     }
 
@@ -226,33 +223,31 @@ inline Foam::direction Foam::treeBoundBox::subOctant
 }
 
 
-// Returns reference to octantOrder which defines the
-// order to do the search.
 inline void Foam::treeBoundBox::searchOrder
 (
     const point& pt,
-    FixedList<direction,8>& octantOrder
+    FixedList<direction, 8>& octantOrder
 ) const
 {
-    vector dist = midpoint() - pt;
+    vector dist = centre() - pt;
 
     direction octant = 0;
 
     if (dist.x() < 0)
     {
-        octant |= octantBit::rightHalf;
+        octant |= treeBoundBox::RIGHTHALF;
         dist.x() *= -1;
     }
 
     if (dist.y() < 0)
     {
-        octant |= octantBit::topHalf;
+        octant |= treeBoundBox::TOPHALF;
         dist.y() *= -1;
     }
 
     if (dist.z() < 0)
     {
-        octant |= octantBit::frontHalf;
+        octant |= treeBoundBox::FRONTHALF;
         dist.z() *= -1;
     }
 
@@ -264,42 +259,42 @@ inline void Foam::treeBoundBox::searchOrder
     {
         if (dist.y() < dist.z())
         {
-            min = octantBit::rightHalf;
-            mid = octantBit::topHalf;
-            max = octantBit::frontHalf;
+            min = treeBoundBox::RIGHTHALF;
+            mid = treeBoundBox::TOPHALF;
+            max = treeBoundBox::FRONTHALF;
         }
         else if (dist.z() < dist.x())
         {
-            min = octantBit::frontHalf;
-            mid = octantBit::rightHalf;
-            max = octantBit::topHalf;
+            min = treeBoundBox::FRONTHALF;
+            mid = treeBoundBox::RIGHTHALF;
+            max = treeBoundBox::TOPHALF;
         }
         else
         {
-            min = octantBit::rightHalf;
-            mid = octantBit::frontHalf;
-            max = octantBit::topHalf;
+            min = treeBoundBox::RIGHTHALF;
+            mid = treeBoundBox::FRONTHALF;
+            max = treeBoundBox::TOPHALF;
         }
     }
     else
     {
         if (dist.z() < dist.y())
         {
-            min = octantBit::frontHalf;
-            mid = octantBit::topHalf;
-            max = octantBit::rightHalf;
+            min = treeBoundBox::FRONTHALF;
+            mid = treeBoundBox::TOPHALF;
+            max = treeBoundBox::RIGHTHALF;
         }
         else if (dist.x() < dist.z())
         {
-            min = octantBit::topHalf;
-            mid = octantBit::rightHalf;
-            max = octantBit::frontHalf;
+            min = treeBoundBox::TOPHALF;
+            mid = treeBoundBox::RIGHTHALF;
+            max = treeBoundBox::FRONTHALF;
         }
         else
         {
-            min = octantBit::topHalf;
-            mid = octantBit::frontHalf;
-            max = octantBit::rightHalf;
+            min = treeBoundBox::TOPHALF;
+            mid = treeBoundBox::FRONTHALF;
+            max = treeBoundBox::RIGHTHALF;
         }
     }
 
@@ -318,21 +313,86 @@ inline void Foam::treeBoundBox::searchOrder
 }
 
 
-inline Foam::treeBoundBox Foam::treeBoundBox::extend(const scalar s) const
+inline Foam::FixedList<Foam::direction, 8>
+Foam::treeBoundBox::searchOrder(const point& pt) const
 {
-    // Numbers that don't approximate rational fractions with which to make the
-    // box asymmetric. These are between one and two.
-    static const vector a((sqrt(5.0) + 1)/2, sqrt(2.0), (sqrt(13.0) - 1)/2);
-    static const vector b(a.y(), a.z(), a.x());
+    FixedList<direction, 8> octantOrder;
+    searchOrder(pt, octantOrder);
+    return octantOrder;
+}
 
+
+inline bool Foam::treeBoundBox::subOverlaps
+(
+    const direction octant,
+    const point& centre,
+    const scalar radiusSqr
+) const
+{
+    // Accelerated version of
+    //     subBbox(octant).overlaps(centre, radiusSqr)
+
+    // NB: ordering of corners is irrelevant
+    return box_sphere_overlaps
+    (
+        this->centre(),
+        corner(octant),
+        centre,
+        radiusSqr
+    );
+}
+
+
+inline bool Foam::treeBoundBox::intersects
+(
+    const linePointRef& ln,
+    point& pt
+) const
+{
+    return intersects(ln.start(), ln.end(), pt);
+}
+
+
+inline Foam::treeBoundBox Foam::treeBoundBox::extend
+(
+    Random& rndGen,
+    const scalar factor
+) const
+{
     treeBoundBox bb(*this);
 
-    const scalar delta = s*Foam::mag(bb.span());
-    bb.min() -= Foam::max(delta*a, vector::uniform(rootVSmall));
-    bb.max() += Foam::max(delta*b, vector::uniform(rootVSmall));
+    bb.inflate(rndGen, factor);
 
     return bb;
 }
 
+
+inline Foam::treeBoundBox Foam::treeBoundBox::extend
+(
+    Random& rndGen,
+    const scalar factor,
+    const scalar delta
+) const
+{
+    treeBoundBox bb(*this);
+
+    bb.inflate(rndGen, factor, delta);
+
+    return bb;
+}
+
+
+// * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * * //
+
+inline bool Foam::operator==(const treeBoundBox& a, const treeBoundBox& b)
+{
+    return static_cast<const boundBox&>(a) == static_cast<const boundBox&>(b);
+}
+
+
+inline bool Foam::operator!=(const treeBoundBox& a, const treeBoundBox& b)
+{
+    return !(a == b);
+}
 
 // ************************************************************************* //

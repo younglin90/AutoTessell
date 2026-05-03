@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,18 +26,18 @@ License
 Class
     Foam::rotatingWallVelocityFvPatchVectorField
 
+Group
+    grpWallBoundaryConditions grpGenericBoundaryConditions
+
 Description
-    Condition on velocity for a boundary consisting of a rotating solid of
-    revolution, e.g. cylinder. Calculates a tangential component of velocity
-    from the angular velocity and rotational axis and ensures a zero normal
-    component.
+    This boundary condition provides a rotational velocity condition.
 
 Usage
     \table
         Property     | Description             | Required    | Default value
-        origin       | origin of rotation in Cartesian co-ordinates | yes|
+        origin       | origin of rotation in Cartesian coordinates | yes|
         axis         | axis of rotation        | yes         |
-        omega        | angular velocity of the frame | no |
+        omega        | angular velocty of the frame [rad/s] | yes    |
     \endtable
 
     Example of the boundary condition specification:
@@ -45,15 +47,15 @@ Usage
         type            rotatingWallVelocity;
         origin          (0 0 0);
         axis            (0 0 1);
-        omega           100 [rpm];
+        omega           100;
     }
     \endverbatim
 
-    The \c omega entry is a Function1 of time, see Foam::Function1s.
+    The \c omega entry is a Function1 of time, see Foam::Function1Types.
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     rotatingWallVelocityFvPatchVectorField.C
@@ -64,7 +66,7 @@ SourceFiles
 #define rotatingWallVelocityFvPatchVectorField_H
 
 #include "fixedValueFvPatchFields.H"
-#include "omega1.H"
+#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -79,7 +81,7 @@ class rotatingWallVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Origin of the rotation
         vector origin_;
@@ -88,7 +90,7 @@ class rotatingWallVelocityFvPatchVectorField
         vector axis_;
 
         //- Rotational speed
-        Function1s::omega omega_;
+        autoPtr<Function1<scalar>> omega_;
 
 
 public:
@@ -99,11 +101,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        rotatingWallVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         rotatingWallVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -113,49 +122,73 @@ public:
         (
             const rotatingWallVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         rotatingWallVelocityFvPatchVectorField
         (
             const rotatingWallVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         rotatingWallVelocityFvPatchVectorField
         (
             const rotatingWallVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-             const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new rotatingWallVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
+
+        // Access functions
+
+            //- Return the origin of the rotation
+            const vector& origin() const
+            {
+                return origin_;
+            }
+
+            //- Return the axis of the rotation
+            const vector& axis() const
+            {
+                return axis_;
+            }
+
+            //- Return non-const access to the origin of the rotation
+            vector& origin()
+            {
+                return origin_;
+            }
+
+            //- Return non-const access to the axis of the rotation
+            vector& axis()
+            {
+                return axis_;
+            }
+
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

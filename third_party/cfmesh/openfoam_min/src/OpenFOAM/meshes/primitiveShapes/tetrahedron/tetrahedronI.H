@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,19 +32,72 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
+inline Foam::tetPoints::tetPoints
+(
+    const point& p0,
+    const point& p1,
+    const point& p2,
+    const point& p3
+)
+{
+    a() = p0;
+    b() = p1;
+    c() = p2;
+    d() = p3;
+}
+
+
+inline Foam::tetPoints::tetPoints(const tetPointRef& pts)
+{
+    a() = pts.a();
+    b() = pts.b();
+    c() = pts.c();
+    d() = pts.d();
+}
+
+
+inline Foam::tetPoints::tetPoints(const FixedList<point, 4>& pts)
+:
+    FixedList<point, 4>(pts)
+{}
+
+
+inline Foam::tetPoints::tetPoints
+(
+    const UList<point>& points,
+    const FixedList<label, 4>& indices
+)
+:
+    FixedList<point, 4>(points, indices)
+{}
+
+
 template<class Point, class PointRef>
 inline Foam::tetrahedron<Point, PointRef>::tetrahedron
 (
-    const Point& a,
-    const Point& b,
-    const Point& c,
-    const Point& d
+    const Point& p0,
+    const Point& p1,
+    const Point& p2,
+    const Point& p3
 )
 :
-    a_(a),
-    b_(b),
-    c_(c),
-    d_(d)
+    a_(p0),
+    b_(p1),
+    c_(p2),
+    d_(p3)
+{}
+
+
+template<class Point, class PointRef>
+inline Foam::tetrahedron<Point, PointRef>::tetrahedron
+(
+    const FixedList<Point, 4>& pts
+)
+:
+    a_(pts.template get<0>()),
+    b_(pts.template get<1>()),
+    c_(pts.template get<2>()),
+    d_(pts.template get<3>())
 {}
 
 
@@ -52,10 +108,10 @@ inline Foam::tetrahedron<Point, PointRef>::tetrahedron
     const FixedList<label, 4>& indices
 )
 :
-    a_(points[indices[0]]),
-    b_(points[indices[1]]),
-    c_(points[indices[2]]),
-    d_(points[indices[3]])
+    a_(points[indices.template get<0>()]),
+    b_(points[indices.template get<1>()]),
+    c_(points[indices.template get<2>()]),
+    d_(points[indices.template get<3>()])
 {}
 
 
@@ -68,33 +124,68 @@ inline Foam::tetrahedron<Point, PointRef>::tetrahedron(Istream& is)
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class Point, class PointRef>
-inline const Point& Foam::tetrahedron<Point, PointRef>::a() const
+inline Foam::tetPointRef Foam::tetPoints::tet() const
 {
-    return a_;
+    return tetPointRef(a(), b(), c(), d());
+}
+
+
+inline void Foam::tetPoints::flip()
+{
+    // swap pt2 <-> pt3
+    point t(c());
+    c() = d();
+    d() = t;
+}
+
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+template<class Point, class PointRef>
+inline Foam::Pair<Point> Foam::tetrahedron<Point, PointRef>::box
+(
+    const Point& p0,
+    const Point& p1,
+    const Point& p2,
+    const Point& p3
+)
+{
+    return Pair<Point>
+    (
+        min(p0, min(p1, min(p2, p3))),
+        max(p0, max(p1, max(p2, p3)))
+    );
 }
 
 
 template<class Point, class PointRef>
-inline const Point& Foam::tetrahedron<Point, PointRef>::b() const
+inline Foam::Pair<Point> Foam::tetrahedron<Point, PointRef>::box() const
 {
-    return b_;
+    return tetrahedron<Point, PointRef>::box(a_, b_, c_, d_);
+}
+
+
+inline Foam::Pair<Foam::point> Foam::tetPoints::box() const
+{
+    return tetPointRef::box(a(), b(), c(), d());
 }
 
 
 template<class Point, class PointRef>
-inline const Point& Foam::tetrahedron<Point, PointRef>::c() const
+inline Foam::treeBoundBox Foam::tetrahedron<Point, PointRef>::bounds() const
 {
-    return c_;
+    return treeBoundBox(box());
 }
 
 
-template<class Point, class PointRef>
-inline const Point& Foam::tetrahedron<Point, PointRef>::d() const
+inline Foam::treeBoundBox Foam::tetPoints::bounds() const
 {
-    return d_;
+    return treeBoundBox(box());
 }
 
+
+// Warning. Ordering of faces needs to be the same for a tetrahedron class,
+// tetrahedron cell shape model and a tetCell
 
 template<class Point, class PointRef>
 inline Foam::triPointRef Foam::tetrahedron<Point, PointRef>::tri
@@ -121,41 +212,39 @@ inline Foam::triPointRef Foam::tetrahedron<Point, PointRef>::tri
     {
         return triPointRef(a_, c_, b_);
     }
-    else
-    {
-        FatalErrorInFunction
-            << "index out of range 0 -> 3. facei = " << facei
-            << abort(FatalError);
-        return triPointRef(b_, c_, d_);
-    }
+
+    FatalErrorInFunction
+        << "Face index (" << facei << ") out of range 0..3\n"
+        << abort(FatalError);
+    return triPointRef(b_, c_, d_);
 }
 
 
 template<class Point, class PointRef>
 inline Foam::vector Foam::tetrahedron<Point, PointRef>::Sa() const
 {
-    return triangle<Point, PointRef>(b_, c_, d_).area();
+    return triangle<Point, PointRef>::areaNormal(b_, c_, d_);
 }
 
 
 template<class Point, class PointRef>
 inline Foam::vector Foam::tetrahedron<Point, PointRef>::Sb() const
 {
-    return triangle<Point, PointRef>(a_, d_, c_).area();
+    return triangle<Point, PointRef>::areaNormal(a_, d_, c_);
 }
 
 
 template<class Point, class PointRef>
 inline Foam::vector Foam::tetrahedron<Point, PointRef>::Sc() const
 {
-    return triangle<Point, PointRef>(a_, b_, d_).area();
+    return triangle<Point, PointRef>::areaNormal(a_, b_, d_);
 }
 
 
 template<class Point, class PointRef>
 inline Foam::vector Foam::tetrahedron<Point, PointRef>::Sd() const
 {
-    return triangle<Point, PointRef>(a_, c_, b_).area();
+    return triangle<Point, PointRef>::areaNormal(a_, c_, b_);
 }
 
 
@@ -174,66 +263,75 @@ inline Foam::scalar Foam::tetrahedron<Point, PointRef>::mag() const
 
 
 template<class Point, class PointRef>
-inline Foam::Tuple2<Point, Foam::scalar>
-Foam::tetrahedron<Point, PointRef>::circumSphereSqr() const
+inline Point Foam::tetrahedron<Point, PointRef>::circumCentre() const
 {
-    const vector a = b_ - a_;
-    const vector b = c_ - a_;
-    const vector c = d_ - a_;
+    vector a = b_ - a_;
+    vector b = c_ - a_;
+    vector c = d_ - a_;
 
-    const vector ba = b ^ a;
-    const vector ca = c ^ a;
+    scalar lambda = magSqr(c) - (a & c);
+    scalar mu = magSqr(b) - (a & b);
 
-    const scalar lambda = magSqr(c) - (a & c);
-    const scalar mu = magSqr(b) - (a & b);
+    vector ba = b ^ a;
+    vector ca = c ^ a;
 
-    const vector num = lambda*ba - mu*ca;
-    const scalar denom = (c & ba);
+    vector num = lambda*ba - mu*ca;
+    scalar denom = (c & ba);
 
-    if (Foam::mag(denom) < rootVSmall)
+    if (Foam::mag(denom) < ROOTVSMALL)
     {
-        // Degenerate. Return an invalid sphere.
-        return Tuple2<Point, scalar>(point::uniform(NaN), -vGreat);
+        // Degenerate tetrahedron, returning centre instead of circumCentre.
+
+        return centre();
     }
-    else
-    {
-        const vector v = (a + num/denom)/2;
-        return Tuple2<Point, scalar>(a_ + v, magSqr(v));
-    }
+
+    return a_ + 0.5*(a + num/denom);
 }
 
 
 template<class Point, class PointRef>
-inline Foam::Tuple2<Point, Foam::scalar>
-Foam::tetrahedron<Point, PointRef>::circumSphere() const
+inline Foam::scalar Foam::tetrahedron<Point, PointRef>::circumRadius() const
 {
-    const Tuple2<Point, scalar> crSqr = circumSphereSqr();
+    vector a = b_ - a_;
+    vector b = c_ - a_;
+    vector c = d_ - a_;
 
-    // Invalid. Return without conversion.
-    if (crSqr.second() < 0) return crSqr;
+    scalar lambda = magSqr(c) - (a & c);
+    scalar mu = magSqr(b) - (a & b);
 
-    return Tuple2<Point, scalar>(crSqr.first(), sqrt(crSqr.second()));
+    vector ba = b ^ a;
+    vector ca = c ^ a;
+
+    vector num = lambda*ba - mu*ca;
+    scalar denom = (c & ba);
+
+    if (Foam::mag(denom) < ROOTVSMALL)
+    {
+        // Degenerate tetrahedron, returning GREAT for circumRadius.
+        return GREAT;
+    }
+
+    return Foam::mag(0.5*(a + num/denom));
 }
 
 
 template<class Point, class PointRef>
 inline Foam::scalar Foam::tetrahedron<Point, PointRef>::quality() const
 {
-    const scalar r = circumSphere().second();
-
-    // Invalid. Return zero.
-    if (r < 0) return 0;
-
-    static const scalar sqrt3 = sqrt(scalar(3));
-
-    return mag()/(8.0/27.0*sqrt3*pow3(min(r, great)) + rootVSmall);
+    return
+        mag()
+       /(
+            8.0/(9.0*sqrt(3.0))
+           *pow3(Foam::min(circumRadius(), GREAT))
+          + ROOTVSMALL
+        );
 }
 
 
 template<class Point, class PointRef>
 inline Point Foam::tetrahedron<Point, PointRef>::randomPoint
 (
-    randomGenerator& rndGen
+    Random& rndGen
 ) const
 {
     return barycentricToPoint(barycentric01(rndGen));
@@ -246,7 +344,7 @@ inline Point Foam::tetrahedron<Point, PointRef>::barycentricToPoint
     const barycentric& bary
 ) const
 {
-    return bary[0]*a_ + bary[1]*b_ + bary[2]*c_ + bary[3]*d_;
+    return Point(bary.a()*a_ + bary.b()*b_ + bary.c()*c_ + bary.d()*d_);
 }
 
 
@@ -285,7 +383,7 @@ inline Foam::scalar Foam::tetrahedron<Point, PointRef>::pointToBarycentric
 
     scalar detT = det(t);
 
-    if (Foam::mag(detT) < small)
+    if (Foam::mag(detT) < SMALL)
     {
         // Degenerate tetrahedron, returning 1/4 barycentric coordinates
 
@@ -299,7 +397,7 @@ inline Foam::scalar Foam::tetrahedron<Point, PointRef>::pointToBarycentric
     bary[0] = res.x();
     bary[1] = res.y();
     bary[2] = res.z();
-    bary[3] = 1 - cmptSum(res);
+    bary[3] = 1 - bary[0] - bary[1] - bary[2];
 
     return detT;
 }
@@ -319,67 +417,87 @@ inline Foam::pointHit Foam::tetrahedron<Point, PointRef>::nearestPoint
 
     point closestPt = p;
 
-    scalar minOutsideDistance = vGreat;
+    scalar minOutsideDistance = VGREAT;
 
     bool inside = true;
 
-    if (((p - b_) & Sa()) >= 0)
+    // Side a
     {
-        // p is outside halfspace plane of tri
-        pointHit info = triangle<Point, PointRef>(b_, c_, d_).nearestPoint(p);
+        const triangle<Point, PointRef> tria(b_, c_, d_);
 
-        inside = false;
-
-        if (info.distance() < minOutsideDistance)
+        if (((p - b_) & tria.areaNormal()) >= 0)
         {
-            closestPt = info.rawPoint();
+            // p is outside halfspace plane of tri
+            pointHit info = tria.nearestPoint(p);
 
-            minOutsideDistance = info.distance();
+            inside = false;
+
+            if (info.distance() < minOutsideDistance)
+            {
+                closestPt = info.point();
+
+                minOutsideDistance = info.distance();
+            }
         }
     }
 
-    if (((p - a_) & Sb()) >= 0)
+    // Side b
     {
-        // p is outside halfspace plane of tri
-        pointHit info = triangle<Point, PointRef>(a_, d_, c_).nearestPoint(p);
+        const triangle<Point, PointRef> tria(a_, d_, c_);
 
-        inside = false;
-
-        if (info.distance() < minOutsideDistance)
+        if (((p - a_) & tria.areaNormal()) >= 0)
         {
-            closestPt = info.rawPoint();
+            // p is outside halfspace plane of tri
+            pointHit info = tria.nearestPoint(p);
 
-            minOutsideDistance = info.distance();
+            inside = false;
+
+            if (info.distance() < minOutsideDistance)
+            {
+                closestPt = info.point();
+
+                minOutsideDistance = info.distance();
+            }
         }
     }
 
-    if (((p - a_) & Sc()) >= 0)
+    // Side c
     {
-        // p is outside halfspace plane of tri
-        pointHit info = triangle<Point, PointRef>(a_, b_, d_).nearestPoint(p);
+        const triangle<Point, PointRef> tria(a_, b_, d_);
 
-        inside = false;
-
-        if (info.distance() < minOutsideDistance)
+        if (((p - a_) & tria.areaNormal()) >= 0)
         {
-            closestPt = info.rawPoint();
+            // p is outside halfspace plane of tri
+            pointHit info = tria.nearestPoint(p);
 
-            minOutsideDistance = info.distance();
+            inside = false;
+
+            if (info.distance() < minOutsideDistance)
+            {
+                closestPt = info.point();
+
+                minOutsideDistance = info.distance();
+            }
         }
     }
 
-    if (((p - a_) & Sd()) >= 0)
+    // Side c
     {
-        // p is outside halfspace plane of tri
-        pointHit info = triangle<Point, PointRef>(a_, c_, b_).nearestPoint(p);
+        const triangle<Point, PointRef> tria(a_, c_, b_);
 
-        inside = false;
-
-        if (info.distance() < minOutsideDistance)
+        if (((p - a_) & tria.areaNormal()) >= 0)
         {
-            closestPt = info.rawPoint();
+            // p is outside halfspace plane of tri
+            pointHit info = tria.nearestPoint(p);
 
-            minOutsideDistance = info.distance();
+            inside = false;
+
+            if (info.distance() < minOutsideDistance)
+            {
+                closestPt = info.point();
+
+                minOutsideDistance = info.distance();
+            }
         }
     }
 
@@ -401,13 +519,13 @@ inline Foam::pointHit Foam::tetrahedron<Point, PointRef>::nearestPoint
 
 
 template<class Point, class PointRef>
-bool Foam::tetrahedron<Point, PointRef>::inside(const point& pt) const
+bool Foam::tetrahedron<Point, PointRef>::inside(const point& p) const
 {
     // For robustness, assuming that the point is in the tet unless
     // "definitively" shown otherwise by obtaining a positive dot
-    // product greater than a tolerance of small.
+    // product greater than a tolerance of SMALL.
 
-    // The tet is defined: tet(Cc, tetBasePt, pA, pB) where the area
+    // The tet is defined: tet(Cc, tetBasePt, pA, pB) where the area normal
     // vectors and base points for the half-space planes are:
     // area[0] = Sa();
     // area[1] = Sb();
@@ -418,55 +536,41 @@ bool Foam::tetrahedron<Point, PointRef>::inside(const point& pt) const
     // planeBase[2] = tetBasePt = b_
     // planeBase[3] = tetBasePt = b_
 
-    vector n = Zero;
-
+    // Side a
     {
-        // 0, a
-        const point& basePt = b_;
+        const triangle<Point, PointRef> tria(b_, c_, d_);
 
-        n = Sa();
-        n /= (Foam::mag(n) + vSmall);
-
-        if (((pt - basePt) & n) > small)
+        if (((p - b_) & tria.unitNormal()) > SMALL)
         {
             return false;
         }
     }
 
+    // Side b
     {
-        // 1, b
-        const point& basePt = c_;
+        const triangle<Point, PointRef> tria(a_, d_, c_);
 
-        n = Sb();
-        n /= (Foam::mag(n) + vSmall);
-
-        if (((pt - basePt) & n) > small)
+        if (((p - a_) & tria.unitNormal()) > SMALL)
         {
             return false;
         }
     }
 
+    // Side c
     {
-        // 2, c
-        const point& basePt = b_;
+        const triangle<Point, PointRef> tria(a_, b_, d_);
 
-        n = Sc();
-        n /= (Foam::mag(n) + vSmall);
-
-        if (((pt - basePt) & n) > small)
+        if (((p - a_) & tria.unitNormal()) > SMALL)
         {
             return false;
         }
     }
 
+    // Side d
     {
-        // 3, d
-        const point& basePt = b_;
+        const triangle<Point, PointRef> tria(a_, c_, b_);
 
-        n = Sd();
-        n /= (Foam::mag(n) + vSmall);
-
-        if (((pt - basePt) & n) > small)
+        if (((p - a_) & tria.unitNormal()) > SMALL)
         {
             return false;
         }
@@ -477,14 +581,544 @@ bool Foam::tetrahedron<Point, PointRef>::inside(const point& pt) const
 
 
 template<class Point, class PointRef>
-Foam::boundBox Foam::tetrahedron<Point, PointRef>::bounds() const
+inline void Foam::tetrahedron<Point, PointRef>::dummyOp::operator()
+(
+    const tetPoints&
+)
+{}
+
+
+template<class Point, class PointRef>
+inline Foam::tetrahedron<Point, PointRef>::sumVolOp::sumVolOp()
+:
+    vol_(0.0)
+{}
+
+
+template<class Point, class PointRef>
+inline void Foam::tetrahedron<Point, PointRef>::sumVolOp::operator()
+(
+    const tetPoints& tet
+)
+{
+    vol_ += tet.tet().mag();
+}
+
+
+template<class Point, class PointRef>
+inline Foam::tetrahedron<Point, PointRef>::storeOp::storeOp
+(
+    tetIntersectionList& tets,
+    label& nTets
+)
+:
+    tets_(tets),
+    nTets_(nTets)
+{}
+
+
+template<class Point, class PointRef>
+inline void Foam::tetrahedron<Point, PointRef>::storeOp::operator()
+(
+    const tetPoints& tet
+)
+{
+    tets_[nTets_++] = tet;
+}
+
+
+template<class Point, class PointRef>
+inline Foam::point Foam::tetrahedron<Point, PointRef>::planeIntersection
+(
+    const FixedList<scalar, 4>& d,
+    const tetPoints& t,
+    const label negI,
+    const label posI
+)
 {
     return
-        boundBox
-        (
-            min(a(), min(b(), min(c(), d()))),
-            max(a(), max(b(), max(c(), d())))
-        );
+        (d[posI]*t[negI] - d[negI]*t[posI])
+      / (-d[negI]+d[posI]);
+}
+
+
+template<class Point, class PointRef>
+template<class TetOp>
+inline void Foam::tetrahedron<Point, PointRef>::decomposePrism
+(
+    const FixedList<point, 6>& points,
+    TetOp& op
+)
+{
+    op(tetPoints(points[1], points[3], points[2], points[0]));
+    op(tetPoints(points[1], points[2], points[3], points[4]));
+    op(tetPoints(points[4], points[2], points[3], points[5]));
+}
+
+
+template<class Point, class PointRef>
+template<class AboveTetOp, class BelowTetOp>
+inline void Foam::tetrahedron<Point, PointRef>::tetSliceWithPlane
+(
+    const plane& pln,
+    const tetPoints& tet,
+    AboveTetOp& aboveOp,
+    BelowTetOp& belowOp
+)
+{
+    // Distance to plane
+    FixedList<scalar, 4> d;
+    label nPos = 0;
+    forAll(tet, i)
+    {
+        d[i] = pln.signedDistance(tet[i]);
+        if (d[i] > 0)
+        {
+            ++nPos;
+        }
+    }
+
+    if (nPos == 4)
+    {
+        aboveOp(tet);
+    }
+    else if (nPos == 3)
+    {
+        // Sliced into below tet and above prism.
+        // Prism gets split into two tets.
+
+        // Find the below tet
+        label i0 = -1;
+        forAll(d, i)
+        {
+            if (d[i] <= 0)
+            {
+                i0 = i;
+                break;
+            }
+        }
+
+        label i1 = d.fcIndex(i0);
+        label i2 = d.fcIndex(i1);
+        label i3 = d.fcIndex(i2);
+
+        point p01(planeIntersection(d, tet, i0, i1));
+        point p02(planeIntersection(d, tet, i0, i2));
+        point p03(planeIntersection(d, tet, i0, i3));
+
+        // i0 = tetCell vertex 0: p01,p02,p03 outwards pointing triad
+        //          ,,         1 :     ,,     inwards pointing triad
+        //          ,,         2 :     ,,     outwards pointing triad
+        //          ,,         3 :     ,,     inwards pointing triad
+
+        //Pout<< "Split 3pos tet " << tet << " d:" << d << " into" << nl;
+
+        if (i0 == 0 || i0 == 2)
+        {
+            tetPoints t(tet[i0], p01, p02, p03);
+            //Pout<< "    belowtet:" << t << " around i0:" << i0 << endl;
+            //checkTet(t, "nPos 3, belowTet i0==0 or 2");
+            belowOp(t);
+
+            // Prism
+            FixedList<point, 6> p
+            (
+                {
+                    tet[i1],
+                    tet[i3],
+                    tet[i2],
+                    p01,
+                    p03,
+                    p02
+                }
+            );
+
+            //Pout<< "    aboveprism:" << p << endl;
+            decomposePrism(p, aboveOp);
+        }
+        else
+        {
+            tetPoints t(p01, p02, p03, tet[i0]);
+            //Pout<< "    belowtet:" << t << " around i0:" << i0 << endl;
+            //checkTet(t, "nPos 3, belowTet i0==1 or 3");
+            belowOp(t);
+
+            // Prism
+            FixedList<point, 6> p
+            (
+                {
+                    tet[i3],
+                    tet[i1],
+                    tet[i2],
+                    p03,
+                    p01,
+                    p02
+                }
+            );
+            //Pout<< "    aboveprism:" << p << endl;
+            decomposePrism(p, aboveOp);
+        }
+    }
+    else if (nPos == 2)
+    {
+        // Tet cut into two prisms. Determine the positive one.
+        label pos0 = -1;
+        label pos1 = -1;
+        forAll(d, i)
+        {
+            if (d[i] > 0)
+            {
+                if (pos0 == -1)
+                {
+                    pos0 = i;
+                }
+                else
+                {
+                    pos1 = i;
+                }
+            }
+        }
+
+        //Pout<< "Split 2pos tet " << tet << " d:" << d
+        //    << " around pos0:" << pos0 << " pos1:" << pos1
+        //    << " neg0:" << neg0 << " neg1:" << neg1 << " into" << nl;
+
+        const edge posEdge(pos0, pos1);
+
+        if (posEdge == edge(0, 1))
+        {
+            point p02(planeIntersection(d, tet, 0, 2));
+            point p03(planeIntersection(d, tet, 0, 3));
+            point p12(planeIntersection(d, tet, 1, 2));
+            point p13(planeIntersection(d, tet, 1, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[0],
+                        p02,
+                        p03,
+                        tet[1],
+                        p12,
+                        p13
+                    }
+                );
+
+                //Pout<< "    01 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[2],
+                        p02,
+                        p12,
+                        tet[3],
+                        p03,
+                        p13
+                    }
+                );
+
+                //Pout<< "    01 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else if (posEdge == edge(1, 2))
+        {
+            point p01(planeIntersection(d, tet, 0, 1));
+            point p13(planeIntersection(d, tet, 1, 3));
+            point p02(planeIntersection(d, tet, 0, 2));
+            point p23(planeIntersection(d, tet, 2, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[1],
+                        p01,
+                        p13,
+                        tet[2],
+                        p02,
+                        p23
+                    }
+                );
+
+                //Pout<< "    12 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[3],
+                        p23,
+                        p13,
+                        tet[0],
+                        p02,
+                        p01
+                    }
+                );
+
+                //Pout<< "    12 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else if (posEdge == edge(2, 0))
+        {
+            point p01(planeIntersection(d, tet, 0, 1));
+            point p03(planeIntersection(d, tet, 0, 3));
+            point p12(planeIntersection(d, tet, 1, 2));
+            point p23(planeIntersection(d, tet, 2, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[2],
+                        p12,
+                        p23,
+                        tet[0],
+                        p01,
+                        p03
+                    }
+                );
+
+                //Pout<< "    20 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[1],
+                        p12,
+                        p01,
+                        tet[3],
+                        p23,
+                        p03
+                    }
+                );
+
+                //Pout<< "    20 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else if (posEdge == edge(0, 3))
+        {
+            point p01(planeIntersection(d, tet, 0, 1));
+            point p02(planeIntersection(d, tet, 0, 2));
+            point p13(planeIntersection(d, tet, 1, 3));
+            point p23(planeIntersection(d, tet, 2, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[3],
+                        p23,
+                        p13,
+                        tet[0],
+                        p02,
+                        p01
+                    }
+                );
+
+                //Pout<< "    03 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[2],
+                        p23,
+                        p02,
+                        tet[1],
+                        p13,
+                        p01
+                    }
+                );
+
+                //Pout<< "    03 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else if (posEdge == edge(1, 3))
+        {
+            point p01(planeIntersection(d, tet, 0, 1));
+            point p12(planeIntersection(d, tet, 1, 2));
+            point p03(planeIntersection(d, tet, 0, 3));
+            point p23(planeIntersection(d, tet, 2, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[1],
+                        p12,
+                        p01,
+                        tet[3],
+                        p23,
+                        p03
+                    }
+                );
+
+                //Pout<< "    13 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[2],
+                        p12,
+                        p23,
+                        tet[0],
+                        p01,
+                        p03
+                    }
+                );
+
+                //Pout<< "    13 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else if (posEdge == edge(2, 3))
+        {
+            point p02(planeIntersection(d, tet, 0, 2));
+            point p12(planeIntersection(d, tet, 1, 2));
+            point p03(planeIntersection(d, tet, 0, 3));
+            point p13(planeIntersection(d, tet, 1, 3));
+            // Split the resulting prism
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[2],
+                        p02,
+                        p12,
+                        tet[3],
+                        p03,
+                        p13
+                    }
+                );
+
+                //Pout<< "    23 aboveprism:" << p << endl;
+                decomposePrism(p, aboveOp);
+            }
+            {
+                FixedList<point, 6> p
+                (
+                    {
+                        tet[0],
+                        p02,
+                        p03,
+                        tet[1],
+                        p12,
+                        p13
+                    }
+                );
+
+                //Pout<< "    23 belowprism:" << p << endl;
+                decomposePrism(p, belowOp);
+            }
+        }
+        else
+        {
+            FatalErrorInFunction
+                << "Missed edge:" << posEdge
+                << abort(FatalError);
+        }
+    }
+    else if (nPos == 1)
+    {
+        // Find the positive tet
+        label i0 = -1;
+        forAll(d, i)
+        {
+            if (d[i] > 0)
+            {
+                i0 = i;
+                break;
+            }
+        }
+
+        label i1 = d.fcIndex(i0);
+        label i2 = d.fcIndex(i1);
+        label i3 = d.fcIndex(i2);
+
+        point p01(planeIntersection(d, tet, i0, i1));
+        point p02(planeIntersection(d, tet, i0, i2));
+        point p03(planeIntersection(d, tet, i0, i3));
+
+        //Pout<< "Split 1pos tet " << tet << " d:" << d << " into" << nl;
+
+        if (i0 == 0 || i0 == 2)
+        {
+            tetPoints t(tet[i0], p01, p02, p03);
+            //Pout<< "    abovetet:" << t << " around i0:" << i0 << endl;
+            //checkTet(t, "nPos 1, aboveTets i0==0 or 2");
+            aboveOp(t);
+
+            // Prism
+            FixedList<point, 6> p
+            (
+                {
+                    tet[i1],
+                    tet[i3],
+                    tet[i2],
+                    p01,
+                    p03,
+                    p02
+                }
+            );
+
+            //Pout<< "    belowprism:" << p << endl;
+            decomposePrism(p, belowOp);
+        }
+        else
+        {
+            tetPoints t(p01, p02, p03, tet[i0]);
+            //Pout<< "    abovetet:" << t << " around i0:" << i0 << endl;
+            //checkTet(t, "nPos 1, aboveTets i0==1 or 3");
+            aboveOp(t);
+
+            // Prism
+            FixedList<point, 6> p
+            (
+                {
+                    tet[i3],
+                    tet[i1],
+                    tet[i2],
+                    p03,
+                    p01,
+                    p02
+                }
+            );
+
+            //Pout<< "    belowprism:" << p << endl;
+            decomposePrism(p, belowOp);
+        }
+    }
+    else    // nPos == 0
+    {
+        belowOp(tet);
+    }
+}
+
+
+template<class Point, class PointRef>
+template<class AboveTetOp, class BelowTetOp>
+inline void Foam::tetrahedron<Point, PointRef>::sliceWithPlane
+(
+    const plane& pl,
+    AboveTetOp& aboveOp,
+    BelowTetOp& belowOp
+) const
+{
+    tetSliceWithPlane(pl, tetPoints(a_, b_, c_, d_), aboveOp, belowOp);
 }
 
 
@@ -501,7 +1135,7 @@ inline Foam::Istream& Foam::operator>>
     is  >> t.a_ >> t.b_ >> t.c_ >> t.d_;
     is.readEnd("tetrahedron");
 
-    is.check("Istream& operator>>(Istream&, tetrahedron&)");
+    is.check(FUNCTION_NAME);
 
     return is;
 }
@@ -514,6 +1148,7 @@ inline Foam::Ostream& Foam::operator<<
     const tetrahedron<Point, PointRef>& t
 )
 {
+    // Format like FixedList
     os  << nl
         << token::BEGIN_LIST
         << t.a_ << token::SPACE

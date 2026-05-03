@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::LUST
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     LUST: Linear-upwind stabilised transport.
@@ -49,7 +54,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                            Class LUST Declaration
+                           Class LUST Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -57,6 +62,14 @@ class LUST
 :
     public linearUpwind<Type>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        LUST(const LUST&) = delete;
+
+        //- No copy assignment
+        void operator=(const LUST&) = delete;
+
 
 public:
 
@@ -87,16 +100,13 @@ public:
             linearUpwind<Type>(mesh, faceFlux, schemeData)
         {}
 
-        //- Disallow default bitwise copy construction
-        LUST(const LUST&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return
@@ -111,20 +121,14 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             return 0.25*linearUpwind<Type>::correction(vf);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const LUST&) = delete;
 };
 
 

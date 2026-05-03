@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,36 +28,23 @@ Class
     Foam::sigWriteNow
 
 Description
-    Signal handler to write when the writeNowSignal is sent.
-
-    writeNowSignal is set in etc/controlDict::OptimisationSwitches, e.g.
-    \verbatim
-    OptimisationSwitches
-    {
-        .
-        .
-        // Force dumping (at next timestep) upon signal (-1 to disable)
-        writeNowSignal              10; // SIGUSR1
-        .
-        .
-    }
-    \endverbatim
+    Signal handler to write once and continue.
+    The interrupt is defined by OptimisationSwitches::writeNowSignal
 
 SourceFiles
     sigWriteNow.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef sigWriteNow_H
-#define sigWriteNow_H
-
-#include <signal.h>
+#ifndef Foam_sigWriteNow_H
+#define Foam_sigWriteNow_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class Time;
 
 /*---------------------------------------------------------------------------*\
@@ -65,35 +55,29 @@ class sigWriteNow
 {
     // Private Data
 
-        //- Number of signal to use
+        //- Signal number to use
         static int signal_;
-
-        //- Pointer to Time
-        static Time* runTimePtr_;
-
-        //- Saved old signal trapping setting
-        static struct sigaction oldAction_;
 
 
     // Private Member Functions
 
+        //- Handler for caught signals
         static void sigHandler(int);
 
 
 public:
 
-    friend class sigStopAtWriteNow;
-
-    //- wip. Have setter have access to signal_
+    //- Allow setter access to signal_
     friend class addwriteNowSignalToOpt;
+
 
     // Constructors
 
-        //- Construct null
-        sigWriteNow();
+        //- Default construct
+        sigWriteNow() noexcept = default;
 
-        //- Construct from components
-        sigWriteNow(const bool verbose, Time& runTime);
+        //- Construct with Time reference
+        explicit sigWriteNow(Time& runTime, bool verbose=false);
 
 
     //- Destructor
@@ -102,11 +86,14 @@ public:
 
     // Member Functions
 
-        //- (re)set signal catcher
-        static void set(const bool verbose);
-
         //- Is active?
-        bool active() const;
+        static bool active() noexcept { return (signal_ > 0); }
+
+        //- The signal number being used
+        static int signalNumber() noexcept { return signal_; }
+
+        //- Set/reset signal handler
+        static void set(bool verbose=false);
 };
 
 

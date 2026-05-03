@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,8 +48,8 @@ See also
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef CompactSpatialTensor_H
-#define CompactSpatialTensor_H
+#ifndef Foam_CompactSpatialTensor_H
+#define Foam_CompactSpatialTensor_H
 
 #include "SpatialTensor.H"
 
@@ -56,7 +59,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class CompactSpatialTensor Declaration
+                     Class CompactSpatialTensor Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -69,8 +72,8 @@ public:
 
     // Constructors
 
-        //- Construct null
-        inline CompactSpatialTensor();
+        //- Default construct
+        CompactSpatialTensor() = default;
 
         inline CompactSpatialTensor(const Foam::zero);
 
@@ -92,8 +95,29 @@ public:
         );
 
         //- Construct from Istream
-        inline CompactSpatialTensor(Istream&);
+        inline explicit CompactSpatialTensor(Istream&);
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Data are contiguous if component type is contiguous
+template<class Cmpt>
+struct is_contiguous<CompactSpatialTensor<Cmpt>> : is_contiguous<Cmpt> {};
+
+//- Data are contiguous label if component type is label
+template<class Cmpt>
+struct is_contiguous_label<CompactSpatialTensor<Cmpt>>
+:
+    is_contiguous_label<Cmpt>
+{};
+
+//- Data are contiguous scalar if component type is scalar
+template<class Cmpt>
+struct is_contiguous_scalar<CompactSpatialTensor<Cmpt>>
+:
+    is_contiguous_scalar<Cmpt>
+{};
 
 
 template<class Cmpt>

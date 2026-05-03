@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,24 +27,23 @@ Class
     Foam::functionObjects::fvMeshFunctionObject
 
 Description
-    Specialisation of Foam::functionObject for an Foam::fvMesh, providing a
+    Specialization of Foam::functionObject for an Foam::fvMesh, providing a
     reference to the Foam::fvMesh.
 
     If the selected region is not an Foam::fvMesh a Foam::FatalError will be
     generated.
 
 See also
+    Foam::regionFunctionObject
     Foam::functionObject
-    Foam::functionObjects::objectRegistryFunctionObject
-    Foam::functionObjects::regionFunctionObject
 
 SourceFiles
     fvMeshFunctionObject.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvMeshFunctionObject_functionObject_H
-#define fvMeshFunctionObject_functionObject_H
+#ifndef functionObjects_fvMeshFunctionObject_H
+#define functionObjects_fvMeshFunctionObject_H
 
 #include "regionFunctionObject.H"
 
@@ -58,20 +59,28 @@ namespace functionObjects
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class fvMeshFunctionObject Declaration
+                     Class fvMeshFunctionObject Declaration
 \*---------------------------------------------------------------------------*/
 
 class fvMeshFunctionObject
 :
     public regionFunctionObject
 {
-
 protected:
 
-    // Protected Data
+    // Protected Member Data
 
         //- Reference to the fvMesh
         const fvMesh& mesh_;
+
+
+    // Protected Member Functions
+
+        //- No copy construct
+        fvMeshFunctionObject(const fvMeshFunctionObject&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvMeshFunctionObject&) = delete;
 
 
 public:
@@ -90,34 +99,18 @@ public:
             const dictionary& dict
         );
 
-        //- Construct from the region objectRegistry
+        //- Construct from the region objectRegistry and dictionary
         fvMeshFunctionObject
         (
             const word& name,
-            const objectRegistry& obr
+            const objectRegistry& obr,
+            const dictionary& dict
         );
-
-        //- Disallow default bitwise copy construction
-        fvMeshFunctionObject(const fvMeshFunctionObject&) = delete;
 
 
     //- Destructor
-    virtual ~fvMeshFunctionObject();
+    virtual ~fvMeshFunctionObject() = default;
 
-
-    // Member Functions
-
-        //- Return a reference to the mesh
-        const fvMesh& mesh() const
-        {
-            return mesh_;
-        }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvMeshFunctionObject&) = delete;
 };
 
 

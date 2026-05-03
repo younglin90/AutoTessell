@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class Callback Declaration
+                           Class Callback Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class CallbackType>
@@ -53,10 +55,16 @@ class Callback
 :
     public CallbackRegistry<CallbackType>::link
 {
-    // Private Data
+    // Private data
 
         //- CallbackRegistry reference
         CallbackRegistry<CallbackType>& cbr_;
+
+
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const Callback<CallbackType>&) = delete;
 
 
 public:
@@ -66,7 +74,7 @@ public:
         //- Construct and register with CallbackRegistry
         Callback(CallbackRegistry<CallbackType>&);
 
-        //- Copy constructor
+        //- Construct as copy
         Callback(const Callback<CallbackType>&);
 
 
@@ -74,7 +82,7 @@ public:
     virtual ~Callback();
 
 
-    // Member Functions
+    // Member functions
 
         // Registration
 
@@ -83,12 +91,6 @@ public:
 
             //- Check-out Callback from CallbackRegistry
             bool checkOut();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const Callback<CallbackType>&) = delete;
 };
 
 

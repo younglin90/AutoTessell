@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -49,7 +51,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class EulerD2dt2Scheme Declaration
+                       Class EulerD2dt2Scheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -57,6 +59,15 @@ class EulerD2dt2Scheme
 :
     public fv::d2dt2Scheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        EulerD2dt2Scheme(const EulerD2dt2Scheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const EulerD2dt2Scheme&) = delete;
+
+
 public:
 
     //- Runtime type information
@@ -77,9 +88,6 @@ public:
             d2dt2Scheme<Type>(mesh, is)
         {}
 
-        //- Disallow default bitwise copy construction
-        EulerD2dt2Scheme(const EulerD2dt2Scheme&) = delete;
-
 
     // Member Functions
 
@@ -89,39 +97,33 @@ public:
             return fv::d2dt2Scheme<Type>::mesh();
         }
 
-        tmp<VolField<Type>> fvcD2dt2
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcD2dt2
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
-        tmp<VolField<Type>> fvcD2dt2
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcD2dt2
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         tmp<fvMatrix<Type>> fvmD2dt2
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         tmp<fvMatrix<Type>> fvmD2dt2
         (
             const dimensionedScalar&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         tmp<fvMatrix<Type>> fvmD2dt2
         (
             const volScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const EulerD2dt2Scheme&) = delete;
 };
 
 

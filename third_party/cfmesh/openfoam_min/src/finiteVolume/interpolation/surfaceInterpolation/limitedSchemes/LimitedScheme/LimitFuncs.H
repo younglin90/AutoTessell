@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,11 +36,11 @@ Class
 Description
     Class to create NVD/TVD limited weighting-factors.
 
-    The particular interpolation scheme class is supplied as a template
+    The particular differencing scheme class is supplied as a template
     argument, the weight function of which is called by the weight function
     of this class for the internal faces as well as faces of coupled
     patches (e.g. processor-processor patches). The weight function is
-    supplied the centred interpolation weighting factor, the face-flux, the
+    supplied the central-differencing weighting factor, the face-flux, the
     cell and face gradients (from which the normalised variable
     distribution may be created) and the cell centre distance.
 
@@ -71,9 +73,9 @@ public:
     null()
     {}
 
-    inline tmp<VolField<Type>> operator()
+    inline tmp<GeometricField<Type, fvPatchField, volMesh>> operator()
     (
-        const VolField<Type>& phi
+        const GeometricField<Type, fvPatchField, volMesh>& phi
     ) const
     {
         return phi;
@@ -91,7 +93,7 @@ public:
 
     inline tmp<volScalarField> operator()
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     ) const;
 };
 
@@ -124,7 +126,7 @@ public:
 
     inline tmp<volScalarField> operator()
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     ) const;
 };
 

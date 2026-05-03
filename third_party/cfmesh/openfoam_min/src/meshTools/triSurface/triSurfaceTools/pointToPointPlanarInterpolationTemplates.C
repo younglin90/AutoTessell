@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +31,8 @@ License
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::Field<Type>> Foam::pointToPointPlanarInterpolation::interpolate
+Foam::tmp<Foam::Field<Type>>
+Foam::pointToPointPlanarInterpolation::interpolate
 (
     const Field<Type>& sourceFld
 ) const
@@ -41,38 +45,54 @@ Foam::tmp<Foam::Field<Type>> Foam::pointToPointPlanarInterpolation::interpolate
             << exit(FatalError);
     }
 
-    tmp<Field<Type>> tfld(new Field<Type>(nearestVertex_.size()));
-    Field<Type>& fld = tfld.ref();
+    auto tfld = tmp<Field<Type>>::New(nearestVertex_.size());
+    auto& fld = tfld.ref();
 
     forAll(fld, i)
     {
         const FixedList<label, 3>& verts = nearestVertex_[i];
         const FixedList<scalar, 3>& w = nearestVertexWeight_[i];
 
-        if (verts[2] == -1)
+        if (verts[1] == -1)
         {
-            if (verts[1] == -1)
-            {
-                // Use vertex0 only
-                fld[i] = sourceFld[verts[0]];
-            }
-            else
-            {
-                // Use vertex 0,1
-                fld[i] =
-                    w[0]*sourceFld[verts[0]]
-                  + w[1]*sourceFld[verts[1]];
-            }
+            // Use vertex (0) only
+            fld[i] = sourceFld[verts[0]];
+        }
+        else if (verts[2] == -1)
+        {
+            // Use vertex (0,1)
+            fld[i] =
+            (
+                w[0]*sourceFld[verts[0]]
+              + w[1]*sourceFld[verts[1]]
+            );
         }
         else
         {
+            // Use vertex (0,1,2)
             fld[i] =
+            (
                 w[0]*sourceFld[verts[0]]
               + w[1]*sourceFld[verts[1]]
-              + w[2]*sourceFld[verts[2]];
+              + w[2]*sourceFld[verts[2]]
+            );
         }
     }
     return tfld;
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>>
+Foam::pointToPointPlanarInterpolation::interpolate
+(
+    const tmp<Field<Type>>& tsource
+) const
+{
+    tmp<Field<Type>> tresult = this->interpolate(tsource());
+    tsource.clear();
+
+    return tresult;
 }
 
 

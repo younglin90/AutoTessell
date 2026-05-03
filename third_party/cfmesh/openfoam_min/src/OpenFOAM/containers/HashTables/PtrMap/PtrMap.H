@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ See also
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PtrMap_H
-#define PtrMap_H
+#ifndef Foam_PtrMap_H
+#define Foam_PtrMap_H
 
 #include "HashPtrTable.H"
 
@@ -51,12 +54,64 @@ class PtrMap
 :
     public HashPtrTable<T, label, Hash<label>>
 {
-
 public:
+
+    //- The template instance used for this PtrMap
+    typedef PtrMap<T> this_type;
+
+    //- The template instance used for the parent HashTable
+    typedef HashPtrTable<T, label, Hash<label>> parent_type;
+
 
     // Constructors
 
-        using HashPtrTable<T, label, Hash<label>>::HashPtrTable;
+        //- Default construct: empty without allocation (capacity=0)
+        PtrMap() noexcept = default;
+
+        //- Construct empty without allocation (capacity=0)
+        explicit PtrMap(const Foam::zero) noexcept
+        :
+            parent_type(Foam::zero{})
+        {}
+
+        //- Construct empty with given initial table capacity
+        explicit PtrMap(const label initialCapacity)
+        :
+            parent_type(initialCapacity)
+        {}
+
+        //- Construct from Istream (with default initial table capacity)
+        PtrMap(Istream& is)
+        :
+            parent_type(is)
+        {}
+
+        //- Copy construct
+        PtrMap(const this_type& map)
+        :
+            parent_type(map)
+        {}
+
+        //- Move construct
+        PtrMap(this_type&& map) noexcept
+        :
+            parent_type(std::move(map))
+        {}
+
+
+    // Member Operators
+
+        //- Copy assignment
+        void operator=(const this_type& rhs)
+        {
+            parent_type::operator=(rhs);
+        }
+
+        //- Move assignment
+        void operator=(this_type&& rhs)
+        {
+            parent_type::operator=(std::move(rhs));
+        }
 };
 
 

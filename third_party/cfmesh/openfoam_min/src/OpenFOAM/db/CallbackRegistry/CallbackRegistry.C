@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,7 +43,7 @@ Foam::CallbackRegistry<CallbackType>::CallbackRegistry()
 template<class CallbackType>
 Foam::CallbackRegistry<CallbackType>::~CallbackRegistry()
 {
-    forAllIter(typename CallbackRegistry<CallbackType>, *this, iter)
+    forAllIters(*this, iter)
     {
         iter().Callback<CallbackType>::checkOut();
     }

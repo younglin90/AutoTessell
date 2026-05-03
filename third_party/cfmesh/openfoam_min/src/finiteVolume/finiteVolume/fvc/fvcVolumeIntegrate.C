@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ template<class Type>
 tmp<Field<Type>>
 volumeIntegrate
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return vf.mesh().V()*vf.primitiveField();
@@ -54,7 +56,7 @@ template<class Type>
 tmp<Field<Type>>
 volumeIntegrate
 (
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
     tmp<Field<Type>> tvivf = tvf().mesh().V()*tvf().primitiveField();
@@ -64,17 +66,17 @@ volumeIntegrate
 
 
 template<class Type>
-tmp<Field<Type>> volumeIntegrate(const DimensionedField<Type, fvMesh>& df)
+tmp<Field<Type>> volumeIntegrate(const DimensionedField<Type, volMesh>& df)
 {
-    return df.mesh().V()*df.primitiveField();
+    return df.mesh().V()*df.field();
 }
 
 
 template<class Type>
 tmp<Field<Type>>
-volumeIntegrate(const tmp<DimensionedField<Type, fvMesh>>& tdf)
+volumeIntegrate(const tmp<DimensionedField<Type, volMesh>>& tdf)
 {
-    tmp<Field<Type>> tdidf = tdf().mesh().V()*tdf().primitiveField();
+    tmp<Field<Type>> tdidf = tdf().mesh().V()*tdf().field();
     tdf.clear();
     return tdidf;
 }
@@ -84,13 +86,13 @@ template<class Type>
 dimensioned<Type>
 domainIntegrate
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return dimensioned<Type>
     (
         "domainIntegrate(" + vf.name() + ')',
-        dimVolume*vf.dimensions(),
+        dimVol*vf.dimensions(),
         gSum(fvc::volumeIntegrate(vf))
     );
 }
@@ -99,7 +101,7 @@ domainIntegrate
 template<class Type>
 dimensioned<Type> domainIntegrate
 (
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
     dimensioned<Type> integral = domainIntegrate(tvf());
@@ -111,13 +113,13 @@ dimensioned<Type> domainIntegrate
 template<class Type>
 dimensioned<Type> domainIntegrate
 (
-    const DimensionedField<Type, fvMesh>& df
+    const DimensionedField<Type, volMesh>& df
 )
 {
     return dimensioned<Type>
     (
         "domainIntegrate(" + df.name() + ')',
-        dimVolume*df.dimensions(),
+        dimVol*df.dimensions(),
         gSum(fvc::volumeIntegrate(df))
     );
 }
@@ -126,7 +128,7 @@ dimensioned<Type> domainIntegrate
 template<class Type>
 dimensioned<Type> domainIntegrate
 (
-    const tmp<DimensionedField<Type, fvMesh>>& tdf
+    const tmp<DimensionedField<Type, volMesh>>& tdf
 )
 {
     dimensioned<Type> integral = domainIntegrate(tdf());

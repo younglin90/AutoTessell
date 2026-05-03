@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::fv::LeastSquaresGrad
+
+Group
+    grpFvGradSchemes
 
 Description
     Gradient calculated using weighted least-squares on an arbitrary stencil.
@@ -89,6 +95,15 @@ class LeastSquaresGrad
         scalar minDet_;
 
 
+    // Private Member Functions
+
+        //- No copy construct
+        LeastSquaresGrad(const LeastSquaresGrad&) = delete;
+
+        //- No copy assignment
+        void operator=(const LeastSquaresGrad&) = delete;
+
+
 public:
 
     //- Runtime type information
@@ -103,26 +118,20 @@ public:
             gradScheme<Type>(mesh)
         {}
 
-        //- Disallow default bitwise copy construction
-        LeastSquaresGrad(const LeastSquaresGrad&) = delete;
-
 
     // Member Functions
 
         //- Return the gradient of the given field to the gradScheme::grad
-        //  for optional caching
-        virtual tmp<VolField<typename outerProduct<vector, Type>::type>>
-        calcGrad
+        //- for optional caching
+        virtual tmp
+        <
+            GeometricField
+            <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > calcGrad
         (
-            const VolField<Type>& vsf,
+            const GeometricField<Type, fvPatchField, volMesh>& vsf,
             const word& name
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const LeastSquaresGrad&) = delete;
 };
 
 

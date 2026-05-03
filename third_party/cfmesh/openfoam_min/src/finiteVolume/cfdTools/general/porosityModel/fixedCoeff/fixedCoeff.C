@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,6 +29,7 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "fixedCoeff.H"
 #include "fvMatrices.H"
+#include "pointIndList.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -50,17 +54,23 @@ void Foam::porosityModels::fixedCoeff::apply
     const scalar rho
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
-    forAll(cells, i)
+    forAll(cellZoneIDs_, zoneI)
     {
-        const label celli = cells[i];
-        const label j = fieldIndex(i);
-        const tensor Cd = rho*(alpha_[j] + beta_[j]*mag(U[celli]));
-        const scalar isoCd = tr(Cd);
+        const tensorField& alphaZones = alpha_[zoneI];
+        const tensorField& betaZones = beta_[zoneI];
 
-        Udiag[celli] += V[celli]*isoCd;
-        Usource[celli] -= V[celli]*((Cd - I*isoCd) & U[celli]);
+        const labelList& cells = mesh_.cellZones()[cellZoneIDs_[zoneI]];
+
+        forAll(cells, i)
+        {
+            const label celli = cells[i];
+            const label j = fieldIndex(i);
+            const tensor Cd = rho*(alphaZones[j] + betaZones[j]*mag(U[celli]));
+            const scalar isoCd = tr(Cd);
+
+            Udiag[celli] += V[celli]*isoCd;
+            Usource[celli] -= V[celli]*((Cd - I*isoCd) & U[celli]);
+        }
     }
 }
 
@@ -72,16 +82,22 @@ void Foam::porosityModels::fixedCoeff::apply
     const scalar rho
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
-    forAll(cells, i)
+    forAll(cellZoneIDs_, zoneI)
     {
-        const label celli = cells[i];
-        const label j = fieldIndex(i);
-        const tensor alpha = alpha_[j];
-        const tensor beta = beta_[j];
+        const tensorField& alphaZones = alpha_[zoneI];
+        const tensorField& betaZones = beta_[zoneI];
 
-        AU[celli] += rho*(alpha + beta*mag(U[celli]));
+        const labelList& cells = mesh_.cellZones()[cellZoneIDs_[zoneI]];
+
+        forAll(cells, i)
+        {
+            const label celli = cells[i];
+            const label j = fieldIndex(i);
+            const tensor alpha = alphaZones[j];
+            const tensor beta = betaZones[j];
+
+            AU[celli] += rho*(alpha + beta*mag(U[celli]));
+        }
     }
 }
 
@@ -91,17 +107,17 @@ void Foam::porosityModels::fixedCoeff::apply
 Foam::porosityModels::fixedCoeff::fixedCoeff
 (
     const word& name,
+    const word& modelType,
     const fvMesh& mesh,
     const dictionary& dict,
-    const dictionary& coeffDict,
-    const word& cellZoneName
+    const wordRe& cellZoneName
 )
 :
-    porosityModel(name, mesh, dict, coeffDict, cellZoneName),
-    alphaXYZ_("alpha", dimless/dimTime, coeffDict),
-    betaXYZ_("beta", dimless/dimLength, coeffDict),
-    rhoRefFound_(coeffDict.found("rhoRef")),
-    rhoRef_(coeffDict.lookupOrDefault<scalar>("rhoRef", 1.0))
+    porosityModel(name, modelType, mesh, dict, cellZoneName),
+    alphaXYZ_("alpha", dimless/dimTime, coeffs_),
+    betaXYZ_("beta", dimless/dimLength, coeffs_),
+    alpha_(cellZoneIDs_.size()),
+    beta_(cellZoneIDs_.size())
 {
     adjustNegativeResistance(alphaXYZ_);
     adjustNegativeResistance(betaXYZ_);
@@ -110,60 +126,46 @@ Foam::porosityModels::fixedCoeff::fixedCoeff
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::porosityModels::fixedCoeff::~fixedCoeff()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::porosityModels::fixedCoeff::calcTransformModelData()
 {
-    if (coordSys_.R().uniform())
+    // The alpha coefficient as a tensor
+    tensor alphaCoeff(Zero);
+    alphaCoeff.xx() = alphaXYZ_.value().x();
+    alphaCoeff.yy() = alphaXYZ_.value().y();
+    alphaCoeff.zz() = alphaXYZ_.value().z();
+
+    // The beta coefficient as a tensor
+    tensor betaCoeff(Zero);
+    betaCoeff.xx() = betaXYZ_.value().x();
+    betaCoeff.yy() = betaXYZ_.value().y();
+    betaCoeff.zz() = betaXYZ_.value().z();
+
+    if (csys().uniform())
     {
-        alpha_.setSize(1);
-        beta_.setSize(1);
+        forAll(cellZoneIDs_, zonei)
+        {
+            alpha_[zonei].resize(1);
+            beta_[zonei].resize(1);
 
-        alpha_[0] = Zero;
-        alpha_[0].xx() = alphaXYZ_.value().x();
-        alpha_[0].yy() = alphaXYZ_.value().y();
-        alpha_[0].zz() = alphaXYZ_.value().z();
-        alpha_[0] = coordSys_.R().transform(Zero, alpha_[0]);
-
-        beta_[0] = Zero;
-        beta_[0].xx() = betaXYZ_.value().x();
-        beta_[0].yy() = betaXYZ_.value().y();
-        beta_[0].zz() = betaXYZ_.value().z();
-        beta_[0] = coordSys_.R().transform(Zero, beta_[0]);
+            alpha_[zonei] = csys().transform(alphaCoeff);
+            beta_[zonei] = csys().transform(betaCoeff);
+        }
     }
     else
     {
-        const labelList& cells = mesh_.cellZones()[zoneName_];
-
-        alpha_.setSize(cells.size());
-        beta_.setSize(cells.size());
-
-        forAll(cells, i)
+        forAll(cellZoneIDs_, zonei)
         {
-            alpha_[i] = Zero;
-            alpha_[i].xx() = alphaXYZ_.value().x();
-            alpha_[i].yy() = alphaXYZ_.value().y();
-            alpha_[i].zz() = alphaXYZ_.value().z();
+            const pointUIndList cc
+            (
+                mesh_.cellCentres(),
+                mesh_.cellZones()[cellZoneIDs_[zonei]]
+            );
 
-            beta_[i] = Zero;
-            beta_[i].xx() = betaXYZ_.value().x();
-            beta_[i].yy() = betaXYZ_.value().y();
-            beta_[i].zz() = betaXYZ_.value().z();
+            alpha_[zonei] = csys().transform(cc, alphaCoeff);
+            beta_[zonei] = csys().transform(cc, betaCoeff);
         }
-
-        const coordinateRotation& R = coordSys_.R
-        (
-            UIndirectList<vector>(mesh_.C(), cells)()
-        );
-
-        alpha_ = R.transform(alpha_);
-        beta_ = R.transform(beta_);
     }
 }
 
@@ -176,17 +178,12 @@ void Foam::porosityModels::fixedCoeff::calcForce
     vectorField& force
 ) const
 {
-    scalarField Udiag(U.size(), 0.0);
+    scalarField Udiag(U.size(), Zero);
     vectorField Usource(U.size(), Zero);
     const scalarField& V = mesh_.V();
+    const scalar rhoRef = coeffs_.get<scalar>("rhoRef");
 
-    if (!rhoRefFound_)
-    {
-        FatalErrorInFunction
-            << "rhoRef not specified" << exit(FatalError);
-    }
-
-    apply(Udiag, Usource, V, U, rhoRef_);
+    apply(Udiag, Usource, V, U, rhoRef);
 
     force = Udiag*U - Usource;
 }
@@ -202,13 +199,35 @@ void Foam::porosityModels::fixedCoeff::correct
     scalarField& Udiag = UEqn.diag();
     vectorField& Usource = UEqn.source();
 
-    if (UEqn.dimensions() == dimForce && !rhoRefFound_)
+    scalar rho = 1.0;
+    if (UEqn.dimensions() == dimForce)
     {
-        FatalErrorInFunction
-            << "rhoRef not specified" << exit(FatalError);
+        coeffs_.readEntry("rhoRef", rho);
     }
 
-    apply(Udiag, Usource, V, U, rhoRef_);
+    apply(Udiag, Usource, V, U, rho);
+}
+
+
+void Foam::porosityModels::fixedCoeff::correct
+(
+    fvVectorMatrix& UEqn,
+    const volScalarField&,
+    const volScalarField&
+) const
+{
+    const vectorField& U = UEqn.psi();
+    const scalarField& V = mesh_.V();
+    scalarField& Udiag = UEqn.diag();
+    vectorField& Usource = UEqn.source();
+
+    scalar rho = 1.0;
+    if (UEqn.dimensions() == dimForce)
+    {
+        coeffs_.readEntry("rhoRef", rho);
+    }
+
+    apply(Udiag, Usource, V, U, rho);
 }
 
 
@@ -220,13 +239,21 @@ void Foam::porosityModels::fixedCoeff::correct
 {
     const vectorField& U = UEqn.psi();
 
-    if (UEqn.dimensions() == dimForce && !rhoRefFound_)
+    scalar rho = 1.0;
+    if (UEqn.dimensions() == dimForce)
     {
-        FatalErrorInFunction
-            << "rhoRef not specified" << exit(FatalError);
+        coeffs_.readEntry("rhoRef", rho);
     }
 
-    apply(AU, U, rhoRef_);
+    apply(AU, U, rho);
+}
+
+
+bool Foam::porosityModels::fixedCoeff::writeData(Ostream& os) const
+{
+    dict_.writeEntry(name_, os);
+
+    return true;
 }
 
 

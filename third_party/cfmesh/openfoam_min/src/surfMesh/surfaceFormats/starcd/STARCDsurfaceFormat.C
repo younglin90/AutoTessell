@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "STARCDsurfaceFormat.H"
 #include "ListOps.H"
-#include "polygonTriangulate.H"
+#include "faceTraits.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -38,25 +41,25 @@ inline void Foam::fileFormats::STARCDsurfaceFormat<Face>::writeShell
     const label cellTableId
 )
 {
-    os  << cellId                    // includes 1 offset
-        << ' ' << starcdShellShape_  // 3(shell) shape
+    os  << (cellId + 1)
+        << ' ' << starcdShell       // 3(shell) shape
         << ' ' << f.size()
-        << ' ' << cellTableId
-        << ' ' << starcdShellType_;  // 4(shell)
+        << ' ' << (cellTableId + 1)
+        << ' ' << starcdShellType;  // 4(shell)
 
-    // primitives have <= 8 vertices, but prevent overrun anyhow
+    // Primitives have <= 8 vertices, but prevent overrun anyhow
     // indent following lines for ease of reading
     label count = 0;
-    forAll(f, fp)
+    for (const label pointi : f)
     {
         if ((count % 8) == 0)
         {
-            os  << nl << "  " << cellId;
+            os  << nl << "  " << (cellId + 1);
         }
-        os  << ' ' << f[fp] + 1;
-        count++;
+        os  << ' ' << (pointi + 1);
+        ++count;
     }
-    os  << endl;
+    os  << nl;
 }
 
 
@@ -80,155 +83,172 @@ bool Foam::fileFormats::STARCDsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
-    const bool mustTriangulate = this->isTri();
+    // Clear everything
     this->clear();
 
-    fileName baseName = filename.lessExt();
+    const fileName prefix(filename.lessExt());
 
-    // read cellTable names (if possible)
-    Map<word> cellTableLookup;
-
-    {
-        IFstream is(baseName + ".inp");
-        if (is.good())
-        {
-            cellTableLookup = readInpCellTable(is);
-        }
-    }
+    // Read cellTable names (if possible)
+    Map<word> cellTableLookup = readInpCellTable
+    (
+        IFstream(starFileName(prefix, STARCDCore::INP_FILE))()
+    );
 
 
-    // STAR-CD index of points
+    // STARCD index of points
     List<label> pointId;
 
     // read points from .vrt file
     readPoints
     (
-        IFstream(baseName + ".vrt")(),
+        IFstream(starFileName(prefix, STARCDCore::VRT_FILE))(),
         this->storedPoints(),
         pointId
     );
 
-    // Build inverse mapping (STAR-CD pointId -> index)
-    Map<label> mapPointId(2*pointId.size());
-    forAll(pointId, i)
-    {
-        mapPointId.insert(pointId[i], i);
-    }
+    // Build inverse mapping (STARCD pointId -> index)
+    Map<label> mapPointId(invertToMap(pointId));
     pointId.clear();
 
-    //
-    // read .cel file
+
+    // Read .cel file
     // ~~~~~~~~~~~~~~
-    IFstream is(baseName + ".cel");
+    IFstream is(starFileName(prefix, STARCDCore::CEL_FILE));
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << is.name()
+            << "Cannot read file " << is.name() << nl
             << exit(FatalError);
     }
 
-    readHeader(is, "PROSTAR_CELL");
+    readHeader(is, STARCDCore::HEADER_CEL);
 
-    // Create a triangulation engine
-    polygonTriangulate triEngine;
-
+    DynamicList<label> dynElemId;  // STARCD element id (1-based)
     DynamicList<Face>  dynFaces;
+
     DynamicList<label> dynZones;
     DynamicList<word>  dynNames;
     DynamicList<label> dynSizes;
     Map<label> lookup;
 
-    // assume the cellTableIds are not intermixed
+    // Assume the cellTableIds are not intermixed
     bool sorted = true;
-    label zoneI = 0;
+    label zoneId = 0;
 
-    label lineLabel, shapeId, nLabels, cellTableId, typeId;
+    // Element id gets trashed with decompose into a triangle!
+    bool ignoreElemId = false;
+
+    label ignoredLabel, shapeId, nLabels, cellTableId, typeId;
     DynamicList<label> vertexLabels(64);
 
-    while ((is >> lineLabel).good())
+    token tok;
+
+    while (is.read(tok).good() && tok.isLabel())
     {
-        is >> shapeId >> nLabels >> cellTableId >> typeId;
+        // First token is the element id (1-based)
+        label elemId = tok.labelToken();
+
+        is  >> shapeId
+            >> nLabels
+            >> cellTableId
+            >> typeId;
 
         vertexLabels.clear();
         vertexLabels.reserve(nLabels);
 
-        // read indices - max 8 per line
+        // Read indices - max 8 per line
         for (label i = 0; i < nLabels; ++i)
         {
             label vrtId;
             if ((i % 8) == 0)
             {
-               is >> lineLabel;
+                is >> ignoredLabel; // Skip cellId for continuation lines
             }
             is >> vrtId;
 
-            // convert original vertex id to point label
+            // Convert original vertex id to point label
             vertexLabels.append(mapPointId[vrtId]);
         }
 
-        if (typeId == starcdShellType_)
+        if (typeId == starcdShellType)
         {
-            // Convert groupID into zoneID
-            Map<label>::const_iterator fnd = lookup.find(cellTableId);
-            if (fnd != lookup.end())
+            // Convert cellTableId to zoneId
+            const auto iterGroup = lookup.cfind(cellTableId);
+            if (iterGroup.good())
             {
-                if (zoneI != fnd())
+                if (zoneId != *iterGroup)
                 {
                     // cellTableIds are intermixed
                     sorted = false;
                 }
-                zoneI = fnd();
+                zoneId = *iterGroup;
             }
             else
             {
-                zoneI = dynSizes.size();
-                lookup.insert(cellTableId, zoneI);
+                zoneId = dynSizes.size();
+                lookup.insert(cellTableId, zoneId);
 
-                Map<word>::const_iterator tableNameIter =
-                    cellTableLookup.find(cellTableId);
+                const auto iterTableName = cellTableLookup.cfind(cellTableId);
 
-                if (tableNameIter == cellTableLookup.end())
+                if (iterTableName.good())
                 {
-                    dynNames.append
-                    (
-                        word("cellTable_") + ::Foam::name(cellTableId)
-                    );
+                    dynNames.append(*iterTableName);
                 }
                 else
                 {
-                    dynNames.append(tableNameIter());
+                    dynNames.append("cellTable_" + ::Foam::name(cellTableId));
                 }
 
                 dynSizes.append(0);
             }
 
             SubList<label> vertices(vertexLabels, vertexLabels.size());
-            if (mustTriangulate && nLabels > 3)
+            if (faceTraits<Face>::isTri() && nLabels > 3)
             {
-                triEngine.triangulate
-                (
-                    UIndirectList<point>(this->points(), vertices)
-                );
+                // The face needs triangulation
+                ignoreElemId = true;
+                dynElemId.clear();
 
-                forAll(triEngine.triPoints(), trii)
+                face f(vertices);
+
+                faceList trias(f.nTriangles());
+                label nTri = 0;
+                f.triangles(this->points(), nTri, trias);
+
+                for (const face& tri : trias)
                 {
-                    dynFaces.append(triEngine.triPoints(trii, vertices));
+                    // A triangular 'face', convert to 'triFace' etc
+                    dynFaces.append(Face(tri));
+                    dynZones.append(zoneId);
+                    dynSizes[zoneId]++;
                 }
             }
-            else
+            else if (nLabels >= 3)
             {
+                --elemId;   // Convert 1-based -> 0-based
+                dynElemId.append(elemId);
+
                 dynFaces.append(Face(vertices));
-                dynZones.append(zoneI);
-                dynSizes[zoneI]++;
+                dynZones.append(zoneId);
+                dynSizes[zoneId]++;
             }
         }
     }
     mapPointId.clear();
 
-    this->sortFacesAndStore(move(dynFaces), move(dynZones), sorted);
 
-    // add zones, culling empty ones
-    this->addZones(dynSizes, dynNames, true);
+    if (ignoreElemId)
+    {
+        dynElemId.clear();
+    }
+
+
+    this->sortFacesAndStore(dynFaces, dynZones, dynElemId, sorted);
+
+    // Add zones (retaining empty ones)
+    this->addZones(dynSizes, dynNames);
+    this->addZonesToFaces(); // for labelledTri
+
     return true;
 }
 
@@ -237,14 +257,20 @@ template<class Face>
 void Foam::fileFormats::STARCDsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
 
-    const List<surfZone>& zones =
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&  faceLst  = surf.surfFaces();
+    const UList<label>& faceMap  = surf.faceMap();
+    const UList<label>& elemIds  = surf.faceIds();
+
+    const surfZoneList zones =
     (
         surf.surfZones().empty()
       ? surfaceFormatsCore::oneZone(faceLst)
@@ -253,44 +279,64 @@ void Foam::fileFormats::STARCDsurfaceFormat<Face>::write
 
     const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
 
+    // Possible to use faceIds?
+    // - cannot if there are negative ids (eg, encoded solid/side)
+    const bool useOrigFaceIds =
+    (
+        !useFaceMap
+     && elemIds.size() == faceLst.size()
+     && !ListOps::found(elemIds, lessOp1<label>(0))
+    );
 
-    fileName baseName = filename.lessExt();
 
-    writePoints(OFstream(baseName + ".vrt")(), pointLst);
-    OFstream os(baseName + ".cel");
-    writeHeader(os, "CELL");
+    const fileName prefix(filename.lessExt());
 
-    label faceIndex = 0;
-    forAll(zones, zoneI)
+    // The .vrt file
     {
-        const surfZone& zone = zones[zoneI];
-
-        if (useFaceMap)
-        {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceMap[faceIndex++]];
-                writeShell(os, f, faceIndex, zoneI + 1);
-            }
-        }
-        else
-        {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceIndex++];
-                writeShell(os, f, faceIndex, zoneI + 1);
-            }
-        }
+        OFstream os(starFileName(prefix, STARCDCore::VRT_FILE), streamOpt);
+        writePoints(os, pointLst);
     }
 
-    // write simple .inp file
-    writeCase
-    (
-        OFstream(baseName + ".inp")(),
-        pointLst,
-        faceLst.size(),
-        zones
-    );
+    // The .cel file
+    OFstream os(starFileName(prefix, STARCDCore::CEL_FILE), streamOpt);
+    writeHeader(os, STARCDCore::HEADER_CEL);
+
+    label faceIndex = 0;
+    label zoneIndex = 0;
+    label elemId = 0;
+    for (const surfZone& zone : zones)
+    {
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
+        {
+            const label facei =
+                (useFaceMap ? faceMap[faceIndex] : faceIndex);
+
+            const Face& f = faceLst[facei];
+
+            if (useOrigFaceIds)
+            {
+                elemId = elemIds[facei];
+            }
+
+            writeShell(os, f, elemId, zoneIndex);
+            ++elemId;
+        }
+
+        ++zoneIndex;
+    }
+
+    // Simple .inp file - always UNCOMPRESSED
+    {
+        OFstream os(starFileName(prefix, STARCDCore::INP_FILE));
+
+        writeCase
+        (
+            os,
+            pointLst,
+            faceLst.size(),
+            zones
+        );
+    }
 }
 
 

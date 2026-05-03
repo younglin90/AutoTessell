@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,17 +36,23 @@ License
 template<class Type, class Limiter, template<class> class LimitFunc>
 void Foam::LimitedScheme<Type, Limiter, LimitFunc>::calcLimiter
 (
-    const VolField<Type>& phi,
+    const GeometricField<Type, fvPatchField, volMesh>& phi,
     surfaceScalarField& limiterField
 ) const
 {
+    typedef GeometricField<typename Limiter::phiType, fvPatchField, volMesh>
+        VolFieldType;
+
+    typedef GeometricField<typename Limiter::gradPhiType, fvPatchField, volMesh>
+        GradVolFieldType;
+
     const fvMesh& mesh = this->mesh();
 
-    tmp<VolField<typename Limiter::phiType>> tlPhi = LimitFunc<Type>()(phi);
-    const VolField<typename Limiter::phiType>& lPhi = tlPhi();
+    tmp<VolFieldType> tlPhi = LimitFunc<Type>()(phi);
+    const VolFieldType& lPhi = tlPhi();
 
-    tmp<VolField<typename Limiter::gradPhiType>> tgradc(fvc::grad(lPhi));
-    const VolField<typename Limiter::gradPhiType>& gradc = tgradc();
+    tmp<GradVolFieldType> tgradc(fvc::grad(lPhi));
+    const GradVolFieldType& gradc = tgradc();
 
     const surfaceScalarField& CDweights = mesh.surfaceInterpolation::weights();
 
@@ -71,17 +80,13 @@ void Foam::LimitedScheme<Type, Limiter, LimitFunc>::calcLimiter
         );
     }
 
-    const typename VolField<Type>::Boundary&
-        bPhi = phi.boundaryField();
-
-    surfaceScalarField::Boundary& bLim =
-        limiterField.boundaryFieldRef();
+    surfaceScalarField::Boundary& bLim = limiterField.boundaryFieldRef();
 
     forAll(bLim, patchi)
     {
         scalarField& pLim = bLim[patchi];
 
-        if (bPhi[patchi].coupled())
+        if (bLim[patchi].coupled())
         {
             const scalarField& pCDweights = CDweights.boundaryField()[patchi];
             const scalarField& pFaceFlux =
@@ -126,6 +131,8 @@ void Foam::LimitedScheme<Type, Limiter, LimitFunc>::calcLimiter
             pLim = 1.0;
         }
     }
+
+    limiterField.setOriented();
 }
 
 
@@ -135,57 +142,53 @@ template<class Type, class Limiter, template<class> class LimitFunc>
 Foam::tmp<Foam::surfaceScalarField>
 Foam::LimitedScheme<Type, Limiter, LimitFunc>::limiter
 (
-    const VolField<Type>& phi
+    const GeometricField<Type, fvPatchField, volMesh>& phi
 ) const
 {
     const fvMesh& mesh = this->mesh();
 
     const word limiterFieldName(type() + "Limiter(" + phi.name() + ')');
 
-    if (this->mesh().solution().cache("limiter"))
+    if (this->mesh().cache("limiter"))
     {
-        if (!mesh.foundObject<surfaceScalarField>(limiterFieldName))
+        auto* fldptr = mesh.getObjectPtr<surfaceScalarField>(limiterFieldName);
+
+        if (!fldptr)
         {
-            surfaceScalarField* limiterField
+            fldptr = new surfaceScalarField
             (
-                new surfaceScalarField
+                IOobject
                 (
-                    IOobject
-                    (
-                        limiterFieldName,
-                        mesh.time().name(),
-                        mesh,
-                        IOobject::NO_READ,
-                        IOobject::NO_WRITE
-                    ),
-                    mesh,
-                    dimless
-                )
+                    limiterFieldName,
+                    mesh.time().timeName(),
+                    mesh.thisDb(),
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    IOobject::REGISTER
+                ),
+                mesh,
+                dimless
             );
 
-            mesh.objectRegistry::store(limiterField);
+            regIOobject::store(fldptr);
         }
-
-        surfaceScalarField& limiterField =
-            mesh.lookupObjectRef<surfaceScalarField>
-            (
-                limiterFieldName
-            );
+        auto& limiterField = *fldptr;
 
         calcLimiter(phi, limiterField);
 
-        return limiterField;
+        return tmp<surfaceScalarField>::New
+        (
+            limiterFieldName,
+            limiterField
+        );
     }
     else
     {
-        tmp<surfaceScalarField> tlimiterField
+        auto tlimiterField = surfaceScalarField::New
         (
-            surfaceScalarField::New
-            (
-                limiterFieldName,
-                mesh,
-                dimless
-            )
+            limiterFieldName,
+            mesh,
+            dimless
         );
 
         calcLimiter(phi, tlimiterField.ref());

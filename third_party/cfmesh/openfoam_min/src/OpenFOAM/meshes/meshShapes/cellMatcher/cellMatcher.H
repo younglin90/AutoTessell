@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -77,9 +80,7 @@ SourceFiles
 #ifndef cellMatcher_H
 #define cellMatcher_H
 
-#include "labelList.H"
-#include "faceList.H"
-#include "boolList.H"
+#include "cellModel.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -87,11 +88,10 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class primitiveMesh;
+// Forward Declarations
 class cell;
 class cellShape;
-class cellModel;
+class primitiveMesh;
 
 /*---------------------------------------------------------------------------*\
                          Class cellMatcher Declaration
@@ -101,7 +101,7 @@ class cellMatcher
 {
 protected:
 
-    // Static functions
+    // Static Functions
 
         //- Given start and end of edge generate unique key
         inline static label edgeKey
@@ -115,7 +115,7 @@ protected:
         inline static label nextVert(const label, const label, const bool);
 
 
-    // Protected data
+    // Protected Data
 
         // Map from mesh to local vertex numbering
         Map<label> localPoint_;
@@ -173,12 +173,18 @@ protected:
             const label localFacei
         ) const;
 
+        //- No copy construct
+        cellMatcher(const cellMatcher&) = delete;
+
+        //- No copy assignment
+        cellMatcher& operator=(const cellMatcher&) = delete;
+
 
 public:
 
     // Constructors
 
-        //- Construct given mesh and shape factors
+        //- Construct for shape factors
         cellMatcher
         (
             const label vertPerCell,
@@ -187,13 +193,9 @@ public:
             const word& cellModelName
         );
 
-        //- Disallow default bitwise copy construction
-        cellMatcher(const cellMatcher&) = delete;
-
 
     //- Destructor
-    virtual ~cellMatcher()
-    {}
+    virtual ~cellMatcher() = default;
 
 
     // Member Functions
@@ -215,6 +217,7 @@ public:
         // Write
 
             void write(Ostream& os) const;
+
 
         // Cell shape dependent
 
@@ -263,11 +266,6 @@ public:
                 const label celli,
                 cellShape& shape
             ) = 0;
-
-
-    // Member Operators
-
-        void operator=(const cellMatcher&) = delete;
 };
 
 

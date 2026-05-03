@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,6 +30,7 @@ License
 #include "LeastSquaresVectors.H"
 #include "gaussGrad.H"
 #include "fvMesh.H"
+#include "volMesh.H"
 #include "extrapolatedCalculatedFvPatchField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -34,15 +38,21 @@ License
 template<class Type, class Stencil>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+    Foam::volMesh
+    >
 >
 Foam::fv::LeastSquaresGrad<Type, Stencil>::calcGrad
 (
-    const VolField<Type>& vtf,
+    const GeometricField<Type, fvPatchField, volMesh>& vtf,
     const word& name
 ) const
 {
     typedef typename outerProduct<vector, Type>::type GradType;
+    typedef GeometricField<GradType, fvPatchField, volMesh> GradFieldType;
 
     const fvMesh& mesh = vtf.mesh();
 
@@ -52,22 +62,24 @@ Foam::fv::LeastSquaresGrad<Type, Stencil>::calcGrad
         mesh
     );
 
-    tmp<VolField<GradType>> tlsGrad
+    tmp<GradFieldType> tlsGrad
     (
-        VolField<GradType>::New
+        new GradFieldType
         (
-            name,
-            mesh,
-            dimensioned<GradType>
+            IOobject
             (
-                "zero",
-                vtf.dimensions()/dimLength,
-                Zero
+                name,
+                vtf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
             ),
-            extrapolatedCalculatedFvPatchField<GradType>::typeName
+            mesh,
+            dimensioned<GradType>(vtf.dimensions()/dimLength, Zero),
+            fvPatchFieldBase::extrapolatedCalculatedType()
         )
     );
-    VolField<GradType>& lsGrad = tlsGrad.ref();
+    GradFieldType& lsGrad = tlsGrad.ref();
     Field<GradType>& lsGradIf = lsGrad;
 
     const extendedCentredCellToCellStencil& stencil = lsv.stencil();

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::limitedSurfaceInterpolationScheme
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Abstract base class for limited surface interpolation schemes.
 
@@ -43,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-              Class limitedSurfaceInterpolationScheme Declaration
+                 Class limitedSurfaceInterpolationScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -51,6 +56,17 @@ class limitedSurfaceInterpolationScheme
 :
     public surfaceInterpolationScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        limitedSurfaceInterpolationScheme
+        (
+            const limitedSurfaceInterpolationScheme&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const limitedSurfaceInterpolationScheme&) = delete;
+
 
 protected:
 
@@ -106,6 +122,7 @@ public:
             faceFlux_(faceFlux)
         {}
 
+
         //- Construct from mesh and Istream.
         //  The name of the flux field is read from the Istream and looked-up
         //  from the mesh objectRegistry
@@ -124,12 +141,6 @@ public:
                 )
             )
         {}
-
-        //- Disallow default bitwise copy construction
-        limitedSurfaceInterpolationScheme
-        (
-            const limitedSurfaceInterpolationScheme&
-        ) = delete;
 
 
     // Selectors
@@ -159,14 +170,14 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> limiter
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
         //- Return the interpolation weighting factors for the given field,
         //  by limiting the given weights with the given limiter
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&,
+            const GeometricField<Type, fvPatchField, volMesh>&,
             const surfaceScalarField& CDweights,
             tmp<surfaceScalarField> tLimiter
         ) const;
@@ -174,21 +185,15 @@ public:
         //- Return the interpolation weighting factors for the given field
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
         //- Return the interpolation weighting factors
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         flux
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const limitedSurfaceInterpolationScheme&) = delete;
 };
 
 

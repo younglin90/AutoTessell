@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::OSPRELimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    OSPRE interpolation scheme based on r obtained from the LimiterFunc
+    OSPRE differencing scheme based on r obtained from the LimiterFunc
     class.
 
     Used in conjunction with the template class LimitedScheme.
@@ -47,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class OSPRELimiter Declaration
+                           Class OSPRELimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -72,13 +77,12 @@ public:
         const vector& d
     ) const
     {
-        const scalar r = max
+        scalar r = LimiterFunc::r
         (
-            LimiterFunc::r(faceFlux, phiP, phiN, gradcP, gradcN, d), 0
+            faceFlux, phiP, phiN, gradcP, gradcN, d
         );
 
-        const scalar rrp1 = r*(r + 1);
-
+        scalar rrp1 = r*(r + 1);
         return 1.5*rrp1/(rrp1 + 1);
     }
 };

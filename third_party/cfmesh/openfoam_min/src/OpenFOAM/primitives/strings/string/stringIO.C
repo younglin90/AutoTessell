@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "string.H"
+#include "token.H"
 #include "IOstreams.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -34,65 +38,57 @@ Foam::string::string(Istream& is)
 }
 
 
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-void Foam::writeEntry(Ostream& os, const char* value)
-{
-    os << value;
-}
-
-
-void Foam::writeEntry(Ostream& os, const string& value)
-{
-    os << value;
-}
-
-
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Istream& Foam::operator>>(Istream& is, string& s)
+Foam::Istream& Foam::operator>>(Istream& is, string& val)
 {
-    token t(is);
+    token tok(is);
 
-    if (!t.good())
+    if (tok.isString())
     {
-        is.setBad();
-        return is;
+        val = tok.stringToken();
     }
-
-    if (t.isString())
+    else if (tok.isWord())
     {
-        s = t.stringToken();
+        // Also accept a plain word as a string
+        val = tok.wordToken();
     }
     else
     {
+        FatalIOErrorInFunction(is);
+        if (tok.good())
+        {
+            FatalIOError
+                << "Wrong token type - expected string, found "
+                << tok.info();
+        }
+        else
+        {
+            FatalIOError
+                << "Bad token - could not get string";
+        }
+        FatalIOError << exit(FatalIOError);
         is.setBad();
-        FatalIOErrorInFunction(is)
-            << "wrong token type - expected string, found " << t.info()
-            << exit(FatalIOError);
-
         return is;
     }
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, string&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const string& s)
+Foam::Ostream& Foam::operator<<(Ostream& os, const string& val)
 {
-    os.write(s);
-    os.check("Ostream& operator<<(Ostream&, const string&)");
+    os.write(static_cast<const std::string&>(val));
+    os.check(FUNCTION_NAME);
     return os;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const std::string& s)
+Foam::Ostream& Foam::operator<<(Ostream& os, const std::string& val)
 {
-    os.write(string(s));
-    os.check("Ostream& operator<<(Ostream&, const std::string&)");
+    os.write(val);
+    os.check(FUNCTION_NAME);
     return os;
 }
 

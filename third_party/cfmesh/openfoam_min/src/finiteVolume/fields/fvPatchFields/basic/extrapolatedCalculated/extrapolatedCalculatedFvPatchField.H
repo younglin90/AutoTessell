@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::extrapolatedCalculatedFvPatchField
+
+Group
+    grpGenericBoundaryConditions
 
 Description
     This boundary condition applies a zero-gradient condition from the patch
@@ -44,8 +49,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef extrapolatedCalculatedFvPatchField_H
-#define extrapolatedCalculatedFvPatchField_H
+#ifndef Foam_extrapolatedCalculatedFvPatchField_H
+#define Foam_extrapolatedCalculatedFvPatchField_H
 
 #include "calculatedFvPatchField.H"
 
@@ -55,7 +60,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-             Class extrapolatedCalculatedFvPatchField Declaration
+                   Class extrapolatedCalculatedFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -63,11 +68,11 @@ class extrapolatedCalculatedFvPatchField
 :
     public calculatedFvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
     TypeName("extrapolatedCalculated");
+    // fieldTypes::extrapolatedCalculatedTypeName_()
 
 
     // Constructors
@@ -76,74 +81,62 @@ public:
         extrapolatedCalculatedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         extrapolatedCalculatedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given patchField<Type> onto a new patch
+        //- Construct by mapping given patch field onto a new patch
         extrapolatedCalculatedFvPatchField
         (
             const extrapolatedCalculatedFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         extrapolatedCalculatedFvPatchField
         (
             const extrapolatedCalculatedFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         extrapolatedCalculatedFvPatchField
         (
             const extrapolatedCalculatedFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new extrapolatedCalculatedFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
-
-
-        // Evaluation functions
-
-            //- Evaluate the patch field
-            virtual void evaluate
-            (
-                const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
-            );
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using calculatedFvPatchField<Type>::operator=;
+        //- Evaluate the patch field
+        virtual void evaluate
+        (
+            const Pstream::commsTypes commsType=Pstream::commsTypes::buffered
+        );
 };
 
 

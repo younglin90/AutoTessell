@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dimensionedSphericalTensor_H
-#define dimensionedSphericalTensor_H
+#ifndef Foam_dimensionedSphericalTensor_H
+#define Foam_dimensionedSphericalTensor_H
 
 #include "dimensionedType.H"
 #include "sphericalTensor.H"
@@ -48,7 +50,7 @@ namespace Foam
 typedef dimensioned<sphericalTensor> dimensionedSphericalTensor;
 
 
-// global functions
+// Global Functions
 
 dimensionedScalar tr(const dimensionedSphericalTensor&);
 dimensionedScalar det(const dimensionedSphericalTensor&);

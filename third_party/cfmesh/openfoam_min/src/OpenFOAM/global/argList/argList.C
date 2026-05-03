@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,126 +28,440 @@ License
 
 #include "argList.H"
 #include "OSspecific.H"
+#include "Switch.H"
 #include "clock.H"
-#include "IFstream.H"
 #include "dictionary.H"
 #include "IOobject.H"
-#include "jobInfo.H"
+#include "JobInfo.H"
 #include "labelList.H"
-#include "regIOobject.H"
+#include "IOobject.H"
 #include "dynamicCode.H"
+#include "simpleObjectRegistry.H"
+#include "sigFpe.H"
+#include "sigInt.H"
+#include "sigQuit.H"
+#include "sigSegv.H"
+#include "foamVersion.H"
+#include "stringOps.H"
+#include "CStringList.H"
+#include "stringListOps.H"
 #include "fileOperation.H"
 #include "fileOperationInitialise.H"
-#include "stringListOps.H"
-#include "dlLibraryTable.H"
 
 #include <cctype>
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
+bool Foam::argList::argsMandatory_ = true;
+bool Foam::argList::checkProcessorDirectories_ = true;
+bool Foam::argList::parallelThreads_ = false;
+
 Foam::SLList<Foam::string>    Foam::argList::validArgs;
+Foam::HashSet<Foam::string>   Foam::argList::advancedOptions;
 Foam::HashTable<Foam::string> Foam::argList::validOptions;
 Foam::HashTable<Foam::string> Foam::argList::validParOptions;
+Foam::HashTable<Foam::string, Foam::label, Foam::Hash<Foam::label>>
+    Foam::argList::argUsage;
 Foam::HashTable<Foam::string> Foam::argList::optionUsage;
+Foam::HashTable<std::pair<Foam::word,int>> Foam::argList::validOptionsCompat;
+Foam::HashTable<std::pair<bool,int>> Foam::argList::ignoreOptionsCompat;
 Foam::SLList<Foam::string>    Foam::argList::notes;
-Foam::string::size_type Foam::argList::usageMin = 20;
-Foam::string::size_type Foam::argList::usageMax = 80;
 Foam::word Foam::argList::postProcessOptionName("postProcess");
+
+std::string::size_type Foam::argList::usageMin = 20;
+std::string::size_type Foam::argList::usageMax = 80;
 
 Foam::argList::initValidTables::initValidTables()
 {
     argList::addOption
     (
-        "case", "dir",
-        "specify alternate case directory, default is the cwd"
+        "case",
+        "dir",
+        "Case directory (instead of current directory)"
     );
-    argList::addBoolOption("parallel", "run in parallel");
-    validParOptions.set("parallel", "");
     argList::addOption
     (
-        "roots", "(dir1 .. dirN)",
-        "slave root directories for distributed running"
+        "lib",
+        "name",
+        "Additional library or library list to load.\n"
+        "[Can be used multiple times]",
+        true  // advanced option
     );
-    validParOptions.set("roots", "(dir1 .. dirN)");
+    argList::addBoolOption
+    (
+        "no-libs",
+        "Disable use of the controlDict 'libs' entry",
+        true  // advanced option
+    );
 
     argList::addOption
     (
-        "hostRoots", "((host1 dir1) .. (hostN dirN))",
-        "slave root directories (per host) for distributed running"
+        "debug-switch",
+        "name=val",
+        "Set named DebugSwitch (default value: 1).\n"
+        "[Can be used multiple times]",
+        true  // advanced option
     );
-    validParOptions.set("hostRoots", "((host1 dir1) .. (hostN dirN))");
+
+    argList::addOption
+    (
+        "info-switch",
+        "name=val",
+        "Set named InfoSwitch (default value: 1).\n"
+        "[Can be used multiple times]",
+        true  // advanced option
+    );
+
+    argList::addOption
+    (
+        "opt-switch",
+        "name=val",
+        "Set named OptimisationSwitch (default value: 1).\n"
+        "[Can be used multiple times]",
+        true  // advanced option
+    );
+
+    argList::addBoolOption("parallel", "Run in parallel");
+    validParOptions.set("parallel", "");
+
+    argList::addBoolOption
+    (
+        "mpi-threads",
+        "Request use of MPI threads",
+        true  //  advanced option
+    );
+
+    argList::addOption
+    (
+        "roots",
+        "(dir1 .. dirN)",
+        "Subprocess root directories for distributed running",
+        true  // advanced option
+    );
+    validParOptions.set
+    (
+        "roots",
+        "(dir1 .. dirN)"
+    );
+
+    argList::addOption
+    (
+        "decomposeParDict",
+        "file",
+        "Alternative decomposePar dictionary file"
+    );
+    argList::addOption
+    (
+        "hostRoots",
+        "((host1 dir1) .. (hostN dirN))",
+        "Per-subprocess root directories for distributed running."
+        " The host specification can be a regex.",
+        true  // advanced option
+    );
+    validParOptions.set
+    (
+        "hostRoots",
+        "((host1 dir1) .. (hostN dirN))"
+    );
+
+    argList::addBoolOption
+    (
+        "noFunctionObjects",
+        "Do not execute function objects",
+        true  // advanced option
+    );
 
     argList::addOption
     (
         "fileHandler",
         "handler",
-        "override the fileHandler"
-     );
+        "Override the file handler type",
+        true  // advanced option
+    );
+
     argList::addOption
     (
-        "libs",
-        "'(\"lib1.so\" ... \"libN.so\")'",
-        "pre-load libraries"
-     );
+        "world",
+        "name",
+        "Name of the local world for parallel communication",
+        true  // advanced option
+    );
+    validParOptions.set
+    (
+        "world",
+        "name"
+    );
+
+
+    // Some standard option aliases (with or without version warnings)
+//     argList::addOptionCompat
+//     (
+//         "noFunctionObjects", {"no-function-objects", 0}
+//     );
 
     Pstream::addValidParOptions(validParOptions);
 }
 
+Foam::argList::initValidTables dummyInitValidTables;
 
-void Foam::argList::initValidTables::clear()
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
 {
-    argList::removeOption("case");
-    argList::removeOption("parallel");
-    argList::removeOption("roots");
-    argList::removeOption("hostRoots");
-    argList::removeOption("fileHandler");
-    argList::removeOption("libs");
+
+// Counted per machine name
+// Does not include any sorting since we wish to know the ordering according to
+// mpi rank.
+//
+// Always include the master too.
+// This provides a better overview of the subscription
+static void printHostsSubscription(const UList<string>& hostProcs)
+{
+    Info<< "Hosts  :\n(" << nl;
+
+    std::string prev = Foam::hostName();
+    int count = 1;
+
+    for (const auto& str : hostProcs)
+    {
+        std::string curr(str.substr(0, str.rfind('.')));
+
+        if (prev != curr)
+        {
+            if (count)
+            {
+                // Finish previous
+                Info<< "    (" << prev.c_str() << ' ' << count << ')' << nl;
+                count = 0;
+            }
+
+            prev = std::move(curr);
+        }
+        ++count;
+    }
+
+    if (count)
+    {
+        // Finished last one
+        Info<< "    (" << prev.c_str() << ' ' << count << ')' << nl;
+    }
+
+    Info<< ')' << nl;
 }
 
 
-Foam::argList::initValidTables dummyInitValidTables;
+static bool printRootsSubscription
+(
+    const UList<string>& hostProcs,
+    const UList<fileName>& roots
+)
+{
+    if (hostProcs.size() == roots.size()+1)
+    {
+        // Sort roots according to hostProc
+        DynamicList<string> sortedProcs;
+        DynamicList<label> sortedRoots;
+
+        forAll(roots, i)
+        {
+            const fileName& root = roots[i];
+            const string& host = hostProcs[i+1];
+            const label index = sortedProcs.find(host);
+
+            if (index == -1)
+            {
+                sortedProcs.push_back(host);
+                sortedRoots.push_back(i);
+            }
+            else if (roots[sortedRoots[index]] != root)
+            {
+                // Not properly sorted...
+                return false;
+            }
+        }
+
+        Info<< "Roots  :\n(" << nl;
+        forAll(sortedProcs, i)
+        {
+            Info<< "    (" << sortedProcs[i].c_str() << ' '
+                << roots[sortedRoots[i]] << ')' << nl;
+        }
+        Info<< ')' << nl;
+
+        return true;
+    }
+
+    return false;
+}
+
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-void Foam::argList::addBoolOption
+void Foam::argList::checkITstream(const ITstream& is, const label index)
+{
+    const label remaining = is.nRemainingTokens();
+
+    if (remaining)
+    {
+        std::cerr
+            << nl
+            << "--> FOAM WARNING:" << nl
+            << "Argument " << index << " has "
+            << remaining << " excess tokens" << nl << nl;
+    }
+    else if (!is.size())
+    {
+        std::cerr
+            << nl
+            << "--> FOAM WARNING:" << nl
+            << "Argument " << index << " had no tokens" << nl << nl;
+    }
+}
+
+
+void Foam::argList::checkITstream(const ITstream& is, const word& optName)
+{
+    const label remaining = is.nRemainingTokens();
+
+    if (remaining)
+    {
+        std::cerr
+            << nl
+            << "--> FOAM WARNING:" << nl
+            << "Option -" << optName << " has "
+            << remaining << " excess tokens" << nl << nl;
+    }
+    else if (!is.size())
+    {
+        std::cerr
+            << nl
+            << "--> FOAM WARNING:" << nl
+            << "Option -" << optName << " had no tokens" << nl << nl;
+    }
+}
+
+
+void Foam::argList::raiseBadInput(const word& optName) const
+{
+    // Can use FatalError
+    // predicate checks are not used at the earliest stages
+    FatalErrorIn(executable())
+        << "Option -" << optName << " with invalid input" << nl
+        << exit(FatalError);
+}
+
+
+void Foam::argList::addArgument
 (
-    const word& opt,
+    const string& argName,
     const string& usage
 )
 {
-    addOption(opt, "", usage);
+    validArgs.push_back(argName);
+
+    // The first program argument starts at 1 - obtain index after push_back()
+
+    const label index = validArgs.size();
+
+    if (usage.empty())
+    {
+        argUsage.erase(index);
+    }
+    else
+    {
+        argUsage.set(index, usage);
+    }
+}
+
+
+void Foam::argList::addBoolOption
+(
+    const word& optName,
+    const string& usage,
+    bool advanced
+)
+{
+    argList::addOption(optName, "", usage, advanced);
 }
 
 
 void Foam::argList::addOption
 (
-    const word& opt,
+    const word& optName,
     const string& param,
-    const string& usage
+    const string& usage,
+    bool advanced
 )
 {
-    validOptions.set(opt, param);
+    validOptions.set(optName, param);
     if (!usage.empty())
     {
-        optionUsage.set(opt, usage);
+        optionUsage.set(optName, usage);
     }
+    if (advanced)
+    {
+        advancedOptions.set(optName);
+    }
+}
+
+
+void Foam::argList::setAdvanced(const word& optName, bool advanced)
+{
+    if (advanced && validOptions.contains(optName))
+    {
+        advancedOptions.set(optName);
+    }
+    else
+    {
+        advancedOptions.erase(optName);
+    }
+}
+
+
+void Foam::argList::addOptionCompat
+(
+    const word& optName,
+    std::pair<const char*,int> compat
+)
+{
+    validOptionsCompat.insert
+    (
+        compat.first,
+        std::pair<word,int>(optName, compat.second)
+    );
+}
+
+
+void Foam::argList::ignoreOptionCompat
+(
+    std::pair<const char*,int> compat,
+    bool expectArg
+)
+{
+    ignoreOptionsCompat.insert
+    (
+        compat.first,
+        std::pair<bool,int>(expectArg, compat.second)
+    );
 }
 
 
 void Foam::argList::addUsage
 (
-    const word& opt,
+    const word& optName,
     const string& usage
 )
 {
     if (usage.empty())
     {
-        optionUsage.erase(opt);
+        optionUsage.erase(optName);
     }
     else
     {
-        optionUsage.set(opt, usage);
+        optionUsage.set(optName, usage);
     }
 }
 
@@ -153,15 +470,121 @@ void Foam::argList::addNote(const string& note)
 {
     if (!note.empty())
     {
-        notes.append(note);
+        notes.push_back(note);
     }
 }
 
 
-void Foam::argList::removeOption(const word& opt)
+void Foam::argList::removeOption(const word& optName)
 {
-    validOptions.erase(opt);
-    optionUsage.erase(opt);
+    validOptions.erase(optName);
+    optionUsage.erase(optName);
+    advancedOptions.erase(optName);
+}
+
+
+void Foam::argList::noMandatoryArgs()
+{
+    argsMandatory_ = false;
+}
+
+
+bool Foam::argList::argsMandatory()
+{
+    return argsMandatory_;
+}
+
+
+void Foam::argList::noBanner()
+{
+    ::Foam::infoDetailLevel = 0;
+}
+
+
+bool Foam::argList::bannerEnabled()
+{
+    return (::Foam::infoDetailLevel > 0);
+}
+
+
+void Foam::argList::addDryRunOption
+(
+    const string& usage,
+    bool advanced
+)
+{
+    const word optName("dry-run", false);
+
+    argList::addBoolOption(optName, usage, advanced);
+    if (!advanced)
+    {
+        advancedOptions.erase(optName);  // Avoid 'stickiness'
+    }
+}
+
+
+void Foam::argList::addVerboseOption
+(
+    const string& usage,
+    bool advanced
+)
+{
+    const word optName("verbose", false);
+
+    if (usage.empty())
+    {
+        argList::addBoolOption
+        (
+            optName,
+            "Additional verbosity (can be used multiple times)",
+            advanced
+        );
+    }
+    else
+    {
+        argList::addBoolOption(optName, usage, advanced);
+    }
+    if (!advanced)
+    {
+        advancedOptions.erase(optName);  // Avoid 'stickiness'
+    }
+}
+
+
+void Foam::argList::noFunctionObjects(bool addWithOption)
+{
+    removeOption("noFunctionObjects");
+
+    // Ignore this bool option without warning
+    // - cannot tie to any particular version anyhow
+    ignoreOptionCompat({"noFunctionObjects", 0}, false);
+
+    if (addWithOption)
+    {
+        argList::addBoolOption
+        (
+            "withFunctionObjects",
+            "Execute functionObjects"
+            // An advanced option, but seldom used so expose it more
+        );
+    }
+}
+
+
+void Foam::argList::noJobInfo()
+{
+    JobInfo::disable();
+}
+
+
+void Foam::argList::noLibs()
+{
+    argList::addBoolOption
+    (
+        "no-libs",
+        "Disable use of the controlDict libs entry",
+        true  // advanced option
+    );
 }
 
 
@@ -169,190 +592,237 @@ void Foam::argList::noParallel()
 {
     removeOption("parallel");
     removeOption("roots");
+    removeOption("decomposeParDict");
     removeOption("hostRoots");
+    removeOption("world");
+    removeOption("mpi-threads");
     validParOptions.clear();
 }
 
 
-void Foam::argList::printOptionUsage
-(
-    const label location,
-    const string& str
-)
+void Foam::argList::parallelThreads_on()
 {
-    const string::size_type textWidth = usageMax - usageMin;
-    const string::size_type strLen = str.size();
+    parallelThreads_ = true;
+}
 
-    if (strLen)
-    {
-        // Minimum of 2 spaces between option and usage:
-        if (string::size_type(location) + 2 <= usageMin)
-        {
-            for (string::size_type i = location; i < usageMin; ++i)
-            {
-                Info<<' ';
-            }
-        }
-        else
-        {
-            // or start a new line
-            Info<< nl;
-            for (string::size_type i = 0; i < usageMin; ++i)
-            {
-                Info<<' ';
-            }
-        }
 
-        // Text wrap
-        string::size_type pos = 0;
-        while (pos != string::npos && pos + textWidth < strLen)
-        {
-            // Potential end point and next point
-            string::size_type curr = pos + textWidth - 1;
-            string::size_type next = string::npos;
-
-            if (isspace(str[curr]))
-            {
-                // We were lucky: ended on a space
-                next = str.find_first_not_of(" \t\n", curr);
-            }
-            else if (isspace(str[curr+1]))
-            {
-                // The next one is a space - so we are okay
-                curr++;  // otherwise the length is wrong
-                next = str.find_first_not_of(" \t\n", curr);
-            }
-            else
-            {
-                // Search for end of a previous word break
-                string::size_type prev = str.find_last_of(" \t\n", curr);
-
-                // Reposition to the end of previous word if possible
-                if (prev != string::npos && prev > pos)
-                {
-                    curr = prev;
-                }
-            }
-
-            if (next == string::npos)
-            {
-                next = curr + 1;
-            }
-
-            // Indent following lines (not the first one)
-            if (pos)
-            {
-                for (string::size_type i = 0; i < usageMin; ++i)
-                {
-                    Info<<' ';
-                }
-            }
-
-            Info<< str.substr(pos, (curr - pos)).c_str() << nl;
-            pos = next;
-        }
-
-        // Output the remainder of the string
-        if (pos != string::npos)
-        {
-            // Indent following lines (not the first one)
-            if (pos)
-            {
-                for (string::size_type i = 0; i < usageMin; ++i)
-                {
-                    Info<<' ';
-                }
-            }
-
-            Info<< str.substr(pos).c_str() << nl;
-        }
-    }
-    else
-    {
-        Info<< nl;
-    }
+void Foam::argList::noCheckProcessorDirectories()
+{
+    checkProcessorDirectories_ = false;
 }
 
 
 bool Foam::argList::postProcess(int argc, char *argv[])
 {
-    bool postProcessOption = false;
-
-    for (int i=1; i<argc; i++)
+    for (int argi = 1; argi < argc; ++argi)
     {
-        postProcessOption = argv[i] == '-' + postProcessOptionName;
-        if (postProcessOption) break;
+        const char *optName = argv[argi];
+
+        if (optName[0] == '-')
+        {
+            ++optName;  // Looks like an option, skip leading '-'
+
+            if (optName == postProcessOptionName)
+            {
+                return true;
+            }
+        }
     }
 
-    return postProcessOption;
+    return false;
 }
 
 
-Foam::label Foam::argList::nArgs(int argc, char *argv[])
+int Foam::argList::verbose(int argc, char *argv[])
 {
-    label n = 0;
-
-    for (int i=1; i<argc; i++)
+    int num = 0;
+    for (int argi = 1; argi < argc; ++argi)
     {
-        const string arg(argv[i]);
-        const string argName(arg(1, arg.size() - 1));
-
-        if (arg[0] == '-' && validOptions.found(argName))
+        if (strcmp(argv[argi], "-verbose") == 0)
         {
-            i += validOptions[argName].empty() ? 0 : 1;
-        }
-        else
-        {
-            n ++;
+            ++num;
         }
     }
+    return num;
+}
 
-    return n;
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+Foam::word Foam::argList::envExecutable()
+{
+    return Foam::getEnv("FOAM_EXECUTABLE");
+}
+
+
+Foam::fileName Foam::argList::envGlobalPath()
+{
+    return Foam::getEnv("FOAM_CASE");
+}
+
+
+Foam::fileName Foam::argList::envRelativePath
+(
+    const fileName& input,
+    const bool caseTag
+)
+{
+    if (input.isAbsolute())
+    {
+        return input.relative(envGlobalPath(), caseTag);
+    }
+
+    return input;
 }
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-// Convert argv -> args_
-// Transform sequences with "(" ... ")" into string lists in the process
+Foam::word Foam::argList::optionCompat(const word& optName)
+{
+    // NB: optName includes the leading '-' so that the return value
+    // can be used directly
+
+    if (!validOptionsCompat.empty())
+    {
+        const auto fnd = validOptionsCompat.cfind(optName.substr(1));
+
+        if (fnd.good())
+        {
+            const auto& alt = fnd.val();
+
+            // No error::master() guard - only called on master anyhow
+            if (error::warnAboutAge(alt.second))
+            {
+                std::cerr
+                    << "--> FOAM IOWarning :" << nl
+                    << "    Found [v" << alt.second << "] '"
+                    << optName << "' instead of '-"
+                    << alt.first << "' option"
+                    << nl
+                    << std::endl;
+
+                error::warnAboutAge("option", alt.second);
+            }
+
+            return "-" + alt.first;
+        }
+    }
+
+    // Nothing found - pass through the original input
+    return optName;
+}
+
+
+int Foam::argList::optionIgnore(const word& optName)
+{
+    // NB: optName is without the leading '-'
+
+    if (!ignoreOptionsCompat.empty())
+    {
+        const auto fnd = ignoreOptionsCompat.cfind(optName);
+
+        if (fnd.good())
+        {
+            const auto& alt = fnd.val();
+
+            // Number to skip (including the option itself)
+            // '-option ARG' or '-option'
+            const int nskip = (alt.first ? 2 : 1);
+
+            // No error::master() guard - only called on master anyhow
+            if (error::warnAboutAge(alt.second))
+            {
+                std::cerr
+                    << "--> FOAM IOWarning :" << nl
+                    << "    Ignoring [v" << alt.second << "] '-"
+                    << optName << (nskip > 1 ? " ARG" : "")
+                    << "' option"
+                    << nl
+                    << std::endl;
+
+                error::warnAboutAge("option", alt.second);
+            }
+
+            return nskip;
+        }
+    }
+
+    // TBD: could ignore -verbose, -dry-run etc if they are not active...
+
+    return 0; // Do not skip
+}
+
+
 bool Foam::argList::regroupArgv(int& argc, char**& argv)
 {
-    int nArgs = 0;
-    int listDepth = 0;
-    string tmpString;
+    int nArgs = 1;
+    int ignore = 0;
+    unsigned depth = 0;
+    string group;  // For grouping ( ... ) arguments
 
-    // Note: we also re-write directly into args_
+    // Note: we rewrite directly into args_
     // and use a second pass to sort out args/options
-    for (int argi=0; argi<argc; argi++)
+
+    args_[0] = fileName(argv[0]);
+    for (int argi = 1; argi < argc; ++argi)
     {
-        if (strcmp(argv[argi], "(") == 0)
+        const char *optName = argv[argi];
+
+        if (optName[0] == '(' && optName[1] == '\0')
         {
-            ++listDepth;
-            tmpString += "(";
+            // Begin list
+            ++depth;
+            group += '(';
         }
-        else if (strcmp(argv[argi], ")") == 0)
+        else if (optName[0] == ')' && optName[1] == '\0')
         {
-            if (listDepth)
+            if (depth)
             {
-                --listDepth;
-                tmpString += ")";
-                if (listDepth == 0)
+                // End list
+                --depth;
+                group += ')';
+                if (!depth)
                 {
-                    args_[nArgs++] = tmpString;
-                    tmpString.clear();
+                    args_[nArgs++] = group;
+                    group.clear();
                 }
             }
             else
             {
+                // A stray ')' - likely never happens
                 args_[nArgs++] = argv[argi];
             }
         }
-        else if (listDepth)
+        else if (depth)
         {
             // Quote each string element
-            tmpString += "\"";
-            tmpString += argv[argi];
-            tmpString += "\"";
+            group += '"';
+            group += argv[argi];
+            group += '"';
+        }
+        else if (optName[0] == '-')
+        {
+            ++optName;  // Looks like an option, skip leading '-'
+
+            if (validOptions.contains(optName))
+            {
+                // Known option name
+                args_[nArgs++] = argv[argi];
+            }
+            else if ((ignore = optionIgnore(optName)) > 0)
+            {
+                // Option to be ignored (with/without an argument)
+                if (ignore > 1)
+                {
+                    ++argi;
+                }
+            }
+            else
+            {
+                // Try alias for the option name
+                args_[nArgs++] = optionCompat(argv[argi]);
+            }
         }
         else
         {
@@ -360,69 +830,70 @@ bool Foam::argList::regroupArgv(int& argc, char**& argv)
         }
     }
 
-    if (tmpString.size())
+    if (group.size())
     {
-        args_[nArgs++] = tmpString;
+        // Group(s) not closed, but flush anything still pending
+        args_[nArgs++] = group;
     }
 
-    args_.setSize(nArgs);
+    args_.resize(nArgs);
+
+    std::string::size_type len = (nArgs-1); // Spaces between args
+    for (const auto& s : args_)
+    {
+        len += s.length();
+    }
+
+    // Length needed for regrouped command-line
+    commandLine_.reserve(len);
 
     return nArgs < argc;
 }
 
 
-void Foam::argList::getRootCase()
+void Foam::argList::setCasePaths()
 {
-    fileName casePath;
+    fileName caseDir;
 
-    // [-case dir] specified
-    HashTable<string>::const_iterator iter = options_.find("case");
+    const auto optIter = options_.cfind("case");  // [-case dir] specified?
 
-    if (iter != options_.end())
+    if (optIter.good())
     {
-        casePath = iter();
-        casePath.clean();
+        caseDir = fileName::validate(optIter.val());  // includes 'clean'
 
-        if (casePath.empty() || casePath == ".")
+        if (caseDir.empty() || caseDir == ".")
         {
-            // Handle degenerate form and '-case .' like no -case specified
-            casePath = cwd();
+            // Treat "", "." and "./" as if -case was not specified
+            caseDir = cwd();
             options_.erase("case");
         }
-        else if (!casePath.isAbsolute() && casePath.name() == "..")
+        else
         {
-            // Avoid relative cases ending in '..' - makes for very ugly names
-            casePath = cwd()/casePath;
-            casePath.clean();
+            caseDir.expand();
+            caseDir.toAbsolute();
         }
     }
     else
     {
         // Nothing specified, use the current dir
-        casePath = cwd();
+        caseDir = cwd();
     }
 
-    rootPath_   = casePath.path();
-    globalCase_ = casePath.name();
-    case_       = globalCase_;
+    // The caseDir is a cleaned, absolute path
 
+    rootPath_   = caseDir.path();
+    globalCase_ = caseDir.name();
+    case_       = globalCase_;  // The (processor) local case name
 
-    // Set the case and case-name as an environment variable
-    if (rootPath_.isAbsolute())
-    {
-        // Absolute path - use as-is
-        setEnv("FOAM_CASE", rootPath_/globalCase_, true);
-        setEnv("FOAM_CASENAME", globalCase_, true);
-    }
-    else
-    {
-        // Qualify relative path
-        casePath = cwd()/rootPath_/globalCase_;
-        casePath.clean();
+    // OPENFOAM API
+    setEnv("FOAM_API", std::to_string(foamVersion::api), true);
 
-        setEnv("FOAM_CASE", casePath, true);
-        setEnv("FOAM_CASENAME", casePath.name(), true);
-    }
+    // Global case (directory) and case-name as environment variables
+    setEnv("FOAM_CASE", caseDir, true);
+    setEnv("FOAM_CASENAME", globalCase_, true);
+
+    // Executable name, unless already present in the environment
+    setEnv("FOAM_EXECUTABLE", executable_, false);
 }
 
 
@@ -434,128 +905,243 @@ Foam::argList::argList
     char**& argv,
     bool checkArgs,
     bool checkOpts,
-    const bool initialise
+    bool initialise
 )
 :
+    runControl_(),
     args_(argc),
-    options_(argc)
+    options_(argc),
+    libs_()
 {
-    // Pre-load any libraries
-    {
-        const string libsString(getEnv("FOAM_LIBS"));
-        if (!libsString.empty())
-        {
-            libs.open(fileNameList((IStringStream(libsString))()));
-        }
+    // Pre-scan for some options needed for initial setup:
+    //   -fileHandler (takes an argument)
+    //   -mpi-threads (bool option)
+    //
+    // Also handle -dry-run and -verbose counting
+    // (it is left to the application to decide what to do with them).
+    // Detect any parallel run options
 
-        for (int argi=0; argi<argc; argi++)
+    word fileHandlerName;
+
+    if (parallelThreads_)
+    {
+        // Default -mpi-threads configured statically from application
+        runControl_.threads(true);
+    }
+
+    for (int argi = 1; argi < argc; ++argi)
+    {
+        const char *optName = argv[argi];
+
+        if (optName[0] == '-')
         {
-            if (argv[argi][0] == '-')
+            ++optName;  // Looks like an option, skip leading '-'
+            bool emitErrorMessage = false;
+
+            if (strcmp(optName, "dry-run") == 0)
             {
-                const char *optionName = &argv[argi][1];
-                if (string(optionName) == "libs")
+                runControl_.incrDryRun();
+            }
+            else if (strcmp(optName, "verbose") == 0)
+            {
+                runControl_.incrVerbose();
+            }
+            else if (strcmp(optName, "mpi-threads") == 0)
+            {
+                runControl_.threads(true);
+            }
+            else if (strcmp(optName, "fileHandler") == 0)
+            {
+                // Requires a parameter
+                if (argi < argc-1)
                 {
-                    libs.open(fileNameList((IStringStream(argv[argi+1]))()));
-                    break;
+                    ++argi;
+                    fileHandlerName = argv[argi];
+                }
+                else
+                {
+                    emitErrorMessage = true;
                 }
             }
-        }
-    }
-
-    // Check for fileHandler
-    word handlerType(getEnv("FOAM_FILEHANDLER"));
-    for (int argi=0; argi<argc; argi++)
-    {
-        if (argv[argi][0] == '-')
-        {
-            const char *optionName = &argv[argi][1];
-            if (string(optionName) == "fileHandler")
+            else if (validParOptions.contains(optName))
             {
-                handlerType = argv[argi+1];
-                break;
+                // Contains a parallel run option
+                runControl_.parRun(true);
+            }
+
+            if (emitErrorMessage)
+            {
+                // Missing argument: emit message but not exit or
+                // FatalError since Pstream etc are not yet initialised
+
+                Info<< nl
+                    << "Error: option '-" << optName
+                    << "' requires an argument" << nl << nl;
+
+                //NO: UPstream::exit(1);  // works for serial and parallel
             }
         }
     }
-    if (handlerType.empty())
+
+    // No -fileHandler specifed, get from environment or use default
+    if (fileHandlerName.empty())
     {
-        handlerType = fileOperation::defaultFileHandler;
-    }
-
-    // Detect any parallel options
-    bool needsThread = fileOperations::fileOperationInitialise::New
-    (
-        handlerType,
-        argc,
-        argv
-    )().needsThreading();
-
-
-    // Check if this run is a parallel run by searching for any parallel option
-    // If found call runPar which might filter argv
-    for (int argi=0; argi<argc; argi++)
-    {
-        if (argv[argi][0] == '-')
+        fileHandlerName = Foam::getEnv("FOAM_FILEHANDLER");
+        if (fileHandlerName.empty())
         {
-            const char *optionName = &argv[argi][1];
-
-            if (validParOptions.found(optionName))
-            {
-                parRunControl_.runPar(argc, argv, needsThread);
-                break;
-            }
+            fileHandlerName = fileOperation::defaultFileHandler;
         }
     }
+
+    // Parse out any additional fileHandler-specific options
+    // (may alter argv list). Recover its threading requirements
+    {
+        auto fileOperationInit = fileOperations::fileOperationInitialise::New
+        (
+            fileHandlerName,
+            argc,
+            argv
+        );
+
+        if (fileOperationInit && fileOperationInit->needsThreading())
+        {
+            runControl_.threads(true);
+        }
+    }
+
+    // Parallel job options detected?
+    // - start parallel run (possibly filters argv as a side-effect)
+    if (runControl_.parRun())
+    {
+        runControl_.runPar(argc, argv);
+    }
+
+    // addProfiling(argList, "argList");
+
+    // ------------------------------------------------------------------------
 
     // Convert argv -> args_ and capture ( ... ) lists
-    // for normal arguments and for options
     regroupArgv(argc, argv);
+    commandLine_ += args_[0];
 
-    // Get executable name
-    args_[0]    = fileName(argv[0]);
-    executable_ = fileName(argv[0]).name();
+    // Set executable name immediately - useful when emitting errors.
+    executable_ = fileName(args_[0]).name();
 
-    // Check arguments and options, we already have argv[0]
+    // Check arguments and options, argv[0] was already handled
     int nArgs = 1;
-    argListStr_ = args_[0];
-
-    for (int argi=1; argi<args_.size(); argi++)
+    for (int argi = 1; argi < args_.size(); ++argi)
     {
-        argListStr_ += ' ';
-        argListStr_ += args_[argi];
+        commandLine_ += ' ';
+        commandLine_ += args_[argi];
 
-        if (args_[argi][0] == '-')
+        const char *optName = args_[argi].data();
+
+        if (optName[0] == '-')
         {
-            const char *optionName = &args_[argi][1];
+            ++optName;  // Looks like an option, skip leading '-'
 
+            if (!*optName)
+            {
+                Warning
+                    << "Ignoring lone '-' on the command-line" << endl;
+                continue;
+            }
+
+            // Option known and expects an argument?
+            // - use Switch for a tri-state
+            //   True  : known option, expects a parameter
+            //   False : known option, no parameter
+            //   bad() : unknown option
+
+            Switch wantArg(Switch::INVALID);
+            auto optIter = validOptions.cfind(optName);
             if
             (
-                (
-                    validOptions.found(optionName)
-                 && !validOptions[optionName].empty()
-                )
-             || (
-                    validParOptions.found(optionName)
-                 && !validParOptions[optionName].empty()
-                )
+                optIter.good()
+             || (optIter = validParOptions.cfind(optName)).good()
             )
             {
+                wantArg = !optIter.val().empty();
+            }
+
+
+            if (wantArg)
+            {
+                // Option expects a parameter
+                // - get it or emit a FatalError.
+
                 ++argi;
                 if (argi >= args_.size())
                 {
-                    FatalError
-                        <<"Option '-" << optionName
-                        << "' requires an argument" << endl;
-                    printUsage();
-                    FatalError.exit();
+                    foamVersion::printBuildInfo(Info.stdStream(), false);
+
+                    Info<< nl
+                        <<"Error: option '-" << optName
+                        << "' requires an argument" << nl << nl
+                        << "See '" << executable_ << " -help' for usage" << nl
+                        << " or '" << executable_
+                        << " -help-full' for extended usage" << nl
+                        << nl;
+
+                    UPstream::exit(1);  // works for serial and parallel
                 }
 
-                argListStr_ += ' ';
-                argListStr_ += args_[argi];
-                options_.insert(optionName, args_[argi]);
+                commandLine_ += ' ';
+                commandLine_ += args_[argi];
+
+                //
+                // Special handling of these options
+                //
+
+                if (strcmp(optName, "lib") == 0)
+                {
+                    // The '-lib' option:
+                    // Add name(s) to libs for later opening
+                    libs().push_back(this->getList<fileName>(argi));
+                }
+                else if (strcmp(optName, "debug-switch") == 0)
+                {
+                    // The '-debug-switch' option:
+                    // change registered debug switch
+                    DetailInfo << "debug-switch ";
+                    debug::debugObjects()
+                        .setNamedValue(args_[argi], 1, true);
+                }
+                else if (strcmp(optName, "info-switch") == 0)
+                {
+                    // The '-info-switch' option:
+                    // change registered info switch
+                    DetailInfo << "info-switch ";
+                    debug::infoObjects()
+                        .setNamedValue(args_[argi], 1, true);
+                }
+                else if (strcmp(optName, "opt-switch") == 0)
+                {
+                    // The '-opt-switch' option:
+                    // change registered optimisation switch
+                    DetailInfo << "opt-switch ";
+                    debug::optimisationObjects()
+                        .setNamedValue(args_[argi], 1, true);
+                }
+                else
+                {
+                    // Regular option (with a parameter):
+                    // Duplicates handled by using the last -option specified
+                    options_.set(optName, args_[argi]);
+                }
             }
             else
             {
-                options_.insert(optionName, "");
+                // All other options (including unknown ones) are simply
+                // registered as existing.
+
+                options_.insert(optName, "");
+
+                // // Special increment handling for some known flags
+                // if (wantArg.good())
+                // {
+                //     ...
+                // }
             }
         }
         else
@@ -568,7 +1154,7 @@ Foam::argList::argList
         }
     }
 
-    args_.setSize(nArgs);
+    args_.resize(nArgs);
 
     parse(checkArgs, checkOpts, initialise);
 }
@@ -583,14 +1169,15 @@ Foam::argList::argList
     bool initialise
 )
 :
-    parRunControl_(args.parRunControl_),
+    runControl_(args.runControl_),
     args_(args.args_),
     options_(options),
+    libs_(),
     executable_(args.executable_),
     rootPath_(args.rootPath_),
     globalCase_(args.globalCase_),
     case_(args.case_),
-    argListStr_(args.argListStr_)
+    commandLine_(args.commandLine_)
 {
     parse(checkArgs, checkOpts, initialise);
 }
@@ -604,147 +1191,191 @@ void Foam::argList::parse
 )
 {
     // Help/documentation options:
-    //   -help    print the usage
-    //   -doc     display application documentation in browser
-    //   -srcDoc  display source code in browser
-    if
-    (
-        options_.found("help")
-     || options_.found("doc")
-     || options_.found("srcDoc")
-    )
+    //   -doc         Display documentation in browser
+    //   -doc-source  Display source code in browser
+    //   -help        Display short help and exit
+    //   -help-compat Display compatibility options
+    //   -help-full   Display full help and exit
     {
-        if (options_.found("help"))
-        {
-            printUsage();
-        }
+        bool quickExit = false;
 
-        // Only display one or the other
-        if (options_.found("srcDoc"))
-        {
-            displayDoc(true);
-        }
-        else if (options_.found("doc"))
+        // Display either application or source documentation, not both
+        if (options_.contains("doc"))
         {
             displayDoc(false);
+            quickExit = true;
+        }
+        else if (options_.contains("doc-source"))
+        {
+            displayDoc(true);
+            quickExit = true;
         }
 
-        ::exit(0);
+        // Display either short or full help, not both
+        if (options_.contains("help-full"))
+        {
+            printUsage(true);
+            quickExit = true;
+        }
+        else if (options_.contains("help-notes"))
+        {
+            printNotes();
+            Info<< nl;
+            quickExit = true;
+        }
+        else if (options_.contains("help"))
+        {
+            printUsage(false);
+            quickExit = true;
+        }
+        else if (options_.contains("help-man"))
+        {
+            printMan();
+            quickExit = true;
+        }
+
+        // Allow independent display of compatibility information
+        if (options_.contains("help-compat"))
+        {
+            printCompat();
+            quickExit = true;
+        }
+
+        if (quickExit)
+        {
+            std::exit(0);
+        }
     }
 
-    // Print the usage message and exit if the number of arguments is incorrect
+    // Print the collected error messages and exit if check fails
     if (!check(checkArgs, checkOpts))
     {
-        FatalError.exit();
-    }
+        foamVersion::printBuildInfo(Info.stdStream(), false);
+        FatalError.write(Info, false);
 
+        UPstream::exit(1);  // works for serial and parallel
+    }
 
     if (initialise)
     {
-        string dateString = clock::date();
-        string timeString = clock::clockTime();
+        const string dateString = clock::date();
+        const string timeString = clock::clockTime();
 
         // Print the banner once only for parallel runs
-        if (Pstream::master() && writeInfoHeader)
+        if (UPstream::master() && bannerEnabled())
         {
             IOobject::writeBanner(Info, true)
-                << "Build  : " << Foam::FOAMbuild << nl
-                << "Exec   : " << argListStr_.c_str() << nl
+                << "Build  : ";
+
+            if (foamVersion::build.size())
+            {
+                Info<< foamVersion::build.c_str() << ' ';
+            }
+
+            Info<< "OPENFOAM=" << foamVersion::api;
+
+            if (foamVersion::patched())
+            {
+                // Patch-level, when defined
+                Info<< " patch=" << foamVersion::patch.c_str();
+            }
+
+            Info<< " version=" << foamVersion::version.c_str();
+
+            Info<< nl
+                << "Arch   : " << foamVersion::buildArch << nl
+                << "Exec   : " << commandLine_.c_str() << nl
                 << "Date   : " << dateString.c_str() << nl
                 << "Time   : " << timeString.c_str() << nl
-                << "Host   : " << hostName() << nl
-                << "PID    : " << pid() << endl;
+                << "Host   : " << Foam::hostName().c_str() << nl
+                << "PID    : " << pid() << nl;
         }
 
-        jobInfo_.add("startDate", dateString);
-        jobInfo_.add("startTime", timeString);
-        jobInfo_.add("userName", userName());
-        jobInfo_.add("foamVersion", word(FOAMversion));
-        jobInfo_.add("code", executable_);
-        jobInfo_.add("argList", argListStr_);
-        jobInfo_.add("currentDir", cwd());
-        jobInfo_.add("PPID", ppid());
-        jobInfo_.add("PGID", pgid());
+        jobInfo.add("startDate", dateString);
+        jobInfo.add("startTime", timeString);
+        jobInfo.add("userName", userName());
+
+        jobInfo.add("foamApi", foamVersion::api);
+        jobInfo.add("foamVersion", word(foamVersion::version));
 
         // Add build information - only use the first word
         {
-            std::string build(Foam::FOAMbuild);
-            std::string::size_type found = build.find(' ');
-            if (found != std::string::npos)
+            std::string build(foamVersion::build);
+            const auto space = build.find(' ');
+            if (space != std::string::npos)
             {
-                build.resize(found);
+                build.resize(space);
             }
-            jobInfo_.add("foamBuild", build);
+            jobInfo.add("foamBuild", build);
         }
+
+        jobInfo.add("code", executable_);
+        jobInfo.add("argList", commandLine_);
+        jobInfo.add("currentDir", cwd());
+        jobInfo.add("PPID", ppid());
+        jobInfo.add("PGID", pgid());
+
+        // Load additional libraries (verbosity according to banner setting)
+        libs().open(bannerEnabled());
     }
 
 
     // Set fileHandler. In increasing order of priority:
     // 1. default = uncollated
-    // 2. environment var FOAM_FILEHANDLER
+    // 2. env variable "FOAM_FILEHANDLER"
     // 3. etc/controlDict optimisationSwitches 'fileHandler'
     // 4. system/controlDict 'fileHandler' (not handled here; done in TimeIO.C)
+    // 5. '-fileHandler' commmand-line option
 
     {
-        word handlerType(getEnv("FOAM_FILEHANDLER"));
-        HashTable<string>::const_iterator iter = options_.find("fileHandler");
-        if (iter != options_.end())
-        {
-            handlerType = iter();
-        }
-
-        if (handlerType.empty())
-        {
-            handlerType = fileOperation::defaultFileHandler;
-        }
-
-        autoPtr<fileOperation> handler
+        word fileHandlerName
         (
-            fileOperation::New
-            (
-                handlerType,
-                writeInfoHeader
-            )
+            options_.lookup("fileHandler", Foam::getEnv("FOAM_FILEHANDLER"))
         );
-        Foam::fileHandler(handler);
+
+        if (fileHandlerName.empty())
+        {
+            fileHandlerName = fileOperation::defaultFileHandler;
+        }
+
+        (void) fileOperation::fileHandler
+        (
+            fileOperation::New(fileHandlerName, bannerEnabled())
+        );
     }
 
 
-    stringList slaveMachine;
-    stringList slaveProcs;
+    stringList hostMachine;
+    stringList hostProcs;
+    const int writeHostsSwitch = Foam::debug::infoSwitch("writeHosts", 1);
+    const int writeRootsSwitch = Foam::debug::infoSwitch("writeRoots", 1);
 
-    // Collect slave machine/pid
-    if (parRunControl_.parRun())
+    // Collect machine/pid, and check that the build is identical
+    if (runControl_.parRun())
     {
-        if (Pstream::master())
+        if (UPstream::master())
         {
-            slaveMachine.setSize(Pstream::nProcs() - 1);
-            slaveProcs.setSize(Pstream::nProcs() - 1);
-            label proci = 0;
-            for
-            (
-                int slave = Pstream::firstSlave();
-                slave <= Pstream::lastSlave();
-                slave++
-            )
+            hostMachine.resize(UPstream::nProcs()-1);
+            hostProcs.resize(UPstream::nProcs()-1);
+            string procBuild;
+            label procPid;
+            int proci = 0;
+            for (const int subproci : UPstream::subProcs())
             {
-                IPstream fromSlave(Pstream::commsTypes::scheduled, slave);
+                IPstream fromSubproc(UPstream::commsTypes::scheduled, subproci);
 
-                string slaveBuild;
-                label slavePid;
-                fromSlave >> slaveBuild >> slaveMachine[proci] >> slavePid;
+                fromSubproc >> procBuild >> hostMachine[proci] >> procPid;
 
-                slaveProcs[proci] = slaveMachine[proci]+"."+name(slavePid);
-                proci++;
+                hostProcs[proci] = hostMachine[proci] + "." + name(procPid);
+                ++proci;
 
-                // Check build string to make sure all processors are running
-                // the same build
-                if (slaveBuild != Foam::FOAMbuild)
+                // Verify that all processors are running the same build
+                if (procBuild != foamVersion::build)
                 {
                     FatalErrorIn(executable())
-                        << "Master is running version " << Foam::FOAMbuild
-                        << "; slave " << proci << " is running version "
-                        << slaveBuild
+                        << "Running build version " << foamVersion::build
+                        << " but proc " << subproci << " is running "
+                        << procBuild << nl
                         << exit(FatalError);
                 }
             }
@@ -753,10 +1384,10 @@ void Foam::argList::parse
         {
             OPstream toMaster
             (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo()
+                UPstream::commsTypes::scheduled,
+                UPstream::masterNo()
             );
-            toMaster << string(Foam::FOAMbuild) << hostName() << pid();
+            toMaster << foamVersion::build << Foam::hostName() << Foam::pid();
         }
     }
 
@@ -764,118 +1395,283 @@ void Foam::argList::parse
     // Case is a single processor run unless it is running parallel
     int nProcs = 1;
 
-    // Roots if running distributed
+    // Roots if running distributed. Only sized on the master
     fileNameList roots;
 
+    enum distributedCodes
+    {
+        NON_DISTRIBUTED = 0,
+        DISTRIBUTED = 1,
+        DISTRIBUTED_SINGLE_ROOT = 2,
+        DISTRIBUTED_MULTIPLE_ROOTS = 3
+    };
+
+    // Track which type of distributed roots etc are being used
+    label distributedType
+    (
+        runControl_.distributed()
+      ? distributedCodes::DISTRIBUTED
+      : distributedCodes::NON_DISTRIBUTED
+    );
+
+    // Some cases where knowing the writeFormat can be useful...
+    // label writeFormat(-1);
+
+
     // If this actually is a parallel run
-    if (parRunControl_.parRun())
+    if (runControl_.parRun())
     {
         // For the master
-        if (Pstream::master())
+        if (UPstream::master())
         {
             // Establish rootPath_/globalCase_/case_ for master
-            getRootCase();
+            setCasePaths();
 
-            // See if running distributed (different roots for different procs)
-            label dictNProcs = -1;
+            // The system/decomposeParDict (or equivalent)
             fileName source;
 
-            if (options_.found("roots"))
+            if (this->readIfPresent("decomposeParDict", source))
+            {
+                bool adjustOpt = false;
+
+                if (Foam::isDir(source))
+                {
+                    source /= "decomposeParDict";
+                    adjustOpt = true;
+                }
+
+                // Case-relative if not absolute and not "./" etc
+                if (!source.isAbsolute() && !source.starts_with('.'))
+                {
+                    source = rootPath_/globalCase_/source;
+                    adjustOpt = true;
+                }
+
+                // Could also check for absolute path, but shouldn't be needed
+                if (adjustOpt)
+                {
+                    source.clean();  // Remove unneeded ".."
+                    options_.set("decomposeParDict", source);
+                }
+            }
+
+            // If running distributed (different roots for different procs)
+            label dictNProcs = -1;
+            if (this->readListIfPresent("roots", roots))
             {
                 source = "-roots";
-                IStringStream is(options_["roots"]);
-                roots = readList<fileName>(is);
+                runControl_.distributed(true);
+                distributedType = distributedCodes::DISTRIBUTED;
 
-                if (roots.size() != 1)
+                if (roots.empty())
+                {
+                    FatalErrorInFunction
+                        << "The -roots option must contain values"
+                        << exit(FatalError);
+                }
+                if (roots.size() > 1)
                 {
                     dictNProcs = roots.size()+1;
                 }
             }
-            else if (options_.found("hostRoots"))
+            else if (options_.contains("hostRoots"))
             {
                 source = "-hostRoots";
-                IStringStream is(options_["hostRoots"]);
-                List<Tuple2<wordRe, fileName>> hostRoots(is);
+                runControl_.distributed(true);
+                distributedType = distributedCodes::DISTRIBUTED;
 
-                roots.setSize(Pstream::nProcs()-1);
-                forAll(hostRoots, i)
+                ITstream is(this->lookup("hostRoots"));
+
+                List<Tuple2<wordRe, fileName>> hostRoots(is);
+                checkITstream(is, "hostRoots");
+
+                if (hostRoots.empty())
                 {
-                    const Tuple2<wordRe, fileName>& hostRoot = hostRoots[i];
-                    const wordRe& re = hostRoot.first();
-                    labelList matchedRoots(findStrings(re, slaveMachine));
-                    forAll(matchedRoots, matchi)
+                    FatalErrorInFunction
+                        << "The -hostRoots option must contain values"
+                        << exit(FatalError);
+                }
+
+                // Match machine names to roots
+                roots.resize(UPstream::nProcs()-1, fileName::null);
+                for (const auto& hostRoot : hostRoots)
+                {
+                    labelList matched
+                    (
+                        wordRes::matching(hostRoot.first(), hostMachine)
+                    );
+                    for (const label matchi : matched)
                     {
-                        label slavei = matchedRoots[matchi];
-                        if (roots[slavei] != wordRe())
+                        if (!roots[matchi].empty())
                         {
                             FatalErrorInFunction
-                                << "Slave " << slaveMachine[slavei]
-                                << " has multiple matching roots in "
-                                << hostRoots << exit(FatalError);
+                                << "Multiple matching roots for "
+                                << hostMachine[matchi] << " in "
+                                << hostRoots << nl
+                                << exit(FatalError);
                         }
-                        else
-                        {
-                            roots[slavei] = hostRoot.second();
-                        }
+
+                        roots[matchi] = hostRoot.second();
                     }
                 }
 
                 // Check
-                forAll(roots, slavei)
+                forAll(roots, hosti)
                 {
-                    if (roots[slavei] == wordRe())
+                    if (roots[hosti].empty())
                     {
                         FatalErrorInFunction
-                            << "Slave " << slaveMachine[slavei]
-                            << " has no matching roots in "
-                            << hostRoots << exit(FatalError);
+                            << "No matching roots for "
+                            << hostMachine[hosti] << " in "
+                            << hostRoots << nl
+                            << exit(FatalError);
                     }
                 }
 
-                if (roots.size() != 1)
+                if (roots.size() > 1)
                 {
                     dictNProcs = roots.size()+1;
                 }
             }
-            else
+            else if (checkProcessorDirectories_ && UPstream::nProcs() > 1)
             {
-                source = rootPath_/globalCase_/"system/decomposeParDict";
-                IFstream decompDictStream(source);
+                // Check values from decomposeParDict
 
-                if (!decompDictStream.good())
+                const bool useDefault = source.empty();
+                if (useDefault)
                 {
-                    // Assume non-distributed running
-                    dictNProcs = Pstream::nProcs();
+                    source = rootPath_/globalCase_/"system"/"decomposeParDict";
+                }
+
+                // Disable any parallel comms happening inside the fileHandler
+                // since we are on master. This can happen e.g. inside
+                // the masterUncollated/collated handler. Note that we
+                // also have to protect the actual dictionary parsing since
+                // it might trigger file access (e.g. #include, #codeStream)
+                const bool oldParRun = UPstream::parRun(false);
+                // Note: non-parallel running might update
+                // fileOperation::nProcs() so store & restore below
+                const label nOldProcs = fileHandler().nProcs();
+
+                autoPtr<ISstream> dictStream
+                (
+                    fileHandler().NewIFstream(source)
+                );
+
+                if (dictStream && dictStream->good())
+                {
+                    // Get numberOfSubdomains if it exists.
+                    // - mandatory when running with distributed roots
+
+                    IOobjectOption::readOption nDomainsReadOpt
+                        = IOobjectOption::READ_IF_PRESENT;
+
+                    dictionary decompDict(*dictStream);
+
+                    if (decompDict.getOrDefault("distributed", false))
+                    {
+                        nDomainsReadOpt = IOobjectOption::MUST_READ;
+                        runControl_.distributed(true);
+                        distributedType = distributedCodes::DISTRIBUTED;
+
+                        decompDict.readEntry("roots", roots);
+
+                        if (roots.empty())
+                        {
+                            DetailInfo
+                                << "WARNING: running distributed"
+                                << " but did not specify roots!" << nl;
+                        }
+                    }
+
+                    decompDict.readEntry
+                    (
+                        "numberOfSubdomains",
+                        dictNProcs,
+                        keyType::LITERAL,
+                        nDomainsReadOpt
+                    );
                 }
                 else
                 {
-                    dictionary decompDict(decompDictStream);
-
-                    dictNProcs = decompDict.lookup<label>("numberOfSubdomains");
-
-                    if (decompDict.lookupOrDefault("distributed", false))
+                    if (useDefault)
                     {
-                        decompDict.lookup("roots") >> roots;
+                        // Optional if using default location
+                        DetailInfo
+                            << "WARNING: running without decomposeParDict "
+                            << this->relativePath(source) << nl;
+                    }
+                    else
+                    {
+                        // Mandatory if specified as -decomposeParDict
+                        FatalError
+                            << "Cannot read decomposeParDict: "
+                            << this->relativePath(source) << nl
+                            << exit(FatalError);
+                    }
+                }
+
+                UPstream::parRun(oldParRun);  // Restore parallel state
+                const_cast<fileOperation&>(fileHandler()).nProcs(nOldProcs);
+
+                if (UPstream::nProcs() == 1)
+                {
+                    Warning
+                        << "Running parallel on single processor. This only"
+                        << " makes sense for multi-world simulation" << endl;
+                    dictNProcs = 1;
+                }
+            }
+
+
+            // Distributed roots
+            if (!roots.empty())
+            {
+                for (fileName& dir : roots)
+                {
+                    dir.expand();
+                }
+
+                // Identical root specified everywhere?
+                // - use optimized single-root variant
+                if (roots.size() > 1 && roots.uniform())
+                {
+                    roots.resize(1);
+                }
+
+                if (roots.size() == 1)
+                {
+                    // Single root specified, use it for all processes
+                    distributedType =
+                        distributedCodes::DISTRIBUTED_SINGLE_ROOT;
+
+                    // Adjust dictNProcs for command-line '-roots' option
+                    if (dictNProcs <= 0)
+                    {
+                        dictNProcs = UPstream::nProcs();
+                    }
+                }
+                else if (roots.size() > 1)
+                {
+                    distributedType =
+                        distributedCodes::DISTRIBUTED_MULTIPLE_ROOTS;
+
+                    if (roots.size() != UPstream::nProcs()-1)
+                    {
+                        FatalError
+                            << "Number of roots " << roots.size()
+                            << " != number of sub-ranks "
+                            << UPstream::nProcs()-1
+                            << exit(FatalError);
                     }
                 }
             }
 
-            // Convenience:
-            // when a single root is specified, use it for all processes
-            if (roots.size() == 1)
-            {
-                const fileName rootName(roots[0]);
-                roots.setSize(Pstream::nProcs()-1, rootName);
 
-                // adjust dictNProcs for command-line '-roots' option
-                if (dictNProcs < 0)
-                {
-                    dictNProcs = roots.size()+1;
-                }
-            }
-
-
+            //
             // Check number of processors.
+            //
+
             // nProcs     => number of actual procs
             // dictNProcs => number of procs specified in decompositionDict
             // nProcDirs  => number of processor directories
@@ -884,206 +1680,470 @@ void Foam::argList::parse
             // - normal running : nProcs = dictNProcs = nProcDirs
             // - decomposition to more  processors : nProcs = dictNProcs
             // - decomposition to fewer processors : nProcs = nProcDirs
-            if (dictNProcs > Pstream::nProcs())
+            if
+            (
+                checkProcessorDirectories_
+             && UPstream::nProcs() > 1
+            )
             {
-                FatalError
-                    << source
-                    << " specifies " << dictNProcs
-                    << " processors but job was started with "
-                    << Pstream::nProcs() << " processors."
-                    << exit(FatalError);
-            }
-
-
-            // Distributed data
-            if (roots.size())
-            {
-                if (roots.size() != Pstream::nProcs()-1)
+                if (dictNProcs > UPstream::nProcs())
                 {
                     FatalError
-                        << "number of entries in roots "
-                        << roots.size()
-                        << " is not equal to the number of slaves "
-                        << Pstream::nProcs()-1
+                        << this->relativePath(source)
+                        << " specifies " << dictNProcs
+                        << " processors but job was started with "
+                        << UPstream::nProcs() << " ranks."
                         << exit(FatalError);
                 }
 
-                forAll(roots, i)
-                {
-                    roots[i].expand();
-                }
-
-                // Distribute the master's argument list (with new root)
-                bool hadCaseOpt = options_.found("case");
-                for
-                (
-                    int slave = Pstream::firstSlave();
-                    slave <= Pstream::lastSlave();
-                    slave++
-                )
-                {
-                    options_.set("case", roots[slave-1]/globalCase_);
-
-                    OPstream toSlave(Pstream::commsTypes::scheduled, slave);
-                    toSlave << args_ << options_;
-                }
-                options_.erase("case");
-
-                // Restore [-case dir]
-                if (hadCaseOpt)
-                {
-                    options_.set("case", rootPath_/globalCase_);
-                }
-            }
-            else
-            {
                 // Possibly going to fewer processors.
                 // Check if all procDirs are there.
-                if (dictNProcs < Pstream::nProcs())
+                // NOTE: Only works when not using distributed roots!
+                if
+                (
+                    // Can only rely on directory scanning *without* distributed roots!
+                    roots.empty()
+                 && dictNProcs >= 1
+                 && dictNProcs < UPstream::nProcs()
+                )
                 {
                     label nProcDirs = 0;
-                    while
-                    (
-                        isDir
-                        (
-                            rootPath_/globalCase_/"processor"
-                          + name(++nProcDirs)
-                        )
-                    )
-                    {}
+                    {
+                        const bool oldParRun = UPstream::parRun(false);
+                        // Don't cache processor directories (probably not
+                        // needed since master-only
+                        const int oldCacheLevel(fileOperation::cacheLevel(0));
+                        // Accept any processorsXXX
+                        const int oldFilter(fileOperation::nProcsFilter(0));
 
-                    if (nProcDirs != Pstream::nProcs())
+                        nProcDirs = fileHandler().nProcs
+                        (
+                            rootPath_/globalCase_,
+                            "",
+                            dictNProcs  // expected nProcs
+                        );
+
+                        fileOperation::nProcsFilter(oldFilter);
+                        fileOperation::cacheLevel(oldCacheLevel);
+                        UPstream::parRun(oldParRun);
+                    }
+
+                    if (nProcDirs < UPstream::nProcs())
                     {
                         FatalError
-                            << "number of processor directories = "
-                            << nProcDirs
-                            << " is not equal to the number of processors = "
-                            << Pstream::nProcs()
+                            << "Number of processor directories = " << nProcDirs
+                            << " is not equal to the number of ranks = "
+                            << UPstream::nProcs()
                             << exit(FatalError);
                     }
                 }
+            }
 
-                // Distribute the master's argument list (unaltered)
-                for
-                (
-                    int slave = Pstream::firstSlave();
-                    slave <= Pstream::lastSlave();
-                    slave++
-                )
-                {
-                    OPstream toSlave(Pstream::commsTypes::scheduled, slave);
-                    toSlave << args_ << options_;
-                }
+
+            // Broadcast the master's argument list (unaltered)
+            {
+                OPBstream toProcs(UPstream::worldComm);
+
+                toProcs
+                    << args_ << options_
+                    << distributedType
+                    << label(runControl_.dryRun())
+                    << label(runControl_.verbose());
             }
         }
         else
         {
-            // Collect the master's argument list
-            IPstream fromMaster
-            (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo()
-            );
-            fromMaster >> args_ >> options_;
+            // Receive the broadcasted master's argument list
+            label numDryRun, numVerbose;
 
-            // Establish rootPath_/globalCase_/case_ for slave
-            getRootCase();
+            IPBstream fromMaster(UPstream::worldComm);
+
+            fromMaster
+                >> args_ >> options_
+                >> distributedType
+                >> numDryRun >> numVerbose;
+
+            runControl_.distributed(distributedType);
+            runControl_.dryRun(numDryRun);
+            runControl_.verbose(numVerbose);
         }
 
-        nProcs = Pstream::nProcs();
-        case_ = globalCase_/(word("processor") + name(Pstream::myProcNo()));
+
+        // Final handling of distributed roots (if any)
+        if
+        (
+            distributedType == distributedCodes::DISTRIBUTED_SINGLE_ROOT
+        )
+        {
+            // The same root for all sub-ranks
+            // - use broadcast to transmit value
+
+            fileName newCasePath;
+
+            if (UPstream::master())
+            {
+                newCasePath = roots[0]/globalCase_;
+                OPBstream::send(newCasePath);  // worldComm
+            }
+            else
+            {
+                IPBstream::recv(newCasePath);  // worldComm
+                options_.set("case", newCasePath);
+            }
+        }
+        else if
+        (
+            distributedType == distributedCodes::DISTRIBUTED_MULTIPLE_ROOTS
+        )
+        {
+            // Different roots for each sub-rank
+            // - use point-to-point communication to transmit values
+
+            fileName newCasePath;
+
+            if (UPstream::master())
+            {
+                for (const int subproci : UPstream::subProcs())
+                {
+                    newCasePath = roots[subproci-1]/globalCase_;
+                    OPstream::send(newCasePath, subproci);  // worldComm
+                }
+            }
+            else
+            {
+                IPstream::recv(newCasePath, UPstream::masterNo());  // worldComm
+                options_.set("case", newCasePath);
+            }
+        }
+
+
+        // Establish rootPath_/globalCase_/case_ for sub-process
+        if (!UPstream::master())
+        {
+            setCasePaths();
+        }
+
+
+        nProcs = UPstream::nProcs();
+        if (UPstream::nProcs() > 1)
+        {
+            case_ =
+            (
+                globalCase_
+              / ("processor" + Foam::name(UPstream::myProcNo()))
+            );
+        }
+        else
+        {
+            case_ = globalCase_;
+        }
     }
     else
     {
         // Establish rootPath_/globalCase_/case_
-        getRootCase();
-        case_ = globalCase_;
+        setCasePaths();
+        case_ = globalCase_;   // Redundant, but extra safety?
     }
 
-    if (Pstream::master() && writeInfoHeader)
+
+    // If needed, adjust fileHandler for distributed roots
+    if (runControl_.distributed() && fileOperation::fileHandlerPtr_)
+    {
+        fileOperation::fileHandlerPtr_->distributed(true);
+
+        const labelList& ranks = fileHandler().ioRanks();
+
+        if (runControl_.parRun() && ranks.size())
+        {
+            // Detect processor directories both on local proc and on
+            // (world) master proc. If the local proc doesn't have them
+            // but the master has it will attempt to copy them.
+
+            // Expected local directory name
+            const fileName procDir
+            (
+                rootPath_
+              / globalCase_
+              / ("processor" + Foam::name(UPstream::myProcNo()))
+            );
+
+            // Try and find my local directory using the fileHandler. This
+            // will check the local disk on the IO rank
+            // (since running distributed)
+            fileNameList pathDirs(UPstream::nProcs());
+            auto& pathDir = pathDirs[UPstream::myProcNo()];
+            pathDir = fileHandler().filePath(procDir, false);
+
+            if (returnReduceOr(pathDir.empty()))
+            {
+                // There is at least one processor that cannot find
+                // the processor directory. Look for it on the master.
+                // E.g. decomposed into 4 processors, two roots:
+                //      processors4_0-1/
+                //      processors4_2-3/
+                // So:
+                // - processor0 reads the same disk as processor0
+                // - processor2 needs the whole directory sent over
+                // - processor3 reads the same disk as processor2
+                if (UPstream::master() && bannerEnabled())
+                {
+                    Info<< "I/O    :"
+                        << " distributed - copying missing directories"
+                        << nl;
+                }
+
+                // Collect all wanted directories (or empty). Note: could
+                // just collect missing ones ...
+
+                Pstream::gatherList(pathDirs);
+                fileName masterRootPath(rootPath_);
+                Pstream::broadcast(masterRootPath);
+
+                List<fileNameList> rankToDirs(UPstream::nProcs());
+                if (UPstream::master())
+                {
+                    const bool oldParRun = UPstream::parRun(false);
+                    // Note: non-parallel running might update
+                    // fileOperation::nProcs() so store & restore below
+                    const label nOldProcs = fileHandler().nProcs();
+
+                    label rank = 0;
+                    for (label proci = 1; proci < pathDirs.size(); ++proci)
+                    {
+                        if (ranks.contains(proci))
+                        {
+                            rank = proci;
+                        }
+
+                        if (pathDirs[proci].empty())
+                        {
+                            // Synthesise corresponding name on the master
+                            // processor
+                            const fileName procDir
+                            (
+                                rootPath_
+                              / globalCase_
+                              / ("processor" + Foam::name(proci))
+                            );
+                            const fileName foundDir
+                            (
+                                fileHandler().filePath(procDir, false)
+                            );
+
+                            if
+                            (
+                                !foundDir.empty()
+                             && !rankToDirs[rank].contains(foundDir)
+                            )
+                            {
+                                rankToDirs[rank].push_back(foundDir);
+                            }
+                        }
+                    }
+
+                    UPstream::parRun(oldParRun);
+                    const_cast<fileOperation&>(fileHandler()).nProcs(nOldProcs);
+                }
+                Pstream::broadcast(rankToDirs);
+
+                // Copy missing directories on all the IOranks.
+                // Note: instead of passing 'writeOnProc' flag we could create
+                // communicator just between master and IOrank, but that is
+                // also expensive.
+
+                forAll(rankToDirs, proci)
+                {
+                    // Am I the reponsible IOrank for this processor
+                    const bool amIO = (UPstream::myProcNo() == proci);
+
+                    // Construct equivalent directory on proci
+                    for (const auto& srcDir : rankToDirs[proci])
+                    {
+                        const fileName tgtDir
+                        (
+                            rootPath_
+                          / srcDir.relative(masterRootPath)
+                        );
+
+                        if (amIO)
+                        {
+                            // I am the IO rank
+                            Pout<< "On rank " << proci << nl
+                                << "    copying : " << srcDir << nl
+                                << "    to      : " << tgtDir << endl;
+                        }
+
+                        fileHandler().broadcastCopy
+                        (
+                            UPstream::worldComm,
+                            amIO,
+                            tgtDir,
+                            tgtDir
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+
+    // Keep/discard sub-process host/root information for reporting:
+    if (UPstream::master() && runControl_.parRun())
+    {
+        if (!writeHostsSwitch)
+        {
+            // Clear here to ensures it doesn't show in the jobInfo
+            hostProcs.clear();
+        }
+        if (!writeRootsSwitch)
+        {
+            roots.clear();
+        }
+    }
+
+    if (UPstream::master() && bannerEnabled())
     {
         Info<< "Case   : " << (rootPath_/globalCase_).c_str() << nl
-            << "nProcs : " << nProcs << endl;
+            << "nProcs : " << nProcs << nl;
 
-        if (parRunControl_.parRun())
+        if (runControl_.parRun())
         {
-            Info<< "Slaves : " << slaveProcs << nl;
+            if (hostProcs.size())
+            {
+                if (writeHostsSwitch == 1)
+                {
+                    // Compact output (see etc/controlDict)
+                    printHostsSubscription(hostProcs);
+                }
+                else if (writeHostsSwitch)
+                {
+                    // Full output of "host.pid"
+                    Info<< "Hosts  :\n(" << nl;
+
+                    // Include master in the list
+                    Info<< "    " << Foam::hostName().c_str() << '.'
+                        << Foam::pid() << nl;
+
+                    // Sub-processes
+                    for (const auto& str : hostProcs)
+                    {
+                        Info<< "    " << str.c_str() << nl;
+                    }
+                    Info<< ')' << nl;
+                }
+            }
             if (roots.size())
             {
-                Info<< "Roots  : " << roots << nl;
+                bool hasPrinted = false;
+                if (writeRootsSwitch == 1)
+                {
+                    // Compact output
+                    hasPrinted = printRootsSubscription(hostProcs, roots);
+                }
+                if (writeRootsSwitch && !hasPrinted)
+                {
+                    // Full output
+                    Info<< "Roots  : " << roots << nl;
+                }
             }
-            Info<< "Pstream initialised with:" << nl
-                << "    floatTransfer      : " << Pstream::floatTransfer << nl
-                << "    nProcsSimpleSum    : " << Pstream::nProcsSimpleSum << nl
+            Info<< "Pstream initialized with:" << nl
+                << "    floatTransfer      : "
+                << Switch::name(UPstream::floatTransfer) << nl
+                << "    maxCommsSize       : "
+                << UPstream::maxCommsSize << nl
+                << "    nProcsSimpleSum    : "
+                << UPstream::nProcsSimpleSum << nl
+                << "    nonBlockingExchange: "
+                << UPstream::nProcsNonblockingExchange
+                << " (tuning: " << UPstream::tuning_NBX_ << ')' << nl
+                << "    exchange algorithm : "
+                << PstreamBuffers::algorithm << nl
                 << "    commsType          : "
-                << Pstream::commsTypeNames[Pstream::defaultCommsType] << nl
-                << "    polling iterations : " << Pstream::nPollProcInterfaces
-                << endl;
+                << UPstream::commsTypeNames[UPstream::defaultCommsType] << nl
+                << "    polling iterations : "
+                << UPstream::nPollProcInterfaces << nl;
+
+            if (UPstream::allWorlds().size() > 1)
+            {
+                Info<< "    worlds             : "
+                    << flatOutput(UPstream::allWorlds()) << nl
+                    << "    world              : " << UPstream::myWorld()
+                    << nl;
+            }
         }
     }
 
     if (initialise)
     {
-        jobInfo_.add("root", rootPath_);
-        jobInfo_.add("case", globalCase_);
-        jobInfo_.add("nProcs", nProcs);
-        if (slaveProcs.size())
+        jobInfo.add("root", rootPath_);
+        jobInfo.add("case", globalCase_);
+        jobInfo.add("nProcs", nProcs);
+        if (hostProcs.size())
         {
-            jobInfo_.add("slaves", slaveProcs);
+            jobInfo.add("hosts", hostProcs);
         }
         if (roots.size())
         {
-            jobInfo_.add("roots", roots);
+            jobInfo.add("roots", roots);
         }
-        jobInfo_.write(executable_, rootPath_/globalCase_);
+        jobInfo.write();
 
         // Switch on signal trapping. We have to wait until after Pstream::init
         // since this sets up its own ones.
-        sigFpe_.set(writeInfoHeader);
-        sigInt_.set(writeInfoHeader);
-        sigQuit_.set(writeInfoHeader);
-        sigSegv_.set(writeInfoHeader);
+        sigFpe::set(bannerEnabled());
+        sigInt::set(bannerEnabled());
+        sigQuit::set(bannerEnabled());
+        sigSegv::set(bannerEnabled());
 
-        if (writeInfoHeader)
+        if (UPstream::master() && bannerEnabled())
         {
             Info<< "fileModificationChecking : "
                 << "Monitoring run-time modified files using "
-                << regIOobject::fileCheckTypesNames
+                << IOobject::fileCheckTypesNames
                     [
-                        regIOobject::fileModificationChecking
+                        IOobject::fileModificationChecking
                     ];
             if
             (
-                (
-                    regIOobject::fileModificationChecking
-                 == regIOobject::timeStamp
-                )
-             || (
-                    regIOobject::fileModificationChecking
-                 == regIOobject::timeStampMaster
-                )
+                IOobject::fileModificationChecking == IOobject::timeStamp
+             || IOobject::fileModificationChecking == IOobject::timeStampMaster
             )
             {
-                Info<< " (fileModificationSkew "
-                    << regIOobject::fileModificationSkew << ")";
+                if (IOobject::maxFileModificationPolls == 1)
+                {
+                    Info<< " (fileModificationSkew "
+                        << IOobject::fileModificationSkew
+                        << ")";
+                }
+                else if (IOobject::maxFileModificationPolls > 1)
+                {
+                    Info<< " (fileModificationSkew "
+                        << IOobject::fileModificationSkew
+                        << ", maxFileModificationPolls "
+                        << IOobject::maxFileModificationPolls
+                        << ")";
+                }
+                else
+                {
+                    FatalErrorInFunction
+                        << "Invalid setting for maxFileModificationPolls "
+                        << IOobject::maxFileModificationPolls
+                        << exit(FatalError);
+                }
             }
-            Info<< endl;
+            Info<< nl;
 
             Info<< "allowSystemOperations : ";
             if (dynamicCode::allowSystemOperations)
             {
-                Info<< "Allowing user-supplied system call operations" << endl;
+                Info<< "Allowing";
             }
             else
             {
-                Info<< "Disallowing user-supplied system call operations"
-                    << endl;
+                Info<< "Disallowing";
             }
-        }
-
-        if (Pstream::master() && writeInfoHeader)
-        {
-            Info<< endl;
+            Info<< " user-supplied system call operations" << nl
+                << nl;
             IOobject::writeDivider(Info);
         }
     }
@@ -1094,305 +2154,189 @@ void Foam::argList::parse
 
 Foam::argList::~argList()
 {
-    jobInfo_.end();
+    jobInfo.stop();     // Normal job termination
 
     // Delete file handler to flush any remaining IO
-    autoPtr<fileOperation> dummy(nullptr);
-    fileHandler(dummy);
+    (void) fileOperation::fileHandler(nullptr);
+}
+
+
+// * * * * * * * * * * * * * * * Capabilities  * * * * * * * * * * * * * * * //
+
+bool Foam::argList::allowFunctionObjects() const
+{
+    if (validOptions.contains("withFunctionObjects"))
+    {
+        // '-withFunctionObjects' is available and explicitly enabled
+        return options_.contains("withFunctionObjects");
+    }
+    else if (validOptions.contains("noFunctionObjects"))
+    {
+        // '-noFunctionObjects' is available and not explicitly disabled
+        return !options_.contains("noFunctionObjects");
+    }
+
+    // Disallow functions if there is no way to enable/disable them
+    return false;
+}
+
+
+bool Foam::argList::allowLibs() const
+{
+    return !options_.contains("no-libs");
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-bool Foam::argList::setOption(const word& opt, const string& param)
+Foam::label Foam::argList::count(const UList<word>& optionNames) const
 {
-    bool changed = false;
-
-    // Only allow valid options
-    if (validOptions.found(opt))
+    label num = 0;
+    for (const word& optName : optionNames)
     {
-        // Some options are to be protected
-        if
-        (
-            opt == "case"
-         || opt == "parallel"
-         || opt == "roots"
-         || opt == "hostRoots"
-        )
+        if (options_.contains(optName))
         {
-            FatalError
-                <<"used argList::setOption on a protected option: '"
-                << opt << "'" << endl;
-            FatalError.exit();
-        }
-
-        if (validOptions[opt].empty())
-        {
-            // Bool option
-            if (!param.empty())
-            {
-                // Disallow change of type
-                FatalError
-                    <<"used argList::setOption to change bool to non-bool: '"
-                    << opt << "'" << endl;
-                FatalError.exit();
-            }
-            else
-            {
-                // Did not previously exist
-                changed = !options_.found(opt);
-            }
-        }
-        else
-        {
-            // Non-bool option
-            if (param.empty())
-            {
-                // Disallow change of type
-                FatalError
-                    <<"used argList::setOption to change non-bool to bool: '"
-                    << opt << "'" << endl;
-                FatalError.exit();
-            }
-            else
-            {
-                // Existing value needs changing, or did not previously exist
-                changed = options_.found(opt) ? options_[opt] != param : true;
-            }
+            ++num;
         }
     }
-    else
-    {
-        FatalError
-            <<"used argList::setOption on an invalid option: '"
-            << opt << "'" << nl << "allowed are the following:"
-            << validOptions << endl;
-        FatalError.exit();
-    }
-
-    // Set/change the option as required
-    if (changed)
-    {
-        options_.set(opt, param);
-    }
-
-    return changed;
+    return num;
 }
 
 
-bool Foam::argList::unsetOption(const word& opt)
+Foam::label Foam::argList::count(std::initializer_list<word> optionNames) const
 {
-    // Only allow valid options
-    if (validOptions.found(opt))
+    label num = 0;
+    for (const word& optName : optionNames)
     {
-        // Some options are to be protected
-        if
-        (
-            opt == "case"
-         || opt == "parallel"
-         || opt == "roots"
-         || opt == "hostRoots"
-        )
+        if (options_.contains(optName))
         {
-            FatalError
-                <<"used argList::unsetOption on a protected option: '"
-                << opt << "'" << endl;
-            FatalError.exit();
+            ++num;
         }
-
-        // Remove the option, return true if state changed
-        return options_.erase(opt);
     }
-    else
+    return num;
+}
+
+
+bool Foam::argList::setOption(const word& optName, const string& param)
+{
+    // Some options are always protected
+    if
+    (
+        optName == "case"
+     || optName == "parallel"
+     || optName == "roots"
+    )
     {
-        FatalError
-            <<"used argList::unsetOption on an invalid option: '"
-            << opt << "'" << nl << "allowed are the following:"
-            << validOptions << endl;
-        FatalError.exit();
+        FatalErrorInFunction
+            <<"Option: '" << optName << "' is protected" << nl
+            << exit(FatalError);
+        return false;
+    }
+
+    const auto optIter = options_.cfind(optName);
+
+    if (!optIter.good() || (optIter.val() != param))
+    {
+        options_.set(optName, param);
+        return true;
     }
 
     return false;
 }
 
 
-void Foam::argList::printNotes() const
+bool Foam::argList::unsetOption(const word& optName)
 {
-    // Output notes directly - no automatic text wrapping
-    if (!notes.empty())
+    // Some options are always protected
+    if
+    (
+        optName == "case"
+     || optName == "parallel"
+     || optName == "roots"
+    )
     {
-        Info<< nl;
-        forAllConstIter(SLList<string>, notes, iter)
-        {
-            Info<< iter().c_str() << nl;
-        }
-    }
-}
-
-
-void Foam::argList::printUsage() const
-{
-    Info<< nl << "Usage: " << executable_ << " [OPTIONS]";
-
-    forAllConstIter(SLList<string>, validArgs, iter)
-    {
-        Info<< " <" << iter().c_str() << '>';
+        FatalErrorInFunction
+            <<"Option: '" << optName << "' is protected" << nl
+            << exit(FatalError);
+        return false;
     }
 
-    Info<< nl << "options:" << nl;
-
-    wordList opts = validOptions.sortedToc();
-    forAll(opts, optI)
-    {
-        const word& optionName = opts[optI];
-
-        HashTable<string>::const_iterator iter = validOptions.find(optionName);
-        Info<< "  -" << optionName;
-        label len = optionName.size() + 3;  // Length includes leading '  -'
-
-        if (iter().size())
-        {
-            // Length includes space and between option/param and '<>'
-            if (iter()[0] == '\'')
-            {
-                len += iter().size() + 1;
-                Info<< ' ' << iter().c_str();
-            }
-            else
-            {
-                len += iter().size() + 3;
-                Info<< " <" << iter().c_str() << '>';
-            }
-        }
-
-        HashTable<string>::const_iterator usageIter =
-            optionUsage.find(optionName);
-
-        if (usageIter != optionUsage.end())
-        {
-            printOptionUsage
-            (
-                len,
-                usageIter()
-            );
-        }
-        else
-        {
-            Info<< nl;
-        }
-    }
-
-    // Place srcDoc/doc/help options at the end
-    Info<< "  -srcDoc";
-    printOptionUsage
-    (
-        9,
-        "display source code in browser"
-    );
-
-    Info<< "  -doc";
-    printOptionUsage
-    (
-        6,
-        "display application documentation in browser"
-    );
-
-    Info<< "  -help";
-    printOptionUsage
-    (
-        7,
-        "print the usage"
-    );
-
-
-    printNotes();
-
-    Info<< nl
-        <<"Using: OpenFOAM-" << Foam::FOAMversion
-        << " (see https://openfoam.org)" << nl
-        <<"Build: " << Foam::FOAMbuild << nl
-        << endl;
+    // Remove the option, return true if state changed
+    return options_.erase(optName);
 }
 
 
 void Foam::argList::displayDoc(bool source) const
 {
-    const dictionary& docDict =
-        debug::configDict().subDictBackwardsCompatible
-        (
-            {"documentation", "Documentation"}
-        );
-    List<fileName> docDirs(docDict.lookup("doxyDocDirs"));
-    fileName docExt(docDict.lookup("doxySourceFileExt"));
+    const dictionary& docDict = debug::controlDict().subDict("Documentation");
+    fileNameList docDirs(docDict.get<fileNameList>("doxyDocDirs"));
+    fileName docExt(docDict.get<fileName>("doxySourceFileExt"));
 
-    // For source code: change foo_8C.html to foo_8C_source.html
+    // For source code: change xxx_8C.html to xxx_8C_source.html
     if (source)
     {
         docExt.replace(".", "_source.");
     }
 
-    fileName docFile;
-    fileName httpServer;
-    bool found = false;
+    fileName url;
 
-    forAll(docDirs, dirI)
+    for (const fileName& dir : docDirs)
     {
-        // An HTTP server is treated as a special case ...
-        if (docDirs[dirI].component(0) == "http:")
+        // The http protocols are last in the list
+        if (dir.starts_with("http:") || dir.starts_with("https:"))
         {
-            httpServer = docDirs[dirI]/executable_ + docExt;
+            url = dir/executable_ + docExt;
+            break;
         }
-        else
+
+        fileName docFile = stringOps::expand(dir/executable_ + docExt);
+
+        if
+        (
+            docFile.starts_with("file://")
+          ? isFile(docFile.substr(7))   // check part after "file://"
+          : isFile(docFile)
+        )
         {
-            // ... all other entries are treated as local directories
-
-            // Remove the optional "file://"
-            if (docDirs[dirI].component(0) == "file:")
-            {
-                docDirs[dirI].replace("file://", string::null);
-            }
-
-
-            // Expand the file name
-            docFile = docDirs[dirI]/executable_ + docExt;
-            docFile.expand();
-
-            // Check the existence of the file
-            if (isFile(docFile))
-            {
-                found = true;
-                break;
-            }
+            url = std::move(docFile);
+            break;
         }
     }
 
-    if (found || httpServer != fileName::null)
-    {
-        string docBrowser = getEnv("FOAM_DOC_BROWSER");
-        if (docBrowser.empty())
-        {
-            docDict.lookup("docBrowser") >> docBrowser;
-        }
-
-        if (found)
-        {
-            docBrowser += " file://" + docFile;
-        }
-        else
-        {
-            docBrowser += " " + httpServer;
-        }
-
-        Info<< "Show documentation: " << docBrowser.c_str() << endl;
-
-        system(docBrowser);
-    }
-    else
+    if (url.empty())
     {
         Info<< nl
             << "No documentation found for " << executable_
             << ", but you can use -help to display the usage\n" << endl;
+
+        return;
     }
+
+    string docBrowser = getEnv("FOAM_DOC_BROWSER");
+    if (docBrowser.empty())
+    {
+        docDict.readEntry("docBrowser", docBrowser);
+    }
+
+    // Can use FOAM_DOC_BROWSER='application file://%f' if required
+    if (docBrowser.contains("%f"))
+    {
+        docBrowser.replace("%f", url);
+    }
+    else
+    {
+        docBrowser += " " + url;
+    }
+
+    // Split on whitespace to use safer version of Foam::system()
+
+    CStringList command(stringOps::splitSpace(docBrowser));
+
+    Info
+        << "OpenFOAM " << foamVersion::api << " documentation:" << nl
+        << "    " << command << nl << endl;
+
+    Foam::system(command, true);
 }
 
 
@@ -1400,28 +2344,30 @@ bool Foam::argList::check(bool checkArgs, bool checkOpts) const
 {
     bool ok = true;
 
-    if (Pstream::master())
+    if (UPstream::master())
     {
-        if (checkArgs && args_.size() - 1 != validArgs.size())
+        const label nargs = args_.size()-1;
+        if (checkArgs && nargs != validArgs.size())
         {
             FatalError
-                << "Wrong number of arguments, expected " << validArgs.size()
-                << " found " << args_.size() - 1 << endl;
+                << "Expected " << validArgs.size()
+                << " arguments but found " << nargs << endl;
             ok = false;
         }
 
         if (checkOpts)
         {
-            forAllConstIter(HashTable<string>, options_, iter)
+            forAllConstIters(options_, iter)
             {
+                const word& optName = iter.key();
                 if
                 (
-                    !validOptions.found(iter.key())
-                 && !validParOptions.found(iter.key())
+                    !validOptions.contains(optName)
+                 && !validParOptions.contains(optName)
                 )
                 {
                     FatalError
-                        << "Invalid option: -" << iter.key() << endl;
+                        << "Invalid option: -" << optName << endl;
                     ok = false;
                 }
             }
@@ -1429,7 +2375,12 @@ bool Foam::argList::check(bool checkArgs, bool checkOpts) const
 
         if (!ok)
         {
-            printUsage();
+            FatalError
+                << nl
+                << "See '" << executable_ << " -help' for usage" << nl
+                << " or '" << executable_
+                << " -help-full' for extended usage" << nl
+                << nl;
         }
     }
 
@@ -1449,12 +2400,12 @@ bool Foam::argList::checkRootCase() const
         return false;
     }
 
-    fileName pathDir(fileHandler().filePath(path()));
+    const fileName pathDir(fileHandler().filePath(path(), false));
 
-    if (pathDir.empty() && Pstream::master())
+    if (checkProcessorDirectories_ && pathDir.empty() && UPstream::master())
     {
-        // Allow slaves on non-existing processor directories, created later
-        // (e.g. redistributePar)
+        // Allow non-existent processor directories on sub-processes,
+        // to be created later (e.g. redistributePar)
         FatalError
             << executable_
             << ": cannot open case directory " << path()

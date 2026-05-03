@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,13 +26,11 @@ License
 Class
     Foam::noSlipFvPatchVectorField
 
-Description
-    This boundary condition fixes the velocity to zero at walls and assumes
-    the walls are stationary.
+Group
+    grpWallBoundaryConditions
 
-    For stationary walls with sliding vertices, e.g. engine liners, the normal
-    component of the velocity is set from the wall face-flux to ensure
-    continuity.
+Description
+    This boundary condition fixes the velocity to zero at walls.
 
 Usage
     Example of the boundary condition specification:
@@ -60,7 +60,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class noSlipFvPatchVectorField Declaration
+             Class noSlipFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class noSlipFvPatchVectorField
@@ -80,14 +80,14 @@ public:
         noSlipFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         noSlipFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -97,58 +97,43 @@ public:
         (
             const noSlipFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         noSlipFvPatchVectorField
         (
             const noSlipFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         noSlipFvPatchVectorField
         (
             const noSlipFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new noSlipFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
-
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
-
-
-        // Evaluation functions
-
-            //- Update the coefficients associated with the patch field
-            virtual void updateCoeffs();
-
+    // Member functions
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

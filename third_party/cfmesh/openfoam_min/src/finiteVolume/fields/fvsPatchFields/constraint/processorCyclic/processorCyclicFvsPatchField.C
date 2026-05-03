@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,7 +36,7 @@ Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
     const DimensionedField<Type, surfaceMesh>& iF
 )
 :
-    processorFvsPatchField<Type>(p, iF),
+    coupledFvsPatchField<Type>(p, iF),
     procPatch_(refCast<const processorCyclicFvPatch>(p))
 {}
 
@@ -47,7 +49,7 @@ Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
     const Field<Type>& f
 )
 :
-    processorFvsPatchField<Type>(p, iF, f),
+    coupledFvsPatchField<Type>(p, iF, f),
     procPatch_(refCast<const processorCyclicFvPatch>(p))
 {}
 
@@ -60,15 +62,13 @@ Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
     const dictionary& dict
 )
 :
-    processorFvsPatchField<Type>(p, iF, dict),
-    procPatch_(refCast<const processorCyclicFvPatch>(p))
+    coupledFvsPatchField<Type>(p, iF, dict),
+    procPatch_(refCast<const processorCyclicFvPatch>(p, dict))
 {
-    if (!isA<processorCyclicFvPatch>(p))
+    if (!isType<processorCyclicFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "patch " << this->patch().index() << " not processor type. "
+        FatalIOErrorInFunction(dict)
+            << "patch " << this->patch().index() << " not processor type. "
             << "Patch type = " << p.type()
             << exit(FatalIOError);
     }
@@ -81,13 +81,13 @@ Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
     const processorCyclicFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
-    processorFvsPatchField<Type>(ptf, p, iF, mapper),
+    coupledFvsPatchField<Type>(ptf, p, iF, mapper),
     procPatch_(refCast<const processorCyclicFvPatch>(p))
 {
-    if (!isA<processorCyclicFvPatch>(this->patch()))
+    if (!isType<processorCyclicFvPatch>(this->patch()))
     {
         FatalErrorInFunction
             << "Field type does not correspond to patch type for patch "
@@ -102,19 +102,23 @@ Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
 template<class Type>
 Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
 (
-    const processorCyclicFvsPatchField<Type>& ptf,
-    const DimensionedField<Type, surfaceMesh>& iF
+    const processorCyclicFvsPatchField<Type>& ptf
 )
 :
-    processorFvsPatchField<Type>(ptf, iF),
+    coupledFvsPatchField<Type>(ptf),
     procPatch_(refCast<const processorCyclicFvPatch>(ptf.patch()))
 {}
 
 
-// * * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * //
-
 template<class Type>
-Foam::processorCyclicFvsPatchField<Type>::~processorCyclicFvsPatchField()
+Foam::processorCyclicFvsPatchField<Type>::processorCyclicFvsPatchField
+(
+    const processorCyclicFvsPatchField<Type>& ptf,
+    const DimensionedField<Type, surfaceMesh>& iF
+)
+:
+    coupledFvsPatchField<Type>(ptf, iF),
+    procPatch_(refCast<const processorCyclicFvPatch>(ptf.patch()))
 {}
 
 

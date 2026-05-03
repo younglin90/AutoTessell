@@ -1,9 +1,14 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
+    Copyright (C) 2020 PCOpt/NTUA
+    Copyright (C) 2020 FOSS GP
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,12 +37,14 @@ Description
     zone1
     {
         cellZone    rotor1;
+        active      yes;
         ...
     }
 
     zone2
     {
         cellZone    rotor2;
+        active      yes;
         ...
     }
     \endverbatim
@@ -67,10 +74,22 @@ class IOMRFZoneList
     public IOdictionary,
     public MRFZoneList
 {
+private:
+
     // Private Member Functions
 
         //- Create IO object if dictionary is present
-        IOobject createIOobject(const fvMesh& mesh) const;
+        IOobject createIOobject
+        (
+            const fvMesh& mesh,
+            const word& solverName
+        ) const;
+
+        //- No copy construct
+        IOMRFZoneList(const IOMRFZoneList&) = delete;
+
+        //- No copy assignment
+        void operator=(const IOMRFZoneList&) = delete;
 
 
 public:
@@ -78,118 +97,22 @@ public:
     // Constructors
 
         //- Construct from mesh
-        IOMRFZoneList(const fvMesh& mesh);
-
-        //- Disallow default bitwise copy construction
-        IOMRFZoneList(const IOMRFZoneList&) = delete;
+        IOMRFZoneList
+        (
+            const fvMesh& mesh,
+            const word& solverName = word::null
+        );
 
 
         //- Destructor
-        virtual ~IOMRFZoneList()
-        {}
+        virtual ~IOMRFZoneList() = default;
 
 
     // Member Functions
 
         //- Read dictionary
         virtual bool read();
-
-        //- Use MRFZoneList::size for looping
-        using MRFZoneList::size;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const IOMRFZoneList&) = delete;
 };
-
-
-/*---------------------------------------------------------------------------*\
-                           Class NullMRF Declaration
-\*---------------------------------------------------------------------------*/
-
-class NullMRF
-{
-public:
-
-    // Constructors
-
-        //- Construct null
-        NullMRF()
-        {}
-
-
-    // Member Functions
-
-        //- Return the argument unchanged
-        template<class Type>
-        inline const Type& relative(const Type& U) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type>
-        inline const Type& relative(const Type& U, const label patchi) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type>
-        inline const Type& absolute(const Type& U) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type>
-        inline const Type& absolute(const Type& U, const label patchi) const
-        {
-            return U;
-        }
-
-
-        //- Return the argument unchanged
-        template<class Type, class RhoType>
-        inline const Type& relative(const Type& U, const RhoType& rho) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type, class RhoType>
-        inline const Type& relative
-        (
-            const Type& U,
-            const RhoType& rho,
-            const label patchi
-        ) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type, class RhoType>
-        inline const Type& absolute(const Type& U, const RhoType& rho) const
-        {
-            return U;
-        }
-
-        //- Return the argument unchanged
-        template<class Type, class RhoType>
-        inline const Type& absolute
-        (
-            const Type& U,
-            const RhoType& rho,
-            const label patchi
-        ) const
-        {
-            return U;
-        }
-};
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

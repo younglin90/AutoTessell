@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2015 OpenFOAM Foundation
+    Copyright (C) 2022-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,50 +29,93 @@ Namespace
 
 Description
     Global functions and variables for working with parallel streams,
-    but principally for mpi
+    but principally for MPI.
 
 SourceFiles
     PstreamGlobals.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PstreamGlobals_H
-#define PstreamGlobals_H
+#ifndef Foam_PstreamGlobals_H
+#define Foam_PstreamGlobals_H
 
 #include "DynamicList.H"
-
-#include <mpi.h>
+#include "UPstream.H"  // For UPstream::Request
+#include "openfoam_mpi.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-/*---------------------------------------------------------------------------*\
-                       Class PstreamGlobals Declaration
-\*---------------------------------------------------------------------------*/
-
 namespace PstreamGlobals
 {
-    extern MPI_Comm MPI_COMM_FOAM;
 
-    extern DynamicList<MPI_Request> outstandingRequests_;
+// Track if MPI_Comm_free is needed for communicator index in MPICommunicators_
+extern DynamicList<bool> pendingMPIFree_;
 
-    extern int nTags_;
+// Current communicators, which may be allocated or predefined
+// (eg, MPI_COMM_SELF, MPI_COMM_WORLD)
+extern DynamicList<MPI_Comm> MPICommunicators_;
 
-    extern DynamicList<int> freedTags_;
+//- Outstanding non-blocking operations.
+extern DynamicList<MPI_Request> outstandingRequests_;
 
-    // Current communicators. First element will be MPI_COMM_FOAM
-    extern DynamicList<MPI_Comm> MPICommunicators_;
 
-    extern DynamicList<MPI_Group> MPIGroups_;
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-    void checkCommunicator(const label, const label procNo);
-};
+//- Fatal if comm is outside the allocated range
+void checkCommunicator(const label comm, const label toProcNo);
+
+
+//- Reset UPstream::Request to null and/or the index of the outstanding
+//- request to -1.
+//  Does not affect the stack of outstanding requests.
+inline void reset_request
+(
+    UPstream::Request* requestPtr,
+    label* requestIdx = nullptr
+)
+{
+    if (requestPtr) *requestPtr = UPstream::Request(MPI_REQUEST_NULL);
+    if (requestIdx) *requestIdx = -1;
+}
+
+
+//- Transcribe MPI_Request to UPstream::Request
+//- (does not affect the stack of outstanding requests)
+//- or else push onto list of outstanding requests
+//- and (optionally) record its location
+inline void push_request
+(
+    MPI_Request request,
+    UPstream::Request* requestPtr = nullptr,
+    label* requestIdx = nullptr
+)
+{
+    if (requestPtr)
+    {
+        // Transcribe as UPstream::Request
+        *requestPtr = UPstream::Request(request);
+
+        // Not on stack of outstanding requests
+        if (requestIdx) *requestIdx = -1;
+    }
+    else
+    {
+        if (requestIdx)
+        {
+            // Its index into outstanding requests
+            *requestIdx = PstreamGlobals::outstandingRequests_.size();
+        }
+
+        PstreamGlobals::outstandingRequests_.push_back(request);
+    }
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+} // End namespace PstreamGlobals
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

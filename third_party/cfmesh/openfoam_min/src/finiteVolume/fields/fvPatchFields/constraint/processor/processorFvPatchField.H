@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Class
     Foam::processorFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition enables processor communication across patches.
 
@@ -41,8 +47,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorFvPatchField_H
-#define processorFvPatchField_H
+#ifndef Foam_processorFvPatchField_H
+#define Foam_processorFvPatchField_H
 
 #include "coupledFvPatchField.H"
 #include "processorLduInterfaceField.H"
@@ -68,25 +74,33 @@ class processorFvPatchField
         //- Local reference cast into the processor patch
         const processorFvPatch& procPatch_;
 
+
         // Sending and receiving
+
+            //- Current (non-blocking) send request
+            mutable label sendRequest_;
+
+            //- Current (non-blocking) recv request
+            mutable label recvRequest_;
 
             //- Send buffer.
             mutable Field<Type> sendBuf_;
 
             //- Receive buffer.
-            mutable Field<Type> receiveBuf_;
-
-            //- Outstanding request
-            mutable label outstandingSendRequest_;
-
-            //- Outstanding request
-            mutable label outstandingRecvRequest_;
+            mutable Field<Type> recvBuf_;
 
             //- Scalar send buffer
-            mutable Field<scalar> scalarSendBuf_;
+            mutable solveScalarField scalarSendBuf_;
 
-            //- Scalar receive buffer
-            mutable Field<scalar> scalarReceiveBuf_;
+            //- Scalar recv buffer
+            mutable solveScalarField scalarRecvBuf_;
+
+
+    // Private Member Functions
+
+        //- Receive and send requests have both completed
+        virtual bool all_ready() const;
+
 
 public:
 
@@ -100,14 +114,14 @@ public:
         processorFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch and internal field and patch field
         processorFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const Field<Type>&
         );
 
@@ -115,7 +129,7 @@ public:
         processorFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -124,97 +138,97 @@ public:
         (
             const processorFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        processorFvPatchField(const processorFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        processorFvPatchField(const processorFvPatchField<Type>&);
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         processorFvPatchField
         (
             const processorFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchField<Type>> clone
-        (
-            const DimensionedField<Type, fvMesh>& iF
-        ) const
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new processorFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this);
         }
 
-        //- Construct and return a clone onto a new patch
-        //  setting internal field reference
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const fvPatch& patch,
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new processorFvPatchField<Type>(patch, iF, *this)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     //- Destructor
-    ~processorFvPatchField();
+    ~processorFvPatchField() = default;
 
 
     // Member Functions
 
-        // Access
+    // Coupling
 
-            //- Return true if running parallel
-            virtual bool coupled() const
-            {
-                if (Pstream::parRun())
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
+        //- The patch field is coupled if running in parallel
+        virtual bool coupled() const { return UPstream::parRun(); }
 
-            //- Return neighbour field given internal field
-            virtual tmp<Field<Type>> patchNeighbourField
-            (
-                const Pstream::commsTypes
-            ) const;
+        //- Are all (receive) data available?
+        virtual bool ready() const;
+
+        //- Return neighbour field given internal field
+        virtual tmp<Field<Type>> patchNeighbourField() const;
 
 
-        // Evaluation functions
+    // Evaluation
 
-            //- Initialise the evaluation of the patch field
-            virtual void initEvaluate(const Pstream::commsTypes commsType);
+        //- Initialise the evaluation of the patch field
+        virtual void initEvaluate(const Pstream::commsTypes commsType);
 
-            //- Evaluate the patch field
-            virtual void evaluate(const Pstream::commsTypes commsType);
+        //- Evaluate the patch field
+        virtual void evaluate(const Pstream::commsTypes commsType);
 
-            //- Return patch-normal gradient
-            virtual tmp<Field<Type>> snGrad
-            (
-                const scalarField& deltaCoeffs
-            ) const;
+        //- Initialise the evaluation of the patch field after a local
+        //  operation. Dummy since operating on a copy
+        virtual void initEvaluateLocal
+        (
+            const Pstream::commsTypes commsType =
+                Pstream::commsTypes::buffered
+        )
+        {}
 
-            //- Is all data available
-            virtual bool ready() const;
+        //- Evaluate the patch field after a local operation (e.g. *=).
+        //  Dummy since operating on a copy
+        virtual void evaluateLocal
+        (
+            const Pstream::commsTypes commsType =
+                Pstream::commsTypes::buffered
+        )
+        {}
+
+        //- Return patch-normal gradient
+        virtual tmp<Field<Type>> snGrad
+        (
+            const scalarField& deltaCoeffs
+        ) const;
+
+
+        // Coupled interface functionality
 
             //- Initialise neighbour matrix update
             virtual void initInterfaceMatrixUpdate
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
@@ -223,8 +237,11 @@ public:
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
@@ -234,6 +251,9 @@ public:
             virtual void initInterfaceMatrixUpdate
             (
                 Field<Type>& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
                 const Field<Type>& psiInternal,
                 const scalarField& coeffs,
                 const Pstream::commsTypes commsType
@@ -243,49 +263,52 @@ public:
             virtual void updateInterfaceMatrix
             (
                 Field<Type>& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
                 const Field<Type>& psiInternal,
                 const scalarField& coeffs,
                 const Pstream::commsTypes commsType
             ) const;
 
 
-        //- Processor coupled interface functions
+    // Processor coupled interface functions
 
-            //- Return communicator used for comms
-            virtual label comm() const
-            {
-                return procPatch_.comm();
-            }
+        //- Return communicator used for communication
+        virtual label comm() const
+        {
+            return procPatch_.comm();
+        }
 
-            //- Return processor number
-            virtual int myProcNo() const
-            {
-                return procPatch_.myProcNo();
-            }
+        //- Return processor number
+        virtual int myProcNo() const
+        {
+            return procPatch_.myProcNo();
+        }
 
-            //- Return neighbour processor number
-            virtual int neighbProcNo() const
-            {
-                return procPatch_.neighbProcNo();
-            }
+        //- Return neighbour processor number
+        virtual int neighbProcNo() const
+        {
+            return procPatch_.neighbProcNo();
+        }
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
-            {
-                return procPatch_.transform();
-            }
+        //- Does the patch field perform the transformation
+        virtual bool doTransform() const
+        {
+            return (pTraits<Type>::rank && !procPatch_.parallel());
+        }
 
-            //- Return rank of component for transform
-            virtual int rank() const
-            {
-                return pTraits<Type>::rank;
-            }
+        //- Return face transformation tensor
+        virtual const tensorField& forwardT() const
+        {
+            return procPatch_.forwardT();
+        }
 
-
-    // Member Operators
-
-        //- Inherit assignment
-        using coupledFvPatchField<Type>::operator=;
+        //- Return rank of component for transform
+        virtual int rank() const
+        {
+            return pTraits<Type>::rank;
+        }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,13 +34,10 @@ Description
     It is derived from DictionaryBase instantiated on a non-memory managed
     form of intrusive doubly-linked list of \<T\>.
 
-SourceFiles
-    UDictionary.C
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef UDictionary_H
-#define UDictionary_H
+#ifndef Foam_UDictionary_H
+#define Foam_UDictionary_H
 
 #include "DictionaryBase.H"
 #include "UIDLList.H"
@@ -56,28 +56,34 @@ class UDictionary
 :
     public DictionaryBase<UIDLList<T>, T>
 {
-
 public:
+
+    //- The template instance used for the dictionary content
+    typedef DictionaryBase<UIDLList<T>, T> dict_type;
+
 
     // Constructors
 
-        //- Null constructor
-        UDictionary();
+        //- Default construct: empty without allocation (capacity=0).
+        UDictionary() = default;
+
+        //- Construct empty with initial table capacity
+        explicit UDictionary(const label initialCapacity)
+        :
+            dict_type(initialCapacity)
+        {}
 
         //- Copy construct
-        UDictionary(const UDictionary&);
+        UDictionary(const UDictionary& dict)
+        :
+            dict_type(dict)
+        {}
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "UDictionary.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

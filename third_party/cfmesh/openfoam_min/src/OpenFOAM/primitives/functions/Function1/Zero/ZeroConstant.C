@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,40 +31,36 @@ License
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::ZeroConstant<Type>::ZeroConstant(const word& name)
-:
-    FieldFunction1<Type, ZeroConstant<Type>>(name)
-{}
-
-
-template<class Type>
-Foam::Function1s::ZeroConstant<Type>::ZeroConstant
+Foam::Function1Types::ZeroConstant<Type>::ZeroConstant
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, ZeroConstant<Type>>(name)
+    Function1<Type>(entryName, obrPtr)
 {}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
 template<class Type>
-Foam::Function1s::ZeroConstant<Type>::~ZeroConstant()
+Foam::Function1Types::ZeroConstant<Type>::ZeroConstant
+(
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
+)
+:
+    Function1<Type>(entryName, dict, obrPtr)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::Function1s::ZeroConstant<Type>::write
-(
-    Ostream& os,
-    const unitSets& units
-) const
-{}
+void Foam::Function1Types::ZeroConstant<Type>::writeData(Ostream& os) const
+{
+    Function1<Type>::writeData(os);
+    os.endEntry();
+}
 
 
 // ************************************************************************* //

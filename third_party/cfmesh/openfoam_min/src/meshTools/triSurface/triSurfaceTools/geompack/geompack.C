@@ -6,6 +6,10 @@
 # include <ctime>
 # include <cstring>
 
+#if defined(__APPLE__) && defined(__clang__)
+#pragma clang fp exceptions(ignore)
+#endif
+
 using namespace std;
 
 # include "geompack.H"
@@ -2054,7 +2058,7 @@ int *ivec_indicator ( int n )
 //
 //    Input, int N, the number of elements of A.
 //
-//    Output, int IVEC_INDICATOR(N), the initialised array.
+//    Output, int IVEC_INDICATOR(N), the initialized array.
 //
 {
   int *a;

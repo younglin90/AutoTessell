@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,8 +33,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef blendedSchemeBase_H
-#define blendedSchemeBase_H
+#ifndef Foam_blendedSchemeBase_H
+#define Foam_blendedSchemeBase_H
 
 #include "className.H"
 #include "tmp.H"
@@ -54,16 +57,13 @@ class blendedSchemeBase
 :
     public blendedSchemeBaseName
 {
-
 public:
 
     //- Constructor
-    blendedSchemeBase()
-    {}
+    blendedSchemeBase() = default;
 
     //- Destructor
-    virtual ~blendedSchemeBase()
-    {}
+    virtual ~blendedSchemeBase() = default;
 
 
     // Member Functions
@@ -71,7 +71,7 @@ public:
         //- Return the face-based blending factor
         virtual tmp<surfaceScalarField> blendingFactor
         (
-             const VolField<Type>& vf
+             const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const = 0;
 };
 

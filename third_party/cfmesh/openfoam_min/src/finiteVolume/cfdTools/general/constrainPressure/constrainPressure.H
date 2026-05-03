@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,6 +44,41 @@ SourceFiles
 
 namespace Foam
 {
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+/*---------------------------------------------------------------------------*\
+                           Class NullMRF Declaration
+\*---------------------------------------------------------------------------*/
+
+class NullMRF
+{
+public:
+
+    // Constructors
+
+        //- Construct null
+        NullMRF()
+        {}
+
+
+    // Member Functions
+
+        //- Return the argument unchanged
+        template<class Type>
+        inline const Type& relative(const Type& U) const
+        {
+            return U;
+        }
+
+        //- Return the argument unchanged
+        template<class Type>
+        inline const Type& relative(const Type& U, const label patchi) const
+        {
+            return U;
+        }
+};
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,6 +55,14 @@ addNamedTemplatedToRunTimeSelectionTable
     fileExtension,
     gts
 );
+addNamedTemplatedToRunTimeSelectionTable
+(
+    UnsortedMeshedSurface,
+    GTSsurfaceFormat,
+    labelledTri,
+    fileExtension,
+    gts
+);
 
 // write MeshedSurface
 addNamedTemplatedToMemberFunctionSelectionTable
@@ -72,6 +83,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     fileExtension,
     gts
 );
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    MeshedSurface,
+    GTSsurfaceFormat,
+    labelledTri,
+    write,
+    fileExtension,
+    gts
+);
 
 // write UnsortedMeshedSurface
 addNamedTemplatedToMemberFunctionSelectionTable
@@ -88,6 +108,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     UnsortedMeshedSurface,
     GTSsurfaceFormat,
     triFace,
+    write,
+    fileExtension,
+    gts
+);
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    UnsortedMeshedSurface,
+    GTSsurfaceFormat,
+    labelledTri,
     write,
     fileExtension,
     gts

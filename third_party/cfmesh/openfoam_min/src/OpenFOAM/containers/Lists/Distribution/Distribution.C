@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,18 +53,9 @@ Foam::Distribution<Type>::Distribution(const Type& binWidth)
 template<class Type>
 Foam::Distribution<Type>::Distribution(const Distribution<Type>& d)
 :
-    List<List<scalar>>(d),
+    List<List<scalar>>(static_cast<const List<List<scalar>>&>(d)),
     binWidth_(d.binWidth()),
     listStarts_(d.listStarts())
-{}
-
-
-template<class Type>
-Foam::Distribution<Type>::Distribution(Distribution<Type>&& d)
-:
-    List<List<scalar>>(move(d)),
-    binWidth_(d.binWidth()),
-    listStarts_(move(d.listStarts()))
 {}
 
 
@@ -93,14 +87,7 @@ Foam::scalar Foam::Distribution<Type>::totalWeight(direction cmpt) const
 template<class Type>
 Foam::List<Foam::label> Foam::Distribution<Type>::keys(direction cmpt) const
 {
-    List<label> keys = identityMap((*this)[cmpt].size());
-
-    forAll(keys, k)
-    {
-        keys[k] += listStarts_[cmpt];
-    }
-
-    return keys;
+    return identity((*this)[cmpt].size(), listStarts_[cmpt]);
 }
 
 
@@ -135,7 +122,7 @@ Foam::label Foam::Distribution<Type>::index
         // Underflow of this List, storage increase and remapping
         // required
 
-        List<scalar> newCmptDistribution(2*cmptDistribution.size(), 0.0);
+        List<scalar> newCmptDistribution(2*cmptDistribution.size(), Zero);
 
         label sOld = cmptDistribution.size();
 
@@ -300,7 +287,7 @@ Type Foam::Distribution<Type>::median() const
 
                         break;
                     }
-                    else if (mag(normDist[nD].second()) > vSmall)
+                    else if (mag(normDist[nD].second()) > VSMALL)
                     {
                         cumulative +=
                             normDist[nD].second()*component(binWidth_, cmpt);
@@ -520,7 +507,6 @@ void Foam::Distribution<Type>::write(const fileName& filePrefix) const
     {
         const List<Pair<scalar>>& rawPairs = rawDistribution[cmpt];
 
-
         const List<Pair<scalar>>& normPairs = normDistribution[cmpt];
 
         OFstream os(filePrefix + '_' + pTraits<Type>::componentNames[cmpt]);
@@ -572,12 +558,9 @@ void Foam::Distribution<Type>::operator=
     const Distribution<Type>& rhs
 )
 {
-    // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorInFunction
-            << "Attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
     List<List<scalar>>::operator=(rhs);
@@ -585,28 +568,6 @@ void Foam::Distribution<Type>::operator=
     binWidth_ = rhs.binWidth();
 
     listStarts_ = rhs.listStarts();
-}
-
-
-template<class Type>
-void Foam::Distribution<Type>::operator=
-(
-    Distribution<Type>&& rhs
-)
-{
-    // Check for assignment to self
-    if (this == &rhs)
-    {
-        FatalErrorInFunction
-            << "Attempted assignment to self"
-            << abort(FatalError);
-    }
-
-    List<List<scalar>>::operator=(move(rhs));
-
-    binWidth_ = rhs.binWidth();
-
-    listStarts_ = move(rhs.listStarts());
 }
 
 
@@ -623,9 +584,7 @@ Foam::Istream& Foam::operator>>
         >> d.binWidth_
         >> d.listStarts_;
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, Distribution<Type>&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
@@ -637,13 +596,11 @@ Foam::Ostream& Foam::operator<<
     const Distribution<Type>& d
 )
 {
-    os  <<  static_cast<const List<List<scalar>>& >(d)
+    os  << static_cast<const List<List<scalar>>&>(d)
         << d.binWidth_ << token::SPACE
         << d.listStarts_;
 
-    // Check state of Ostream
-    os.check("Ostream& operator<<(Ostream&, " "const Distribution&)");
-
+    os.check(FUNCTION_NAME);
     return os;
 }
 

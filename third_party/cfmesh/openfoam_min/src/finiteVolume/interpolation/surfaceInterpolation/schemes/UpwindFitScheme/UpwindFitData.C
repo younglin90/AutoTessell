@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -53,17 +56,11 @@ Foam::UpwindFitData<Polynomial>::UpwindFitData
     owncoeffs_(mesh.nFaces()),
     neicoeffs_(mesh.nFaces())
 {
-    if (debug)
-    {
-        InfoInFunction << "Constructing UpwindFitData<Polynomial>" << endl;
-    }
+    DebugInFunction << "Constructing UpwindFitData<Polynomial>" << nl;
 
     calcFit();
 
-    if (debug)
-    {
-        Info<< "    Finished constructing polynomialFit data" << endl;
-    }
+    DebugInfo << "    Finished constructing polynomialFit data" << nl;
 }
 
 
@@ -92,7 +89,7 @@ void Foam::UpwindFitData<Polynomial>::calcFit()
 
     // find the fit coefficients for every owner
 
-    // Pout<< "-- Owner --" << endl;
+    //Pout<< "-- Owner --" << endl;
     for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
     {
         FitData
@@ -102,9 +99,9 @@ void Foam::UpwindFitData<Polynomial>::calcFit()
             Polynomial
         >::calcFit(owncoeffs_[facei], stencilPoints[facei], w[facei], facei);
 
-        // Pout<< "    facei:" << facei
+        //Pout<< "    facei:" << facei
         //    << " at:" << mesh.faceCentres()[facei] << endl;
-        // forAll(owncoeffs_[facei], i)
+        //forAll(owncoeffs_[facei], i)
         //{
         //    Pout<< "    point:" << stencilPoints[facei][i]
         //        << "\tweight:" << owncoeffs_[facei][i]
@@ -151,7 +148,7 @@ void Foam::UpwindFitData<Polynomial>::calcFit()
 
     // find the fit coefficients for every neighbour
 
-    // Pout<< "-- Neighbour --" << endl;
+    //Pout<< "-- Neighbour --" << endl;
     for (label facei = 0; facei < mesh.nInternalFaces(); facei++)
     {
         FitData
@@ -161,9 +158,9 @@ void Foam::UpwindFitData<Polynomial>::calcFit()
             Polynomial
         >::calcFit(neicoeffs_[facei], stencilPoints[facei], w[facei], facei);
 
-        // Pout<< "    facei:" << facei
+        //Pout<< "    facei:" << facei
         //    << " at:" << mesh.faceCentres()[facei] << endl;
-        // forAll(neicoeffs_[facei], i)
+        //forAll(neicoeffs_[facei], i)
         //{
         //    Pout<< "    point:" << stencilPoints[facei][i]
         //        << "\tweight:" << neicoeffs_[facei][i]

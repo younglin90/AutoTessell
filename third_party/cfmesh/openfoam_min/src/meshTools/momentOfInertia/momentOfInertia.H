@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,6 +31,17 @@ Description
     polyhedra/cells/triSurfaces.  Inertia can either be of the solid body or
     of a thin shell.
 
+    References:
+    \verbatim
+        "Fast and Accurate Computation of Polyhedral Mass Properties",
+        Brian Mirtich,
+        Journal of Graphics Tools, Volume 1, Number 2, 1996.
+    \endverbatim
+
+    https://people.eecs.berkeley.edu/~jfc/mirtich/massProps.html
+    https://people.eecs.berkeley.edu/~jfc/mirtich/papers/volInt.ps.gz
+    https://people.eecs.berkeley.edu/~jfc/mirtich/code/volumeIntegration.tar
+
 SourceFiles
     momentOfInertia.H
 
@@ -47,7 +60,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class momentOfInertia Declaration
+                     Class momentOfInertia Declaration
 \*---------------------------------------------------------------------------*/
 
 class momentOfInertia
@@ -62,7 +75,7 @@ public:
         scalar density,
         scalar& mass,
         vector& cM,
-        symmTensor& J
+        tensor& J
     );
 
     static void massPropertiesShell
@@ -72,7 +85,8 @@ public:
         scalar density,
         scalar& mass,
         vector& cM,
-        symmTensor& J
+        tensor& J,
+        bool doReduce = false
     );
 
     static void massPropertiesSolid
@@ -81,7 +95,7 @@ public:
         scalar density,
         scalar& mass,
         vector& cM,
-        symmTensor& J
+        tensor& J
     );
 
     static void massPropertiesShell
@@ -90,14 +104,25 @@ public:
         scalar density,
         scalar& mass,
         vector& cM,
-        symmTensor& J
+        tensor& J,
+        bool doReduce = false
+    );
+
+    static void massPropertiesPatch
+    (
+        const polyPatch& pp,
+        scalar density,
+        scalar& mass,
+        vector& cM,
+        tensor& J,
+        bool doReduce = false
     );
 
     static tensor applyParallelAxisTheorem
     (
         scalar mass,
         const vector& cM,
-        const symmTensor& J,
+        const tensor& J,
         const vector& refPt
     );
 

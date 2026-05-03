@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::PhiLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    Phi interpolation scheme.
+    Phi differencing scheme.
 
     Used in conjunction with the template class PhiScheme.
 
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class PhiLimiter Declaration
+                           Class PhiLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 class PhiLimiter
@@ -95,14 +100,14 @@ public:
         scalar phiCD = cdWeight*phiP + (1 - cdWeight)*phiN;
 
         // Calculate the effective limiter for the Phi interpolation
-        // scalar PLimiter =
-        //    (1.0 - k_) + k_*(faceFlux - phiU)/stabilise(phiCD - phiU, small);
+        //scalar PLimiter =
+        //    (1.0 - k_) + k_*(faceFlux - phiU)/stabilise(phiCD - phiU, SMALL);
 
         scalar PLimiter =
-            ((faceFlux - phiU)/stabilise(phiCD - phiU, small) + k_);
+            ((faceFlux - phiU)/stabilise(phiCD - phiU, SMALL) + k_);
 
         // Limit the limiter between upwind and central
-        return max(min(PLimiter, 1), 0);
+        return clamp(PLimiter, zero_one{});
     }
 };
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,36 +36,32 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef LList_H
-#define LList_H
+#ifndef Foam_LList_H
+#define Foam_LList_H
 
 #include "label.H"
-#include <initializer_list>
+#include "stdFoam.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
-
+// Forward Declarations
 template<class LListBase, class T> class LList;
 
 template<class LListBase, class T>
 Istream& operator>>
 (
-    Istream&,
-    LList<LListBase, T>&
+    Istream& is,
+    LList<LListBase, T>& lst
 );
 
 template<class LListBase, class T>
 Ostream& operator<<
 (
-    Ostream&,
-    const LList<LListBase, T>&
+    Ostream& os,
+    const LList<LListBase, T>&  lst
 );
 
 
@@ -75,302 +74,537 @@ class LList
 :
     public LListBase
 {
-
 public:
 
-    // Forward declaration of STL iterators
+    // STL type definitions
+
+        //- Type of values stored.
+        typedef T value_type;
+
+        //- Pointer for value_type
+        typedef T* pointer;
+
+        //- Const pointer for value_type
+        typedef const T* const_pointer;
+
+        //- Reference for value_type
+        typedef T& reference;
+
+        //- Const reference for value_type
+        typedef const T& const_reference;
+
+        //- The type that can represent the container size
+        typedef label size_type;
+
+        //- The difference between iterators
+        typedef label difference_type;
+
+
+    // Forward Declarations (iterators)
 
         class iterator;
-        friend class iterator;
-
         class const_iterator;
-        friend class const_iterator;
+
+        using base_iterator = typename LListBase::iterator;
+        using const_base_iterator = typename LListBase::const_iterator;
 
 
-    //- Link structure
+    //- The storage of T with linked nodes
     struct link
     :
         public LListBase::link
     {
         //- Stored object
-        T obj_;
+        T val_;
 
-        //- Construct given object
-        link(T a)
+        //- Copy construct from given object
+        link(const T& elem)
         :
-            obj_(a)
+            val_(elem)
         {}
+
+        //- Move construct from given object
+        link(T&& elem)
+        :
+            val_(std::move(elem))
+        {}
+
+
+        //- Delete linked item and return the element value
+        static T remove(typename LListBase::link* node)
+        {
+            link* p = static_cast<link*>(node);
+            T val(std::move(p->val_));
+            delete p;
+            return val;
+        }
+
+        //- Dereference LListBase::link to obtain address of stored object
+        static constexpr T* ptr(typename LListBase::link* node)
+        {
+            return &(static_cast<link*>(node)->val_);
+        }
+
+        //- Dereference LListBase::link to obtain address of stored object
+        static constexpr const T* ptr(const typename LListBase::link* node)
+        {
+            return &(static_cast<const link*>(node)->val_);
+        }
+
+        //- Dereference LListBase::link to obtain the stored object
+        static constexpr T& ref(typename LListBase::link* node)
+        {
+            return static_cast<link*>(node)->val_;
+        }
+
+        //- Dereference LListBase::link to obtain the stored object
+        static constexpr const T& ref(const typename LListBase::link* node)
+        {
+            return static_cast<const link*>(node)->val_;
+        }
     };
 
 
     // Constructors
 
-        //- Null construct
-        LList()
-        {}
+        //- Default construct
+        LList() = default;
 
-        //- Construct given initial T
-        LList(T a)
-        :
-            LListBase(new link(a))
-        {}
+        //- Construct and copy add initial item
+        explicit LList(const T& elem)
+        {
+            this->push_front(elem);
+        }
+
+        //- Construct and move add initial item
+        explicit LList(T&& elem)
+        {
+            this->push_front(std::move(elem));
+        }
 
         //- Construct from Istream
-        LList(Istream&);
+        explicit LList(Istream& is);
 
-        //- Copy constructor
-        LList(const LList<LListBase, T>&);
+        //- Copy construct
+        LList(const LList<LListBase, T>& lst);
 
-        //- Move constructor
-        LList(LList<LListBase, T>&&);
+        //- Move construct
+        LList(LList<LListBase, T>&& lst);
 
-        //- Construct from an initialiser list
-        LList(std::initializer_list<T>);
+        //- Copy construct from an initializer list
+        LList(std::initializer_list<T> lst);
 
 
-    //- Destructor
+    //- Destructor. Calls clear()
     ~LList();
 
 
     // Member Functions
 
-        // Access
+        //- The first entry in the list
+        reference front()
+        {
+            return link::ref(LListBase::front());
+        }
 
-            //- Return the first entry added
-            T& first()
-            {
-                return static_cast<link*>(LListBase::first())->obj_;
-            }
+        //- The first entry in the list (const access)
+        const_reference front() const
+        {
+            return link::ref(LListBase::front());
+        }
 
-            //- Return const access to the first entry added
-            const T& first() const
-            {
-                return static_cast<const link*>(LListBase::first())->obj_;
-            }
+        //- The last entry in the list
+        reference back()
+        {
+            return link::ref(LListBase::back());
+        }
 
-            //- Return the last entry added
-            T& last()
-            {
-                return static_cast<link*>(LListBase::last())->obj_;
-            }
-
-            //- Return const access to the last entry added
-            const T& last() const
-            {
-                return static_cast<const link*>(LListBase::last())->obj_;
-            }
+        //- The last entry in the list (const access)
+        const_reference back() const
+        {
+            return link::ref(LListBase::back());
+        }
 
 
-        // Edit
+        //- Add copy at front of list
+        void push_front(const T& elem)
+        {
+            LListBase::push_front(new link(elem));
+        }
 
-            //- Add at head of list
-            void insert(const T& a)
-            {
-                LListBase::insert(new link(a));
-            }
+        //- Move construct at front of list
+        void push_front(T&& elem)
+        {
+            LListBase::push_front(new link(std::move(elem)));
+        }
 
-            //- Add at tail of list
-            void append(const T& a)
-            {
-                LListBase::append(new link(a));
-            }
+        //- Add copy at back of list
+        void push_back(const T& elem)
+        {
+            LListBase::push_back(new link(elem));
+        }
 
-            //- Remove and return head
-            T removeHead()
-            {
-                link* elmtPtr = static_cast<link*>(LListBase::removeHead());
-                T data = elmtPtr->obj_;
-                delete elmtPtr;
-                return data;
-            }
+        //- Move construct at back of list
+        void push_back(T&& elem)
+        {
+            LListBase::push_back(new link(std::move(elem)));
+        }
 
-            //- Remove and return element
-            T remove(link* l)
-            {
-                link* elmtPtr = static_cast<link*>(LListBase::remove(l));
-                T data = elmtPtr->obj_;
-                delete elmtPtr;
-                return data;
-            }
+        //- Delete contents of list
+        void clear();
 
-            //- Remove and return element specified by iterator
-            T remove(iterator& it)
-            {
-                link* elmtPtr = static_cast<link*>(LListBase::remove(it));
-                T data = elmtPtr->obj_;
-                delete elmtPtr;
-                return data;
-            }
+        //- Remove first element(s) from the list (deletes pointers)
+        void pop_front(label n = 1);
 
-            //- Delete contents of list
-            void clear();
+        //- Remove and return first entry
+        T removeHead()
+        {
+            return link::remove(LListBase::removeHead());
+        }
 
-            //- Transfer the contents of the argument into this List
-            //  and annul the argument list.
-            void transfer(LList<LListBase, T>&);
+        //- Remove and return element
+        T remove(link* item)
+        {
+            return link::remove(LListBase::remove(item));
+        }
+
+        //- Remove and return element specified by iterator
+        T remove(iterator& iter)
+        {
+            return link::remove(LListBase::remove(iter));
+        }
+
+        //- Transfer the contents of the argument into this List
+        //- and annul the argument list.
+        void transfer(LList<LListBase, T>& lst);
 
 
     // Member Operators
 
-        //- Assignment operator
-        void operator=(const LList<LListBase, T>&);
+        //- Copy assignment
+        void operator=(const LList<LListBase, T>& lst);
 
-        //- Move assignment operator
-        void operator=(LList<LListBase, T>&&);
+        //- Move assignment
+        void operator=(LList<LListBase, T>&& lst);
 
-        //- Assignment to an initialiser list
-        void operator=(std::initializer_list<T>);
-
-
-    // STL type definitions
-
-        //- Type of values the LList contains.
-        typedef T value_type;
-
-        //- Type that can be used for storing into value_type
-        //  objects.
-        typedef T& reference;
-
-        //- Type that can be used for storing into constant
-        //  LList::value_type objects.
-        typedef const T& const_reference;
-
-        //- The type that can represent the size of a LList.
-        typedef label size_type;
-
-
-    // STL iterator
-
-        typedef typename LListBase::iterator LListBase_iterator;
-
-        //- An STL-conforming iterator
-        class iterator
-        :
-            public LListBase_iterator
-        {
-
-        public:
-
-            //- Construct from base iterator
-            iterator(LListBase_iterator baseIter)
-            :
-                LListBase_iterator(baseIter)
-            {}
-
-
-            // Member Operators
-
-                T& operator*() const
-                {
-                    return
-                        static_cast<link&>
-                        (LListBase_iterator::operator*()).obj_;
-                }
-
-                T& operator()() const
-                {
-                    return operator*();
-                }
-
-                iterator& operator++()
-                {
-                    LListBase_iterator::operator++();
-                    return *this;
-                }
-        };
-
-        inline iterator begin()
-        {
-            return LListBase::begin();
-        }
-
-        inline const iterator& end()
-        {
-            return static_cast<const iterator&>(LListBase::end());
-        }
-
-
-    // STL const_iterator
-
-        typedef typename LListBase::const_iterator LListBase_const_iterator;
-
-        //- An STL-conforming const_iterator
-        class const_iterator
-        :
-            public LListBase_const_iterator
-        {
-
-        public:
-
-            //- Construct from base const_iterator
-            const_iterator(LListBase_const_iterator baseIter)
-            :
-                LListBase_const_iterator(baseIter)
-            {}
-
-
-            //- Construct from base iterator
-            const_iterator(LListBase_iterator baseIter)
-            :
-                LListBase_const_iterator(baseIter)
-            {}
-
-
-            // Member Operators
-
-                const T& operator*() const
-                {
-                    return
-                        static_cast<const link&>
-                        (LListBase_const_iterator::operator*()).obj_;
-                }
-
-                const T& operator()() const
-                {
-                    return operator*();
-                }
-
-                const_iterator& operator++()
-                {
-                    LListBase_const_iterator::operator++();
-                    return *this;
-                }
-        };
-
-        inline const_iterator cbegin() const
-        {
-            return LListBase::cbegin();
-        }
-
-        inline const const_iterator& cend() const
-        {
-            return static_cast<const const_iterator&>(LListBase::cend());
-        }
-
-        inline const_iterator begin() const
-        {
-            return LListBase::begin();
-        }
-
-        inline const const_iterator& end() const
-        {
-            return static_cast<const const_iterator&>(LListBase::end());
-        }
+        //- Copy assignment from an initializer list
+        void operator=(std::initializer_list<T> lst);
 
 
     // IOstream Operators
 
+        //- Read list from Istream
+        Istream& readList(Istream& is);
+
+        //- Write LList with line-breaks when length exceeds shortLen.
+        //  Using '0' suppresses line-breaks entirely.
+        Ostream& writeList(Ostream& os, const label shortLen=0) const;
+
+        //- Read list from Istream
         friend Istream& operator>> <LListBase, T>
         (
             Istream&,
-            LList<LListBase, T>&
+            LList<LListBase, T>& lst
         );
 
+        //- Write LList to Ostream with line breaks,
+        //- as per writeList with shortLen=-1
         friend Ostream& operator<< <LListBase, T>
         (
-            Ostream&,
-            const LList<LListBase, T>&
+            Ostream& os,
+            const LList<LListBase, T>& lst
         );
+
+
+    // STL iterator
+
+        //- An STL-conforming iterator
+        class iterator
+        :
+            public base_iterator
+        {
+        public:
+
+            //- Construct from base iterator
+            iterator(base_iterator iter)
+            :
+                base_iterator(iter)
+            {}
+
+            reference operator*() const
+            {
+                return link::ref(this->get_node());
+            }
+
+            pointer operator->() const
+            {
+                return link::ptr(this->get_node());
+            }
+
+            reference operator()() const
+            {
+                return operator*();
+            }
+
+            iterator& operator++()
+            {
+                this->next();
+                return *this;
+            }
+
+            iterator& operator--()
+            {
+                this->prev();   // May not be implemented
+                return *this;
+            }
+        };
+
+
+    // STL const_iterator
+
+        //- An STL-conforming const_iterator
+        class const_iterator
+        :
+            public const_base_iterator
+        {
+        public:
+
+            //- Construct from base iterator
+            const_iterator(const_base_iterator iter)
+            :
+                const_base_iterator(iter)
+            {}
+
+            //- Construct from base iterator
+            const_iterator(base_iterator iter)
+            :
+                const_base_iterator(iter)
+            {}
+
+            const_reference operator*() const
+            {
+                return link::ref(this->get_node());
+            }
+
+            const_pointer operator->() const
+            {
+                return link::ptr(this->get_node());
+            }
+
+            const_reference operator()() const
+            {
+                return operator*();
+            }
+
+            const_iterator& operator++()
+            {
+                this->next();
+                return *this;
+            }
+
+            const_iterator& operator--()
+            {
+                this->prev();   // May not be implemented
+                return *this;
+            }
+        };
+
+
+    // STL reverse_iterator
+
+        //- A reverse_iterator, for LListBase classes that support
+        //- reverse iteration
+        class reverse_iterator
+        :
+            public base_iterator
+        {
+        public:
+
+            //- Construct from base iterator
+            reverse_iterator(base_iterator iter)
+            :
+                base_iterator(iter)
+            {}
+
+            reference operator*() const
+            {
+                return link::ref(this->get_node());
+            }
+
+            pointer operator->() const
+            {
+                return link::ptr(this->get_node());
+            }
+
+            reverse_iterator& operator++()
+            {
+                this->prev();   // Only if base iterator is bidirectional
+                return *this;
+            }
+
+            reverse_iterator& operator--()
+            {
+                this->next();
+                return *this;
+            }
+        };
+
+
+    // STL const_reverse_iterator
+
+        //- A const_reverse_iterator, for LListBase classes that support
+        //- reverse iteration
+        class const_reverse_iterator
+        :
+            public const_base_iterator
+        {
+        public:
+
+            //- Construct from base iterator
+            const_reverse_iterator(const_base_iterator iter)
+            :
+                const_base_iterator(iter)
+            {}
+
+            const_reference operator*() const
+            {
+                return link::ref(this->get_node());
+            }
+
+            const_pointer operator->() const
+            {
+                return link::ptr(this->get_node());
+            }
+
+            const_reverse_iterator& operator++()
+            {
+                this->prev();   // Only if base iterator is bidirectional
+                return *this;
+            }
+
+            const_reverse_iterator& operator--()
+            {
+                this->next();
+                return *this;
+            }
+        };
+
+
+        //- Iterator to first item in list with non-const access
+        inline iterator begin()
+        {
+            return LListBase::template iterator_first<base_iterator>();
+        }
+
+        //- Iterator to first item in list with const access
+        inline const_iterator cbegin() const
+        {
+            return LListBase::template iterator_first<const_base_iterator>();
+        }
+
+        //- Iterator to last item in list with non-const access
+        inline reverse_iterator rbegin()
+        {
+            return LListBase::template iterator_last<base_iterator>();
+        }
+
+        //- Iterator to last item in list with const access
+        inline const_reverse_iterator crbegin() const
+        {
+            return LListBase::template iterator_last<const_base_iterator>();
+        }
+
+        //- Iterator to first item in list with const access
+        inline const_iterator begin() const
+        {
+            return LListBase::cbegin();
+        }
+
+        //- Iterator to last item in list with const access
+        inline const_reverse_iterator rbegin() const
+        {
+            return crbegin();
+        }
+
+
+        //- End of list for forward iterators
+        inline const iterator& end()
+        {
+            return LListBase::template iterator_end<iterator>();
+        }
+
+        //- End of list for forward iterators
+        inline const const_iterator& cend() const
+        {
+            return LListBase::template iterator_end<const_iterator>();
+        }
+
+        //- End of list for reverse iterators
+        inline const reverse_iterator& rend()
+        {
+            return LListBase::template iterator_rend<reverse_iterator>();
+        }
+
+        //- End of list for reverse iterators
+        inline const const_reverse_iterator& crend() const
+        {
+            return LListBase::template iterator_rend<const_reverse_iterator>();
+        }
+
+        //- End of list for forward iterators
+        inline const const_iterator& end() const
+        {
+            return cend();
+        }
+
+        //- End of list for reverse iterators
+        inline const const_reverse_iterator& rend() const
+        {
+            return crend();
+        }
+
+
+    // Housekeeping
+
+        //- The first entry in the list
+        //FOAM_DEPRECATED_FOR(2022-10, "front()")
+        reference first() { return front(); }
+
+        //- The first entry in the list (const access)
+        //FOAM_DEPRECATED_FOR(2022-10, "front()")
+        const_reference first() const { return front(); }
+
+        //- The last entry in the list
+        //FOAM_DEPRECATED_FOR(2022-10, "back()")
+        reference last() { return back(); }
+
+        //- The last entry in the list (const access)
+        //FOAM_DEPRECATED_FOR(2022-10, "back()")
+        const_reference last() const { return back(); }
+
+        //- Add copy at front of list
+        //FOAM_DEPRECATED_FOR(2022-10, "push_front()")
+        void prepend(const T& elem) { push_front(elem); }
+
+        //- Move construct at front of list
+        //FOAM_DEPRECATED_FOR(2022-10, "push_front()")
+        void prepend(T&& elem) { push_front(std::move(elem)); }
+
+        //- Add copy at back of list
+        //FOAM_DEPRECATED_FOR(2022-10, "push_back()")
+        void append(const T& elem) { push_back(elem); }
+
+        //- Move construct at back of list
+        //FOAM_DEPRECATED_FOR(2022-10, "push_back()")
+        void append(T&& elem) { push_back(std::move(elem)); }
+
+        //- Add copy at front of list. Same as push_front()
+        //FOAM_DEPRECATED_FOR(2022-01, "push_front()")
+        void insert(const T& elem) { push_front(elem); }
+
+        //- Move construct at front of list. Same as push_front()
+        //FOAM_DEPRECATED_FOR(2022-01, "push_front()")
+        void insert(T&& elem) { push_front(std::move(elem)); }
 };
 
 
@@ -382,6 +616,7 @@ public:
 
 #ifdef NoRepository
     #include "LList.C"
+    #include "LListIO.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,8 +39,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef VectorSpace_H
-#define VectorSpace_H
+#ifndef Foam_VectorSpace_H
+#define Foam_VectorSpace_H
 
 #include "direction.H"
 #include "scalar.H"
@@ -49,32 +52,23 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<class Form, class Cmpt, direction Ncmpts> class VectorSpace;
 
 template<class Form, class Cmpt, direction Ncmpts>
-void writeEntry(Ostream& os, const VectorSpace<Form, Cmpt, Ncmpts>& value);
-
-template<class Form, class Cmpt, direction Ncmpts>
 Istream& operator>>
 (
-    Istream&,
-    VectorSpace<Form, Cmpt, Ncmpts>&
+    Istream& is,
+    VectorSpace<Form, Cmpt, Ncmpts>& vs
 );
 
 template<class Form, class Cmpt, direction Ncmpts>
 Ostream& operator<<
 (
-    Ostream&,
-    const VectorSpace<Form, Cmpt, Ncmpts>&
+    Ostream& os,
+    const VectorSpace<Form, Cmpt, Ncmpts>& vs
 );
-
-
-// Helper to restrict templated methods to rank-0 primitives
-
-template<class Type>
-using EnableRank0 = typename std::enable_if<pTraits<Type>::rank == 0>::type;
 
 
 /*---------------------------------------------------------------------------*\
@@ -84,7 +78,6 @@ using EnableRank0 = typename std::enable_if<pTraits<Type>::rank == 0>::type;
 template<class Form, class Cmpt, direction Ncmpts>
 class VectorSpace
 {
-
 public:
 
     //- The components of this vector space
@@ -96,20 +89,24 @@ public:
     //- Component type
     typedef Cmpt cmptType;
 
+    //- Magnitude type
+    typedef Cmpt magType;
 
-    // Static constants
+
+    // Static Constants
 
         //- Dimensionality of space
-        static const direction dim = 3;
+        static constexpr direction dim = 3;
 
         //- Number of components in this vector space
-        static const direction nComponents = Ncmpts;
+        static constexpr direction nComponents = Ncmpts;
+
 
         // VectorSpace currently defaults to a column-vector
         // This will be removed when column-vector is introduced
-        // as a specialisation
-        static const direction mRows = Ncmpts;
-        static const direction nCols = 1;
+        // as a specialization
+        static constexpr direction mRows = Ncmpts;
+        static constexpr direction nCols = 1;
 
 
     // Static Data Members
@@ -122,17 +119,12 @@ public:
         static const Form min;
         static const Form rootMax;
         static const Form rootMin;
-        static const Form nan;
 
 
     // Sub-Block Classes
 
         //- Const sub-block type
-        template
-        <
-            class SubVector,
-            direction BStart
-        >
+        template<class SubVector, direction BStart>
         class ConstBlock
         {
             const vsType& vs_;
@@ -157,32 +149,47 @@ public:
         };
 
 
+    // Generated Methods
+
+        //- Default construct
+        VectorSpace() = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline VectorSpace();
-
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline VectorSpace(const Foam::zero);
 
-        //- Construct from Istream
-        VectorSpace(Istream&);
+        //- Copy construct
+        inline VectorSpace(const VectorSpace<Form, Cmpt, Ncmpts>& vs);
 
-        //- Construct as copy of a VectorSpace with the same size
+        //- Copy construct of a VectorSpace with the same size
         template<class Form2, class Cmpt2>
         inline explicit VectorSpace(const VectorSpace<Form2, Cmpt2, Ncmpts>&);
+
+        //- Construct from Istream
+        explicit VectorSpace(Istream& is);
 
 
     // Member Functions
 
-        //- Return the number of elements in the VectorSpace = Ncmpts.
-        inline static direction size();
+        //- The number of elements in the VectorSpace = Ncmpts.
+        static constexpr direction size() noexcept
+        {
+            return Ncmpts;
+        }
 
         inline const Cmpt& component(const direction) const;
         inline Cmpt& component(const direction);
 
         inline void component(Cmpt&, const direction) const;
         inline void replace(const direction, const Cmpt&);
+
+        //- Return const pointer to the first data element
+        inline const Cmpt* cdata() const noexcept;
+
+        //- Return pointer to the first data element
+        inline Cmpt* data() noexcept;
 
         //- Return a VectorSpace with all elements = s
         inline static Form uniform(const Cmpt& s);
@@ -196,15 +203,46 @@ public:
         inline const Cmpt& operator[](const direction) const;
         inline Cmpt& operator[](const direction);
 
+        inline void operator=(const VectorSpace<Form, Cmpt, Ncmpts>&);
         inline void operator+=(const VectorSpace<Form, Cmpt, Ncmpts>&);
         inline void operator-=(const VectorSpace<Form, Cmpt, Ncmpts>&);
 
         inline void operator=(const Foam::zero);
+        inline void operator*=(const scalar);
+        inline void operator/=(const scalar);
 
-        template<class Type, class Enable = EnableRank0<Type>>
-        inline void operator*=(const Type);
-        template<class Type, class Enable = EnableRank0<Type>>
-        inline void operator/=(const Type);
+
+    // Iterators
+
+        //- Random access iterator for traversing VectorSpace
+        typedef Cmpt* iterator;
+
+        //- Random access iterator for traversing VectorSpace
+        typedef const Cmpt* const_iterator;
+
+
+    // Random access iterator (non-const)
+
+        //- Return an iterator to begin of VectorSpace
+        inline iterator begin() noexcept;
+
+        //- Return an iterator to end of VectorSpace
+        inline iterator end() noexcept;
+
+
+    // Random access iterator (const)
+
+        //- Return const_iterator to begin of VectorSpace
+        inline const_iterator cbegin() const noexcept;
+
+        //- Return const_iterator to end of VectorSpace
+        inline const_iterator cend() const noexcept;
+
+        //- Return const_iterator to begin of VectorSpace
+        inline const_iterator begin() const noexcept;
+
+        //- Return const_iterator to end of VectorSpace
+        inline const_iterator end() const noexcept;
 
 
     // IOstream Operators
@@ -223,11 +261,11 @@ public:
 };
 
 
-// * * * * * * * * * * * * * * Global functions  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * * //
 
-//- Return a string representation of a VectorSpace
+//- A word representation of a VectorSpace
 template<class Form, class Cmpt, direction Ncmpts>
-word name(const VectorSpace<Form, Cmpt, Ncmpts>&);
+word name(const VectorSpace<Form, Cmpt, Ncmpts>& vs);
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

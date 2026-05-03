@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ Class
     Foam::FixedList
 
 Description
-    A 1D vector of objects of type \<T\> with a fixed size \<Size\>.
+    A 1D vector of objects of type \<T\> with a fixed length \<N\>.
 
 SourceFiles
     FixedList.C
@@ -34,266 +37,370 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef FixedList_H
-#define FixedList_H
+#ifndef Foam_FixedList_H
+#define Foam_FixedList_H
 
 #include "bool.H"
 #include "label.H"
 #include "uLabel.H"
+#include "zero.H"
+#include "contiguous.H"
+#include "stdFoam.H"
+#include "nullObject.H"
 #include "Hash.H"
+#include "ListPolicy.H"
 #include "autoPtr.H"
+
+// <algorithm> already included by stdFoam.H
+#include <iterator>
+#include <limits>
 #include <type_traits>
-#include <initializer_list>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
-template<class T, unsigned Size> class FixedList;
-
-template<class T, unsigned Size>
-void writeEntry(Ostream& os, const FixedList<T, Size>&);
-
-template<class T, unsigned Size>
-Istream& operator>>(Istream&, FixedList<T, Size>&);
-
-template<class T, unsigned Size>
-Ostream& operator<<(Ostream&, const FixedList<T, Size>&);
-
+template<class T, unsigned N> class FixedList;
 template<class T> class UList;
 
-class SLListBase;
-template<class LListBase, class T> class LList;
-template<class T>
-using SLList = LList<SLListBase, T>;
+template<class T, unsigned N>
+Istream& operator>>(Istream& is, FixedList<T, N>& list);
+
+template<class T, unsigned N>
+Ostream& operator<<(Ostream& os, const FixedList<T, N>& list);
+
 
 /*---------------------------------------------------------------------------*\
-                          Class FixedList Declaration
+                           Class FixedList Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class T, unsigned Size>
+template<class T, unsigned N>
 class FixedList
 {
     static_assert
     (
-        Size && Size <= INT_MAX,
-        "Size must be positive (non-zero) and also fit as a signed value"
+        N && N <= std::numeric_limits<int>::max(),
+        "Size must be positive (non-zero) and fit as a signed int value"
     );
 
     // Private Data
 
-        //- Vector of values of type T of size Size.
-        T v_[Size];
+        //- Vector of values of type T of length N.
+        T v_[N];
+
+
+protected:
+
+    // Protected Member Functions
+
+        //- Write the FixedList with its compound type
+        void writeEntry(Ostream& os) const;
 
 
 public:
 
-    //- Hashing function class.
-    //  Use Hasher directly for contiguous data. Otherwise hash incrementally.
-    template<class HashT=Hash<T>>
-    class Hash
-    {
-    public:
-        Hash()
-        {}
+    // STL Type Definitions
 
-        inline unsigned operator()
-        (
-            const FixedList<T, Size>&,
-            unsigned seed = 0
-        ) const;
-    };
+        //- The value type the FixedList contains
+        typedef T value_type;
+
+        //- The pointer type for non-const access to value_type items
+        typedef T* pointer;
+
+        //- The pointer type for const access to value_type items
+        typedef const T* const_pointer;
+
+        //- The type used for storing into value_type objects
+        typedef T& reference;
+
+        //- The type used for reading from constant value_type objects.
+        typedef const T& const_reference;
+
+        //- Random access iterator for traversing FixedList
+        typedef T* iterator;
+
+        //- Random access iterator for traversing FixedList
+        typedef const T* const_iterator;
+
+        //- The type to represent the size of a FixedList
+        typedef label size_type;
+
+        //- The difference between iterator objects
+        typedef label difference_type;
+
+        //- Reverse iterator (non-const access)
+        typedef std::reverse_iterator<iterator> reverse_iterator;
+
+        //- Reverse iterator (const access)
+        typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
 
 
-    // Static Member Functions
+    // Static Functions
 
-        //- Return a null FixedList
-        inline static const FixedList<T, Size>& null();
+        //- Return a null FixedList (reference to a nullObject).
+        //- Read/write access is questionable
+        static const FixedList<T, N>& null() noexcept
+        {
+            return NullObjectRef<FixedList<T, N>>();
+        }
 
 
     // Constructors
 
-        //- Null constructor
-        inline FixedList();
+        //- Default construct
+        FixedList() = default;
 
-        //- Construct from value
-        explicit inline FixedList(const T&);
+        //- Construct and initialize all entries to given value
+        inline explicit FixedList(const T& val);
 
-        //- Construct from C-array
-        explicit inline FixedList(const T v[Size]);
+        //- Construct and initialize all entries to zero
+        inline explicit FixedList(const Foam::zero);
 
-        //- Construct given start and end iterators
-        template<class InputIterator>
-        inline FixedList(InputIterator first, InputIterator last);
+        //- Copy construct
+        inline FixedList(const FixedList<T, N>& list);
 
-        //- Construct from an initialiser list
-        inline FixedList(std::initializer_list<T>);
+        //- Move construct by using move assignment for the individual
+        //- list elements
+        inline FixedList(FixedList<T, N>&& list);
 
-        //- Construct from UList
-        explicit inline FixedList(const UList<T>&);
+        //- Construct from an initializer list. Runtime size check
+        inline FixedList(std::initializer_list<T> list);
 
-        //- Construct from SLList
-        explicit inline FixedList(const SLList<T>&);
+        //- Construct from UList. Runtime size check
+        inline explicit FixedList(const UList<T>& list);
+
+        //- Copy construct from a subset of the input. No size check
+        template<unsigned AnyNum>
+        inline FixedList
+        (
+            const FixedList<T, AnyNum>& list,
+            const FixedList<label, N>& indices
+        );
+
+        //- Copy construct from a subset of the input. No size check
+        inline FixedList
+        (
+            const UList<T>& list,
+            const FixedList<label, N>& indices
+        );
 
         //- Construct from Istream
-        FixedList(Istream&);
+        explicit FixedList(Istream& is);
 
         //- Clone
-        inline autoPtr<FixedList<T, Size>> clone() const;
+        inline autoPtr<FixedList<T, N>> clone() const;
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return the forward circular index, i.e. the next index
-            //  which returns to the first at the end of the list
-            inline label fcIndex(const label i) const;
+        //- Return pointer to the underlying array serving as data storage.
+        inline const T* cdata() const noexcept;
 
-            //- Return the reverse circular index, i.e. the previous index
-            //  which returns to the last at the beginning of the list
-            inline label rcIndex(const label i) const;
+        //- Return pointer to the underlying array serving as data storage.
+        inline T* data() noexcept;
 
-            //- Return a const pointer to the first data element,
-            //  similar to the STL front() method and the string::data() method
-            //  This can be used (with caution) when interfacing with C code
-            inline const T* cdata() const;
+        //- Return pointer to the underlying array serving as data storage,
+        //  reinterpreted as byte data
+        //  \note Only meaningful for contiguous data
+        inline const char* cdata_bytes() const noexcept;
 
-            //- Return a pointer to the first data element,
-            //  similar to the STL front() method and the string::data() method
-            //  This can be used (with caution) when interfacing with C code
-            inline T* data();
+        //- Return pointer to the underlying array serving as data storage,
+        //  reinterpreted as byte data
+        //  \note Only meaningful for contiguous data
+        inline char* data_bytes() noexcept;
 
-            //- Return the first element of the list
-            inline T& first();
+        //- Number of contiguous bytes for the list data,
+        //  \note Only meaningful for contiguous data
+        inline static std::streamsize size_bytes() noexcept;
 
-            //- Return first element of the list
-            inline const T& first() const;
+        //- Number of contiguous bytes for the list data,
+        //- runtime FatalError if type is not contiguous
+        static std::streamsize byteSize();
 
-            //- Return the last element of the list
-            inline T& last();
+        //- Element access using compile-time indexing
+        template<unsigned Index>
+        inline T& get() noexcept;
 
-            //- Return the last element of the list
-            inline const T& last() const;
+        //- Element access using compile-time indexing
+        template<unsigned Index>
+        inline const T& get() const noexcept;
 
-            //- Return element at a given index
-            template<unsigned I>
-            inline T& elmt();
+        //- Access first element of the list, position [0]
+        inline T& front() noexcept;
 
-            //- Return element at a given index
-            template<unsigned I>
-            inline const T& elmt() const;
+        //- Access first element of the list, position [0]
+        inline const T& front() const noexcept;
+
+        //- Access last element of the list, position [N-1]
+        inline T& back() noexcept;
+
+        //- Access last element of the list, position [N-1]
+        inline const T& back() const noexcept;
+
+        //- Return the forward circular index, i.e. next index
+        //- which returns to the first at the end of the list
+        inline label fcIndex(const label i) const noexcept;
+
+        //- Return forward circular value (ie, next value in the list)
+        inline const T& fcValue(const label i) const;
+
+        //- Return forward circular value (ie, next value in the list)
+        inline T& fcValue(const label i);
+
+        //- Return the reverse circular index, i.e. previous index
+        //- which returns to the last at the beginning of the list
+        inline label rcIndex(const label i) const noexcept;
+
+        //- Return reverse circular value (ie, previous value in the list)
+        inline const T& rcValue(const label i) const;
+
+        //- Return reverse circular value (ie, previous value in the list)
+        inline T& rcValue(const label i);
 
 
-        // Check
+    // Check
 
-            //- Check start is within valid range (0 ... size-1)
-            inline void checkStart(const label start) const;
+        //- Check start is within valid range [0,size)
+        inline void checkStart(const label start) const;
 
-            //- Check size is within valid range (0 ... size)
-            inline void checkSize(const label size) const;
+        //- Check size is identical to template parameter N
+        inline void checkSize(const label size) const;
 
-            //- Check index i is within valid range (0 ... size-1)
-            inline void checkIndex(const label i) const;
+        //- Check index is within valid range [0,N)
+        inline void checkIndex(const label i) const;
+
+        //- True if all entries have identical values, and list is non-empty
+        inline bool uniform() const;
 
 
-        // Edit
+    // Search
 
-            //- Dummy resize function
-            //  needed to make FixedList consistent with List
-            inline void resize(const label);
+        //- True if the value is contained in the list.
+        inline bool contains(const T& val) const;
 
-            //- Dummy setSize function
-            //  needed to make FixedList consistent with List
-            inline void setSize(const label);
+        //- Is the value contained in the list?
+        //  \param val The value to search for
+        //  \param pos The first position to examine (no-op if -ve)
+        //  \param len The length of the search region (-ve until the end)
+        //  \return true if found.
+        inline bool contains(const T& val, label pos, label len = -1) const;
 
-            //- Copy (not transfer) the argument contents
-            //  needed to make FixedList consistent with List
-            void transfer(const FixedList<T, Size>&);
+        //- Find index of the first occurrence of the value.
+        //  \param val The value to search for
+        //  \return position in list or -1 if not found.
+        label find(const T& val) const;
+
+        //- Find index of the first occurrence of the value.
+        //  \param val The value to search for
+        //  \param pos The first position to examine (no-op if -ve)
+        //  \param len The length of the search region (-ve until the end)
+        //  \return position in list or -1 if not found.
+        label find(const T& val, label pos, label len = -1) const;
+
+        //- Find index of the last occurrence of the value.
+        //  Any occurrences after the end pos are ignored.
+        //  Linear search.
+        //  \return position in list or -1 if not found.
+        label rfind(const T& val, label pos = -1) const;
+
+
+    // Edit
+
+        //- Dummy function, to make FixedList consistent with List
+        //- Any resizing is ignored (Fatal with bad sizing in full debug).
+        inline void resize(const label n);
+
+        //- Set val for \em all elements.
+        //- Any resizing is ignored (Fatal with bad sizing in full debug).
+        inline void resize_fill(const label n, const T& val);
+
+        //- Dummy function, to make FixedList consistent with List
+        //- Any resizing is ignored (Fatal with bad sizing in full debug).
+        inline void resize_nocopy(const label n);
+
+        //- Dummy function, to make FixedList consistent with List
+        void setSize(const label n) { this->resize(n); }
+
+        //- Assign all entries to the given value
+        inline void fill(const T& val);
+
+        //- Assign all entries to zero
+        inline void fill(const Foam::zero);
+
+        //- Move element to the first position.
+        void moveFirst(const label i);
+
+        //- Move element to the last position.
+        void moveLast(const label i);
+
+        //- Swap element with the first element.
+        void swapFirst(const label i);
+
+        //- Swap element with the last element.
+        void swapLast(const label i);
+
+        //- Transfer by swapping using a move assignment for the content
+        //- of the individual list elements
+        inline void transfer(FixedList<T, N>& list);
 
 
     // Member Operators
 
         //- Return element of FixedList
-        inline T& operator[](const label);
+        inline T& operator[](const label i);
 
         //- Return element of constant FixedList
-        inline const T& operator[](const label) const;
-
-        //- Assignment to array operator. Takes linear time
-        inline void operator=(const T v[Size]);
+        inline const T& operator[](const label i) const;
 
         //- Assignment to UList operator. Takes linear time
-        inline void operator=(const UList<T>&);
+        inline void operator=(const UList<T>& list);
 
-        //- Assignment to SLList operator. Takes linear time
-        inline void operator=(const SLList<T>&);
+        //- Assignment to an initializer list. Takes linear time
+        inline void operator=(std::initializer_list<T> list);
 
-        //- Assignment to an initialiser list. Takes linear time
-        inline void operator=(std::initializer_list<T>);
+        //- Assign all entries to the given value. fill()
+        inline void operator=(const T& val);
 
-        //- Assignment of all entries to the given value
-        inline void operator=(const T&);
+        //- Assign all entries to zero. fill()
+        inline void operator=(const Foam::zero);
 
+        //- Copy assignment
+        inline void operator=(const FixedList<T, N>& list);
 
-    // STL type definitions
-
-        //- Type of values the FixedList contains
-        typedef T value_type;
-
-        //- Type that can be used for storing into
-        //  FixedList::value_type objects
-        typedef T& reference;
-
-        //- Type that can be used for storing into
-        //  constant FixedList::value_type objects
-        typedef const T& const_reference;
-
-        //- The type that can represent the difference between any two
-        //  FixedList iterator objects
-        typedef label difference_type;
-
-        //- The type that can represent the size of a FixedList
-        typedef label size_type;
+        //- Move assignment
+        inline void operator=(FixedList<T, N>&& list);
 
 
-    // STL iterator
-
-        //- Random access iterator for traversing FixedList
-        typedef T* iterator;
+    // Random access iterator (non-const)
 
         //- Return an iterator to begin traversing the FixedList
-        inline iterator begin();
+        inline iterator begin() noexcept;
 
         //- Return an iterator to end traversing the FixedList
-        inline iterator end();
+        inline iterator end() noexcept;
 
 
-    // STL const_iterator
-
-        //- Random access iterator for traversing FixedList
-        typedef const T* const_iterator;
+    // Random access iterator (const)
 
         //- Return const_iterator to begin traversing the constant FixedList
-        inline const_iterator cbegin() const;
+        inline const_iterator cbegin() const noexcept;
 
         //- Return const_iterator to end traversing the constant FixedList
-        inline const_iterator cend() const;
+        inline const_iterator cend() const noexcept;
 
         //- Return const_iterator to begin traversing the constant FixedList
-        inline const_iterator begin() const;
+        inline const_iterator begin() const noexcept;
 
         //- Return const_iterator to end traversing the constant FixedList
-        inline const_iterator end() const;
+        inline const_iterator end() const noexcept;
 
 
-    // STL reverse_iterator
-
-        //- Reverse iterator for reverse traversal of FixedList
-        typedef std::reverse_iterator<iterator> reverse_iterator;
+    // Reverse iterator (non-const)
 
         //- Return reverse_iterator to begin reverse traversing the FixedList
         inline reverse_iterator rbegin();
@@ -302,10 +409,7 @@ public:
         inline reverse_iterator rend();
 
 
-    // STL const_reverse_iterator
-
-        //- Reverse iterator for reverse traversal of constant FixedList
-        typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
+    // Reverse iterator (const)
 
         //- Return const_reverse_iterator to begin reverse traversing FixedList
         inline const_reverse_iterator crbegin() const;
@@ -320,62 +424,189 @@ public:
         inline const_reverse_iterator rend() const;
 
 
-    // STL member functions
+    // STL Member Functions
+
+        //- Always false since zero-sized FixedList is compile-time disabled.
+        static constexpr bool empty() noexcept { return !N; }
 
         //- Return the number of elements in the FixedList
-        inline label size() const;
+        static constexpr label size() noexcept { return N; }
 
-        //- Return size of the largest possible FixedList
-        inline label max_size() const;
+        //- The dimensioned size (template parameter N) of the FixedList
+        static constexpr unsigned max_size() noexcept { return N; }
 
-        //- Return true if the FixedList is empty (ie, size() is zero)
-        inline bool empty() const;
-
-        //- Swap two FixedLists of the same type in constant time
-        void swap(FixedList<T, Size>&);
+        //- Swap lists by swapping the content of the individual list elements
+        //  Essentially std::swap_ranges
+        inline void swap(FixedList<T, N>& other);
 
 
-    // STL member operators
+    // STL Member Operators
 
         //- Equality operation on FixedLists of the same type.
-        //  Returns true when the FixedLists are elementwise equal
-        //  (using FixedList::value_type::operator==).  Takes linear time
-        bool operator==(const FixedList<T, Size>&) const;
+        //  Returns true when the FixedLists are element-wise equal
+        //  (using FixedList::value_type::operator==). Takes linear time
+        bool operator==(const FixedList<T, N>& list) const;
 
         //- The opposite of the equality operation. Takes linear time
-        bool operator!=(const FixedList<T, Size>&) const;
+        bool operator!=(const FixedList<T, N>& list) const;
 
         //- Compare two FixedLists lexicographically. Takes linear time
-        bool operator<(const FixedList<T, Size>&) const;
+        bool operator<(const FixedList<T, N>& list) const;
 
         //- Compare two FixedLists lexicographically. Takes linear time
-        bool operator>(const FixedList<T, Size>&) const;
+        bool operator>(const FixedList<T, N>& list) const;
 
         //- Return true if !(a > b). Takes linear time
-        bool operator<=(const FixedList<T, Size>&) const;
+        bool operator<=(const FixedList<T, N>& list) const;
 
         //- Return true if !(a < b). Takes linear time
-        bool operator>=(const FixedList<T, Size>&) const;
+        bool operator>=(const FixedList<T, N>& list) const;
+
+
+    // Reading/writing
+
+        //- Read from Istream, discarding contents of existing List
+        Istream& readList(Istream& is);
+
+        //- Write the list as a dictionary entry with keyword
+        void writeEntry(const word& keyword, Ostream& os) const;
+
+        //- Write List, with line-breaks in ASCII when length exceeds shortLen.
+        //  Using '0' suppresses line-breaks entirely.
+        Ostream& writeList(Ostream& os, const label shortLen=0) const;
 
 
     // IOstream Operators
 
-        //- Read List from Istream, discarding contents of existing List
-        friend Istream& operator>> <T, Size>
-        (Istream&, FixedList<T, Size>&);
-
-        //- Write FixedList to Ostream
-        friend Ostream& operator<< <T, Size>
+        //- Use the readList() method to read contents from Istream.
+        friend Istream& operator>> <T, N>
         (
-            Ostream&,
-            const FixedList<T, Size>&
+            Istream& is,
+            FixedList<T, N>& list
         );
+
+
+    // Hashing
+
+        //- Hashing functor for FixedList.
+        struct hasher
+        {
+            inline unsigned operator()
+            (
+                const FixedList<T, N>& obj,
+                unsigned seed=0
+            ) const
+            {
+                if (is_contiguous<T>::value)
+                {
+                    return Foam::Hasher(obj.cdata(), obj.size_bytes(), seed);
+                }
+
+                Foam::Hash<T> op;
+                for (const T& val : obj)
+                {
+                    seed = op(val, seed);
+                }
+                return seed;
+            }
+        };
+
+        //- Deprecated(2021-04) hashing functor. Use hasher()
+        // \deprecated(2021-04) - use hasher() functor
+        template<class Unused=bool>
+        struct Hash : FixedList<T, N>::hasher
+        {
+            FOAM_DEPRECATED_FOR(2021-04, "hasher()") Hash() {}
+        };
+
+
+    // Housekeeping
+
+        //- Access first element of the list, position [0] - front()
+        T& first() noexcept { return front(); }
+
+        //- Access first element of the list, position [0] - front()
+        const T& first() const noexcept { return front(); }
+
+        //- Access last element of the list, position [N-1] - back()
+        T& last() noexcept { return back(); }
+
+        //- Access last element of the list, position [N-1] - back()
+        const T& last() const noexcept { return back(); }
+
+        //- Same as contains()
+        bool found(const T& val, label pos = 0) const
+        {
+            return this->contains(val, pos);
+        }
+
+
+        //- Deprecated: copy construct from C-array
+        explicit FixedList(const T list[N]) { std::copy_n(list, N, v_); }
+
+        //- Deprecated: assignment from C-array
+        // \deprecated(2023-08) - use other assignment operators
+        void operator=(const T list[N]) { std::copy_n(list, N, v_); }
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- FixedList is contiguous if the type is contiguous
+template<class T, unsigned N>
+struct is_contiguous<FixedList<T, N>> : is_contiguous<T> {};
+
+//- Check for FixedList of labels
+template<class T, unsigned N>
+struct is_contiguous_label<FixedList<T, N>> : is_contiguous_label<T> {};
+
+//- Check for FixedList of scalars
+template<class T, unsigned N>
+struct is_contiguous_scalar<FixedList<T, N>> : is_contiguous_scalar<T> {};
+
+//- Hashing for FixedList data
+template<class T, unsigned N>
+struct Hash<FixedList<T, N>> : FixedList<T, N>::hasher {};
+
+
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
+
+//- Read List contents from Istream, list must have the proper size!
+template<class T, unsigned N>
+Istream& operator>>(Istream& is, FixedList<T, N>& list)
+{
+    return list.readList(is);
+}
+
+
+//- Write List to Ostream, as per FixedList::writeList() with default length.
+//  The default short-length is given by Detail::ListPolicy::short_length
+template<class T, unsigned N>
+Ostream& operator<<(Ostream& os, const FixedList<T, N>& list)
+{
+    return list.writeList(os, Detail::ListPolicy::short_length<T>::value);
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+//- Swap FixedList contents - see FixedList::swap().
+//  Essentially std::swap_ranges
+template<class T, unsigned N>
+inline void Swap(FixedList<T, N>& a, FixedList<T, N>& b)
+{
+    a.swap(b);
+}
+
+} // End namespace Foam
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -385,6 +616,7 @@ public:
 
 #ifdef NoRepository
     #include "FixedList.C"
+    #include "FixedListIO.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

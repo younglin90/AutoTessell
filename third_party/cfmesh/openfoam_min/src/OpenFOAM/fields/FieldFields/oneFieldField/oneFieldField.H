@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,10 +37,11 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef oneFieldField_H
-#define oneFieldField_H
+#ifndef Foam_oneFieldField_H
+#define Foam_oneFieldField_H
 
 #include "oneField.H"
+#include "Pair.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,36 +49,40 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class oneField Declaration
+                        Class oneFieldField Declaration
 \*---------------------------------------------------------------------------*/
 
 class oneFieldField
 :
     public one
 {
-
 public:
 
     // Constructors
 
-        //- Construct null
-        oneFieldField()
-        {}
+        //- Default construct
+        oneFieldField() noexcept = default;
 
 
     // Member Operators
 
-        inline oneField operator[](const label) const;
+        //- Return the field
+        oneField operator[](const label) const noexcept
+        {
+            return oneField{};
+        }
+
+        //- Return the field element
+        one operator[](const labelPair&) const noexcept
+        {
+            return one{};
+        }
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-    #include "oneFieldFieldI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

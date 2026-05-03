@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,35 +27,28 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "quarterSineRamp.H"
-#include "addToRunTimeSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
-    addScalarFunction1(quarterSineRamp);
+    makeScalarFunction1(quarterSineRamp);
 }
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::Function1s::quarterSineRamp::quarterSineRamp
+Foam::Function1Types::quarterSineRamp::quarterSineRamp
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    Ramp<quarterSineRamp>(name, units, dict)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::Function1s::quarterSineRamp::~quarterSineRamp()
+    ramp(entryName, dict, obrPtr)
 {}
 
 

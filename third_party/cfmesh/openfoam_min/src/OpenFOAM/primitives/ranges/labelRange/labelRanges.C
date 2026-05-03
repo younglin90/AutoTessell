@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +27,28 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "labelRanges.H"
-#include "ListOps.H"
+#include <numeric>
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
-const Foam::labelRanges Foam::labelRanges::endLabelRanges_;
-const Foam::labelRanges::const_iterator Foam::labelRanges::endIter_;
+namespace Foam
+{
+
+// Print range for debugging purposes
+static Ostream& printRange(Ostream& os, const labelRange& range)
+{
+    if (range.empty())
+    {
+        os  << "empty";
+    }
+    else
+    {
+        os  << range << " = " << range.min() << ':' << range.max();
+    }
+    return os;
+}
+
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -40,78 +59,66 @@ void Foam::labelRanges::insertBefore
     const labelRange& range
 )
 {
-    // insert via copying up
-    label nElem = this->size();
+    auto& list = ranges_;
+
+    // Insert via copying up
+    label nElem = list.size();
 
     if (labelRange::debug)
     {
-        Info<<"before insert "
+        Info<< "before insert "
             << nElem << " elements, insert at " << insert << nl
-            << *this << endl;
+            << list << endl;
     }
 
-    ParentType::setSize(nElem+1);
+    list.resize(nElem+1);
 
     if (labelRange::debug)
     {
-        Info<<"copy between " << nElem << " and " << insert << nl;
+        Info<< "copy between " << nElem << " and " << insert << nl;
     }
 
     for (label i = nElem-1; i >= insert; --i)
     {
         if (labelRange::debug)
         {
-            Info<<"copy from " << (i) << " to " << (i+1) << nl;
+            Info<< "copy from " << (i) << " to " << (i+1) << nl;
         }
 
-        ParentType::operator[](i+1) = ParentType::operator[](i);
+        list[i+1] = list[i];
     }
 
-    // finally insert the range
+    // Finally insert the range
     if (labelRange::debug)
     {
         Info<< "finally insert the range at " << insert << nl;
     }
-    ParentType::operator[](insert) = range;
+
+    list[insert] = range;
 }
 
 
 void Foam::labelRanges::purgeEmpty()
 {
-    // purge empty ranges by copying down
+    auto& list = ranges_;
+
+    // Purge empty ranges by copying down
     label nElem = 0;
-    forAll(*this, elemI)
+
+    forAll(list, elemi)
     {
-        if (!ParentType::operator[](elemI).empty())
+        if (!list[elemi].empty())
         {
-            if (nElem != elemI)
+            if (nElem != elemi)
             {
-                ParentType::operator[](nElem) = ParentType::operator[](elemI);
+                list[nElem] = list[elemi];
             }
             ++nElem;
         }
     }
 
-    // truncate
-    this->ParentType::setSize(nElem);
-}
-
-
-Foam::Ostream& Foam::labelRanges::printRange
-(
-    Ostream& os,
-    const labelRange& range
-) const
-{
-    if (range.empty())
-    {
-        os  << "empty";
-    }
-    else
-    {
-        os  << range << " = " << range.first() << ":" << range.last();
-    }
-    return os;
+    // Truncate
+    list.resize(nElem);
 }
 
 
@@ -127,34 +134,36 @@ Foam::labelRanges::labelRanges(Istream& is)
 
 bool Foam::labelRanges::add(const labelRange& range)
 {
+    auto& list = ranges_;
+
     if (range.empty())
     {
         return false;
     }
-    else if (this->empty())
+    else if (list.empty())
     {
-        this->append(range);
+        list.push_back(range);
         return true;
     }
 
-    // find the correct place for insertion
-    forAll(*this, elemI)
+    // Find the correct place for insertion
+    forAll(list, elemi)
     {
-        labelRange& currRange = ParentType::operator[](elemI);
+        labelRange& currRange = list[elemi];
 
-        if (currRange.intersects(range, true))
+        if (currRange.overlaps(range, true))
         {
             // absorb into the existing (adjacent/overlapping) range
-            currRange += range;
+            currRange.join(range);
 
-            // might connect with the next following range(s)
-            for (; elemI < this->size()-1; ++elemI)
+            // Might connect with the next following range(s)
+            for (; elemi < list.size()-1; ++elemi)
             {
-                labelRange& nextRange = ParentType::operator[](elemI+1);
-                if (currRange.intersects(nextRange, true))
+                labelRange& nextRange = list[elemi+1];
+                if (currRange.overlaps(nextRange, true))
                 {
-                    currRange += nextRange;
-                    nextRange.clear();
+                    currRange.join(nextRange);
+                    nextRange.reset();
                 }
                 else
                 {
@@ -162,14 +171,14 @@ bool Foam::labelRanges::add(const labelRange& range)
                 }
             }
 
-            // done - remove any empty ranges that might have been created
+            // Done - remove any empty ranges that might have been created
             purgeEmpty();
             return true;
             break;
         }
         else if (range < currRange)
         {
-            insertBefore(elemI, range);
+            insertBefore(elemi, range);
             return true;
             break;
         }
@@ -177,7 +186,7 @@ bool Foam::labelRanges::add(const labelRange& range)
 
 
     // not found: simply append
-    this->append(range);
+    list.push_back(range);
 
     return true;
 }
@@ -185,48 +194,51 @@ bool Foam::labelRanges::add(const labelRange& range)
 
 bool Foam::labelRanges::remove(const labelRange& range)
 {
+    auto& list = ranges_;
     bool status = false;
-    if (range.empty() || this->empty())
+
+    if (range.empty() || list.empty())
     {
         return status;
     }
 
-    forAll(*this, elemI)
+    forAll(list, elemi)
     {
-        labelRange& currRange = ParentType::operator[](elemI);
+        labelRange& currRange = list[elemi];
 
-        if (range.first() > currRange.first())
+        if (range.min() > currRange.min())
         {
-            if (range.last() < currRange.last())
+            if (range.max() < currRange.max())
             {
-                // removal of range fragments of currRange
+                // Removal of range fragments of currRange
 
                 if (labelRange::debug)
                 {
-                    Info<<"Fragment removal ";
+                    Info<< "Fragment removal ";
                     printRange(Info, range) << " from ";
                     printRange(Info, currRange) << endl;
                 }
 
                 // left-hand-side fragment: insert before current range
-                label lower = currRange.first();
-                label upper = range.first() - 1;
+                label lower = currRange.min();
+                label upper = range.min() - 1;
 
                 labelRange fragment(lower, upper - lower + 1);
 
                 // right-hand-side fragment
-                lower = range.last() + 1;
-                upper = currRange.last();
+                lower = range.max() + 1;
+                upper = currRange.max();
 
-                currRange = labelRange(lower, upper - lower + 1);
+                currRange.reset(lower, upper - lower + 1);
+                currRange.clampSize();
                 status = true;
-                insertBefore(elemI, fragment);
+                insertBefore(elemi, fragment);
 
                 if (labelRange::debug)
                 {
-                    Info<<"fragment ";
+                    Info<< "fragment ";
                     printRange(Info, fragment) << endl;
-                    Info<<"yields ";
+                    Info<< "yields ";
                     printRange(Info, currRange) << endl;
                 }
 
@@ -234,52 +246,54 @@ bool Foam::labelRanges::remove(const labelRange& range)
                 // thus we are done
                 break;
             }
-            else if (range.first() <= currRange.last())
+            else if (range.min() <= currRange.max())
             {
                 // keep left-hand-side, remove right-hand-side
 
                 if (labelRange::debug)
                 {
-                    Info<<"RHS removal ";
+                    Info<< "RHS removal ";
                     printRange(Info, range) << " from ";
                     printRange(Info, currRange) << endl;
                 }
 
-                const label lower = currRange.first();
-                const label upper = range.first() - 1;
+                const label lower = currRange.min();
+                const label upper = range.min() - 1;
 
-                currRange = labelRange(lower, upper - lower + 1);
+                currRange.reset(lower, upper - lower + 1);
+                currRange.clampSize();
                 status = true;
 
                 if (labelRange::debug)
                 {
-                    Info<<"yields ";
+                    Info<< "yields ";
                     printRange(Info, currRange) << endl;
                 }
             }
         }
-        else if (range.first() <= currRange.first())
+        else if (range.min() <= currRange.min())
         {
-            if (range.last() >= currRange.first())
+            if (range.max() >= currRange.min())
             {
                 // remove left-hand-side, keep right-hand-side
 
                 if (labelRange::debug)
                 {
-                    Info<<"LHS removal ";
+                    Info<< "LHS removal ";
                     printRange(Info, range) << " from ";
                     printRange(Info, currRange) << endl;
                 }
 
-                const label lower = range.last() + 1;
-                const label upper = currRange.last();
+                const label lower = range.max() + 1;
+                const label upper = currRange.max();
 
-                currRange = labelRange(lower, upper - lower + 1);
+                currRange.reset(lower, upper - lower + 1);
+                currRange.clampSize();
                 status = true;
 
                 if (labelRange::debug)
                 {
-                    Info<<"yields ";
+                    Info<< "yields ";
                     printRange(Info, currRange) << endl;
                 }
             }
@@ -292,19 +306,97 @@ bool Foam::labelRanges::remove(const labelRange& range)
 }
 
 
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-Foam::Istream& Foam::operator>>(Istream& is, labelRanges& ranges)
+Foam::List<Foam::label> Foam::labelRanges::labels() const
 {
-    is  >> static_cast<labelRanges::ParentType&>(ranges);
-    return is;
+    label total = 0;
+    for (const labelRange& range : ranges_)
+    {
+        if (range.size() > 0)  // Ignore negative size (paranoid)
+        {
+            total += range.size();
+        }
+    }
+
+    if (!total)
+    {
+        // Skip this check?
+        return List<label>();
+    }
+
+    List<label> result(total);
+
+    auto* iter = result.begin();
+
+    for (const labelRange& range : ranges_)
+    {
+        const label len = range.size();
+
+        if (len > 0)  // Ignore negative size (paranoid)
+        {
+            std::iota(iter, (iter + len), range.start());
+            iter += len;
+        }
+    }
+
+    return result;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const labelRanges& ranges)
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+Foam::label Foam::labelRanges::operator[](const label i) const
 {
-    os  << static_cast<const labelRanges::ParentType&>(ranges);
-    return os;
+    if (i < 0) return -1;
+
+    label subIdx = i;
+
+    for (const labelRange& range : ranges_)
+    {
+        if (subIdx < range.size())
+        {
+            return (range.start() + subIdx);
+        }
+        else
+        {
+            subIdx -= range.size();
+        }
+    }
+
+    return -1;  // Not found
+}
+
+
+// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
+
+Foam::Istream& Foam::labelRanges::readList(Istream& is)
+{
+    return ranges_.readList(is);
+}
+
+
+Foam::Ostream& Foam::labelRanges::writeList
+(
+    Ostream& os,
+    const label shortLen
+) const
+{
+    return ranges_.writeList(os, shortLen);
+}
+
+
+Foam::Istream& Foam::operator>>(Istream& is, labelRanges& list)
+{
+    return list.readList(is);
+}
+
+
+Foam::Ostream& Foam::operator<<(Ostream& os, const labelRanges& list)
+{
+    return list.writeList
+    (
+        os,
+        Detail::ListPolicy::short_length<labelRange>::value
+    );
 }
 
 

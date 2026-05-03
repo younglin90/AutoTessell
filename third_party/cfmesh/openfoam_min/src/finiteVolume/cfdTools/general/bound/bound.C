@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,56 +27,42 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "bound.H"
-#include "fvcAverage.H"
+#include "volFields.H"
+#include "fvc.H"
 
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-bool Foam::bound(volScalarField& vsf, const dimensionedScalar& min)
+Foam::volScalarField&
+Foam::bound(volScalarField& vsf, const dimensionedScalar& lowerBound)
 {
-    const scalar minVsf = Foam::min(vsf).value();
+    const scalar minVsf = min(vsf).value();
 
-    if (minVsf < min.value())
+    if (minVsf < lowerBound.value())
     {
-        scalarField& isf = vsf.primitiveFieldRef();
-
         Info<< "bounding " << vsf.name()
             << ", min: " << minVsf
             << " max: " << max(vsf).value()
-            << " average: " << gAverage(isf)
+            << " average: " << gAverage(vsf.primitiveField())
             << endl;
 
-        isf = max
+        vsf.primitiveFieldRef() = max
         (
             max
             (
-                isf,
-                fvc::average(max(vsf, min))().primitiveField()
-               *pos0(-isf)
+                vsf.primitiveField(),
+                fvc::average(max(vsf, lowerBound))().primitiveField()
+              * pos0(-vsf.primitiveField())
             ),
-            min.value()
+            lowerBound.value()
         );
 
-        volScalarField::Boundary& bsf = vsf.boundaryFieldRef();
-        forAll(bsf, patchi)
-        {
-            bsf[patchi] == max
-            (
-                max
-                (
-                    bsf[patchi],
-                    bsf[patchi].patchInternalField()
-                   *pos0(-bsf[patchi])
-                ),
-                min.value()
-            );
-        }
+        vsf.boundaryFieldRef() = max(vsf.boundaryField(), lowerBound.value());
 
-        return true;
+        // Give coupled bcs chance to update since cell values changed
+        vsf.boundaryFieldRef().evaluateCoupled<coupledFvPatch>();
     }
-    else
-    {
-        return false;
-    }
+
+    return vsf;
 }
 
 

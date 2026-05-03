@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,28 +36,28 @@ template<class Type>
 Foam::fixedMeanOutletInletFvPatchField<Type>::fixedMeanOutletInletFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    outletInletFvPatchField<Type>(p, iF),
+    meanValue_()
+{}
+
+
+template<class Type>
+Foam::fixedMeanOutletInletFvPatchField<Type>::fixedMeanOutletInletFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
     outletInletFvPatchField<Type>(p, iF),
-    meanValue_
-    (
-        Function1<Type>::New
-        (
-            "meanValue",
-            this->time().userUnits(),
-            iF.dimensions(),
-            dict
-        )
-    )
+    meanValue_(Function1<Type>::New("meanValue", dict, &this->db()))
 {
-    this->phiName_ = dict.lookupOrDefault<word>("phi", "phi");
+    this->phiName_ = dict.getOrDefault<word>("phi", "phi");
 
-    fvPatchField<Type>::operator=
-    (
-        Field<Type>("value", iF.dimensions(), dict, p.size())
-    );
+    this->readValueEntry(dict, IOobjectOption::MUST_READ);
 
     this->refValue() = *this;
     this->refGrad() = Zero;
@@ -67,12 +70,23 @@ Foam::fixedMeanOutletInletFvPatchField<Type>::fixedMeanOutletInletFvPatchField
 (
     const fixedMeanOutletInletFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     outletInletFvPatchField<Type>(ptf, p, iF, mapper),
-    meanValue_(ptf.meanValue_, false)
+    meanValue_(ptf.meanValue_.clone())
+{}
+
+
+template<class Type>
+Foam::fixedMeanOutletInletFvPatchField<Type>::fixedMeanOutletInletFvPatchField
+(
+    const fixedMeanOutletInletFvPatchField<Type>& ptf
+)
+:
+    outletInletFvPatchField<Type>(ptf),
+    meanValue_(ptf.meanValue_.clone())
 {}
 
 
@@ -80,11 +94,11 @@ template<class Type>
 Foam::fixedMeanOutletInletFvPatchField<Type>::fixedMeanOutletInletFvPatchField
 (
     const fixedMeanOutletInletFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     outletInletFvPatchField<Type>(ptf, iF),
-    meanValue_(ptf.meanValue_, false)
+    meanValue_(ptf.meanValue_.clone())
 {}
 
 
@@ -98,7 +112,8 @@ void Foam::fixedMeanOutletInletFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    Type meanValue = meanValue_->value(this->time().value());
+    const scalar t = this->db().time().timeOutputValue();
+    Type meanValue = meanValue_->value(t);
 
     Field<Type> newValues(this->patchInternalField());
 
@@ -106,7 +121,7 @@ void Foam::fixedMeanOutletInletFvPatchField<Type>::updateCoeffs()
         gSum(this->patch().magSf()*newValues)
        /gSum(this->patch().magSf());
 
-    if (mag(meanValue) > small && mag(meanValuePsi)/mag(meanValue) > 0.5)
+    if (mag(meanValue) > SMALL && mag(meanValuePsi) > 0.5*mag(meanValue))
     {
         newValues *= mag(meanValue)/mag(meanValuePsi);
     }
@@ -125,14 +140,8 @@ template<class Type>
 void Foam::fixedMeanOutletInletFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry
-    (
-        os,
-        this->time().userUnits(),
-        this->internalField().dimensions(),
-        meanValue_()
-    );
-    writeEntry(os, "value", *this);
+    meanValue_->writeData(os);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

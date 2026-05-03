@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,22 +34,22 @@ Description
     Information returned is usually a pointIndexHit:
     - bool  : was intersection/nearest found?
     - point : intersection point or nearest point
-    - index : unique index on surface (e.g. triangle for triSurface)
+    - index : unique index on surface (e.g. triangle for triSurfaceMesh)
 
 SourceFiles
     searchableSurface.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef searchableSurface_H
-#define searchableSurface_H
+#ifndef Foam_searchableSurface_H
+#define Foam_searchableSurface_H
 
 #include "pointField.H"
 #include "boundBox.H"
 #include "typeInfo.H"
 #include "runTimeSelectionTables.H"
 #include "pointIndexHit.H"
-#include "linePointRef.H"
+#include "line.H"
 #include "objectRegistry.H"
 #include "volumeType.H"
 
@@ -55,9 +58,9 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class objectRegistry;
-class distributionMap;
+class mapDistribute;
 class treeBoundBox;
 
 /*---------------------------------------------------------------------------*\
@@ -68,25 +71,26 @@ class searchableSurface
 :
     public regIOobject
 {
-    // Private Data
+    // Private data
 
         const word name_;
 
         boundBox bounds_;
 
 
+    // Private Member Functions
+
+        //- No copy construct
+        searchableSurface(const searchableSurface&) = delete;
+
+        //- No copy assignment
+        void operator=(const searchableSurface&) = delete;
+
+
 public:
 
     //- Runtime type information
     TypeName("searchableSurface");
-
-
-    // Static data
-
-        //- Name of the directory for the geometry files
-        //  Defaults to "geometry"
-        static word geometryDir_;
-
 
     // Declare run-time constructor selection table
 
@@ -95,7 +99,7 @@ public:
         (
             autoPtr,
             searchableSurface,
-            dictionary,
+            dict,
             (
                 const IOobject& io,
                 const dictionary& dict
@@ -134,14 +138,11 @@ public:
 
         searchableSurface(const IOobject& io);
 
-        //- Disallow default bitwise copy construction
-        searchableSurface(const searchableSurface&) = delete;
-
         //- Clone
         virtual autoPtr<searchableSurface> clone() const
         {
             NotImplemented;
-            return autoPtr<searchableSurface>(nullptr);
+            return nullptr;
         }
 
 
@@ -157,26 +158,32 @@ public:
 
 
     //- Destructor
-    virtual ~searchableSurface();
+    virtual ~searchableSurface() = default;
 
 
     // Member Functions
 
-        //- Return the geometry directory name
-        static const word& geometryDir();
+        //- Is object global
+        virtual bool global() const
+        {
+            return true;
+        }
 
-        //- Check that the geometry directory exists and return
-        //  if not return "triSurface" for backward compatibility
-        static const word& geometryDir(const Time& time);
+        //- Return complete path + object name if the file exists
+        //  either in the case/processor or case otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
 
         //- Return const reference to boundBox
-        const boundBox& bounds() const
+        virtual const boundBox& bounds() const
         {
             return bounds_;
         }
 
         //- Return non-const access to the boundBox to allow it to be set.
-        boundBox& bounds()
+        virtual boundBox& bounds()
         {
             return bounds_;
         }
@@ -184,8 +191,13 @@ public:
         //- Names of regions
         virtual const wordList& regions() const = 0;
 
-        //- Whether supports volume type below
-        virtual bool hasVolumeType() const = 0;
+        //- Whether supports volume type (below).
+        //  This is false for the base class.
+        virtual bool hasVolumeType() const;
+
+        //- If surface supports volume queries, what is type of points outside
+        //  bounds
+        virtual volumeType outsideVolumeType() const = 0;
 
         //- Range of local indices that can be returned
         virtual label size() const = 0;
@@ -213,6 +225,59 @@ public:
 
         //- Does any part of the surface overlap the supplied bound box?
         virtual bool overlaps(const boundBox& bb) const = 0;
+
+        // Single point queries.
+
+            ////- Calculate nearest point on surface. Returns
+            ////  - bool : any point found nearer than nearestDistSqr
+            ////  - label: relevant index in surface
+            ////  - label: region in surface
+            ////  - point: actual nearest point found
+            //virtual pointIndexHit findNearest
+            //(
+            //    const point& sample,
+            //    const scalar nearestDistSqr
+            //) const = 0;
+            //
+            ////- Calculate nearest point on edge. Returns
+            ////  - bool : any point found nearer than nearestDistSqr
+            ////  - label: relevant index in surface
+            ////  - label: region in surface
+            ////  - point: actual nearest point found
+            //virtual pointIndexHit findNearestOnEdge
+            //(
+            //    const point& sample,
+            //    const scalar nearestDistSqr
+            //) const = 0;
+            //
+            ////- Find nearest to segment. Returns
+            ////  - bool : any point found?
+            ////  - label: relevant index in shapes
+            ////  - label: region in surface
+            ////  - point: actual nearest point found
+            ////  sets:
+            ////  - tightest  : bounding box
+            ////  - linePoint : corresponding nearest point on line
+            //virtual pointIndexHit findNearest
+            //(
+            //    const linePointRef& ln,
+            //    treeBoundBox& tightest,
+            //    point& linePoint
+            //) const = 0;
+            //
+            ////- Find nearest intersection of line between start and end.
+            //virtual pointIndexHit findLine
+            //(
+            //    const point& start,
+            //    const point& end
+            //) const = 0;
+            //
+            ////- Find any intersection of line between start and end.
+            //virtual pointIndexHit findLineAny
+            //(
+            //    const point& start,
+            //    const point& end
+            //) const = 0;
 
 
         // Multiple point queries. When surface is distributed the index
@@ -278,8 +343,8 @@ public:
                 vectorField& normal
             ) const = 0;
 
-            //- Determine type (inside/outside) for point. unknown if
-            //  cannot be determined (e.g. non-manifold surface)
+            //- Determine type (inside/outside) for point.
+            //  Unknown if cannot be determined (e.g. non-manifold surface)
             virtual void getVolumeType
             (
                 const pointField&,
@@ -308,8 +373,8 @@ public:
             (
                 const List<treeBoundBox>&,
                 const bool keepNonLocal,
-                autoPtr<distributionMap>& faceMap,
-                autoPtr<distributionMap>& pointMap
+                autoPtr<mapDistribute>& faceMap,
+                autoPtr<mapDistribute>& pointMap
             )
             {}
 
@@ -325,13 +390,14 @@ public:
             {
                 values.clear();
             }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const searchableSurface&) = delete;
 };
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+//- Global file type for searchableSurface
+template<>
+struct is_globalIOobject<searchableSurface> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

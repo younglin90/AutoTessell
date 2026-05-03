@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,10 +27,13 @@ License
 Class
     Foam::flowRateInletVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    Velocity inlet boundary condition creating a velocity field with
-    optionally specified profile normal to the patch adjusted to match the
-    specified mass flow rate, volumetric flow rate or mean velocity.
+    Velocity inlet boundary condition either correcting the extrapolated
+    velocity or creating a uniform velocity field normal to the patch adjusted
+    to match the specified flow rate
 
     For a mass-based flux:
     - the flow rate should be provided in kg/s
@@ -42,13 +48,11 @@ Description
 Usage
     \table
         Property     | Description             | Required    | Default value
-        massFlowRate | Mass flow rate [kg/s]   | no          |
-        volumetricFlowRate | Volumetric flow rate [m^3/s] | no |
-        meanVelocity | Mean velocity [m/s]     | no          |
-        profile      | Velocity profile        | no          |
-        rho          | Density field name      | no          | rho
-        rhoInlet     | Inlet density           | no          |
-        alpha        | Volume fraction field name | no       |
+        massFlowRate | mass flow rate [kg/s]   | no          |
+        volumetricFlowRate | volumetric flow rate [m3/s]| no |
+        rho          | density field name      | no          | rho
+        rhoInlet     | inlet density           | no          |
+        extrapolateProfile | Extrapolate velocity profile | no | false
     \endtable
 
     Example of the boundary condition specification for a volumetric flow rate:
@@ -57,53 +61,36 @@ Usage
     {
         type                flowRateInletVelocity;
         volumetricFlowRate  0.2;
-        profile             laminarBL;
+        extrapolateProfile  yes;
+        value               uniform (0 0 0);
     }
     \endverbatim
 
     Example of the boundary condition specification for a mass flow rate:
-     \verbatim
-    <patchName>
-    {
-        type                flowRateInletVelocity;
-        massFlowRate        0.2;
-        profile             turbulentBL;
-        rho                 rho;
-        rhoInlet            1.0;
-    }
-    \endverbatim
-
-    Example of the boundary condition specification for a mean velocity:
     \verbatim
     <patchName>
     {
         type                flowRateInletVelocity;
-        meanVelocity        5;
-        profile             turbulentBL;
+        massFlowRate        0.2;
+        extrapolateProfile  yes;
+        rho                 rho;
+        rhoInlet            1.0;
+        value               uniform (0 0 0);
     }
     \endverbatim
 
-    The \c volumetricFlowRate, \c massFlowRate or \c meanVelocity entries are
-    \c Function1 of time, see Foam::Function1s.
+    The \c flowRate entry is a \c Function1 of time, see Foam::Function1Types.
 
-    The \c profile entry is a \c Function1 of the normalised distance to the
-    wall.  Any suitable Foam::Function1s can be used including
-    Foam::Function1s::codedFunction1 but Foam::Function1s::laminarBL and
-    Foam::Function1s::turbulentBL have been created specifically for this
-    purpose and are likely to be appropriate for most cases.
-
-    Note:
-      - \c rhoInlet is required for the case of a mass flow rate, where the
-        density field is not available at start-up
-      - The value is positive into the domain (as an inlet)
-      - May not work correctly for transonic inlets
-      - Strange behaviour with potentialFoam since the U equation is not solved
+Note
+    - \c rhoInlet is required for the case of a mass flow rate, where the
+      density field is not available at start-up
+    - The value is positive into the domain (as an inlet)
+    - May not work correctly for transonic inlets
+    - Strange behaviour with potentialFoam since the U equation is not solved
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s::laminarBL
-    Foam::Function1s::turbulentBL
-    Foam::Function1s
+    Foam::Function1Types
     Foam::flowRateOutletVelocityFvPatchVectorField
 
 SourceFiles
@@ -135,54 +122,24 @@ class flowRateInletVelocityFvPatchVectorField
         //- Inlet integral flow rate
         autoPtr<Function1<scalar>> flowRate_;
 
-        //- Is the flow-rate mean velocity?
-        bool meanVelocity_;
-
-        //- Is the flow-rate volumetric?
-        bool volumetric_;
-
-        //- Optional velocity profile
-        autoPtr<Function1<scalar>> profile_;
-
-        //- Name of the density field used to normalise the mass flux
+        //- Name of the density field used to normalize the mass flux
         word rhoName_;
 
         //- Rho initialisation value (for start; if value not supplied)
         scalar rhoInlet_;
 
-        //- Name of the volume fraction field used to convert to interstitial
-        //  velocity
-        word alphaName_;
+        //- Is volumetric?
+        bool volumetric_;
 
-        //- Normalised distance to the wall
-        scalarField y_;
-
-        //- Total area of patch
-        scalar area_;
+        //- Set true to extrapolate the velocity profile from the interior
+        Switch extrapolateProfile_;
 
 
     // Private Member Functions
 
-        //- Set the wall distance field y_
-        void setWallDist();
-
-        //- Return the normalised velocity profile
-        virtual tmp<scalarField> profile();
-
-        //- Update the patch values given the appropriate volume fraction and
-        //  density types and values
-        template<class ScaleType, class AlphaType, class RhoType>
-        void updateValues
-        (
-            const ScaleType& scale,
-            const AlphaType& alpha,
-            const RhoType& rho
-        );
-
-        //- Update the patch values given the appropriate volume fraction type
-        //  and values
-        template<class AlphaType>
-        void updateValues(const AlphaType& alpha);
+        //- Update the patch values given the appropriate density type and value
+        template<class RhoType>
+        void updateValues(const RhoType& rho);
 
 
 public:
@@ -193,11 +150,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        flowRateInletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         flowRateInletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -208,64 +172,46 @@ public:
         (
             const flowRateInletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         flowRateInletVelocityFvPatchVectorField
         (
             const flowRateInletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         flowRateInletVelocityFvPatchVectorField
         (
             const flowRateInletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new flowRateInletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Mapping functions
+        //- Update the coefficients associated with the patch field
+        virtual void updateCoeffs();
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
-
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchVectorField&);
-
-
-        // Evaluation functions
-
-            //- Update the coefficients associated with the patch field
-            virtual void updateCoeffs();
-
-
-        // I-O
-
-            //- Write
-            virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
+        //- Write
+        virtual void write(Ostream&) const;
 };
 
 

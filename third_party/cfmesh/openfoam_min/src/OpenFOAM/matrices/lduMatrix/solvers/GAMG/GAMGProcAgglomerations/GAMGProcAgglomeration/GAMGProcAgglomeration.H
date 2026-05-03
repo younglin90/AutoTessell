@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2014 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,19 +35,22 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef GAMGProcAgglomeration_H
-#define GAMGProcAgglomeration_H
+#ifndef Foam_GAMGProcAgglomeration_H
+#define Foam_GAMGProcAgglomeration_H
 
 #include "runTimeSelectionTables.H"
 #include "labelList.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class GAMGAgglomeration;
 class lduMesh;
+class lduPrimitiveMesh;
 
 /*---------------------------------------------------------------------------*\
                     Class GAMGProcAgglomeration Declaration
@@ -52,13 +58,16 @@ class lduMesh;
 
 class GAMGProcAgglomeration
 {
-
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- Reference to agglomeration
         GAMGAgglomeration& agglom_;
+
+        //- Allocated communicators
+        DynamicList<label> comms_;
+
 
     // Protected Member Functions
 
@@ -78,6 +87,9 @@ protected:
         //- Debug: calculate global cell-cells
         static labelListList globalCellCells(const lduMesh&);
 
+        //- Clear/free allocated communicators
+        void clearCommunicators();
+
 
 public:
 
@@ -95,13 +107,20 @@ public:
             GAMGAgglomeration,
             (
                 GAMGAgglomeration& agglom,
-                const dictionary& dict
+                const dictionary& controlDict
             ),
             (
                 agglom,
-                dict
+                controlDict
             )
         );
+
+
+    //- No copy construct
+    GAMGProcAgglomeration(const GAMGProcAgglomeration&) = delete;
+
+    //- No copy assignment
+    void operator=(const GAMGProcAgglomeration&) = delete;
 
 
     // Constructors
@@ -110,11 +129,8 @@ public:
         GAMGProcAgglomeration
         (
             GAMGAgglomeration& agglom,
-            const dictionary& dict
+            const dictionary& controlDict
         );
-
-        //- Disallow default bitwise copy construction
-        GAMGProcAgglomeration(const GAMGProcAgglomeration&) = delete;
 
 
     // Selectors
@@ -122,25 +138,20 @@ public:
         //- Return the selected agglomerator
         static autoPtr<GAMGProcAgglomeration> New
         (
+            const word& type,
             GAMGAgglomeration& agglom,
-            const dictionary& dict
+            const dictionary& controlDict
         );
 
 
-    //- Destructor
+    //- Destructor. Clears allocated communicators
     virtual ~GAMGProcAgglomeration();
 
 
     // Member Functions
 
-        //- Modify agglomeration. Return true if modified
+        //- Modify agglomeration. \returns True if modified
         virtual bool agglomerate() = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const GAMGProcAgglomeration&) = delete;
 };
 
 

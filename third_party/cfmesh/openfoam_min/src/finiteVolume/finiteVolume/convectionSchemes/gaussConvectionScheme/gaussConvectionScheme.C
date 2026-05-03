@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,11 +50,11 @@ gaussConvectionScheme<Type>::interpScheme() const
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 gaussConvectionScheme<Type>::interpolate
 (
     const surfaceScalarField&,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return tinterpScheme_().interpolate(vf);
@@ -60,11 +62,11 @@ gaussConvectionScheme<Type>::interpolate
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 gaussConvectionScheme<Type>::flux
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return faceFlux*interpolate(faceFlux, vf);
@@ -76,7 +78,7 @@ tmp<fvMatrix<Type>>
 gaussConvectionScheme<Type>::fvmDiv
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     tmp<surfaceScalarField> tweights = tinterpScheme_().weights(vf);
@@ -108,17 +110,7 @@ gaussConvectionScheme<Type>::fvmDiv
 
     if (tinterpScheme_().corrected())
     {
-        tmp<SurfaceField<Type>> tfaceFluxCorrection
-        (
-            faceFlux*tinterpScheme_().correction(vf)
-        );
-
-        fvm += fvc::surfaceIntegrate(tfaceFluxCorrection());
-
-        if (vf.mesh().schemes().fluxRequired(vf.name()))
-        {
-            fvm.faceFluxCorrectionPtr() = tfaceFluxCorrection.ptr();
-        }
+        fvm += fvc::surfaceIntegrate(faceFlux*tinterpScheme_().correction(vf));
     }
 
     return tfvm;
@@ -126,16 +118,16 @@ gaussConvectionScheme<Type>::fvmDiv
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 gaussConvectionScheme<Type>::fvcDiv
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
-    tmp<VolField<Type>> tConvection
+    tmp<GeometricField<Type, fvPatchField, volMesh>> tConvection
     (
-        fvc::surfaceIntegrateExtrapolate(flux(faceFlux, vf))
+        fvc::surfaceIntegrate(flux(faceFlux, vf))
     );
 
     tConvection.ref().rename

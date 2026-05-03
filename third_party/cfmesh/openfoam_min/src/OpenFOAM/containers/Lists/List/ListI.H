@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,49 +29,64 @@ License
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class T>
-inline void Foam::List<T>::alloc()
+inline void Foam::List<T>::doAlloc()
 {
     if (this->size_ > 0)
     {
+        // With sign-check to avoid spurious -Walloc-size-larger-than
         this->v_ = new T[this->size_];
     }
 }
 
 
 template<class T>
-inline void Foam::List<T>::reAlloc(const label s)
+inline void Foam::List<T>::reAlloc(const label len)
 {
-    if (this->size_ != s)
+    if (this->size_ != len)
     {
         clear();
-        this->size_ = s;
-        alloc();
+        this->size_ = len;
+        doAlloc();
     }
 }
 
 
 template<class T>
-template<class List2>
-inline void Foam::List<T>::copyList(const List2& lst)
+template<class ListType>
+inline void Foam::List<T>::copyList(const ListType& list)
 {
-    if (this->size_)
+    // NB: operator[] for list read access (eg, an indirect list)
+    // cannot necessarily replace with std::copy
+
+    const label len = this->size_;
+
+    auto iter = this->v_;
+
+    for (label i = 0; i < len; (void)++i, (void)++iter)
     {
-        forAll(*this, i)
-        {
-            this->operator[](i) = lst[i];
-        }
+        *iter = list[i];
     }
 }
 
 
 template<class T>
-template<class List2>
-inline void Foam::List<T>::allocCopyList(const List2& lst)
+template<class ListType, class ListIndices>
+inline void Foam::List<T>::copyList
+(
+    const ListType& list,
+    const ListIndices& indices
+)
 {
-    if (this->size_)
+    // NB: operator[] for list read access (eg, an indirect list)
+    // cannot necessarily replace with std::copy
+
+    const label len = this->size_;
+
+    auto iter = this->v_;
+
+    for (label i = 0; i < len; (void)++i, (void)++iter)
     {
-        alloc();
-        copyList(lst);
+        *iter = list[indices[i]];
     }
 }
 
@@ -77,22 +95,23 @@ template<class T>
 template<class InputIterator>
 inline Foam::List<T>::List
 (
-    InputIterator first,
-    InputIterator last,
-    const label s
+    InputIterator firstIter,
+    InputIterator lastIter,  // (unused)
+    const label len
 )
 :
-    UList<T>(nullptr, s)
+    UList<T>(nullptr, len)
 {
     if (this->size_)
     {
-        alloc();
+        doAlloc();
 
-        InputIterator iter = first;
-        forAll(*this, i)
+        // Like std::copy() or std::copy_n()
+        // but without any requirements on the iterator category
+
+        for (label i = 0; i < len; (void)++i, (void)++firstIter)
         {
-            this->operator[](i) = *iter;
-            ++iter;
+            this->v_[i] = *firstIter;
         }
     }
 }
@@ -101,25 +120,18 @@ inline Foam::List<T>::List
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class T>
-inline Foam::List<T>::List()
+inline constexpr Foam::List<T>::List() noexcept
 {}
 
 
 template<class T>
 inline Foam::autoPtr<Foam::List<T>> Foam::List<T>::clone() const
 {
-    return autoPtr<List<T>>(new List<T>(*this));
+    return autoPtr<List<T>>::New(*this);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class T>
-inline const Foam::List<T>& Foam::List<T>::null()
-{
-    return NullObjectRef<List<T>>();
-}
-
 
 template<class T>
 inline void Foam::List<T>::clear()
@@ -127,33 +139,68 @@ inline void Foam::List<T>::clear()
     if (this->v_)
     {
         delete[] this->v_;
-        this->v_ = 0;
+        this->v_ = nullptr;
     }
-
     this->size_ = 0;
 }
 
 
-template<class T>
-inline void Foam::List<T>::resize(const label newSize)
+namespace Foam
 {
-    this->setSize(newSize);
+    // Template specialization for bool. Fills new entries with false
+    template<>
+    inline void List<bool>::resize(const label newLen)
+    {
+        this->resize(newLen, false);
+    }
 }
 
 
 template<class T>
-inline void Foam::List<T>::resize(const label newSize, const T& a)
+inline void Foam::List<T>::resize(const label len)
 {
-    this->setSize(newSize, a);
+    this->doResize(len);
+}
+
+
+template<class T>
+inline void Foam::List<T>::resize_fill(const label len, const T& val)
+{
+    this->reAlloc(len);
+    UList<T>::operator=(val);
+}
+
+
+template<class T>
+inline void Foam::List<T>::resize_nocopy(const label len)
+{
+    this->reAlloc(len);
+}
+
+
+template<class T>
+inline void Foam::List<T>::resize_unsafe(const label len) noexcept
+{
+    UList<T>::setAddressableSize(len);
 }
 
 
 template<class T>
 inline T& Foam::List<T>::newElmt(const label i)
 {
-    if (i >= this->size())
+    label n = this->size();
+
+    if (i >= n)
     {
-        setSize(2*this->size());
+        if (!n) n = 1;  // Avoid dead-lock when starting from zero-sized
+
+        do
+        {
+            n *= 2;
+        }
+        while (i >= n);
+
+        resize(n);
     }
 
     return UList<T>::operator[](i);
@@ -161,54 +208,104 @@ inline T& Foam::List<T>::newElmt(const label i)
 
 
 template<class T>
-inline void Foam::List<T>::size(const label n)
+template<class... Args>
+inline T& Foam::List<T>::emplace_back(Args&&... args)
 {
-    UList<T>::size_ = n;
+    // This could/should be better with inplace construction
+    // (as per std::vector), but currently lacking the methods for that
+    // so resize and move assign
+
+    const label idx = this->size();
+    resize(idx + 1);
+
+    UList<T>::operator[](idx) = T(std::forward<Args>(args)...);
+    return UList<T>::operator[](idx);
 }
 
 
 template<class T>
-inline Foam::label Foam::List<T>::size() const
+inline void Foam::List<T>::push_back(const T& val)
 {
-    return UList<T>::size_;
+    const label idx = this->size();
+    resize(idx + 1);
+
+    UList<T>::operator[](idx) = val;  // copy element
 }
 
 
 template<class T>
-inline void Foam::List<T>::append(const T& t)
+inline void Foam::List<T>::push_back(T&& val)
 {
-    setSize(size()+1, t);
+    const label idx = this->size();
+    resize(idx + 1);
+
+    UList<T>::operator[](idx) = std::move(val);  // move assign element
 }
 
 
 template<class T>
-inline void Foam::List<T>::append(const UList<T>& lst)
+inline void Foam::List<T>::push_back(const UList<T>& list)
 {
-    if (this == &lst)
+    if (this == &list)
     {
         FatalErrorInFunction
-            << "attempted appending to self" << abort(FatalError);
+            << "Attempted push_back to self" << abort(FatalError);
     }
 
-    label nextFree = this->size();
-    setSize(nextFree + lst.size());
+    const label idx = this->size();
+    resize(idx + list.size());
 
-    forAll(lst, elemI)
+    std::copy(list.begin(), list.end(), this->begin(idx));
+}
+
+
+template<class T>
+template<class Addr>
+inline void Foam::List<T>::push_back(const IndirectListBase<T, Addr>& list)
+{
+    // Note: push_back will still work even if the indirect list
+    // actually references *this, since its source elements will not
+    // overlap the new destinations.
+
+    const label idx = this->size();
+    const label n = list.size();
+
+    resize(idx + n);
+
+    auto iter = this->begin(idx);
+
+    for (label i = 0; i < n; (void)++i, (void)++iter)
     {
-        this->operator[](nextFree++) = lst[elemI];
+        *iter = list[i];  // copy element
     }
 }
 
 
 template<class T>
-inline void Foam::List<T>::append(const UIndirectList<T>& lst)
+inline Foam::label Foam::List<T>::push_uniq(const T& val)
 {
-    label nextFree = this->size();
-    setSize(nextFree + lst.size());
-
-    forAll(lst, elemI)
+    if (this->contains(val))
     {
-        this->operator[](nextFree++) = lst[elemI];
+        return 0;
+    }
+    else
+    {
+        this->push_back(val);
+        return 1;  // Increased list length by one
+    }
+}
+
+
+template<class T>
+inline void Foam::List<T>::pop_back(label n)
+{
+    if (n >= this->size())
+    {
+        this->clear();
+    }
+    else if (n > 0)
+    {
+        resize(this->size() - n);
     }
 }
 
@@ -216,16 +313,16 @@ inline void Foam::List<T>::append(const UIndirectList<T>& lst)
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class T>
-inline void Foam::List<T>::operator=(const T& t)
+inline void Foam::List<T>::operator=(const T& val)
 {
-    UList<T>::operator=(t);
+    UList<T>::operator=(val);
 }
 
 
 template<class T>
-inline void Foam::List<T>::operator=(const zero)
+inline void Foam::List<T>::operator=(const Foam::zero)
 {
-    UList<T>::operator=(Zero);
+    UList<T>::operator=(Foam::zero{});
 }
 
 

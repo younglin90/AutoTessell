@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,7 @@ License
 
 #include "processorFvPatch.H"
 #include "addToRunTimeSelectionTable.H"
-#include "volFields.H"
-#include "surfaceFields.H"
+#include "transformField.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -43,30 +45,24 @@ void Foam::processorFvPatch::makeWeights(scalarField& w) const
 {
     if (Pstream::parRun())
     {
-        if (!mesh().conformal())
-        {
-            coupledFvPatch::makeWeights
+        // The face normals point in the opposite direction on the other side
+        scalarField neighbFaceCentresCn
+        (
             (
-                w,
-              - mesh().Sf().boundaryField()[index()],
-                mesh().Cf().boundaryField()[index()]
-              - mesh().C().boundaryField()[index()]
-            );
-        }
-        else
-        {
-            coupledFvPatch::makeWeights
-            (
-                w,
-                processorPoly_.neighbFaceAreas(),
-                processorPoly_.neighbFaceCentres()
-              - processorPoly_.neighbFaceCellCentres()
-            );
-        }
+                procPolyPatch_.neighbFaceAreas()
+               /(mag(procPolyPatch_.neighbFaceAreas()) + VSMALL)
+            )
+          & (
+              procPolyPatch_.neighbFaceCentres()
+            - procPolyPatch_.neighbFaceCellCentres())
+        );
+
+        w = neighbFaceCentresCn
+           /((nf()&coupledFvPatch::delta()) + neighbFaceCentresCn);
     }
     else
     {
-        w = 1;
+        w = 1.0;
     }
 }
 
@@ -75,23 +71,27 @@ Foam::tmp<Foam::vectorField> Foam::processorFvPatch::delta() const
 {
     if (Pstream::parRun())
     {
-        if (!mesh().conformal())
+        // To the transformation if necessary
+        if (parallel())
         {
             return
                 coupledFvPatch::delta()
               - (
-                    mesh().Cf().boundaryField()[index()]
-                  - mesh().C().boundaryField()[index()]
+                    procPolyPatch_.neighbFaceCentres()
+                  - procPolyPatch_.neighbFaceCellCentres()
                 );
         }
         else
         {
             return
                 coupledFvPatch::delta()
-              - transform().transform
+              - transform
                 (
-                    processorPoly_.neighbFaceCentres()
-                  - processorPoly_.neighbFaceCellCentres()
+                    forwardT(),
+                    (
+                        procPolyPatch_.neighbFaceCentres()
+                      - procPolyPatch_.neighbFaceCellCentres()
+                    )
                 );
         }
     }
@@ -111,6 +111,18 @@ Foam::tmp<Foam::labelField> Foam::processorFvPatch::interfaceInternalField
 }
 
 
+Foam::tmp<Foam::labelField> Foam::processorFvPatch::interfaceInternalField
+(
+    const labelUList& internalData,
+    const labelUList& faceCells
+) const
+{
+    auto tpfld = tmp<labelField>::New();
+    patchInternalField(internalData, faceCells, tpfld.ref());
+    return tpfld;
+}
+
+
 void Foam::processorFvPatch::initInternalFieldTransfer
 (
     const Pstream::commsTypes commsType,
@@ -118,6 +130,17 @@ void Foam::processorFvPatch::initInternalFieldTransfer
 ) const
 {
     send(commsType, patchInternalField(iF)());
+}
+
+
+void Foam::processorFvPatch::initInternalFieldTransfer
+(
+    const Pstream::commsTypes commsType,
+    const labelUList& iF,
+    const labelUList& faceCells
+) const
+{
+    send(commsType, interfaceInternalField(iF, faceCells)());
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +27,20 @@ License
 Class
     Foam::calculatedFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition is not designed to be evaluated; it is assumed
     that the value is assigned via field assignment, and not via a call to
     e.g. \c updateCoeffs or \c evaluate.
 
 Usage
+    \table
+        Property     | Description             | Required  | Default
+        value        | field value             | yes |
+    \endtable
+
     Example of the boundary condition specification:
     \verbatim
     <patchName>
@@ -44,8 +55,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef calculatedFvPatchField_H
-#define calculatedFvPatchField_H
+#ifndef Foam_calculatedFvPatchField_H
+#define Foam_calculatedFvPatchField_H
 
 #include "fvPatchField.H"
 
@@ -63,11 +74,10 @@ class calculatedFvPatchField
 :
     public fvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
-    TypeName("calculated");
+    TypeName("calculated");  // fieldTypes::calculatedTypeName_()
 
 
     // Constructors
@@ -76,57 +86,76 @@ public:
         calculatedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         calculatedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&,
-            const bool valueRequired=true
+            IOobjectOption::readOption requireValue = IOobjectOption::MUST_READ
         );
 
-        //- Construct by mapping given patchField<Type> onto a new patch
+        //- Compatibility (prefer with readOption)
+        calculatedFvPatchField
+        (
+            const fvPatch& p,
+            const DimensionedField<Type, volMesh>& iF,
+            const dictionary& dict,
+            const bool needValue
+        )
+        :
+            calculatedFvPatchField
+            (
+                p, iF, dict,
+                (needValue? IOobjectOption::MUST_READ : IOobjectOption::NO_READ)
+            )
+        {}
+
+        //- Construct by mapping given patch field onto a new patch
         calculatedFvPatchField
         (
             const calculatedFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&,
-            const bool mappingRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        calculatedFvPatchField(const calculatedFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        calculatedFvPatchField
+        (
+            const calculatedFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         calculatedFvPatchField
         (
             const calculatedFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new calculatedFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
 
 
         // Evaluation functions
@@ -154,14 +183,8 @@ public:
             tmp<Field<Type>> gradientBoundaryCoeffs() const;
 
 
-        //- Write
+        //- Write includes "value" entry
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvPatchField<Type>::operator=;
 };
 
 

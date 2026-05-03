@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -92,6 +94,8 @@ SourceFiles
 #ifndef cellClassification_H
 #define cellClassification_H
 
+#include "pointField.H"
+#include "Map.H"
 #include "boolList.H"
 #include "labelList.H"
 #include "faceList.H"
@@ -103,11 +107,12 @@ namespace Foam
 
 // Forward declaration of classes
 class triSurfaceSearch;
+class meshSearch;
 class polyMesh;
 class primitiveMesh;
 
 /*---------------------------------------------------------------------------*\
-                     Class cellClassification Declaration
+                           Class cellClassification Declaration
 \*---------------------------------------------------------------------------*/
 
 class cellClassification
@@ -141,7 +146,7 @@ public:
 
 private:
 
-    // Private Data
+    // Private data
 
         //- Reference to mesh
         const polyMesh& mesh_;
@@ -152,19 +157,19 @@ private:
         //- Count number of occurrences of elem in list
         static label count(const labelList& elems, const label elem);
 
-
     // Private Member Functions
 
         //- Mark all faces intersected by or intersecting surface
         boolList markFaces(const triSurfaceSearch&) const;
 
-        //- Divide cells into cut/inside/outside by using FaceCellWave from cut
+        //- Divide cells into cut/inside/outside by using MeshWave from cut
         //  faces. No check is done on whether outsidePts are in different
         //  domains.
         void markCells
         (
+            const meshSearch& queryMesh,
             const boolList& piercedFace,
-            const List<point>& outsidePts
+            const pointField& outsidePts
         );
 
         //- Use cell status to classify points as being internal to meshType,
@@ -183,14 +188,13 @@ private:
             const label celli
         ) const;
 
-        //- Get faces (and its 'owner') in between cells of differing type
+        //- Get faces (and its 'owner') inbetween cells of differing type
         // (meshType and non-meshType).
         void getMeshOutside(const label meshType, faceList&, labelList&) const;
 
-
 public:
 
-    // Static Data Members
+    // Static data members
     ClassName("cellClassification");
 
     // Constructors
@@ -199,15 +203,16 @@ public:
         cellClassification
         (
             const polyMesh& mesh,
+            const meshSearch& meshQuery,
             const triSurfaceSearch& surfQuery,
-            const List<point>& outsidePoints
+            const pointField& outsidePoints
         );
 
         //- Construct from mesh and type for every cell.
         //  Used to be able to reuse filling routines below.
         cellClassification(const polyMesh& mesh, const labelList& cellType);
 
-        //- Copy constructor
+        //- Construct as copy
         cellClassification(const cellClassification&);
 
 

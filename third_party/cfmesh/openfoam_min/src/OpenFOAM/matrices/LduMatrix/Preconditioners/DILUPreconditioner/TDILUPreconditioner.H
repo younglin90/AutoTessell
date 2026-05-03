@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,7 +50,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class TDILUPreconditioner Declaration
+                           Class TDILUPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -55,7 +58,7 @@ class TDILUPreconditioner
 :
     public LduMatrix<Type, DType, LUType>::preconditioner
 {
-    // Private Data
+    // Private data
 
         //- The inverse (reciprocal for scalar) preconditioned diagonal
         Field<DType> rD_;
@@ -79,8 +82,7 @@ public:
 
     // Destructor
 
-        virtual ~TDILUPreconditioner()
-        {}
+        virtual ~TDILUPreconditioner() = default;
 
 
     // Member Functions

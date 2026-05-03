@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,15 +32,13 @@ License
 
 inline Foam::OSstream::OSstream
 (
-    ostream& os,
-    const string& name,
-    const streamFormat format,
-    const versionNumber version,
-    const compressionType compression
+    std::ostream& os,
+    const string& streamName,
+    IOstreamOption streamOpt
 )
 :
-    Ostream(format, version, compression),
-    name_(name),
+    Ostream(streamOpt),
+    name_(streamName),
     os_(os)
 {
     if (os_.good())
@@ -48,7 +49,7 @@ inline Foam::OSstream::OSstream
     }
     else
     {
-        setState(os_.rdstate());
+        syncState();
     }
 }
 

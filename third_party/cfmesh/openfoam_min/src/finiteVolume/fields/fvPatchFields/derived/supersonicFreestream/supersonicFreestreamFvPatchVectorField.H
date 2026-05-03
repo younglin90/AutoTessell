@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::supersonicFreestreamFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a supersonic free-stream condition.
 
@@ -38,7 +43,7 @@ Usage
         Property     | Description             | Required    | Default value
         T            | Temperature field name  | no          | T
         p            | Pressure field name     | no          | p
-        psi          | Compressibility field name | no       | psi
+        psi          | Compressibility field name | no       | thermo:psi
         UInf         | free-stream velocity    | yes         |
         pInf         | free-stream pressure    | yes         |
         TInf         | free-stream temperature | yes         |
@@ -57,9 +62,9 @@ Usage
     }
     \endverbatim
 
-    Note:
-        This boundary condition is ill-posed if the free-stream flow is normal
-        to the boundary.
+Note
+    This boundary condition is ill-posed if the free-stream flow is normal
+    to the boundary.
 
 SourceFiles
     supersonicFreestreamFvPatchVectorField.C
@@ -85,7 +90,7 @@ class supersonicFreestreamFvPatchVectorField
 :
     public mixedFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Name of temperature field, default = "T"
         word TName_;
@@ -93,7 +98,7 @@ class supersonicFreestreamFvPatchVectorField
         //- Name of pressure field, default = "p"
         word pName_;
 
-        //- Name of compressibility field field, default = "psi"
+        //- Name of compressibility field field, default = "thermo:psi"
         word psiName_;
 
         //- Velocity of the free stream
@@ -117,11 +122,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        supersonicFreestreamFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         supersonicFreestreamFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -131,37 +143,40 @@ public:
         (
             const supersonicFreestreamFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         supersonicFreestreamFvPatchVectorField
         (
             const supersonicFreestreamFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         supersonicFreestreamFvPatchVectorField
         (
             const supersonicFreestreamFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new supersonicFreestreamFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -211,12 +226,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchVectorField::operator=;
 };
 
 

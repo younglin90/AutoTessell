@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,15 +26,36 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "zero.H"
 #include "IOstreams.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-template<class Point, class PointRef>
-inline Foam::line<Point, PointRef>::line(const Point& start, const Point& end)
+inline Foam::linePoints::linePoints(const linePointRef& pts)
 :
-    a_(start),
-    b_(end)
+    Pair<point>(pts.a(), pts.b())
+{}
+
+
+inline Foam::linePoints::linePoints
+(
+    const UList<point>& points,
+    const FixedList<label, 2>& indices
+)
+:
+    Pair<point>(points[indices.get<0>()], points[indices.get<1>()])
+{}
+
+
+template<class Point, class PointRef>
+inline Foam::line<Point, PointRef>::line
+(
+    const Point& from,
+    const Point& to
+)
+:
+    a_(from),
+    b_(to)
 {}
 
 
@@ -42,8 +66,8 @@ inline Foam::line<Point, PointRef>::line
     const FixedList<label, 2>& indices
 )
 :
-    a_(points[indices[0]]),
-    b_(points[indices[1]])
+    a_(points[indices.template get<0>()]),
+    b_(points[indices.template get<1>()])
 {}
 
 
@@ -56,16 +80,9 @@ inline Foam::line<Point, PointRef>::line(Istream& is)
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class Point, class PointRef>
-inline PointRef Foam::line<Point, PointRef>::start() const
+inline Foam::linePointRef Foam::linePoints::ln() const
 {
-    return a_;
-}
-
-template<class Point, class PointRef>
-inline PointRef Foam::line<Point, PointRef>::end() const
-{
-    return b_;
+    return linePointRef(a(), b());
 }
 
 
@@ -76,17 +93,79 @@ inline Point Foam::line<Point, PointRef>::centre() const
 }
 
 
+inline Foam::point Foam::linePoints::centre() const
+{
+    return 0.5*(a() + b());
+}
+
+
 template<class Point, class PointRef>
 inline Foam::scalar Foam::line<Point, PointRef>::mag() const
 {
-    return ::Foam::mag(vec());
+    return ::Foam::mag(b() - a());
+}
+
+
+inline Foam::scalar Foam::linePoints::mag() const
+{
+    return ::Foam::mag(b() - a());
 }
 
 
 template<class Point, class PointRef>
 inline Point Foam::line<Point, PointRef>::vec() const
 {
-    return b_ - a_;
+    return (b() - a());
+}
+
+
+inline Foam::vector Foam::linePoints::vec() const
+{
+    return (b() - a());
+}
+
+
+template<class Point, class PointRef>
+inline Point Foam::line<Point, PointRef>::unitVec() const
+{
+    const Point v = (b_ - a_);
+
+    #ifdef __clang__
+    volatile  // Use volatile to avoid aggressive branch optimization
+    #endif
+    const scalar s(::Foam::mag(v));
+
+    return s < ROOTVSMALL ? Zero : v/s;
+}
+
+
+inline Foam::vector Foam::linePoints::unitVec() const
+{
+    return normalised(b() - a());
+}
+
+
+template<class Point, class PointRef>
+inline Foam::Pair<Point> Foam::line<Point, PointRef>::box
+(
+    const Point& p0,
+    const Point& p1
+)
+{
+    return Pair<Point>(min(p0, p1), max(p0, p1));
+}
+
+
+template<class Point, class PointRef>
+inline Foam::Pair<Point> Foam::line<Point, PointRef>::box() const
+{
+    return line<Point, PointRef>::box(a_, b_);
+}
+
+
+inline Foam::Pair<Foam::point> Foam::linePoints::box() const
+{
+    return linePointRef::box(a(), b());
 }
 
 
@@ -100,21 +179,21 @@ Foam::PointHit<Point> Foam::line<Point, PointRef>::nearestDist
 
     Point w(p - a_);
 
-    scalar c1 = v & w;
+    const scalar c1 = v & w;
 
     if (c1 <= 0)
     {
         return PointHit<Point>(false, a_, Foam::mag(p - a_), true);
     }
 
-    scalar c2 = v & v;
+    const scalar c2 = v & v;
 
     if (c2 <= c1)
     {
         return PointHit<Point>(false, b_, Foam::mag(p - b_), true);
     }
 
-    scalar b = c1/c2;
+    const scalar b = c1/c2;
 
     Point pb(a_ + b*v);
 
@@ -136,9 +215,9 @@ Foam::scalar Foam::line<Point, PointRef>::nearestDist
     Point c(edge.start() - start());
 
     Point crossab = a ^ b;
-    scalar magCrossSqr = magSqr(crossab);
+    const scalar magCrossSqr = Foam::magSqr(crossab);
 
-    if (magCrossSqr > vSmall)
+    if (magCrossSqr > VSMALL)
     {
         scalar s = ((c ^ b) & crossab)/magCrossSqr;
         scalar t = ((c ^ a) & crossab)/magCrossSqr;
@@ -169,12 +248,12 @@ Foam::scalar Foam::line<Point, PointRef>::nearestDist
             {
                 if (this0.distance() < this1.distance())
                 {
-                    thisPt = this0.rawPoint();
+                    thisPt = this0.point();
                     edgePt = edge.start();
                 }
                 else
                 {
-                    thisPt = this1.rawPoint();
+                    thisPt = this1.point();
                     edgePt = edge.end();
                 }
             }
@@ -183,12 +262,12 @@ Foam::scalar Foam::line<Point, PointRef>::nearestDist
                 if (edge0.distance() < edge1.distance())
                 {
                     thisPt = start();
-                    edgePt = edge0.rawPoint();
+                    edgePt = edge0.point();
                 }
                 else
                 {
                     thisPt = end();
-                    edgePt = edge1.rawPoint();
+                    edgePt = edge1.point();
                 }
             }
         }
@@ -226,7 +305,7 @@ Foam::scalar Foam::line<Point, PointRef>::nearestDist
         {
             // maxEdge inside interval of *this
             edgePt = maxEdgePt;
-            thisPt = nearestDist(edgePt).rawPoint();
+            thisPt = nearestDist(edgePt).point();
         }
         else
         {
@@ -236,13 +315,13 @@ Foam::scalar Foam::line<Point, PointRef>::nearestDist
                 // Edge completely envelops this. Take any this point and
                 // determine nearest on edge.
                 thisPt = minThisPt;
-                edgePt = edge.nearestDist(thisPt).rawPoint();
+                edgePt = edge.nearestDist(thisPt).point();
             }
             else if (minEdge < maxThis)
             {
                 // minEdge inside this interval.
                 edgePt = minEdgePt;
-                thisPt = nearestDist(edgePt).rawPoint();
+                thisPt = nearestDist(edgePt).point();
             }
             else
             {
@@ -270,7 +349,7 @@ inline Foam::Istream& Foam::operator>>
     is  >> l.a_ >> l.b_;
     is.readEnd("line");
 
-    is.check("Istream& operator>>(Istream&, line&)");
+    is.check(FUNCTION_NAME);
     return is;
 }
 

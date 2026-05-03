@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,15 +42,25 @@ SourceFiles
 #ifndef MRFZone_H
 #define MRFZone_H
 
-#include "fvCellZone.H"
+#include "dictionary.H"
+#include "wordList.H"
+#include "labelList.H"
+#include "dimensionedScalar.H"
+#include "dimensionedVector.H"
 #include "volFieldsFwd.H"
 #include "surfaceFields.H"
-#include "omega1.H"
+#include "fvMatricesFwd.H"
+#include "mapPolyMesh.H"
+#include "Function1.H"
+#include "autoPtr.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+
+// Forward declaration of classes
+class fvMesh;
 
 /*---------------------------------------------------------------------------*\
                            Class MRFZone Declaration
@@ -55,7 +68,7 @@ namespace Foam
 
 class MRFZone
 {
-    // Private Data
+    // Private data
 
         //- Reference to the mesh database
         const fvMesh& mesh_;
@@ -66,32 +79,44 @@ class MRFZone
         //- Coefficients dictionary
         dictionary coeffs_;
 
-        //- MRF zone cell set
-        fvCellZone cellSet_;
+        //- MRF region active flag
+        bool active_;
 
-        //- Internal faces that are in the MRF region
+        //- Name of cell zone
+        word cellZoneName_;
+
+        //- Cell zone ID
+        label cellZoneID_;
+
+        //- Non-rotating patches
+        wordRes excludedPatchNames_;
+
+        //- Indices of non-rotating patches
+        labelList excludedPatchLabels_;
+
+        //- Internal faces that are part of MRF
         labelList internalFaces_;
 
-        //- Patch faces that are in the MRF region
-        labelListList patchFaces_;
+        //- Outside faces (per patch) that move with the MRF
+        labelListList includedFaces_;
+
+        //- Excluded faces (per patch) that do not move with the MRF
+        labelListList excludedFaces_;
 
         //- Origin of the axis
-        const vector origin_;
+        vector origin_;
 
         //- Axis vector
         vector axis_;
 
-        //- Angular velocity
-        Function1s::omega omega_;
+        //- Angular velocity (rad/sec)
+        autoPtr<Function1<scalar>> omega_;
 
 
     // Private Member Functions
 
         //- Divide faces in frame according to patch
         void setMRFFaces();
-
-        //- Check that the case has been updated with correct MRF BCs
-        void checkMRFBCs(const volVectorField& U) const;
 
         //- Make the given absolute mass/vol flux relative within the MRF region
         template<class RhoFieldType>
@@ -106,7 +131,7 @@ class MRFZone
         void makeRelativeRhoFlux
         (
             const RhoFieldType& rho,
-            FieldField<surfaceMesh::PatchField, scalar>& phi
+            FieldField<fvsPatchField, scalar>& phi
         ) const;
 
         //- Make the given absolute mass/vol flux relative within the MRF region
@@ -126,6 +151,12 @@ class MRFZone
             surfaceScalarField& phi
         ) const;
 
+        //- No copy construct
+        MRFZone(const MRFZone&) = delete;
+
+        //- No copy assignment
+        void operator=(const MRFZone&) = delete;
+
 
 public:
 
@@ -140,17 +171,15 @@ public:
         (
             const word& name,
             const fvMesh& mesh,
-            const dictionary& dict
+            const dictionary& dict,
+            const word& cellZoneName = word::null
         );
-
-        //- Disallow default bitwise copy construction
-        MRFZone(const MRFZone&) = delete;
 
         //- Return clone
         autoPtr<MRFZone> clone() const
         {
             NotImplemented;
-            return autoPtr<MRFZone>(nullptr);
+            return nullptr;
         }
 
 
@@ -159,8 +188,24 @@ public:
         //- Return const access to the MRF region name
         inline const word& name() const;
 
+        //- Return const access to the MRF active flag
+        inline bool active() const;
+
+        //- Return const access to the MRF origin
+        inline const vector& origin() const;
+
+        //- Return const access to the MRF axis
+        inline const vector& axis() const;
+
         //- Return the current Omega vector
         vector Omega() const;
+
+        //- Update the mesh corresponding to given map
+        void updateMesh(const mapPolyMesh& mpm)
+        {
+            // Only updates face addressing
+            setMRFFaces();
+        }
 
         //- Add the Coriolis force contribution to the acceleration field
         void addCoriolis
@@ -169,10 +214,21 @@ public:
             volVectorField& ddtU
         ) const;
 
-        //- Add the centrifugal acceleration
-        void addCentrifugalAcceleration
+        //- Add the Coriolis force contribution to the momentum equation
+        //  Adds to the lhs of the equation; optionally add to rhs
+        void addCoriolis
         (
-            volVectorField& centrifugalAcceleration
+            fvVectorMatrix& UEqn,
+            const bool rhs = false
+        ) const;
+
+        //- Add the Coriolis force contribution to the momentum equation
+        //  Adds to the lhs of the equation; optionally add to rhs
+        void addCoriolis
+        (
+            const volScalarField& rho,
+            fvVectorMatrix& UEqn,
+            const bool rhs = false
         ) const;
 
         //- Make the given absolute velocity relative within the MRF region
@@ -183,10 +239,7 @@ public:
 
         //- Make the given absolute boundary flux relative
         //  within the MRF region
-        void makeRelative
-        (
-            FieldField<surfaceMesh::PatchField, scalar>& phi
-        ) const;
+        void makeRelative(FieldField<fvsPatchField, scalar>& phi) const;
 
         //- Make the given absolute patch flux relative
         //  within the MRF region
@@ -198,10 +251,6 @@ public:
             const surfaceScalarField& rho,
             surfaceScalarField& phi
         ) const;
-
-        //- Make the given relative patch velocity relative
-        //  within the MRF region
-        void makeRelative(Field<vector>& Up, const label patchi) const;
 
         //- Make the given relative velocity absolute within the MRF region
         void makeAbsolute(volVectorField& U) const;
@@ -216,13 +265,12 @@ public:
             surfaceScalarField& phi
         ) const;
 
-        //- Make the given relative patch velocity absolute
-        //  within the MRF region
-        void makeAbsolute(Field<vector>& Up, const label patchi) const;
+        //- Correct the boundary velocity for the rotation of the MRF region
+        void correctBoundaryVelocity(volVectorField& U) const;
 
         //- Zero the MRF region of the given field
         template<class Type>
-        void zero(SurfaceField<Type>& phi) const;
+        void zero(GeometricField<Type, fvsPatchField, surfaceMesh>& phi) const;
 
         //- Update MRFZone faces if the mesh topology changes
         void update();
@@ -230,14 +278,11 @@ public:
 
     // I-O
 
+        //- Write
+        void writeData(Ostream& os) const;
+
         //- Read MRF dictionary
         bool read(const dictionary& dict);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const MRFZone&) = delete;
 };
 
 

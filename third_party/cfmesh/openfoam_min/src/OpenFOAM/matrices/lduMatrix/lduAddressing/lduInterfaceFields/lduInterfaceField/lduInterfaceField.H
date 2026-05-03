@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,10 +36,11 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef lduInterfaceField_H
-#define lduInterfaceField_H
+#ifndef Foam_lduInterfaceField_H
+#define Foam_lduInterfaceField_H
 
 #include "lduInterface.H"
+#include "lduAddressing.H"
 #include "primitiveFieldsFwd.H"
 #include "Pstream.H"
 
@@ -45,12 +49,12 @@ SourceFiles
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
+// Forward Declarations
 class lduMatrix;
+class lduInterfaceField;
 
 /*---------------------------------------------------------------------------*\
-                      Class lduInterfaceField Declaration
+                     Class lduInterfaceField Declaration
 \*---------------------------------------------------------------------------*/
 
 class lduInterfaceField
@@ -61,8 +65,8 @@ class lduInterfaceField
         const lduInterface& interface_;
 
         //- Update index used so that updateInterfaceMatrix is called only once
-        //  during the construction of the matrix
-        bool updatedMatrix_;
+        //- during the construction of the matrix
+        mutable bool updatedMatrix_;
 
 
 public:
@@ -71,92 +75,130 @@ public:
     TypeName("lduInterfaceField");
 
 
+    // Generated Methods
+
+        //- No copy construct
+        lduInterfaceField(const lduInterfaceField&) = delete;
+
+        //- No copy assignment
+        void operator=(const lduInterfaceField&) = delete;
+
+
     // Constructors
 
         //- Construct given coupled patch
-        lduInterfaceField(const lduInterface& patch)
+        explicit lduInterfaceField(const lduInterface& patch)
         :
             interface_(patch),
             updatedMatrix_(false)
         {}
 
-        //- Disallow default bitwise copy construction
-        lduInterfaceField(const lduInterfaceField&) = delete;
-
 
     //- Destructor
-    virtual ~lduInterfaceField();
+    virtual ~lduInterfaceField() = default;
 
 
     // Member Functions
 
-        // Access
+        //- Return the interface
+        const lduInterface& interface() const noexcept
+        {
+            return interface_;
+        }
 
-            //- Return the interface
-            const lduInterface& interface() const
-            {
-                return interface_;
-            }
+        //- Return the interface type
+        virtual const word& interfaceFieldType() const
+        {
+            return type();
+        }
 
-            //- Return the interface type
-            virtual const word& interfaceFieldType() const
-            {
-                return type();
-            }
+
+    // Coupled Interface
+
+        //- Are all (receive) data available?
+        virtual bool ready() const
+        {
+            return true;
+        }
+
+        //- Whether matrix has been updated
+        bool updatedMatrix() const noexcept
+        {
+            return updatedMatrix_;
+        }
+
+        //- Set matrix as update-to-date, return the previous value
+        bool updatedMatrix(bool flag) const noexcept
+        {
+            bool old(updatedMatrix_);
+            updatedMatrix_ = flag;
+            return old;
+        }
 
 
         // Coupled interface matrix update
 
-            //- Whether matrix has been updated
-            bool updatedMatrix() const
-            {
-                return updatedMatrix_;
-            }
-
-            //- Whether matrix has been updated
-            bool& updatedMatrix()
-            {
-                return updatedMatrix_;
-            }
-
-            //- Is all data available
-            virtual bool ready() const
-            {
-                return true;
-            }
-
-            //- Initialise neighbour matrix update
+            //- Initialise neighbour matrix update.
+            //- Add/subtract coupled contributions to matrix
             virtual void initInterfaceMatrixUpdate
             (
-                scalarField&,
-                const scalarField&,
-                const scalarField&,
-                const direction,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing&,
+                const label interfacei,
+                const solveScalarField& psiInternal,
+                const scalarField& coeffs,
+                const direction cmpt,
                 const Pstream::commsTypes commsType
             ) const
             {}
 
-            //- Update result field based on interface functionality
+            //- Update result field based on interface functionality.
+            //- Add/subtract coupled contributions to matrix
             virtual void updateInterfaceMatrix
             (
-                scalarField&,
-                const scalarField&,
-                const scalarField&,
-                const direction,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing&,
+                const label interfacei,
+                const solveScalarField& psiInternal,
+                const scalarField& coeffs,
+                const direction cmpt,
                 const Pstream::commsTypes commsType
             ) const = 0;
 
+            //- Add/subtract weighted contributions to internal field
+            template<class Type>
+            void addToInternalField
+            (
+                Field<Type>& result,
+                const bool add,
+                const labelUList& faceCells,
+                const scalarField& coeffs,
+                const Field<Type>& vals
+            ) const;
 
-    // Member Operators
 
-        //- Disallow default bitwise assignment
-        void operator=(const lduInterfaceField&) = delete;
+    // Housekeeping
+
+        //- Adjust whether matrix has been updated.
+        //  \deprecated Prefer the updatedMatrix(bool) setter (JAN-2023)
+        bool& updatedMatrix() noexcept
+        {
+            return updatedMatrix_;
+        }
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+    #include "lduInterfaceFieldTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::downwind
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Downwind interpolation scheme class.
+    Downwind differencing scheme class.
 
 SourceFiles
     downwind.C
@@ -45,7 +50,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class downwind Declaration
+                           Class downwind Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -53,9 +58,15 @@ class downwind
 :
     public surfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private data
 
         const surfaceScalarField& faceFlux_;
+
+
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const downwind&) = delete;
 
 
 public:
@@ -114,17 +125,11 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return neg(faceFlux_);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const downwind&) = delete;
 };
 
 

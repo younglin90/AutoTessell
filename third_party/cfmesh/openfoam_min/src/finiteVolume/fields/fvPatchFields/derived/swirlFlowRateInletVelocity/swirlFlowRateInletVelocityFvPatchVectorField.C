@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,47 +29,9 @@ License
 #include "swirlFlowRateInletVelocityFvPatchVectorField.H"
 #include "volFields.H"
 #include "addToRunTimeSelectionTable.H"
-
-// * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * * //
-
-template<class RhoType>
-void Foam::swirlFlowRateInletVelocityFvPatchVectorField::updateValues
-(
-    const RhoType& rho
-)
-{
-    const scalar t = time().value();
-    const scalarField ts(size(), t);
-
-    // Compute geometry
-    const vector axisHat = normalised(axis_);
-    const vectorField d(patch().Cf() - origin_);
-    const vectorField r(d - (axisHat & d)*axisHat);
-    const scalarField magR(mag(r));
-    const vectorField rHat(normalised(r));
-
-    // Evaluate individual velocity components
-    const scalar axialVelocity = flowRate_->value(t)/gSum(rho*patch().magSf());
-    const scalarField radialVelocity(radialVelocity_->value(ts, magR));
-    tmp<scalarField> tangentialVelocity;
-    if (omega_.valid())
-    {
-        tangentialVelocity = omega_->value(t)*magR;
-    }
-    else
-    {
-        tangentialVelocity = tangentialVelocity_->value(ts, magR);
-    }
-
-    // Combine components the complete vector velocity
-    operator==
-    (
-        axialVelocity*axisHat
-      + radialVelocity*rHat
-      + tangentialVelocity*(axisHat ^ rHat)
-    );
-}
-
+#include "fvPatchFieldMapper.H"
+#include "surfaceFields.H"
+#include "unitConversion.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -74,139 +39,52 @@ Foam::swirlFlowRateInletVelocityFvPatchVectorField::
 swirlFlowRateInletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    phiName_("phi"),
+    rhoName_("rho"),
+    origin_(),
+    axis_(Zero),
+    flowRate_(),
+    rpm_()
+{}
+
+
+Foam::swirlFlowRateInletVelocityFvPatchVectorField::
+swirlFlowRateInletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
+    fixedValueFvPatchField<vector>(p, iF, dict),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
+    rhoName_(dict.getOrDefault<word>("rho", "rho")),
     origin_
     (
-        dict.lookupOrDefault
+        dict.getOrDefault
         (
             "origin",
-            dimLength,
-            returnReduce(patch().size(), sumOp<label>())
+            returnReduceOr(patch().size())
           ? gSum(patch().Cf()*patch().magSf())/gSum(patch().magSf())
           : Zero
         )
     ),
     axis_
     (
-        dict.lookupOrDefault
+        dict.getOrDefault
         (
             "axis",
-            dimless,
-            returnReduce(patch().size(), sumOp<label>())
+            returnReduceOr(patch().size())
           ? -gSum(patch().Sf())/gSum(patch().magSf())
           : Zero
         )
     ),
-    flowRate_(),
-    volumetric_(),
-    rhoName_("rho"),
-    rhoInlet_(dict.lookupOrDefault<scalar>("rhoInlet", dimDensity, -vGreat)),
-    radialVelocity_
-    (
-        Function2<scalar>::New
-        (
-            "radialVelocity",
-            time().userUnits(),
-            dimLength,
-            dimVelocity,
-            dict
-        )
-    ),
-    omega_(nullptr),
-    tangentialVelocity_(nullptr)
-{
-    if (dict.found("volumetricFlowRate"))
-    {
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "volumetricFlowRate",
-                time().userUnits(),
-                dimVolumetricFlux,
-                dict
-            );
-        volumetric_ = true;
-    }
-    else if (dict.found("massFlowRate"))
-    {
-        flowRate_ =
-            Function1<scalar>::New
-            (
-                "massFlowRate",
-                time().userUnits(),
-                dimMassFlux,
-                dict
-            );
-        volumetric_ = false;
-        rhoName_ = word(dict.lookupOrDefault<word>("rho", "rho"));
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Please supply either 'volumetricFlowRate' or"
-            << " 'massFlowRate' and 'rho'" << exit(FatalIOError);
-    }
-
-    if (dict.found("omega") || dict.found("rpm"))
-    {
-        omega_ = new Function1s::omega(time(), dict);
-    }
-    else if (dict.found("tangentialVelocity"))
-    {
-        tangentialVelocity_ =
-            Function2<scalar>::New
-            (
-                "tangentialVelocity",
-                time().userUnits(),
-                dimLength,
-                dimVelocity,
-                dict
-            );
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Please supply either 'omega' or 'rpm' or"
-            << " 'tangentialVelocity'" << exit(FatalIOError);
-    }
-
-    if (dict.found("value"))
-    {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        evaluate(Pstream::commsTypes::blocking);
-    }
-}
-
-
-Foam::swirlFlowRateInletVelocityFvPatchVectorField::
-swirlFlowRateInletVelocityFvPatchVectorField
-(
-    const swirlFlowRateInletVelocityFvPatchVectorField& ptf,
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    origin_(ptf.origin_),
-    axis_(ptf.axis_),
-    flowRate_(ptf.flowRate_, false),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_),
-    rhoInlet_(ptf.rhoInlet_),
-    radialVelocity_(ptf.radialVelocity_, false),
-    omega_(ptf.omega_, false),
-    tangentialVelocity_(ptf.tangentialVelocity_, false)
+    flowRate_(Function1<scalar>::New("flowRate", dict, &db())),
+    rpm_(Function1<scalar>::New("rpm", dict, &db()))
 {}
 
 
@@ -214,19 +92,51 @@ Foam::swirlFlowRateInletVelocityFvPatchVectorField::
 swirlFlowRateInletVelocityFvPatchVectorField
 (
     const swirlFlowRateInletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    phiName_(ptf.phiName_),
+    rhoName_(ptf.rhoName_),
+    origin_(ptf.origin_),
+    axis_(ptf.axis_),
+    flowRate_(ptf.flowRate_.clone()),
+    rpm_(ptf.rpm_.clone())
+{}
+
+
+Foam::swirlFlowRateInletVelocityFvPatchVectorField::
+swirlFlowRateInletVelocityFvPatchVectorField
+(
+    const swirlFlowRateInletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    phiName_(ptf.phiName_),
+    rhoName_(ptf.rhoName_),
+    origin_(ptf.origin_),
+    axis_(ptf.axis_),
+    flowRate_(ptf.flowRate_.clone()),
+    rpm_(ptf.rpm_.clone())
+{}
+
+
+Foam::swirlFlowRateInletVelocityFvPatchVectorField::
+swirlFlowRateInletVelocityFvPatchVectorField
+(
+    const swirlFlowRateInletVelocityFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchField<vector>(ptf, iF),
+    phiName_(ptf.phiName_),
+    rhoName_(ptf.rhoName_),
     origin_(ptf.origin_),
     axis_(ptf.axis_),
-    flowRate_(ptf.flowRate_, false),
-    volumetric_(ptf.volumetric_),
-    rhoName_(ptf.rhoName_),
-    rhoInlet_(ptf.rhoInlet_),
-    radialVelocity_(ptf.radialVelocity_, false),
-    omega_(ptf.omega_, false),
-    tangentialVelocity_(ptf.tangentialVelocity_, false)
+    flowRate_(ptf.flowRate_.clone()),
+    rpm_(ptf.rpm_.clone())
 {}
 
 
@@ -238,33 +148,49 @@ void Foam::swirlFlowRateInletVelocityFvPatchVectorField::updateCoeffs()
     {
         return;
     }
+    const scalar totArea = gSum(patch().magSf());
 
-    if (volumetric_ || rhoName_ == "none")
+    if (totArea > ROOTVSMALL && axis_ != vector(Zero))
     {
-        updateValues(one());
-    }
-    else
-    {
-        // Mass flow-rate
-        if (db().foundObject<volScalarField>(rhoName_))
+        const scalar t = this->db().time().timeOutputValue();
+        const scalar flowRate = flowRate_->value(t);
+        const scalar omega = rpmToRads(rpm_->value(t));
+
+        const scalar avgU = -flowRate/totArea;
+
+        const vector axisHat = axis_/mag(axis_);
+
+        // Update angular velocity
+        tmp<vectorField> tangentialVelocity
+        (
+            axisHat ^ omega*(patch().Cf() - origin_)
+        );
+
+        tmp<vectorField> n = patch().nf();
+
+        const auto& phi = db().lookupObject<surfaceScalarField>(phiName_);
+
+        if (phi.dimensions() == dimVolume/dimTime)
         {
-            const fvPatchField<scalar>& rhop =
-                patch().lookupPatchField<volScalarField, scalar>(rhoName_);
+            // volumetric flow-rate
+            operator==(tangentialVelocity + n*avgU);
+        }
+        else if (phi.dimensions() == dimMass/dimTime)
+        {
+            const auto& rhop =
+                patch().lookupPatchField<volScalarField>(rhoName_);
 
-            updateValues(rhop);
+            // mass flow-rate
+            operator==(tangentialVelocity + n*avgU/rhop);
         }
         else
         {
-            // Use constant density
-            if (rhoInlet_ < 0)
-            {
-                FatalErrorInFunction
-                    << "Did not find registered density field " << rhoName_
-                    << " and no constant density 'rhoInlet' specified"
-                    << exit(FatalError);
-            }
-
-            updateValues(rhoInlet_);
+            FatalErrorInFunction
+                << "dimensions of " << phiName_ << " are incorrect" << nl
+                << "    on patch " << this->patch().name()
+                << " of field " << this->internalField().name()
+                << " in file " << this->internalField().objectPath()
+                << nl << exit(FatalError);
         }
     }
 
@@ -278,38 +204,13 @@ void Foam::swirlFlowRateInletVelocityFvPatchVectorField::write
 ) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, "origin", origin_);
-    writeEntry(os, "axis", axis_);
-    writeEntry(os, time().userUnits(), units::any, flowRate_());
-    if (!volumetric_)
-    {
-        writeEntryIfDifferent<word>(os, "rho", "rho", rhoName_);
-        writeEntryIfDifferent<scalar>(os, "rhoInlet", -vGreat, rhoInlet_);
-    }
-    writeEntry
-    (
-        os,
-        time().userUnits(),
-        dimLength,
-        dimVelocity,
-        radialVelocity_()
-    );
-    if (omega_.valid())
-    {
-        writeEntry(os, omega_());
-    }
-    else
-    {
-        writeEntry
-        (
-            os,
-            time().userUnits(),
-            dimLength,
-            dimVelocity,
-            tangentialVelocity_()
-        );
-    }
-    writeEntry(os, "value", *this);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    os.writeEntryIfDifferent<word>("rho", "rho", rhoName_);
+    os.writeEntry("origin", origin_);
+    os.writeEntry("axis", axis_);
+    flowRate_->writeData(os);
+    rpm_->writeData(os);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

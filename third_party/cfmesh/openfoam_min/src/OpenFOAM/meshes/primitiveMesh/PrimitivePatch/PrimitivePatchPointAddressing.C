@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,94 +30,72 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "PrimitivePatch.H"
-#include "SLList.H"
+#include "DynamicList.H"
 #include "ListOps.H"
-
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcPointEdges() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcPointEdges() const
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating pointEdges" << endl;
-    }
+    DebugInFunction << "Calculating pointEdges" << endl;
 
     if (pointEdgesPtr_)
     {
-        // it is considered an error to attempt to recalculate
-        // if already allocated
+        // An error to recalculate if already allocated
         FatalErrorInFunction
             << "pointEdges already calculated"
             << abort(FatalError);
     }
 
-    pointEdgesPtr_ = new labelListList(meshPoints().size());
-
-    labelListList& pe = *pointEdgesPtr_;
+    pointEdgesPtr_.reset(new labelListList(meshPoints().size()));
+    auto& pe = *pointEdgesPtr_;
 
     invertManyToMany(pe.size(), edges(), pe);
 
-    if (debug)
-    {
-        Info<< "    Finished." << endl;
-    }
+    DebugInfo << "    Finished." << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcPointFaces() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcPointFaces() const
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating pointFaces" << endl;
-    }
+    DebugInFunction
+        << "Calculating pointFaces" << endl;
 
     if (pointFacesPtr_)
     {
-        // it is considered an error to attempt to recalculate
-        // if already allocated
+        // An error to recalculate if already allocated
         FatalErrorInFunction
             << "pointFaces already calculated"
             << abort(FatalError);
     }
 
-    const List<FaceType>& f = localFaces();
+    // Local storage while creating pointFaces
+    List<DynamicList<label>> pointFcs(meshPoints().size());
 
-    // set up storage for pointFaces
-    List<SLList<label>> pointFcs(meshPoints().size());
+    const List<face_type>& locFcs = localFaces();
 
-    forAll(f, facei)
+    forAll(locFcs, facei)
     {
-        const FaceType& curPoints = f[facei];
-
-        forAll(curPoints, pointi)
+        for (const label pointi : locFcs[facei])
         {
-            pointFcs[curPoints[pointi]].append(facei);
+            pointFcs[pointi].push_back(facei);
         }
     }
 
-    // sort out the list
-    pointFacesPtr_ = new labelListList(pointFcs.size());
-
-    labelListList& pf = *pointFacesPtr_;
+    // Copy the lists, recovering content
+    pointFacesPtr_.reset(new labelListList(pointFcs.size()));
+    auto& pf = *pointFacesPtr_;
 
     forAll(pointFcs, pointi)
     {
-        pf[pointi].setSize(pointFcs[pointi].size());
-
-        label i = 0;
-        forAllIter(SLList<label>, pointFcs[pointi], curFacesIter)
-        {
-            pf[pointi][i++] = curFacesIter();
-        }
+        pf[pointi].transfer(pointFcs[pointi]);
     }
 
-    if (debug)
-    {
-        Info<< "    Finished." << endl;
-    }
+    DebugInfo << "    Finished." << endl;
 }
 
 

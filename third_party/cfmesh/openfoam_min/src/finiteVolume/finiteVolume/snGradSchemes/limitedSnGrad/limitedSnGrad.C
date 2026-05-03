@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,9 +26,12 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "fv.H"
 #include "limitedSnGrad.H"
 #include "volFields.H"
 #include "surfaceFields.H"
+#include "localMax.H"
+#include "fvcCellReduce.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -37,62 +43,16 @@ namespace Foam
 namespace fv
 {
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Type>
-limitedSnGrad<Type>::limitedSnGrad(const fvMesh& mesh)
-:
-    snGradScheme<Type>(mesh),
-    correctedScheme_(new correctedSnGrad<Type>(this->mesh())),
-    limitCoeff_(1)
-{}
-
-
-template<class Type>
-limitedSnGrad<Type>::limitedSnGrad(const fvMesh& mesh, Istream& schemeData)
-:
-    snGradScheme<Type>(mesh),
-    correctedScheme_(lookupCorrectedScheme(schemeData))
-{
-    if (limitCoeff_ < 0 || limitCoeff_ > 1)
-    {
-        FatalIOErrorInFunction
-        (
-            schemeData
-        )   << "limitCoeff is specified as " << limitCoeff_
-            << " but should be >= 0 && <= 1"
-            << exit(FatalIOError);
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-limitedSnGrad<Type>::~limitedSnGrad()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<surfaceScalarField> limitedSnGrad<Type>::deltaCoeffs
-(
-    const VolField<Type>& vf
-) const
-{
-    return correctedScheme_->deltaCoeffs(vf);
-}
-
-
-template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 limitedSnGrad<Type>::correction
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
-    const SurfaceField<Type> corr
+    const GeometricField<Type, fvsPatchField, surfaceMesh> corr
     (
         correctedScheme_().correction(vf)
     );
@@ -105,9 +65,9 @@ limitedSnGrad<Type>::correction
            *mag(snGradScheme<Type>::snGrad(vf, deltaCoeffs(vf), "SndGrad"))
            /(
                 (1 - limitCoeff_)*mag(corr)
-              + dimensionedScalar(corr.dimensions(), small)
+              + dimensionedScalar("small", corr.dimensions(), SMALL)
             ),
-            dimensionedScalar(dimless, 1.0)
+            dimensionedScalar("one", dimless, 1.0)
         )
     );
 
@@ -117,6 +77,40 @@ limitedSnGrad<Type>::correction
             << "limiter min: " << min(limiter.primitiveField())
             << " max: "<< max(limiter.primitiveField())
             << " avg: " << average(limiter.primitiveField()) << endl;
+
+
+        if (fv::debug & 2)
+        {
+            static scalar oldTime = -1;
+            static label subIter = 0;
+            if (vf.mesh().time().value() != oldTime)
+            {
+                oldTime = vf.mesh().time().value();
+                subIter = 0;
+            }
+            else
+            {
+                ++subIter;
+            }
+            word fieldName("limiter_" + Foam::name(subIter));
+
+            GeometricField<scalar, fvPatchField, volMesh> volLimiter
+            (
+                IOobject
+                (
+                    fieldName,
+                    vf.mesh().time().timeName(),
+                    vf.mesh().thisDb(),
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    IOobject::NO_REGISTER
+                ),
+                fvc::cellReduce(limiter, minEqOp<scalar>(), scalar(1))
+            );
+            Info<< "Writing limiter field to " << volLimiter.objectPath()
+                << endl;
+            volLimiter.write();
+        }
     }
 
     return limiter*corr;

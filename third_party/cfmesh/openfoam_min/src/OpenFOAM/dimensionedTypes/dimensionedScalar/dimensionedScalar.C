@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -66,7 +69,6 @@ dimensionedScalar operator/(const scalar s1, const dimensionedScalar& ds2)
 {
     return dimensionedScalar(s1)/ds2;
 }
-
 
 
 dimensionedScalar pow
@@ -161,21 +163,6 @@ dimensionedScalar cbrt(const dimensionedScalar& ds)
 }
 
 
-dimensionedScalar hypot
-(
-    const dimensionedScalar& x,
-    const dimensionedScalar& y
-)
-{
-    return dimensionedScalar
-    (
-        "hypot(" + x.name() + ',' + y.name() + ')',
-        x.dimensions() + y.dimensions(),
-        ::hypot(x.value(), y.value())
-    );
-}
-
-
 dimensionedScalar sign(const dimensionedScalar& ds)
 {
     return dimensionedScalar
@@ -256,10 +243,10 @@ dimensionedScalar negPart(const dimensionedScalar& ds)
 #define transFunc(func)                                                        \
 dimensionedScalar func(const dimensionedScalar& ds)                            \
 {                                                                              \
-    if (!ds.dimensions().dimensionless())                                      \
+    if (dimensionSet::checking() && !ds.dimensions().dimensionless())          \
     {                                                                          \
         FatalErrorInFunction                                                   \
-            << "ds not dimensionless"                                          \
+            << "scalar is not dimensionless: " << ds.dimensions() << nl        \
             << abort(FatalError);                                              \
     }                                                                          \
                                                                                \
@@ -300,10 +287,10 @@ transFunc(y1)
 #define transFunc(func)                                                        \
 dimensionedScalar func(const int n, const dimensionedScalar& ds)               \
 {                                                                              \
-    if (!ds.dimensions().dimensionless())                                      \
+    if (dimensionSet::checking() && !ds.dimensions().dimensionless())          \
     {                                                                          \
         FatalErrorInFunction                                                   \
-            << "ds not dimensionless"                                          \
+            << "scalar is not dimensionless: " << ds.dimensions() << nl        \
             << abort(FatalError);                                              \
     }                                                                          \
                                                                                \
@@ -332,6 +319,36 @@ dimensionedScalar atan2
         "atan2(" + x.name() + ',' + y.name() + ')',
         atan2(x.dimensions(), y.dimensions()),
         ::atan2(x.value(), y.value())
+    );
+}
+
+
+dimensionedScalar hypot
+(
+    const dimensionedScalar& x,
+    const dimensionedScalar& y
+)
+{
+    return dimensionedScalar
+    (
+        "hypot(" + x.name() + ',' + y.name() + ')',
+        hypot(x.dimensions(), y.dimensions()),
+        ::hypot(x.value(), y.value())
+    );
+}
+
+
+dimensionedScalar stabilise
+(
+    const dimensionedScalar& x,
+    const dimensionedScalar& y
+)
+{
+    return dimensionedScalar
+    (
+        "stabilise(" + x.name() + ',' + y.name() + ')',
+        stabilise(x.dimensions(), y.dimensions()),
+        stabilise(x.value(), y.value())
     );
 }
 

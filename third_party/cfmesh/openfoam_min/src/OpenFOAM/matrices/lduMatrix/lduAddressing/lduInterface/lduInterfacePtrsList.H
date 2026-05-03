@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +31,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef lduInterfacePtrsList_H
-#define lduInterfacePtrsList_H
+#ifndef Foam_lduInterfacePtrsList_H
+#define Foam_lduInterfacePtrsList_H
 
 #include "lduInterface.H"
 #include "UPtrList.H"
@@ -39,8 +41,11 @@ Description
 
 namespace Foam
 {
-    typedef UPtrList<const lduInterface> lduInterfacePtrsList;
-}
+
+//- Store lists of lduInterface as a UPtrList
+typedef UPtrList<const lduInterface> lduInterfacePtrsList;
+
+} // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

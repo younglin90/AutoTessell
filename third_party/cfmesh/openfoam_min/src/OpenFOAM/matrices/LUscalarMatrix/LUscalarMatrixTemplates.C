@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,112 +27,158 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "LUscalarMatrix.H"
-#include "SubField.H"
+#include "SubList.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 void Foam::LUscalarMatrix::solve
 (
-    Field<Type>& x,
-    const Field<Type>& source
+    List<Type>& x,
+    const UList<Type>& source
 ) const
 {
-    // If x and source are different initialise x = source
+    // If x and source are different initialize x = source
     if (&x != &source)
     {
         x = source;
     }
 
-    if (Pstream::parRun())
+    const auto tag = UPstream::msgType();
+
+    if (UPstream::parRun())
     {
-        Field<Type> X(m());
+        List<Type> allx;  // scratch space (on master)
 
-        if (Pstream::master(comm_))
+        const label startOfRequests = UPstream::nRequests();
+
+        // Like globalIndex::gather()
+        if (UPstream::master(comm_))
         {
-            typename Field<Type>::subField
-            (
-                X,
-                x.size()
-            ) = x;
+            allx.resize(m());
 
-            for
-            (
-                int slave=Pstream::firstSlave();
-                slave<=Pstream::lastSlave(comm_);
-                slave++
-            )
+            SubList<Type>(allx, x.size()) = x;
+
+            for (const int proci : UPstream::subProcs(comm_))
             {
-                IPstream::read
+                SubList<Type> procSlot
                 (
-                    Pstream::commsTypes::scheduled,
-                    slave,
-                    reinterpret_cast<char*>
-                    (
-                        &(X[procOffsets_[slave]])
-                    ),
-                    (procOffsets_[slave+1]-procOffsets_[slave])*sizeof(Type),
-                    Pstream::msgType(),
-                    comm_
+                    allx,
+                    procOffsets_[proci+1]-procOffsets_[proci],
+                    procOffsets_[proci]
                 );
+
+                if (procSlot.empty())
+                {
+                    // Nothing to do
+                }
+                else if (is_contiguous<Type>::value)
+                {
+                    UIPstream::read
+                    (
+                        UPstream::commsTypes::nonBlocking,
+                        proci,
+                        procSlot.data_bytes(),
+                        procSlot.size_bytes(),
+                        tag,
+                        comm_
+                    );
+                }
+                else
+                {
+                    IPstream::recv(procSlot, proci, tag, comm_);
+                }
             }
         }
         else
         {
-            OPstream::write
-            (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo(),
-                reinterpret_cast<const char*>(x.begin()),
-                x.byteSize(),
-                Pstream::msgType(),
-                comm_
-            );
-        }
-
-        if (Pstream::master(comm_))
-        {
-            LUBacksubstitute(*this, pivotIndices_, X);
-
-            x = typename Field<Type>::subField
-            (
-                X,
-                x.size()
-            );
-
-            for
-            (
-                int slave=Pstream::firstSlave();
-                slave<=Pstream::lastSlave(comm_);
-                slave++
-            )
+            if (x.empty())
             {
-                OPstream::write
+                // Nothing to do
+            }
+            else if (is_contiguous<Type>::value)
+            {
+                UOPstream::write
                 (
-                    Pstream::commsTypes::scheduled,
-                    slave,
-                    reinterpret_cast<const char*>
-                    (
-                        &(X[procOffsets_[slave]])
-                    ),
-                    (procOffsets_[slave + 1]-procOffsets_[slave])*sizeof(Type),
-                    Pstream::msgType(),
+                    UPstream::commsTypes::nonBlocking,
+                    UPstream::masterNo(),
+                    x.cdata_bytes(),
+                    x.size_bytes(),
+                    tag,
                     comm_
                 );
+            }
+            else
+            {
+                OPstream::send(x, UPstream::masterNo(), tag, comm_);
+            }
+        }
+
+        UPstream::waitRequests(startOfRequests);
+
+        // LUBacksubstitute and then like globalIndex::scatter()
+        if (UPstream::master(comm_))
+        {
+            LUBacksubstitute(*this, pivotIndices_, allx);
+
+            x = SubList<Type>(allx, x.size());
+
+            for (const int proci : UPstream::subProcs(comm_))
+            {
+                SubList<Type> procSlot
+                (
+                    allx,
+                    procOffsets_[proci+1]-procOffsets_[proci],
+                    procOffsets_[proci]
+                );
+
+                if (procSlot.empty())
+                {
+                    // Nothing to do
+                }
+                else if (is_contiguous<Type>::value)
+                {
+                    UOPstream::write
+                    (
+                        UPstream::commsTypes::nonBlocking,
+                        proci,
+                        procSlot.cdata_bytes(),
+                        procSlot.size_bytes(),
+                        tag,
+                        comm_
+                    );
+                }
+                else
+                {
+                    OPstream::send(procSlot, proci, tag, comm_);
+                }
             }
         }
         else
         {
-            IPstream::read
-            (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo(),
-                reinterpret_cast<char*>(x.begin()),
-                x.byteSize(),
-                Pstream::msgType(),
-                comm_
-            );
+            if (x.empty())
+            {
+                // Nothing to do
+            }
+            else if (is_contiguous<Type>::value)
+            {
+                UIPstream::read
+                (
+                    UPstream::commsTypes::nonBlocking,
+                    UPstream::masterNo(),
+                    x.data_bytes(),
+                    x.size_bytes(),
+                    tag,
+                    comm_
+                );
+            }
+            else
+            {
+                IPstream::recv(x, UPstream::masterNo(), tag, comm_);
+            }
         }
+
+        UPstream::waitRequests(startOfRequests);
     }
     else
     {
@@ -141,13 +190,12 @@ void Foam::LUscalarMatrix::solve
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::LUscalarMatrix::solve
 (
-    const Field<Type>& source
+    const UList<Type>& source
 ) const
 {
-    tmp<Field<Type>> tx(new Field<Type>(m()));
-    Field<Type>& x = tx.ref();
+    auto tx = tmp<Field<Type>>::New(m());
 
-    solve(x, source);
+    solve(tx.ref(), source);
 
     return tx;
 }

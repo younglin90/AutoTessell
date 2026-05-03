@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,12 +27,10 @@ InNamespace
     Foam
 
 Description
-    Bound the given scalar field where it is below the specified minimum.
+    Bound the given scalar field if it has gone unbounded.
 
-    Where the field is unbounded it is set to the maximum of the average of
-    the neighbouring cell values and the specified minimum.
-
-    Used extensively in RAS and LES turbulence models to bound k, epsilon etc.
+    Used extensively in RAS and LES turbulence models, but also of use
+    within solvers.
 
 SourceFiles
     bound.C
@@ -50,8 +50,10 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-//- Bound the given scalar field where it is below the specified min value
-bool bound(volScalarField&, const dimensionedScalar& min);
+//- Bound the given scalar field if it has gone unbounded.
+//  Return the bounded field.
+//  Used extensively in RAS and LES turbulence models.
+volScalarField& bound(volScalarField&, const dimensionedScalar& lowerBound);
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

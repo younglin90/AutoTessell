@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,7 +36,31 @@ Foam::pressureInletUniformVelocityFvPatchVectorField::
 pressureInletUniformVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    pressureInletVelocityFvPatchVectorField(p, iF)
+{}
+
+
+Foam::pressureInletUniformVelocityFvPatchVectorField::
+pressureInletUniformVelocityFvPatchVectorField
+(
+    const pressureInletUniformVelocityFvPatchVectorField& ptf,
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    pressureInletVelocityFvPatchVectorField(ptf, p, iF, mapper)
+{}
+
+
+Foam::pressureInletUniformVelocityFvPatchVectorField::
+pressureInletUniformVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -45,13 +71,10 @@ pressureInletUniformVelocityFvPatchVectorField
 Foam::pressureInletUniformVelocityFvPatchVectorField::
 pressureInletUniformVelocityFvPatchVectorField
 (
-    const pressureInletUniformVelocityFvPatchVectorField& ptf,
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const pressureInletUniformVelocityFvPatchVectorField& pivpvf
 )
 :
-    pressureInletVelocityFvPatchVectorField(ptf, p, iF, mapper)
+    pressureInletVelocityFvPatchVectorField(pivpvf)
 {}
 
 
@@ -59,7 +82,7 @@ Foam::pressureInletUniformVelocityFvPatchVectorField::
 pressureInletUniformVelocityFvPatchVectorField
 (
     const pressureInletUniformVelocityFvPatchVectorField& pivpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     pressureInletVelocityFvPatchVectorField(pivpvf, iF)

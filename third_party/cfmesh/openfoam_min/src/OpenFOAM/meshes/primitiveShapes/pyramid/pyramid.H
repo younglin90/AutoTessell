@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,93 +37,108 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef pyramid_H
-#define pyramid_H
+#ifndef Foam_pyramid_H
+#define Foam_pyramid_H
+
+#include "point.H"
+#include "face.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
-template<class Point, class PointRef, class polygonRef>
-class pyramid;
+template<class Point, class PointRef, class PolygonRef> class pyramid;
 
-template<class Point, class PointRef, class polygonRef>
+template<class Point, class PointRef, class PolygonRef>
 inline Istream& operator>>
 (
-    Istream&,
-    pyramid<Point, PointRef, polygonRef>&
+    Istream& is,
+    pyramid<Point, PointRef, PolygonRef>& p
 );
 
-template<class Point, class PointRef, class polygonRef>
+template<class Point, class PointRef, class PolygonRef>
 inline Ostream& operator<<
 (
-    Ostream&,
-    const pyramid<Point, PointRef, polygonRef>&
+    Ostream& os,
+    const pyramid<Point, PointRef, PolygonRef>& p
 );
+
+
+// Common Typedefs
+
+//- A pyramid using referred point and face
+typedef pyramid<point, const point&, const face&> pyramidPointFaceRef;
 
 
 /*---------------------------------------------------------------------------*\
                            Class pyramid Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Point, class PointRef, class polygonRef>
+template<class Point, class PointRef, class PolygonRef>
 class pyramid
 {
     // Private Data
 
-        polygonRef base_;
+        PolygonRef base_;
+
         PointRef apex_;
 
 
 public:
 
+    // Public Typedefs
+
+        //- The point type
+        typedef Point point_type;
+
+
     // Constructors
 
         //- Construct from base polygon and apex point
-        inline pyramid(polygonRef base, const Point& apex);
+        inline pyramid(PolygonRef base, const Point& apex);
 
         //- Construct from Istream
-        inline pyramid(Istream&);
+        inline explicit pyramid(Istream& is);
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return apex point
-            inline const Point& apex() const;
+        //- The apex point
+        const Point& apex() const { return apex_; }
 
-            //- Return base polygon
-            inline polygonRef base() const;
+        //- The base polygon
+        PolygonRef base() const { return base_; }
 
 
-        // Properties
+    // Properties
 
-            //- Return centre (centroid)
-            inline Point centre(const pointField& points) const;
+        //- Return centre (centroid)
+        inline Point centre(const UList<point>& points) const;
 
-            //- Return height vector
-            inline vector height(const pointField& points) const;
+        //- Return height vector
+        inline vector height(const UList<point>& points) const;
 
-            //- Return scalar magnitude - returns volume of pyramid
-            inline scalar mag(const pointField& points) const;
+        //- Return scalar magnitude - returns volume of pyramid
+        inline scalar mag(const UList<point>& points) const;
 
 
     // IOstream Operators
 
-        friend Istream& operator>> <Point, PointRef, polygonRef>
+        friend Istream& operator>> <Point, PointRef, PolygonRef>
         (
-            Istream&,
-            pyramid&
+            Istream& is,
+            pyramid& p
         );
 
-        friend Ostream& operator<< <Point, PointRef, polygonRef>
+        friend Ostream& operator<< <Point, PointRef, PolygonRef>
         (
-            Ostream&,
-            const pyramid&
+            Ostream& os,
+            const pyramid& p
         );
 };
 

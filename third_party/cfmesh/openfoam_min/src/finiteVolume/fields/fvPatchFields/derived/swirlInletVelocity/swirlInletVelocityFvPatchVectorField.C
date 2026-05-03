@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,111 +35,15 @@ Foam::swirlInletVelocityFvPatchVectorField::
 swirlInletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<vector, volMesh>& iF
 )
 :
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    origin_
-    (
-        dict.lookupOrDefault
-        (
-            "origin",
-            dimLength,
-            returnReduce(patch().size(), sumOp<label>())
-          ? gSum(patch().Cf()*patch().magSf())/gSum(patch().magSf())
-          : Zero
-        )
-    ),
-    axis_
-    (
-        dict.lookupOrDefault
-        (
-            "axis",
-            dimless,
-            returnReduce(patch().size(), sumOp<label>())
-          ? -gSum(patch().Sf())/gSum(patch().magSf())
-          : Zero
-        )
-    ),
-    axialVelocity_
-    (
-        Function2<scalar>::New
-        (
-            "axialVelocity",
-            time().userUnits(),
-            dimLength,
-            dimVelocity,
-            dict
-        )
-    ),
-    radialVelocity_
-    (
-        Function2<scalar>::New
-        (
-            "radialVelocity",
-            time().userUnits(),
-            dimLength,
-            dimVelocity,
-            dict
-        )
-    ),
-    omega_(nullptr),
-    tangentialVelocity_(nullptr)
-{
-    if (dict.found("omega") || dict.found("rpm"))
-    {
-        omega_ = new Function1s::omega(time(), dict);
-    }
-    else if (dict.found("tangentialVelocity"))
-    {
-        tangentialVelocity_ =
-            Function2<scalar>::New
-            (
-                "tangentialVelocity",
-                time().userUnits(),
-                dimLength,
-                dimVelocity,
-                dict
-            );
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Please supply either 'omega' or 'rpm' or"
-            << " 'tangentialVelocity'" << exit(FatalIOError);
-    }
-
-    if (dict.found("value"))
-    {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        evaluate(Pstream::commsTypes::blocking);
-    }
-}
-
-
-Foam::swirlInletVelocityFvPatchVectorField::
-swirlInletVelocityFvPatchVectorField
-(
-    const swirlInletVelocityFvPatchVectorField& ptf,
-    const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    origin_(ptf.origin_),
-    axis_(ptf.axis_),
-    axialVelocity_(ptf.axialVelocity_, false),
-    radialVelocity_(ptf.radialVelocity_, false),
-    omega_(ptf.omega_, false),
-    tangentialVelocity_(ptf.tangentialVelocity_, false)
+    fixedValueFvPatchField<vector>(p, iF),
+    origin_(Zero),
+    axis_(Zero),
+    axialVelocity_(),
+    radialVelocity_(),
+    tangentialVelocity_()
 {}
 
 
@@ -144,16 +51,71 @@ Foam::swirlInletVelocityFvPatchVectorField::
 swirlInletVelocityFvPatchVectorField
 (
     const swirlInletVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    origin_(ptf.origin_),
+    axis_(ptf.axis_),
+    axialVelocity_(ptf.axialVelocity_.clone()),
+    radialVelocity_(ptf.radialVelocity_.clone()),
+    tangentialVelocity_(ptf.tangentialVelocity_.clone())
+{}
+
+
+Foam::swirlInletVelocityFvPatchVectorField::
+swirlInletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchField<vector>(p, iF, dict),
+    origin_(dict.lookup("origin")),
+    axis_(dict.lookup("axis")),
+    axialVelocity_(Function1<scalar>::New("axialVelocity", dict, &db())),
+    radialVelocity_
+    (
+        Function1<scalar>::New("radialVelocity", dict, &db())
+    ),
+    tangentialVelocity_
+    (
+        Function1<scalar>::New("tangentialVelocity", dict, &db())
+    )
+{}
+
+
+Foam::swirlInletVelocityFvPatchVectorField::
+swirlInletVelocityFvPatchVectorField
+(
+    const swirlInletVelocityFvPatchVectorField& ptf
+)
+:
+    fixedValueFvPatchField<vector>(ptf),
+    origin_(ptf.origin_),
+    axis_(ptf.axis_),
+    axialVelocity_(ptf.axialVelocity_.clone()),
+    radialVelocity_(ptf.radialVelocity_.clone()),
+    tangentialVelocity_(ptf.tangentialVelocity_.clone())
+{}
+
+
+Foam::swirlInletVelocityFvPatchVectorField::
+swirlInletVelocityFvPatchVectorField
+(
+    const swirlInletVelocityFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchField<vector>(ptf, iF),
     origin_(ptf.origin_),
     axis_(ptf.axis_),
-    axialVelocity_(ptf.axialVelocity_, false),
-    radialVelocity_(ptf.radialVelocity_, false),
-    omega_(ptf.omega_, false),
-    tangentialVelocity_(ptf.tangentialVelocity_, false)
+    axialVelocity_(ptf.axialVelocity_.clone()),
+    radialVelocity_(ptf.radialVelocity_.clone()),
+    tangentialVelocity_(ptf.tangentialVelocity_.clone())
 {}
 
 
@@ -166,30 +128,18 @@ void Foam::swirlInletVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const scalar t = this->time().value();
-    const scalarField ts(size(), t);
+    const vector axisHat = axis_/mag(axis_);
 
-    // Compute geometry
-    const vector axisHat = normalised(axis_);
-    const vectorField d(patch().Cf() - origin_);
-    const vectorField r(d - (axisHat & d)*axisHat);
-    const scalarField magR(mag(r));
-    const vectorField rHat(normalised(r));
+    // Radius vector in plane of rotation
+    vectorField r(patch().Cf() - origin_);
+    r -= (axisHat & r)*axisHat;
+    const scalarField magr(mag(r));
+    const vectorField rHat(r/magr);
 
-    // Evaluate individual velocity components
-    const scalarField axialVelocity(axialVelocity_->value(ts, magR));
-    const scalarField radialVelocity(radialVelocity_->value(ts, magR));
-    tmp<scalarField> tangentialVelocity;
-    if (omega_.valid())
-    {
-        tangentialVelocity = omega_->value(t)*magR;
-    }
-    else
-    {
-        tangentialVelocity = tangentialVelocity_->value(ts, magR);
-    }
+    const scalarField axialVelocity(axialVelocity_->value(magr));
+    const scalarField radialVelocity(radialVelocity_->value(magr));
+    const scalarField tangentialVelocity(tangentialVelocity_->value(magr));
 
-    // Combine components the complete vector velocity
     operator==
     (
         axialVelocity*axisHat
@@ -204,40 +154,12 @@ void Foam::swirlInletVelocityFvPatchVectorField::updateCoeffs()
 void Foam::swirlInletVelocityFvPatchVectorField::write(Ostream& os) const
 {
     fvPatchField<vector>::write(os);
-    writeEntry(os, "origin", origin_);
-    writeEntry(os, "axis", axis_);
-    writeEntry
-    (
-        os,
-        time().userUnits(),
-        dimLength,
-        dimVelocity,
-        axialVelocity_()
-    );
-    writeEntry
-    (
-        os,
-        time().userUnits(),
-        dimLength,
-        dimVelocity,
-        radialVelocity_()
-    );
-    if (omega_.valid())
-    {
-        writeEntry(os, omega_());
-    }
-    else
-    {
-        writeEntry
-        (
-            os,
-            time().userUnits(),
-            dimLength,
-            dimVelocity,
-            tangentialVelocity_()
-        );
-    }
-    writeEntry(os, "value", *this);
+    os.writeEntry("origin", origin_);
+    os.writeEntry("axis", axis_);
+    axialVelocity_->writeData(os);
+    radialVelocity_->writeData(os);
+    tangentialVelocity_->writeData(os);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

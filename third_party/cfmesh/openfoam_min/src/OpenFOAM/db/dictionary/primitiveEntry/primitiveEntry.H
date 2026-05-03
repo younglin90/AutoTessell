@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +28,13 @@ Class
     Foam::primitiveEntry
 
 Description
-    A keyword and a list of tokens is a 'primitiveEntry'.
-    An primitiveEntry can be read, written and printed, and the types and
+    A keyword and a list of tokens comprise a primitiveEntry.
+    A primitiveEntry can be read, written and printed, and the types and
     values of its tokens analysed.
 
-    A primitiveEntry is a high-level building block for data description. It
-    is a front-end for the token parser. A list of entries can be used as a
-    set of keyword syntax elements, for example.
+    A primitiveEntry is a high-level building block for data description.
+    It is a front-end for the token parser. A list of entries can be used
+    as a set of keyword syntax elements, for example.
 
 SourceFiles
     primitiveEntry.C
@@ -39,8 +42,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef primitiveEntry_H
-#define primitiveEntry_H
+#ifndef Foam_primitiveEntry_H
+#define Foam_primitiveEntry_H
 
 #include "entry.H"
 #include "ITstream.H"
@@ -51,7 +54,13 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class dictionary;
+class primitiveEntry;
+
+template<>
+Ostream& operator<<(Ostream&, const InfoProxy<primitiveEntry>&);
+
 
 /*---------------------------------------------------------------------------*\
                        Class primitiveEntry Declaration
@@ -64,74 +73,73 @@ class primitiveEntry
 {
     // Private Member Functions
 
-        //- Append the given tokens starting at the current tokenIndex
-        void append(const UList<token>&);
+        //- Test if token is acceptable after filtering for function entries
+        //- and variable expansions.
+        bool acceptToken
+        (
+            const token& tok,
+            const dictionary& dict,
+            Istream& is
+        );
 
-        //- Append the given token to this entry
-        void append(const token& currToken, const dictionary&, Istream&);
+        //- Expand the given variable.
+        //  The keyword starts with '$', but has been removed by the caller
+        //  and thus passed as a varName.
+        //  Keywords with '${}' are expanded recursively.
+        bool expandVariable
+        (
+            const string& varName,
+            const dictionary& dict
+        );
 
-        //- Expand the given variable
-        bool expandVariable(const variable&, const dictionary&);
-
-        //- Expand the given function (keyword starts with #)
-        bool expandFunction(const functionName&, const dictionary&, Istream&);
+        //- Expand the given function.
+        //  The keyword starts with '#', but has been removed by the caller.
+        //  and thus passed as a functionName.
+        bool expandFunction
+        (
+            const word& functionName,
+            const dictionary& dict,
+            Istream& is
+        );
 
         //- Read the complete entry from the given stream
-        void readEntry(const dictionary&, Istream&);
-
-        friend class functionEntry;
+        void readEntry(const dictionary& dict, Istream& is);
 
 
 public:
 
     // Constructors
 
-        //- Construct from line number and keyword
-        primitiveEntry(const label keyLineNumber, const keyType& key);
+        //- Construct from keyword and no tokens.
+        //  Contents to be filled with a later assignment
+        explicit primitiveEntry(const keyType& key);
 
-        //- Construct from keyword and a Istream
-        primitiveEntry(const keyType&, Istream&);
+        //- Construct from keyword and a single token (copy)
+        primitiveEntry(const keyType& key, const token& tok);
+
+        //- Construct from keyword and a single token (move)
+        primitiveEntry(const keyType& key, token&& tok);
+
+        //- Construct from keyword and a list of tokens
+        primitiveEntry(const keyType& key, const UList<token>& tokens);
+
+        //- Construct from keyword and by transferring a list of tokens
+        primitiveEntry(const keyType& key, List<token>&& tokens);
+
+        //- Construct from keyword and ITstream tokens
+        primitiveEntry(const keyType& key, const ITstream& is);
+
+        //- Construct from keyword and Istream
+        primitiveEntry(const keyType& key, Istream& is);
 
         //- Construct from keyword, parent dictionary and Istream
-        primitiveEntry(const keyType&, const dictionary& parentDict, Istream&);
+        primitiveEntry(const keyType& key, const dictionary& dict, Istream& is);
 
-        //- Construct from keyword and a ITstream
-        primitiveEntry(const keyType& key, const ITstream&);
-
-        //- Construct from keyword, line number and ITstream
-        primitiveEntry
-        (
-            const label keyLineNumber,
-            const keyType& key,
-            const ITstream&
-        );
-
-        //- Construct from keyword and a single token
-        primitiveEntry(const keyType&, const token&);
-
-        //- Construct from keyword and a list of tokens
-        primitiveEntry(const keyType&, const UList<token>&);
-
-        //- Construct from keyword and a list of tokens
-        primitiveEntry(const keyType&, const List<token>&);
-
-        //- Move construct from keyword and by transferring a list of tokens
-        primitiveEntry(const keyType&, List<token>&&);
-
-        //- Construct from keyword and a T
+        //- Construct from keyword and a value. Uses string stream serialization
         template<class T>
-        primitiveEntry(const keyType&, const T&);
+        primitiveEntry(const keyType& key, const T& val);
 
-        //- Construct from keyword and a T and start and end line numbers
-        template<class T>
-        primitiveEntry
-        (
-            const keyType&,
-            const T&,
-            const label startLineNumber,
-            const label endLineNumber = -1
-        );
-
+        //- Clone the entry
         autoPtr<entry> clone(const dictionary&) const
         {
             return autoPtr<entry>(new primitiveEntry(*this));
@@ -143,58 +151,63 @@ public:
         //- Inherit read from ITstream
         using ITstream::read;
 
-        //- Return the dictionary name
-        const fileName& name() const
+        //- Return the token stream name
+        virtual const fileName& name() const
         {
             return ITstream::name();
         }
 
-        //- Return the dictionary name
-        fileName& name()
+        //- Return token stream name for modification
+        virtual fileName& name()
         {
             return ITstream::name();
         }
 
-        //- Return line number of last token in dictionary
-        virtual label endLineNumber() const;
-
-        //- Return true because this entry is a stream
-        bool isStream() const
+        //- Return token stream name relative to the current case
+        virtual fileName relativeName() const
         {
-            return true;
+            return ITstream::relativeName();
         }
 
-        //- Return token stream if this entry is a primitive entry
-        ITstream& stream() const;
+        //- The line number of the first token in the entry
+        virtual label startLineNumber() const
+        {
+            return ITstream::startLineNumber();
+        }
+
+        //- The line number of the last token in the entry
+        virtual label endLineNumber() const
+        {
+            return ITstream::endLineNumber();
+        }
+
+        //- Return pointer to token stream for this primitive entry
+        virtual ITstream* streamPtr() const noexcept;
+
+        //- Return token stream for this primitive entry
+        virtual ITstream& stream() const;
 
         //- This entry is not a dictionary,
-        //  calling this function generates a FatalError
-        const dictionary& dict() const;
+        //- calling this function generates a FatalError
+        virtual const dictionary& dict() const;
 
         //- This entry is not a dictionary,
-        //  calling this function generates a FatalError
-        dictionary& dict();
+        //- calling this function generates a FatalError
+        virtual dictionary& dict();
 
         //- Read tokens from the given stream
-        virtual bool read(const dictionary&, Istream&);
+        virtual bool read(const dictionary& dict, Istream& is);
 
         //- Write
-        void write(Ostream&) const;
+        virtual void write(Ostream& os) const;
 
         //- Write, optionally with contents only (no keyword, etc)
-        void write(Ostream&, const bool contentsOnly) const;
+        void write(Ostream& os, const bool contentsOnly) const;
 
-        //- Return info proxy.
-        //  Used to print token information to a stream
-        InfoProxy<primitiveEntry> info() const
-        {
-            return *this;
-        }
+        //- Return info proxy,
+        //- to print token information to a stream
+        InfoProxy<primitiveEntry> info() const noexcept { return *this; }
 };
-
-
-template<>
-Ostream& operator<<(Ostream&, const InfoProxy<primitiveEntry>&);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

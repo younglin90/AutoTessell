@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dummyAgglomeration_H
-#define dummyAgglomeration_H
+#ifndef Foam_dummyAgglomeration_H
+#define Foam_dummyAgglomeration_H
 
 #include "GAMGAgglomeration.H"
 
@@ -43,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class dummyAgglomeration Declaration
+                           Class dummyAgglomeration Declaration
 \*---------------------------------------------------------------------------*/
 
 class dummyAgglomeration
@@ -54,6 +56,15 @@ class dummyAgglomeration
 
         //- Preset number of levels
         label nLevels_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        dummyAgglomeration(const dummyAgglomeration&) = delete;
+
+        //- No copy assignment
+        void operator=(const dummyAgglomeration&) = delete;
 
 
 public:
@@ -71,15 +82,19 @@ public:
             const dictionary& controlDict
         );
 
-        //- Disallow default bitwise copy construction
-        dummyAgglomeration(const dummyAgglomeration&) = delete;
-
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const dummyAgglomeration&) = delete;
+        //- Agglomerate from a starting level. Starting level is usually 0
+        //- (initial mesh) but sometimes >0 (restarting after processor
+        //- agglomeration)
+        virtual void agglomerate
+        (
+            const label nCellsInCoarsestLevel,
+            const label startLevel,
+            const scalarField& startFaceWeights,
+            const bool doProcessorAgglomerate = true
+        )
+        {
+            NotImplemented;
+        }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,38 +31,87 @@ Description
     A character and a pointer to a character string.
 
 SourceFiles
-    charIO.C
+    char.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef char_H
-#define char_H
+#ifndef Foam_primitives_char_H
+#define Foam_primitives_char_H
+
+#include "pTraits.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class Istream;
-class Ostream;
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-char readChar(Istream&);
-Istream& operator>>(Istream&, char&);
-Ostream& operator<<(Ostream&, const char);
-Ostream& operator<<(Ostream&, const char*);
+//- Read single character
+char readChar(Istream& is);
 
-inline bool isspace(char c)
+//- Read single character
+Istream& operator>>(Istream& is, char& c);
+
+//- Write single character
+Ostream& operator<<(Ostream& os, const char c);
+
+//- Write a nul-terminated C-string
+Ostream& operator<<(Ostream& os, const char* str);
+
+//- Test for whitespace (C-locale)
+inline bool isspace(char c) noexcept
 {
     return
     (
-        c == ' '
-     || c == '\n'
-     || c == '\r'
-     || c == '\t'
+        c == ' '    // (0x20)  space (SPC)
+     || c == '\t'   // (0x09)  horizontal tab (TAB)
+     || c == '\n'   // (0x0a)  newline (LF)
+     || c == '\v'   // (0x0b)  vertical tab (VT)
+     || c == '\f'   // (0x0c)  feed (FF)
+     || c == '\r'   // (0x0d)  carriage return (CR)
     );
 }
+
+
+/*---------------------------------------------------------------------------*\
+                         Specialization pTraits<char>
+\*---------------------------------------------------------------------------*/
+
+//- Template specialisation for pTraits\<char\>
+template<>
+class pTraits<char>
+{
+    char p_;
+
+public:
+
+    // Static Data Members
+
+        static const char* const typeName;
+
+
+    // Constructors
+
+        //- Copy construct from primitive
+        explicit pTraits(char val) noexcept
+        :
+            p_(val)
+        {}
+
+        //- Read construct from Istream
+        explicit pTraits(Istream& is);
+
+
+    // Member Functions
+
+        //- Return the value
+        operator char() const noexcept { return p_; }
+
+        //- Access the value
+        operator char&() noexcept { return p_; }
+};
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

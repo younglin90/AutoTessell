@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ SourceFiles
 
 #include "extendedUpwindCellToFaceStencil.H"
 #include "FECCellToFaceStencil.H"
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -48,25 +51,28 @@ namespace Foam
 
 class upwindFECCellToFaceStencilObject
 :
-    public DemandDrivenMeshObject
+    public MeshObject
     <
         fvMesh,
-        MoveableMeshObject,
+        TopologicalMeshObject,
         upwindFECCellToFaceStencilObject
     >,
     public extendedUpwindCellToFaceStencil
 {
+    // Private Typedefs
 
-protected:
+        typedef MeshObject
+        <
+            fvMesh,
+            TopologicalMeshObject,
+            upwindFECCellToFaceStencilObject
+        > MeshObject_type;
 
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        upwindFECCellToFaceStencilObject
-    >;
+public:
 
-    // Protected Constructors
+    TypeName("upwindFECCellToFaceStencil");
+
+    // Constructors
 
         //- Construct from uncompacted face stencil
         upwindFECCellToFaceStencilObject
@@ -76,12 +82,7 @@ protected:
             const scalar minOpposedness
         )
         :
-            DemandDrivenMeshObject
-            <
-                fvMesh,
-                MoveableMeshObject,
-                upwindFECCellToFaceStencilObject
-            >(mesh),
+            MeshObject_type(mesh),
             extendedUpwindCellToFaceStencil
             (
                 FECCellToFaceStencil(mesh),
@@ -97,19 +98,9 @@ protected:
             }
         }
 
-public:
-
-    TypeName("upwindFECCellToFaceStencil");
 
     //- Destructor
-    virtual ~upwindFECCellToFaceStencilObject()
-    {}
-
-    //- Update for mesh motion
-    virtual bool movePoints()
-    {
-        return true;
-    }
+    virtual ~upwindFECCellToFaceStencilObject() = default;
 };
 
 

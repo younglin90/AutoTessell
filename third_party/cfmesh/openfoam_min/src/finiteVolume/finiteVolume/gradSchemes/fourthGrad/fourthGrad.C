@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,6 +30,8 @@ License
 #include "leastSquaresGrad.H"
 #include "gaussGrad.H"
 #include "fvMesh.H"
+#include "volMesh.H"
+#include "surfaceMesh.H"
 #include "GeometricField.H"
 #include "zeroGradientFvPatchField.H"
 
@@ -35,11 +40,16 @@ License
 template<class Type>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::fourthGrad<Type>::calcGrad
 (
-    const VolField<Type>& vsf,
+    const GeometricField<Type, fvPatchField, volMesh>& vsf,
     const word& name
 ) const
 {
@@ -49,29 +59,37 @@ Foam::fv::fourthGrad<Type>::calcGrad
     // gradient to complete the accuracy.
 
     typedef typename outerProduct<vector, Type>::type GradType;
+    typedef GeometricField<GradType, fvPatchField, volMesh> GradFieldType;
 
     const fvMesh& mesh = vsf.mesh();
 
     // Assemble the second-order least-square gradient
     // Calculate the second-order least-square gradient
-    tmp<VolField<GradType>> tsecondfGrad
+    tmp<GradFieldType> tsecondfGrad
       = leastSquaresGrad<Type>(mesh).grad
         (
             vsf,
             "leastSquaresGrad(" + vsf.name() + ")"
         );
-    const VolField<GradType>& secondfGrad =
+    const GradFieldType& secondfGrad =
         tsecondfGrad();
 
-    tmp<VolField<GradType>> tfGrad
+    tmp<GradFieldType> tfGrad
     (
-        VolField<GradType>::New
+        new GradFieldType
         (
-            name,
+            IOobject
+            (
+                name,
+                vsf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
             secondfGrad
         )
     );
-    VolField<GradType>& fGrad = tfGrad.ref();
+    GradFieldType& fGrad = tfGrad.ref();
 
     const vectorField& C = mesh.C();
 
@@ -116,7 +134,7 @@ Foam::fv::fourthGrad<Type>::calcGrad
             const labelUList& faceCells = p.faceCells();
 
             // Build the d-vectors
-            vectorField pd(p.delta());
+            const vectorField pd(p.delta());
 
             const Field<GradType> neighbourSecondfGrad
             (

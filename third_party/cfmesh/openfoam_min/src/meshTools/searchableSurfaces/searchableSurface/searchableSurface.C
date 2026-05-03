@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,19 +27,14 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "searchableSurface.H"
-#include "Time.H"
-#include "triSurface.H"
-#include "OSspecific.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
     defineTypeNameAndDebug(searchableSurface, 0);
-    defineRunTimeSelectionTable(searchableSurface, dictionary);
+    defineRunTimeSelectionTable(searchableSurface, dict);
 }
-
-Foam::word Foam::searchableSurface::geometryDir_("geometry");
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -48,20 +46,20 @@ Foam::autoPtr<Foam::searchableSurface> Foam::searchableSurface::New
     const dictionary& dict
 )
 {
-    dictionaryConstructorTable::iterator cstrIter =
-        dictionaryConstructorTablePtr_->find(searchableSurfaceType);
+    auto* ctorPtr = dictConstructorTable(searchableSurfaceType);
 
-    if (cstrIter == dictionaryConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalErrorInFunction
-            << "Unknown searchableSurface type " << searchableSurfaceType
-            << endl << endl
-            << "Valid searchableSurface types : " << endl
-            << dictionaryConstructorTablePtr_->sortedToc()
-            << exit(FatalError);
+        FatalIOErrorInLookup
+        (
+            dict,
+            "searchableSurface",
+            searchableSurfaceType,
+            *dictConstructorTablePtr_
+        ) << exit(FatalIOError);
     }
 
-    return autoPtr<searchableSurface>(cstrIter()(io, dict));
+    return autoPtr<searchableSurface>(ctorPtr(io, dict));
 }
 
 
@@ -73,48 +71,11 @@ Foam::searchableSurface::searchableSurface(const IOobject& io)
 {}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::searchableSurface::~searchableSurface()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::word& Foam::searchableSurface::geometryDir()
+bool Foam::searchableSurface::hasVolumeType() const
 {
-    return geometryDir_;
-}
-
-
-const Foam::word& Foam::searchableSurface::geometryDir(const Time& time)
-{
-    if
-    (
-        isDir
-        (
-            time.rootPath()/time.globalCaseName()/time.constant()/
-            searchableSurface::geometryDir_
-        )
-    )
-    {
-        return searchableSurface::geometryDir_;
-    }
-    else if
-    (
-        isDir
-        (
-            time.rootPath()/time.globalCaseName()/time.constant()/
-            triSurface::typeName
-        )
-    )
-    {
-        return triSurface::typeName;
-    }
-    else
-    {
-        return searchableSurface::geometryDir_;
-    }
+    return false;
 }
 
 

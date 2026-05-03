@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,11 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Cmpt>
-inline Foam::BarycentricTensor<Cmpt>::BarycentricTensor()
-{}
-
 
 template<class Cmpt>
 inline Foam::BarycentricTensor<Cmpt>::BarycentricTensor(const Foam::zero)
@@ -160,6 +158,26 @@ inline Foam::Vector<Cmpt> Foam::BarycentricTensor<Cmpt>::d() const
 }
 
 
+// NB: same workaround for gcc (11+) failure on (tensor dot vector)
+// - not sure it will indeed be required here as well.
+template<class Cmpt>
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-tree-vectorize")))
+#endif
+inline Foam::Vector<Cmpt>
+Foam::BarycentricTensor<Cmpt>::inner(const Barycentric<Cmpt>& bry) const
+{
+    const BarycentricTensor<Cmpt>& t = *this;
+
+    return Vector<Cmpt>
+    (
+        (bry.a()*t.xa() + bry.b()*t.xb() + bry.c()*t.xc() + bry.d()*t.xd()),
+        (bry.a()*t.ya() + bry.b()*t.yb() + bry.c()*t.yc() + bry.d()*t.yd()),
+        (bry.a()*t.za() + bry.b()*t.zb() + bry.c()*t.zc() + bry.d()*t.zd())
+    );
+}
+
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -167,17 +185,20 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
 
+// Transform Barycentric coordinates to Vector
 template<class Cmpt>
 inline Vector<Cmpt> operator&
 (
-    const BarycentricTensor<Cmpt>& T,
+    const BarycentricTensor<Cmpt>& t,
     const Barycentric<Cmpt>& b
 )
 {
-    return Vector<Cmpt>(T.x() & b, T.y() & b, T.z() & b);
+    return t.inner(b);
 }
 
 
+// Transform Vector to Barycentric coordinates.
+// Caution: the tensor must be inverse one (see particle.C)
 template<class Cmpt>
 inline Barycentric<Cmpt> operator&
 (

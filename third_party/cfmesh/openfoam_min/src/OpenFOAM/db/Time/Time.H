@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2019 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,24 +34,23 @@ Description
 SourceFiles
     Time.C
     TimeIO.C
-    findInstance.C
+    TimeNew.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Time_H
-#define Time_H
+#ifndef Foam_Time_H
+#define Foam_Time_H
 
 #include "TimePaths.H"
 #include "objectRegistry.H"
-#include "controlIOdictionary.H"
+#include "unwatchedIOdictionary.H"
 #include "FIFOStack.H"
 #include "clock.H"
 #include "cpuTime.H"
 #include "TimeState.H"
-#include "userTime.H"
 #include "Switch.H"
 #include "instantList.H"
-#include "NamedEnum.H"
+#include "Enum.H"
 #include "typeInfo.H"
 #include "dlLibraryTable.H"
 #include "functionObjectList.H"
@@ -60,11 +62,13 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class argList;
+class profilingTrigger;
+class OSstream;
 
 /*---------------------------------------------------------------------------*\
-                            Class Time Declaration
+                             Class Time Declaration
 \*---------------------------------------------------------------------------*/
 
 class Time
@@ -75,103 +79,106 @@ class Time
     public objectRegistry,
     public TimeState
 {
-    // Private Data
-
-        //- Is runtime modification of dictionaries allowed?
-        Switch runTimeModifiable_;
-
-        friend class controlIOdictionary;
-
-        //- The controlDict
-        controlIOdictionary controlDict_;
-
-
 public:
 
         //- Write control options
-        enum class writeControl
+        enum writeControls
         {
-            timeStep,
-            runTime,
-            adjustableRunTime,
-            clockTime,
-            cpuTime
+            wcNone,                 //!< "none"
+            wcTimeStep,             //!< "timeStep"
+            wcRunTime,              //!< "runTime"
+            wcAdjustableRunTime,    //!< "adjustable" / "adjustableRunTime"
+            wcClockTime,            //!< "clockTime"
+            wcCpuTime,              //!< "cpuTime"
+            wcUnknown               //!< Dummy no-op
         };
 
-        //- Stop-run control options
-        enum class stopAtControl
+        //- Stop-run control options, which are primarily used when
+        //- altering the stopAt condition.
+        enum stopAtControls
         {
-            endTime,    //!< stop when Time reaches the prescribed endTime
-            noWriteNow, //!< set endTime to stop immediately w/o writing
-            writeNow,   //!< set endTime to stop immediately w/ writing
-            nextWrite   //!< stop the next time data are written
+            saEndTime,    //!< Stop when Time reaches prescribed endTime
+            saNoWriteNow, //!< Adjust endTime to stop immediately w/o writing
+            saWriteNow,   //!< adjust endTime to stop immediately w/ writing
+            saNextWrite,  //!< stop at the next data write interval
+            saUnknown     //!< Dummy no-op. Do not change current value.
         };
 
-        //- Supported time directory name formats
-        enum class format
-        {
-            general    = 0,
-            fixed      = ios_base::fixed,
-            scientific = ios_base::scientific
-        };
+        //- Names for writeControls
+        static const Enum<writeControls> writeControlNames;
 
-        static const NamedEnum<stopAtControl, 4> stopAtControlNames;
+        //- Names for stopAtControls
+        static const Enum<stopAtControls> stopAtControlNames;
 
-        static const NamedEnum<writeControl, 5> writeControlNames;
+
+        //- Style for "ExecutionTime = " output
+        //  0 = seconds (with trailing 's')
+        //  1 = day-hh:mm:ss
+        //
+        // \note this is public so registered info switches can modify it.
+        static int printExecutionFormat_;
+
+
+private:
+
+    // Private Data
+
+        //- Profiling trigger for time-loop (for run, loop)
+        mutable std::unique_ptr<profilingTrigger> loopProfiling_;
+
+        //- Any loaded dynamic libraries
+        //  Construct before reading controlDict
+        mutable dlLibraryTable libs_;
+
+        //- The controlDict
+        unwatchedIOdictionary controlDict_;
 
 
 protected:
 
-    // Protected data
+    // Protected Data
 
-        label  startTimeIndex_;
+        label startTimeIndex_;
+
         scalar startTime_;
+
         mutable scalar endTime_;
-        scalar beginTime_;
 
-        //- Optional user-time, defaults to realTime in s
-        autoPtr<userTimes::userTime> userTime_;
+        mutable stopAtControls stopAt_;
 
-        mutable stopAtControl stopAt_;
-
-        writeControl writeControl_;
+        writeControls writeControl_;
 
         scalar writeInterval_;
 
-        label  purgeWrite_;
+        label purgeWrite_;
+
         mutable FIFOStack<word> previousWriteTimes_;
+
+        //- The total number of sub-cycles, the current sub-cycle index,
+        //- or 0 if time is not being sub-cycled
+        label subCycling_;
 
         // One-shot writing
         bool writeOnce_;
 
-        //- Is the time currently being sub-cycled?
-        bool subCycling_;
-
         //- If time is being sub-cycled this is the previous TimeState
         autoPtr<TimeState> prevTimeState_;
 
-        // Signal handlers for writing
+        //- Signal handler for one-shot writing upon signal
+        sigWriteNow sigWriteNow_;
 
-            //- Enable one-shot writing upon signal
-            sigWriteNow sigWriteNow_;
+        //- Signal handler for write and clean exit upon signal
+        sigStopAtWriteNow sigStopAtWriteNow_;
 
-            //- Enable write and clean exit upon signal
-            sigStopAtWriteNow sigStopAtWriteNow_;
-
-
-        //- Time directory name format
-        static format format_;
+        //- Format for time directory names (general | fixed | scientific)
+        static IOstreamOption::floatFormat format_;
 
         //- Time directory name precision
         static int precision_;
 
-        //- Current time directory name precision adjusted as necessary
-        //  to ensure time directory names are unique
-        //  particularly if the time-step is reduced during the run
-        static int curPrecision_;
-
         //- Maximum time directory name precision
         static const int maxPrecision_;
+
 
         //- Adjust the time step so that writing occurs at the specified time
         void adjustDeltaT();
@@ -179,22 +186,26 @@ protected:
         //- Set the controls from the current controlDict
         void setControls();
 
+        //- Set file monitoring, profiling, etc
+        //  Optionally force profiling without inspecting the controlDict
+        void setMonitoring(const bool forceProfiling=false);
+
         //- Read the control dictionary and set the write controls etc.
         virtual void readDict();
 
 
 private:
 
-        //- Default write option
-        IOstream::streamFormat writeFormat_;
+        //- The write stream option (format, compression, version)
+        IOstreamOption writeStreamOption_;
 
-        //- Default output file format version number
-        IOstream::versionNumber writeVersion_;
+        //- Default graph format
+        word graphFormat_;
 
-        //- Default output compression
-        IOstream::compressionType writeCompression_;
+        //- Is runtime modification of dictionaries allowed?
+        Switch runTimeModifiable_;
 
-        //- Is temporary object cache enabled
+        //- Is temporary object cache enabled?
         mutable bool cacheTemporaryObjects_;
 
         //- Function objects executed at start and on ++, +=
@@ -203,47 +214,159 @@ private:
 
 public:
 
-    TypeName("time");
+    // Static Data Members
 
-    //- The default control dictionary name (normally "controlDict")
-    static word controlDictName;
+        //- The default control dictionary name (normally "controlDict")
+        static word controlDictName;
+
+
+    //- Runtime type information
+    TypeName("time");
 
 
     // Constructors
 
-        //- Construct given name of dictionary to read and argument list
-        Time
+    // Construct from argList
+
+        //- Construct from argument list,
+        //- reading from specified control dictionary name
+        //  Uses "system" and "constant" for its directories.
+        inline Time
         (
-            const word& name,
+            const word& ctrlDictName,
             const argList& args,
-            const bool enableFunctionObjects = true
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
         );
 
-        //- Construct given name of dictionary to read, rootPath and casePath
+        //- Construct from argument list,
+        //- reading from specified control dictionary name.
+        //  Use specified system/constant directory names.
         Time
         (
-            const word& name,
+            const word& ctrlDictName,
+            const argList& args,
+            const word& systemDirName,      //!< "system" directory name
+            const word& constantDirName,    //!< "constant" directory name
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
+        );
+
+
+    // Construct from root and case paths
+
+        //- Construct given name of dictionary to read and root/case paths.
+        //  Uses "system" and "constant" for its directories.
+        inline Time
+        (
+            const word& ctrlDictName,
             const fileName& rootPath,
             const fileName& caseName,
-            const bool enableFunctionObjects = true
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
         );
 
-        //- Construct given dictionary, rootPath and casePath
+        //- Construct given name of dictionary to read and root/case paths.
+        //  Use specified system/constant directory names.
+        Time
+        (
+            const word& ctrlDictName,
+            const fileName& rootPath,
+            const fileName& caseName,
+            const word& systemDirName,      //!< "system" directory name
+            const word& constantDirName,    //!< "constant" directory name
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
+        );
+
+        //- Construct from root/case paths,
+        //- with initial dictionary content
+        //- \em without reading from "controlDict".
+        //  Uses "system" and "constant" for its directories.
+        inline Time
+        (
+            const dictionary& dict,
+            const fileName& rootPath,
+            const fileName& caseName,
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
+        );
+
+        //- Construct from root/case paths,
+        //- with initial dictionary content
+        //- \em without reading from "controlDict".
+        //  Use specified system/constant directory names.
         Time
         (
             const dictionary& dict,
             const fileName& rootPath,
             const fileName& caseName,
-            const bool enableFunctionObjects = true
+            const word& systemDirName,      //!< "system" directory name
+            const word& constantDirName,    //!< "constant" directory name
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true,
+            //! Read option for controlDict and objectRegistry
+            IOobjectOption::readOption rOpt = IOobjectOption::READ_MODIFIED
         );
 
-        //- Construct given endTime, rootPath and casePath
+        //- Construct from root/case paths
+        //- \em without reading or requiring a controlDict or other files.
+        //  Uses "system" and "constant" for its directories.
+        //  Uses default controls values
+        //  (write: timeStep, stop: endTime, format: ASCII, ...),
+        inline Time
+        (
+            const fileName& rootPath,
+            const fileName& caseName,
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true
+        );
+
+        //- Construct from root/case paths
+        //- \em without reading or requiring a controlDict or other files.
+        //  Use specified system/constant directory names.
+        //  Uses default controls values
+        //  (write: timeStep, stop: endTime, format: ASCII, ...)
         Time
         (
             const fileName& rootPath,
             const fileName& caseName,
-            const bool enableFunctionObjects = true
+            const word& systemDirName,      //!< "system" directory name
+            const word& constantDirName,    //!< "constant" directory name
+            const bool enableFunctionObjects = true,
+            const bool enableLibs = true
         );
+
+
+    // Factory Methods
+
+        //- Construct (dummy) Time - no functionObjects or libraries
+        static autoPtr<Time> New();
+
+        //- Construct (dummy) Time - no functionObjects or libraries
+        static autoPtr<Time> New(const fileName& caseDir);
+
+        //- Construct (dummy) Time - no functionObjects or libraries
+        static autoPtr<Time> New(const argList& args);
+
+        //- Construct (dummy) global Time - no functionObjects or libraries,
+        //- using the global path information stored in the FOAM_CASE
+        //- environment. See argList::envGlobalPath()
+        static autoPtr<Time> NewGlobalTime();
+
+        //- Construct (dummy) global Time - no functionObjects or libraries,
+        //- using the global path information from the referenced Time.
+        static autoPtr<Time> NewGlobalTime(const Time& runTime);
 
 
     //- Destructor
@@ -252,118 +375,155 @@ public:
 
     // Member Functions
 
-        // Database functions
+    // TimeState Functions
 
-            //- Explicitly inherit rootPath from TimePaths to disambiguate from
-            //  the corresponding method in objectRegistry
-            using TimePaths::rootPath;
+        //- Return the current time name
+        using TimeState::timeName;
 
-            //- Explicitly inherit caseName from TimePaths to disambiguate from
-            //  the corresponding method in objectRegistry
-            using TimePaths::caseName;
+        //- Return a time name for the given scalar time value
+        //- formatted with the given precision
+        static word timeName(const scalar t, const int precision = precision_);
 
-            //- Explicitly inherit path from TimePaths to disambiguate from
-            //  the corresponding method in objectRegistry
-            using TimePaths::path;
 
-            //- Return true if this is a complete serial or parallel case
-            bool completeCase() const
-            {
-                return Pstream::parRun() || !processorCase();
-            }
+    // Database names and paths
 
-            //- Return the control dict
-            const IOdictionary& controlDict() const
-            {
-                return controlDict_;
-            }
+        //- Use name from objectRegistry, not TimePaths
+        using objectRegistry::name;
 
-            //- Return the list of region names
-            //  specified in the regionSolvers list in controlDict
-            //  or a null list if not specified
-            wordList regionNames() const;
+        //- Return the rootPath
+        using TimePaths::rootPath;
 
-            //- Return current time path
-            fileName timePath() const
-            {
-                return path()/name();
-            }
+        //- Return global case name
+        using TimePaths::globalCaseName;
 
-            //- Default write format
-            IOstream::streamFormat writeFormat() const
-            {
-                return writeFormat_;
-            }
+        //- Return case name
+        using TimePaths::caseName;
 
-            //- Default write version number
-            IOstream::versionNumber writeVersion() const
-            {
-                return writeVersion_;
-            }
+        //- Return path = rootPath/caseName. Same as TimePaths::path()
+        fileName path() const
+        {
+            return TimePaths::rootPath()/TimePaths::caseName();
+        }
 
-            //- Default write compression
-            IOstream::compressionType writeCompression() const
-            {
-                return writeCompression_;
-            }
+        //- Return global path for the case = rootPath/globalCaseName.
+        //- Same as TimePaths::globalPath()
+        fileName globalPath() const
+        {
+            return TimePaths::rootPath()/TimePaths::globalCaseName();
+        }
 
-            //- Supports re-reading
-            const Switch& runTimeModifiable() const
-            {
-                return runTimeModifiable_;
-            }
+        //- Return current time path = path/timeName
+        fileName timePath() const
+        {
+            return TimePaths::path()/TimeState::timeName();
+        }
 
-            //- Read the objects that have been modified
-            void readModifiedObjects();
+        //- Return current time global path = globalPath/timeName
+        fileName globalTimePath() const
+        {
+            return TimePaths::globalPath()/TimeState::timeName();
+        }
 
-            //- Return the location of "dir" containing the file "name".
-            //  (eg, used in reading mesh data)
-            //  If name is null, search for the directory "dir" only.
-            //  Does not search beyond stopInstance (if set) or constant.
-            word findInstance
-            (
-                const fileName& dir,
-                const word& name = word::null,
-                const IOobject::readOption rOpt = IOobject::MUST_READ,
-                const word& stopInstance = word::null
-            ) const;
 
-            //- Search the case for valid time directories
-            instantList times() const;
+    // Database Functions
 
-            //- Search the case for the time directory path
-            //  corresponding to the given instance
-            word findInstancePath(const fileName& path, const instant&) const;
+        //- Return read access to the controlDict dictionary
+        const dictionary& controlDict() const noexcept { return controlDict_; }
 
-            //- Search the case for the time directory path
-            //  corresponding to the given instance
-            word findInstancePath(const instant&) const;
+        virtual const fileName& dbDir() const { return fileName::null; }
 
-            //- Search the case for the time closest to the given time
-            instant findClosestTime(const scalar) const;
+        //- Get write stream option (format, compression, version)
+        inline IOstreamOption writeStreamOption() const noexcept;
 
-            //- Search instantList for the time index closest to the given time
-            static label findClosestTimeIndex
-            (
-                const instantList&,
-                const scalar,
-                const word& constantName = "constant"
-            );
+        //- Get write stream format
+        inline IOstreamOption::streamFormat writeFormat() const noexcept;
+
+        //- Set the write stream format and return the previous value.
+        //  This change will only effective until the next readModified.
+        //  As a side-effect (eg, changing from ASCII to BINARY)
+        //  it may also disable compression
+        inline IOstreamOption::streamFormat
+        writeFormat(IOstreamOption::streamFormat fmt) noexcept;
+
+        //- Get the write stream compression
+        inline IOstreamOption::compressionType writeCompression()
+        const noexcept;
+
+        //- Get the write stream version
+        inline IOstreamOption::versionNumber writeVersion() const noexcept;
+
+        //- Default graph format
+        const word& graphFormat() const noexcept { return graphFormat_; }
+
+
+    // Reading
+
+        //- Supports re-reading
+        Switch runTimeModifiable() const noexcept
+        {
+            return runTimeModifiable_;
+        }
+
+        //- Set re-reading support on/off (use with caution).
+        //  \return the previous value
+        Switch runTimeModifiable(Switch sw) noexcept
+        {
+            Switch old(runTimeModifiable_);
+            runTimeModifiable_ = sw;
+            return old;
+        }
+
+        //- Read control dictionary, update controls and time
+        virtual bool read();
+
+        //- Read the objects that have been modified
+        void readModifiedObjects();
+
+
+    // Searching
+
+        //- Return time instance (location) of \c directory containing
+        //- the file \c name (eg, used in reading mesh data).
+        //- When \c name is empty, searches for \c directory only.
+        //- Does not search beyond \c stopInstance (if set) or \c constant.
+        //
+        //  If the instance cannot be found:
+        //  - FatalError when readOpt is MUST_READ or READ_MODIFIED
+        //  - return \c stopInstance (if set and reached)
+        //  - return \c constant if constant_fallback is true
+        //  - return an empty word if constant_fallback is false
+        //  .
+        word findInstance
+        (
+            //! The subdirectory (local) for the search
+            const fileName& directory,
+            //! The filename for the search. If empty, only search for directory
+            const word& name = word::null,
+            //! The search type : generally MUST_READ or READ_IF_PRESENT
+            IOobjectOption::readOption rOpt = IOobjectOption::MUST_READ,
+            //! The search stop instance
+            const word& stopInstance = word::null,
+            //! Return \c "constant" instead of \c "" if the search failed
+            const bool constant_fallback = true
+        ) const;
+
+
+    // Member Functions
+
+        // Writing
 
             //- Write time dictionary to the \<time\>/uniform directory
             virtual bool writeTimeDict() const;
 
-            //- Write using given format, version and compression
+            //- Write using stream options
             virtual bool writeObject
             (
-                IOstream::streamFormat,
-                IOstream::versionNumber,
-                IOstream::compressionType,
-                const bool write
+                IOstreamOption streamOpt,
+                const bool writeOnProc
             ) const;
 
-            //- Write the objects now (not at end of iteration) and continue
-            //  the run
+            //- Write the objects immediately (not at end of iteration)
+            //- and continue the run
             bool writeNow();
 
             //- Write the objects now (not at end of iteration) and end the run
@@ -372,31 +532,14 @@ public:
             //- Write the objects once (one shot) and continue the run
             void writeOnce();
 
+            //- Print the elapsed ExecutionTime (cpu-time), ClockTime
+            Ostream& printExecutionTime(OSstream& os) const;
+
 
         // Access
 
-            using dimensionedScalar::name;
-
-            //- Return time name of given scalar time
-            //  formatted with given precision
-            static word timeName
-            (
-                const scalar,
-                const int precision = curPrecision_
-            );
-
-            //- Search a given directory for valid time directories
-            instantList findTimes
-            (
-                const fileName&,
-                const word& constantName = "constant"
-            ) const;
-
             //- Return start time index
             virtual label startTimeIndex() const;
-
-            //- Return begin time (initial start time)
-            virtual dimensionedScalar beginTime() const;
 
             //- Return start time
             virtual dimensionedScalar startTime() const;
@@ -404,44 +547,30 @@ public:
             //- Return end time
             virtual dimensionedScalar endTime() const;
 
-            //- Return the userTime
-            const userTimes::userTime& userTime() const;
+            //- Return the stop control information
+            virtual stopAtControls stopAt() const;
 
-            //- Return current user time value
-            scalar userTimeValue() const;
-
-            //- Return user time step value
-            scalar userDeltaTValue() const;
-
-            //- Convert the user-time (e.g. CA deg) to real-time (s).
-            scalar userTimeToTime(const scalar tau) const;
-
-            //- Convert the real-time (s) into user-time (e.g. CA deg)
-            scalar timeToUserTime(const scalar t) const;
-
-            //- Return current user time name with units
-            word userTimeName() const;
-
-            //- Return the user-time unit conversion
-            const unitSet& userUnits() const;
-
-            //- Return the write interval units
-            const unitSet& writeIntervalUnits() const;
+            //- Return true if adjustTimeStep is true
+            virtual bool isAdjustTimeStep() const;
 
             //- Return the list of function objects
-            const functionObjectList& functionObjects() const
+            const functionObjectList& functionObjects() const noexcept
             {
                 return functionObjects_;
             }
 
-            //- Return true if the run is a restart, i.e. startTime != beginTime
-            bool restart() const
+            //- Mutable access to the loaded dynamic libraries
+            dlLibraryTable& libs() const noexcept
             {
-                return startTime_ != beginTime_;
+                return libs_;
             }
 
-            //- Return true if time currently being sub-cycled, otherwise false
-            bool subCycling() const
+            //- Zero (tests as false) if time is not being sub-cycled,
+            //- otherwise the current sub-cycle index or the total number of
+            //- sub-cycles.
+            //  The interpretation of non-zero values is dependent on the
+            //  routine.
+            label subCycling() const noexcept
             {
                 return subCycling_;
             }
@@ -449,14 +578,11 @@ public:
             //- Return previous TimeState if time is being sub-cycled
             const TimeState& prevTimeState() const
             {
-                return prevTimeState_();
+                return *prevTimeState_;
             }
 
 
         // Check
-
-            //- Return true if run should continue without any side effects
-            virtual bool running() const;
 
             //- Return true if run should continue,
             //  also invokes the functionObjectList::end() method
@@ -467,7 +593,7 @@ public:
             //  \code
             //      while (runTime.run())
             //      {
-            //          runTime++;
+            //          ++runTime;
             //          solve;
             //          runTime.write();
             //      }
@@ -500,54 +626,65 @@ public:
 
         // Edit
 
-            //- Adjust the current stopAtControl. Note that this value
-            //  only persists until the next time the dictionary is read.
-            //  Return true if the stopAtControl changed.
-            virtual bool stopAt(const stopAtControl) const;
+            //- Adjust the current stopAtControl.
+            //  \param stopCtrl the new stop control, whereby
+            //      stopAtControls::saUnknown is treated as a no-op.
+            //  \note this value only persists until the next time the
+            //      dictionary is read.
+            //  \return true if the stopAt() value was changed.
+            virtual bool stopAt(const stopAtControls stopCtrl) const;
 
             //- Reset the time and time-index to those of the given time
-            virtual void setTime(const Time&);
+            virtual void setTime(const Time& t);
 
             //- Reset the time and time-index
-            virtual void setTime(const instant&, const label newIndex);
+            virtual void setTime(const instant& inst, const label newIndex);
 
             //- Reset the time and time-index
             virtual void setTime
             (
-                const dimensionedScalar&,
+                const dimensionedScalar& newTime,
                 const label newIndex
             );
 
             //- Reset the time and time-index
-            virtual void setTime(const scalar, const label newIndex);
+            virtual void setTime(const scalar newTime, const label newIndex);
 
             //- Reset end time
-            virtual void setEndTime(const dimensionedScalar&);
+            virtual void setEndTime(const dimensionedScalar& endTime);
 
             //- Reset end time
-            virtual void setEndTime(const scalar);
+            virtual void setEndTime(const scalar endTime);
 
-            //- Reset time step
-            virtual void setDeltaT(const dimensionedScalar&);
+            //- Reset time step, normally also calling adjustDeltaT()
+            virtual void setDeltaT
+            (
+                const dimensionedScalar& deltaT,
+                const bool adjust = true
+            );
 
-            //- Reset time step
-            virtual void setDeltaT(const scalar);
-
-            //- Reset time step without additional adjustment or modification
-            //  by function objects
-            virtual void setDeltaTNoAdjust(const scalar);
-
-            //- Reset the write interval
-            virtual void setWriteInterval(const scalar writeInterval);
+            //- Reset time step, normally also calling adjustDeltaT()
+            virtual void setDeltaT
+            (
+                const scalar deltaT,
+                const bool adjust = true
+            );
 
             //- Set time to sub-cycle for the given number of steps
             virtual TimeState subCycle(const label nSubCycles);
+
+            //- Adjust the reported sub-cycle index.
+            //  \param index is the sub-cycle index.
+            //      This index is ignored sub-cycling was
+            //      not already registered, or if the index is zero or
+            //      negative.
+            virtual void subCycleIndex(const label index);
 
             //- Reset time after sub-cycling back to previous TimeState
             virtual void endSubCycle();
 
             //- Return non-const access to the list of function objects
-            functionObjectList& functionObjects()
+            functionObjectList& functionObjects() noexcept
             {
                 return functionObjects_;
             }
@@ -556,10 +693,10 @@ public:
     // Member Operators
 
         //- Set deltaT to that specified and increment time via operator++()
-        virtual Time& operator+=(const dimensionedScalar&);
+        virtual Time& operator+=(const dimensionedScalar& deltaT);
 
         //- Set deltaT to that specified and increment time via operator++()
-        virtual Time& operator+=(const scalar);
+        virtual Time& operator+=(const scalar deltaT);
 
         //- Prefix increment,
         //  also invokes the functionObjectList::start() or
@@ -574,6 +711,10 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "TimeI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

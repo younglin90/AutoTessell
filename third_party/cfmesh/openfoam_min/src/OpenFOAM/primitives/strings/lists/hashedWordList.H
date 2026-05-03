@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,8 @@ Class
     Foam::hashedWordList
 
 Description
-    A wordList with hashed indices for faster lookup by name.
+    A wordList with hashed named lookup, which can be faster in some
+    situations than using the normal list find/found methods.
 
 SourceFiles
     hashedWordListI.H
@@ -33,8 +37,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef hashedWordList_H
-#define hashedWordList_H
+#ifndef Foam_hashedWordList_H
+#define Foam_hashedWordList_H
 
 #include "wordList.H"
 #include "HashTable.H"
@@ -44,106 +48,158 @@ SourceFiles
 namespace Foam
 {
 
-class hashedWordList;
-
-// Forward declaration of friend functions and operators
-Istream& operator>>(Istream&, hashedWordList&);
-Ostream& operator<<(Ostream&, const hashedWordList&);
-
-
 /*---------------------------------------------------------------------------*\
                        Class hashedWordList Declaration
 \*---------------------------------------------------------------------------*/
 
 class hashedWordList
 :
-    public List<word>
+    public wordList
 {
     // Private Data
 
-        HashTable<label, word> indices_;
-
-
-    // Private Member Functions
-
-        //- Rebuild the hash of indices
-        void rehash();
-
+        //- Lookup HashTable of words vs list-indices
+        mutable HashTable<label> lookup_;
 
 public:
 
-    // Static Data Members
-
-        //- An empty hashedWordList
-        static const hashedWordList null;
-
-
     // Constructors
 
-        //- Construct null
-        hashedWordList();
+        //- Default construct an empty list
+        hashedWordList() = default;
 
-        //- Copy constructor
-        hashedWordList(const hashedWordList&);
+        //- Copy construct
+        inline hashedWordList(const hashedWordList& list);
 
-        //- Move constructor
-        hashedWordList(hashedWordList&&);
+        //- Move construct
+        inline hashedWordList(hashedWordList&& list);
 
-        //- Construct from list of names
-        hashedWordList(const UList<word>& names);
+        //- Copy construct from list of words
+        inline explicit hashedWordList(const wordUList& list);
 
-        //- Move constructor transferring the parameter contents
-        hashedWordList(List<word>&& names);
+        //- Copy construct from list of words, eliminating duplicates
+        inline hashedWordList(const wordUList& list, bool unique);
 
-        //- Construct from number and list of names
-        hashedWordList(const label nNames, const char** names);
+        //- Move construct from list of words, optionally eliminating duplicates
+        inline hashedWordList(wordList&& list, bool unique=false);
 
-        //- Construct from a nullptr-terminated list of names
-        hashedWordList(const char** names);
+        //- Construct from an initializer list
+        inline hashedWordList(std::initializer_list<word> list);
+
+        //- Construct from the word keys of any HashTable, sorting immediately.
+        //  This also handles a wordHashSet, which is derived from a HashTable.
+        //  The result is similar to a HashTable::sortedToc.
+        template<class AnyType, class AnyHash>
+        inline explicit hashedWordList
+        (
+            const HashTable<AnyType, word, AnyHash>& tbl
+        );
 
         //- Construct from Istream
-        hashedWordList(Istream&);
+        inline explicit hashedWordList(Istream& is);
 
 
     // Member Functions
 
         //- Clear the list, i.e. set size to zero.
-        void clear();
+        inline void clear();
 
-        //- Append an element at the end of the list
-        void append(const word&);
+        //- Append an element if not already in the list.
+        //  \return the change in list length
+        inline label push_uniq(const word& val);
 
-        //- Does the list contain the specified name
-        inline bool found(const word&) const;
+        //- Return the hash of words/indices for inspection
+        inline const HashTable<label>& lookup() const;
+
+        //- Swap contents
+        inline void swap(hashedWordList& list);
+
+        //- Transfer contents of the argument into this list
+        //- and annul the argument list, optionally eliminating duplicates
+        inline void transfer(hashedWordList& list);
 
         //- Transfer the contents of the argument List into this list
-        //  and annul the argument list.
-        void transfer(List<word>&);
+        //- and annul the argument list, optionally eliminating duplicates
+        inline void transfer(wordList& list, bool unique=false);
+
+        //- Rebuild the lookup hash indices
+        void rehash() const;
+
+        //- Rebuild the lookup hash indices, or make unique entries first.
+        inline void rehash(bool unique);
+
+        //- Adjust the list (if needed) to eliminate duplicate entries,
+        //- and rehash the indices
+        void uniq();
+
+        //- Inplace sort list and rehash the indices
+        inline void sort();
+
+
+    // Search
+
+        //- Find index of the value (searches the hash).
+        //  \return position in list or -1 if not found.
+        inline label find(const word& val) const;
+
+        //- Is the value contained in the list (searches the hash).
+        inline bool contains(const word& val) const;
 
 
     // Member Operators
 
-        //- Assignment operator
-        inline void operator=(const hashedWordList&);
-
-        //- Move assignment operator
-        inline void operator=(hashedWordList&&);
-
-        //- Assignment operator from list of names
-        inline void operator=(const UList<word>& names);
-
-        //- Return name corresponding to specified index
+        //- Return name corresponding to specified index.
+        //  Fatal for out of range values.
         inline const word& operator[](const label index) const;
 
-        //- Return index corresponding to specified name
-        inline label operator[](const word&) const;
+        //- Find index of the value (searches the hash) - same as find().
+        //  \return position in list or -1 if not found.
+        inline label operator[](const word& val) const;
+
+        //- Check hashed values for the specified name - same as contains().
+        //  Can be used as a unary predicate.
+        inline bool operator()(const word& val) const;
 
 
-    // Istream operators
+    // Assignment
 
-        friend Istream& operator>>(Istream&, hashedWordList&);
-        friend Ostream& operator<<(Ostream&, const hashedWordList&);
+        //- Copy assignment. Rehashes the indices.
+        inline void operator=(const hashedWordList& list);
+
+        //- Copy assignment from list of words. Rehashes the indices.
+        inline void operator=(const wordUList& list);
+
+        //- Copy assignment from initializer list. Rehashes the indices.
+        inline void operator=(std::initializer_list<word> list);
+
+        //- Move assignment operator.
+        inline void operator=(hashedWordList&& list);
+
+        //- Move assignment from list of words. Rehashes the indices.
+        inline void operator=(wordList&& list);
+
+
+    // Housekeeping
+
+        //- Same as contains(), searches the hash.
+        bool found(const word& val) const { return this->contains(val); }
+
+        //- Same as push_uniq()
+        FOAM_DEPRECATED_FOR(2022-05, "push_uniq method")
+        void append(const word& val) { this->push_uniq(val); }
+
+        //- Same as push_uniq()
+        FOAM_DEPRECATED_FOR(2022-10, "push_uniq method")
+        void push_back(const word& val) { this->push_uniq(val); }
+
+        //- Same as push_uniq()
+        FOAM_DEPRECATED_STRICT(2022-10, "push_uniq method")
+        label appendUniq(const word& val) { return this->push_uniq(val); }
 };
+
+
+//- Read from an input stream. Rehashes the indices.
+inline Istream& operator>>(Istream& is, hashedWordList& list);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

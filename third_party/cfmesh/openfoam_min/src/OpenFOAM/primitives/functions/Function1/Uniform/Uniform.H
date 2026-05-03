@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,7 +25,7 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::Function1s::Uniform
+    Foam::Function1Types::Uniform
 
 Description
     Templated function that returns a constant value.
@@ -30,27 +33,23 @@ Description
     Provides backward-compatibility for cases where a field is spatially
     "uniform" and may be treated as a constant value.
 
-Usage
-    For entry \<name\> returning the value <value>:
+    Usage - for entry \<entryName\> returning the value <value>:
     \verbatim
-        <name>    uniform  <value>
+        <entryName>    uniform  <value>
     \endverbatim
-
-SourceFiles
-    Uniform.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Uniform_H
-#define Uniform_H
+#ifndef Foam_Function1Types_Uniform_H
+#define Foam_Function1Types_Uniform_H
 
-#include "Function1.H"
+#include "Constant.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
 
 /*---------------------------------------------------------------------------*\
@@ -62,29 +61,45 @@ class Uniform
 :
     public Constant<Type>
 {
-
 public:
 
-    // Runtime type information
+    //- Declare type-name, virtual type (with debug switch)
     TypeName("uniform");
+
+
+    // Generated Methods
+
+        //- Default copy construct
+        Uniform(const Uniform<Type>&) = default;
+
+        //- No copy assignment
+        void operator=(const Uniform<Type>&) = delete;
 
 
     // Constructors
 
-        //- Inherit constructors
-        using Constant<Type>::Constant;
+        //- Construct from entry name, dictionary and optional registry
+        Uniform
+        (
+            const word& entryName,
+            const dictionary& dict,
+            const objectRegistry* obrPtr = nullptr
+        )
+        :
+            Constant<Type>(entryName, dict, obrPtr)
+        {}
 
-        //- Construct and return a clone
+        //- Return a clone
         virtual tmp<Function1<Type>> clone() const
         {
-            return tmp<Function1<Type>>(new Uniform<Type>(*this));
+            return Function1<Type>::Clone(*this);
         }
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Function1s
+} // End namespace Function1Types
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

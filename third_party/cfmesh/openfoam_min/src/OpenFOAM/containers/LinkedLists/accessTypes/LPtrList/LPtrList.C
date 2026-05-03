@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,16 +33,11 @@ License
 template<class LListBase, class T>
 Foam::LPtrList<LListBase, T>::LPtrList(const LPtrList<LListBase, T>& lst)
 :
-    ULPtrList<LListBase, T>()
+    LList<LListBase, T*>()
 {
-    for
-    (
-        typename ULPtrList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (auto iter = lst.cbegin(); iter != lst.cend(); ++iter)
     {
-        this->append(iter().clone().ptr());
+        this->push_back((*iter).clone().ptr());
     }
 }
 
@@ -47,9 +45,9 @@ Foam::LPtrList<LListBase, T>::LPtrList(const LPtrList<LListBase, T>& lst)
 template<class LListBase, class T>
 Foam::LPtrList<LListBase, T>::LPtrList(LPtrList<LListBase, T>&& lst)
 :
-    ULPtrList<LListBase, T>()
+    LList<LListBase, T*>()
 {
-    transfer(lst);
+    LList<LListBase, T*>::transfer(lst);
 }
 
 
@@ -65,17 +63,18 @@ Foam::LPtrList<LListBase, T>::~LPtrList()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-bool Foam::LPtrList<LListBase, T>::eraseHead()
+void Foam::LPtrList<LListBase, T>::pop_front(label n)
 {
-    T* tPtr;
-    if ((tPtr = this->removeHead()))
+    if (n > this->size())
     {
-        delete tPtr;
-        return true;
+        n = this->size();
     }
-    else
+
+    while (n > 0)
     {
-        return false;
+        T* p = this->removeHead();
+        delete p;
+        --n;
     }
 }
 
@@ -83,12 +82,7 @@ bool Foam::LPtrList<LListBase, T>::eraseHead()
 template<class LListBase, class T>
 void Foam::LPtrList<LListBase, T>::clear()
 {
-    const label oldSize = this->size();
-    for (label i=0; i<oldSize; ++i)
-    {
-        eraseHead();
-    }
-
+    this->pop_front(this->size());
     LList<LListBase, T*>::clear();
 }
 
@@ -108,14 +102,9 @@ void Foam::LPtrList<LListBase, T>::operator=(const LPtrList<LListBase, T>& lst)
 {
     clear();
 
-    for
-    (
-        typename ULPtrList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (auto iter = lst.cbegin(); iter != lst.cend(); ++iter)
     {
-        this->append(iter().clone().ptr());
+        this->push_back((*iter).clone().ptr());
     }
 }
 
@@ -125,11 +114,6 @@ void Foam::LPtrList<LListBase, T>::operator=(LPtrList<LListBase, T>&& lst)
 {
     transfer(lst);
 }
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-#include "LPtrListIO.C"
 
 
 // ************************************************************************* //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "UPstream.H"
-#include "PstreamReduceOps.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -32,97 +34,48 @@ void Foam::UPstream::addValidParOptions(HashTable<string>& validParOptions)
 {}
 
 
+bool Foam::UPstream::initNull()
+{
+    WarningInFunction
+        << "The dummy Pstream library cannot be used in parallel mode"
+        << endl;
+
+    return false;
+}
+
+
 bool Foam::UPstream::init(int& argc, char**& argv, const bool needsThread)
 {
     FatalErrorInFunction
-        << "Trying to use the dummy Pstream library." << nl
-        << "This dummy library cannot be used in parallel mode"
+        << "The dummy Pstream library cannot be used in parallel mode"
+        << endl
         << Foam::exit(FatalError);
 
     return false;
 }
 
 
-void Foam::UPstream::exit(int errnum)
+void Foam::UPstream::shutdown(int errNo)
+{}
+
+
+void Foam::UPstream::exit(int errNo)
 {
-    NotImplemented;
+    // No MPI - just exit
+    std::exit(errNo);
 }
 
 
 void Foam::UPstream::abort()
 {
-    NotImplemented;
+    // No MPI - just abort
+    std::abort();
 }
 
 
-void Foam::reduce(scalar&, const sumOp<scalar>&, const int, const label)
-{}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-
-void Foam::reduce(scalar&, const minOp<scalar>&, const int, const label)
-{}
-
-
-void Foam::reduce(vector2D&, const sumOp<vector2D>&, const int, const label)
-{}
-
-
-void Foam::sumReduce
-(
-    scalar&,
-    label&,
-    const int,
-    const label
-)
-{}
-
-
-void Foam::reduce(scalar&, const sumOp<scalar>&, const int, const label, label&)
-{}
-
-
-void Foam::UPstream::allToAll
-(
-    const labelUList& sendData,
-    labelUList& recvData,
-    const label communicator
-)
-{
-    recvData.deepCopy(sendData);
-}
-
-
-void Foam::UPstream::gather
-(
-    const char* sendData,
-    int sendSize,
-
-    char* recvData,
-    const UList<int>& recvSizes,
-    const UList<int>& recvOffsets,
-    const label communicator
-)
-{
-    memmove(recvData, sendData, sendSize);
-}
-
-
-void Foam::UPstream::scatter
-(
-    const char* sendData,
-    const UList<int>& sendSizes,
-    const UList<int>& sendOffsets,
-
-    char* recvData,
-    int recvSize,
-    const label communicator
-)
-{
-    memmove(recvData, sendData, recvSize);
-}
-
-
-void Foam::UPstream::allocatePstreamCommunicator
+void Foam::UPstream::allocateCommunicatorComponents
 (
     const label,
     const label
@@ -130,32 +83,24 @@ void Foam::UPstream::allocatePstreamCommunicator
 {}
 
 
-void Foam::UPstream::freePstreamCommunicator(const label)
+void Foam::UPstream::freeCommunicatorComponents(const label)
 {}
 
 
-Foam::label Foam::UPstream::nRequests()
+void Foam::UPstream::barrier(const label communicator, UPstream::Request* req)
+{}
+
+
+std::pair<int,int64_t>
+Foam::UPstream::probeMessage
+(
+    const UPstream::commsTypes commsType,
+    const int fromProcNo,
+    const int tag,
+    const label communicator
+)
 {
-    return 0;
-}
-
-
-void Foam::UPstream::resetRequests(const label i)
-{}
-
-
-void Foam::UPstream::waitRequests(const label start)
-{}
-
-
-void Foam::UPstream::waitRequest(const label i)
-{}
-
-
-bool Foam::UPstream::finishedRequest(const label i)
-{
-    NotImplemented;
-    return false;
+    return std::pair<int,int64_t>(-1, 0);
 }
 
 

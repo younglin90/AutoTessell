@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,55 +28,26 @@ Class
     Foam::IFstream
 
 Description
-    Input from file stream.
+    Input from file stream as an ISstream, normally using \c std::ifstream
+    for the actual input.
 
 SourceFiles
     IFstream.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef IFstream_H
-#define IFstream_H
+#ifndef Foam_IFstream_H
+#define Foam_IFstream_H
 
 #include "ISstream.H"
-#include "fileName.H"
 #include "className.H"
-
-#include <fstream>
-using std::ifstream;
+#include "fstreamPointer.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-class IFstream;
-
-/*---------------------------------------------------------------------------*\
-                      Class IFstreamAllocator Declaration
-\*---------------------------------------------------------------------------*/
-
-//- A std::istream with ability to handle compressed files
-class IFstreamAllocator
-{
-    friend class IFstream;
-
-    // Private Data
-
-        istream* ifPtr_;
-        IOstream::compressionType compression_;
-
-
-    // Constructors
-
-        //- Construct from filePath
-        IFstreamAllocator(const fileName& filePath);
-
-
-    //- Destructor
-    ~IFstreamAllocator();
-};
-
 
 /*---------------------------------------------------------------------------*\
                           Class IFstream Declaration
@@ -81,71 +55,89 @@ class IFstreamAllocator
 
 class IFstream
 :
-    public IFstreamAllocator,
-    public ISstream
+    private Foam::ifstreamPointer,
+    public Foam::ISstream
 {
-    // Private Data
-
-        fileName filePath_;
-
 public:
 
-    // Declare name of the class and its debug switch
+    //- Declare type-name (with debug switch)
     ClassName("IFstream");
 
 
     // Constructors
 
-        //- Construct from filePath
+        //- Construct from pathname, default or specified stream options
+        explicit IFstream
+        (
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption()
+        );
+
+        //- Construct from pathname and format
         IFstream
         (
-            const fileName& filePath,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion
-        );
+            const fileName& pathname,
+            IOstreamOption::streamFormat fmt
+        )
+        :
+            IFstream(pathname, IOstreamOption(fmt))
+        {}
 
 
     //- Destructor
-    ~IFstream();
+    ~IFstream() = default;
+
+
+    // Static Functions
+
+        //- Get file contents from specified file (compressed/uncompressed).
+        //- Returns an empty list if the file cannot be opened.
+        static DynamicList<char> readContents(const fileName& pathname);
+
+        //- Get file contents from IFstream (assumed to be rewound)
+        static DynamicList<char> readContents(IFstream& ifs);
 
 
     // Member Functions
 
-        // Access
+        //- Get character(s)
+        using ISstream::get;
 
-            //- Return the name of the stream
-            const fileName& name() const
-            {
-                return filePath_;
-            }
+        //- Read/write access to the name of the stream
+        using ISstream::name;
 
-            //- Return non-const access to the name of the stream
-            fileName& name()
-            {
-                return filePath_;
-            }
-
-
-        // STL stream
-
-            //- Access to underlying std::istream
-            virtual istream& stdStream();
-
-            //- Const access to underlying std::istream
-            virtual const istream& stdStream() const;
+        //- Return the size of the underlying file (-1 on error).
+        //- This corresponds to Foam::fileSize() but with extra handling of
+        //- compressed files.
+        //  The return type is \c std::streamsize instead of \c off_t.
+        //  \note Use sparingly since it involves a file stat()!
+        std::streamsize fileSize() const;
 
 
-        // Print
+    // STL stream
 
-            //- Print description of IOstream to Ostream
-            virtual void print(Ostream&) const;
+        //- Access to underlying std::istream
+        virtual std::istream& stdStream() override;
+
+        //- Const access to underlying std::istream
+        virtual const std::istream& stdStream() const override;
+
+        //- Rewind the stream so that it may be read again.
+        //  Includes special handling for compressed streams.
+        virtual void rewind() override;
+
+
+    // Print
+
+        //- Print stream description
+        virtual void print(Ostream& os) const override;
 
 
     // Member Operators
 
         //- Return a non-const reference to const IFstream
         //  Needed for read-constructors where the stream argument is temporary:
-        //  e.g. thing thisThing(IFstream("thingFileName")());
+        //  e.g. thing thisThing(IFstream("fileName")());
         IFstream& operator()() const;
 };
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +26,17 @@ License
 Class
     Foam::LimitedScheme
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class to create NVD/TVD limited weighting-factors.
 
-    The particular interpolation scheme class is supplied as a template
+    The particular differencing scheme class is supplied as a template
     argument, the weight function of which is called by the weight function
     of this class for the internal faces as well as faces of coupled
     patches (e.g. processor-processor patches). The weight function is
-    supplied the centred interpolation weighting factor, the face-flux, the
+    supplied the central-differencing weighting factor, the face-flux, the
     cell and face gradients (from which the normalised variable
     distribution may be created) and the cell centre distance.
 
@@ -71,9 +76,15 @@ class LimitedScheme
         //- Calculate the limiter
         void calcLimiter
         (
-            const VolField<Type>& phi,
+            const GeometricField<Type, fvPatchField, volMesh>& phi,
             surfaceScalarField& limiterField
         ) const;
+
+        //- No copy construct
+        LimitedScheme(const LimitedScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const LimitedScheme&) = delete;
 
 
 public:
@@ -122,23 +133,14 @@ public:
             Limiter(is)
         {}
 
-        //- Disallow default bitwise copy construction
-        LimitedScheme(const LimitedScheme&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> limiter
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const LimitedScheme&) = delete;
 };
 
 

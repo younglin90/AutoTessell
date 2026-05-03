@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::fixedGradientFvPatchField
+
+Group
+    grpGenericBoundaryConditions
 
 Description
     This boundary condition supplies a fixed gradient condition, such that
@@ -60,8 +66,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fixedGradientFvPatchField_H
-#define fixedGradientFvPatchField_H
+#ifndef Foam_fixedGradientFvPatchField_H
+#define Foam_fixedGradientFvPatchField_H
 
 #include "fvPatchField.H"
 
@@ -71,7 +77,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class fixedGradientFvPatchField Declaration
+                 Class fixedGradientFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -83,6 +89,18 @@ class fixedGradientFvPatchField
 
         Field<Type> gradient_;
 
+protected:
+
+    // Protected Member Functions
+
+        //- Read the "gradient" entry into corresponding member
+        //  The reading can be optional (default), mandatory etc.
+        //  \returns True on success
+        bool readGradientEntry
+        (
+            const dictionary& dict,
+            IOobjectOption::readOption readOpt = IOobjectOption::LAZY_READ
+        );
 
 public:
 
@@ -96,16 +114,17 @@ public:
         fixedGradientFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
         fixedGradientFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const dictionary&,
-            const bool gradientRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const dictionary& dict,
+            //! The "gradient" entry (default: mandatory)
+            IOobjectOption::readOption requireGrad = IOobjectOption::MUST_READ
         );
 
         //- Construct by mapping the given fixedGradientFvPatchField
@@ -114,38 +133,40 @@ public:
         (
             const fixedGradientFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&,
-            const bool mappingRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedGradientFvPatchField
         (
             const fixedGradientFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedGradientFvPatchField
         (
             const fixedGradientFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedGradientFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Return defining fields
 
@@ -163,12 +184,18 @@ public:
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -183,7 +210,7 @@ public:
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return the matrix diagonal coefficients corresponding to the
@@ -211,12 +238,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvPatchField<Type>::operator=;
 };
 
 

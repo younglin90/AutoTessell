@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +31,7 @@ Description
     Foam::intersection
 
 SourceFiles
-   intersection.C
+    intersection.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -36,7 +39,7 @@ SourceFiles
 #define intersection_H
 
 #include "scalar.H"
-#include "NamedEnum.H"
+#include "Enum.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -49,6 +52,8 @@ namespace Foam
 
 class intersection
 {
+private:
+
     // Static data
 
         //- Relative tolerance for point in a plane.
@@ -59,26 +64,26 @@ class intersection
 
 public:
 
-    enum class direction
+    enum direction
     {
-        vector,
-        contactSphere
+        VECTOR,
+        CONTACT_SPHERE
     };
 
-    enum class algorithm
+    enum algorithm
     {
-        fullRay,        // Intersecting with full ray
-        halfRay,        // Intersecting with half ray
-        visible         // Intersecting with the visible side
+        FULL_RAY,        // Intersecting with full ray
+        HALF_RAY,        // Intersecting with half ray
+        VISIBLE          // Intersecting with the visible side
     };
 
     // Static Member Functions
 
         //- Direction names
-        static const NamedEnum<direction, 2> directionNames_;
+        static const Enum<direction> directionNames_;
 
         //- Projection algorithm names
-        static const NamedEnum<algorithm, 3> algorithmNames_;
+        static const Enum<algorithm> algorithmNames_;
 
         //- Return planar tolerance
         static scalar planarTol()
@@ -89,9 +94,10 @@ public:
         //- Set the planar tolerance, returning the previous value
         static scalar setPlanarTol(const scalar t)
         {
-            if (t < -vSmall)
+            if (t < -VSMALL)
             {
-                FatalErrorInFunction << abort(FatalError);
+                FatalErrorInFunction
+                    << abort(FatalError);
             }
 
             scalar oldTol = planarTol_;

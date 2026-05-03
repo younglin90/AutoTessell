@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "waveTransmissiveFvPatchField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 #include "EulerDdtScheme.H"
 #include "CrankNicolsonDdtScheme.H"
@@ -37,13 +40,12 @@ template<class Type>
 Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    advectiveFvPatchField<Type>(p, iF, dict),
-    psiName_(dict.lookupOrDefault<word>("psi", "psi")),
-    gamma_(dict.lookup<scalar>("gamma", dimless))
+    advectiveFvPatchField<Type>(p, iF),
+    psiName_("thermo:psi"),
+    gamma_(0.0)
 {}
 
 
@@ -52,8 +54,8 @@ Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
 (
     const waveTransmissiveFvPatchField& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     advectiveFvPatchField<Type>(ptf, p, iF, mapper),
@@ -65,8 +67,34 @@ Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
 template<class Type>
 Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
 (
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    advectiveFvPatchField<Type>(p, iF, dict),
+    psiName_(dict.getOrDefault<word>("psi", "thermo:psi")),
+    gamma_(dict.get<scalar>("gamma"))
+{}
+
+
+template<class Type>
+Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
+(
+    const waveTransmissiveFvPatchField& ptpsf
+)
+:
+    advectiveFvPatchField<Type>(ptpsf),
+    psiName_(ptpsf.psiName_),
+    gamma_(ptpsf.gamma_)
+{}
+
+
+template<class Type>
+Foam::waveTransmissiveFvPatchField<Type>::waveTransmissiveFvPatchField
+(
     const waveTransmissiveFvPatchField& ptpsf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     advectiveFvPatchField<Type>(ptpsf, iF),
@@ -82,24 +110,23 @@ Foam::tmp<Foam::scalarField>
 Foam::waveTransmissiveFvPatchField<Type>::advectionSpeed() const
 {
     // Lookup the velocity and compressibility of the patch
-    const fvPatchField<scalar>& psip =
-        this->patch().template
-            lookupPatchField<volScalarField, scalar>(psiName_);
+    const auto& psip =
+        this->patch().template lookupPatchField<volScalarField>(psiName_);
 
-    const surfaceScalarField& phi =
+    const auto& phi =
         this->db().template lookupObject<surfaceScalarField>(this->phiName_);
 
     scalarField phip
     (
         this->patch().template
-            lookupPatchField<surfaceScalarField, scalar>(this->phiName_)
+            lookupPatchField<surfaceScalarField>(this->phiName_)
     );
 
-    if (phi.dimensions() == dimMassFlux)
+    if (phi.dimensions() == dimMass/dimTime)
     {
-        const fvPatchScalarField& rhop =
+        const auto& rhop =
             this->patch().template
-                lookupPatchField<volScalarField, scalar>(this->rhoName_);
+                lookupPatchField<volScalarField>(this->rhoName_);
 
         phip /= rhop;
     }
@@ -116,19 +143,19 @@ void Foam::waveTransmissiveFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
 
-    writeEntryIfDifferent<word>(os, "phi", "phi", this->phiName_);
-    writeEntryIfDifferent<word>(os, "rho", "rho", this->rhoName_);
-    writeEntryIfDifferent<word>(os, "psi", "psi", psiName_);
+    os.writeEntryIfDifferent<word>("phi", "phi", this->phiName_);
+    os.writeEntryIfDifferent<word>("rho", "rho", this->rhoName_);
+    os.writeEntryIfDifferent<word>("psi", "thermo:psi", psiName_);
 
-    writeEntry(os, "gamma", gamma_);
+    os.writeEntry("gamma", gamma_);
 
-    if (this->lInf_ > small)
+    if (this->lInf_ > SMALL)
     {
-        writeEntry(os, "fieldInf", this->fieldInf_);
-        writeEntry(os, "lInf", this->lInf_);
+        os.writeEntry("fieldInf", this->fieldInf_);
+        os.writeEntry("lInf", this->lInf_);
     }
 
-    writeEntry(os, "value", *this);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

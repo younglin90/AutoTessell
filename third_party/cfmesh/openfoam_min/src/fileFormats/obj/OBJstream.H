@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,27 +28,30 @@ Class
     Foam::OBJstream
 
 Description
-    OFstream which keeps track of vertices
+    An OFstream that keeps track of vertices and provides convenience
+    output methods for OBJ files.
 
 SourceFiles
     OBJstream.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef OBJstream_H
-#define OBJstream_H
+#ifndef Foam_OBJstream_H
+#define Foam_OBJstream_H
 
 #include "OFstream.H"
 #include "point.H"
 #include "edge.H"
 #include "face.H"
-#include "triPointRef.H"
-#include "linePointRef.H"
+#include "triangle.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+
+// Forward Declarations
+class treeBoundBox;
 
 /*---------------------------------------------------------------------------*\
                           Class OBJstream Declaration
@@ -64,107 +70,144 @@ class OBJstream
 
     // Private Member Functions
 
-        void writeAndCheck(const char);
+        //- State engine to count number of vertices.
+        //- Triggered on newline and 'v' (vertex).
+        inline void vertex_state(const char c);
 
 public:
 
-    // Declare name of the class and its debug switch
-    ClassName("OBJstream");
+    //- Declare type-name (no debug switch)
+    ClassNameNoDebug("OBJstream");
 
 
     // Constructors
 
-        //- Construct from filePath
+        //- Construct from pathname (ASCII, uncompressed)
+        explicit OBJstream
+        (
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption()
+        );
+
+        //- Construct from pathname, format (uncompressed)
         OBJstream
         (
-            const fileName& filePath,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const compressionType compression = UNCOMPRESSED
-        );
+            const fileName& pathname,
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::compressionType cmp = IOstreamOption::UNCOMPRESSED
+        )
+        :
+            OBJstream(pathname, IOstreamOption(fmt, cmp))
+        {}
 
 
     //- Destructor
-    ~OBJstream();
+    ~OBJstream() = default;
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return the number of vertices written
-            label nVertices() const
-            {
-                return nVertices_;
-            }
+        //- Return the number of vertices written
+        label nVertices() const noexcept { return nVertices_; }
 
 
-        // Ostream implementation
+    // Write Functions
 
-            //- Inherit write from Ostream
-            using Ostream::write;
+        //- Inherit write methods from OFstream
+        using OFstream::write;
+        using OFstream::writeQuoted;
 
-            //- Write character
-            virtual Ostream& write(const char);
+        //- Write character
+        virtual Ostream& write(const char c) override;
 
-            //- Write character string
-            virtual Ostream& write(const char*);
+        //- Write character/string content, with/without surrounding quotes
+        virtual Ostream& writeQuoted
+        (
+            const char* str,
+            std::streamsize len,
+            const bool quoted=true
+        ) override;
 
-            //- Write word
-            virtual Ostream& write(const word&);
+        //- Write character string
+        virtual Ostream& write(const char* str) override;
 
-            virtual Ostream& write(const string&);
+        //- Write word
+        virtual Ostream& write(const word& str) override;
 
-            //- Write std::string surrounded by quotes.
-            //  Optional write without quotes.
-            virtual Ostream& writeQuoted
-            (
-                const std::string&,
-                const bool quoted=true
-            );
+        //- Write string
+        virtual Ostream& write(const std::string& str) override;
 
 
-        // Direct write functionality
+    // Direct write functionality
 
-            //- Write point
-            Ostream& write(const point&);
+        //- Write comment (with '# ' prefix)
+        Ostream& writeComment(const std::string& str);
 
-            //- Write point and vector normal ('vn')
-            Ostream& write(const point&, const vector&);
+        //- Write point (vertex)
+        Ostream& write(const point& p);
 
-            //- Write edge as points with line
-            Ostream& write(const edge&, const UList<point>&);
+        //- Write point and vector normal ('vn')
+        Ostream& write(const point& p, const vector& n);
 
-            //- Write line
-            Ostream& write(const linePointRef&);
+        //- Write multiple points
+        Ostream& write(const UList<point>& points);
 
-            //- Write line with points and vector normals ('vn')
-            Ostream& write
-            (
-                const linePointRef&,
-                const vector& n0,
-                const vector& n1
-            );
+        //- Write edge as points with line
+        Ostream& write(const edge& e, const UList<point>& points);
 
-            //- Write triangle as points with lines or filled polygon
-            Ostream& write(const triPointRef&, const bool lines = true);
+        //- Write line
+        Ostream& write(const linePointRef& ln);
 
-            //- Write face as points with lines or filled polygon
-            Ostream& write
-            (
-                const face&,
-                const UList<point>&,
-                const bool lines = true
-            );
+        //- Write line with points and vector normals ('vn')
+        Ostream& write
+        (
+            const linePointRef& ln,
+            const vector& n0,
+            const vector& n1
+        );
 
-            //- Write patch as points and faces with lines or filled polygons
-            Ostream& write
-            (
-                const faceList&,
-                const pointField&,
-                const bool lines = true
-            );
+        //- Write line joining two points
+        Ostream& writeLine(const point& p0, const point& p1);
 
+        //- Write triangle as points with lines/filled-polygon
+        Ostream& write(const triPointRef& f, const bool lines = true);
+
+        //- Write face loop points with lines/filled-polygon
+        Ostream& writeFace
+        (
+            const UList<point>& points,
+            const bool lines = true
+        );
+
+        //- Write face as points with lines/filled-polygon
+        Ostream& write
+        (
+            const face& f,
+            const UList<point>& points,
+            const bool lines = true
+        );
+
+        //- Write patch faces as points with lines/filled-polygon
+        Ostream& write
+        (
+            const UList<face>& faces,
+            const pointField& points,
+            const bool lines = true
+        );
+
+        //- Write edges as points with lines.
+        //  Optionally eliminate unused points.
+        Ostream& write
+        (
+            const UList<edge>& edges,
+            const UList<point>& points,
+            const bool compact = false
+        );
+
+        //- Write tree-bounding box with lines/filled-polygons
+        Ostream& write(const treeBoundBox& bb, const bool lines = true);
 };
 
 

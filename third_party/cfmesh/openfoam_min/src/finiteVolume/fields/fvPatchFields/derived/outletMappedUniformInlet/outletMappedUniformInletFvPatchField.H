@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2018 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,34 +27,96 @@ License
 Class
     Foam::outletMappedUniformInletFvPatchField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    This boundary condition averages the field over the "outlet" patch specified
-    by name "outletPatch" and applies this as the uniform value of the field
-    over this patch.
+    The \c outletMappedUniformInlet is an inlet boundary condition that
+    - averages patch fields of specified "outlet" patches
+    and uniformly applies the averaged value over a specified inlet patch.
+    - optionally, the averaged value can be scaled
+    and/or offset by a specified value,
+    and/or mapped by a specified time delay.
+
+    The governing equation of the boundary condition is:
+
+    \f[
+        \phi_{inlet} =
+            \sum_i \left( f_i \phi_{{outlet}_i} + \phi_{{offset}_i} \right)
+    \f]
+
+    where
+    \vartable
+      \phi_{inlet}   | Spatially-uniform patch-field value at an inlet patch
+      \phi_{outlet}  | Averaged patch-field value at an outlet patch
+      f              | User-defined fraction value
+      \phi_{offset}  | User-defined offset value
+      i              | Outlet-patch index
+    \endvartable
 
 Usage
-    \table
-        Property        | Description             | Required    | Default value
-        outletPatch     | Name of outlet patch    | yes         |
-        phi             | Flux field name         | no          | phi
-    \endtable
-
     Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
+        // Mandatory entries
         type            outletMappedUniformInlet;
-        outletPatchName aPatch;
+
+        outlets
+        {
+            <outletName.1>
+            {
+                fraction    <Function1<scalar>>;
+                offset      <Function1<Type>>;
+                timeDelay   <Function1<scalar>>;
+            }
+            <outletName.2>
+            {
+                fraction    <Function1<scalar>>;
+                offset      <Function1<Type>>;
+                timeDelay   <Function1<scalar>>;
+            }
+            ...
+        }
+
+        // Optional entries
+        uniformValue    <PatchFunction1<Type>>;
         phi             phi;
-        value           uniform 0;
+
+        // Inherited entries
+        ...
     }
     \endverbatim
 
+    where the entries mean:
+    \table
+      Property    | Description                          | Type   | Reqd | Deflt
+      type        | Type name: outletMappedUniformInlet  | word   | yes  | -
+      outlets     | Dictionary name: outlets             | dict   | yes  | -
+      fraction    | Fraction value          | Function1\<scalar\> | no   | 1
+      offset      | Offset value            | Function1\<Type\>   | no   | Zero
+      timeDelay   | Time delay              | Function1\<scalar\> | no   | 0
+      uniformValue | Base inlet patch field | PatchFunction1\<Type\> | no | Zero
+      phi         | Name of operand flux field           | word   | no   | phi
+    \endtable
+
+    The inherited entries are elaborated in:
+      - \link fixedValueFvPatchFields.H \endlink
+      - \link PatchFunction1.H \endlink
+      - \link Function1.H \endlink
+
+Note
+  - Any negative input of \c timeDelay entry
+    is forced to be zero without emitting any warnings.
+
 See also
-    Foam::fixedValueFvPatchField
+  - Foam::fixedValueFvPatchField
+  - Foam::outletMappedUniformInletHeatAdditionFvPatchField
+  - Foam::outletMappedUniformInletTemperatureFvPatchField
 
 SourceFiles
     outletMappedUniformInletFvPatchField.C
+    outletMappedUniformInletFvPatchFields.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -59,6 +124,7 @@ SourceFiles
 #define outletMappedUniformInletFvPatchField_H
 
 #include "fixedValueFvPatchFields.H"
+#include "PatchFunction1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -76,11 +142,32 @@ class outletMappedUniformInletFvPatchField
 {
     // Private Data
 
-        //- Name of the outlet patch to be mapped
-        word outletPatchName_;
+        //- Base inlet patch field
+        autoPtr<PatchFunction1<Type>> uniformValuePtr_;
 
-       //- Name of the flux transporting the field
+        //- List of outlet-patch names
+        wordList outletNames_;
+
+        //- List of outlet-patch field offsets
+        PtrList<Function1<Type>> offsets_;
+
+        //- List of outlet-patch field fractions
+        PtrList<Function1<scalar>> fractions_;
+
+        //- List of outlet-patch field time delays
+        PtrList<Function1<scalar>> timeDelays_;
+
+        //- List of outlet-patch mapping fields
+        List<DynamicList<Type>> mapFields_;
+
+        //- List of outlet-patch mapping times
+        List<DynamicList<scalar>> mapTimes_;
+
+        //- Name of operand flux field
         word phiName_;
+
+        //- Current time index
+        label curTimeIndex_;
 
 
 public:
@@ -91,62 +178,79 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        outletMappedUniformInletFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         outletMappedUniformInletFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
         //- Construct by mapping given outletMappedUniformInletFvPatchField
-        //  onto a new patch
+        //- onto a new patch
         outletMappedUniformInletFvPatchField
         (
             const outletMappedUniformInletFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         outletMappedUniformInletFvPatchField
         (
             const outletMappedUniformInletFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         outletMappedUniformInletFvPatchField
         (
             const outletMappedUniformInletFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new outletMappedUniformInletFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Access
+        // Mapping
 
-            //- Name of the outlet patch to be mapped
-            const word& outletPatchName() const
-            {
-                return outletPatchName_;
-            }
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
+
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
-        // Evaluation functions
+        // Evaluation
 
             //- Update the coefficients associated with the patch field
             virtual void updateCoeffs();
@@ -154,12 +258,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchField<Type>::operator=;
 };
 
 

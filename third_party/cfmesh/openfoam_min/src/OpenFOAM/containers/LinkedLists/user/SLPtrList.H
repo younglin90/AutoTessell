@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,21 +31,12 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SLPtrList_H
-#define SLPtrList_H
+#ifndef Foam_SLPtrList_H
+#define Foam_SLPtrList_H
 
 #include "LPtrList.H"
 #include "SLListBase.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-    template<class T>
-    using SLPtrList = LPtrList<SLListBase, T>;
-}
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+#include "SLPtrListFwd.H"
 
 #endif
 

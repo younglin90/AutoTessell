@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,19 +23,20 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-\*---------------------------------------------------------------------------*/
+Note
+    Included by global/globals.C
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+\*---------------------------------------------------------------------------*/
 
 // Constants supplied in the main controlDict
 #include "fundamentalConstants.C"
 
-// Derived constants. Note: Order is important.
+// Derived constants.
+// Note: order is important
 #include "universalConstants.C"
 #include "electromagneticConstants.C"
 #include "atomicConstants.C"
 #include "physicoChemicalConstants.C"
-#include "standardConstants.C"
 #include "thermodynamicConstants.C"
 
 // ************************************************************************* //

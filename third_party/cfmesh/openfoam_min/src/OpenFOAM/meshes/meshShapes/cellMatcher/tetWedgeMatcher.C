@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,16 +28,8 @@ License
 #include "tetWedgeMatcher.H"
 #include "cellMatcher.H"
 #include "primitiveMesh.H"
-#include "primitiveMesh.H"
-#include "cellModeller.H"
+#include "cellModel.H"
 #include "ListOps.H"
-
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-const Foam::label Foam::tetWedgeMatcher::vertPerCell = 5;
-const Foam::label Foam::tetWedgeMatcher::facePerCell = 4;
-const Foam::label Foam::tetWedgeMatcher::maxVertPerFace = 4;
-
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -46,14 +40,8 @@ Foam::tetWedgeMatcher::tetWedgeMatcher()
         vertPerCell,
         facePerCell,
         maxVertPerFace,
-       "tetWedge"
+        "tetWedge" // == cellModel::modelNames[cellModel::TETWEDGE]
     )
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::tetWedgeMatcher::~tetWedgeMatcher()
 {}
 
 
@@ -240,31 +228,25 @@ bool Foam::tetWedgeMatcher::faceSizeMatch
     label nTris = 0;
     label nQuads = 0;
 
-    forAll(myFaces, myFacei)
+    for (const label facei : myFaces)
     {
-        label size = faces[myFaces[myFacei]].size();
+        const label size = faces[facei].size();
 
         if (size == 3)
         {
-            nTris++;
+            ++nTris;
         }
         else if (size == 4)
         {
-            nQuads++;
+            ++nQuads;
         }
         else
         {
             return false;
         }
     }
-    if ((nTris == 2) && (nQuads == 2))
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+
+    return (nTris == 2 && nQuads == 2);
 }
 
 
@@ -287,10 +269,10 @@ bool Foam::tetWedgeMatcher::isA(const faceList& faces)
     return matchShape
     (
         true,
-        faces,                      // all faces in mesh
-        labelList(faces.size(), 0), // cell 0 is owner of all faces
-        0,                          // cell label
-        identityMap(faces.size())      // faces of cell 0
+        faces,                          // all faces in mesh
+        labelList(faces.size(), Zero),  // cell 0 is owner of all faces
+        0,                              // cell label
+        identity(faces.size())          // faces of cell 0
     );
 }
 
@@ -314,14 +296,11 @@ bool Foam::tetWedgeMatcher::matches
         )
     )
     {
-        shape = cellShape(model(), vertLabels());
-
+        shape.reset(model(), vertLabels());
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

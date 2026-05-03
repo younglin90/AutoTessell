@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,6 +39,7 @@ SourceFiles
 #define PrimitivePatchInterpolation_H
 
 #include "scalarList.H"
+#include "faceList.H"
 #include "Field.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -44,14 +47,17 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
+template<class Patch> class PrimitivePatchInterpolation;
+
 /*---------------------------------------------------------------------------*\
-                 Class PrimitivePatchInterpolation Declaration
+                  Class PrimitivePatchInterpolation Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Patch>
 class PrimitivePatchInterpolation
 {
-    // Private Data
+    // Private data
 
         //- Reference to patch
         const Patch& patch_;
@@ -60,13 +66,23 @@ class PrimitivePatchInterpolation
     // Demand-driven data
 
         //- Face-to-point weights
-        mutable scalarListList* faceToPointWeightsPtr_;
+        mutable std::unique_ptr<scalarListList> faceToPointWeightsPtr_;
 
         //- Face-to-edge weights
-        mutable scalarList* faceToEdgeWeightsPtr_;
+        mutable std::unique_ptr<scalarList> faceToEdgeWeightsPtr_;
 
 
     // Private Member Functions
+
+        //- No copy construct
+        PrimitivePatchInterpolation
+        (
+            const PrimitivePatchInterpolation&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const PrimitivePatchInterpolation&) = delete;
+
 
         //- Face-to-point weights
         const scalarListList& faceToPointWeights() const;
@@ -91,15 +107,9 @@ public:
         //- Construct from PrimitivePatch
         PrimitivePatchInterpolation(const Patch& p);
 
-        //- Disallow default bitwise copy construction
-        PrimitivePatchInterpolation
-        (
-            const PrimitivePatchInterpolation&
-        ) = delete;
-
 
     //- Destructor
-    ~PrimitivePatchInterpolation();
+    ~PrimitivePatchInterpolation() = default;
 
 
     // Member Functions
@@ -145,12 +155,6 @@ public:
 
         //- Do what is necessary if the mesh has moved
         bool movePoints();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PrimitivePatchInterpolation&) = delete;
 };
 
 

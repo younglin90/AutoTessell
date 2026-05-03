@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,15 +30,12 @@ Class
 Description
     A FIFO stack based on a singly-linked list.
 
-    Operations are push(), pop(), top(), bottom() and empty().
-
-SourceFiles
-    FIFOStack.C
+    Stack operations are push(), pop(), top(), bottom().
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef FIFOStack_H
-#define FIFOStack_H
+#ifndef Foam_FIFOStack_H
+#define Foam_FIFOStack_H
 
 #include "SLList.H"
 
@@ -45,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class FIFOStack Declaration
+                           Class FIFOStack Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class T>
@@ -53,7 +53,6 @@ class FIFOStack
 :
     public SLList<T>
 {
-
 public:
 
     // Constructors
@@ -64,34 +63,35 @@ public:
 
     // Member Functions
 
-        // Access
+        //- Const reference to the top element
+        const T& top() const
+        {
+            return this->back();
+        }
 
-            //- Return a copy of the top element
-            T top() const
-            {
-                return this->last();
-            }
+        //- Const reference to the bottom element
+        const T& bottom() const
+        {
+            return this->front();
+        }
 
-            //- Return a copy of the bottom element
-            T bottom() const
-            {
-                return this->first();
-            }
+        //- Push an element onto the back of the stack
+        void push(const T& elem)
+        {
+            this->push_back(elem);
+        }
 
+        //- Move an element onto the back of the stack
+        void push(T&& elem)
+        {
+            this->push_back(std::move(elem));
+        }
 
-        // Edit
-
-            //- Push an element onto the stack
-            void push(const T& a)
-            {
-                this->append(a);
-            }
-
-            //- Pop the bottom element off the stack
-            T pop()
-            {
-                return this->removeHead();
-            }
+        //- Pop the bottom element off the stack
+        T pop()
+        {
+            return this->removeHead();
+        }
 };
 
 

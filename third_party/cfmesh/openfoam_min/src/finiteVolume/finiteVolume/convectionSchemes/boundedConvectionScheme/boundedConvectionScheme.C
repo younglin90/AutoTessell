@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,11 +43,18 @@ namespace fv
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<SurfaceField<Type>>
+const convectionScheme<Type>& boundedConvectionScheme<Type>::scheme() const
+{
+    return scheme_();
+}
+
+
+template<class Type>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 boundedConvectionScheme<Type>::interpolate
 (
     const surfaceScalarField& phi,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return scheme_().interpolate(phi, vf);
@@ -53,11 +62,11 @@ boundedConvectionScheme<Type>::interpolate
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 boundedConvectionScheme<Type>::flux
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return scheme_().flux(faceFlux, vf);
@@ -69,7 +78,7 @@ tmp<fvMatrix<Type>>
 boundedConvectionScheme<Type>::fvmDiv
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return
@@ -79,16 +88,16 @@ boundedConvectionScheme<Type>::fvmDiv
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 boundedConvectionScheme<Type>::fvcDiv
 (
     const surfaceScalarField& faceFlux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     return
         scheme_().fvcDiv(faceFlux, vf)
-      - fvc::surfaceIntegrateExtrapolate(faceFlux)*vf;
+      - fvc::surfaceIntegrate(faceFlux)*vf;
 }
 
 

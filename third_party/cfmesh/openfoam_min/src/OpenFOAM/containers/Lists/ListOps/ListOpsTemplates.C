@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,67 +26,68 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "ListOps.H"
-
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-template<class ListType>
-ListType Foam::renumber(const labelUList& oldToNew, const ListType& lst)
-{
-    ListType newLst;
-
-    renumber(oldToNew, lst, newLst);
-
-    return newLst;
-}
-
-
-template<class ListType>
-void Foam::renumber
+template<class IntListType>
+IntListType Foam::renumber
 (
     const labelUList& oldToNew,
-    const ListType& lst,
-    ListType& newLst
+    const IntListType& input
 )
 {
-    newLst.setSize(lst.size());
+    const label len = input.size();
 
-    forAll(lst, elemI)
+    IntListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
+
+    for (label i=0; i < len; ++i)
     {
-        renumber(oldToNew, lst[elemI], newLst[elemI]);
+        if (input[i] >= 0)
+        {
+            output[i] = oldToNew[input[i]];
+        }
     }
+
+    return output;
 }
 
 
-inline void Foam::renumber
+template<class IntListType>
+void Foam::inplaceRenumber
 (
     const labelUList& oldToNew,
-    const label lst,
-    label& newLst
+    IntListType& input
 )
 {
-    if (lst >= 0)
+    const label len = input.size();
+
+    for (label i=0; i < len; ++i)
     {
-        newLst = oldToNew[lst];
+        if (input[i] >= 0)
+        {
+            input[i] = oldToNew[input[i]];
+        }
     }
 }
 
 
-template<class ListType>
-void Foam::inplaceRenumber(const labelUList& oldToNew, ListType& lst)
+template<class IntListType>
+void Foam::inplaceRenumber
+(
+    const Map<label>& oldToNew,
+    IntListType& input
+)
 {
-    forAll(lst, elemI)
-    {
-        inplaceRenumber(oldToNew, lst[elemI]);
-    }
-}
+    const label len = input.size();
 
-
-inline void Foam::inplaceRenumber(const labelUList& oldToNew, label& lst)
-{
-    if (lst >= 0)
+    for (label i = 0; i < len; ++i)
     {
-        lst = oldToNew[lst];
+        const auto fnd = oldToNew.cfind(input[i]);
+
+        if (fnd.good())
+        {
+            input[i] = fnd.val();
+        }
     }
 }
 
@@ -92,27 +96,43 @@ template<class ListType>
 ListType Foam::reorder
 (
     const labelUList& oldToNew,
-    const ListType& lst
+    const ListType& input,
+    const bool prune
 )
 {
-    // Create copy
-    ListType newLst(lst.size());
+    const label len = input.size();
 
-    // ensure consistent addressable size (eg, DynamicList)
-    newLst.setSize(lst.size());
+    ListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
 
-    forAll(lst, elemI)
+    label maxIdx = -1;      // For pruning: The new size = maxIdx+1
+    for (label i=0; i < len; ++i)
     {
-        if (oldToNew[elemI] >= 0)
+        const label newIdx = oldToNew[i];
+        if (newIdx >= 0)
         {
-            newLst[oldToNew[elemI]] = lst[elemI];
+            // Could enforce (newIdx < len)
+            // ... or just rely on FULLDEBUG from UList
+
+            output[newIdx] = input[i];
+
+            if (maxIdx < newIdx)
+            {
+                maxIdx = newIdx;
+            }
         }
-        else
+        else if (!prune)
         {
-            newLst[elemI] = lst[elemI];
+            output[i] = input[i];
         }
     }
-    return newLst;
+
+    if (prune)
+    {
+        output.resize(maxIdx+1);
+    }
+
+    return output;
 }
 
 
@@ -120,50 +140,115 @@ template<class ListType>
 void Foam::inplaceReorder
 (
     const labelUList& oldToNew,
-    ListType& lst
+    ListType& inputOutput,
+    const bool prune
 )
 {
-    // Create copy
-    ListType newLst(lst.size());
+    // NOTE: cannot use std::move() since we have no guarantee that
+    // the oldToNew map is unique (ie, shuffle)
 
-    // ensure consistent addressable size (eg, DynamicList)
-    newLst.setSize(lst.size());
+    // Use const reference to ensure we obtain the proper operator[]
+    // on lazy lists (eg, List<bool>, PackedList)
 
-    forAll(lst, elemI)
+    const ListType& input = inputOutput;
+    const label len = input.size();
+
+    ListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
+
+    label maxIdx = -1;      // For pruning: The new size = maxIdx+1
+    for (label i=0; i < len; ++i)
     {
-        if (oldToNew[elemI] >= 0)
+        const label newIdx = oldToNew[i];
+        if (newIdx >= 0)
         {
-            newLst[oldToNew[elemI]] = lst[elemI];
+            // Could enforce (newIdx < len)
+            // ... or just rely on FULLDEBUG from UList
+
+            output[newIdx] = input[i];
+
+            if (maxIdx < newIdx)
+            {
+                maxIdx = newIdx;
+            }
         }
-        else
+        else if (!prune)
         {
-            newLst[elemI] = lst[elemI];
+            output[i] = input[i];
         }
     }
 
-    lst.transfer(newLst);
+    if (prune)
+    {
+        output.resize(maxIdx+1);
+    }
+
+    inputOutput.transfer(output);
 }
 
 
-template<class Container>
-void Foam::inplaceMapValue
+template<unsigned Width>
+Foam::PackedList<Width> Foam::reorder
 (
     const labelUList& oldToNew,
-    Container& lst
+    const PackedList<Width>& input,
+    const bool prune
 )
 {
-    for
-    (
-        typename Container::iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    const label len = input.size();
+
+    PackedList<Width> output(len);
+
+    label maxIdx = -1;      // For pruning: The new size = maxIdx+1
+    for (label i=0; i < len; ++i)
     {
-        if (*iter >= 0)
+        const auto& val = input.get(i);
+
+        const label newIdx = oldToNew[i];
+
+        if (newIdx >= 0)
         {
-            *iter = oldToNew[*iter];
+            // Could enforce (newIdx < len)
+            // ... or just rely on FULLDEBUG from UList
+
+            output.set(newIdx, val);
+
+            if (maxIdx < newIdx)
+            {
+                maxIdx = newIdx;
+            }
+        }
+        else if (!prune)
+        {
+            output.set(i, val);
         }
     }
+
+    if (prune)
+    {
+        output.resize(maxIdx+1);
+    }
+
+    // Verify addresses (for movable refs)
+    // Info<< "reordered in " << name(input.cdata()) << nl
+    //     << "reordered out " << name(output.cdata()) << nl;
+
+    return output;
+}
+
+
+template<unsigned Width>
+void Foam::inplaceReorder
+(
+    const labelUList& oldToNew,
+    PackedList<Width>& input,
+    const bool prune
+)
+{
+    input = Foam::reorder(oldToNew, input, prune);
+
+    // Verify address (for movable refs)
+    // Info<< "now have " << name(input.cdata()) << nl;
 }
 
 
@@ -171,400 +256,553 @@ template<class Container>
 void Foam::inplaceMapKey
 (
     const labelUList& oldToNew,
-    Container& lst
+    Container& input
 )
 {
-    Container newLst(lst.size());
+    Container output(input.capacity());
 
-    for
-    (
-        typename Container::iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (auto iter = input.begin(); iter != input.end(); ++iter)
     {
-        if (iter.key() >= 0)
+        const label oldIdx = iter.key();
+        if (oldIdx >= 0)
         {
-            newLst.insert(oldToNew[iter.key()], iter());
+            // Could enforce (oldIdx < oldToNew.size())
+            // ... or just rely on FULLDEBUG from UList
+
+            output.insert(oldToNew[oldIdx], iter.val());
         }
     }
 
-    lst.transfer(newLst);
+    input.transfer(output);
+}
+
+
+template<class Container>
+Foam::label Foam::inplaceMapValue
+(
+    const labelUList& oldToNew,
+    Container& input
+)
+{
+    label nChanged = 0;
+
+    for (auto iter = input.begin(); iter != input.end(); ++iter)
+    {
+        const label oldIdx = iter.val();
+        if (oldIdx >= 0)
+        {
+            // Could enforce (oldIdx < oldToNew.size())
+            // ... or just rely on FULLDEBUG from UList
+
+            const label newIdx = oldToNew[oldIdx];
+
+            if (oldIdx != newIdx)
+            {
+                iter.val() = newIdx;
+                ++nChanged;
+            }
+        }
+    }
+
+    return nChanged;
+}
+
+
+template<class Container>
+Foam::label Foam::inplaceMapValue
+(
+    const Map<label>& mapper,
+    Container& input
+)
+{
+    if (mapper.empty())
+    {
+        return 0;
+    }
+
+    label nChanged = 0;
+
+    for (auto iter = input.begin(); iter != input.end(); ++iter)
+    {
+        label& value = iter.val();
+
+        auto mapIter = mapper.find(value);
+        if (mapIter.good() && value != mapIter.val())
+        {
+            value = mapIter.val();
+            ++nChanged;
+        }
+    }
+
+    return nChanged;
 }
 
 
 template<class T>
-void Foam::sortedOrder
+Foam::labelList Foam::duplicateOrder
 (
-    const UList<T>& lst,
-    labelList& order
+    const UList<T>& input
 )
 {
-    sortedOrder(lst, order, typename UList<T>::less(lst));
-}
-
-
-template<class T, class Cmp>
-void Foam::sortedOrder
-(
-    const UList<T>& lst,
-    labelList& order,
-    const Cmp& cmp
-)
-{
-    // list lengths must be identical
-    if (order.size() != lst.size())
-    {
-        // avoid copying any elements, they are overwritten anyhow
-        order.clear();
-        order.setSize(lst.size());
-    }
-
-    forAll(order, elemI)
-    {
-        order[elemI] = elemI;
-    }
-    Foam::stableSort(order, cmp);
+    labelList order;
+    duplicateOrder(input, order, typename UList<T>::less(input));
+    return order;
 }
 
 
 template<class T>
 void Foam::duplicateOrder
 (
-    const UList<T>& lst,
+    const UList<T>& input,
     labelList& order
 )
 {
-    duplicateOrder(lst, order, typename UList<T>::less(lst));
+    duplicateOrder(input, order, typename UList<T>::less(input));
 }
 
 
-template<class T, class Cmp>
+template<class T, class ListComparePredicate>
 void Foam::duplicateOrder
 (
-    const UList<T>& lst,
+    const UList<T>& input,
     labelList& order,
-    const Cmp& cmp
+    const ListComparePredicate& comp
 )
 {
-    if (lst.size() < 2)
+    if (input.size() < 2)
     {
         order.clear();
         return;
     }
 
-    sortedOrder(lst, order, cmp);
+    Foam::sortedOrder(input, order, comp);
 
-    label n = 0;
-    for (label i = 0; i < order.size() - 1; ++i)
+    const label last = (order.size()-1);
+    label count = 0;
+    for (label i = 0; i < last; ++i)
     {
-        if (lst[order[i]] == lst[order[i+1]])
+        if (input[order[i]] == input[order[i+1]])
         {
-            order[n++] = order[i];
+            order[count] = order[i];
+            ++count;
         }
     }
-    order.setSize(n);
+    order.resize(count);
+}
+
+
+template<class T>
+Foam::labelList Foam::uniqueOrder
+(
+    const UList<T>& input
+)
+{
+    labelList order;
+    uniqueOrder(input, order, typename UList<T>::less(input));
+    return order;
 }
 
 
 template<class T>
 void Foam::uniqueOrder
 (
-    const UList<T>& lst,
+    const UList<T>& input,
     labelList& order
 )
 {
-    uniqueOrder(lst, order, typename UList<T>::less(lst));
+    uniqueOrder(input, order, typename UList<T>::less(input));
 }
 
 
-template<class T, class Cmp>
+template<class T, class ListComparePredicate>
 void Foam::uniqueOrder
 (
-    const UList<T>& lst,
+    const UList<T>& input,
     labelList& order,
-    const Cmp& cmp
+    const ListComparePredicate& comp
 )
 {
-    sortedOrder(lst, order, cmp);
+    Foam::sortedOrder(input, order, comp);
 
     if (order.size() > 1)
     {
-        label n = 0;
-        for (label i = 0; i < order.size() - 1; ++i)
+        const label last = (order.size()-1);
+        label count = 0;
+        for (label i = 0; i < last; ++i)
         {
-            if (lst[order[i]] != lst[order[i+1]])
+            if (input[order[i]] != input[order[i+1]])
             {
-                order[n++] = order[i];
+                order[count++] = order[i];
             }
         }
-        order[n++] = order[order.size()-1];
-        order.setSize(n);
+        order[count++] = order[last];
+        order.resize(count);
     }
 }
 
 
-template<class T, class ListType>
-ListType Foam::subset
-(
-    const UList<T>& select,
-    const T& value,
-    const ListType& lst
-)
+template<class T>
+Foam::List<T> Foam::uniqueSort(const UList<T>& input)
 {
-    // select must at least cover the list range
-    if (select.size() < lst.size())
+    List<T> output(input);
+
+    const label len = output.size();
+
+    if (len > 1)
     {
-        FatalErrorInFunction
-            << "select is of size " << select.size()
-            << "; but it must index a list of size " << lst.size()
-            << abort(FatalError);
-    }
+        Foam::stableSort(output);
 
-    ListType newLst(lst.size());
-
-    // ensure consistent addressable size (eg, DynamicList)
-    newLst.setSize(lst.size());
-
-    label nElem = 0;
-    forAll(lst, elemI)
-    {
-        if (select[elemI] == value)
+        label count = 0;
+        for (label i = 1; i < len; ++i)
         {
-            newLst[nElem++] = lst[elemI];
+            if (output[count] != output[i])
+            {
+                output[++count] = output[i];
+            }
         }
-    }
-    newLst.setSize(nElem);
 
-    return newLst;
+        output.resize(count+1);
+    }
+
+    return output;
 }
 
 
-template<class T, class ListType>
-void Foam::inplaceSubset
+template<class ListType>
+void Foam::inplaceUniqueSort(ListType& input)
+{
+    inplaceUniqueSort
+    (
+        input,
+        typename UList<typename ListType::value_type>::less(input)
+    );
+}
+
+
+template<class ListType, class ListComparePredicate>
+void Foam::inplaceUniqueSort
 (
-    const UList<T>& select,
-    const T& value,
-    ListType& lst
+    ListType& input,
+    const ListComparePredicate& comp
 )
 {
-    // select must at least cover the list range
-    if (select.size() < lst.size())
+    labelList order;
+    uniqueOrder(input, order, comp);
+
+    const label len = order.size();
+
+    ListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
+
+    for (label i=0; i < len; ++i)
     {
-        FatalErrorInFunction
-            << "select is of size " << select.size()
-            << "; but it must index a list of size " << lst.size()
-            << abort(FatalError);
+        output[i] = std::move(input[order[i]]);
     }
 
-    label nElem = 0;
-    forAll(lst, elemI)
+    input.transfer(output);
+}
+
+
+template<class BoolListType, class T>
+Foam::List<T> Foam::subset
+(
+    const BoolListType& select,
+    const UList<T>& input,
+    const bool invert
+)
+{
+    // Note: select can have a different size (eg, labelHashSet)
+
+    const label len = input.size();
+
+    List<T> output(len);
+
+    label count = 0;
+
+    for (label i=0; i < len; ++i)
     {
-        if (select[elemI] == value)
+        if (select[i] ? !invert : invert)
         {
-            if (nElem != elemI)
-            {
-                lst[nElem] = lst[elemI];
-            }
-            ++nElem;
+            output[count] = input[i];
+            ++count;
         }
     }
 
-    lst.setSize(nElem);
+    output.resize(count);
+
+    return output;
+}
+
+
+template<class T>
+Foam::List<T> Foam::subset
+(
+    const bitSet& select,
+    const UList<T>& input,
+    const bool invert
+)
+{
+    const label len = input.size();
+
+    List<T> output;
+
+    label count = 0;
+
+    if (!invert)
+    {
+        output.resize(select.count());
+
+        for (const label i : select)
+        {
+            if (i >= len) break; // Avoid out of bounds (when select is longer)
+
+            output[count] = input[i];
+            ++count;
+        }
+    }
+    else
+    {
+        const label outlen = (select.size() - select.count());
+        output.resize(outlen);
+
+        for (label i=0; i < len; ++i)
+        {
+            if (!select[i])
+            {
+                output[count] = input[i];
+                ++count;
+                if (count >= outlen) break;  // terminate early
+            }
+        }
+    }
+
+    output.resize(count);
+
+    return output;
 }
 
 
 template<class BoolListType, class ListType>
-ListType Foam::subset
-(
-    const BoolListType& select,
-    const ListType& lst
-)
-{
-    // select can have a different size
-    // eg, when it is a PackedBoolList or a labelHashSet
-
-    ListType newLst(lst.size());
-
-    // ensure consistent addressable size (eg, DynamicList)
-    newLst.setSize(lst.size());
-
-    label nElem = 0;
-    forAll(lst, elemI)
-    {
-        if (select[elemI])
-        {
-            newLst[nElem++] = lst[elemI];
-        }
-    }
-    newLst.setSize(nElem);
-
-    return newLst;
-}
-
-
-template<class BoolListType, class ListType>
 void Foam::inplaceSubset
 (
     const BoolListType& select,
-    ListType& lst
+    ListType& input,
+    const bool invert
 )
 {
-    // select can have a different size
-    // eg, when it is a PackedBoolList or a labelHashSet
+    // Note: select can have a different size (eg, labelHashSet)
 
-    label nElem = 0;
-    forAll(lst, elemI)
+    const label len = input.size();
+
+    label count = 0;
+
+    for (label i=0; i < len; ++i)
     {
-        if (select[elemI])
+        if (select[i] ? !invert : invert)
         {
-            if (nElem != elemI)
+            if (count != i)
             {
-                lst[nElem] = lst[elemI];
+                input[count] = std::move(input[i]);
             }
-            ++nElem;
+            ++count;
         }
     }
 
-    lst.setSize(nElem);
+    input.resize(count);
 }
 
 
-template<class InList, class OutList>
+template<class ListType>
+void Foam::inplaceSubset
+(
+    const bitSet& select,
+    ListType& input,
+    const bool invert
+)
+{
+    label count = 0;
+
+    if (!invert)
+    {
+        // Normal selection
+
+        const label len = input.size();
+
+        for (const label i : select)
+        {
+            if (i >= len) break;
+
+            if (count != i)
+            {
+                input[count] = std::move(input[i]);
+            }
+            ++count;
+        }
+    }
+    else
+    {
+        // Inverted selection
+
+        const label outlen = (select.size() - select.count());
+
+        const label len = min(input.size(), select.size());
+
+        for (label i=0; i < len; ++i)
+        {
+            if (!select[i])
+            {
+                if (count != i)
+                {
+                    input[count] = std::move(input[i]);
+                }
+                ++count;
+                if (count >= outlen) break;  // terminate early
+            }
+        }
+    }
+
+    input.resize(count);
+}
+
+
+template<class T, class UnaryPredicate>
+Foam::List<T> Foam::subsetList
+(
+    const UList<T>& input,
+    const UnaryPredicate& pred,
+    const bool invert
+)
+{
+    const label len = input.size();
+
+    List<T> output(len);
+
+    label count = 0;
+    for (label i=0; i < len; ++i)
+    {
+        if (pred(input[i]) ? !invert : invert)
+        {
+            output[count] = input[i];
+            ++count;
+        }
+    }
+
+    output.resize(count);
+
+    return output;
+}
+
+
+template<class ListType, class UnaryPredicate>
+void Foam::inplaceSubsetList
+(
+    ListType& input,
+    const UnaryPredicate& pred,
+    const bool invert
+)
+{
+    const label len = input.size();
+
+    label count = 0;
+    for (label i=0; i < len; ++i)
+    {
+        if (pred(input[i]) ? !invert : invert)
+        {
+            if (count != i)
+            {
+                input[count] = std::move(input[i]);
+            }
+            ++count;
+        }
+    }
+    input.resize(count);
+}
+
+
+template<class InputIntListType, class OutputIntListType>
 void Foam::invertManyToMany
 (
-    const label nEdges,
-    const UList<InList>& pointEdges,
-    List<OutList>& edges
+    const label len,
+    const UList<InputIntListType>& input,
+    List<OutputIntListType>& output
 )
 {
-    // Number of points per edge
-    labelList nPointsPerEdge(nEdges, 0);
+    // The output list sizes
+    labelList sizes(len, Foam::zero{});
 
-    forAll(pointEdges, pointi)
+    for (const InputIntListType& sublist : input)
     {
-        const InList& pEdges = pointEdges[pointi];
-
-        forAll(pEdges, j)
+        forAll(sublist, idx)
         {
-            nPointsPerEdge[pEdges[j]]++;
+            sizes[sublist[idx]]++;
         }
     }
 
-    // Size edges
-    edges.setSize(nEdges);
-
-    forAll(nPointsPerEdge, edgeI)
+    // Size output
+    output.resize(len);
+    forAll(sizes, outi)
     {
-        edges[edgeI].setSize(nPointsPerEdge[edgeI]);
+        output[outi].resize(sizes[outi]);
     }
-    nPointsPerEdge = 0;
 
-    // Fill edges
-    forAll(pointEdges, pointi)
+    // Fill output
+    sizes = 0;
+    forAll(input, listi)
     {
-        const InList& pEdges = pointEdges[pointi];
+        const InputIntListType& sublist = input[listi];
 
-        forAll(pEdges, j)
+        forAll(sublist, idx)
         {
-            label edgeI = pEdges[j];
+            const label outi = sublist[idx];
 
-            edges[edgeI][nPointsPerEdge[edgeI]++] = pointi;
+            output[outi][sizes[outi]++] = listi;
         }
     }
-}
-
-
-template<class ListType>
-Foam::label Foam::count
-(
-    const ListType& l,
-    typename ListType::const_reference x
-)
-{
-    label result = 0;
-    forAll(l, i)
-    {
-        if (l[i] == x)
-        {
-            ++ result;
-        }
-    }
-    return result;
-}
-
-
-template<class ListType>
-Foam::label Foam::findIndex
-(
-    const ListType& l,
-    typename ListType::const_reference t,
-    const label start
-)
-{
-    label index = -1;
-
-    for (label i = start; i < l.size(); i++)
-    {
-        if (l[i] == t)
-        {
-            index = i;
-            break;
-        }
-    }
-
-    return index;
 }
 
 
 template<class ListType>
 Foam::labelList Foam::findIndices
 (
-    const ListType& l,
-    typename ListType::const_reference t,
-    const label start
+    const ListType& input,
+    typename ListType::const_reference val,
+    label start
 )
 {
-    return
-        selectIndices
-        (
-            l,
-            [&](const typename ListType::const_reference li)
-            {
-                return li == t;
-            }
-        );
-}
+    const label len = input.size();
 
+    // Pass 1: count occurrences
+    label count = 0;
 
-template<class ListType, class BoolOp>
-Foam::labelList Foam::selectIndices
-(
-    const ListType& l,
-    const BoolOp& bop,
-    const label start
-)
-{
-    // Count occurrences
-    label n = 0;
-
-    for (label i = start; i < l.size(); i++)
+    if (start >= 0)
     {
-        if (bop(l[i]))
+        for (label i = start; i < len; ++i)
         {
-            n++;
+            if (input[i] == val)
+            {
+                if (!count) start = i;  // adjust start for second pass
+                ++count;
+            }
         }
     }
 
-    // Create and fill
-    labelList indices(n);
-    n = 0;
+    labelList indices(count);
 
-    for (label i = start; i < l.size(); i++)
+    // Pass 2: fill content
+    if (count)
     {
-        if (bop(l[i]))
+        const label total = count;
+        count = 0;
+        for (label i = start; i < len; ++i)
         {
-            indices[n++] = i;
+            if (input[i] == val)
+            {
+                indices[count] = i;
+                if (++count == total)  // early termination
+                {
+                    break;
+                }
+            }
         }
     }
 
@@ -573,104 +811,115 @@ Foam::labelList Foam::selectIndices
 
 
 template<class ListType>
-void Foam::setValues
+Foam::label Foam::findMin
 (
-    ListType& l,
-    const labelUList& indices,
-    typename ListType::const_reference t
+    const ListType& input,
+    label start
 )
 {
-    forAll(indices, i)
-    {
-        l[indices[i]] = t;
-    }
-}
+    const label len = input.size();
 
-
-template<class ListType>
-ListType Foam::createWithValues
-(
-    const label sz,
-    const typename ListType::const_reference initValue,
-    const labelUList& indices,
-    typename ListType::const_reference setValue
-)
-{
-    ListType l(sz, initValue);
-    setValues(l, indices, setValue);
-    return l;
-}
-
-
-template<class ListType>
-Foam::label Foam::findMax(const ListType& l, const label start)
-{
-    if (start >= l.size())
+    if (start < 0 || start >= len)
     {
         return -1;
     }
 
-    label index = start;
-
-    for (label i = start+1; i < l.size(); i++)
+    for (label i = start+1; i < len; ++i)
     {
-        if (l[i] > l[index])
+        if (input[i] < input[start])
         {
-            index = i;
+            start = i;
         }
     }
 
-    return index;
+    return start;
 }
 
 
 template<class ListType>
-Foam::label Foam::findMin(const ListType& l, const label start)
+Foam::label Foam::findMax
+(
+    const ListType& input,
+    label start
+)
 {
-    if (start >= l.size())
+    const label len = input.size();
+
+    if (start < 0 || start >= len)
     {
         return -1;
     }
 
-    label index = start;
-
-    for (label i = start+1; i < l.size(); i++)
+    for (label i = start+1; i < len; ++i)
     {
-        if (l[i] < l[index])
+        if (input[start] < input[i])
         {
-            index = i;
+            start = i;
         }
     }
 
-    return index;
+    return start;
+}
+
+
+template<class ListType>
+Foam::labelPair Foam::findMinMax
+(
+    const ListType& input,
+    label start
+)
+{
+    const label len = input.size();
+
+    if (start < 0 || start >= len)
+    {
+        return labelPair(-1,-1);
+    }
+
+    label minIdx = start;
+    label maxIdx = start;
+
+    for (label i = start+1; i < len; ++i)
+    {
+        if (input[i] < input[minIdx])
+        {
+            minIdx = i;
+        }
+        if (input[maxIdx] < input[i])
+        {
+            maxIdx = i;
+        }
+    }
+
+    return labelPair(minIdx, maxIdx);
 }
 
 
 template<class ListType>
 Foam::label Foam::findSortedIndex
 (
-    const ListType& l,
-    typename ListType::const_reference t,
+    const ListType& input,
+    typename ListType::const_reference val,
     const label start
 )
 {
-    if (start >= l.size())
+    label low = start;
+    label high = input.size() - 1;
+
+    if (start < 0 || start >= input.size())
     {
         return -1;
     }
 
-    label low = start;
-    label high = l.size() - 1;
-
     while (low <= high)
     {
-        label mid = (low + high)/2;
+        const label mid = (low + high)/2;
 
-        if (t < l[mid])
+        if (val < input[mid])
         {
             high = mid - 1;
         }
-        else if (t > l[mid])
+        else if (input[mid] < val)
         {
             low = mid + 1;
         }
@@ -684,28 +933,28 @@ Foam::label Foam::findSortedIndex
 }
 
 
-template<class ListType, class BinaryOp>
+template<class ListType, class T, class ComparePredicate>
 Foam::label Foam::findLower
 (
-    const ListType& l,
-    typename ListType::const_reference t,
+    const ListType& input,
+    const T& val,
     const label start,
-    const BinaryOp& bop
+    const ComparePredicate& comp
 )
 {
-    if (start >= l.size())
+    label low = start;
+    label high = input.size() - 1;
+
+    if (start < 0 || start >= input.size())
     {
         return -1;
     }
 
-    label low = start;
-    label high = l.size() - 1;
-
     while ((high - low) > 1)
     {
-        label mid = (low + high)/2;
+        const label mid = (low + high)/2;
 
-        if (bop(l[mid], t))
+        if (comp(input[mid], val))
         {
             low = mid;
         }
@@ -715,190 +964,154 @@ Foam::label Foam::findLower
         }
     }
 
-    if (bop(l[high], t))
+    if (comp(input[high], val))
     {
         return high;
     }
+    else if (comp(input[low], val))
+    {
+        return low;
+    }
     else
     {
-        if (bop(l[low], t))
-        {
-            return low;
-        }
-        else
-        {
-            return -1;
-        }
+        return -1;
     }
 }
 
 
-template<class ListType>
+template<class ListType, class T>
 Foam::label Foam::findLower
 (
-    const ListType& l,
-    typename ListType::const_reference t,
+    const ListType& input,
+    const T& val,
     const label start
 )
 {
-    return findLower(l, t, start, lessOp<typename ListType::value_type>());
-}
-
-
-template<class Container, class T, int mRows>
-Foam::List<Container> Foam::initList(const T elems[mRows])
-{
-    List<Container> lst(mRows);
-
-    forAll(lst, rowI)
-    {
-        lst[rowI] = Container(elems[rowI]);
-    }
-    return lst;
-}
-
-
-template<class Container, class T, int mRows, int nColumns>
-Foam::List<Container> Foam::initListList(const T elems[mRows][nColumns])
-{
-    List<Container> lst(mRows);
-
-    Container cols(nColumns);
-    forAll(lst, rowI)
-    {
-        forAll(cols, colI)
-        {
-            cols[colI] = elems[rowI][colI];
-        }
-        lst[rowI] = cols;
-    }
-    return lst;
+    return findLower
+    (
+        input,
+        val,
+        start,
+        lessOp<T>()
+    );
 }
 
 
 template<class ListType>
-ListType Foam::reverseList(const ListType& list)
+ListType Foam::reverseList(const ListType& input)
 {
-    const label listSize = list.size();
-    const label lastIndex = listSize - 1;
+    const label len = input.size();
+    const label last = (len - 1);
 
-    ListType tmpList(listSize);
+    ListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
 
-    forAll(tmpList, elemI)
+    for (label i=0; i < len; ++i)
     {
-        tmpList[elemI] = list[lastIndex - elemI];
+        output[i] = input[last - i];
     }
 
-    return tmpList;
+    return output;
 }
 
 
 template<class ListType>
-void Foam::inplaceReverseList(ListType& list)
+void Foam::inplaceReverseList(ListType& input)
 {
-    const label listSize = list.size();
-    const label lastIndex = listSize - 1;
-    const label nIterations = listSize >> 1;
+    const label len = input.size();
+    const label last = (len - 1);
+    const label n2 = len >> 1;
 
-    label elemI = 0;
-    while (elemI < nIterations)
+    for (label i=0; i<n2; ++i)
     {
-        Swap(list[elemI], list[lastIndex - elemI]);
-
-        elemI++;
+        Foam::Swap(input[i], input[last - i]);
     }
 }
 
 
 template<class ListType>
-ListType Foam::rotateList(const ListType& list, const label n)
+ListType Foam::rotateList(const ListType& input, const label n)
 {
-    const label listSize = list.size();
+    const label len = input.size();
 
-    ListType tmpList(listSize);
+    ListType output(len);
+    output.resize(len);     // Consistent sizing (eg, DynamicList)
 
-    forAll(tmpList, elemI)
+    for (label i=0; i<len; ++i)
     {
-        label index = (elemI - n) % listSize;
+        label index = (i - n) % len;
 
         if (index < 0)
         {
-            index += listSize;
+            index += len;
         }
 
-        tmpList[elemI] = list[index];
+        output[i] = input[index];
     }
 
-    return tmpList;
+    return output;
 }
 
 
 template<template<typename> class ListType, class DataType>
-void Foam::inplaceRotateList(ListType<DataType>& list, label n)
+void Foam::inplaceRotateList(ListType<DataType>& input, label n)
 {
-    const label listSize = list.size();
+    const label len = input.size();
 
-    n = (listSize - n) % listSize;
+    n = (len - n) % len;
 
     if (n < 0)
     {
-        n += listSize;
+        n += len;
     }
 
-    SubList<DataType> firstHalf(list, n, 0);
-    SubList<DataType> secondHalf(list, listSize - n, n);
+    SubList<DataType> firstHalf(input, n, 0);
+    SubList<DataType> secondHalf(input, len - n, n);
 
     inplaceReverseList(firstHalf);
     inplaceReverseList(secondHalf);
 
-    inplaceReverseList(list);
+    inplaceReverseList(input);
 }
 
 
-template<class BinaryOp>
-template<class Type>
-Foam::List<Type> Foam::ListOp<BinaryOp>::operator()
-(
-    const List<Type>& a,
-    const List<Type>& b
-) const
-{
-    List<Type> c(a.size());
-    forAll(a, i)
-    {
-        c[i] = BinaryOp()(a[i], b[i]);
-    }
-    return c;
-}
-
-
-template<class BinaryEqOp>
-template<class Type>
-void Foam::ListEqOp<BinaryEqOp>::operator()
-(
-    List<Type>& a,
-    const List<Type>& b
-) const
-{
-    forAll(a, i)
-    {
-        BinaryEqOp()(a[i], b[i]);
-    }
-}
-
+// * * * * * * * * * * * * * * * * * ListOps * * * * * * * * * * * * * * * * //
 
 template<class T>
-void Foam::ListAppendEqOp<T>::operator()(List<T>& x, const List<T>& y) const
+void Foam::ListOps::appendEqOp<T>::operator()
+(
+    List<T>& x,
+    const List<T>& y
+) const
 {
     if (y.size())
     {
         if (x.size())
         {
-            label sz = x.size();
-            x.setSize(sz + y.size());
-            forAll(y, i)
+            x.push_back(y);
+        }
+        else
+        {
+            x = y;
+        }
+    }
+}
+
+
+template<class T>
+void Foam::ListOps::uniqueEqOp<T>::operator()
+(
+    List<T>& x,
+    const List<T>& y
+) const
+{
+    if (y.size())
+    {
+        if (x.size())
+        {
+            for (const T& val : y)
             {
-                x[sz++] = y[i];
+                x.push_uniq(val);
             }
         }
         else
@@ -906,6 +1119,364 @@ void Foam::ListAppendEqOp<T>::operator()(List<T>& x, const List<T>& y) const
             x = y;
         }
     }
+}
+
+
+template<class ListType, class UnaryPredicate>
+Foam::label Foam::ListOps::count_if
+(
+    const ListType& input,
+    const UnaryPredicate& pred,
+    const label start
+)
+{
+    label num = 0;
+
+    const label len = input.size();
+
+    if (start >= 0)
+    {
+        for (label i = start; i < len; ++i)
+        {
+            if (pred(input[i]))
+            {
+                ++num;
+            }
+        }
+    }
+
+    return num;
+}
+
+
+template<class ListType, class UnaryPredicate>
+Foam::label Foam::ListOps::find_if
+(
+    const ListType& input,
+    const UnaryPredicate& pred,
+    const label start
+)
+{
+    const label len = input.size();
+
+    if (start >= 0)
+    {
+        for (label i = start; i < len; ++i)
+        {
+            if (pred(input[i]))
+            {
+                return i;
+            }
+        }
+    }
+
+    return -1;
+}
+
+
+template<class ListType, class UnaryPredicate>
+bool Foam::ListOps::found_if
+(
+    const ListType& input,
+    const UnaryPredicate& pred,
+    const label start
+)
+{
+    return (ListOps::find_if(input, pred, start) >= 0);
+}
+
+
+template<class ListType, class UnaryPredicate>
+Foam::labelList Foam::ListOps::findIndices
+(
+    const ListType& input,
+    const UnaryPredicate& pred,
+    label start
+)
+{
+    const label len = input.size();
+
+    // Pass 1: count occurrences where pred is true. ie, count_if()
+    label count = 0;
+
+    if (start >= 0)
+    {
+        for (label i = start; i < len; ++i)
+        {
+            if (pred(input[i]))
+            {
+                if (!count) start = i;  // adjust start for second pass
+                ++count;
+            }
+        }
+    }
+
+    labelList indices(count);
+
+    // Pass 2: fill content
+    if (count)
+    {
+        const label total = count;
+        count = 0;
+        for (label i = start; i < len; ++i)
+        {
+            if (pred(input[i]))
+            {
+                indices[count] = i;
+                if (++count == total)  // early termination
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    return indices;
+}
+
+
+template<class T>
+void Foam::ListOps::setValue
+(
+    UList<T>& list,
+    const labelUList& locations,
+    const T& val
+)
+{
+    const label len = list.size();
+
+    for (const label index : locations)
+    {
+        // Range-checked
+        if (index >= 0 && index < len)
+        {
+            list[index] = val;
+        }
+    }
+}
+
+
+template<class T>
+void Foam::ListOps::setValue
+(
+    UList<T>& list,
+    const labelHashSet& locations,
+    const T& val
+)
+{
+    const label len = list.size();
+
+    for (const label index : locations)
+    {
+        // Range-checked
+        if (index >= 0 && index < len)
+        {
+            list[index] = val;
+        }
+    }
+}
+
+
+template<class T>
+void Foam::ListOps::setValue
+(
+    UList<T>& list,
+    const UList<bool>& locations,
+    const T& val
+)
+{
+    const label len = list.size();
+    const label count = locations.size();
+    const label end = min(count, len);
+
+    // The efficiency is modest
+    for (label index = 0; index < end; ++index)
+    {
+         if (locations[index])
+         {
+             list[index] = val;
+         }
+    }
+}
+
+
+template<class T>
+void Foam::ListOps::setValue
+(
+    UList<T>& list,
+    const bitSet& locations,
+    const T& val
+)
+{
+    const label len = list.size();
+
+    for
+    (
+        label pos = locations.find_first();
+        pos >= 0 && pos < len;
+        pos = locations.find_next(pos)
+    )
+    {
+        list[pos] = val;
+    }
+}
+
+
+template<class T, class T2, class UnaryOperation>
+Foam::List<T> Foam::ListOps::create
+(
+    const UList<T2>& input,
+    const UnaryOperation& op
+)
+{
+    const label len = input.size();
+
+    List<T> output(len);
+
+    // ie, std::transform(input.begin(), input.end(), output.begin(), op);
+
+    const T2* in = input.begin();
+    T* out = output.begin();
+
+    for (label i = 0; i < len; ++i)
+    {
+        out[i] = op(in[i]);
+    }
+
+    return output;
+}
+
+
+template<class T, class InputIterator, class UnaryOperation>
+Foam::List<T> Foam::ListOps::create
+(
+    InputIterator first,
+    InputIterator last,
+    const UnaryOperation& op
+)
+{
+    const label len = std::distance(first, last);
+
+    List<T> output(len);
+
+    // ie, std::transform(first, last, output.begin(), op);
+
+    T* out = output.begin();
+
+    while (first != last)
+    {
+        *out = op(*first);
+        ++first;
+        ++out;
+    }
+
+    return output;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const labelUList& locations,
+    const T& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+    ListOps::setValue(list, locations, val);
+
+    return list;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const labelHashSet& locations,
+    const T& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+    ListOps::setValue(list, locations, val);
+
+    return list;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const UList<bool>& locations,
+    const T& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+    ListOps::setValue(list, locations, val);
+
+    return list;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const bitSet& locations,
+    const T& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+    ListOps::setValue(list, locations, val);
+
+    return list;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const label index,
+    const T& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+
+    // Range-checked
+    if (index >= 0 && index < len)
+    {
+        list[index] = val;
+    }
+
+    return list;
+}
+
+
+template<class T>
+Foam::List<T> Foam::ListOps::createWithValue
+(
+    const label len,
+    const label index,
+    T&& val,
+    const T& deflt
+)
+{
+    List<T> list(len, deflt);
+
+    // Range-checked
+    if (index >= 0 && index < len)
+    {
+        list[index] = std::move(val);
+    }
+
+    return list;
 }
 
 

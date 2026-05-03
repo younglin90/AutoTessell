@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::linearUpwind
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     linearUpwind interpolation scheme class derived from upwind and returns
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class linearUpwind Declaration
+                           Class linearUpwind Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -57,6 +62,15 @@ class linearUpwind
     // Private Data
 
         word gradSchemeName_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        linearUpwind(const linearUpwind&) = delete;
+
+        //- No copy assignment
+        void operator=(const linearUpwind&) = delete;
 
 
 public:
@@ -72,7 +86,11 @@ public:
         (
             const fvMesh& mesh,
             const surfaceScalarField& faceFlux
-        );
+        )
+        :
+            upwind<Type>(mesh, faceFlux),
+            gradSchemeName_("grad")
+        {}
 
         //- Construct from Istream.
         //  The name of the flux field is read from the Istream and looked-up
@@ -81,7 +99,11 @@ public:
         (
             const fvMesh& mesh,
             Istream& schemeData
-        );
+        )
+        :
+            upwind<Type>(mesh, schemeData),
+            gradSchemeName_(schemeData)
+        {}
 
         //- Construct from faceFlux and Istream
         linearUpwind
@@ -89,10 +111,11 @@ public:
             const fvMesh& mesh,
             const surfaceScalarField& faceFlux,
             Istream& schemeData
-        );
-
-        //- Disallow default bitwise copy construction
-        linearUpwind(const linearUpwind&) = delete;
+        )
+        :
+            upwind<Type>(mesh, faceFlux, schemeData),
+            gradSchemeName_(schemeData)
+        {}
 
 
     // Member Functions
@@ -104,21 +127,15 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const linearUpwind&) = delete;
 };
 
 
-// Specialise for volVectorField to support cached gradients
+// Specialize for volVectorField to support cached gradients
 template<>
 tmp<surfaceVectorField> linearUpwind<vector>::correction
 (
@@ -129,12 +146,6 @@ tmp<surfaceVectorField> linearUpwind<vector>::correction
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "linearUpwindTemplates.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,23 +28,39 @@ Typedef
     Foam::primitivePatch
 
 Description
-    Addressing for a faceList slice.
+    A PrimitivePatch with a SubList \em addressing for the faces,
+    const reference for the point field.
+
+    Can be used as addressing for a faceList slice.
+
+Typedef
+    Foam::primitiveFacePatch
+
+Description
+    A PrimitivePatch with List \em storage for the faces,
+    const reference for the point field.
+
+    Can be used to store faces.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef primitivePatch_H
-#define primitivePatch_H
+#ifndef Foam_primitivePatch_H
+#define Foam_primitivePatch_H
 
 #include "PrimitivePatch.H"
-#include "face.H"
-#include "SubList.H"
-#include "pointField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-    typedef PrimitivePatch<SubList<face>, const pointField&> primitivePatch;
+
+typedef
+    PrimitivePatch<SubList<face>, const pointField&>
+    primitivePatch;
+
+typedef
+    PrimitivePatch<List<face>, const pointField&>
+    primitiveFacePatch;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

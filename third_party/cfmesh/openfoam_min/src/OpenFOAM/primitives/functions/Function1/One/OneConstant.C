@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,40 +31,57 @@ License
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::OneConstant<Type>::OneConstant(const word& name)
-:
-    FieldFunction1<Type, OneConstant<Type>>(name)
-{}
-
-
-template<class Type>
-Foam::Function1s::OneConstant<Type>::OneConstant
+Foam::Function1Types::OneConstant<Type>::OneConstant
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, OneConstant<Type>>(name)
+    Function1<Type>(entryName, obrPtr)
 {}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
 template<class Type>
-Foam::Function1s::OneConstant<Type>::~OneConstant()
+Foam::Function1Types::OneConstant<Type>::OneConstant
+(
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
+)
+:
+    Function1<Type>(entryName, dict, obrPtr)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::Function1s::OneConstant<Type>::write
+Foam::tmp<Foam::Field<Type>> Foam::Function1Types::OneConstant<Type>::value
 (
-    Ostream& os,
-    const unitSets& units
+    const scalarField& x
 ) const
-{}
+{
+    return tmp<Field<Type>>::New(x.size(), pTraits<Type>::one);
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>> Foam::Function1Types::OneConstant<Type>::integrate
+(
+    const scalarField& x1,
+    const scalarField& x2
+) const
+{
+    return (x2 - x1)*pTraits<Type>::one;
+}
+
+
+template<class Type>
+void Foam::Function1Types::OneConstant<Type>::writeData(Ostream& os) const
+{
+    Function1<Type>::writeData(os);
+    os.endEntry();
+}
 
 
 // ************************************************************************* //

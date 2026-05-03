@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ SourceFiles
 #ifndef leastSquaresVectors_H
 #define leastSquaresVectors_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "fvMesh.H"
 #include "surfaceFields.H"
 
@@ -50,17 +53,24 @@ namespace Foam
 
 class leastSquaresVectors
 :
-    public DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        leastSquaresVectors
-    >
+    public MeshObject<fvMesh, MoveableMeshObject, leastSquaresVectors>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            fvMesh,
+            MoveableMeshObject,
+            leastSquaresVectors
+        > MeshObject_type;
+
+
     // Private Data
 
-        //- Least-squares gradient vectors
+        //- Owner least-squares gradient vectors
         surfaceVectorField pVectors_;
+
+        //- Neighbour least-squares gradient vectors
         surfaceVectorField nVectors_;
 
 
@@ -70,40 +80,31 @@ class leastSquaresVectors
         void calcLeastSquaresVectors();
 
 
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        leastSquaresVectors
-    >;
-
-    // Protected Constructors
-
-        //- Construct given an fvMesh
-        explicit leastSquaresVectors(const fvMesh&);
-
-
 public:
 
     // Declare name of the class and its debug switch
     TypeName("leastSquaresVectors");
 
 
+    // Constructors
+
+        //- Construct given an fvMesh
+        explicit leastSquaresVectors(const fvMesh&);
+
+
     //- Destructor
     virtual ~leastSquaresVectors();
 
 
-    // Member Functions
+    // Member functions
 
-        //- Return reference to owner least square vectors
+        //- Return const reference to owner least square vectors
         const surfaceVectorField& pVectors() const
         {
             return pVectors_;
         }
 
-        //- Return reference to neighbour least square vectors
+        //- Return const reference to neighbour least square vectors
         const surfaceVectorField& nVectors() const
         {
             return nVectors_;

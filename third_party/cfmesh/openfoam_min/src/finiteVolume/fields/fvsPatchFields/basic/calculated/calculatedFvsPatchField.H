@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,33 @@ Class
     Foam::calculatedFvsPatchField
 
 Description
-    Foam::calculatedFvsPatchField
+    This boundary condition is not designed to be evaluated; it is assumed
+    that the value is assigned via field assignment.
+
+    The "value" entry is MUST_READ.
+
+Usage
+    \table
+        Property     | Description             | Required  | Default
+        value        | Patch face values       | yes |
+    \endtable
+
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type    calculated;
+        value   uniform (0 0 0);    // Required value entry
+    }
+    \endverbatim
 
 SourceFiles
     calculatedFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef calculatedFvsPatchField_H
-#define calculatedFvsPatchField_H
+#ifndef Foam_calculatedFvsPatchField_H
+#define Foam_calculatedFvsPatchField_H
 
 #include "fvsPatchField.H"
 
@@ -43,7 +64,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class calculatedFvsPatch Declaration
+                      Class calculatedFvsPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -51,11 +72,10 @@ class calculatedFvsPatchField
 :
     public fvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
-    TypeName("calculated");
+    TypeName("calculated");  // fieldTypes::calculatedTypeName_()
 
 
     // Constructors
@@ -68,6 +88,7 @@ public:
         );
 
         //- Construct from patch, internal field and dictionary
+        //- The "value" entry is MUST_READ.
         calculatedFvsPatchField
         (
             const fvPatch&,
@@ -75,47 +96,51 @@ public:
             const dictionary&
         );
 
-        //- Construct by mapping given patchField<Type> onto a new patch
+        //- Construct by mapping given patch field onto a new patch
         calculatedFvsPatchField
         (
             const calculatedFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        calculatedFvsPatchField(const calculatedFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        calculatedFvsPatchField
+        (
+            const calculatedFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         calculatedFvsPatchField
         (
             const calculatedFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new calculatedFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
+
 
     // Member Functions
 
-        //- Write
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
+
+        //- Write includes "value" entry
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvsPatchField<Type>::operator=;
 };
 
 

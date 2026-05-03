@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2015 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,9 +38,9 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
     const polyPatch& thisPatch
 ) const
 {
-    const polyBoundaryMesh& pbm = mesh.boundary();
+    const polyBoundaryMesh& pbm = mesh.boundaryMesh();
 
-    if (!valid())
+    if (!good())
     {
         FatalErrorInFunction
             << "Invalid coupleGroup patch group"
@@ -46,12 +49,11 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
             << exit(FatalError);
     }
 
-    HashTable<labelList, word>::const_iterator fnd =
-        pbm.groupPatchIndices().find(name());
+    const auto fnd = pbm.groupPatchIDs().cfind(name());
 
-    if (fnd == pbm.groupPatchIndices().end())
+    if (!fnd.good())
     {
-        if (&mesh == &thisPatch.mesh())
+        if (&mesh == &thisPatch.boundaryMesh().mesh())
         {
             // thisPatch should be in patchGroup
             FatalErrorInFunction
@@ -65,9 +67,9 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
     }
 
     // Mesh has patch group
-    const labelList& patchIDs = fnd();
+    const labelList& patchIDs = fnd.val();
 
-    if (&mesh == &thisPatch.mesh())
+    if (&mesh == &thisPatch.boundaryMesh().mesh())
     {
         if (patchIDs.size() > 2 || patchIDs.size() == 0)
         {
@@ -76,13 +78,13 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
                 << " with contents " << patchIDs
                 << " not of size < 2"
                 << " on patch " << thisPatch.name()
-                << " region " << thisPatch.mesh().name()
+                << " region " << thisPatch.boundaryMesh().mesh().name()
                 << exit(FatalError);
 
             return -1;
         }
 
-        label index = findIndex(patchIDs, thisPatch.index());
+        label index = patchIDs.find(thisPatch.index());
 
         if (index == -1)
         {
@@ -128,22 +130,10 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::coupleGroupIdentifier::coupleGroupIdentifier()
-:
-    name_()
-{}
-
-
-Foam::coupleGroupIdentifier::coupleGroupIdentifier(const word& name)
-:
-    name_(name)
-{}
-
-
 Foam::coupleGroupIdentifier::coupleGroupIdentifier(const dictionary& dict)
-:
-    name_(dict.lookupOrDefault<word>("coupleGroup", ""))
-{}
+{
+    dict.readIfPresent("coupleGroup", name_);
+}
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
@@ -171,15 +161,11 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
 
 
     // Loop over all regions to find other patch in coupleGroup
-    HashTable<const polyMesh*> meshSet = runTime.lookupClass<polyMesh>();
-
     label otherPatchID = -1;
 
-    forAllConstIter(HashTable<const polyMesh*>, meshSet, iter)
+    for (const polyMesh& mesh : runTime.cobjects<polyMesh>())
     {
-        const polyMesh& mesh = *iter();
-
-        label patchID = findOtherPatchID(mesh, thisPatch);
+        const label patchID = findOtherPatchID(mesh, thisPatch);
 
         if (patchID != -1)
         {
@@ -188,15 +174,15 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
                 FatalErrorInFunction
                     << "Couple patchGroup " << name()
                     << " should be present on only two patches"
-                    << " in any of the meshes in " << meshSet.sortedToc()
-                    << endl
+                    << " in any of the meshes in "
+                    << runTime.sortedNames<polyMesh>() << nl
                     << "    It seems to be present on patch "
                     << thisPatch.name()
                     << " in region " << thisMesh.name()
                     << ", on patch " << otherPatchID
                     << " in region " << otherRegion
                     << " and on patch " << patchID
-                    << " in region " << mesh.name()
+                    << " in region " << mesh.name() << endl
                     << exit(FatalError);
             }
             otherPatchID = patchID;
@@ -208,7 +194,8 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
     {
         FatalErrorInFunction
             << "Couple patchGroup " << name()
-            << " not found in any of the other meshes " << meshSet.sortedToc()
+            << " not found in any of the other meshes "
+            << flatOutput(runTime.sortedNames<polyMesh>())
             << " on patch " << thisPatch.name()
             << " region " << thisMesh.name()
             << exit(FatalError);
@@ -220,19 +207,19 @@ Foam::label Foam::coupleGroupIdentifier::findOtherPatchID
 
 void Foam::coupleGroupIdentifier::write(Ostream& os) const
 {
-    if (valid())
+    if (!name_.empty())
     {
-        writeEntry(os, "coupleGroup", name());
+        os.writeEntry("coupleGroup", name_);
     }
 }
 
 
-// * * * * * * * * * * * * * * Friend Operators * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const coupleGroupIdentifier& p)
+Foam::Ostream& Foam::operator<<(Ostream& os, const coupleGroupIdentifier& ident)
 {
-    p.write(os);
-    os.check("Ostream& operator<<(Ostream& os, const coupleGroupIdentifier& p");
+    ident.write(os);
+    os.check(FUNCTION_NAME);
     return os;
 }
 

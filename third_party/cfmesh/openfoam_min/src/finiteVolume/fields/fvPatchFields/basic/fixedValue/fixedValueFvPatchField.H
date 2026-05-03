@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::fixedValueFvPatchField
+
+Group
+    grpGenericBoundaryConditions
 
 Description
     This boundary condition supplies a fixed value constraint, and is the base
@@ -48,8 +54,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fixedValueFvPatchField_H
-#define fixedValueFvPatchField_H
+#ifndef Foam_fixedValueFvPatchField_H
+#define Foam_fixedValueFvPatchField_H
 
 #include "fvPatchField.H"
 
@@ -67,7 +73,6 @@ class fixedValueFvPatchField
 :
     public fvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -80,69 +85,91 @@ public:
         fixedValueFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
+        );
+
+        //- Construct from patch, internal field and value
+        fixedValueFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&,
+            const Type& value
         );
 
         //- Construct from patch, internal field and dictionary
         fixedValueFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&,
-            const bool valueRequired=true
+            IOobjectOption::readOption requireValue = IOobjectOption::MUST_READ
         );
 
-        //- Construct by mapping the given fixedValueFvPatchField<Type>
-        //  onto a new patch
+        //- Compatibility (prefer with readOption)
+        fixedValueFvPatchField
+        (
+            const fvPatch& p,
+            const DimensionedField<Type, volMesh>& iF,
+            const dictionary& dict,
+            const bool needValue
+        )
+        :
+            fixedValueFvPatchField
+            (
+                p, iF, dict,
+                (needValue? IOobjectOption::MUST_READ : IOobjectOption::NO_READ)
+            )
+        {}
+
+        //- Construct by mapping the given fixedValue patch field
+        //- onto a new patch
         fixedValueFvPatchField
         (
             const fixedValueFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&,
-            const bool mappingRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        fixedValueFvPatchField(const fixedValueFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        fixedValueFvPatchField
+        (
+            const fixedValueFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedValueFvPatchField
         (
             const fixedValueFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedValueFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
 
-            //- Return true if this patch field fixes a value.
-            //  Needed to check if a level has to be specified while solving
-            //  Poissons equations.
-            virtual bool fixesValue() const
-            {
-                return true;
-            }
+        //- False: this patch field is not altered by assignment.
+        virtual bool assignable() const { return false; }
 
-            //- Return false: this patch field is not altered by assignment
-            virtual bool assignable() const
-            {
-                return false;
-            }
+        //- Write includes "value" entry
+        virtual void write(Ostream&) const;
 
 
         // Evaluation functions
@@ -168,10 +195,6 @@ public:
             //- Return the matrix source coefficients corresponding to the
             //  evaluation of the gradient of this patchField
             virtual tmp<Field<Type>> gradientBoundaryCoeffs() const;
-
-
-        //- Write
-        virtual void write(Ostream&) const;
 
 
     // Member Operators

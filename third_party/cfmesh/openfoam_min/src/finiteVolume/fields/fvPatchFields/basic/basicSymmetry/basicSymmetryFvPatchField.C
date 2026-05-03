@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,13 +28,14 @@ License
 #include "basicSymmetryFvPatchField.H"
 #include "symmTransformField.H"
 
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     transformFvPatchField<Type>(p, iF)
@@ -42,8 +45,21 @@ Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 template<class Type>
 Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 (
+    const basicSymmetryFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    transformFvPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -56,13 +72,10 @@ Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 template<class Type>
 Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 (
-    const basicSymmetryFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const basicSymmetryFvPatchField<Type>& ptf
 )
 :
-    transformFvPatchField<Type>(ptf, p, iF, mapper)
+    transformFvPatchField<Type>(ptf)
 {}
 
 
@@ -70,7 +83,7 @@ template<class Type>
 Foam::basicSymmetryFvPatchField<Type>::basicSymmetryFvPatchField
 (
     const basicSymmetryFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     transformFvPatchField<Type>(ptf, iF)
@@ -118,13 +131,7 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::basicSymmetryFvPatchField<Type>::snGradTransformDiag() const
 {
-    const vectorField nHat(this->patch().nf());
-
-    vectorField diag(nHat.size());
-
-    diag.replace(vector::X, mag(nHat.component(vector::X)));
-    diag.replace(vector::Y, mag(nHat.component(vector::Y)));
-    diag.replace(vector::Z, mag(nHat.component(vector::Z)));
+    tmp<vectorField> diag(cmptMag(this->patch().nf()));
 
     return transformFieldMask<Type>(pow<vector, pTraits<Type>::rank>(diag));
 }

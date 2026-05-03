@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -59,18 +61,18 @@ namespace Foam
 class primitiveMesh;
 class polyMesh;
 class face;
-class polyTopoChangeMap;
+class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
-                      Class localPointRegion Declaration
+                           Class localPointRegion Declaration
 \*---------------------------------------------------------------------------*/
 
 class localPointRegion
 {
-    // Private Data
+    // Private data
 
         ////- (global) number of regions
-        // label nRegions_;
+        //label nRegions_;
 
         //- Per point that is to duplicated to the local index
         Map<label> meshPointMap_;
@@ -101,9 +103,9 @@ class localPointRegion
         void calcPointRegions
         (
             const polyMesh& mesh,
+            const labelPairList& baffles,
             boolList& candidatePoint
         );
-
 
         //- Check if two faces are equal. If forward = false checks f1 in
         //  reverse order.
@@ -133,6 +135,14 @@ public:
             const labelList& candidatePoints
         );
 
+        //- Construct from mesh and candidate points for duplication
+        localPointRegion
+        (
+            const polyMesh& mesh,
+            const labelPairList& baffles,
+            const labelList& candidatePoints
+        );
+
 
     // Member Functions
 
@@ -157,7 +167,7 @@ public:
         // Access
 
             ////- Global number of regions. TBD. regions not compacted yet.
-            // label nRegions() const
+            //label nRegions() const
             //{
             //    return nRegions_;
             //}
@@ -180,7 +190,7 @@ public:
                 return meshFaceMap_;
             }
 
-            //- Per face the region of its points
+            //- Per face (in local index) the region of its points
             const faceList& faceRegions() const
             {
                 return faceRegions_;
@@ -190,7 +200,7 @@ public:
         // Edit
 
             //- Force recalculation of locally stored data on topological change
-            void topoChange(const polyTopoChangeMap&);
+            void updateMesh(const mapPolyMesh&);
 };
 
 

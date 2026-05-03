@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,57 +28,110 @@ Class
     Foam::polyBoundaryMeshEntries
 
 Description
-    Foam::polyBoundaryMeshEntries
+    Read and store dictionary entries for boundary patches
+    The object is *never* registered to avoid registry name clashes with
+    polyBoundaryMesh, which may either already have been registered, or
+    which should subsequently be registered.
 
 SourceFiles
     polyBoundaryMeshEntries.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef polyBoundaryMeshEntries_H
-#define polyBoundaryMeshEntries_H
+#ifndef Foam_polyBoundaryMeshEntries_H
+#define Foam_polyBoundaryMeshEntries_H
 
 #include "regIOobject.H"
 #include "PtrList.H"
 #include "entry.H"
+#include "wordList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+/*---------------------------------------------------------------------------*\
+                   Class polyBoundaryMeshEntries Declaration
+\*---------------------------------------------------------------------------*/
 
 class polyBoundaryMeshEntries
 :
-    public regIOobject,
-    public PtrList<entry>
+    public PtrList<entry>,
+    public regIOobject
 {
-
 public:
 
     //- Runtime type information
-    TypeName("polyBoundaryMesh");
+    TypeNameNoDebug("polyBoundaryMesh");
 
 
     // Constructors
 
-        explicit polyBoundaryMeshEntries(const IOobject& io)
-        :
-            regIOobject(io),
-            PtrList<entry>(readStream(typeName))
-        {
-            close();
-        }
+        //- Read construct from IOobject. Never register!
+        explicit polyBoundaryMeshEntries(const IOobject& io);
 
 
-   // Member Functions
+    // Factory Methods
 
-        bool writeData(Ostream&) const
-        {
-            NotImplemented;
-            return false;
-        }
+        //- Read and return contents. The IOobject is never registered
+        static PtrList<entry> readContents(const IOobject& io);
+
+
+    // Static Functions
+
+        //- Truncate entries at the first processor patch entry
+        static void removeProcPatches(PtrList<entry>& entries);
+
+        //- Write list of entries
+        static bool writeEntries(Ostream& os, const UPtrList<entry>& entries);
+
+        //- Return a list of patch types, uses the "patch" entry
+        static wordList types(const UPtrList<entry>& entries);
+
+        //- Return a list of patch start face indices, uses "startFace" entry
+        static labelList patchStarts(const UPtrList<entry>& entries);
+
+        //- Return a list of patch sizes, uses "nFaces" entry
+        static labelList patchSizes(const UPtrList<entry>& entries);
+
+
+    // Member Functions
+
+        //- Truncate at the first processor patch entry
+        void removeProcPatches();
+
+
+    // Characteristics
+
+        //- Return a list of patch types, uses the "patch" entry
+        wordList types() const;
+
+        //- Return a list of patch start face indices, uses "startFace" entry
+        labelList patchStarts() const;
+
+        //- Return a list of patch sizes, uses "nFaces" entry
+        labelList patchSizes() const;
+
+
+    // Write
+
+        //- Write as a plain list of entries
+        void writeEntry(Ostream& os) const;
+
+        //- Write as a primitive entry with given name.
+        //- If the keyword is empty, revert to a plain list.
+        void writeEntry(const word& keyword, Ostream& os) const;
+
+        //- The writeData member function required by regIOobject
+        virtual bool writeData(Ostream& os) const;
+
+        //- Write using stream options, forces UNCOMPRESSED
+        virtual bool writeObject
+        (
+            IOstreamOption streamOpt,
+            const bool writeOnProc = true
+        ) const;
 };
 
 

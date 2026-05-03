@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::PCG
+
+Group
+    grpLduMatrixSolvers
 
 Description
     Preconditioned conjugate gradient solver for symmetric lduMatrices
@@ -51,6 +57,20 @@ class PCG
 :
     public lduMatrix::solver
 {
+    // Private Member Data
+
+        //- Cached preconditioner
+        mutable autoPtr<lduMatrix::preconditioner> preconPtr_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        PCG(const PCG&) = delete;
+
+        //- No copy assignment
+        void operator=(const PCG&) = delete;
+
 
 public:
 
@@ -71,16 +91,20 @@ public:
             const dictionary& solverControls
         );
 
-        //- Disallow default bitwise copy construction
-        PCG(const PCG&) = delete;
-
 
     //- Destructor
-    virtual ~PCG()
-    {}
+    virtual ~PCG() = default;
 
 
     // Member Functions
+
+        //- Solve the matrix with this solver
+        virtual solverPerformance scalarSolve
+        (
+            solveScalarField& psi,
+            const solveScalarField& source,
+            const direction cmpt=0
+        ) const;
 
         //- Solve the matrix with this solver
         virtual solverPerformance solve
@@ -89,12 +113,6 @@ public:
             const scalarField& source,
             const direction cmpt=0
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PCG&) = delete;
 };
 
 

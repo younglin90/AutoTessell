@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,15 +42,23 @@ namespace fv
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<typename innerProduct<vector, Type>::type>>
+tmp
+<
+    GeometricField
+    <typename innerProduct<vector, Type>::type, fvPatchField, volMesh>
+>
 gaussDivScheme<Type>::fvcDiv
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    tmp<VolField<typename innerProduct<vector, Type>::type>> tDiv
+    tmp
+    <
+        GeometricField
+        <typename innerProduct<vector, Type>::type, fvPatchField, volMesh>
+    > tDiv
     (
-        fvc::surfaceIntegrateExtrapolate
+        fvc::surfaceIntegrate
         (
             this->tinterpScheme_().dotInterpolate(this->mesh_.Sf(), vf)
         )

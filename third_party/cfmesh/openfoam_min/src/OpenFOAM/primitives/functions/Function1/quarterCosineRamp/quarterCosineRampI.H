@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,28 +30,12 @@ License
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::scalar Foam::Function1s::quarterCosineRamp::value
+inline Foam::scalar Foam::Function1Types::quarterCosineRamp::value
 (
     const scalar t
 ) const
 {
-    return 1 - cos(constant::mathematical::piByTwo*linearRamp(t));
-}
-
-
-inline Foam::scalar Foam::Function1s::quarterCosineRamp::integral
-(
-    const scalar t1,
-    const scalar t2
-) const
-{
-    using namespace constant::mathematical;
-
-    const scalar l1 = linearRamp(t1), l2 = linearRamp(t2);
-
-    return
-        (l2 - l1 - (sin(piByTwo*l2) - sin(piByTwo*l1))/piByTwo)/dLinearRampDt()
-      + (t2 - min(t2, end()));
+    return 1 - cos(0.5*constant::mathematical::pi*linearRamp(t));
 }
 
 

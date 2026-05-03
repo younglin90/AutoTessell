@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,12 +36,12 @@ namespace Foam
 {
 namespace decompositionConstraints
 {
-    defineTypeName(preserveFaceZonesConstraint);
+    defineTypeName(preserveFaceZones);
 
     addToRunTimeSelectionTable
     (
         decompositionConstraint,
-        preserveFaceZonesConstraint,
+        preserveFaceZones,
         dictionary
     );
 }
@@ -47,15 +50,13 @@ namespace decompositionConstraints
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::decompositionConstraints::preserveFaceZonesConstraint::
-preserveFaceZonesConstraint
+Foam::decompositionConstraints::preserveFaceZones::preserveFaceZones
 (
-    const dictionary& constraintsDict,
-    const word& modelType
+    const dictionary& dict
 )
 :
-    decompositionConstraint(constraintsDict, typeName),
-    zones_(constraintsDict.lookup("zones"))
+    decompositionConstraint(dict, typeName),
+    zones_(coeffDict_.get<wordRes>("zones"))
 {
     if (decompositionConstraint::debug)
     {
@@ -66,10 +67,9 @@ preserveFaceZonesConstraint
 }
 
 
-Foam::decompositionConstraints::preserveFaceZonesConstraint::
-preserveFaceZonesConstraint
+Foam::decompositionConstraints::preserveFaceZones::preserveFaceZones
 (
-    const wordReList& zones
+    const UList<wordRe>& zones
 )
 :
     decompositionConstraint(dictionary(), typeName),
@@ -86,7 +86,7 @@ preserveFaceZonesConstraint
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-void Foam::decompositionConstraints::preserveFaceZonesConstraint::add
+void Foam::decompositionConstraints::preserveFaceZones::add
 (
     const polyMesh& mesh,
     boolList& blockedFace,
@@ -97,37 +97,37 @@ void Foam::decompositionConstraints::preserveFaceZonesConstraint::add
 {
     blockedFace.setSize(mesh.nFaces(), true);
 
-    const faceZoneList& fZones = mesh.faceZones();
+    const faceZoneMesh& fZones = mesh.faceZones();
 
-    const labelList zoneIDs = findStrings(zones_, fZones.toc());
+    const labelList zoneIDs(zones_.matching(fZones.names()));
 
     label nUnblocked = 0;
 
-    forAll(zoneIDs, i)
+    for (const label zonei : zoneIDs)
     {
-        const faceZone& fz = fZones[zoneIDs[i]];
+        const faceZone& fz = fZones[zonei];
 
-        forAll(fz, i)
+        for (const label meshFacei : fz)
         {
-            if (blockedFace[fz[i]])
+            if (blockedFace[meshFacei])
             {
-                blockedFace[fz[i]] = false;
-                nUnblocked++;
+                blockedFace[meshFacei] = false;
+                ++nUnblocked;
             }
         }
     }
 
     if (decompositionConstraint::debug & 2)
     {
-        reduce(nUnblocked, sumOp<label>());
-        Info<< type() << " : unblocked " << nUnblocked << " faces" << endl;
+        Info<< type() << " : unblocked "
+            << returnReduce(nUnblocked, sumOp<label>()) << " faces" << endl;
     }
 
     syncTools::syncFaceList(mesh, blockedFace, andEqOp<bool>());
 }
 
 
-void Foam::decompositionConstraints::preserveFaceZonesConstraint::apply
+void Foam::decompositionConstraints::preserveFaceZones::apply
 (
     const polyMesh& mesh,
     const boolList& blockedFace,
@@ -140,76 +140,61 @@ void Foam::decompositionConstraints::preserveFaceZonesConstraint::apply
     // If the decomposition has not enforced the constraint do it over
     // here.
 
-
-    // Synchronise decomposition on boundary
-    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-    const polyBoundaryMesh& pbm = mesh.boundary();
-
-    labelList destProc(mesh.nFaces()-mesh.nInternalFaces(), labelMax);
-
-    forAll(pbm, patchi)
-    {
-        const polyPatch& pp = pbm[patchi];
-
-        const labelUList& faceCells = pp.faceCells();
-
-        forAll(faceCells, i)
-        {
-            label bFaceI = pp.start()+i-mesh.nInternalFaces();
-            destProc[bFaceI] = decomposition[faceCells[i]];
-        }
-    }
-
-    syncTools::syncBoundaryFaceList(mesh, destProc, minEqOp<label>());
-
-
-    // Override if differing
-    // ~~~~~~~~~~~~~~~~~~~~~
-
-    const faceZoneList& fZones = mesh.faceZones();
-
-    const labelList zoneIDs = findStrings(zones_, fZones.toc());
-
     label nChanged = 0;
 
-    forAll(zoneIDs, i)
+    do
     {
-        const faceZone& fz = fZones[zoneIDs[i]];
+        // Extract min coupled boundary data
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        forAll(fz, i)
+        labelList destProc;
+        getMinBoundaryValue(mesh, decomposition, destProc);
+
+
+        // Override if differing
+        // ~~~~~~~~~~~~~~~~~~~~~
+
+        const faceZoneMesh& fZones = mesh.faceZones();
+
+        const labelList zoneIDs(zones_.matching(fZones.names()));
+
+        nChanged = 0;
+        for (const label zonei : zoneIDs)
         {
-            label faceI = fz[i];
+            const faceZone& fz = fZones[zonei];
 
-            label own = mesh.faceOwner()[faceI];
-
-            if (mesh.isInternalFace(faceI))
+            for (const label facei : fz)
             {
-                label nei = mesh.faceNeighbour()[faceI];
-                if (decomposition[own] != decomposition[nei])
+                const label own = mesh.faceOwner()[facei];
+
+                if (mesh.isInternalFace(facei))
                 {
-                    decomposition[nei] = decomposition[own];
-                    nChanged++;
+                    const label nei = mesh.faceNeighbour()[facei];
+                    if (decomposition[nei] < decomposition[own])
+                    {
+                        decomposition[own] = decomposition[nei];
+                        ++nChanged;
+                    }
                 }
-            }
-            else
-            {
-                label bFaceI = faceI-mesh.nInternalFaces();
-                if (decomposition[own] != destProc[bFaceI])
+                else
                 {
-                    decomposition[own] = destProc[bFaceI];
-                    nChanged++;
+                    const label bFaceI = facei-mesh.nInternalFaces();
+                    if (destProc[bFaceI] < decomposition[own])
+                    {
+                        decomposition[own] = destProc[bFaceI];
+                        ++nChanged;
+                    }
                 }
             }
         }
-    }
 
-    if (decompositionConstraint::debug & 2)
-    {
-        reduce(nChanged, sumOp<label>());
-        Info<< type() << " : changed decomposition on " << nChanged
-            << " cells" << endl;
-    }
+        if (decompositionConstraint::debug & 2)
+        {
+            Info<< type() << " : changed decomposition on "
+                << returnReduce(nChanged, sumOp<label>()) << " cells" << endl;
+        }
+
+    } while (returnReduceOr(nChanged));
 }
 
 

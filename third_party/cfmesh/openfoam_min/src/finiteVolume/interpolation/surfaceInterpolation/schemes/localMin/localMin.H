@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,14 @@ License
 Class
     Foam::localMin
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Local minimum interpolation scheme in which the face value is set to
-    the minimum of the two neighbouring cell values.
+    LocalMin-mean differencing scheme class.
+
+    This scheme interpolates 1/field using a scheme specified at run-time
+    and return the reciprocal of the interpolate.
 
 SourceFiles
     localMin.C
@@ -46,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class localMin Declaration
+                           Class localMin Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -54,6 +61,11 @@ class localMin
 :
     public surfaceInterpolationScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const localMin&) = delete;
+
 
 public:
 
@@ -98,43 +110,47 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             NotImplemented;
-
-            return tmp<surfaceScalarField>(nullptr);
+            return nullptr;
         }
 
         //- Return the face-interpolate of the given cell field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = vf.mesh();
 
-            tmp<SurfaceField<Type>> tvff
+            tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tvff
             (
-                SurfaceField<Type>::New
+                new GeometricField<Type, fvsPatchField, surfaceMesh>
                 (
-                    "localMin::interpolate(" + vf.name() + ')',
+                    IOobject
+                    (
+                        "localMin::interpolate(" + vf.name() + ')',
+                        mesh.time().timeName(),
+                        mesh
+                    ),
                     mesh,
                     vf.dimensions()
                 )
             );
-            SurfaceField<Type>& vff = tvff.ref();
+            GeometricField<Type, fvsPatchField, surfaceMesh>& vff = tvff.ref();
 
             const labelUList& own = mesh.owner();
             const labelUList& nei = mesh.neighbour();
 
             forAll(vff, facei)
             {
-                vff[facei] = minMod(vf[own[facei]], vf[nei[facei]]);
+                vff[facei] = min(vf[own[facei]], vf[nei[facei]]);
             }
 
-            typename SurfaceField<Type>::
+            typename GeometricField<Type, fvsPatchField, surfaceMesh>::
                 Boundary& bff = vff.boundaryFieldRef();
 
             forAll(bff, patchi)
@@ -152,7 +168,7 @@ public:
 
                     forAll(pff, i)
                     {
-                        pff[i] = minMod(pif[i], pnf[i]);
+                        pff[i] = min(pif[i], pnf[i]);
                     }
                 }
                 else
@@ -163,12 +179,6 @@ public:
 
             return tvff;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const localMin&) = delete;
 };
 
 

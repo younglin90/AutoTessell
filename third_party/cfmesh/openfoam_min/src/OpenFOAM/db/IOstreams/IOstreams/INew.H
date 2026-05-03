@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +31,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef INew_H
-#define INew_H
+#ifndef Foam_INew_H
+#define Foam_INew_H
 
 #include "autoPtr.H"
 
@@ -39,42 +41,41 @@ Description
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
+class dictionary;
 class Istream;
 
 /*---------------------------------------------------------------------------*\
-                            Class INew Declaration
+                           Class INew Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class T>
 class INew
 {
-
 public:
 
-    //- Construct null
-    INew()
-    {}
+    //- Default construct
+    INew() noexcept = default;
 
-    //- Construct from Istream
+    //- New from Istream
     autoPtr<T> operator()(Istream& is) const
     {
         return T::New(is);
     }
 
-    //- Construct from word and Istream
+    //- New from word (unused) and Istream
     autoPtr<T> operator()(const word&, Istream& is) const
     {
         return T::New(is);
     }
 
-    //- Construct from dictionary
+    //- New from dictionary
     autoPtr<T> operator()(const dictionary& dict) const
     {
         return T::New(dict);
     }
 
-    //- Construct from word and dictionary
+    //- New from word (unused) and dictionary
     autoPtr<T> operator()(const word&, const dictionary& dict) const
     {
         return T::New(dict);

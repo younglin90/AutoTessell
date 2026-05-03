@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +53,6 @@ void Foam::porosityModel::adjustNegativeResistance(dimensionedVector& resist)
     }
     else
     {
-        maxCmpt = max(0, maxCmpt);
         vector& val = resist.value();
         for (label cmpt = 0; cmpt < vector::nComponents; cmpt++)
         {
@@ -63,26 +65,15 @@ void Foam::porosityModel::adjustNegativeResistance(dimensionedVector& resist)
 }
 
 
-Foam::label Foam::porosityModel::fieldIndex(const label i) const
-{
-    label index = 0;
-    if (!coordSys_.R().uniform())
-    {
-        index = i;
-    }
-    return index;
-}
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::porosityModel::porosityModel
 (
     const word& name,
+    const word& modelType,
     const fvMesh& mesh,
     const dictionary& dict,
-    const dictionary& coeffDict,
-    const word& cellZoneName
+    const wordRe& cellZoneName
 )
 :
     regIOobject
@@ -90,7 +81,7 @@ Foam::porosityModel::porosityModel
         IOobject
         (
             name,
-            mesh.time().name(),
+            mesh.time().timeName(),
             mesh,
             IOobject::NO_READ,
             IOobject::NO_WRITE
@@ -98,42 +89,96 @@ Foam::porosityModel::porosityModel
     ),
     name_(name),
     mesh_(mesh),
-    zoneName_
+    dict_(dict),
+    coeffs_(dict.optionalSubDict(modelType + "Coeffs")),
+    active_(true),
+    zoneName_(cellZoneName),
+    cellZoneIDs_(),
+    csysPtr_
     (
-        cellZoneName != word::null
-      ? cellZoneName
-      : dict.lookup<word>("cellZone")
-    ),
-    coordSys_(coordinateSystem::New(mesh, coeffDict))
+        coordinateSystem::New(mesh, coeffs_, coordinateSystem::typeName)
+    )
 {
+    if (zoneName_.empty())
+    {
+        dict.readIfPresent("active", active_);
+        dict_.readEntry("cellZone", zoneName_);
+    }
+
+    cellZoneIDs_ = mesh_.cellZones().indices(zoneName_);
+
     Info<< "    creating porous zone: " << zoneName_ << endl;
 
-    if (mesh_.cellZones().findIndex(zoneName_) == -1)
+    if (returnReduceAnd(cellZoneIDs_.empty()) && Pstream::master())
     {
         FatalErrorInFunction
-            << "cannot find porous cellZone " << zoneName_
+            << "Cannot find porous cellZone " << zoneName_ << endl
+            << "Valid zones : "
+            << flatOutput(mesh_.cellZones().names()) << nl
+            << "Valid groups: "
+            << flatOutput(mesh_.cellZones().groupNames()) << nl
             << exit(FatalError);
+    }
+
+    Info<< incrIndent << indent << csys() << decrIndent << endl;
+
+    const pointField& points = mesh_.points();
+    const cellList& cells = mesh_.cells();
+    const faceList& faces = mesh_.faces();
+
+    for (const label zonei : cellZoneIDs_)
+    {
+        const cellZone& cZone = mesh_.cellZones()[zonei];
+
+        boundBox bb;
+
+        for (const label celli : cZone)
+        {
+            const cell& c = cells[celli];
+            const pointField cellPoints(c.points(faces, points));
+
+            for (const point& pt : cellPoints)
+            {
+                bb.add(csys().localPosition(pt));
+            }
+        }
+
+        bb.reduce();
+
+        Info<< "    local bounds: " << bb.span() << nl << endl;
     }
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::porosityModel::~porosityModel()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+void Foam::porosityModel::transformModelData()
+{
+    if (!mesh_.upToDatePoints(*this))
+    {
+        calcTransformModelData();
+
+        // set model up-to-date wrt points
+        mesh_.setUpToDatePoints(*this);
+    }
+}
+
 
 Foam::tmp<Foam::vectorField> Foam::porosityModel::porosityModel::force
 (
     const volVectorField& U,
     const volScalarField& rho,
     const volScalarField& mu
-) const
+)
 {
-    tmp<vectorField> tforce(new vectorField(U.size(), Zero));
-    this->calcForce(U, rho, mu, tforce.ref());
+    transformModelData();
+
+    auto tforce = tmp<vectorField>::New(U.size(), Zero);
+
+    if (!cellZoneIDs_.empty())
+    {
+        this->calcForce(U, rho, mu, tforce.ref());
+    }
 
     return tforce;
 }
@@ -141,7 +186,30 @@ Foam::tmp<Foam::vectorField> Foam::porosityModel::porosityModel::force
 
 void Foam::porosityModel::addResistance(fvVectorMatrix& UEqn)
 {
+    if (cellZoneIDs_.empty())
+    {
+        return;
+    }
+
+    transformModelData();
     this->correct(UEqn);
+}
+
+
+void Foam::porosityModel::addResistance
+(
+    fvVectorMatrix& UEqn,
+    const volScalarField& rho,
+    const volScalarField& mu
+)
+{
+    if (cellZoneIDs_.empty())
+    {
+        return;
+    }
+
+    transformModelData();
+    this->correct(UEqn, rho, mu);
 }
 
 
@@ -152,50 +220,38 @@ void Foam::porosityModel::addResistance
     bool correctAUprocBC
 )
 {
+    if (cellZoneIDs_.empty())
+    {
+        return;
+    }
+
+    transformModelData();
     this->correct(UEqn, AU);
 
     if (correctAUprocBC)
     {
-        // Correct the boundary conditions of the tensorial diagonal to
-        // ensure processor boundaries are correctly handled when AU^-1 is
-        // interpolated for the pressure equation.
+        // Correct the boundary conditions of the tensorial diagonal to ensure
+        // processor boundaries are correctly handled when AU^-1 is interpolated
+        // for the pressure equation.
         AU.correctBoundaryConditions();
     }
 }
 
 
-bool Foam::porosityModel::movePoints()
+bool Foam::porosityModel::writeData(Ostream& os) const
 {
-    calcTransformModelData();
-
     return true;
-}
-
-
-void Foam::porosityModel::topoChange(const polyTopoChangeMap& map)
-{
-    calcTransformModelData();
-}
-
-
-void Foam::porosityModel::mapMesh(const polyMeshMap& map)
-{
-    calcTransformModelData();
-}
-
-
-void Foam::porosityModel::distribute
-(
-    const polyDistributionMap& map
-)
-{
-    calcTransformModelData();
 }
 
 
 bool Foam::porosityModel::read(const dictionary& dict)
 {
-    dict.lookup("cellZone") >> zoneName_;
+    dict.readIfPresent("active", active_);
+
+    coeffs_ = dict.optionalSubDict(type() + "Coeffs");
+
+    dict.readEntry("cellZone", zoneName_);
+    cellZoneIDs_ = mesh_.cellZones().indices(zoneName_);
 
     return true;
 }

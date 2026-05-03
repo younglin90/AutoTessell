@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,33 +23,23 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::vectorUList
-
-Description
-    A UList of vectors.
-
-Typedef
-    Foam::vectorList
-
-Description
-    A List of vectors.
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef vectorList_H
-#define vectorList_H
+#ifndef Foam_vectorList_H
+#define Foam_vectorList_H
 
 #include "vector.H"
 #include "List.H"
+#include "SubList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-    typedef UList<vector> vectorUList;
-
-    typedef List<vector> vectorList;
+    typedef List<vector> vectorList;            //!< List of vector
+    typedef SubList<vector> vectorSubList;      //!< SubList of vector
+    typedef UList<vector> vectorUList;          //!< UList of vector
+    typedef List<vectorList> vectorListList;    //!< List of vectorList
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,34 +27,59 @@ License
 Class
     Foam::fixedNormalSlipFvPatchField
 
+Group
+    grpGenericBoundaryConditions grpWallBoundaryConditions
+
 Description
-    This boundary condition sets the patch-normal component to a fixed value.
+    This boundary condition sets the patch-normal component to the field (vector
+    or tensor) to the patch-normal component of a user specified field.
+    The tangential component is treated as slip, i.e. copied from the internal
+    field.
+
+    The "value" entry is NO_READ, optional write.
 
 Usage
-    \table
-        Property     | Description             | Required    | Default value
-        fixedValue   | fixed value             | yes         |
-    \endtable
-
     Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
+        // Mandatory entries (unmodifiable)
         type            fixedNormalSlip;
-        fixedValue      uniform 0;     // example entry for a scalar field
+        fixedValue      uniform (1 0 0);    // example entry for a vector field
+
+        // Optional entries
+        writeValue      false;
+
+        // Mandatory/Optional (inherited) entries
+        ...
     }
     \endverbatim
+
+    where the entries mean:
+    \table
+      Property     | Description                      | Type    | Reqd | Deflt
+      type         | Type name: fixedNormalSlip       | word    | yes  | -
+      fixedValue   | User-defined value the normal component of which  <!--
+                   --> the boundary is set to                          <!--
+                   -->                | vectorField/tensorField | yes  | -
+      writeValue   | Output patch values (eg, ParaView) | bool  | no   | false
+    \endtable
+
+    The inherited entries are elaborated in:
+      - \link transformFvPatchField.H \endlink
+      - \link fvPatchField.H \endlink
 
 See also
     Foam::transformFvPatchField
 
 SourceFiles
     fixedNormalSlipFvPatchField.C
+    fixedNormalSlipFvPatchFields.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fixedNormalSlipFvPatchField_H
-#define fixedNormalSlipFvPatchField_H
+#ifndef Foam_fixedNormalSlipFvPatchField_H
+#define Foam_fixedNormalSlipFvPatchField_H
 
 #include "transformFvPatchField.H"
 
@@ -69,10 +97,17 @@ class fixedNormalSlipFvPatchField
 :
     public transformFvPatchField<Type>
 {
+    //- The parent boundary condition type
+    typedef transformFvPatchField<Type> parent_bctype;
+
+
     // Private Data
 
         //- Value the normal component of which the boundary is set to
         Field<Type> fixedValue_;
+
+        //- Flag to output patch values (e.g. for ParaView)
+        bool writeValue_;
 
 
 public:
@@ -87,88 +122,95 @@ public:
         fixedNormalSlipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
         fixedNormalSlipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
         //- Construct by mapping given fixedNormalSlipFvPatchField
-        //  onto a new patch
+        //- onto a new patch
         fixedNormalSlipFvPatchField
         (
             const fixedNormalSlipFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedNormalSlipFvPatchField
         (
             const fixedNormalSlipFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedNormalSlipFvPatchField
         (
             const fixedNormalSlipFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedNormalSlipFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
+        //- False: this patch field is not altered by assignment.
+        virtual bool assignable() const { return false; }
+
+
         // Access
 
-            //- Return false: this patch field is not altered by assignment
-            virtual bool assignable() const
-            {
-                return false;
-            }
-
-
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
-
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
-
-
-        // Return defining fields
-
+            //- User-defined input field (modifiable field)
             virtual Field<Type>& fixedValue()
             {
                 return fixedValue_;
             }
 
+            //- User-defined input field (const field)
             virtual const Field<Type>& fixedValue() const
             {
                 return fixedValue_;
             }
 
 
-        // Evaluation functions
+        // Mapping
+
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper& m
+            );
+
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>& ptf,
+                const labelList& addr
+            );
+
+
+        // Evaluation
 
             //- Return gradient at boundary
             virtual tmp<Field<Type>> snGrad() const;
@@ -177,7 +219,7 @@ public:
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return face-gradient transform diagonal

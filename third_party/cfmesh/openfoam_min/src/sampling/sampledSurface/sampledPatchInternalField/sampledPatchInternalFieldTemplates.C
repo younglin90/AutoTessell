@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,21 +27,23 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "sampledPatchInternalField.H"
-#include "cellPoint_interpolation.H"
-#include "PrimitivePatchInterpolation.H"
+#include "interpolationCellPoint.H"
+#include "primitivePatchInterpolation.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
-Foam::sampledSurfaces::patchInternalField::sampleField
+Foam::sampledPatchInternalField::sampleOnFaces
 (
-    const VolField<Type>& vField
+    const interpolation<Type>& sampler
 ) const
 {
+    const auto& vField = sampler.psi();
+
     // One value per face
-    tmp<Field<Type>> tvalues(new Field<Type>(patchFaceLabels().size()));
-    Field<Type>& values = tvalues.ref();
+    auto tvalues = tmp<Field<Type>>::New(patchFaceLabels().size());
+    auto& values = tvalues.ref();
 
     forAll(patchStart(), i)
     {
@@ -66,48 +71,51 @@ Foam::sampledSurfaces::patchInternalField::sampleField
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
-Foam::sampledSurfaces::patchInternalField::interpolateField
+Foam::sampledPatchInternalField::sampleOnPoints
 (
     const interpolation<Type>& interpolator
 ) const
 {
     label sz = 0;
-    forAll(patchIndices(), i)
+    forAll(patchIDs(), i)
     {
-        sz += mesh().boundary()[patchIndices()[i]].size();
+        sz += mesh().boundaryMesh()[patchIDs()[i]].size();
     }
 
     Field<Type> allPatchVals(sz);
     sz = 0;
 
-    forAll(patchIndices(), i)
+    forAll(patchIDs(), i)
     {
-        // Cells on which samples are generated
-        const labelList& sampleCells = mappers_[i].cellIndices();
+        // See mappedFixedValueFvPatchField
+        const mapDistribute& distMap = mappers_[i].map();
 
-        // Send the sample points to the cells
-        const distributionMap& distMap = mappers_[i].map();
-        pointField samplePoints(mappers_[i].samplePoints());
-        distMap.reverseDistribute(sampleCells.size(), samplePoints);
+        // Send back sample points to processor that holds the cell.
+        // Mark cells with point::max so we know which ones we need
+        // to interpolate (since expensive).
+        vectorField samples(mappers_[i].samplePoints());
+        distMap.reverseDistribute(mesh().nCells(), point::max, samples);
 
-        // Interpolate values
-        Field<Type> sampleValues(sampleCells.size());
-        forAll(sampleCells, i)
+        Field<Type> patchVals(mesh().nCells());
+
+        forAll(samples, celli)
         {
-            if (sampleCells[i] != -1)
+            if (samples[celli] != point::max)
             {
-                sampleValues[i] =
-                    interpolator.interpolate(samplePoints[i], sampleCells[i]);
+                patchVals[celli] = interpolator.interpolate
+                (
+                    samples[celli],
+                    celli
+                );
             }
         }
 
-        // Send the values back to the patch
-        Field<Type> patchValues(sampleValues);
-        distMap.distribute(patchValues);
+        distMap.distribute(patchVals);
 
-        // Insert into the full value field
-        SubList<Type>(allPatchVals, patchValues.size(), sz) = patchValues;
-        sz += patchValues.size();
+        // Now patchVals holds the interpolated data in patch face order.
+        // Collect.
+        SubList<Type>(allPatchVals, patchVals.size(), sz) = patchVals;
+        sz += patchVals.size();
     }
 
     // Interpolate to points. Reconstruct the patch of all faces to aid
@@ -115,9 +123,9 @@ Foam::sampledSurfaces::patchInternalField::interpolateField
 
     labelList meshFaceLabels(allPatchVals.size());
     sz = 0;
-    forAll(patchIndices(), i)
+    for (const label patchId : patchIDs())
     {
-        const polyPatch& pp = mesh().boundary()[patchIndices()[i]];
+        const polyPatch& pp = mesh().boundaryMesh()[patchId];
         forAll(pp, i)
         {
             meshFaceLabels[sz++] = pp.start()+i;

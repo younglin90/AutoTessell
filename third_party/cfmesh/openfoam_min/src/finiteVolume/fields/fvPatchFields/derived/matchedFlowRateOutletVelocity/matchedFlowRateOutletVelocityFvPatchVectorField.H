@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::matchedFlowRateOutletVelocityFvPatchVectorField
+
+Group
+    grpOutletBoundaryConditions
 
 Description
     Velocity outlet boundary condition which corrects the extrapolated velocity
@@ -65,26 +70,26 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-       Class matchedFlowRateOutletVelocityFvPatchVectorField Declaration
+           Class matchedFlowRateOutletVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class matchedFlowRateOutletVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Inlet patch name from which the corresponding flow rate is obtained
         word inletPatchName_;
 
+        //- Name of the density field used to normalize the mass flux
+        word rhoName_;
+
         //- Is volumetric?
         bool volumetric_;
 
-        //- Name of the density field used to normalise the mass flux
-        word rhoName_;
 
-
-    // Private Member Functions
+    // Private member functions
 
         //- Update the patch values given the appropriate density type and value
         template<class RhoType>
@@ -104,11 +109,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        matchedFlowRateOutletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         matchedFlowRateOutletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -119,49 +131,46 @@ public:
         (
             const matchedFlowRateOutletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         matchedFlowRateOutletVelocityFvPatchVectorField
         (
             const matchedFlowRateOutletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         matchedFlowRateOutletVelocityFvPatchVectorField
         (
             const matchedFlowRateOutletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new matchedFlowRateOutletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,9 +34,9 @@ License
 
 bool Foam::matchPoints
 (
-    const Field<point>& pts0,
-    const Field<point>& pts1,
-    const Field<scalar>& matchDistances,
+    const UList<point>& pts0,
+    const UList<point>& pts1,
+    const UList<scalar>& matchDistances,
     const bool verbose,
     labelList& from0To1,
     const point& origin
@@ -46,15 +49,21 @@ bool Foam::matchPoints
 
     point compareOrigin = origin;
 
-    if (origin == point(vGreat, vGreat, vGreat))
+    if (origin == point::max)
     {
         if (pts1.size())
         {
             compareOrigin = sum(pts1)/pts1.size();
         }
+        else
+        {
+            // Unusable, but avoid comparison with VGREAT!
+            compareOrigin = point::zero;
+        }
     }
 
     SortableList<scalar> pts0MagSqr(magSqr(pts0 - compareOrigin));
+
     SortableList<scalar> pts1MagSqr(magSqr(pts1 - compareOrigin));
 
     forAll(pts0MagSqr, i)
@@ -74,7 +83,7 @@ bool Foam::matchPoints
 
 
         // Go through range of equal mag and find nearest vector.
-        scalar minDistSqr = vGreat;
+        scalar minDistSqr = VGREAT;
         label minFacei = -1;
 
         for
@@ -140,11 +149,11 @@ bool Foam::matchPoints
 
 bool Foam::matchPoints
 (
-    const Field<point>& pts0,
-    const Field<point>& pts1,
-    const Field<point>& pts0Dir,
-    const Field<point>& pts1Dir,
-    const Field<scalar>& matchDistances,
+    const UList<point>& pts0,
+    const UList<point>& pts1,
+    const UList<point>& pts0Dir,
+    const UList<point>& pts1Dir,
+    const UList<scalar>& matchDistances,
     const bool verbose,
     labelList& from0To1,
     const point& origin
@@ -157,15 +166,21 @@ bool Foam::matchPoints
 
     point compareOrigin = origin;
 
-    if (origin == point(vGreat, vGreat, vGreat))
+    if (origin == point::max)
     {
         if (pts1.size())
         {
             compareOrigin = sum(pts1)/pts1.size();
         }
+        else
+        {
+            // Unusable, but avoid comparison with VGREAT!
+            compareOrigin = point::zero;
+        }
     }
 
     SortableList<scalar> pts0MagSqr(magSqr(pts0 - compareOrigin));
+
     SortableList<scalar> pts1MagSqr(magSqr(pts1 - compareOrigin));
 
     forAll(pts0MagSqr, i)
@@ -184,9 +199,11 @@ bool Foam::matchPoints
         }
 
         // Go through range of equal mag and find nearest vector.
-        scalar minDistSqr = vGreat;
-        scalar minDistNorm = 0;
+        scalar minDistSqr = VGREAT;
         label minFacei = -1;
+
+        // Valid candidate points should have opposite normal
+        const scalar minDistNorm = 0;
 
         for
         (
@@ -206,8 +223,8 @@ bool Foam::matchPoints
 
             if
             (
-                magSqr(pts0Dir[face0I]) < sqr(small)
-             && magSqr(pts1Dir[facei]) < sqr(small)
+                magSqr(pts0Dir[face0I]) < sqr(SMALL)
+             && magSqr(pts1Dir[facei]) < sqr(SMALL)
             )
             {
                 distNorm = -1;
@@ -218,7 +235,6 @@ bool Foam::matchPoints
                 // Check that the normals point in equal and opposite directions
                 if (distNorm < minDistNorm)
                 {
-                    minDistNorm = distNorm;
                     minDistSqr = distSqr;
                     minFacei = facei;
                 }

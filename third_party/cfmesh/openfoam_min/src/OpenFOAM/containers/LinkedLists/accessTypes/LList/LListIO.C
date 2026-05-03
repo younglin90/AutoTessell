@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,126 +39,150 @@ Foam::LList<LListBase, T>::LList(Istream& is)
 }
 
 
-// * * * * * * * * * * * * * * * Istream Operator  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-Foam::Istream& Foam::operator>>(Istream& is, LList<LListBase, T>& L)
+Foam::Istream& Foam::LList<LListBase, T>::readList(Istream& is)
 {
+    LList<LListBase, T>& list = *this;
+
     // Anull list
-    L.clear();
+    list.clear();
 
-    is.fatalCheck(" operator>>(Istream&, LList<LListBase, T>&)");
+    is.fatalCheck(FUNCTION_NAME);
 
-    token firstToken(is);
+    token tok(is);
 
-    is.fatalCheck
-    (
-        " operator>>(Istream&, LList<LListBase, T>&) : reading first token"
-    );
+    is.fatalCheck("LList::readList : reading first token");
 
-    if (firstToken.isLabel())
+    if (tok.isLabel())
     {
-        label s = firstToken.labelToken();
+        const label len = tok.labelToken();
 
-        // Read beginning of contents
-        char delimiter = is.readBeginList("LList<LListBase, T>");
+        // Begin of contents marker
+        const char delimiter = is.readBeginList("LList");
 
-        if (s)
+        if (len)
         {
             if (delimiter == token::BEGIN_LIST)
             {
-                for (label i=0; i<s; ++i)
+                for (label i=0; i<len; ++i)
                 {
-                    T element;
-                    is >> element;
-                    L.append(element);
+                    T elem;
+                    is >> elem;
+                    list.push_back(std::move(elem));
                 }
             }
             else
             {
-                T element;
-                is >> element;
+                // Uniform content (delimiter == token::BEGIN_BLOCK)
 
-                for (label i=0; i<s; ++i)
+                T elem;
+                is >> elem;
+
+                for (label i=0; i<len; ++i)
                 {
-                    L.append(element);
+                    list.push_back(elem);
                 }
             }
         }
 
-        // Read end of contents
+        // End of contents marker
         is.readEndList("LList");
     }
-    else if (firstToken.isPunctuation())
+    else if (tok.isPunctuation(token::BEGIN_LIST))
     {
-        if (firstToken.pToken() != token::BEGIN_LIST)
+        is >> tok;
+        is.fatalCheck(FUNCTION_NAME);
+
+        while (!tok.isPunctuation(token::END_LIST))
         {
-            FatalIOErrorInFunction
-            (
-                is
-            )   << "incorrect first token, '(', found " << firstToken.info()
-                << exit(FatalIOError);
-        }
+            is.putBack(tok);
 
-        token lastToken(is);
-        is.fatalCheck(" operator>>(Istream&, LList<LListBase, T>&)");
+            T elem;
+            is >> elem;
+            list.push_back(std::move(elem));
 
-        while
-        (
-           !(
-                lastToken.isPunctuation()
-             && lastToken.pToken() == token::END_LIST
-            )
-        )
-        {
-            is.putBack(lastToken);
-            T element;
-            is >> element;
-            L.append(element);
-
-            is >> lastToken;
-            is.fatalCheck(" operator>>(Istream&, LList<LListBase, T>&)");
+            is >> tok;
+            is.fatalCheck(FUNCTION_NAME);
         }
     }
     else
     {
         FatalIOErrorInFunction(is)
             << "incorrect first token, expected <int> or '(', found "
-            << firstToken.info()
+            << tok.info()
             << exit(FatalIOError);
     }
 
-    // Check state of IOstream
-    is.fatalCheck(" operator>>(Istream&, LList<LListBase,>&)");
-
+    is.fatalCheck(FUNCTION_NAME);
     return is;
 }
 
 
-// * * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * //
-
 template<class LListBase, class T>
-Foam::Ostream& Foam::operator<<(Ostream& os, const LList<LListBase, T>& lst)
+Foam::Ostream& Foam::LList<LListBase, T>::writeList
+(
+    Ostream& os,
+    const label shortLen
+) const
 {
-    // Write size
-    os << nl << lst.size();
+    // NB: no binary, contiguous output
 
-    // Write beginning of contents
-    os << nl << token::BEGIN_LIST << nl;
+    const label len = this->size();
 
-    // Write contents
-    for (const T& val : lst)
+    if
+    (
+        (len <= 1 || !shortLen)
+     || (len <= shortLen)
+    )
     {
-        os << val << nl;
+        // Size and start delimiter
+        os << len << token::BEGIN_LIST;
+
+        // Contents
+        bool space = false;
+        for (const T& val : *this)
+        {
+            if (space) os << token::SPACE;
+            os << val;
+            space = true;
+        }
+
+        // End delimiter
+        os << token::END_LIST;
+    }
+    else
+    {
+        // Size and start delimiter
+        os << nl << len << nl << token::BEGIN_LIST << nl;
+
+        // Contents
+        for (const T& val : *this)
+        {
+            os << val << nl;
+        }
+
+        // End delimiter
+        os << token::END_LIST;
     }
 
-    // Write end of contents
-    os << token::END_LIST;
-
-    // Check state of IOstream
-    os.check("Ostream& operator<<(Ostream&, const LList<LListBase, T>&)");
-
+    os.check(FUNCTION_NAME);
     return os;
+}
+
+
+template<class LListBase, class T>
+Foam::Istream& Foam::operator>>(Istream& is, LList<LListBase, T>& list)
+{
+    return list.readList(is);
+}
+
+
+template<class LListBase, class T>
+Foam::Ostream& Foam::operator<<(Ostream& os, const LList<LListBase, T>& list)
+{
+    return list.writeList(os, -1);  // Always with line breaks
 }
 
 

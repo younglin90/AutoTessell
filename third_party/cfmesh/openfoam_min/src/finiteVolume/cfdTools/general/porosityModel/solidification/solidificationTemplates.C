@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,18 +40,20 @@ void Foam::porosityModels::solidification::apply
     const volVectorField& U
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
-    const volScalarField& T = mesh_.lookupObject<volScalarField>
+    const auto& T = mesh_.lookupObject<volScalarField>
     (
         IOobject::groupName(TName_, U.group())
     );
 
-    forAll(cells, i)
+    for (const label zonei : cellZoneIDs_)
     {
-        const label celli = cells[i];
-        Udiag[celli] +=
-            V[celli]*alpha[celli]*rho[celli]*D_->value(T[celli]);
+        const labelList& cells = mesh_.cellZones()[zonei];
+
+        for (const label celli : cells)
+        {
+            Udiag[celli] +=
+                V[celli]*alpha[celli]*rho[celli]*D_->value(T[celli]);
+        }
     }
 }
 
@@ -63,18 +67,20 @@ void Foam::porosityModels::solidification::apply
     const volVectorField& U
 ) const
 {
-    const labelList& cells = mesh_.cellZones()[zoneName_];
-
-    const volScalarField& T = mesh_.lookupObject<volScalarField>
+    const auto& T = mesh_.lookupObject<volScalarField>
     (
         IOobject::groupName(TName_, U.group())
     );
 
-    forAll(cells, i)
+    for (const label zonei : cellZoneIDs_)
     {
-        const label celli = cells[i];
-        AU[celli] +=
-            tensor::I*alpha[celli]*rho[celli]*D_->value(T[celli]);
+        const labelList& cells = mesh_.cellZones()[zonei];
+
+        for (const label celli : cells)
+        {
+            AU[celli] +=
+                tensor::I*alpha[celli]*rho[celli]*D_->value(T[celli]);
+        }
     }
 }
 
@@ -94,7 +100,7 @@ void Foam::porosityModels::solidification::apply
     }
     else
     {
-        const volScalarField& alpha = mesh_.lookupObject<volScalarField>
+        const auto& alpha = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(alphaName_, U.group())
         );
@@ -118,7 +124,7 @@ void Foam::porosityModels::solidification::apply
     }
     else
     {
-        const volScalarField& alpha = mesh_.lookupObject<volScalarField>
+        const auto& alpha = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(alphaName_, U.group())
         );

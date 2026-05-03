@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,18 +28,18 @@ Class
     Foam::IOPtrList
 
 Description
-    A PtrList of objects of type \<Type\> with automated input and output.
+    A PtrList of objects of type \<T\> with automated input and output.
 
 SourceFiles
     IOPtrList.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef IOPtrList_H
-#define IOPtrList_H
+#ifndef Foam_IOPtrList_H
+#define Foam_IOPtrList_H
 
-#include "IOList.H"
 #include "PtrList.H"
+#include "regIOobject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,22 +47,16 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class IOPtrList Declaration
+                           Class IOPtrList Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Type>
+template<class T>
 class IOPtrList
 :
-    public IOListBase<PtrList, IOPtrList, Type>
+    public regIOobject,
+    public PtrList<T>
 {
-
 public:
-
-    // Public Static Data
-
-        //- Does this object support re-reading?
-        static const bool rereading = true;
-
 
     //- Runtime type information
     TypeName("PtrList");
@@ -67,18 +64,48 @@ public:
 
     // Constructors
 
-        //- Inherit constructors
-        using IOListBase<PtrList, IOPtrList, Type>::IOListBase;
+        //- Default copy construct
+        IOPtrList(const IOPtrList&) = default;
+
+        //- Construct from IOobject
+        explicit IOPtrList(const IOobject& io);
 
         //- Construct from IOobject using given Istream constructor class
         template<class INew>
-        IOPtrList(const IOobject&, const INew&);
+        IOPtrList(const IOobject& io, const INew& inewt);
+
+        //- Construct from IOobject with given size
+        IOPtrList(const IOobject& io, const label len);
+
+        //- Construct from IOobject and a copy of PtrList content
+        IOPtrList(const IOobject& io, const PtrList<T>& content);
+
+        //- Construct by transferring the PtrList content
+        IOPtrList(const IOobject& io, PtrList<T>&& content);
+
+
+    // Factory Methods
+
+        //- Read and return contents. The IOobject will not be registered
+        static PtrList<T> readContents(const IOobject& io);
+
+
+    //- Destructor
+    virtual ~IOPtrList() = default;
+
+
+    // Member Functions
+
+        bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using IOListBase<PtrList, IOPtrList, Type>::operator=;
+        //- Copy assignment of entries
+        void operator=(const IOPtrList<T>& rhs);
+
+        //- Copy or move assignment of entries
+        using PtrList<T>::operator=;
 };
 
 

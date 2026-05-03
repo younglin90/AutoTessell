@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,53 +29,69 @@ License
 #include "fileName.H"
 #include "IOstreams.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::fileName::fileName(Istream& is)
-:
-    string()
 {
     is >> *this;
 }
 
 
-Foam::Istream& Foam::operator>>(Istream& is, fileName& fn)
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+bool Foam::fileName::assign(const token& tok)
 {
-    token t(is);
-
-    if (!t.good())
+    if (tok.isWord())
     {
+        // Also accept a plain word as a fileName
+        assign(tok.wordToken());
+        return true;
+    }
+    else if (tok.isQuotedString())
+    {
+        assign(tok.stringToken());
+        stripInvalid();  // More stringent for fileName than string
+        return true;
+    }
+
+    return false;
+}
+
+
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
+
+Foam::Istream& Foam::operator>>(Istream& is, fileName& val)
+{
+    token tok(is);
+
+    if (!val.assign(tok))
+    {
+        FatalIOErrorInFunction(is);
+        if (tok.good())
+        {
+            FatalIOError
+                << "Wrong token type - expected string, found "
+                << tok.info();
+        }
+        else
+        {
+            FatalIOError
+                << "Bad token - could not get fileName";
+        }
+        FatalIOError << exit(FatalIOError);
         is.setBad();
         return is;
     }
 
-    if (t.isString())
-    {
-        fn = t.stringToken();
-    }
-    else
-    {
-        is.setBad();
-        FatalIOErrorInFunction(is)
-            << "wrong token type - expected string, found " << t.info()
-            << exit(FatalIOError);
-
-        return is;
-    }
-
-    fn.stripInvalid();
-
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, fileName&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const fileName& fn)
+Foam::Ostream& Foam::operator<<(Ostream& os, const fileName& val)
 {
-    os.write(fn);
-    os.check("Ostream& operator<<(Ostream&, const fileName&)");
+    os.write(val);
+    os.check(FUNCTION_NAME);
     return os;
 }
 

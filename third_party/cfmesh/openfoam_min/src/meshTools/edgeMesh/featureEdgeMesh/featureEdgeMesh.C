@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,14 +41,9 @@ namespace Foam
 Foam::featureEdgeMesh::featureEdgeMesh(const IOobject& io)
 :
     regIOobject(io),
-    edgeMesh(pointField(0), edgeList(0))
+    edgeMesh()
 {
-    if
-    (
-        io.readOpt() == IOobject::MUST_READ
-     || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
-    )
+    if (isReadRequired() || (isReadOptional() && headerOk()))
     {
         readStream(typeName) >> *this;
         close();
@@ -74,11 +72,10 @@ Foam::featureEdgeMesh::featureEdgeMesh
 {}
 
 
-// Copy constructor
 Foam::featureEdgeMesh::featureEdgeMesh
 (
     const IOobject& io,
-    const featureEdgeMesh& em
+    const edgeMesh& em
 )
 :
     regIOobject(io),

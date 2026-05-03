@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,22 +26,27 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "IOobject.H"
-#include "token.H"
+#include "Ostream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<>
-Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<IOobject>& ip)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const InfoProxy<IOobject>& iproxy
+)
 {
-    const IOobject& io = ip.t_;
+    const auto& io = *iproxy;
 
     os  << "IOobject: "
-        << io.type() << token::SPACE
-        << io.name() << token::SPACE
-        << "local:" << token::SPACE << io.local() << token::SPACE
-        << "readOpt:" << token::SPACE << io.readOpt() << token::SPACE
-        << "writeOpt:" << token::SPACE << io.writeOpt() << token::SPACE
-        << io.path(false) << endl;
+        << io.type() << ' ' << io.name()
+        << " local: " << io.local()
+        << " readOpt: " << static_cast<int>(io.readOpt())
+        << " writeOpt: " << static_cast<int>(io.writeOpt())
+        << " registerObject: " << io.registerObject()
+        << " globalObject: " << io.globalObject()
+        << ' ' << io.path() << endl;
 
     return os;
 }

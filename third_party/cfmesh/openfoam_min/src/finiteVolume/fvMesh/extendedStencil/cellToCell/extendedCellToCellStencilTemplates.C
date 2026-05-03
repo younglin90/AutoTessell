@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,16 +33,23 @@ License
 template<class Type, class WeightType>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<WeightType, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<WeightType, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 > Foam::extendedCellToCellStencil::weightedSum
 (
-    const distributionMap& map,
+    const mapDistribute& map,
     const labelListList& stencil,
-    const VolField<Type>& fld,
+    const GeometricField<Type, fvPatchField, volMesh>& fld,
     const List<List<WeightType>>& stencilWeights
 )
 {
     typedef typename outerProduct<WeightType, Type>::type WeightedType;
+    typedef GeometricField<WeightedType, fvPatchField, volMesh>
+        WeightedFieldType;
 
     const fvMesh& mesh = fld.mesh();
 
@@ -48,26 +57,21 @@ Foam::tmp
     List<List<Type>> stencilFld;
     extendedCellToFaceStencil::collectData(map, stencil, fld, stencilFld);
 
-    tmp<VolField<WeightedType>> twf
+    tmp<WeightedFieldType> twf
     (
-        new VolField<WeightedType>
+        new WeightedFieldType
         (
             IOobject
             (
                 fld.name(),
-                mesh.time().name(),
+                mesh.time().timeName(),
                 mesh
             ),
             mesh,
-            dimensioned<WeightedType>
-            (
-                fld.name(),
-                fld.dimensions(),
-                Zero
-            )
+            dimensioned<WeightedType>(fld.dimensions(), Zero)
         )
     );
-    VolField<WeightedType>& wf = twf();
+    WeightedFieldType& wf = twf();
 
     forAll(wf, celli)
     {

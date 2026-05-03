@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,25 +41,20 @@ namespace Foam
 
 Foam::skewCorrectionVectors::skewCorrectionVectors(const fvMesh& mesh)
 :
-    DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        skewCorrectionVectors
-    >(mesh),
+    MeshObject_type(mesh),
     skew_(false),
     skewCorrectionVectors_
     (
         IOobject
         (
             "skewCorrectionVectors",
-            mesh.pointsInstance(),
-            mesh,
+            mesh_.pointsInstance(),
+            mesh_,
             IOobject::NO_READ,
             IOobject::NO_WRITE,
-            false
+            IOobject::NO_REGISTER
         ),
-        mesh,
+        mesh_,
         dimless
     )
 {
@@ -70,18 +68,15 @@ Foam::skewCorrectionVectors::~skewCorrectionVectors()
 
 void Foam::skewCorrectionVectors::calcSkewCorrectionVectors()
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating skew correction vectors" << endl;
-    }
+    DebugInFunction << "Calculating skew correction vectors" << nl;
 
     // Set local references to mesh data
-    const volVectorField& C = mesh().C();
-    const surfaceVectorField& Cf = mesh().Cf();
-    const surfaceVectorField& Sf = mesh().Sf();
+    const volVectorField& C = mesh_.C();
+    const surfaceVectorField& Cf = mesh_.Cf();
+    const surfaceVectorField& Sf = mesh_.Sf();
 
-    const labelUList& owner = mesh().owner();
-    const labelUList& neighbour = mesh().neighbour();
+    const labelUList& owner = mesh_.owner();
+    const labelUList& neighbour = mesh_.neighbour();
 
     forAll(owner, facei)
     {
@@ -134,13 +129,10 @@ void Foam::skewCorrectionVectors::calcSkewCorrectionVectors()
     if (Sf.primitiveField().size())
     {
         skewCoeff =
-            max(mag(skewCorrectionVectors_)*mesh().deltaCoeffs()).value();
+            max(mag(skewCorrectionVectors_)*mesh_.deltaCoeffs()).value();
     }
 
-    if (debug)
-    {
-        InfoInFunction << "skew coefficient = " << skewCoeff << endl;
-    }
+    DebugInFunction << "skew coefficient = " << skewCoeff << nl;
 
     if (skewCoeff < 1e-5)
     {

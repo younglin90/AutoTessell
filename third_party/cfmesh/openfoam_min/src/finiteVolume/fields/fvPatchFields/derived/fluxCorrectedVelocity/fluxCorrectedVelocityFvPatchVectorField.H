@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::fluxCorrectedVelocityFvPatchVectorField
 
+Group
+    grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a velocity outlet boundary condition for
     patches where the pressure is specified.  The outflow velocity is obtained
@@ -39,8 +44,8 @@ Description
         U_p | velocity at the patch [m/s]
         U_c | velocity in cells adjacent to the patch [m/s]
         n   | patch normal vectors
-        \phi_p | flux at the patch [m^3/s or kg/s]
-        S_f | patch face area vectors [m^2]
+        \phi_p | flux at the patch [m3/s or kg/s]
+        S_f | patch face area vectors [m2]
     \endvartable
 
     where
@@ -61,9 +66,9 @@ Description
     }
     \endverbatim
 
-    Note:
-        If reverse flow is possible or expected use the
-        pressureInletOutletVelocity condition instead.
+Note
+    If reverse flow is possible or expected use the
+    pressureInletOutletVelocity condition instead.
 
 See also
     Foam::zeroGradientFvPatchField
@@ -93,7 +98,7 @@ class fluxCorrectedVelocityFvPatchVectorField
 :
     public zeroGradientFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Name of flux field
         word phiName_;
@@ -110,11 +115,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fluxCorrectedVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fluxCorrectedVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -124,46 +136,43 @@ public:
         (
             const fluxCorrectedVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
         //- Construct as copy setting internal field reference
         fluxCorrectedVelocityFvPatchVectorField
         (
             const fluxCorrectedVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new fluxCorrectedVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Evaluate the patch field
         virtual void evaluate
         (
-            const Pstream::commsTypes commsType=Pstream::commsTypes::blocking
+            const Pstream::commsTypes commsType=Pstream::commsTypes::buffered
         );
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using zeroGradientFvPatchVectorField::operator=;
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,7 @@ License
 
 #include "interfaceCompressionFvPatchScalarField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -33,7 +35,18 @@ Foam::interfaceCompressionFvPatchScalarField::
 interfaceCompressionFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    fixedValueFvPatchScalarField(p, iF)
+{}
+
+
+Foam::interfaceCompressionFvPatchScalarField::
+interfaceCompressionFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -48,8 +61,8 @@ interfaceCompressionFvPatchScalarField
 (
     const interfaceCompressionFvPatchScalarField& ptf,
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchScalarField(ptf, p, iF, mapper)
@@ -59,8 +72,18 @@ interfaceCompressionFvPatchScalarField
 Foam::interfaceCompressionFvPatchScalarField::
 interfaceCompressionFvPatchScalarField
 (
+    const interfaceCompressionFvPatchScalarField& ptf
+)
+:
+    fixedValueFvPatchScalarField(ptf)
+{}
+
+
+Foam::interfaceCompressionFvPatchScalarField::
+interfaceCompressionFvPatchScalarField
+(
     const interfaceCompressionFvPatchScalarField& ptf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedValueFvPatchScalarField(ptf, iF)
@@ -87,8 +110,8 @@ void Foam::interfaceCompressionFvPatchScalarField::write
     Ostream& os
 ) const
 {
-    fvPatchScalarField::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<scalar>::write(os);
+    fvPatchField<scalar>::writeValueEntry(os);
 }
 
 

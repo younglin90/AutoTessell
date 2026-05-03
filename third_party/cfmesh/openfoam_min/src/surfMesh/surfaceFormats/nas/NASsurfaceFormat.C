@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,11 +24,102 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
+Notes (Reader)
+
+    Nastran does not directly support any names, but ANSA and Hypermesh
+    have different ways to get around that problem by using/misusing
+    comment lines.
+
+Hypermesh extension (last verified approx. 2010)
+
+    $HMNAME COMP                   1"some-part-name"
+
+ANSA extension (legacy)
+
+    line 1: $ANSA_NAME;<int>;<word>;
+    line 2: $some-part-name
+
+ANSA extension (19.0.1)
+
+    line 1: $ANSA_NAME;<int>;PSHELL;~
+    line 2: $some-part-name
+
+    These seem to appear immediately before the corrsponding PSHELL
+
+ANSA extension (23.1.0)
+
+    $ANSA_NAME_COMMENT;<int>;PSHELL;some-part-name;; ...something trailing...
+
+    These seem to appear as footer data, but could presumably appear anywhere.
+
+Random extension (not sure where this arises)
+
+    $some-part-name
+    PSHELL  203101  1
+
+    These seemingly random comments appear immediately before the PSHELL entry.
+
 \*---------------------------------------------------------------------------*/
 
 #include "NASsurfaceFormat.H"
-#include "IFstream.H"
-#include "IStringStream.H"
+#include "ListOps.H"
+#include "Fstream.H"
+#include "IOmanip.H"
+#include "faceTraits.H"
+#include "stringOps.H"
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+template<class Face>
+inline Foam::label Foam::fileFormats::NASsurfaceFormat<Face>::writeShell
+(
+    Ostream& os,
+    const Face& f,
+    label elemId,
+    const label groupId
+)
+{
+    const label n = f.size();
+
+    if (n == 3)
+    {
+        os  << "CTRIA3" << ','
+            << (++elemId) << ','
+            << (groupId + 1) << ','
+            << (f[0] + 1) << ','
+            << (f[1] + 1) << ','
+            << (f[2] + 1) << nl;
+    }
+    else if (n == 4)
+    {
+        os  << "CQUAD4" << ','
+            << (++elemId) << ','
+            << (groupId + 1) << ','
+            << (f[0] + 1) << ','
+            << (f[1] + 1) << ','
+            << (f[2] + 1) << ','
+            << (f[3] + 1) << nl;
+    }
+    else
+    {
+        // simple triangulation about f[0].
+        // better triangulation should have been done before
+        for (label fp1 = 1; fp1 < f.size() - 1; ++fp1)
+        {
+            const label fp2 = f.fcIndex(fp1);
+
+            os  << "CTRIA3" << ','
+                << (++elemId) << ','
+                << (groupId + 1) << ','
+                << (f[0] + 1) << ','
+                << (f[fp1] + 1) << ','
+                << (f[fp2] + 1) << nl;
+        }
+    }
+
+    return elemId;
+}
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -47,125 +141,167 @@ bool Foam::fileFormats::NASsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
-    const bool mustTriangulate = this->isTri();
+    // Clear everything
     this->clear();
 
     IFstream is(filename);
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << filename
+            << "Cannot read file " << filename << nl
             << exit(FatalError);
     }
 
-    // Nastran index of points
-    DynamicList<label>  pointId;
+    DynamicList<label>  pointId;    // Nastran point id (1-based)
     DynamicList<point>  dynPoints;
+
+    DynamicList<label>  dynElemId;  // Nastran element id (1-based)
     DynamicList<Face>   dynFaces;
     DynamicList<label>  dynZones;
     DynamicList<label>  dynSizes;
-    Map<label>          lookup;
 
-    // assume the types are not intermixed
-    // leave faces that didn't have a group in 0
+    Map<label>          zoneLookup;
+
+    // Assume that the groups are not intermixed
+    label zoneId = 0;
     bool sorted = true;
-    label zoneI = 0;
 
-    // Name for face group
+    // Element id gets trashed with decompose into a triangle!
+    bool ignoreElemId = false;
+
+    // Name for face group (limited to PSHELL)
     Map<word> nameLookup;
 
-    // Ansa tags. Denoted by $ANSA_NAME.
-    // These will appear just before the first use of a type.
-    // We read them and store the PSHELL types which are used to name
-    // the zones.
-    label ansaId = -1;
-    word  ansaType, ansaName;
+    // A single warning per unrecognized command
+    wordHashSet unhandledCmd;
 
-    // A single warning per unrecognised command
-    HashSet<word> unhandledCmd;
+    // The line to parse
+    string line;
+
+    // The last comment line seen (immediately before a 'real' command)
+    string lastComment;
 
     while (is.good())
     {
-        string line;
+        // Parsing position within current line
+        std::string::size_type linei = 0;
         is.getLine(line);
 
-        // Ansa extension
-        if (line.substr(0, 10) == "$ANSA_NAME")
+        if (NASCore::debug > 1) Info<< "Process: " << line << nl;
+
+        // ANSA extension(s)
+        if (line.starts_with("$ANSA_NAME"))
         {
-            string::size_type sem0 = line.find (';', 0);
-            string::size_type sem1 = line.find (';', sem0+1);
-            string::size_type sem2 = line.find (';', sem1+1);
+            // Keep empty elements when splitting
+            const auto args =
+                stringOps::split<std::string>(line, ';', 0, true);
+
+            if (args.size() > 4 && line.starts_with("$ANSA_NAME_COMMENT"))
+            {
+                // This type of content
+                // $ANSA_NAME_COMMENT;93000;PSHELL;SLIP;;NO;NO;NO;NO;
+
+                label groupId = 0;
+
+                if (readLabel(args[1], groupId) && (args[2] == "PSHELL"))
+                {
+                    word groupName = word::validate(args[3]);
+
+                    if (!groupName.empty())
+                    {
+                        DebugInfo
+                            << "PSHELL:" << groupId
+                            << " = " << groupName << nl;
+
+                        nameLookup.emplace(groupId, std::move(groupName));
+                    }
+                }
+
+                // Handled (or ignored)
+                continue;
+            }
+            else if (args.size() >= 3 && (args[0] == "$ANSA_NAME"))
+            {
+                // This type of content
+
+                // line 1: $ANSA_NAME;<int>;PSHELL;~
+                // line 2: $some-part-name
+
+                label groupId = 0;
+
+                if (readLabel(args[1], groupId) && (args[2] == "PSHELL"))
+                {
+                    // Fetch the next line
+                    is.getLine(line);
+                    line.removeEnd('\r');  // Possible CR-NL
+
+                    word groupName;
+                    if (line.starts_with('$'))
+                    {
+                        groupName = word::validate(line.substr(1));
+                    }
+
+                    if (!groupName.empty())
+                    {
+                        DebugInfo
+                            << "PSHELL:" << groupId
+                            << " = " << groupName << nl;
+
+                        nameLookup.emplace(groupId, std::move(groupName));
+                    }
+                }
+            }
+
+            // Drop through in case the second line read was not a comment !
+        }
+        else if (line.starts_with("$HMNAME COMP"))
+        {
+            // HYPERMESH extension
+            // This type of content
+            // $HMNAME COMP                   1"partName"
+            // [NB: first entry is fixed record length of 32]
+
+            auto dquote = line.find('"', 12);  // Beyond '$HMNAME COMP'
+
+            label groupId = 0;
 
             if
             (
-                sem0 != string::npos
-             && sem1 != string::npos
-             && sem2 != string::npos
+                dquote != std::string::npos
+             && readLabel(line.substr(12, (dquote - 12)), groupId)
             )
             {
-                ansaId = readLabel
-                (
-                    IStringStream(line.substr(sem0+1, sem1-sem0-1))()
-                );
-                ansaType = line.substr(sem1+1, sem2-sem1-1);
+                // word::validate automatically removes quotes too
+                word groupName = word::validate(line.substr(dquote));
 
-                string rawName;
-                is.getLine(rawName);
-                if (rawName[rawName.size()-1] == '\r')
+                if (!groupName.empty())
                 {
-                    rawName = rawName.substr(1, rawName.size()-2);
-                }
-                else
-                {
-                    rawName = rawName.substr(1, rawName.size()-1);
-                }
+                    DebugInfo
+                        << "HMNAME group " << groupId
+                        << " => " << groupName << nl;
 
-                string::stripInvalid<word>(rawName);
-                ansaName = rawName;
-
-                // Info<< "ANSA tag for NastranID:" << ansaId
-                //     << " of type " << ansaType
-                //     << " name " << ansaName << endl;
+                    nameLookup.emplace(groupId, std::move(groupName));
+                }
             }
+
+            continue;  // Handled
         }
 
-
-        // Hypermesh extension
-        // $HMNAME COMP                   1"partName"
-        if
-        (
-            line.substr(0, 12) == "$HMNAME COMP"
-         && line.find ('"') != string::npos
-        )
+        if (line.empty())
         {
-            label groupId = readLabel
-            (
-                IStringStream(line.substr(16, 16))()
-            );
-
-            IStringStream lineStream(line.substr(32));
-
-            string rawName;
-            lineStream >> rawName;
-            string::stripInvalid<word>(rawName);
-
-            word groupName(rawName);
-            nameLookup.insert(groupId, groupName);
-
-            // Info<< "group " << groupId << " => " << groupName << endl;
+            continue;  // Ignore empty
         }
-
-
-        // Skip empty or comment
-        if (line.empty() || line[0] == '$')
+        else if (line[0] == '$')
         {
+            // Retain comment (see notes above about weird formats...)
+            lastComment = line;
             continue;
         }
 
         // Check if character 72 is continuation
         if (line.size() > 72 && line[72] == '+')
         {
-            line = line.substr(0, 72);
+            line.resize(72);
 
             while (true)
             {
@@ -178,105 +314,107 @@ bool Foam::fileFormats::NASsurfaceFormat<Face>::read
                 }
                 else
                 {
-                    line += buf.substr(8, buf.size()-8);
+                    line += buf.substr(8);
                     break;
                 }
             }
         }
 
-
-        // Read first word
-        IStringStream lineStream(line);
-        word cmd;
-        lineStream >> cmd;
+        // First word (column 0-8)
+        const word cmd(word::validate(nextNasField(line, linei, 8)));
 
         if (cmd == "CTRIA3")
         {
-            triFace fTri;
+            label elemId = readLabel(nextNasField(line, linei, 8)); // 8-16
+            label groupId = readLabel(nextNasField(line, linei, 8)); // 16-24
+            const auto a = readLabel(nextNasField(line, linei, 8)); // 24-32
+            const auto b = readLabel(nextNasField(line, linei, 8)); // 32-40
+            const auto c = readLabel(nextNasField(line, linei, 8)); // 40-48
 
-            label groupId = readLabel(IStringStream(line.substr(16,8))());
-            fTri[0] = readLabel(IStringStream(line.substr(24,8))());
-            fTri[1] = readLabel(IStringStream(line.substr(32,8))());
-            fTri[2] = readLabel(IStringStream(line.substr(40,8))());
-
-            // Convert groupID into zoneId
-            Map<label>::const_iterator fnd = lookup.find(groupId);
-            if (fnd != lookup.end())
+            // Convert groupId into zoneId
+            const auto iterZone = zoneLookup.cfind(groupId);
+            if (iterZone.good())
             {
-                if (zoneI != fnd())
+                if (zoneId != iterZone.val())
                 {
-                    // pshell types are intermixed
+                    // PSHELL types are intermixed
                     sorted = false;
                 }
-                zoneI = fnd();
+                zoneId = iterZone.val();
             }
             else
             {
-                zoneI = dynSizes.size();
-                lookup.insert(groupId, zoneI);
-                dynSizes.append(0);
-                // Info<< "zone" << zoneI << " => group " << groupId <<endl;
+                zoneId = dynSizes.size();
+                zoneLookup.insert(groupId, zoneId);
+                dynSizes.push_back(0);
+                // Info<< "zone" << zoneId << " => group " << groupId <<nl;
             }
 
-            dynFaces.append(fTri);
-            dynZones.append(zoneI);
-            dynSizes[zoneI]++;
+            --elemId;   // Convert 1-based -> 0-based
+            dynElemId.push_back(elemId);
+            dynFaces.push_back(Face{a, b, c});
+            dynZones.push_back(zoneId);
+            dynSizes[zoneId]++;
         }
         else if (cmd == "CQUAD4")
         {
-            face fQuad(4);
-            labelUList& f = static_cast<labelUList&>(fQuad);
+            label elemId = readLabel(nextNasField(line, linei, 8)); // 8-16
+            label groupId = readLabel(nextNasField(line, linei, 8)); // 16-24
+            const auto a = readLabel(nextNasField(line, linei, 8)); // 24-32
+            const auto b = readLabel(nextNasField(line, linei, 8)); // 32-40
+            const auto c = readLabel(nextNasField(line, linei, 8)); // 40-48
+            const auto d = readLabel(nextNasField(line, linei, 8)); // 48-56
 
-            label groupId = readLabel(IStringStream(line.substr(16,8))());
-            fQuad[0] = readLabel(IStringStream(line.substr(24,8))());
-            fQuad[1] = readLabel(IStringStream(line.substr(32,8))());
-            fQuad[2] = readLabel(IStringStream(line.substr(40,8))());
-            fQuad[3] = readLabel(IStringStream(line.substr(48,8))());
-
-            // Convert groupID into zoneId
-            Map<label>::const_iterator fnd = lookup.find(groupId);
-            if (fnd != lookup.end())
+            // Convert groupId into zoneId
+            const auto iterZone = zoneLookup.cfind(groupId);
+            if (iterZone.good())
             {
-                if (zoneI != fnd())
+                if (zoneId != iterZone.val())
                 {
-                    // pshell types are intermixed
+                    // PSHELL types are intermixed
                     sorted = false;
                 }
-                zoneI = fnd();
+                zoneId = iterZone.val();
             }
             else
             {
-                zoneI = dynSizes.size();
-                lookup.insert(groupId, zoneI);
-                dynSizes.append(0);
-                // Info<< "zone" << zoneI << " => group " << groupId <<endl;
+                zoneId = dynSizes.size();
+                zoneLookup.insert(groupId, zoneId);
+                dynSizes.push_back(0);
+                // Info<< "zone" << zoneId << " => group " << groupId <<nl;
             }
 
-
-            if (mustTriangulate)
+            if (faceTraits<Face>::isTri())
             {
-                dynFaces.append(triFace(f[0], f[1], f[2]));
-                dynFaces.append(triFace(f[0], f[2], f[3]));
-                dynZones.append(zoneI);
-                dynZones.append(zoneI);
-                dynSizes[zoneI] += 2;
+                ignoreElemId = true;
+                dynElemId.clear();
+
+                dynFaces.push_back(Face{a, b, c});
+                dynFaces.push_back(Face{c, d, a});
+                dynZones.push_back(zoneId);
+                dynZones.push_back(zoneId);
+                dynSizes[zoneId] += 2;
             }
             else
             {
-                dynFaces.append(Face(f));
-                dynZones.append(zoneI);
-                dynSizes[zoneI]++;
+                --elemId;   // Convert 1-based -> 0-based
+
+                dynElemId.push_back(elemId);
+                dynFaces.push_back(Face{a,b,c,d});
+                dynZones.push_back(zoneId);
+                dynSizes[zoneId]++;
             }
         }
         else if (cmd == "GRID")
         {
-            label index = readLabel(IStringStream(line.substr(8,8))());
-            scalar x = parseNASCoord(line.substr(24, 8));
-            scalar y = parseNASCoord(line.substr(32, 8));
-            scalar z = parseNASCoord(line.substr(40, 8));
+            label index = readLabel(nextNasField(line, linei, 8)); // 8-16
+            (void) nextNasField(line, linei, 8); // 16-24
+            scalar x = readNasScalar(nextNasField(line, linei, 8)); // 24-32
+            scalar y = readNasScalar(nextNasField(line, linei, 8)); // 32-40
+            scalar z = readNasScalar(nextNasField(line, linei, 8)); // 40-48
 
-            pointId.append(index);
-            dynPoints.append(point(x, y, z));
+            pointId.push_back(index);
+            dynPoints.emplace_back(x, y, z);
         }
         else if (cmd == "GRID*")
         {
@@ -286,10 +424,12 @@ bool Foam::fileFormats::NASsurfaceFormat<Face>::read
             // GRID*      126   0 -5.55999875E+02 -5.68730474E+02
             // *         2.14897901E+02
 
-            label index = readLabel(IStringStream(line.substr(8,16))());
-            scalar x = parseNASCoord(line.substr(40, 16));
-            scalar y = parseNASCoord(line.substr(56, 16));
+            label index = readLabel(nextNasField(line, linei, 16)); // 8-24
+            (void) nextNasField(line, linei, 16); // 24-40
+            scalar x = readNasScalar(nextNasField(line, linei, 16)); // 40-56
+            scalar y = readNasScalar(nextNasField(line, linei, 16)); // 56-72
 
+            linei = 0; // restart at index 0
             is.getLine(line);
             if (line[0] != '*')
             {
@@ -300,85 +440,220 @@ bool Foam::fileFormats::NASsurfaceFormat<Face>::read
                     << "File:" << is.name() << " line:" << is.lineNumber()
                     << exit(FatalError);
             }
-            scalar z = parseNASCoord(line.substr(8, 16));
+            (void) nextNasField(line, linei, 8); // 0-8
+            scalar z = readNasScalar(nextNasField(line, linei, 16)); // 8-16
 
-            pointId.append(index);
-            dynPoints.append(point(x, y, z));
+            pointId.push_back(index);
+            dynPoints.emplace_back(x, y, z);
         }
         else if (cmd == "PSHELL")
         {
-            // pshell type for zone names with the Ansa extension
-            label groupId = readLabel(IStringStream(line.substr(8,8))());
+            // The last ditch effort to map PSHELL id to a group name.
+            // If ANSA or HMNAME didn't work, it is still possible to
+            // have the 'weird' format where the immediately preceeding
+            // comment contains the information.
 
-            if (groupId == ansaId && ansaType == "PSHELL")
+            label groupId = readLabel(nextNasField(line, linei, 8)); // 8-16
+
+            if (lastComment.size() > 1 && !nameLookup.contains(groupId))
             {
-                nameLookup.insert(ansaId, ansaName);
-                // Info<< "group " << groupId << " => " << ansaName << endl;
+                word groupName = word::validate(lastComment.substr(1));
+
+                if (!groupName.empty())
+                {
+                    DebugInfo
+                        << "PSHELL:" << groupId
+                        << " = " << groupName << nl;
+
+                    nameLookup.emplace(groupId, std::move(groupName));
+                }
             }
         }
         else if (unhandledCmd.insert(cmd))
         {
-            Info<< "Unhandled Nastran command " << line << nl
+            InfoErr
+                << "Unhandled Nastran command " << line << nl
                 << "File:" << is.name() << " line:" << is.lineNumber()
-                << endl;
+                << nl;
         }
+
+        // Discard buffered comment (from weird format...)
+        lastComment.clear();
     }
+
 
     //    Info<< "Read faces:" << dynFaces.size()
     //        << " points:" << dynPoints.size()
     //        << endl;
 
-    // transfer to normal lists
+    if (ignoreElemId)
+    {
+        dynElemId.clear();
+    }
+
+    // Transfer to normal lists
     this->storedPoints().transfer(dynPoints);
 
-    pointId.shrink();
     dynFaces.shrink();
 
     // Build inverse mapping (NASTRAN pointId -> index)
-    Map<label> mapPointId(2*pointId.size());
-    forAll(pointId, i)
-    {
-        mapPointId.insert(pointId[i], i);
-    }
+    Map<label> mapPointId(invertToMap(pointId));
+    pointId.clearStorage();
 
     // Relabel faces
     // ~~~~~~~~~~~~~
-    forAll(dynFaces, i)
+    for (Face& f : dynFaces)
     {
-        Face& f = dynFaces[i];
-        forAll(f, fp)
+        for (label& vert : f)
         {
-            f[fp] = mapPointId[f[fp]];
+            vert = mapPointId[vert];
         }
     }
-    pointId.clearStorage();
     mapPointId.clear();
 
+    DebugInfo
+        << "PSHELL names:" << nameLookup << nl;
 
-    // create default zone names, or from ANSA/Hypermesh information
+    // Create default zone names, or from ANSA/Hypermesh information
     List<word> names(dynSizes.size());
-    forAllConstIter(Map<label>, lookup, iter)
+    forAllConstIters(zoneLookup, iter)
     {
-        const label zoneI  = iter();
-        const label groupI = iter.key();
+        const label groupId = iter.key();
+        const label zoneId  = iter.val();
 
-        Map<word>::const_iterator fnd = nameLookup.find(groupI);
-        if (fnd != nameLookup.end())
+        const auto iterName = nameLookup.cfind(groupId);
+        if (iterName.good())
         {
-            names[zoneI] = fnd();
+            names[zoneId] = iterName.val();
         }
         else
         {
-            names[zoneI] = word("zone") + ::Foam::name(zoneI);
+            names[zoneId] = surfZone::defaultName(zoneId);
         }
     }
 
-    this->sortFacesAndStore(move(dynFaces), move(dynZones), sorted);
+    this->sortFacesAndStore(dynFaces, dynZones, dynElemId, sorted);
 
-    // add zones, culling empty ones
-    this->addZones(dynSizes, names, true);
+    // Add zones (retaining empty ones)
+    this->addZones(dynSizes, names);
+    this->addZonesToFaces(); // for labelledTri
 
     return true;
+}
+
+
+template<class Face>
+void Foam::fileFormats::NASsurfaceFormat<Face>::write
+(
+    const fileName& filename,
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
+)
+{
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
+
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&  faceLst  = surf.surfFaces();
+    const UList<label>& faceMap  = surf.faceMap();
+    const UList<label>& elemIds  = surf.faceIds();
+
+    // for no zones, suppress the group name
+    const surfZoneList zones =
+    (
+        surf.surfZones().empty()
+      ? surfaceFormatsCore::oneZone(faceLst, "")
+      : surf.surfZones()
+    );
+
+    const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
+
+    // Possible to use faceIds?
+    // - cannot if there are negative ids (eg, encoded solid/side)
+    bool useOrigFaceIds =
+    (
+        !useFaceMap
+     && elemIds.size() == faceLst.size()
+     && !ListOps::found(elemIds, lessOp1<label>(0))
+    );
+
+    // Not possible with on-the-fly face decomposition
+    if (useOrigFaceIds)
+    {
+        for (const auto& f : faceLst)
+        {
+            if (f.size() > 4)
+            {
+                useOrigFaceIds = false;
+                break;
+            }
+        }
+    }
+
+
+    OFstream os(filename, streamOpt);
+    if (!os.good())
+    {
+        FatalErrorInFunction
+            << "Cannot write file " << filename << nl
+            << exit(FatalError);
+    }
+
+    // For simplicity, use fieldFormat::FREE throughout
+    fileFormats::NASCore::setPrecision(os, fieldFormat::FREE);
+
+    os  << "CEND" << nl
+        << "TITLE = " << os.name().stem() << nl;
+
+    // Print zone names as comment
+    forAll(zones, zonei)
+    {
+        // HYPERMESH extension
+        os  << "$HMNAME COMP" << setw(20) << (zonei+1)
+            << '"' << zones[zonei].name() << '"' << nl;
+    }
+
+    // Write vertex coords with 1-based point Id
+    os  << "$ GRID POINTS" << nl
+        << "BEGIN BULK" << nl;
+
+    label pointId = 0;
+    for (const point& pt : pointLst)
+    {
+        os  << "GRID" << ','
+            << ++pointId << ','
+            << 0 << ','  // global coordinate system
+            << pt.x() << ',' << pt.y() << ',' << pt.z() << nl;
+    }
+
+    os << "$ ELEMENTS" << nl;
+
+    label faceIndex = 0;
+    label zoneIndex = 0;
+    label elemId = 0;
+
+    for (const surfZone& zone : zones)
+    {
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
+        {
+            const label facei =
+                (useFaceMap ? faceMap[faceIndex] : faceIndex);
+
+            const Face& f = faceLst[facei];
+
+            if (useOrigFaceIds)
+            {
+                elemId = elemIds[facei];
+            }
+
+            elemId = writeShell(os, f, elemId, zoneIndex);
+        }
+
+        ++zoneIndex;
+    }
+
+    os << "ENDDATA" << nl;
 }
 
 

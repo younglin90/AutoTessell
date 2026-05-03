@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2014 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,7 +37,7 @@ Foam::IOobject Foam::IOporosityModelList::createIOobject
     const fvMesh& mesh
 ) const
 {
-    typeIOobject<IOdictionary> io
+    IOobject io
     (
         "porosityProperties",
         mesh.time().constant(),
@@ -43,22 +46,20 @@ Foam::IOobject Foam::IOporosityModelList::createIOobject
         IOobject::NO_WRITE
     );
 
-    if (io.headerOk())
+    if (io.typeHeaderOk<IOdictionary>(true))
     {
-        Info<< indentOrNl
-            << "Constructing porosity model list from " << io.name() << endl;
+        Info<< "Creating porosity model list from " << io.name() << nl << endl;
 
-        io.readOpt() = IOobject::MUST_READ_IF_MODIFIED;
-        return io;
+        io.readOpt(IOobject::MUST_READ_IF_MODIFIED);
     }
     else
     {
-        Info<< indentOrNl
-            << "No porosity models present" << endl;
+        Info<< "No porosity models present" << nl << endl;
 
-        io.readOpt() = IOobject::NO_READ;
-        return io;
+        io.readOpt(IOobject::NO_READ);
     }
+
+    return io;
 }
 
 
@@ -81,10 +82,8 @@ bool Foam::IOporosityModelList::read()
         porosityModelList::read(*this);
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

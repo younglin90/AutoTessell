@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,8 +49,8 @@ See also
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SpatialTensor_H
-#define SpatialTensor_H
+#ifndef Foam_SpatialTensor_H
+#define Foam_SpatialTensor_H
 
 #include "Tensor.H"
 #include "SpatialVector.H"
@@ -58,7 +61,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class SpatialTensor Declaration
+                         Class SpatialTensor Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -72,10 +75,10 @@ public:
     // Member constants
 
         //- Rank of Tensor is 2
-        static const direction rank = 2;
+        static constexpr direction rank = 2;
 
 
-    // Static Data Members
+    // Static data members
 
         //- Identity matrix for square matrices
         static const SpatialTensor I;
@@ -83,10 +86,10 @@ public:
 
     // Constructors
 
-        //- Construct null
-        inline SpatialTensor();
+        //- Default Construct
+        SpatialTensor() = default;
 
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline SpatialTensor(const Foam::zero);
 
         //- Construct given MatrixSpace of the same rank
@@ -122,8 +125,29 @@ public:
         );
 
         //- Construct from Istream
-        inline SpatialTensor(Istream&);
+        inline explicit SpatialTensor(Istream&);
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Data are contiguous if component type is contiguous
+template<class Cmpt>
+struct is_contiguous<SpatialTensor<Cmpt>> : is_contiguous<Cmpt> {};
+
+//- Data are contiguous label if component type is label
+template<class Cmpt>
+struct is_contiguous_label<SpatialTensor<Cmpt>>
+:
+    is_contiguous_label<Cmpt>
+{};
+
+//- Data are contiguous scalar if component type is scalar
+template<class Cmpt>
+struct is_contiguous_scalar<SpatialTensor<Cmpt>>
+:
+    is_contiguous_scalar<Cmpt>
+{};
 
 
 template<class Cmpt>
@@ -168,7 +192,6 @@ public:
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-// Include inline implementations
 #include "SpatialTensorI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

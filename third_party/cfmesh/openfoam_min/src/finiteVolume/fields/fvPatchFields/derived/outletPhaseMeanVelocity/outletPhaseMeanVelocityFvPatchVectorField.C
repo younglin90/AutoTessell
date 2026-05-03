@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,74 +29,89 @@ License
 #include "outletPhaseMeanVelocityFvPatchVectorField.H"
 #include "volFields.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "surfaceFields.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::outletPhaseMeanVelocityFvPatchVectorField::
-outletPhaseMeanVelocityFvPatchVectorField
+Foam::outletPhaseMeanVelocityFvPatchVectorField
+::outletPhaseMeanVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<vector, volMesh>& iF
 )
 :
-    mixedFvPatchField<vector>(p, iF, dict, false),
-    UnMean_
-    (
-        Function1<scalar>::New
-        (
-            "UnMean",
-            time().userUnits(),
-            dimVelocity,
-            dict
-        )
-    ),
-    alphaName_(dict.lookup("alpha"))
+    mixedFvPatchField<vector>(p, iF),
+    Umean_(0),
+    alphaName_("none")
 {
     refValue() = Zero;
     refGrad() = Zero;
     valueFraction() = 0.0;
-
-    if (dict.found("value"))
-    {
-        fvPatchVectorField::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        fvPatchVectorField::operator=(patchInternalField());
-    }
 }
 
 
-Foam::outletPhaseMeanVelocityFvPatchVectorField::
-outletPhaseMeanVelocityFvPatchVectorField
+Foam::outletPhaseMeanVelocityFvPatchVectorField
+::outletPhaseMeanVelocityFvPatchVectorField
 (
     const outletPhaseMeanVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     mixedFvPatchField<vector>(ptf, p, iF, mapper),
-    UnMean_(ptf.UnMean_, false),
+    Umean_(ptf.Umean_),
     alphaName_(ptf.alphaName_)
 {}
 
 
-Foam::outletPhaseMeanVelocityFvPatchVectorField::
-outletPhaseMeanVelocityFvPatchVectorField
+Foam::outletPhaseMeanVelocityFvPatchVectorField
+::outletPhaseMeanVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    mixedFvPatchField<vector>(p, iF),
+    Umean_(dict.get<scalar>("Umean")),
+    alphaName_(dict.lookup("alpha"))
+{
+    fvPatchFieldBase::readDict(dict);
+
+    refValue() = Zero;
+    refGrad() = Zero;
+    valueFraction() = 0;
+
+    if (!this->readValueEntry(dict))
+    {
+        this->extrapolateInternal();
+    }
+}
+
+
+Foam::outletPhaseMeanVelocityFvPatchVectorField
+::outletPhaseMeanVelocityFvPatchVectorField
+(
+    const outletPhaseMeanVelocityFvPatchVectorField& ptf
+)
+:
+    mixedFvPatchField<vector>(ptf),
+    Umean_(ptf.Umean_),
+    alphaName_(ptf.alphaName_)
+{}
+
+
+Foam::outletPhaseMeanVelocityFvPatchVectorField
+::outletPhaseMeanVelocityFvPatchVectorField
 (
     const outletPhaseMeanVelocityFvPatchVectorField& ptf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     mixedFvPatchField<vector>(ptf, iF),
-    UnMean_(ptf.UnMean_, false),
+    Umean_(ptf.Umean_),
     alphaName_(ptf.alphaName_)
 {}
 
@@ -107,8 +125,10 @@ void Foam::outletPhaseMeanVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    scalarField alphap =
-        patch().lookupPatchField<volScalarField, scalar>(alphaName_);
+    scalarField alphap
+    (
+        patch().lookupPatchField<volScalarField>(alphaName_)
+    );
 
     alphap = max(alphap, scalar(0));
     alphap = min(alphap, scalar(1));
@@ -116,23 +136,22 @@ void Foam::outletPhaseMeanVelocityFvPatchVectorField::updateCoeffs()
     // Get the patchInternalField (zero-gradient field)
     vectorField Uzg(patchInternalField());
 
-    // Calculate the phase mean zero-gradient normal velocity
-    const scalar UnzgMean =
+    // Calculate the phase mean zero-gradient velocity
+    scalar Uzgmean =
         gSum(alphap*(patch().Sf() & Uzg))
        /gSum(alphap*patch().magSf());
 
     // Set the refValue and valueFraction to adjust the boundary field
-    // such that the phase mean is UnMean_
-    const scalar UnMean = UnMean_->value(time().value());
-    if (UnzgMean >= UnMean)
+    // such that the phase mean is Umean_
+    if (Uzgmean >= Umean_)
     {
         refValue() = Zero;
-        valueFraction() = 1.0 - UnMean/UnzgMean;
+        valueFraction() = 1.0 - Umean_/Uzgmean;
     }
     else
     {
-        refValue() = (UnMean + UnzgMean)*patch().nf();
-        valueFraction() = 1.0 - UnzgMean/UnMean;
+        refValue() = (Umean_ + Uzgmean)*patch().nf();
+        valueFraction() = 1.0 - Uzgmean/Umean_;
     }
 
     mixedFvPatchField<vector>::updateCoeffs();
@@ -146,9 +165,9 @@ void Foam::outletPhaseMeanVelocityFvPatchVectorField::write
 {
     fvPatchField<vector>::write(os);
 
-    writeEntry(os, time().userUnits(), dimVelocity, UnMean_());
-    writeEntry(os, "alpha", alphaName_);
-    writeEntry(os, "value", *this);
+    os.writeEntry("Umean", Umean_);
+    os.writeEntry("alpha", alphaName_);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

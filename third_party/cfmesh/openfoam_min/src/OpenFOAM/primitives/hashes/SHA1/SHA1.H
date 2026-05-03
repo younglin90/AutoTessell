@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,28 +42,17 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SHA1_H
-#define SHA1_H
+#ifndef Foam_SHA1_H
+#define Foam_SHA1_H
 
 #include <string>
-#include <cstddef>
-
-#include "int.H"
+#include <cstdint>
 #include "SHA1Digest.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-// Forward declaration of classes
-class Ostream;
-
-// Forward declaration of friend functions and operators
-class SHA1;
-class SHA1Digest;
-Ostream& operator<<(Ostream&, const SHA1&);
-
 
 /*---------------------------------------------------------------------------*\
                             Class SHA1 Declaration
@@ -70,8 +62,8 @@ class SHA1
 {
     // Private Data
 
-        //- Track if the hashsum has been finalised (added count, etc)
-        bool finalised_;
+        //- Track if the hashsum has been finalized (added count, etc)
+        bool finalized_;
 
         //- The hash sums
         uint32_t hashsumA_;
@@ -89,15 +81,8 @@ class SHA1
         //- The input processing buffer
         uint32_t buffer_[32];
 
+
     // Private Member Functions
-
-        //- Swap bytes from internal to network (big-endian) order
-        static inline uint32_t swapBytes(uint32_t);
-
-        //- Copy the 4-byte value into the memory location pointed to by *dst.
-        //  If the architecture allows unaligned access this is equivalent to
-        //  *(uint32_t *) cp = val
-        static inline void set_uint32(unsigned char *cp, uint32_t);
 
         //- Process data block-wise, LEN must be a multiple of 64!
         void processBlock(const void *data, size_t len);
@@ -105,51 +90,74 @@ class SHA1
         //- Process for the next LEN bytes, LEN need not be a multiple of 64.
         void processBytes(const void *data, size_t len);
 
-        //- Calculate current digest from appended data.
-        void calcDigest(SHA1Digest&) const;
+        //- Calculate digest from current data.
+        void calcDigest(SHA1Digest& dig) const;
+
 
 public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline SHA1();
 
-        //- Construct null and append initial std::string
-        explicit inline SHA1(const std::string&);
+        //- Default construct and append initial string content
+        inline explicit SHA1(const char* str);
 
-        //- Construct null and append initial string
-        explicit inline SHA1(const char*);
+        //- Default construct and append initial string content
+        inline explicit SHA1(const std::string& str);
+
 
     // Member Functions
 
         //- Reset the hashed data before appending more
-        void clear();
+        void clear() noexcept;
+
+        //- Append single character
+        inline void append(char c);
+
+        //- Append string for processing
+        inline void append(const char* str);
 
         //- Append data for processing
-        inline SHA1& append(const char* data, size_t len);
+        inline void append(const char* data, size_t len);
 
         //- Append string for processing
-        inline SHA1& append(const std::string&);
+        inline void append(const std::string& str);
 
-        //- Append string for processing
-        inline SHA1& append(const char* str);
+        //- Append substring for processing
+        inline void append
+        (
+            const std::string& str,
+            size_t pos,
+            size_t len = std::string::npos
+        );
 
-        //- Finalised the calculations (normally not needed directly).
+        //- Finalized the calculations (normally not needed directly).
         //  Returns false if no bytes were passed for processing
-        bool finalise();
+        bool finalize();
 
-        //- Calculate current digest from appended data.
-        SHA1Digest digest() const;
+        //- Calculate digest from current data.
+        inline SHA1Digest digest() const;
+
+        //- The digest (40-byte) text representation, optionally with '_' prefix
+        inline std::string str(const bool prefixed=false) const;
+
+        //- Write digest (40-byte) representation, optionally with '_' prefix
+        inline Ostream& write(Ostream& os, const bool prefixed=false) const;
 
 
     // Member Operators
 
+        //- Cast conversion to a SHA1Digest,
+        //  calculates the %digest from the current data
+        inline operator SHA1Digest() const;
+
         //- Equality operator, compares %digests
-        inline bool operator==(const SHA1&) const;
+        inline bool operator==(const SHA1& rhs) const;
 
         //- Compare %digest
-        inline bool operator==(const SHA1Digest&) const;
+        inline bool operator==(const SHA1Digest& dig) const;
 
         //- Compare %digest to (40-byte) text representation (eg, from sha1sum)
         //  An %empty string is equivalent to
@@ -160,7 +168,6 @@ public:
         //  A %null or %empty string is equivalent to
         //  "0000000000000000000000000000000000000000"
         inline bool operator==(const char* hexdigits) const;
-
 
         //- Inequality operator, compares %digests
         inline bool operator!=(const SHA1&) const;
@@ -173,19 +180,13 @@ public:
 
         //- Inequality operator, compare %digest
         inline bool operator!=(const char* hexdigits) const;
-
-
-        //- Convert to a SHA1Digest,
-        //  calculate current %digest from appended data
-        inline operator SHA1Digest() const;
-
-
-    // Friend Operators
-
-        //- Output the %digest
-        inline friend Ostream& operator<<(Ostream&, const SHA1&);
-
 };
+
+
+// IOstream Operators
+
+//- Output the %digest
+inline Ostream& operator<<(Ostream& os, const SHA1& sha);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

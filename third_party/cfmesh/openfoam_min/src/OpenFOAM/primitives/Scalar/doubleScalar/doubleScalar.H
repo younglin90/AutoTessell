@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,114 +28,55 @@ Typedef
     Foam::doubleScalar
 
 Description
-    Double precision floating point scalar type.
+    Floating-point double precision scalar type.
 
 SourceFiles
     doubleScalar.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef doubleScalar_H
-#define doubleScalar_H
+#ifndef Foam_primitives_double_H
+#define Foam_primitives_double_H
 
+#include "scalarFwd.H"
 #include "doubleFloat.H"
 #include "direction.H"
+#include "pTraits.H"
 #include "word.H"
 
-#include <limits>
-using std::numeric_limits;
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Typedef (doubleScalar) in scalarFwd.H
 
 namespace Foam
 {
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-typedef double doubleScalar;
-
 // Largest and smallest scalar values allowed in certain parts of the code.
-static const doubleScalar doubleScalarVGreat
-    = numeric_limits<doubleScalar>::max()/10;
-static const doubleScalar doubleScalarVSmall
-    = numeric_limits<doubleScalar>::min();
+// See std::numeric_limits max(), min(), epsilon()
+constexpr doubleScalar doubleScalarGREAT = 1.0e+15;
+constexpr doubleScalar doubleScalarROOTGREAT = 3.0e+8;
+constexpr doubleScalar doubleScalarVGREAT = 1.0e+300;
+constexpr doubleScalar doubleScalarROOTVGREAT = 1.0e+150;
+constexpr doubleScalar doubleScalarSMALL = 1.0e-15;
+constexpr doubleScalar doubleScalarROOTSMALL = 3.0e-8;
+constexpr doubleScalar doubleScalarVSMALL = 1.0e-300;
+constexpr doubleScalar doubleScalarROOTVSMALL = 1.0e-150;
 
-static const doubleScalar doubleScalarSmall
-    = numeric_limits<doubleScalar>::epsilon();
-static const doubleScalar doubleScalarGreat
-    = 1.0/doubleScalarSmall;
-
-static const doubleScalar doubleScalarRootVGreat = ::sqrt(doubleScalarVGreat);
-static const doubleScalar doubleScalarRootVSmall = ::sqrt(doubleScalarVSmall);
-
-static const doubleScalar doubleScalarRootGreat = ::sqrt(doubleScalarGreat);
-static const doubleScalar doubleScalarRootSmall = ::sqrt(doubleScalarSmall);
-
-static const doubleScalar doubleScalarNaN
-    = numeric_limits<doubleScalar>::signaling_NaN();
-
-//- Read whole of buf as a scalar. Return true if successful.
-inline bool readScalar(const char* buf, doubleScalar& s)
-{
-    char* endPtr;
-    s = strtod(buf, &endPtr);
-
-    return (*endPtr == '\0');
-}
 
 #define Scalar doubleScalar
-#define ScalarVGreat doubleScalarVGreat
-#define ScalarVSmall doubleScalarVSmall
-#define ScalarRootVGreat doubleScalarRootVGreat
-#define ScalarRootVSmall doubleScalarRootVSmall
-#define ScalarNaN doubleScalarNaN
-#define readScalar readDoubleScalar
+#define ScalarVGREAT doubleScalarVGREAT
+#define ScalarVSMALL doubleScalarVSMALL
+#define ScalarROOTVGREAT doubleScalarROOTVGREAT
+#define ScalarROOTVSMALL doubleScalarROOTVSMALL
+#define ScalarRead readDouble
+
 
 inline Scalar mag(const Scalar s)
 {
     return ::fabs(s);
 }
-
-
-#define MAXMINPOW(retType, type1, type2)          \
-                                                  \
-MAXMIN(retType, type1, type2)                     \
-                                                  \
-inline double pow(const type1 s, const type2 e)   \
-{                                                 \
-    return ::pow(Scalar(s), Scalar(e));           \
-}
-
-MAXMINPOW(Scalar, Scalar, Scalar)
-MAXMINPOW(Scalar, Scalar, int)
-MAXMINPOW(Scalar, int, Scalar)
-MAXMINPOW(Scalar, Scalar, long)
-MAXMINPOW(Scalar, long, Scalar)
-MAXMINPOW(Scalar, Scalar, float)
-MAXMINPOW(Scalar, float, Scalar)
-
-#undef MAXMINPOW
-
-#define transFunc(func)            \
-inline Scalar func(const Scalar s) \
-{                                  \
-    return ::func(s);              \
-}
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "Scalar.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 inline Scalar hypot(const Scalar x, const Scalar y)
 {
@@ -144,29 +88,74 @@ inline Scalar atan2(const Scalar y, const Scalar x)
     return ::atan2(y, x);
 }
 
-inline Scalar jn(const int n, const Scalar s)
-{
-    return ::jn(n, s);
+
+// Normal (double-precision) transcendental functions
+#define transFunc(func)                                         \
+inline Scalar func(const Scalar s)                              \
+{                                                               \
+    return ::func(s);                                           \
 }
 
-inline Scalar yn(const int n, const Scalar s)
-{
-    return ::yn(n, s);
-}
-
-#undef Scalar
-#undef ScalarVGreat
-#undef ScalarVSmall
-#undef ScalarRootVGreat
-#undef ScalarRootVSmall
-#undef ScalarNaN
-#undef readScalar
-#undef transFunc
+// Normal (double-precision) bessel functions.
+// May not be available on all systems
+#ifdef Foam_no_besselFunc
+    // Not available
+    #define besselFunc(func)                                    \
+    inline Scalar func(const Scalar s)                          \
+    {                                                           \
+        std::cerr<< "No '" << #func << "' function\n";          \
+        return 0;                                               \
+    }
+    #define besselFunc2(func)                                   \
+    inline Scalar func(const int n, const Scalar s)             \
+    {                                                           \
+        std::cerr<< "No '" << #func << "' function\n";          \
+        return 0;                                               \
+    }
+#elif defined(__MINGW32__)
+    // Mingw: with '_' prefix
+    #define besselFunc(func)                                    \
+    inline Scalar func(const Scalar s)                          \
+    {                                                           \
+        return _##func(s);                                      \
+    }
+    #define besselFunc2(func)                                   \
+    inline Scalar func(const int n, const Scalar s)             \
+    {                                                           \
+        return _##func(n, s);                                   \
+    }
+#else
+    #define besselFunc(func)                                    \
+    inline Scalar func(const Scalar s)                          \
+    {                                                           \
+        return ::func(s);                                       \
+    }
+    #define besselFunc2(func)                                   \
+    inline Scalar func(const int n, const Scalar s)             \
+    {                                                           \
+        return ::func(n, s);                                    \
+    }
+#endif
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "Scalar.H"
+
+#undef Scalar
+#undef ScalarVGREAT
+#undef ScalarVSMALL
+#undef ScalarROOTVGREAT
+#undef ScalarROOTVSMALL
+#undef ScalarRead
+#undef transFunc
+#undef besselFunc
+#undef besselFunc2
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

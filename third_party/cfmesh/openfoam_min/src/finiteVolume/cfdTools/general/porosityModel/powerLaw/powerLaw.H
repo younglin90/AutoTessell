@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,8 +46,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef powerLaw_H
-#define powerLaw_H
+#ifndef Foam_porosityModels_powerLaw_H
+#define Foam_porosityModels_powerLaw_H
 
 #include "porosityModel.H"
 
@@ -56,7 +59,7 @@ namespace porosityModels
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class powerLaw Declaration
+                      Class powerLaw Declaration
 \*---------------------------------------------------------------------------*/
 
 class powerLaw
@@ -96,29 +99,30 @@ class powerLaw
             const vectorField& U
         ) const;
 
+        //- No copy construct
+        powerLaw(const powerLaw&) = delete;
+
+        //- No copy assignment
+        void operator=(const powerLaw&) = delete;
+
 
 public:
 
     //- Runtime type information
     TypeName("powerLaw");
 
-    // Constructors
-
-        powerLaw
-        (
-            const word& name,
-            const fvMesh& mesh,
-            const dictionary& dict,
-            const dictionary& coeffDict,
-            const word& cellZoneName
-        );
-
-        //- Disallow default bitwise copy construction
-        powerLaw(const powerLaw&) = delete;
-
+    //- Constructor
+    powerLaw
+    (
+        const word& name,
+        const word& modelType,
+        const fvMesh& mesh,
+        const dictionary& dict,
+        const wordRe& cellZoneName
+    );
 
     //- Destructor
-    virtual ~powerLaw();
+    virtual ~powerLaw() = default;
 
 
     // Member Functions
@@ -141,17 +145,24 @@ public:
         //- Add resistance
         virtual void correct
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        ) const;
+
+        //- Add resistance
+        virtual void correct
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU
         ) const;
 
 
-    // Member Operators
+    // I-O
 
-        //- Disallow default bitwise assignment
-        void operator=(const powerLaw&) = delete;
+        //- Write
+        bool writeData(Ostream& os) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

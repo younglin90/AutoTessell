@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,22 +38,41 @@ Foam::fixedNormalInletOutletVelocityFvPatchVectorField::
 fixedNormalInletOutletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    directionMixedFvPatchVectorField(p, iF),
+    phiName_("phi"),
+    fixTangentialInflow_(true),
+    normalVelocity_
+    (
+        fvPatchVectorField::New("fixedValue", p, iF)
+    )
+{
+    refValue() = Zero;
+    refGrad() = Zero;
+    valueFraction() = Zero;
+}
+
+
+Foam::fixedNormalInletOutletVelocityFvPatchVectorField::
+fixedNormalInletOutletVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
     directionMixedFvPatchVectorField(p, iF),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
     fixTangentialInflow_(dict.lookup("fixTangentialInflow")),
     normalVelocity_
     (
         fvPatchVectorField::New(p, iF, dict.subDict("normalVelocity"))
     )
 {
-    fvPatchVectorField::operator=
-    (
-        vectorField("value", iF.dimensions(), dict, p.size())
-    );
+    fvPatchFieldBase::readDict(dict);
+    this->readValueEntry(dict, IOobjectOption::MUST_READ);
     refValue() = normalVelocity();
     refGrad() = Zero;
     valueFraction() = Zero;
@@ -62,8 +84,8 @@ fixedNormalInletOutletVelocityFvPatchVectorField
 (
     const fixedNormalInletOutletVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     directionMixedFvPatchVectorField(ptf, p, iF, mapper),
@@ -79,45 +101,54 @@ fixedNormalInletOutletVelocityFvPatchVectorField
 Foam::fixedNormalInletOutletVelocityFvPatchVectorField::
 fixedNormalInletOutletVelocityFvPatchVectorField
 (
+    const fixedNormalInletOutletVelocityFvPatchVectorField& pivpvf
+)
+:
+    directionMixedFvPatchVectorField(pivpvf),
+    phiName_(pivpvf.phiName_),
+    fixTangentialInflow_(pivpvf.fixTangentialInflow_),
+    normalVelocity_(pivpvf.normalVelocity().clone())
+{}
+
+
+Foam::fixedNormalInletOutletVelocityFvPatchVectorField::
+fixedNormalInletOutletVelocityFvPatchVectorField
+(
     const fixedNormalInletOutletVelocityFvPatchVectorField& pivpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     directionMixedFvPatchVectorField(pivpvf, iF),
     phiName_(pivpvf.phiName_),
     fixTangentialInflow_(pivpvf.fixTangentialInflow_),
-    normalVelocity_(pivpvf.normalVelocity().clone(iF))
+    normalVelocity_(pivpvf.normalVelocity().clone())
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::map
+void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::autoMap
 (
-    const fvPatchVectorField& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& m
 )
 {
-    directionMixedFvPatchVectorField::map(ptf, mapper);
-
-    const fixedNormalInletOutletVelocityFvPatchVectorField& fniovptf =
-        refCast<const fixedNormalInletOutletVelocityFvPatchVectorField>(ptf);
-
-    mapper(normalVelocity_.ref(), fniovptf.normalVelocity());
+    directionMixedFvPatchVectorField::autoMap(m);
+    normalVelocity_->autoMap(m);
 }
 
 
-void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::reset
+void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::rmap
 (
-    const fvPatchVectorField& ptf
+    const fvPatchVectorField& ptf,
+    const labelList& addr
 )
 {
-    directionMixedFvPatchVectorField::reset(ptf);
+    directionMixedFvPatchVectorField::rmap(ptf, addr);
 
     const fixedNormalInletOutletVelocityFvPatchVectorField& fniovptf =
         refCast<const fixedNormalInletOutletVelocityFvPatchVectorField>(ptf);
 
-    normalVelocity_->reset(fniovptf.normalVelocity());
+    normalVelocity_->rmap(fniovptf.normalVelocity(), addr);
 }
 
 
@@ -135,8 +166,8 @@ void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::updateCoeffs()
 
     if (fixTangentialInflow_)
     {
-        const fvsPatchField<scalar>& phip =
-            patch().lookupPatchField<surfaceScalarField, scalar>(phiName_);
+        const auto& phip =
+            patch().lookupPatchField<surfaceScalarField>(phiName_);
 
         valueFraction() += neg(phip)*(I - valueFraction());
     }
@@ -152,14 +183,15 @@ void Foam::fixedNormalInletOutletVelocityFvPatchVectorField::write
 )
 const
 {
-    fvPatchVectorField::write(os);
-    writeEntryIfDifferent<word>(os, "phi", "phi", phiName_);
-    writeEntry(os, "fixTangentialInflow", fixTangentialInflow_);
-    writeKeyword(os, "normalVelocity")
-        << nl << indent << token::BEGIN_BLOCK << nl << incrIndent;
+    fvPatchField<vector>::write(os);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    os.writeEntry("fixTangentialInflow", fixTangentialInflow_);
+
+    os.beginBlock("normalVelocity");
     normalVelocity_->write(os);
-    os << decrIndent << indent << token::END_BLOCK << endl;
-    writeEntry(os, "value", *this);
+    os.endBlock();
+
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

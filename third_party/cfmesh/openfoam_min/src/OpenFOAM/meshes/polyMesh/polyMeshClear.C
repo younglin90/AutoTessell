@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,10 @@ License
 #include "polyMesh.H"
 #include "primitiveMesh.H"
 #include "globalMeshData.H"
-#include "meshObjects.H"
+#include "MeshObject.H"
+#include "indexedOctree.H"
+#include "treeDataCell.H"
+#include "pointMesh.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -34,9 +40,7 @@ void Foam::polyMesh::removeBoundary()
 {
     DebugInFunction << "Removing boundary patches." << endl;
 
-    // Remove the point zones
     boundary_.clear();
-    boundary_.setSize(0);
 
     clearOut();
 }
@@ -44,25 +48,13 @@ void Foam::polyMesh::removeBoundary()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::polyMesh::printAllocated() const
-{
-    primitiveMesh::printAllocated();
-
-    Pout<< "polyMesh allocated :" << endl;
-
-    if (tetBasePtIsPtr_.valid())
-    {
-        Pout<< "    Tet base points" << endl;
-    }
-}
-
-
 void Foam::polyMesh::clearGeom()
 {
     DebugInFunction << "Clearing geometric data" << endl;
 
     // Clear all geometric mesh objects
-    meshObjects::clear<polyMesh, DeletableMeshObject>(*this);
+    meshObject::clear<pointMesh, GeometricMeshObject>(*this);
+    meshObject::clear<polyMesh, GeometricMeshObject>(*this);
 
     primitiveMesh::clearGeom();
 
@@ -71,16 +63,129 @@ void Foam::polyMesh::clearGeom()
     // Reset valid directions (could change with rotation)
     geometricD_ = Zero;
     solutionD_ = Zero;
+
+    // Remove the cell tree
+    cellTreePtr_.reset(nullptr);
 }
 
 
-void Foam::polyMesh::clearAddressing()
+void Foam::polyMesh::updateGeomPoints
+(
+    pointIOField&& newPoints,
+    autoPtr<labelIOList>& newTetBasePtIsPtr
+)
 {
+    DebugInFunction
+        << "Updating geometric data with newPoints:"
+        << newPoints.size() << " newTetBasePtIs:"
+        << bool(newTetBasePtIsPtr) << endl;
+
+    if (points_.size() != 0 && points_.size() != newPoints.size())
+    {
+        FatalErrorInFunction
+            << "Point motion detected but number of points "
+            << newPoints.size() << " in "
+            << newPoints.objectPath() << " does not correspond to "
+            << " current " << points_.size()
+            << exit(FatalError);
+    }
+
+    // Clear all geometric mesh objects that are not 'movable'
+    meshObject::clearUpto
+    <
+        pointMesh,
+        TopologicalMeshObject,
+        MoveableMeshObject
+    >
+    (
+        *this
+    );
+    meshObject::clearUpto
+    <
+        polyMesh,
+        TopologicalMeshObject,
+        MoveableMeshObject
+    >
+    (
+        *this
+    );
+
+    primitiveMesh::clearGeom();
+
+    boundary_.clearGeom();
+
+    // Reset valid directions (could change with rotation)
+    geometricD_ = Zero;
+    solutionD_ = Zero;
+
+    // Remove the cell tree
+    cellTreePtr_.reset(nullptr);
+
+    // Update local data
+    points_.instance() = newPoints.instance();
+    points_.transfer(newPoints);
+
+    // Optional new tet base points
+    if (newTetBasePtIsPtr)
+    {
+        tetBasePtIsPtr_ = std::move(newTetBasePtIsPtr);
+    }
+
+    // Calculate the geometry for the patches (transformation tensors etc.)
+    boundary_.calcGeometry();
+
+    // Derived info
+    bounds_ = boundBox(points_);
+
+    // Rotation can cause direction vector to change
+    geometricD_ = Zero;
+    solutionD_ = Zero;
+
+    // Update all 'movable' objects
+    meshObject::movePoints<polyMesh>(*this);
+    meshObject::movePoints<pointMesh>(*this);
+}
+
+
+void Foam::polyMesh::clearAddressing(const bool isMeshUpdate)
+{
+    DebugInFunction
+        << "isMeshUpdate:" << isMeshUpdate << endl;
+
+    if (isMeshUpdate)
+    {
+        // Part of a mesh update.
+        // Keep meshObjects that have an updateMesh callback
+        meshObject::clearUpto
+        <
+            pointMesh,
+            TopologicalMeshObject,
+            UpdateableMeshObject
+        >
+        (
+            *this
+        );
+        meshObject::clearUpto
+        <
+            polyMesh,
+            TopologicalMeshObject,
+            UpdateableMeshObject
+        >
+        (
+            *this
+        );
+    }
+    else
+    {
+        meshObject::clear<pointMesh, TopologicalMeshObject>(*this);
+        meshObject::clear<polyMesh, TopologicalMeshObject>(*this);
+    }
+
     primitiveMesh::clearAddressing();
 
     // parallelData depends on the processorPatch ordering so force
     // recalculation
-    globalMeshDataPtr_.clear();
+    globalMeshDataPtr_.reset(nullptr);
 
     // Reset valid directions
     geometricD_ = Zero;
@@ -92,15 +197,30 @@ void Foam::polyMesh::clearAddressing()
     cellZones_.clearAddressing();
 
     // Remove the stored tet base points
-    tetBasePtIsPtr_.clear();
+    tetBasePtIsPtr_.reset(nullptr);
+
+    // Remove the cell tree
+    cellTreePtr_.reset(nullptr);
 }
 
 
-void Foam::polyMesh::clearOut()
+void Foam::polyMesh::clearPrimitives()
 {
-    meshObjects::clear<polyMesh, DeletableMeshObject>(*this);
-    clearGeom();
-    clearAddressing();
+    resetMotion();
+
+    points_.clear();
+    faces_.clear();
+    owner_.clear();
+    neighbour_.clear();
+
+    clearedPrimitives_ = true;
+}
+
+
+void Foam::polyMesh::clearOut(const bool isMeshUpdate)
+{
+    clearGeom();  // not implementable?  isMeshUpdate
+    clearAddressing(isMeshUpdate);
 }
 
 
@@ -108,7 +228,15 @@ void Foam::polyMesh::clearTetBasePtIs()
 {
     DebugInFunction << "Clearing tet base points" << endl;
 
-    tetBasePtIsPtr_.clear();
+    tetBasePtIsPtr_.reset(nullptr);
+}
+
+
+void Foam::polyMesh::clearCellTree()
+{
+    DebugInFunction << endl;
+
+    cellTreePtr_.reset(nullptr);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,63 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Time.H"
-#include "timeIOdictionary.H"
-#include "OSspecific.H"
+#include "argList.H"
+#include "Pstream.H"
+#include "simpleObjectRegistry.H"
+#include "dimensionedConstants.H"
+#include "profiling.H"
+#include "IOdictionary.H"
+#include "fileOperation.H"
+#include "fstreamPointer.H"
+
+#include <iomanip>
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Output seconds as day-hh:mm:ss
+static std::ostream& printTimeHMS(std::ostream& os, double seconds)
+{
+    const unsigned long ss = seconds;
+
+    // days
+    const auto dd = (ss / 86400);
+
+    if (dd) os << dd << '-';
+
+    // hours
+    const int hh = ((ss / 3600) % 24);
+
+    if (dd || hh)
+    {
+        os  << std::setw(2) << std::setfill('0')
+            << hh << ':';
+    }
+
+    // minutes
+    os  << std::setw(2) << std::setfill('0')
+        << ((ss / 60) % 60) << ':';
+
+    // seconds
+    os  << std::setw(2) << std::setfill('0')
+        << (ss % 60);
+
+
+    // 1/100th seconds. As none or 2 decimal places
+    const int hundredths = int(100 * (seconds - ss)) % 100;
+
+    if (hundredths)
+    {
+        os  << '.' << std::setw(2) << std::setfill('0') << hundredths;
+    }
+
+    return os;
+}
+
+} // End namespace Foam
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -38,38 +96,228 @@ void Foam::Time::readDict()
         setEnv("FOAM_APPLICATION", application, false);
     }
 
-    if (!deltaTchanged_)
-    {
-        deltaT_ = controlDict_.lookup<scalar>("deltaT", userUnits());
-    }
+    // Check for local switches and settings
 
-    if (controlDict_.found("writeControl"))
-    {
-        writeControl_ = writeControlNames.read
-        (
-            controlDict_.lookup("writeControl")
-        );
-    }
+    const dictionary* localDict = nullptr;
 
-    const scalar newWriteInterval =
-        controlDict_.lookupBackwardsCompatible<scalar>
-        (
-            {"writeInterval", "writeFrequency"},
-            writeIntervalUnits()
-        );
-
+    // DebugSwitches
     if
     (
-        writeControl_ == writeControl::timeStep
-     && label(newWriteInterval) < 1
+        (localDict = controlDict_.findDict("DebugSwitches")) != nullptr
+     && localDict->size()
     )
     {
-        FatalIOErrorInFunction(controlDict_)
-            << "writeInterval < 1 for writeControl timeStep"
-            << exit(FatalIOError);
+        DetailInfo
+            << "Overriding DebugSwitches according to "
+            << controlDict_.name() << nl;
+
+        debug::debugObjects().setValues(*localDict, true);
     }
 
-    setWriteInterval(newWriteInterval);
+
+    // InfoSwitches
+    if
+    (
+        (localDict = controlDict_.findDict("InfoSwitches")) != nullptr
+     && localDict->size()
+    )
+    {
+        DetailInfo
+            << "Overriding InfoSwitches according to "
+            << controlDict_.name() << nl;
+
+        debug::infoObjects().setValues(*localDict, true);
+    }
+
+    // OptimisationSwitches
+    if
+    (
+        (localDict = controlDict_.findDict("OptimisationSwitches")) != nullptr
+     && localDict->size()
+    )
+    {
+        DetailInfo
+            << "Overriding OptimisationSwitches according to "
+            << controlDict_.name() << nl;
+
+        debug::optimisationObjects().setValues(*localDict, true);
+    }
+
+
+    // Handle fileHandler explicitly since it affects local dictionary
+    // monitoring.
+    word fileHandlerName;
+    if
+    (
+        localDict
+     && localDict->readIfPresent("fileHandler", fileHandlerName)
+     && fileHandler().type() != fileHandlerName
+    )
+    {
+        DetailInfo << "Overriding fileHandler to " << fileHandlerName << nl;
+
+        // Remove old watches since destroying the file
+        fileNameList oldWatched(controlDict_.watchIndices().size());
+        forAllReverse(controlDict_.watchIndices(), i)
+        {
+            const label watchi = controlDict_.watchIndices()[i];
+            oldWatched[i] = fileHandler().getFile(watchi);
+            fileHandler().removeWatch(watchi);
+        }
+        controlDict_.watchIndices().clear();
+
+        // Reporting verbosity corresponding to detail level
+        const bool verbose = (::Foam::infoDetailLevel > 0);
+
+        // The new handler
+        refPtr<fileOperation> newHandler
+        (
+            fileOperation::New(fileHandlerName, verbose)
+        );
+
+        // Install the new handler
+        (void) fileOperation::fileHandler(newHandler);
+
+        if (TimePaths::distributed())
+        {
+            newHandler->distributed(true);
+        }
+
+        // Reinstall old watches
+        fileHandler().addWatches(controlDict_, oldWatched);
+    }
+
+
+    // DimensionedConstants.
+    // - special case since it may change both the 'unitSet' and the
+    //   individual values
+    if
+    (
+
+        (localDict = controlDict_.findDict("DimensionedConstants")) != nullptr
+     && localDict->size()
+    )
+    {
+        DetailInfo
+            << "Overriding DimensionedConstants according to "
+            << controlDict_.name() << nl;
+
+        simpleObjectRegistry& objs = debug::dimensionedConstantObjects();
+
+        // Change in-memory
+        dimensionedConstants().merge(*localDict);
+
+        ISpanStream dummyIs;
+
+        // Reporting verbosity corresponding to detail level
+        const bool verbose = (::Foam::infoDetailLevel > 0);
+
+        forAllConstIters(objs, iter)
+        {
+            const List<simpleRegIOobject*>& objects = *iter;
+
+            for (simpleRegIOobject* obj : objects)
+            {
+                obj->readData(dummyIs);
+
+                if (verbose)
+                {
+                    Info<< "    ";
+                    obj->writeData(Info);
+                    Info<< nl;
+                }
+            }
+        }
+    }
+
+
+    // DimensionSets
+    if
+    (
+        (localDict = controlDict_.findDict("DimensionSets")) != nullptr
+        && localDict->size()
+    )
+    {
+        DetailInfo
+            << "Overriding DimensionSets according to "
+            << controlDict_.name() << nl;
+
+        simpleObjectRegistry& objs = debug::dimensionSetObjects();
+
+        dictionary dict(Foam::dimensionSystems());
+        dict.merge(*localDict);
+
+        simpleObjectRegistryEntry* objPtr = objs.find("DimensionSets");
+
+        if (objPtr)
+        {
+            DetailInfo << *localDict << nl;
+
+            const List<simpleRegIOobject*>& objects = *objPtr;
+
+            OCharStream os;
+
+            for (simpleRegIOobject* obj : objects)
+            {
+                os.rewind();
+                os  << dict;
+
+                ISpanStream is(os.view());
+                obj->readData(is);
+            }
+        }
+    }
+
+
+    if (!deltaTchanged_)
+    {
+        controlDict_.readEntry("deltaT", deltaT_);
+    }
+
+    writeControlNames.readIfPresent
+    (
+        "writeControl",
+        controlDict_,
+        writeControl_
+    );
+
+    scalar oldWriteInterval = writeInterval_;
+
+    if (controlDict_.readIfPresent("writeInterval", writeInterval_))
+    {
+        if (writeControl_ == wcTimeStep && label(writeInterval_) < 1)
+        {
+            FatalIOErrorInFunction(controlDict_)
+                << "writeInterval < 1 for writeControl timeStep"
+                << exit(FatalIOError);
+        }
+    }
+    else
+    {
+        controlDict_.readEntry("writeFrequency", writeInterval_);
+    }
+
+
+    if (oldWriteInterval != writeInterval_)
+    {
+        switch (writeControl_)
+        {
+            case wcRunTime:
+            case wcAdjustableRunTime:
+                // Recalculate writeTimeIndex_ to be in units of current
+                // writeInterval.
+                writeTimeIndex_ = label
+                (
+                    writeTimeIndex_
+                  * oldWriteInterval
+                  / writeInterval_
+                );
+            break;
+
+            default:
+            break;
+        }
+    }
 
     if (controlDict_.readIfPresent("purgeWrite", purgeWrite_))
     {
@@ -84,46 +332,22 @@ void Foam::Time::readDict()
         }
     }
 
-    if (controlDict_.found("timeFormat"))
-    {
-        const word formatName(controlDict_.lookup("timeFormat"));
-
-        if (formatName == "general")
-        {
-            format_ = format::general;
-        }
-        else if (formatName == "fixed")
-        {
-            format_ = format::fixed;
-        }
-        else if (formatName == "scientific")
-        {
-            format_ = format::scientific;
-        }
-        else
-        {
-            WarningInFunction
-                << "unsupported time format " << formatName
-                << endl;
-        }
-    }
+    format_ =
+        IOstreamOption::floatFormatEnum("timeFormat", controlDict_, format_);
 
     controlDict_.readIfPresent("timePrecision", precision_);
-    curPrecision_ = precision_;
 
     // stopAt at 'endTime' or a specified value
     // if nothing is specified, the endTime is zero
-    if (controlDict_.found("stopAt"))
+    if (stopAtControlNames.readIfPresent("stopAt", controlDict_, stopAt_))
     {
-        stopAt_ = stopAtControlNames.read(controlDict_.lookup("stopAt"));
-
-        if (stopAt_ == stopAtControl::endTime || controlDict_.found("endTime"))
+        if (stopAt_ == saEndTime)
         {
-            endTime_ = userTimeToTime(controlDict_.lookup<scalar>("endTime"));
+            controlDict_.readEntry("endTime", endTime_);
         }
         else
         {
-            endTime_ = great;
+            endTime_ = GREAT;
         }
     }
     else if (!controlDict_.readIfPresent("endTime", endTime_))
@@ -131,29 +355,28 @@ void Foam::Time::readDict()
         endTime_ = 0;
     }
 
-    dimensionedScalar::name() = timeName(timeToUserTime(value()));
+    // Adjust the TimeState name
+    dimensionedScalar::name() = timeName(value());
 
+    // Specifying the write version doesn't make sense (2023-10)
     if (controlDict_.found("writeVersion"))
     {
-        writeVersion_ = IOstream::versionNumber
-        (
-            controlDict_.lookup("writeVersion")
-        );
+        writeStreamOption_.version(controlDict_.get<token>("writeVersion"));
     }
+
+    // FUTURE? optional control to support command-line option to
+    // set the write format and ignore this dictionary entry.
 
     if (controlDict_.found("writeFormat"))
     {
-        writeFormat_ = IOstream::formatEnum
-        (
-            controlDict_.lookup("writeFormat")
-        );
+        writeStreamOption_.format(controlDict_.get<word>("writeFormat"));
     }
 
     if (controlDict_.found("writePrecision"))
     {
         IOstream::defaultPrecision
         (
-            controlDict_.lookup<unsigned int>("writePrecision")
+            controlDict_.get<unsigned int>("writePrecision")
         );
 
         Sout.precision(IOstream::defaultPrecision());
@@ -162,38 +385,77 @@ void Foam::Time::readDict()
         Pout.precision(IOstream::defaultPrecision());
         Perr.precision(IOstream::defaultPrecision());
 
-        FatalError().precision(IOstream::defaultPrecision());
-        FatalIOError.error::operator()().precision
-        (
-            IOstream::defaultPrecision()
-        );
+        FatalError.stream().precision(IOstream::defaultPrecision());
+        FatalIOError.stream().precision(IOstream::defaultPrecision());
     }
 
     if (controlDict_.found("writeCompression"))
     {
-        writeCompression_ = IOstream::compressionEnum
+        writeStreamOption_.compression
         (
-            controlDict_.lookup("writeCompression")
+            controlDict_.get<word>("writeCompression")
         );
 
-        if
-        (
-            writeFormat_ == IOstream::BINARY
-         && writeCompression_ == IOstream::COMPRESSED
-        )
+        if (writeStreamOption_.compression() == IOstreamOption::COMPRESSED)
         {
-            IOWarningInFunction(controlDict_)
-                << "Selecting compressed binary is inefficient and ineffective"
-                   ", resetting to uncompressed binary"
-                << endl;
+            if (writeStreamOption_.format() != IOstreamOption::ASCII)
+            {
+                IOWarningInFunction(controlDict_)
+                    << "Disabled output compression for non-ascii format"
+                    << " (inefficient/ineffective)"
+                    << endl;
 
-            writeCompression_ = IOstream::UNCOMPRESSED;
+                writeStreamOption_.compression(IOstreamOption::UNCOMPRESSED);
+            }
+            else if (!ofstreamPointer::supports_gz())
+            {
+                IOWarningInFunction(controlDict_)
+                    << "Disabled output compression"
+                    << " (missing libz support)"
+                    << endl;
+
+                writeStreamOption_.compression(IOstreamOption::UNCOMPRESSED);
+            }
         }
     }
 
+    controlDict_.readIfPresent("graphFormat", graphFormat_);
     controlDict_.readIfPresent("runTimeModifiable", runTimeModifiable_);
 
-    userTime_->read(controlDict_);
+
+    if (!runTimeModifiable_ && controlDict_.watchIndices().size())
+    {
+        forAllReverse(controlDict_.watchIndices(), i)
+        {
+            fileHandler().removeWatch(controlDict_.watchIndices()[i]);
+        }
+        controlDict_.watchIndices().clear();
+    }
+}
+
+
+bool Foam::Time::read()
+{
+    if (controlDict_.regIOobject::read())
+    {
+        // Read contents
+        readDict();
+        functionObjects_.read();
+
+        if (runTimeModifiable_)
+        {
+            // For IOdictionary the call to regIOobject::read() would have
+            // already updated all the watchIndices via the addWatch but
+            // controlDict_ is an unwatchedIOdictionary so will only have
+            // stored the dependencies as files.
+            fileHandler().addWatches(controlDict_, controlDict_.files());
+        }
+        controlDict_.files().clear();
+
+        return true;
+    }
+
+    return false;
 }
 
 
@@ -208,22 +470,48 @@ void Foam::Time::readModifiedObjects()
         fileHandler().updateStates
         (
             (
-                regIOobject::fileModificationChecking == inotifyMaster
-             || regIOobject::fileModificationChecking == timeStampMaster
+                IOobject::fileModificationChecking == IOobject::inotifyMaster
+             || IOobject::fileModificationChecking == IOobject::timeStampMaster
             ),
             Pstream::parRun()
         );
+        // Time handling is special since controlDict_ is the one dictionary
+        // that is not registered to any database.
 
-        objectRegistry::readModifiedObjects();
+        if (controlDict_.readIfModified())
+        {
+            readDict();
+            functionObjects_.read();
+
+            if (runTimeModifiable_)
+            {
+                // For IOdictionary the call to regIOobject::read() would have
+                // already updated all the watchIndices via the addWatch but
+                // controlDict_ is an unwatchedIOdictionary so will only have
+                // stored the dependencies as files.
+
+                fileHandler().addWatches(controlDict_, controlDict_.files());
+            }
+            controlDict_.files().clear();
+        }
+
+        bool registryModified = objectRegistry::modified();
+
+        if (registryModified)
+        {
+            objectRegistry::readModifiedObjects();
+        }
     }
 }
 
 
 bool Foam::Time::writeTimeDict() const
 {
-    const word tmName(name());
+    addProfiling(writing, "objectRegistry::writeObject");
 
-    timeIOdictionary timeDict
+    const word tmName(timeName());
+
+    IOdictionary timeDict
     (
         IOobject
         (
@@ -231,13 +519,12 @@ bool Foam::Time::writeTimeDict() const
             tmName,
             "uniform",
             *this,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
+            IOobjectOption::NO_READ,
+            IOobjectOption::NO_WRITE,
+            IOobjectOption::NO_REGISTER
         )
     );
 
-    timeDict.add("beginTime", timeToUserTime(beginTime_));
     timeDict.add("value", timeName(timeToUserTime(value()), maxPrecision_));
     timeDict.add("name", string(tmName));
     timeDict.add("index", timeIndex_);
@@ -246,9 +533,7 @@ bool Foam::Time::writeTimeDict() const
 
     return timeDict.regIOobject::writeObject
     (
-        IOstream::ASCII,
-        IOstream::currentVersion,
-        IOstream::UNCOMPRESSED,
+        IOstreamOption(IOstreamOption::ASCII),
         true
     );
 }
@@ -256,10 +541,8 @@ bool Foam::Time::writeTimeDict() const
 
 bool Foam::Time::writeObject
 (
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool write
+    IOstreamOption streamOpt,
+    const bool writeOnProc
 ) const
 {
     if (writeTime())
@@ -268,7 +551,7 @@ bool Foam::Time::writeObject
 
         if (writeOK)
         {
-            writeOK = objectRegistry::writeObject(fmt, ver, cmp, write);
+            writeOK = objectRegistry::writeObject(streamOpt, writeOnProc);
         }
 
         if (writeOK)
@@ -278,11 +561,11 @@ bool Foam::Time::writeObject
             {
                 if
                 (
-                    previousWriteTimes_.size() == 0
-                 || previousWriteTimes_.top() != name()
+                    previousWriteTimes_.empty()
+                 || previousWriteTimes_.top() != timeName()
                 )
                 {
-                    previousWriteTimes_.push(name());
+                    previousWriteTimes_.push(timeName());
                 }
 
                 while (previousWriteTimes_.size() > purgeWrite_)
@@ -291,7 +574,8 @@ bool Foam::Time::writeObject
                     (
                         fileHandler().filePath
                         (
-                            objectRegistry::path(previousWriteTimes_.pop())
+                            objectRegistry::path(previousWriteTimes_.pop()),
+                            false  // No .gz check (is directory)
                         )
                     );
                 }
@@ -300,10 +584,8 @@ bool Foam::Time::writeObject
 
         return writeOK;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 
@@ -316,7 +598,7 @@ bool Foam::Time::writeNow()
 
 bool Foam::Time::writeAndEnd()
 {
-    stopAt_  = stopAtControl::writeNow;
+    stopAt_  = saWriteNow;
     endTime_ = value();
 
     return writeNow();
@@ -326,6 +608,34 @@ bool Foam::Time::writeAndEnd()
 void Foam::Time::writeOnce()
 {
     writeOnce_ = true;
+}
+
+
+Foam::Ostream& Foam::Time::printExecutionTime(OSstream& os) const
+{
+    switch (printExecutionFormat_)
+    {
+        case 1:
+        {
+            os  << "ExecutionTime = ";
+            printTimeHMS(os.stdStream(), elapsedCpuTime());
+
+            os  << "  ClockTime = ";
+            printTimeHMS(os.stdStream(), elapsedClockTime());
+        }
+        break;
+
+        default:
+        {
+            os  << "ExecutionTime = " << elapsedCpuTime() << " s"
+                << "  ClockTime = " << elapsedClockTime() << " s";
+        }
+        break;
+    }
+
+    os  << nl << endl;
+
+    return os;
 }
 
 

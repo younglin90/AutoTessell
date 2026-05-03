@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,20 +28,20 @@ License
 
 #include "fvBoundaryMesh.H"
 #include "fvMesh.H"
-
+#include "PtrListOps.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-void Foam::fvBoundaryMesh::addPatches(const polyBoundaryMesh& basicBdry)
+void Foam::fvBoundaryMesh::addPatches(const polyBoundaryMesh& pbm)
 {
-    setSize(basicBdry.size());
-
     // Set boundary patches
-    fvPatchList& Patches = *this;
+    fvPatchList& patches = *this;
 
-    forAll(Patches, patchi)
+    patches.resize_null(pbm.size());
+
+    forAll(patches, patchi)
     {
-        Patches.set(patchi, fvPatch::New(basicBdry[patchi], *this));
+        patches.set(patchi, fvPatch::New(pbm[patchi], *this));
     }
 }
 
@@ -50,7 +53,7 @@ Foam::fvBoundaryMesh::fvBoundaryMesh
     const fvMesh& m
 )
 :
-    fvPatchList(0),
+    fvPatchList(),
     mesh_(m)
 {}
 
@@ -58,82 +61,116 @@ Foam::fvBoundaryMesh::fvBoundaryMesh
 Foam::fvBoundaryMesh::fvBoundaryMesh
 (
     const fvMesh& m,
-    const polyBoundaryMesh& basicBdry
+    const polyBoundaryMesh& pbm
 )
 :
-    fvPatchList(basicBdry.size()),
+    fvPatchList(),
     mesh_(m)
 {
-    addPatches(basicBdry);
+    addPatches(pbm);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-Foam::label Foam::fvBoundaryMesh::findIndex(const word& patchName) const
+Foam::labelList Foam::fvBoundaryMesh::indices
+(
+    const wordRe& matcher,
+    const bool useGroups
+) const
+{
+    return mesh().boundaryMesh().indices(matcher, useGroups);
+}
+
+
+Foam::labelList Foam::fvBoundaryMesh::indices
+(
+    const wordRes& matcher,
+    const bool useGroups
+) const
+{
+    return mesh().boundaryMesh().indices(matcher, useGroups);
+}
+
+
+Foam::labelList Foam::fvBoundaryMesh::indices
+(
+    const wordRes& select,
+    const wordRes& ignore,
+    const bool useGroups
+) const
+{
+    return mesh().boundaryMesh().indices(select, ignore, useGroups);
+}
+
+
+Foam::label Foam::fvBoundaryMesh::findPatchID(const word& patchName) const
+{
+    if (patchName.empty())
+    {
+        return -1;
+    }
+    return PtrListOps::firstMatching(*this, patchName);
+}
+
+
+void Foam::fvBoundaryMesh::movePoints()
+{
+    fvPatchList& patches = *this;
+
+    for (fvPatch& p : patches)
+    {
+        p.initMovePoints();
+    }
+
+    for (fvPatch& p : patches)
+    {
+        p.movePoints();
+    }
+}
+
+
+Foam::UPtrList<const Foam::labelUList>
+Foam::fvBoundaryMesh::faceCells() const
 {
     const fvPatchList& patches = *this;
 
-    forAll(patches, patchi)
+    UPtrList<const labelUList> list(patches.size());
+
+    forAll(list, patchi)
     {
-        if (patches[patchi].name() == patchName)
-        {
-            return patchi;
-        }
+        list.set(patchi, &patches[patchi].faceCells());
     }
 
-    // Not found, return -1
-    return -1;
-}
-
-
-Foam::labelList Foam::fvBoundaryMesh::findIndices
-(
-    const wordRe& key,
-    const bool usePatchGroups
-) const
-{
-    return mesh().poly().boundary().findIndices(key, usePatchGroups);
-}
-
-
-void Foam::fvBoundaryMesh::shuffle
-(
-    const labelUList& newToOld,
-    const bool validBoundary
-)
-{
-    fvPatchList& patches = *this;
-    patches.shuffle(newToOld);
+    return list;
 }
 
 
 Foam::lduInterfacePtrsList Foam::fvBoundaryMesh::interfaces() const
 {
-    lduInterfacePtrsList interfaces(size());
+    const fvPatchList& patches = *this;
 
-    forAll(interfaces, patchi)
+    lduInterfacePtrsList list(patches.size());
+
+    forAll(list, patchi)
     {
-        if (isA<lduInterface>(this->operator[](patchi)))
+        const lduInterface* lduPtr = isA<lduInterface>(patches[patchi]);
+
+        if (lduPtr)
         {
-            interfaces.set
-            (
-                patchi,
-               &refCast<const lduInterface>(this->operator[](patchi))
-            );
+            list.set(patchi, lduPtr);
         }
     }
 
-    return interfaces;
+    return list;
 }
 
 
 // * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
-void Foam::fvBoundaryMesh::readUpdate(const polyBoundaryMesh& basicBdry)
+void Foam::fvBoundaryMesh::readUpdate(const polyBoundaryMesh& pbm)
 {
-    clear();
-    addPatches(basicBdry);
+    addPatches(pbm);
 }
 
 
@@ -144,7 +181,7 @@ const Foam::fvPatch& Foam::fvBoundaryMesh::operator[]
     const word& patchName
 ) const
 {
-    const label patchi = findIndex(patchName);
+    const label patchi = findPatchID(patchName);
 
     if (patchi < 0)
     {
@@ -162,7 +199,7 @@ Foam::fvPatch& Foam::fvBoundaryMesh::operator[]
     const word& patchName
 )
 {
-    const label patchi = findIndex(patchName);
+    const label patchi = findPatchID(patchName);
 
     if (patchi < 0)
     {

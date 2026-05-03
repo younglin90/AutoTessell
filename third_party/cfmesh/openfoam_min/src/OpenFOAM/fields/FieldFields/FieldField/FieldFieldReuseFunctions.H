@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,8 +26,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef FieldFieldReuseFunctions_H
-#define FieldFieldReuseFunctions_H
+#ifndef Foam_FieldFieldReuseFunctions_H
+#define Foam_FieldFieldReuseFunctions_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -32,175 +35,156 @@ namespace Foam
 {
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<template<class> class Field, class TypeR>
-tmp<FieldField<Field, TypeR>> New
-(
-    const tmp<FieldField<Field, TypeR>>& tf1,
-    const bool initRet = false
-)
-{
-    if (tf1.isTmp())
-    {
-        return tf1;
-    }
-    else
-    {
-        tmp<FieldField<Field, TypeR>> rtf
-        (
-            FieldField<Field, TypeR>::NewCalculatedType(tf1())
-        );
-
-        if (initRet)
-        {
-            rtf.ref() = tf1();
-        }
-
-        return rtf;
-    }
-}
-
+// One-parameter versions
 
 template<template<class> class Field, class TypeR, class Type1>
-class reuseTmpFieldField
+struct reuseTmpFieldField
 {
-public:
+    //- Pass-through to NewCalculatedType
+    static tmp<FieldField<Field, TypeR>> New
+    (
+        const FieldField<Field, Type1>& f1
+    )
+    {
+        return FieldField<Field, TypeR>::NewCalculatedType(f1);
+    }
 
+    //- Dissimilar types: just use size
     static tmp<FieldField<Field, TypeR>> New
     (
         const tmp<FieldField<Field, Type1>>& tf1
     )
     {
-        return tmp<FieldField<Field, TypeR>>
-        (
-            FieldField<Field, TypeR>::NewCalculatedType(tf1())
-        );
+        return FieldField<Field, TypeR>::NewCalculatedType(tf1());
     }
 };
 
 
 template<template<class> class Field, class TypeR>
-class reuseTmpFieldField<Field, TypeR, TypeR>
+struct reuseTmpFieldField<Field, TypeR, TypeR>
 {
-public:
-
+    //- Identical input and return types:
+    //- allow optional copy assignment of the initial content
     static tmp<FieldField<Field, TypeR>> New
     (
-        const tmp<FieldField<Field, TypeR>>& tf1
+        const tmp<FieldField<Field, TypeR>>& tf1,
+        const bool initCopy = false
     )
     {
-        if (tf1.isTmp())
+        if (tf1.movable())
         {
             return tf1;
         }
-        else
+
+        auto tresult = FieldField<Field, TypeR>::NewCalculatedType(tf1());
+
+        if (initCopy)
         {
-            return tmp<FieldField<Field, TypeR>>
-            (
-                FieldField<Field, TypeR>::NewCalculatedType(tf1())
-            );
+            tresult.ref() = tf1();
         }
+
+        return tresult;
     }
 };
 
 
-template<template<class> class Field, class TypeR, class Type1, class Type2>
-class reuseTmpTmpFieldField
+//- This global function forwards to reuseTmpFieldField::New
+template<template<class> class Field, class TypeR>
+tmp<FieldField<Field, TypeR>> New
+(
+    const tmp<FieldField<Field, TypeR>>& tf1,
+    const bool initCopy = false
+)
 {
-public:
+    return reuseTmpFieldField<Field, TypeR, TypeR>::New(tf1, initCopy);
+}
 
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// Two-parameter versions
+
+template
+<
+    template<class> class Field,
+    class TypeR,
+    class Type1,
+    class Type12,
+    class Type2
+>
+struct reuseTmpTmpFieldField
+{
+    //- Dissimilar types: just use size
     static tmp<FieldField<Field, TypeR>> New
     (
         const tmp<FieldField<Field, Type1>>& tf1,
         const tmp<FieldField<Field, Type2>>& tf2
     )
     {
-        return tmp<FieldField<Field, TypeR>>
-        (
-            FieldField<Field, TypeR>::NewCalculatedType(tf1())
-        );
+        return FieldField<Field, TypeR>::NewCalculatedType(tf1());
     }
 };
 
 
-template<template<class> class Field, class TypeR, class Type1>
-class reuseTmpTmpFieldField<Field, TypeR, Type1, TypeR>
+template<template<class> class Field, class TypeR, class Type1, class Type12>
+struct reuseTmpTmpFieldField<Field, TypeR, Type1, Type12, TypeR>
 {
-public:
-
+    //- Second input has return type
     static tmp<FieldField<Field, TypeR>> New
     (
         const tmp<FieldField<Field, Type1>>& tf1,
         const tmp<FieldField<Field, TypeR>>& tf2
     )
     {
-        if (tf2.isTmp())
+        if (tf2.movable())
         {
             return tf2;
         }
-        else
-        {
-            return tmp<FieldField<Field, TypeR>>
-            (
-                FieldField<Field, TypeR>::NewCalculatedType(tf1())
-            );
-        }
+
+        return FieldField<Field, TypeR>::NewCalculatedType(tf1());
     }
 };
 
 
 template<template<class> class Field, class TypeR, class Type2>
-class reuseTmpTmpFieldField<Field, TypeR, TypeR, Type2>
+struct reuseTmpTmpFieldField<Field, TypeR, TypeR, TypeR, Type2>
 {
-public:
-
+    //- First input has return type
     static tmp<FieldField<Field, TypeR>> New
     (
         const tmp<FieldField<Field, TypeR>>& tf1,
         const tmp<FieldField<Field, Type2>>& tf2
     )
     {
-        if (tf1.isTmp())
+        if (tf1.movable())
         {
             return tf1;
         }
-        else
-        {
-            return tmp<FieldField<Field, TypeR>>
-            (
-                FieldField<Field, TypeR>::NewCalculatedType(tf1())
-            );
-        }
+
+        return FieldField<Field, TypeR>::NewCalculatedType(tf1());
     }
 };
 
 
 template<template<class> class Field, class TypeR>
-class reuseTmpTmpFieldField<Field, TypeR, TypeR, TypeR>
+struct reuseTmpTmpFieldField<Field, TypeR, TypeR, TypeR, TypeR>
 {
-public:
-
+    //- Both inputs have return type
     static tmp<FieldField<Field, TypeR>> New
     (
         const tmp<FieldField<Field, TypeR>>& tf1,
         const tmp<FieldField<Field, TypeR>>& tf2
     )
     {
-        if (tf1.isTmp())
+        if (tf1.movable())
         {
             return tf1;
         }
-        else if (tf2.isTmp())
+        if (tf2.movable())
         {
             return tf2;
         }
-        else
-        {
-            return tmp<FieldField<Field, TypeR>>
-            (
-                FieldField<Field, TypeR>::NewCalculatedType(tf1())
-            );
-        }
+
+        return FieldField<Field, TypeR>::NewCalculatedType(tf1());
     }
 };
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,15 +28,15 @@ License
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::labelHashSet Foam::polyBoundaryMesh::findIndices() const
+Foam::labelHashSet Foam::polyBoundaryMesh::findPatchIDs() const
 {
-    const polyBoundaryMesh& bm = *this;
+    const polyBoundaryMesh& patches = *this;
 
-    labelHashSet patchIDs(bm.size());
+    labelHashSet patchIDs(patches.size());
 
-    forAll(bm, patchi)
+    forAll(patches, patchi)
     {
-        if (isA<Type>(bm[patchi]))
+        if (isA<Type>(patches[patchi]))
         {
             patchIDs.insert(patchi);
         }

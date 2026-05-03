@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +45,7 @@ SourceFiles
 #ifndef pointConstraints_H
 #define pointConstraints_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "tensorField.H"
 #include "pointFieldsFwd.H"
 #include "pointConstraint.H"
@@ -53,31 +55,38 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
+class pointMesh;
 class polyMesh;
 
 /*---------------------------------------------------------------------------*\
-                      Class pointConstraints Declaration
+                       Class pointConstraints Declaration
 \*---------------------------------------------------------------------------*/
 
 class pointConstraints
 :
-    public DemandDrivenMeshObject
-    <
-        pointMesh,
-        TopoChangeableMeshObject,
-        pointConstraints
-    >
+    public MeshObject<pointMesh, UpdateableMeshObject, pointConstraints>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            pointMesh,
+            UpdateableMeshObject,
+            pointConstraints
+        > MeshObject_type;
+
+
     // Private Data
 
-        //- Mesh points on which to apply special constraints
-        labelList patchPatchPointConstraintPoints_;
+        // Patch-patch constraints
 
-        //- Special constraints (as tensors)
-        tensorField patchPatchPointConstraintTensors_;
-
-        //- Special constraints (raw)
-        List<pointConstraint> patchPatchPointConstraints_;
+            //- Mesh points on which to apply special constraints
+            labelList patchPatchPointConstraintPoints_;
+            //- Special constraints (as tensors)
+            tensorField patchPatchPointConstraintTensors_;
+            //- Special constraints (raw)
+            List<pointConstraint> patchPatchPointConstraints_;
 
 
     // Private Member Functions
@@ -85,20 +94,11 @@ class pointConstraints
         //- Make patch-patch constraints
         void makePatchPatchAddressing();
 
+        //- No copy construct
+        pointConstraints(const pointConstraints&) = delete;
 
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        pointMesh,
-        TopoChangeableMeshObject,
-        pointConstraints
-    >;
-
-    // Protected Constructors
-
-        //- Constructor from pointMesh.
-        explicit pointConstraints(const pointMesh&);
+        //- No copy assignment
+        void operator=(const pointConstraints&) = delete;
 
 
 public:
@@ -109,15 +109,15 @@ public:
 
     // Constructors
 
-        //- Disallow default bitwise copy construction
-        pointConstraints(const pointConstraints&) = delete;
+        //- Constructor from pointMesh.
+        explicit pointConstraints(const pointMesh&);
 
 
     //- Destructor
     ~pointConstraints();
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -142,17 +142,11 @@ public:
 
         // Edit
 
-            //- Correct weighting factors for moving mesh.
-            virtual bool movePoints();
-
             //- Update mesh topology using the morph engine
-            virtual void topoChange(const polyTopoChangeMap&);
+            void updateMesh(const mapPolyMesh&);
 
-            //- Update from another mesh using the given map
-            virtual void mapMesh(const polyMeshMap&);
-
-            //- Update corresponding to the given distribution map
-            virtual void distribute(const polyDistributionMap&);
+            //- Correct weighting factors for moving mesh.
+            bool movePoints();
 
 
         // Interpolation functions
@@ -168,18 +162,18 @@ public:
 
             //- Helper: set patchField values from internal values (on
             //  valuePointPatchFields). Opposite of
-            //  pointPatchField::setInternalField
+            //  pointPatchField::setInInternalField
             template<class Type>
             static void setPatchFields
             (
-                PointField<Type>&
+                GeometricField<Type, pointPatchField, pointMesh>&
             );
 
             //- Apply patch-patch constraints only
             template<class Type>
             void constrainCorners
             (
-                PointField<Type>& pf
+                GeometricField<Type, pointPatchField, pointMesh>& pf
             ) const;
 
             //- Apply boundary conditions (single-patch constraints) and
@@ -189,7 +183,7 @@ public:
             template<class Type>
             void constrain
             (
-                PointField<Type>& pf,
+                GeometricField<Type, pointPatchField, pointMesh>& pf,
                 const bool overrideValue = false
             ) const;
 
@@ -201,25 +195,18 @@ public:
                 pointVectorField& displacement,
                 const bool overrideValue = false
             ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const pointConstraints&) = delete;
 };
 
 
 template<>
 void pointConstraints::constrainCorners<scalar>
 (
-    PointField<scalar>& pf
+    GeometricField<scalar, pointPatchField, pointMesh>& pf
 ) const;
-
 template<>
 void pointConstraints::constrainCorners<label>
 (
-    PointField<label>& pf
+    GeometricField<label, pointPatchField, pointMesh>& pf
 ) const;
 
 

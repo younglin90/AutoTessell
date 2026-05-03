@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,53 +31,62 @@ License
 #include "syncTools.H"
 #include "faceSet.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
 namespace decompositionConstraints
 {
-    defineTypeName(singleProcessorFaceSetsConstraint);
+    defineTypeName(singleProcessorFaceSets);
 
     addToRunTimeSelectionTable
     (
         decompositionConstraint,
-        singleProcessorFaceSetsConstraint,
+        singleProcessorFaceSets,
         dictionary
     );
 }
 }
 
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+void Foam::decompositionConstraints::singleProcessorFaceSets::printInfo() const
+{
+    for (const auto& nameAndProc : setNameAndProcs_)
+    {
+        Info<< "    all cells connected to faceSet "
+            << nameAndProc.first()
+            << " on processor " << nameAndProc.second() << endl;
+    }
+}
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::
-singleProcessorFaceSetsConstraint
+Foam::decompositionConstraints::singleProcessorFaceSets::
+singleProcessorFaceSets
 (
-    const dictionary& constraintsDict,
-    const word& modelType
+    const dictionary& dict
 )
 :
-    decompositionConstraint(constraintsDict, typeName),
-    setNameAndProcs_(constraintsDict.lookup("singleProcessorFaceSets"))
+    decompositionConstraint(dict, typeName),
+    setNameAndProcs_
+    (
+        coeffDict_.lookupCompat("sets", {{"singleProcessorFaceSets", 1806}})
+    )
 {
     if (decompositionConstraint::debug)
     {
         Info<< type()
             << " : adding constraints to keep" << endl;
 
-        forAll(setNameAndProcs_, setI)
-        {
-            Info<< "    all cells connected to faceSet "
-                << setNameAndProcs_[setI].first()
-                << " on processor " << setNameAndProcs_[setI].second() << endl;
-        }
+        printInfo();
     }
 }
 
 
-Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::
-singleProcessorFaceSetsConstraint
+Foam::decompositionConstraints::singleProcessorFaceSets::
+singleProcessorFaceSets
 (
     const List<Tuple2<word, label>>& setNameAndProcs
 )
@@ -87,19 +99,33 @@ singleProcessorFaceSetsConstraint
         Info<< type()
             << " : adding constraints to keep" << endl;
 
-        forAll(setNameAndProcs_, setI)
-        {
-            Info<< "    all cells connected to faceSet "
-                << setNameAndProcs_[setI].first()
-                << " on processor " << setNameAndProcs_[setI].second() << endl;
-        }
+        printInfo();
+    }
+}
+
+
+Foam::decompositionConstraints::singleProcessorFaceSets::
+singleProcessorFaceSets
+(
+    Istream& is
+)
+:
+    decompositionConstraint(dictionary(), typeName),
+    setNameAndProcs_(is)
+{
+    if (decompositionConstraint::debug)
+    {
+        Info<< type()
+            << " : adding constraints to keep" << endl;
+
+        printInfo();
     }
 }
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
+void Foam::decompositionConstraints::singleProcessorFaceSets::add
 (
     const polyMesh& mesh,
     boolList& blockedFace,
@@ -108,23 +134,33 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
     List<labelPair>& explicitConnections
 ) const
 {
-    blockedFace.setSize(mesh.nFaces(), true);
+    blockedFace.resize(mesh.nFaces(), true);
 
     // Mark faces already in set
     labelList faceToSet(mesh.nFaces(), -1);
     forAll(specifiedProcessorFaces, setI)
     {
         const labelList& faceLabels = specifiedProcessorFaces[setI];
-        forAll(faceLabels, i)
+        for (const label facei : faceLabels)
         {
-            faceToSet[faceLabels[i]] = setI;
+            if (faceToSet[facei] == -1)
+            {
+                faceToSet[facei] = setI;
+            }
+            else if (faceToSet[facei] != setI)
+            {
+                WarningInFunction << "Face " << facei
+                    << " at " << mesh.faceCentres()[facei]
+                    << " is already in existing constraint "
+                    << faceToSet[facei]
+                    << endl;
+            }
         }
     }
 
-
     forAll(setNameAndProcs_, setI)
     {
-        // Info<< "Keeping all cells connected to faceSet "
+        //Info<< "Keeping all cells connected to faceSet "
         //    << setNameAndProcs_[setI].first()
         //    << " on processor " << setNameAndProcs_[setI].second() << endl;
 
@@ -134,13 +170,13 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
         const faceSet fz(mesh, setNameAndProcs_[setI].first());
 
         // Check that it does not overlap with existing specifiedProcessorFaces
-        labelList nMatch(specifiedProcessorFaces.size(), 0);
-        forAllConstIter(faceSet, fz, iter)
+        labelList nMatch(specifiedProcessorFaces.size(), Zero);
+        for (const label facei : fz)
         {
-            label setI = faceToSet[iter.key()];
-            if (setI != -1)
+            const label seti = faceToSet[facei];
+            if (seti != -1)
             {
-                nMatch[setI]++;
+                ++nMatch[seti];
             }
         }
 
@@ -153,22 +189,19 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
         {
             if (nMatch[setI] == fz.size())
             {
-                // full match
+                // Full match
                 store = false;
                 break;
             }
             else if (nMatch[setI] > 0)
             {
-                // partial match
+                // Partial match
                 store = false;
                 break;
             }
         }
 
-        reduce(store, andOp<bool>());
-
-
-        if (store)
+        if (returnReduceOr(store))
         {
             specifiedProcessorFaces.append(new labelList(fz.sortedToc()));
             specifiedProcessor.append(destProcI);
@@ -181,13 +214,14 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
     boolList procFacePoint(mesh.nPoints(), false);
     forAll(specifiedProcessorFaces, setI)
     {
-        const labelList& set = specifiedProcessorFaces[setI];
-        forAll(set, fI)
+        const labelList& faceLabels = specifiedProcessorFaces[setI];
+        for (const label facei : faceLabels)
         {
-            const face& f = mesh.faces()[set[fI]];
-            forAll(f, fp)
+            const face& f = mesh.faces()[facei];
+
+            for (const label pointi : f)
             {
-                procFacePoint[f[fp]] = true;
+                procFacePoint[pointi] = true;
             }
         }
     }
@@ -207,7 +241,7 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
                 if (blockedFace[pFaces[i]])
                 {
                     blockedFace[pFaces[i]] = false;
-                    nUnblocked++;
+                    ++nUnblocked;
                 }
             }
         }
@@ -215,15 +249,15 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::add
 
     if (decompositionConstraint::debug & 2)
     {
-        reduce(nUnblocked, sumOp<label>());
-        Info<< type() << " : unblocked " << nUnblocked << " faces" << endl;
+        Info<< type() << " : unblocked "
+            << returnReduce(nUnblocked, sumOp<label>()) << " faces" << endl;
     }
 
     syncTools::syncFaceList(mesh, blockedFace, andEqOp<bool>());
 }
 
 
-void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::apply
+void Foam::decompositionConstraints::singleProcessorFaceSets::apply
 (
     const polyMesh& mesh,
     const boolList& blockedFace,
@@ -283,23 +317,23 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::apply
             if (procFacePoint[pointi])
             {
                 const labelList& pFaces = mesh.pointFaces()[pointi];
-                forAll(pFaces, i)
+                for (const label faceI : pFaces)
                 {
-                    label faceI = pFaces[i];
+                    const label own = mesh.faceOwner()[faceI];
 
-                    label own = mesh.faceOwner()[faceI];
                     if (decomposition[own] != procI)
                     {
                         decomposition[own] = procI;
-                        nChanged++;
+                        ++nChanged;
                     }
+
                     if (mesh.isInternalFace(faceI))
                     {
-                        label nei = mesh.faceNeighbour()[faceI];
+                        const label nei = mesh.faceNeighbour()[faceI];
                         if (decomposition[nei] != procI)
                         {
                             decomposition[nei] = procI;
-                            nChanged++;
+                            ++nChanged;
                         }
                     }
                 }
@@ -309,9 +343,8 @@ void Foam::decompositionConstraints::singleProcessorFaceSetsConstraint::apply
 
     if (decompositionConstraint::debug & 2)
     {
-        reduce(nChanged, sumOp<label>());
-        Info<< type() << " : changed decomposition on " << nChanged
-            << " cells" << endl;
+        Info<< type() << " : changed decomposition on "
+            << returnReduce(nChanged, sumOp<label>()) << " cells" << endl;
     }
 }
 

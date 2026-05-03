@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -14,7 +17,7 @@ License
     (at your option) any later version.
 
     OpenFOAM is distributed in the hope that it will be useful, but WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+    ANB WARRANTY; without even the implied warranty of MERCHANTABILITY or
     FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
     for more details.
 
@@ -24,11 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Cmpt>
-inline Foam::Barycentric<Cmpt>::Barycentric()
-{}
-
 
 template<class Cmpt>
 inline Foam::Barycentric<Cmpt>::Barycentric(const Foam::zero)
@@ -53,61 +51,26 @@ inline Foam::Barycentric<Cmpt>::Barycentric
 }
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+template<class Cmpt>
+inline Foam::Barycentric<Cmpt>::Barycentric
+(
+    const Cmpt& va,
+    const Cmpt& vb,
+    const Cmpt& vc
+)
+:
+    Barycentric<Cmpt>(va, vb, vc, (pTraits<Cmpt>::one - va - vb - vc))
+{}
+
+
+// * * * * * * * * * * * * * * * Member Operations * * * * * * * * * * * * * //
 
 template<class Cmpt>
-inline const Cmpt& Foam::Barycentric<Cmpt>::a() const
+inline Cmpt Foam::Barycentric<Cmpt>::inner(const Barycentric<Cmpt>& b2) const
 {
-    return this->v_[A];
-}
+    const Barycentric<Cmpt>& b1 = *this;
 
-
-template<class Cmpt>
-inline const Cmpt& Foam::Barycentric<Cmpt>::b() const
-{
-    return this->v_[B];
-}
-
-
-template<class Cmpt>
-inline const Cmpt& Foam::Barycentric<Cmpt>::c() const
-{
-    return this->v_[C];
-}
-
-
-template<class Cmpt>
-inline const Cmpt& Foam::Barycentric<Cmpt>::d() const
-{
-    return this->v_[D];
-}
-
-
-template<class Cmpt>
-inline Cmpt& Foam::Barycentric<Cmpt>::a()
-{
-    return this->v_[A];
-}
-
-
-template<class Cmpt>
-inline Cmpt& Foam::Barycentric<Cmpt>::b()
-{
-    return this->v_[B];
-}
-
-
-template<class Cmpt>
-inline Cmpt& Foam::Barycentric<Cmpt>::c()
-{
-    return this->v_[C];
-}
-
-
-template<class Cmpt>
-inline Cmpt& Foam::Barycentric<Cmpt>::d()
-{
-    return this->v_[D];
+    return (b1.a()*b2.a() + b1.b()*b2.b() + b1.c()*b2.c() + b1.d()*b2.d());
 }
 
 
@@ -121,7 +84,7 @@ namespace Foam
 template<class Cmpt>
 inline Cmpt operator&(const Barycentric<Cmpt>& b1, const Barycentric<Cmpt>& b2)
 {
-    return b1.a()*b2.a() + b1.b()*b2.b() + b1.c()*b2.c() + b1.d()*b2.d();
+    return b1.inner(b2);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,16 +28,19 @@ Class
     Foam::IOMap
 
 Description
-    A Map of objects of type \<Type\> with automated input and output.
+    A Map of objects of type \<T\> with automated input and output.
     Is a global object; i.e. can be read from undecomposed case.
+
+SourceFiles
+    IOMap.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef IOMap_H
-#define IOMap_H
+#ifndef Foam_IOMap_H
+#define Foam_IOMap_H
 
-#include "IOList.H"
 #include "Map.H"
+#include "regIOobject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,19 +51,21 @@ namespace Foam
                             Class IOMap Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Type>
+template<class T>
 class IOMap
 :
-    public IOListBase<Map, IOMap, Type>
+    public regIOobject,
+    public Map<T>
 {
+    // Private Member Functions
+
+        //- Read if IOobject flags set. Return true if read.
+        bool readIOcontents();
 
 public:
 
-    // Public Static Data
-
-        //- Does this object support re-reading?
-        static const bool rereading = true;
-
+    //- The underlying content type
+    typedef Map<T> content_type;
 
     //- Runtime type information
     TypeName("Map");
@@ -65,21 +73,77 @@ public:
 
     // Constructors
 
-        //- Inherit constructors
-        using IOListBase<Map, IOMap, Type>::IOListBase;
+        //- Default copy construct
+        IOMap(const IOMap&) = default;
+
+        //- Construct from IOobject
+        explicit IOMap(const IOobject& io);
+
+        //- Construct from IOobject and size of Map
+        IOMap(const IOobject& io, const label size);
+
+        //- Construct from IOobject and a copy of Map content
+        IOMap(const IOobject&, const Map<T>& content);
+
+        //- Construct by transferring the Map content
+        IOMap(const IOobject&, Map<T>&& content);
+
+
+    // Factory Methods
+
+        //- Read and return contents. The IOobject will not be registered
+        static Map<T> readContents(const IOobject& io);
+
+
+    //- Destructor
+    virtual ~IOMap() = default;
+
+
+    // Member Functions
+
+        //- This object is global
+        virtual bool global() const
+        {
+            return true;
+        }
+
+        //- Return complete path + object name if the file exists
+        //  either in the case/processor or case otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
+
+        //- The writeData method for regIOobject write operation
+        bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using IOListBase<Map, IOMap, Type>::operator=;
+        //- Copy assignment of entries
+        void operator=(const IOMap<T>& rhs);
 
+        //- Copy or move assignment of entries
+        using Map<T>::operator=;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+//- Global file type for IOMap
+template<class T>
+struct is_globalIOobject<IOMap<T>> : std::true_type {};
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+    #include "IOMap.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

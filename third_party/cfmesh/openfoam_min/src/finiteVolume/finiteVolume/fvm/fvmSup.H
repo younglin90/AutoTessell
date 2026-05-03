@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,18 @@ InNamespace
     Foam::fvm
 
 Description
-    Calculate the matrix for implicit and explicit sources.
+    Calculate the finiteVolume matrix for implicit and explicit sources.
 
 SourceFiles
     fvmSup.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvmSup_H
-#define fvmSup_H
+#ifndef Foam_fvmSup_H
+#define Foam_fvmSup_H
 
 #include "volFieldsFwd.H"
+#include "fvMatrix.H"
 #include "zeroField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -43,123 +47,129 @@ SourceFiles
 namespace Foam
 {
 
-template<class Type> class fvMatrix;
-
 /*---------------------------------------------------------------------------*\
-                      Namespace fvm functions Declaration
+                            Namespace fvm Functions
 \*---------------------------------------------------------------------------*/
 
 namespace fvm
 {
    // Explicit source
 
-        template<class Type>
-        tmp<fvMatrix<Type>> Su
-        (
-            const DimensionedField<Type, fvMesh>&,
-            const VolField<Type>&
-        );
-
-        template<class Type>
-        tmp<fvMatrix<Type>> Su
-        (
-            const tmp<DimensionedField<Type, fvMesh>>&,
-            const VolField<Type>&
-        );
-
-        template<class Type>
-        tmp<fvMatrix<Type>> Su
-        (
-            const tmp<VolField<Type>>&,
-            const VolField<Type>&
-        );
-
+        //- A no-op source
         template<class Type>
         zeroField Su
         (
-            const zero&,
-            const VolField<Type>&
+            const Foam::zero,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        //- A uniform source (no-op for small values)
+        template<class Type>
+        tmp<fvMatrix<Type>> Su
+        (
+            const dimensioned<Type>& su,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        template<class Type>
+        tmp<fvMatrix<Type>> Su
+        (
+            const DimensionedField<Type, volMesh>& su,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        template<class Type>
+        tmp<fvMatrix<Type>> Su
+        (
+            const tmp<DimensionedField<Type, volMesh>>&,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        template<class Type>
+        tmp<fvMatrix<Type>> Su
+        (
+            const tmp<GeometricField<Type, fvPatchField, volMesh>>&,
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
 
     // Implicit source
 
+        //- A no-op source
+        template<class Type>
+        zeroField Sp
+        (
+            const Foam::zero,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        //- A uniform source (no-op for small values)
         template<class Type>
         tmp<fvMatrix<Type>> Sp
         (
-            const volScalarField::Internal&,
-            const VolField<Type>&
+            const dimensionedScalar& sp,
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         template<class Type>
         tmp<fvMatrix<Type>> Sp
         (
-            const tmp<volScalarField::Internal>&,
-            const VolField<Type>&
+            const DimensionedField<scalar, volMesh>& sp,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        template<class Type>
+        tmp<fvMatrix<Type>> Sp
+        (
+            const tmp<DimensionedField<scalar, volMesh>>&,
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         template<class Type>
         tmp<fvMatrix<Type>> Sp
         (
             const tmp<volScalarField>&,
-            const VolField<Type>&
-        );
-
-
-        template<class Type>
-        tmp<fvMatrix<Type>> Sp
-        (
-            const dimensionedScalar&,
-            const VolField<Type>&
-        );
-
-
-        template<class Type>
-        zeroField Sp
-        (
-            const zero&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
 
     // Implicit/Explicit source depending on sign of coefficient
 
+        //- A no-op source
+        template<class Type>
+        zeroField SuSp
+        (
+            const Foam::zero,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        //- A uniform source (no-op for small values)
         template<class Type>
         tmp<fvMatrix<Type>> SuSp
         (
-            const volScalarField::Internal&,
-            const VolField<Type>&
+            const dimensionedScalar& susp,
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         template<class Type>
         tmp<fvMatrix<Type>> SuSp
         (
-            const tmp<volScalarField::Internal>&,
-            const VolField<Type>&
+            const DimensionedField<scalar, volMesh>& susp,
+            const GeometricField<Type, fvPatchField, volMesh>&
+        );
+
+        template<class Type>
+        tmp<fvMatrix<Type>> SuSp
+        (
+            const tmp<DimensionedField<scalar, volMesh>>&,
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 
         template<class Type>
         tmp<fvMatrix<Type>> SuSp
         (
             const tmp<volScalarField>&,
-            const VolField<Type>&
-        );
-
-        template<class Type>
-        zeroField SuSp
-        (
-            const zero&,
-            const VolField<Type>&
-        );
-
-
-    // Explicit and implicit sources provided as a pair
-
-        template<class Type>
-        tmp<fvMatrix<Type>> S
-        (
-            const Pair<tmp<volScalarField::Internal>>&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         );
 }
 

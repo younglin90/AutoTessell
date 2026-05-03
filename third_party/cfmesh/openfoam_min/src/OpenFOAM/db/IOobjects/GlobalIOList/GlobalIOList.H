@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,93 +28,22 @@ Class
     Foam::GlobalIOList
 
 Description
-    IOContainer with global data (so optionally read from master)
+    IOList with global data (so optionally read from master)
 
 SourceFiles
     GlobalIOList.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef GlobalIOList_H
-#define GlobalIOList_H
+#ifndef Foam_GlobalIOList_H
+#define Foam_GlobalIOList_H
 
-#include "regIOobject.H"
-#include "List.H"
+#include "IOList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-/*---------------------------------------------------------------------------*\
-                     Class GlobalIOListBase Declaration
-\*---------------------------------------------------------------------------*/
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-class GlobalIOListBase
-:
-    public regIOobject,
-    public Container<Type>
-{
-
-public:
-
-    // Constructors
-
-        //- Construct from IOobject
-        GlobalIOListBase(const IOobject&);
-
-        //- Construct from IOobject and size (does not set values)
-        GlobalIOListBase(const IOobject&, const label size);
-
-        //- Construct from IOobject and a Container
-        GlobalIOListBase(const IOobject&, const Container<Type>&);
-
-        //- Move construct by transferring the Container contents
-        GlobalIOListBase(const IOobject&, Container<Type>&&);
-
-        //- Copy constructor
-        GlobalIOListBase(const GlobalIOListBase<Container, IOContainer, Type>&);
-
-        //- Move constructor
-        GlobalIOListBase(GlobalIOListBase<Container, IOContainer, Type>&&);
-
-
-    //- Destructor
-    virtual ~GlobalIOListBase();
-
-
-    // Member Functions
-
-        //- Is object global
-        virtual bool global() const
-        {
-            return true;
-        }
-
-        //- ReadData function required for regIOobject read operation
-        virtual bool readData(Istream&);
-
-        //- WriteData function required for regIOobject write operation
-        virtual bool writeData(Ostream&) const;
-
-    // Member Operators
-
-        //- Inherit assignment operators
-        using Container<Type>::operator=;
-
-        //- Assign to another GlobalIOList
-        void operator=(const GlobalIOListBase<Container, IOContainer, Type>&);
-
-        //- Move-assign to another GlobalIOList
-        void operator=(GlobalIOListBase<Container, IOContainer, Type>&&);
-};
-
 
 /*---------------------------------------------------------------------------*\
                            Class GlobalIOList Declaration
@@ -120,10 +52,13 @@ public:
 template<class Type>
 class GlobalIOList
 :
-    public GlobalIOListBase<List, GlobalIOList, Type>
+    public regIOobject,
+    public List<Type>
 {
-
 public:
+
+    //- The underlying content type
+    typedef List<Type> content_type;
 
     //- Runtime type information
     TypeName("List");
@@ -131,23 +66,72 @@ public:
 
     // Constructors
 
-        //- Inherit constructors
-        using GlobalIOListBase<List, GlobalIOList, Type>::GlobalIOListBase;
+        //- Default copy construct
+        GlobalIOList(const GlobalIOList&) = default;
+
+        //- Construct from IOobject
+        explicit GlobalIOList(const IOobject& io);
+
+        //- Construct from IOobject and zero size (if not read)
+        GlobalIOList(const IOobject& io, Foam::zero);
+
+        //- Construct from IOobject and list size (if not read)
+        GlobalIOList(const IOobject& io, const label len);
+
+        //- Construct from IOobject and a List
+        GlobalIOList(const IOobject& io, const UList<Type>& content);
+
+        //- Construct by transferring the List content
+        GlobalIOList(const IOobject& io, List<Type>&& content);
+
+
+    // Factory Methods
+
+        //- Read and return contents. The IOobject is never registered
+        static List<Type> readContents(const IOobject& io);
+
+
+    //- Destructor
+    virtual ~GlobalIOList() = default;
+
+
+    // Member Functions
+
+        //- This object is global
+        virtual bool global() const
+        {
+            return true;
+        }
+
+        //- Return complete path + object name if the file exists
+        //- either in the case/processor or case otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
+
+        //- The readData method for regIOobject read operation
+        virtual bool readData(Istream& is);
+
+        //- The writeData method for regIOobject write operation
+        bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using GlobalIOListBase<List, GlobalIOList, Type>::operator=;
+        //- Copy assignment of entries
+        void operator=(const GlobalIOList<Type>& rhs);
+
+        //- Copy or move assignment of entries
+        using List<Type>::operator=;
 };
 
 
-//- Trait for obtaining global status
-template<class Type>
-struct typeGlobal<GlobalIOList<Type>>
-{
-    static const bool global = true;
-};
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+//- Global file type for GlobalIOList
+template<class T>
+struct is_globalIOobject<GlobalIOList<T>> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

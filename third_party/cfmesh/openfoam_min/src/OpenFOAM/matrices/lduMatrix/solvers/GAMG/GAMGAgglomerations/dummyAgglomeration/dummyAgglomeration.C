@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +52,7 @@ Foam::dummyAgglomeration::dummyAgglomeration
 )
 :
     GAMGAgglomeration(mesh, controlDict),
-    nLevels_(controlDict.lookup<label>("nLevels"))
+    nLevels_(controlDict.get<label>("nLevels"))
 {
     const label nCoarseCells = mesh.lduAddr().size();
 
@@ -65,14 +67,14 @@ Foam::dummyAgglomeration::dummyAgglomeration
         restrictAddressing_.set
         (
             nCreatedLevels,
-            new labelField(identityMap(nCoarseCells))
+            new labelField(identity(nCoarseCells))
         );
 
         agglomerateLduAddressing(nCreatedLevels);
     }
 
     // Shrink the storage of the levels to those created
-    compactLevels(nLevels_);
+    compactLevels(nLevels_, true);
 }
 
 

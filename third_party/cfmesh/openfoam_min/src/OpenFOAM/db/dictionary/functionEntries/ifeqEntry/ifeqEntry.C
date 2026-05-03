@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,11 +28,7 @@ License
 
 #include "ifeqEntry.H"
 #include "ifEntry.H"
-#include "elifEntry.H"
-#include "elseEntry.H"
-#include "endifEntry.H"
 #include "stringOps.H"
-#include "addToRunTimeSelectionTable.H"
 #include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -38,85 +37,28 @@ namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(ifeqEntry, 0);
-    addToRunTimeSelectionTable(functionEntry, ifeqEntry, dictionary);
+    defineTypeNameAndDebug(ifeqEntry, 0);
 
-    addToMemberFunctionSelectionTable
+    addNamedToMemberFunctionSelectionTable
     (
         functionEntry,
         ifeqEntry,
         execute,
-        primitiveEntryIstream
+        dictionaryIstream,
+        ifeq
     );
-}
-}
+} // End namespace functionEntries
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-Foam::tokenList Foam::functionEntries::ifeqEntry::readArgList
-(
-    Istream& is
-) const
-{
-    tokenList args;
-
-    {
-        const token startArgs(is);
-
-        if
-        (
-            startArgs.isPunctuation()
-         && startArgs.pToken() == token::BEGIN_LIST
-        )
-        {
-            args.append(startArgs);
-        }
-        else
-        {
-            FatalIOErrorInFunction(is)
-                << "Expected " << token::BEGIN_LIST
-                << " to start the argument list but found " << startArgs
-                << " in " << typeName
-                << exit(FatalIOError);
-        }
-    }
-
-    // Read the two arguments
-    args.append(token(is));
-    args.append(token(is));
-
-    {
-        const token endArgs(is);
-
-        if
-        (
-            endArgs.isPunctuation()
-        && endArgs.pToken() == token::END_LIST
-        )
-        {
-            args.append(endArgs);
-        }
-        else
-        {
-            FatalIOErrorInFunction(is)
-                << "Expected " << token::END_LIST
-                << " to end the argument list but found " << endArgs
-                << " in " << typeName
-                << exit(FatalIOError);
-        }
-    }
-
-    return args;
-}
-
-
-void Foam::functionEntries::ifeqEntry::readToken(token& t, Istream& is) const
+void Foam::functionEntries::ifeqEntry::readToken(token& t, Istream& is)
 {
     // Skip dummy tokens - avoids entry::getKeyword consuming #else, #endif
     do
     {
-        if( is.read(t).bad() || is.eof() || !t.good())
+        if (is.read(t).bad() || is.eof() || !t.good())
         {
             return;
         }
@@ -125,26 +67,19 @@ void Foam::functionEntries::ifeqEntry::readToken(token& t, Istream& is) const
 }
 
 
-Foam::token Foam::functionEntries::ifeqEntry::expand
+Foam::token Foam::functionEntries::ifeqEntry::expandToken
 (
     const dictionary& dict,
+    const string& keyword,
     const token& t
-) const
+)
 {
-    if (t.isVariable())
+    if (keyword[0] == '$')
     {
-        const variable& var = t.variableToken();
-
-        word varName = var(1, var.size() - 1);
+        const word varName(keyword.substr(1));
 
         // Lookup the variable name in the given dictionary
-        const entry* ePtr = dict.lookupScopedEntryPtr
-        (
-            varName,
-            true,
-            true
-        );
-
+        const entry* ePtr = dict.findScoped(varName, keyType::REGEX_RECURSIVE);
         if (ePtr)
         {
             return token(ePtr->stream());
@@ -152,17 +87,43 @@ Foam::token Foam::functionEntries::ifeqEntry::expand
         else
         {
             // String expansion. Allow unset variables
-            string expanded(var);
-            stringOps::inplaceExpandEntry(expanded, dict, true, true);
+            string expanded(keyword);
+            stringOps::inplaceExpand(expanded, dict, true, true);
 
             // Re-form as a string token so we can compare to string
             return token(expanded, t.lineNumber());
         }
     }
-    else
+    else if (!t.isString())
     {
-        return t;
+        // Re-form as a string token so we can compare to string
+        return token(keyword, t.lineNumber());
     }
+
+    return t;
+}
+
+
+Foam::token Foam::functionEntries::ifeqEntry::expandToken
+(
+    const dictionary& dict,
+    const token& t
+)
+{
+    if (t.isWord())
+    {
+        return expandToken(dict, t.wordToken(), t);
+    }
+    else if (t.isVariable())
+    {
+        return expandToken(dict, t.stringToken(), t);
+    }
+    else if (t.isString())
+    {
+        return expandToken(dict, t.stringToken(), t);
+    }
+
+    return t;
 }
 
 
@@ -170,7 +131,7 @@ bool Foam::functionEntries::ifeqEntry::equalToken
 (
     const token& t1,
     const token& t2
-) const
+)
 {
     const bool eqType = (t1.type() == t2.type());
 
@@ -179,35 +140,53 @@ bool Foam::functionEntries::ifeqEntry::equalToken
         case token::UNDEFINED:
             return eqType;
 
+        case token::BOOL:
+            return (eqType && t1.boolToken() == t2.boolToken());
+
+        case token::FLAG:
+            return (eqType && t1.flagToken() == t2.flagToken());
+
         case token::PUNCTUATION:
             return (eqType && t1.pToken() == t2.pToken());
 
         case token::WORD:
-        case token::FUNCTIONNAME:
-        case token::STRING:
-        case token::VERBATIMSTRING:
-            if (t2.isAnyString())
+        case token::DIRECTIVE:
+            if (t2.isWord())
             {
-                return t1.anyStringToken() == t2.anyStringToken();
+                return t1.wordToken() == t2.wordToken();
             }
-            else
+            else if (t2.isString())
             {
-                return false;
+                const wordRe w2(t2.stringToken(), wordRe::DETECT);
+                return w2.match(t1.wordToken());
             }
-
-        case token::VARIABLE:
-            FatalErrorInFunction
-                << "Attempt to compare an un-expanded variable"
-                << InfoProxy<token>(t1)
-                << exit(FatalIOError);
             return false;
 
-        case token::INTEGER_32:
+        case token::STRING:
             if (eqType)
             {
-                return t1.integer32Token() == t2.integer32Token();
+                const wordRe w1(t1.stringToken(), wordRe::DETECT);
+                const wordRe w2(t2.stringToken(), wordRe::DETECT);
+                return w1.match(w2) || w2.match(w1);
             }
-            else if (t2.isLabel())
+            else if (t2.isWord())
+            {
+                const wordRe w1(t1.stringToken(), wordRe::DETECT);
+                return w1.match(t2.wordToken());
+            }
+            return false;
+
+        case token::VARIABLE:
+        case token::VERBATIM:
+        case token::CHAR_DATA:
+            if (t2.isStringType())
+            {
+                return t1.stringToken() == t2.stringToken();
+            }
+            return false;
+
+        case token::LABEL:
+            if (eqType)
             {
                 return t1.labelToken() == t2.labelToken();
             }
@@ -215,112 +194,40 @@ bool Foam::functionEntries::ifeqEntry::equalToken
             {
                 return t1.labelToken() == t2.scalarToken();
             }
-            else
-            {
-                return false;
-            }
+            return false;
 
-        case token::INTEGER_64:
+        case token::FLOAT:
             if (eqType)
             {
-                return t1.integer64Token() == t2.integer64Token();
+                return equal(t1.floatToken(), t2.floatToken());
             }
             else if (t2.isLabel())
             {
-                return t1.labelToken() == t2.labelToken();
-            }
-            else if (t2.isScalar())
-            {
-                return t1.labelToken() == t2.scalarToken();
-            }
-            else
-            {
-                return false;
-            }
-
-        case token::UNSIGNED_INTEGER_32:
-            if (eqType)
-            {
-                return
-                    t1.unsignedInteger32Token() == t2.unsignedInteger32Token();
-            }
-            else if (t2.isLabel())
-            {
-                return t1.labelToken() == t2.labelToken();
-            }
-            else if (t2.isScalar())
-            {
-                return t1.labelToken() == t2.scalarToken();
-            }
-            else
-            {
-                return false;
-            }
-
-        case token::UNSIGNED_INTEGER_64:
-            if (eqType)
-            {
-                return
-                    t1.unsignedInteger64Token() == t2.unsignedInteger64Token();
-            }
-            else if (t2.isLabel())
-            {
-                return t1.labelToken() == t2.labelToken();
-            }
-            else if (t2.isScalar())
-            {
-                return t1.labelToken() == t2.scalarToken();
-            }
-            else
-            {
-                return false;
-            }
-
-        case token::FLOAT_SCALAR:
-            if (eqType)
-            {
-                return equal(t1.floatScalarToken(), t2.floatScalarToken());
+                return t1.floatToken() == t2.labelToken();
             }
             else if (t2.isScalar())
             {
                 return t1.scalarToken() == t2.scalarToken();
             }
-            else
-            {
-                return false;
-            }
+            return false;
 
-        case token::DOUBLE_SCALAR:
+        case token::DOUBLE:
             if (eqType)
             {
-                return equal(t1.doubleScalarToken(), t2.doubleScalarToken());
+                return equal(t1.doubleToken(), t2.doubleToken());
+            }
+            else if (t2.isLabel())
+            {
+                return t1.doubleToken() == t2.labelToken();
             }
             else if (t2.isScalar())
             {
                 return t1.scalarToken() == t2.scalarToken();
             }
-            else
-            {
-                return false;
-            }
+            return false;
 
-        case token::LONG_DOUBLE_SCALAR:
-            if (eqType)
-            {
-                return equal
-                (
-                    t1.longDoubleScalarToken(),
-                    t2.longDoubleScalarToken()
-                );
-            }
-            else if (t2.isScalar())
-            {
-                return t1.scalarToken() == t2.scalarToken();
-            }
-            else
-            {
-                return false;
-            }
+        case token::EXPRESSION:
+            return false;
 
         case token::COMPOUND:
             return false;
@@ -336,91 +243,232 @@ bool Foam::functionEntries::ifeqEntry::equalToken
 void Foam::functionEntries::ifeqEntry::skipUntil
 (
     DynamicList<filePos>& stack,
-    const dictionary& contextDict,
-    const functionName& endWord,
+    const dictionary& parentDict,
+    const word& endDirective,
     Istream& is
-) const
+)
 {
     while (!is.eof())
     {
         token t;
         readToken(t, is);
-        if (t.isFunctionName())
+
+        if (!t.isDirective())
         {
-            if
-            (
-                t.functionNameToken() == ifEntry::typeName
-             || t.functionNameToken() == ifeqEntry::typeName
-            )
-            {
-                stack.append(filePos(is.name(), is.lineNumber()));
-                skipUntil(stack, contextDict, endifEntry::typeName, is);
-                stack.remove();
-            }
-            else if (t.functionNameToken() == endWord)
-            {
-                return;
-            }
+            continue;
+        }
+        else if (t.wordToken() == "#if" || t.wordToken() == "#ifeq")
+        {
+            stack.push_back(filePos(is.name(), is.lineNumber()));
+            skipUntil(stack, parentDict, "#endif", is);
+            stack.pop_back();
+        }
+        else if (t.wordToken() == endDirective)
+        {
+            return;
         }
     }
 
-    FatalIOErrorInFunction(contextDict)
-        << "Did not find matching " << endWord
-        << " for " << typeName << " condition"
+    FatalIOErrorInFunction(parentDict)
+        << "Did not find matching " << endDirective << nl
         << exit(FatalIOError);
 }
 
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
-Foam::functionEntries::ifeqEntry::ifeqEntry
+bool Foam::functionEntries::ifeqEntry::evaluate
 (
-    const functionName& functionType,
-    const label lineNumber,
-    const dictionary& parentDict,
-    const Istream& is,
-    const tokenList& tokens
-)
-:
-    functionEntry(functionType, lineNumber, parentDict, is, tokens)
-{}
-
-
-Foam::functionEntries::ifeqEntry::ifeqEntry
-(
-    const label lineNumber,
-    const dictionary& parentDict,
+    const bool doIf,
+    DynamicList<filePos>& stack,
+    dictionary& parentDict,
     Istream& is
 )
-:
-    ifeqEntry(typeName, lineNumber, parentDict, is, readArgList(is))
-{}
+{
+    while (!is.eof())
+    {
+        token t;
+        readToken(t, is);
+        bool pending = false;
+
+        if (t.isDirective())
+        {
+            if (t.wordToken() == "#ifeq")
+            {
+                // Recurse to evaluate
+                execute(stack, parentDict, is);
+            }
+            else if (t.wordToken() == "#if")
+            {
+                // Recurse to evaluate
+                ifEntry::execute(stack, parentDict, is);
+            }
+            else if
+            (
+                doIf
+             && (t.wordToken() == "#else" || t.wordToken() == "#elif")
+            )
+            {
+                // Now skip until #endif
+                skipUntil(stack, parentDict, "#endif", is);
+                stack.pop_back();
+                break;
+            }
+            else if (t.wordToken() == "#endif")
+            {
+                stack.pop_back();
+                break;
+            }
+            else
+            {
+                pending = true;
+            }
+        }
+        else
+        {
+            pending = true;
+        }
+
+        if (pending)
+        {
+            is.putBack(t);
+            bool ok = entry::New(parentDict, is);
+            if (!ok)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+
+bool Foam::functionEntries::ifeqEntry::execute
+(
+    const bool doIf,
+    DynamicList<filePos>& stack,
+    dictionary& parentDict,
+    Istream& is
+)
+{
+    if (doIf)
+    {
+        evaluate(true, stack, parentDict, is);
+    }
+    else
+    {
+        // Fast-forward to #else
+        token t;
+        while (!is.eof())
+        {
+            readToken(t, is);
+
+            // Only consider directives
+            if (!t.isDirective())
+            {
+                continue;
+            }
+
+            if (t.wordToken() == "#if" || t.wordToken() == "#ifeq")
+            {
+                stack.push_back(filePos(is.name(), is.lineNumber()));
+                skipUntil(stack, parentDict, "#endif", is);
+                stack.pop_back();
+            }
+            else if (t.wordToken() == "#else")
+            {
+                break;
+            }
+            else if (t.wordToken() == "#elif")
+            {
+                // const label lineNo = is.lineNumber();
+
+                // Read line
+                string line;
+                dynamic_cast<ISstream&>(is).getLine(line);
+                line += ';';
+                IStringStream lineStream(line);
+                const primitiveEntry e("ifEntry", parentDict, lineStream);
+
+                if (ifEntry::isTrue(e.stream()))
+                {
+                    // Info<< "Using #elif " << doIf << " - line " << lineNo
+                    //     << " in file " << is.relativeName() << endl;
+                    break;
+                }
+            }
+            else if (t.wordToken() == "#endif")
+            {
+                stack.pop_back();
+                break;
+            }
+        }
+
+        if (t.wordToken() == "#else")
+        {
+            // Evaluate until we hit #endif
+            evaluate(false, stack, parentDict, is);
+        }
+        else if (t.wordToken() == "#elif")
+        {
+            // Evaluate until we hit #else or #endif
+            evaluate(true, stack, parentDict, is);
+        }
+    }
+    return true;
+}
+
+
+bool Foam::functionEntries::ifeqEntry::execute
+(
+    DynamicList<filePos>& stack,
+    dictionary& parentDict,
+    Istream& is
+)
+{
+    const label nNested = stack.size();
+
+    stack.push_back(filePos(is.name(), is.lineNumber()));
+
+    // Read first token and expand any string
+    token cond1(is);
+    cond1 = expandToken(parentDict, cond1);
+
+    // Read second token and expand any string
+    token cond2(is);
+    cond2 = expandToken(parentDict, cond2);
+
+    const bool equal = equalToken(cond1, cond2);
+
+    // Info<< "Using #" << typeName << " " << cond1
+    //     << " == " << cond2
+    //     << " at line " << stack.back().second()
+    //     << " in file " <<  stack.back().first() << endl;
+
+    bool ok = ifeqEntry::execute(equal, stack, parentDict, is);
+
+    if (stack.size() != nNested)
+    {
+        FatalIOErrorInFunction(parentDict)
+            << "Did not find matching #endif for condition starting"
+            << " at line " << stack.back().second()
+            << " in file " <<  stack.back().first() << exit(FatalIOError);
+    }
+
+    return ok;
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::functionEntries::ifeqEntry::execute
 (
-    dictionary& contextDict,
+    dictionary& parentDict,
     Istream& is
 )
 {
     DynamicList<filePos> stack(10);
-    return execute(stack, contextDict, contextDict, is);
-}
-
-
-bool Foam::functionEntries::ifeqEntry::execute
-(
-    const dictionary& contextDict,
-    primitiveEntry& contextEntry,
-    Istream& is
-)
-{
-    DynamicList<filePos> stack(10);
-    const ifeqEntry ifeqe(is.lineNumber(), contextDict, is);
-
-    return ifeqe.execute(stack, contextDict, contextEntry, is);
+    return execute(stack, parentDict, is);
 }
 
 

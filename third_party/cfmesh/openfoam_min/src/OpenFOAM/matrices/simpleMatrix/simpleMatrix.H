@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -56,7 +58,7 @@ Ostream& operator<<
 
 
 /*---------------------------------------------------------------------------*\
-                        Class simpleMatrix Declaration
+                           Class simpleMatrix Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -64,7 +66,7 @@ class simpleMatrix
 :
     public scalarSquareMatrix
 {
-    // Private Data
+    // Private data
 
         Field<Type> source_;
 
@@ -86,7 +88,7 @@ public:
         //- Construct from Istream
         simpleMatrix(Istream&);
 
-        //- Copy constructor
+        //- Construct as copy
         simpleMatrix(const simpleMatrix<Type>&);
 
 

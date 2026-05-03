@@ -1,9 +1,12 @@
-/*---------------------------------------------------------------------------*\
+/*---------------------------------------------------------------------------* \
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,16 @@ Class
 
 Description
     General time dependent execution controller.
-    The default to execute every time-step.
+    The execution parameters are given by the "Control" and (optionally)
+    the "Interval", with the default being to execute every time-step.
+
+    For example, an "execute" control every tenth write time:
+    \verbatim
+        executeControl  writeTime;
+        executeInterval 10;
+    \endverbatim
+
+    See Foam::functionObject for a list of known selection types.
 
 SourceFiles
     timeControl.C
@@ -37,7 +49,6 @@ SourceFiles
 #define timeControl_H
 
 #include "Time.H"
-#include "scalarList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -53,118 +64,115 @@ class timeControl
 public:
 
     //- The time control options
-    enum class timeControls
+    enum timeControls
     {
-        timeStep,           //!< Execute/write every 'Interval' time-steps
-        writeTime,          //!< Execute/write every 'Interval' write times
-        outputTime,         //!< Execute/write every 'Interval' write times
-        adjustableRunTime,  //!< Execute/write every 'Interval' run time period
-        runTime,            //!< Execute/write every 'Interval' run time period
-        runTimes,           //!< Execute/write at specified list of run times
-        clockTime,          //!< Execute/write every 'Interval' CPU time period
-        cpuTime,            //!< Execute/write every 'Interval' CPU time period
-        none                //!< No execution
+        ocNone = 0,           //!< No execution
+        ocAlways,             //!< Always execute
+        ocTimeStep,           //!< Execution coupled to time-step (default)
+        ocWriteTime,          //!< Execution coupled to write-time
+        ocRunTime,            //!< Use run-time for execution
+        ocAdjustableRunTime,  //!< Currently identical to "runTime"
+        ocClockTime,          //!< Use clock time for execution
+        ocCpuTime,            //!< Use CPU time for execution
+        ocOnEnd               //!< Execute on end of run
     };
 
 
 private:
 
+        //- The selection names for timeControls enumerations
+        static const Enum<timeControls> controlNames_;
+
+
     // Private Data
 
-        //- Reference to time
+        //- Time object
         const Time& time_;
 
-        //- Prefix
+        //- The prefix for the control name (eg, "write", "execute", ...)
         const word prefix_;
-
-        //- String representation of timeControls enums
-        static const NamedEnum<timeControls, 9> timeControlNames_;
 
         //- Type of time control
         timeControls timeControl_;
 
-        //- Start time for execution - defaults to Time::beginTime
-        scalar startTime_;
+        //- Execution interval steps (timeStep | writeTime).
+        //  A value <= 1 means execute at every time-step or writeTime.
+        label intInterval_;
 
-        //- End time for execution - defaults to vGreat
-        scalar endTime_;
-
-        //- Begin time for execution - defaults to Time::beginTime
-        scalar beginTime_;
-
-        //- Execution interval steps for timeStep mode
-        //  a value <= 1 means execute at every time step
-        label intervalSteps_;
-
-        //- Execution interval
+        //- Execution interval (clockTime | runTime | cpuTime | adjustable)
         scalar interval_;
 
-        //- List of times (for runTimes option)
-        scalarList times_;
-
-        //- Time delta used for time -> index (for runTimes option)
-        scalar timeDelta_;
-
-        //- Hash set of mesh mapping time indices (for runTimes option)
-        HashSet<int64_t, Hash<int64_t>> timeIndices_;
-
         //- Index of previous execution
-        mutable label executionIndex_;
+        label executionIndex_;
 
 
     // Private Member Functions
 
-        //- Round the given scalar down to the nearest label. As a static_cast
-        //  to label, except that negative numbers are rounded down rather than
-        //  towards zero.
-        static label roundDown(const scalar);
+        //- No copy construct
+        timeControl(const timeControl&) = delete;
+
+        //- No copy assignment
+        void operator=(const timeControl&) = delete;
 
 
 public:
 
     // Constructors
 
-        //- Construct from Time object and dictionary
+        //- Construct a control object that executes each time-step.
+        //  For places where a time control object is required, but should
+        //  not actually intervene.
+        explicit timeControl(const Time& runTime, const word& prefix = "");
+
+        //- Construct from Time object, dictionary and the prefix for the
+        //- control name.
         timeControl
         (
-            const Time&,
-            const dictionary&,
+            const Time& runTime,
+            const dictionary& dict,
             const word& prefix
         );
 
-        //- Disallow default bitwise copy construction
-        timeControl(const timeControl&) = delete;
-
 
     //- Destructor
-    ~timeControl();
+    ~timeControl() = default;
 
 
     // Member Functions
 
-        //- Read from dictionary
-        void read(const dictionary&);
+        //- Identify if a timeControl object is present in the dictionary
+        //  Matches prefix + "Control"
+        static bool entriesPresent(const dictionary& dict, const word& prefix);
 
-        //- Return Time
+        //- Read from dictionary
+        void read(const dictionary& dict);
+
+        //- Return the Time
         inline const Time& time() const;
 
-        //- Returns true the time is within the start to end period
-        bool active() const;
+        //- Return the name (prefix)
+        inline const word& name() const;
+
+        //- Return the named control enumeration as its 'type'
+        inline const word& type() const;
+
+        //- Reset control to 'always' - ie, no intervention
+        void clear();
+
+        //- Return the control enumeration
+        inline timeControls control() const;
+
+        //- Return true if the control will always execute - ie, no intervention
+        inline bool always() const;
 
         //- Flag to indicate whether to execute
         bool execute();
 
-        //- Return the time to the next write
-        scalar timeToNextAction();
+        //- Return interval
+        inline scalar interval() const;
 
-        //- Return control
-        inline timeControls control() const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const timeControl&) = delete;
+        //- Return the index of the previous execution
+        inline label executionIndex() const;
 };
 
 

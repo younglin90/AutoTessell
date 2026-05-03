@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,31 +24,49 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-
 \*---------------------------------------------------------------------------*/
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::cell::cell()
+inline Foam::cell::cell(const label sz)
+:
+    labelList(sz, -1)
 {}
 
 
-inline Foam::cell::cell(label s)
+inline Foam::cell::cell(const labelUList& list)
 :
-    labelList(s, -1)
+    labelList(list)
 {}
 
 
-inline Foam::cell::cell(const labelUList& lst)
+template<unsigned N>
+inline Foam::cell::cell(const FixedList<label, N>& list)
 :
-    labelList(lst)
+    labelList(list)
 {}
 
 
-inline Foam::cell::cell(labelList&& lst)
+inline Foam::cell::cell(labelList&& list)
 :
-    labelList(move(lst))
+    labelList(std::move(list))
+{}
+
+
+inline Foam::cell::cell(const labelUList& list, const labelUList& indices)
+:
+    labelList(list, indices)
+{}
+
+
+template<unsigned N>
+inline Foam::cell::cell
+(
+    const labelUList& list,
+    const FixedList<label, N>& indices
+)
+:
+    labelList(list, indices)
 {}
 
 
@@ -57,23 +78,17 @@ inline Foam::cell::cell(Istream& is)
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::label Foam::cell::nFaces() const
+inline Foam::label Foam::cell::nFaces() const noexcept
 {
     return size();
 }
 
 
+// * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * * //
+
 inline bool Foam::operator!=(const cell& a, const cell& b)
 {
-    return (!(a == b));
-}
-
-
-// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
-
-inline void Foam::cell::operator=(labelList&& l)
-{
-    labelList::operator=(move(l));
+    return !(a == b);
 }
 
 

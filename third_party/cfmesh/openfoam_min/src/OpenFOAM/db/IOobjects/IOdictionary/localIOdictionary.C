@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2021-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,16 +32,12 @@ License
 
 Foam::localIOdictionary::localIOdictionary
 (
-    const IOobject& io
+    const IOobject& io,
+    const dictionary* fallback
 )
 :
-    IOdictionary(io, typeName)
-{
-    readHeaderOk(IOstream::ASCII, typeName);
-
-    // For if MUST_READ_IF_MODIFIED
-    addWatch();
-}
+    localIOdictionary(io, typeName, fallback)
+{}
 
 
 Foam::localIOdictionary::localIOdictionary
@@ -47,11 +46,22 @@ Foam::localIOdictionary::localIOdictionary
     const dictionary& dict
 )
 :
-    IOdictionary(io, typeName)
+    localIOdictionary(io, typeName, &dict)
+{}
+
+
+Foam::localIOdictionary::localIOdictionary
+(
+    const IOobject& io,
+    const word& wantedType,
+    const dictionary* fallback
+)
+:
+    baseIOdictionary(io, fallback)
 {
-    if (!readHeaderOk(IOstream::ASCII, typeName))
+    if (!readHeaderOk(IOstreamOption::ASCII, wantedType) && fallback)
     {
-        dictionary::operator=(dict);
+        dictionary::operator=(*fallback);
     }
 
     // For if MUST_READ_IF_MODIFIED
@@ -62,15 +72,49 @@ Foam::localIOdictionary::localIOdictionary
 Foam::localIOdictionary::localIOdictionary
 (
     const IOobject& io,
-    const word& actualType
+    Istream& is
 )
 :
-    IOdictionary(io, actualType)
+    baseIOdictionary(io, is)
 {
-    readHeaderOk(IOstream::ASCII, actualType);
+    // Default construct dictionary and read in afterwards
+    // so that if there is some fancy massaging due to a
+    // functionEntry in
+    // the dictionary at least the type information is already complete.
+    is  >> *this;
 
     // For if MUST_READ_IF_MODIFIED
     addWatch();
+}
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+Foam::dictionary Foam::localIOdictionary::readContents(const IOobject& io)
+{
+    return readContents(io, typeName);
+}
+
+
+Foam::dictionary Foam::localIOdictionary::readContents
+(
+    const IOobject& io,
+    const word& wantedType
+)
+{
+    IOobject rio(io, IOobjectOption::NO_REGISTER);
+    if (rio.readOpt() == IOobjectOption::READ_MODIFIED)
+    {
+        rio.readOpt(IOobjectOption::MUST_READ);
+    }
+
+    localIOdictionary reader
+    (
+        rio,
+        (wantedType.empty() ? typeName : wantedType)
+    );
+
+    return dictionary(std::move(static_cast<dictionary&>(reader)));
 }
 
 

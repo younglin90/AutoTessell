@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,12 +55,12 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef tetIndices_H
-#define tetIndices_H
+#ifndef Foam_tetIndices_H
+#define Foam_tetIndices_H
 
 #include "label.H"
-#include "tetPointRef.H"
-#include "triPointRef.H"
+#include "tetrahedron.H"
+#include "triangle.H"
 #include "polyMesh.H"
 #include "triFace.H"
 #include "face.H"
@@ -67,13 +70,11 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
+// Forward Declarations
 class tetIndices;
 
 Istream& operator>>(Istream&, tetIndices&);
 Ostream& operator<<(Ostream&, const tetIndices&);
-
 
 /*---------------------------------------------------------------------------*\
                          Class tetIndices Declaration
@@ -89,82 +90,120 @@ class tetIndices
         //- Face that holds this decomposed tet
         label facei_;
 
-        //- Point on the face, *relative to the base point*, which
-        //  characterises this tet on the face.
+        //- Point on the face, *relative to the base point*,
+        //- which characterises this tet on the face.
         label tetPti_;
+
+
+    // Private Static Data
+
+        //- Maximum number of bad tet warnings
+        static constexpr int maxNWarnings = 100;
+
+        //- Current number of bad tet warnings.
+        //- Warnings stop when this reaches the maximum number.
+        static int nWarnings_;
 
 
 public:
 
     // Constructors
 
-        //- Construct null
-        tetIndices();
+        //- Default construct, with invalid labels (-1)
+        inline constexpr tetIndices() noexcept;
 
         //- Construct from components
-        tetIndices(label celli, label facei, label tetPtI);
+        inline constexpr tetIndices
+        (
+            label celli,
+            label facei,
+            label tetPointi
+        ) noexcept;
 
 
     //- Destructor
-    ~tetIndices();
+    ~tetIndices() = default;
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return the cell
-            inline label cell() const;
+        //- Return the cell index
+        label cell() const noexcept { return celli_; }
 
-            //- Return non-const access to the cell
-            inline label& cell();
+        //- Non-const access to the cell index
+        label& cell() noexcept { return celli_; }
 
-            //- Return the face
-            inline label face() const;
+        //- Return the face index
+        label face() const noexcept { return facei_; }
 
-            //- Return non-const access to the face
-            inline label& face();
+        //- Non-const access to the face index
+        label& face() noexcept { return facei_; }
 
-            //- Return the characterising tetPtI
-            inline label tetPt() const;
+        //- Return the characterising tet point index
+        label tetPt() const noexcept { return tetPti_; }
 
-            //- Return non-const access to the characterising tetPtI
-            inline label& tetPt();
-
-            //- Return the indices corresponding to the tri on the face for
-            //  this tet. The normal of the tri points out of the cell.
-            inline triFace faceTriIs(const polyMesh& mesh) const;
-
-            //- Return the geometry corresponding to this tet and the given
-            //  mesh-points and cell-centre fields
-            inline tetPointRef tet
-            (
-                const polyMesh& mesh,
-                const pointField& meshPoints,
-                const pointField& cellCentres
-            ) const;
-
-            //- Return the geometry corresponding to this tet
-            inline tetPointRef tet(const polyMesh& mesh) const;
-
-            //- Return the geometry corresponding to the tri on the face for
-            //  this tet and a given mesh-points field. The normal of the tri
-            //  points out of the cell.
-            inline triPointRef faceTri
-            (
-                const polyMesh& mesh,
-                const pointField& meshPoints
-            ) const;
-
-            //- Return the geometry corresponding to the tri on the face for
-            //  this tet. The normal of the tri points out of the cell.
-            inline triPointRef faceTri(const polyMesh& mesh) const;
+        //- Non-const access to the characterising tet point index
+        label& tetPt() noexcept { return tetPti_; }
 
 
-    // Member Operators
+    // Mesh-related
 
-        inline bool operator==(const tetIndices&) const;
-        inline bool operator!=(const tetIndices&) const;
+        //- The indices corresponding to the tri on the face for this tet.
+        //- The normal of the tri points out of the cell.
+        inline triFace faceTriIs
+        (
+            const polyMesh& mesh,
+            const bool warn = true
+        ) const;
+
+        //- Local indices corresponding to the tri on the face for this tet.
+        //- The normal of the tri points out of the cell.
+        inline triFace triIs
+        (
+            const polyMesh& mesh,
+            const bool warn = true
+        ) const;
+
+
+        //- The tet geometry for this tet,
+        //- where point0 is the cell centre.
+        inline tetPointRef tet(const polyMesh& mesh) const;
+
+        //- The tet geometry for this tet (using old positions),
+        //- where point0 is the cell centre.
+        inline tetPointRef oldTet(const polyMesh& mesh) const;
+
+        //- The triangle geometry for the face for this tet.
+        //- The normal of the tri points out of the cell
+        inline triPointRef faceTri(const polyMesh& mesh) const;
+
+        //- The triangle geometry for the face for this tet
+        //- (using old positions)
+        inline triPointRef oldFaceTri(const polyMesh& mesh) const;
+
+        //- The x/y/z position for given barycentric coordinates
+        //- (where point0 is the cell centre).
+        inline point barycentricToPoint
+        (
+            const polyMesh& mesh,
+            const barycentric& bary
+        ) const;
+
+
+    // Other
+
+        //- Compare tetIndices for equality.
+        //- Compares cell, face, tetPt elements in order, stopping at the
+        //- first inequality.
+        //
+        //  \returns negative/zero/positive from the last element compared
+        static inline label compare
+        (
+            const tetIndices& a,
+            const tetIndices& b
+        ) noexcept;
 
 
     // IOstream Operators
@@ -172,6 +211,42 @@ public:
         friend Istream& operator>>(Istream&, tetIndices&);
         friend Ostream& operator<<(Ostream&, const tetIndices&);
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for tetIndices
+template<> struct is_contiguous<tetIndices> : std::true_type {};
+
+//- Contiguous label data for tetIndices
+template<> struct is_contiguous_label<tetIndices> : std::true_type {};
+
+
+// * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
+
+inline bool operator==(const tetIndices& a, const tetIndices& b) noexcept;
+inline bool operator!=(const tetIndices& a, const tetIndices& b) noexcept;
+
+
+inline bool operator<(const tetIndices& a, const tetIndices& b) noexcept
+{
+    return (tetIndices::compare(a, b) < 0);
+}
+
+inline bool operator<=(const tetIndices& a, const tetIndices& b) noexcept
+{
+    return (tetIndices::compare(a, b) <= 0);
+}
+
+inline bool operator>(const tetIndices& a, const tetIndices& b) noexcept
+{
+    return (tetIndices::compare(a, b) > 0);
+}
+
+inline bool operator>=(const tetIndices& a, const tetIndices& b) noexcept
+{
+    return (tetIndices::compare(a, b) >= 0);
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +28,38 @@ License
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline Foam::label Foam::TimeState::timeIndex() const
+inline Foam::scalar Foam::TimeState::timeOutputValue() const
+{
+    return timeToUserTime(dimensionedScalar::value());
+}
+
+
+inline const Foam::word& Foam::TimeState::timeName() const noexcept
+{
+    return dimensionedScalar::name();
+}
+
+
+// FUTURE?
+// inline Foam::scalar Foam::TimeState::timeValue() const noexcept
+// {
+//     return dimensionedScalar::value();
+// }
+
+
+inline Foam::label Foam::TimeState::timeIndex() const noexcept
 {
     return timeIndex_;
 }
 
 
-inline Foam::scalar Foam::TimeState::deltaTValue() const
+inline Foam::scalar Foam::TimeState::deltaTValue() const noexcept
 {
     return deltaT_;
 }
 
 
-inline Foam::scalar Foam::TimeState::deltaT0Value() const
+inline Foam::scalar Foam::TimeState::deltaT0Value() const noexcept
 {
     return deltaT0_;
 }
@@ -55,7 +77,7 @@ inline Foam::dimensionedScalar Foam::TimeState::deltaT0() const
 }
 
 
-inline bool Foam::TimeState::writeTime() const
+inline bool Foam::TimeState::writeTime() const noexcept
 {
     return writeTime_;
 }

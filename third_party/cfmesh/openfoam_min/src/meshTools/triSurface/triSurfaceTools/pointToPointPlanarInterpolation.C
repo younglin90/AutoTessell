@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "pointToPointPlanarInterpolation.H"
 #include "boundBox.H"
-#include "randomGenerator.H"
+#include "Random.H"
 #include "vector2D.H"
 #include "triSurface.H"
 #include "triSurfaceTools.H"
@@ -41,92 +44,93 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-Foam::coordinateSystem
+Foam::coordSystem::cartesian
 Foam::pointToPointPlanarInterpolation::calcCoordinateSystem
 (
     const pointField& points
-) const
+)
 {
     if (points.size() < 3)
     {
         FatalErrorInFunction
-            << "Only " << points.size() << " provided." << nl
-            << "Need at least three non-colinear points"
-            << " to be able to interpolate."
+            << "Need at least 3 non-collinear points for planar interpolation,"
+            << " but only had " << points.size() << " points" << nl
             << exit(FatalError);
     }
 
     const point& p0 = points[0];
 
     // Find furthest away point
-    vector e1;
     label index1 = -1;
-    scalar maxDist = -great;
+    scalar maxDistSqr = ROOTVSMALL;
 
-    for (label i = 1; i < points.size(); i++)
+    for (label i = 1; i < points.size(); ++i)
     {
-        const vector d = points[i] - p0;
-        scalar magD = mag(d);
+        const scalar mag2 = magSqr(points[i] - p0);
 
-        if (magD > maxDist)
+        if (maxDistSqr < mag2)
         {
-            e1 = d/magD;
+            maxDistSqr = mag2;
             index1 = i;
-            maxDist = magD;
         }
     }
-    // Find point that is furthest away from line p0-p1
-    const point& p1 = points[index1];
+    if (index1 == -1)
+    {
+        FatalErrorInFunction
+            << "Cannot find any point that is different from first point"
+            << p0 << ". Are all your points coincident?"
+            << exit(FatalError);
+    }
 
+    const vector e1(normalised(points[index1] - p0));
+
+    // Find point that is furthest perpendicular distance from the p0-p1 line
     label index2 = -1;
-    maxDist = -great;
+    maxDistSqr = ROOTVSMALL;
     for (label i = 1; i < points.size(); i++)
     {
         if (i != index1)
         {
-            const point& p2 = points[i];
-            vector e2(p2 - p0);
-            e2 -= (e2&e1)*e1;
-            scalar magE2 = mag(e2);
+            vector e2(points[i] - p0);
+            e2.removeCollinear(e1);
 
-            if (magE2 > maxDist)
+            const scalar mag2 = magSqr(e2);
+
+            if (maxDistSqr < mag2)
             {
+                maxDistSqr = mag2;
                 index2 = i;
-                maxDist = magE2;
             }
         }
     }
     if (index2 == -1)
     {
         FatalErrorInFunction
-            << "Cannot find points that make valid normal." << nl
-            << "Have so far points " << p0 << " and " << p1
-            << "Need at least three points which are not in a line."
+            << "Cannot find points that define a plane with a valid normal."
+            << nl << "Have so far points " << p0 << " and " << points[index1]
+            << ". Are all your points on a single line instead of a plane?"
             << exit(FatalError);
     }
 
-    vector n = e1^(points[index2]-p0);
-    n /= mag(n);
+    const vector n = normalised(e1 ^ (points[index2]-p0));
 
-    if (debug)
-    {
-        InfoInFunction
-            << " Used points " << p0 << ' ' << points[index1]
-            << ' ' << points[index2]
-            << " to define coordinate system with normal " << n << endl;
-    }
+    DebugInFunction
+        << " Used points "
+        << p0 << ' ' << points[index1] << ' ' << points[index2]
+        << " to define coordinate system with normal " << n << endl;
 
-    return coordinateSystem
+    return coordSystem::cartesian
     (
-        "reference",
         p0,  // origin
         n,   // normal
         e1   // 0-axis
     );
 }
 
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 void Foam::pointToPointPlanarInterpolation::calcWeights
 (
@@ -141,7 +145,7 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
         (
             destPoints,
             sourcePoints,
-            scalarField(destPoints.size(), great),
+            scalarField(destPoints.size(), GREAT),
             true,       // verbose
             destToSource
         );
@@ -153,8 +157,8 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
                 << " centre" << exit(FatalError);
         }
 
-        nearestVertex_.setSize(destPoints.size());
-        nearestVertexWeight_.setSize(destPoints.size());
+        nearestVertex_.resize(destPoints.size());
+        nearestVertexWeight_.resize(destPoints.size());
         forAll(nearestVertex_, i)
         {
             nearestVertex_[i][0] = destToSource[i];
@@ -179,44 +183,41 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
                     << endl;
             }
 
-            OBJstream str("destToSource.obj");
+            OBJstream str
+            (
+                "destToSource_" + Foam::name(UPstream::myProcNo()) + ".obj"
+            );
             Pout<< "pointToPointPlanarInterpolation::calcWeights :"
                 << " Dumping lines from face centres to original points to "
                 << str.name() << endl;
 
             forAll(destPoints, i)
             {
-                label v0 = nearestVertex_[i][0];
-                str.write(linePointRef(destPoints[i], sourcePoints[v0]));
+                const label v0 = nearestVertex_[i][0];
+                str.writeLine(destPoints[i], sourcePoints[v0]);
             }
         }
     }
     else
     {
-        tmp<vectorField> tlocalVertices
-        (
-            referenceCS_.localPosition(sourcePoints)
-        );
-        vectorField& localVertices = tlocalVertices.ref();
+        auto tlocalVertices = referenceCS_.localPosition(sourcePoints);
+        auto& localVertices = tlocalVertices.ref();
 
         const boundBox bb(localVertices, true);
-        const point bbMid(bb.midpoint());
+        const point bbMid(bb.centre());
 
-        if (debug)
-        {
-            InfoInFunction
-                << " Perturbing points with " << perturb_
-                << " fraction of a random position inside " << bb
-                << " to break any ties on regular meshes."
-                << nl << endl;
-        }
+        DebugInFunction
+            << " Perturbing points with " << perturb_
+            << " fraction of a random position inside " << bb
+            << " to break any ties on regular meshes." << nl
+            << endl;
 
-        randomGenerator rndGen(123456);
+        Random rndGen(123456);
         forAll(localVertices, i)
         {
             localVertices[i] +=
                 perturb_
-               *(rndGen.sampleAB<vector>(bb.min(), bb.max()) - bbMid);
+               *(rndGen.position(bb.min(), bb.max())-bbMid);
         }
 
         // Determine triangulation
@@ -229,29 +230,29 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
 
         triSurface s(triSurfaceTools::delaunay2D(localVertices2D));
 
-        tmp<pointField> tlocalFaceCentres
-        (
-            referenceCS_.localPosition
-            (
-                destPoints
-            )
-        );
+        auto tlocalFaceCentres = referenceCS_.localPosition(destPoints);
         const pointField& localFaceCentres = tlocalFaceCentres();
 
         if (debug)
         {
-            Pout<< "pointToPointPlanarInterpolation::calcWeights :"
-                <<" Dumping triangulated surface to triangulation.stl" << endl;
-            s.write("triangulation.stl");
+            fileName outName
+            (
+                "triangulation_" + Foam::name(UPstream::myProcNo()) + ".obj"
+            );
 
-            OBJstream str("localFaceCentres.obj");
             Pout<< "pointToPointPlanarInterpolation::calcWeights :"
-                << " Dumping face centres to " << str.name() << endl;
+                <<" Dumping triangulated surface to " << outName << endl;
 
-            forAll(localFaceCentres, i)
-            {
-                str.write(localFaceCentres[i]);
-            }
+            s.write(outName);
+
+            OBJstream os
+            (
+                "localFaceCentres_" + Foam::name(UPstream::myProcNo()) + ".obj"
+            );
+            Pout<< "pointToPointPlanarInterpolation::calcWeights :"
+                << " Dumping face centres to " << os.name() << endl;
+
+            os.write(localFaceCentres);
         }
 
         // Determine interpolation onto face centres.
@@ -272,11 +273,18 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
                     << endl;
             }
 
+            OBJstream str
+            (
+                "stencil_" + Foam::name(UPstream::myProcNo()) + ".obj"
+            );
+            Pout<< "pointToPointPlanarInterpolation::calcWeights :"
+                << " Dumping stencil to " << str.name() << endl;
+
             forAll(destPoints, i)
             {
-                label v0 = nearestVertex_[i][0];
-                label v1 = nearestVertex_[i][1];
-                label v2 = nearestVertex_[i][2];
+                const label v0 = nearestVertex_[i][0];
+                const label v1 = nearestVertex_[i][1];
+                const label v2 = nearestVertex_[i][2];
 
                 Pout<< "For location " << destPoints[i]
                     << " 2d:" << localFaceCentres[i]
@@ -285,17 +293,21 @@ void Foam::pointToPointPlanarInterpolation::calcWeights
                     << " at:" << sourcePoints[v0]
                     << " weight:" << nearestVertexWeight_[i][0] << nl;
 
+                str.writeLine(destPoints[i], sourcePoints[v0]);
+
                 if (v1 != -1)
                 {
                     Pout<< "    " << v1
                         << " at:" << sourcePoints[v1]
                         << " weight:" << nearestVertexWeight_[i][1] << nl;
+                    str.writeLine(destPoints[i], sourcePoints[v1]);
                 }
                 if (v2 != -1)
                 {
                     Pout<< "    " << v2
                         << " at:" << sourcePoints[v2]
                         << " weight:" << nearestVertexWeight_[i][2] << nl;
+                    str.writeLine(destPoints[i], sourcePoints[v2]);
                 }
 
                 Pout<< endl;
@@ -317,9 +329,13 @@ Foam::pointToPointPlanarInterpolation::pointToPointPlanarInterpolation
 :
     perturb_(perturb),
     nearestOnly_(nearestOnly),
-    referenceCS_(calcCoordinateSystem(sourcePoints)),
+    referenceCS_(),
     nPoints_(sourcePoints.size())
 {
+    if (!nearestOnly)
+    {
+        referenceCS_ = calcCoordinateSystem(sourcePoints);
+    }
     calcWeights(sourcePoints, destPoints);
 }
 
@@ -341,7 +357,26 @@ Foam::pointToPointPlanarInterpolation::pointToPointPlanarInterpolation
 }
 
 
-// * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
+Foam::pointToPointPlanarInterpolation::pointToPointPlanarInterpolation
+(
+    const scalar perturb,
+    const bool nearestOnly,
+    const coordinateSystem& referenceCS,
+    const label sourceSize,
+    List<FixedList<label, 3>>&& nearestVertex,
+    List<FixedList<scalar, 3>>&& nearestVertexWeight
+)
+:
+    perturb_(perturb),
+    nearestOnly_(nearestOnly),
+    referenceCS_(referenceCS),
+    nPoints_(sourceSize),
+    nearestVertex_(std::move(nearestVertex)),
+    nearestVertexWeight_(std::move(nearestVertexWeight))
+{}
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
 Foam::wordList Foam::pointToPointPlanarInterpolation::timeNames
 (
@@ -355,67 +390,6 @@ Foam::wordList Foam::pointToPointPlanarInterpolation::timeNames
         names[i] = times[i].name();
     }
     return names;
-}
-
-
-bool Foam::pointToPointPlanarInterpolation::findTime
-(
-    const instantList& times,
-    const label startSampleTime,
-    const scalar timeVal,
-    label& lo,
-    label& hi
-)
-{
-    lo = startSampleTime;
-    hi = -1;
-
-    for (label i = startSampleTime+1; i < times.size(); i++)
-    {
-        if (times[i].value() > timeVal)
-        {
-            break;
-        }
-        else
-        {
-            lo = i;
-        }
-    }
-
-    if (lo == -1)
-    {
-        // FatalErrorInFunction
-        //    << "Cannot find starting sampling values for current time "
-        //    << timeVal << nl
-        //    << "Have sampling values for times "
-        //    << timeNames(times) << nl
-        //    << exit(FatalError);
-        return false;
-    }
-
-    if (lo < times.size()-1)
-    {
-        hi = lo+1;
-    }
-
-
-    if (debug)
-    {
-        if (hi == -1)
-        {
-            Pout<< "findTime : Found time " << timeVal << " after"
-                << " index:" << lo << " time:" << times[lo].value()
-                << endl;
-        }
-        else
-        {
-            Pout<< "findTime : Found time " << timeVal << " in between"
-                << " index:" << lo << " time:" << times[lo].value()
-                << " and index:" << hi << " time:" << times[hi].value()
-                << endl;
-        }
-    }
-    return true;
 }
 
 

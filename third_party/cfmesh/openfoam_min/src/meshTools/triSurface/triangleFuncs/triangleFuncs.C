@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "triangleFuncs.H"
-#include "pointField.H"
+#include "triangle.H"
 #include "treeBoundBox.H"
 #include "SortableList.H"
 #include "boolList.H"
@@ -44,7 +47,7 @@ void Foam::triangleFuncs::setIntersection
     point& pt
 )
 {
-    scalar denom = oppositeSign - thisSign;
+    const scalar denom = oppositeSign - thisSign;
 
     if (mag(denom) < tol)
     {
@@ -58,29 +61,8 @@ void Foam::triangleFuncs::setIntersection
 }
 
 
-void Foam::triangleFuncs::selectPt
-(
-    const bool select0,
-    const point& p0,
-    const point& p1,
-    point& min
-)
-{
-    if (select0)
-    {
-        min = p0;
-    }
-    else
-    {
-        min = p1;
-    }
-}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-// Intersect triangle with parallel edges aligned with axis i0.
-// Returns true (and intersection in pInter) if any of them intersects triangle.
 bool Foam::triangleFuncs::intersectAxesBundle
 (
     const point& V0,
@@ -97,24 +79,24 @@ bool Foam::triangleFuncs::intersectAxesBundle
     // we can directly check u,v components for inclusion in triangle.
 
     // Get other components
-    const label i1 = (i0 + 1) % 3;
-    const label i2 = (i1 + 1) % 3;
+    label i1 = (i0 + 1) % 3;
+    label i2 = (i1 + 1) % 3;
 
-    const scalar u1 = V10[i1];
-    const scalar v1 = V10[i2];
+    scalar u1 = V10[i1];
+    scalar v1 = V10[i2];
 
-    const scalar u2 = V20[i1];
-    const scalar v2 = V20[i2];
+    scalar u2 = V20[i1];
+    scalar v2 = V20[i2];
 
-    const scalar localScale = mag(u1) + mag(v1) + mag(u2) + mag(v2);
+    scalar localScale = mag(u1)+mag(v1)+mag(u2)+mag(v2);
 
-    const scalar det = v2*u1 - u2*v1;
+    scalar det = v2*u1 - u2*v1;
 
     // Fix for  V0:(-31.71428 0 -15.10714)
     //          V10:(-1.285715 8.99165e-16 -1.142858)
     //          V20:(0 0 -1.678573)
     //          i0:0
-    if (localScale < vSmall || Foam::mag(det)/localScale < small)
+    if (localScale < VSMALL || Foam::mag(det)/localScale < SMALL)
     {
         // Triangle parallel to dir
         return false;
@@ -124,14 +106,14 @@ bool Foam::triangleFuncs::intersectAxesBundle
     {
         const point& P = origin[originI];
 
-        const scalar u0 = P[i1] - V0[i1];
-        const scalar v0 = P[i2] - V0[i2];
+        scalar u0 = P[i1] - V0[i1];
+        scalar v0 = P[i2] - V0[i2];
 
         scalar alpha = 0;
         scalar beta = 0;
         bool inter = false;
 
-        if (mag(u1) < rootVSmall)
+        if (Foam::mag(u1) < ROOTVSMALL)
         {
             beta = u0/u2;
             if ((beta >= 0) && (beta <= 1))
@@ -153,7 +135,7 @@ bool Foam::triangleFuncs::intersectAxesBundle
         if (inter)
         {
             pInter = V0 + alpha*V10 + beta*V20;
-            const scalar s = pInter[i0] - P[i0];
+            scalar s = (pInter - origin[originI])[i0];
 
             if ((s >= 0) && (s <= maxLength))
             {
@@ -161,14 +143,54 @@ bool Foam::triangleFuncs::intersectAxesBundle
             }
         }
     }
-
     return false;
 }
 
 
-// Intersect triangle with bounding box. Return true if
-// any of the faces of bb intersect triangle.
-// Note: so returns false if triangle inside bb.
+bool Foam::triangleFuncs::intersectBb
+(
+    const triPointRef& tri,
+    const treeBoundBox& cubeBb
+)
+{
+    // Slow (edge by edge) bounding box intersection. TBD: replace with call
+    // to above intersectAxesBundle. However this function is not fully
+    // correct and misses intersection between some triangles.
+    {
+        const pointField points(cubeBb.points());
+
+        for (const edge& e : treeBoundBox::edges)
+        {
+            const point& start = points[e[0]];
+            const point& end = points[e[1]];
+
+            pointHit inter = tri.intersection
+            (
+                start,
+                end-start,
+                intersection::HALF_RAY
+            );
+
+            if (inter.hit() && inter.distance() <= 1)
+            {
+                return true;
+            }
+        }
+    }
+
+
+    // Intersect triangle edges with bounding box
+    point pInter;
+
+    return
+    (
+        cubeBb.intersects(tri.a(), tri.b(), pInter)
+     || cubeBb.intersects(tri.b(), tri.c(), pInter)
+     || cubeBb.intersects(tri.c(), tri.a(), pInter)
+    );
+}
+
+
 bool Foam::triangleFuncs::intersectBb
 (
     const point& p0,
@@ -177,350 +199,10 @@ bool Foam::triangleFuncs::intersectBb
     const treeBoundBox& cubeBb
 )
 {
-    const vector p10 = p1 - p0;
-    const vector p20 = p2 - p0;
+    const triPointRef tri(p0, p1, p2);
 
-    // cubeBb points; counted as if cell with vertex0 at cubeBb.min().
-    const point& min = cubeBb.min();
-    const point& max = cubeBb.max();
-
-    const point& cube0 = min;
-    const point  cube1(min.x(), min.y(), max.z());
-    const point  cube2(max.x(), min.y(), max.z());
-    const point  cube3(max.x(), min.y(), min.z());
-
-    const point  cube4(min.x(), max.y(), min.z());
-    const point  cube5(min.x(), max.y(), max.z());
-    const point  cube7(max.x(), max.y(), min.z());
-
-    //
-    // Intersect all 12 edges of cube with triangle
-    //
-
-    point pInter;
-    pointField origin(4);
-    // edges in x direction
-    origin[0] = cube0;
-    origin[1] = cube1;
-    origin[2] = cube5;
-    origin[3] = cube4;
-
-    scalar maxSx = max.x() - min.x();
-
-    if (intersectAxesBundle(p0, p10, p20, 0, origin, maxSx, pInter))
-    {
-        return true;
-    }
-
-    // edges in y direction
-    origin[0] = cube0;
-    origin[1] = cube1;
-    origin[2] = cube2;
-    origin[3] = cube3;
-
-    scalar maxSy = max.y() - min.y();
-
-    if (intersectAxesBundle(p0, p10, p20, 1, origin, maxSy, pInter))
-    {
-        return true;
-    }
-
-    // edges in z direction
-    origin[0] = cube0;
-    origin[1] = cube3;
-    origin[2] = cube7;
-    origin[3] = cube4;
-
-    scalar maxSz = max.z() - min.z();
-
-    if (intersectAxesBundle(p0, p10, p20, 2, origin, maxSz, pInter))
-    {
-        return true;
-    }
-
-
-    // Intersect triangle edges with bounding box
-    if (cubeBb.intersects(p0, p1, pInter))
-    {
-        return true;
-    }
-    if (cubeBb.intersects(p1, p2, pInter))
-    {
-        return true;
-    }
-    if (cubeBb.intersects(p2, p0, pInter))
-    {
-        return true;
-    }
-
-    return false;
+    return intersectBb(tri, cubeBb);
 }
-
-
-//// Intersect triangle with bounding box. Return true if
-//// any of the faces of bb intersect triangle.
-//// Note: so returns false if triangle inside bb.
-//bool Foam::triangleFuncs::intersectBbExact
-//(
-//    const point& p0,
-//    const point& p1,
-//    const point& p2,
-//    const treeBoundBox& cubeBb
-//)
-//{
-//    const point& min = cubeBb.min();
-//    const point& max = cubeBb.max();
-//
-//    const point& cube0 = min;
-//    const point  cube1(min.x(), min.y(), max.z());
-//    const point  cube2(max.x(), min.y(), max.z());
-//    const point  cube3(max.x(), min.y(), min.z());
-//
-//    const point  cube4(min.x(), max.y(), min.z());
-//    const point  cube5(min.x(), max.y(), max.z());
-//    const point& cube6 = max;
-//    const point  cube7(max.x(), max.y(), min.z());
-//
-//    // Test intersection of triangle with twelve edges of box.
-//    {
-//        triPointRef tri(p0, p1, p2);
-//        if (tri.intersectionExact(cube0, cube1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube1, cube2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube2, cube3).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube3, cube0).hit())
-//        {
-//            return true;
-//        }
-//
-//        if (tri.intersectionExact(cube4, cube5).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube5, cube6).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube6, cube7).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube7, cube4).hit())
-//        {
-//            return true;
-//        }
-//
-//        if (tri.intersectionExact(cube0, cube4).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube1, cube5).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube2, cube6).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(cube3, cube7).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    // Test intersection of triangle edges with bounding box
-//    {
-//        triPointRef tri(cube0, cube1, cube2);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube2, cube3, cube0);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube4, cube5, cube6);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube6, cube7, cube4);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//
-//
-//    {
-//        triPointRef tri(cube4, cube5, cube1);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube1, cube0, cube4);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube7, cube6, cube2);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube2, cube3, cube7);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//
-//    {
-//        triPointRef tri(cube0, cube4, cube7);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube7, cube3, cube0);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube1, cube5, cube6);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    {
-//        triPointRef tri(cube6, cube2, cube1);
-//        if (tri.intersectionExact(p0, p1).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p1, p2).hit())
-//        {
-//            return true;
-//        }
-//        if (tri.intersectionExact(p2, p0).hit())
-//        {
-//            return true;
-//        }
-//    }
-//    return false;
-//}
 
 
 bool Foam::triangleFuncs::intersect
@@ -541,7 +223,7 @@ bool Foam::triangleFuncs::intersect
     scalar magArea = mag(na);
     na/magArea;
 
-    if (mag(na & normal) > (1 - small))
+    if (mag(na & normal) > (1 - SMALL))
     {
         // Parallel
         return false;
@@ -616,7 +298,7 @@ bool Foam::triangleFuncs::intersect
         }
     }
 
-    scalar tol = small*Foam::sqrt(magArea);
+    scalar tol = SMALL*Foam::sqrt(magArea);
 
     if (oppositeVertex == 0)
     {

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "dictionary.H"
-#include "IOobject.H"
-#include "HashSet.H"
-#include "inputModeEntry.H"
-#include "codeIncludeEntry.H"
-#include "stringOps.H"
-#include "etcFiles.H"
-#include "wordAndDictionary.H"
-#include "ITstream.H"
-#include "OTstream.H"
-#include "OSspecific.H"
+#include "IFstream.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -41,54 +35,32 @@ Foam::dictionary::dictionary
 (
     const fileName& name,
     const dictionary& parentDict,
-    Istream& is
+    Istream& is,
+    bool keepHeader
 )
 :
-    dictionaryName(pathName(parentDict, name)),
-    parent_(parentDict),
-    filePtr_(nullptr)
+    name_(fileName::concat(parentDict.name(), name, '/')),
+    parent_(parentDict)
 {
-    read(is);
-}
-
-
-Foam::dictionary::dictionary(Istream& is, const bool keepHeader)
-:
-    dictionaryName(is.name()),
-    parent_(dictionary::null),
-    filePtr_(nullptr)
-{
-    // Reset input mode as this is a "top-level" dictionary
-    functionEntries::inputModeEntry::clear();
-
     read(is, keepHeader);
 }
 
 
-Foam::dictionary::includedDictionary::includedDictionary
-(
-    const fileName& fName,
-    const dictionary& parentDict
-)
+Foam::dictionary::dictionary(Istream& is)
 :
-    dictionary(fName),
-    global_(parentDict.topDict().global())
+    dictionary(is, false)
+{}
+
+
+Foam::dictionary::dictionary(Istream& is, bool keepHeader)
+:
+    name_(is.name()),
+    parent_(dictionary::null)
 {
-    autoPtr<ISstream> ifsPtr
-    (
-        fileHandler().NewIFstream(fName)
-    );
-    ISstream& ifs = ifsPtr();
+    // Reset input mode as this is a "top-level" dictionary
+    entry::resetInputMode();
 
-    if (!ifs || !ifs.good())
-    {
-        FatalIOErrorInFunction(parentDict)
-            << "Included dictionary file " << fName
-            << " cannot be found for dictionary " << parentDict.name()
-            << exit(FatalIOError);
-    }
-
-    read(ifs);
+    read(is, keepHeader);
 }
 
 
@@ -96,14 +68,20 @@ Foam::dictionary::includedDictionary::includedDictionary
 
 Foam::autoPtr<Foam::dictionary> Foam::dictionary::New(Istream& is)
 {
-    return autoPtr<dictionary>(new dictionary(is));
+    return autoPtr<dictionary>::New(is);
 }
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-bool Foam::dictionary::read(Istream& is, const bool keepHeader)
+bool Foam::dictionary::read(Istream& is, bool keepHeader)
 {
+    // Normally remove FoamFile header when read, but avoid this if it already
+    // existed prior to the current read.
+    // We would otherwise lose it with every top-level '#include ...'
+
+    keepHeader = keepHeader || hashedEntries_.found("FoamFile");
+
     // Check for empty dictionary
     if (is.eof())
     {
@@ -113,31 +91,38 @@ bool Foam::dictionary::read(Istream& is, const bool keepHeader)
     if (!is.good())
     {
         FatalIOErrorInFunction(is)
-            << "Istream not OK for reading dictionary "
+            << "Istream not OK for reading dictionary " << name()
             << exit(FatalIOError);
 
         return false;
     }
 
-    // Cache the file/stream pointer
-    const Istream* filePtr0 = filePtr_;
-
-    // Set the file/stream pointer to the given stream
-    filePtr_ = &is;
-
+    // The expected end character
+    int endChar = token::END_BLOCK;
     token currToken(is);
-    if (currToken != token::BEGIN_BLOCK)
+
+    if (currToken == token::END_BLOCK)
+    {
+        FatalIOErrorInFunction(is)
+            << "Dictionary input cannot start with '}'" << nl
+            << exit(FatalIOError);
+    }
+    else if (currToken != token::BEGIN_BLOCK)
     {
         is.putBack(currToken);
+        endChar = 0;
     }
 
-    while (!is.eof() && entry::New(*this, is))
+    while
+    (
+        !is.eof()
+     && entry::New(*this, is, entry::inputMode::GLOBAL, endChar)
+    )
     {}
 
-    // normally remove the FoamFile header entry if it exists
     if (!keepHeader)
     {
-        remove(IOobject::foamFile);
+        remove("FoamFile");
     }
 
     if (is.bad())
@@ -149,49 +134,14 @@ bool Foam::dictionary::read(Istream& is, const bool keepHeader)
         return false;
     }
 
-    // Reset the file/stream pointer to the original
-    filePtr_ = filePtr0;
-
     return true;
 }
 
 
-bool Foam::dictionary::global() const
+bool Foam::dictionary::read(Istream& is)
 {
-    if (&parent_ != &dictionary::null)
-    {
-        return parent_.global();
-    }
-    else
-    {
-        return false;
-    }
+    return this->read(is, false);
 }
-
-
-bool Foam::dictionary::substituteKeyword(const word& keyword)
-{
-    word varName = keyword(1, keyword.size()-1);
-
-    // lookup the variable name in the given dictionary
-    const entry* ePtr = lookupEntryPtr(varName, true, true);
-
-    // if defined insert its entries into this dictionary
-    if (ePtr != nullptr)
-    {
-        const dictionary& addDict = ePtr->dict();
-
-        forAllConstIter(IDLList<entry>, addDict, iter)
-        {
-            add(iter());
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
 
 
 // * * * * * * * * * * * * * * Istream Operator  * * * * * * * * * * * * * * //
@@ -199,7 +149,7 @@ bool Foam::dictionary::substituteKeyword(const word& keyword)
 Foam::Istream& Foam::operator>>(Istream& is, dictionary& dict)
 {
     // Reset input mode assuming this is a "top-level" dictionary
-    functionEntries::inputModeEntry::clear();
+    entry::resetInputMode();
 
     dict.clear();
     dict.name() = is.name();
@@ -211,39 +161,66 @@ Foam::Istream& Foam::operator>>(Istream& is, dictionary& dict)
 
 // * * * * * * * * * * * * * * Ostream Operator  * * * * * * * * * * * * * * //
 
-void Foam::dictionary::write(Ostream& os, bool subDict) const
+void Foam::dictionary::writeEntry(Ostream& os) const
 {
-    if (subDict)
+    os.beginBlock(dictName());
+    writeEntries(os);
+    os.endBlock();
+}
+
+
+void Foam::dictionary::writeEntry(const keyType& kw, Ostream& os) const
+{
+    os.beginBlock(kw);
+    writeEntries(os);
+    os.endBlock();
+}
+
+
+void Foam::dictionary::writeEntries(Ostream& os, const bool extraNewLine) const
+{
+    // Add extra new line separation between entries
+    // for "top-level" dictionaries
+
+    const bool addLine = (extraNewLine && parent() == dictionary::null);
+    bool separator = false;
+
+    for (const entry& e : *this)
     {
-        os  << nl << indent << token::BEGIN_BLOCK << incrIndent << nl;
-    }
-
-    forAllConstIter(IDLList<entry>, *this, iter)
-    {
-        const entry& e = *iter;
-
-        // Write entry
-        os  << e;
-
-        // Add extra new line between entries for "top-level" dictionaries
-        if (!subDict && parent() == dictionary::null && (&e != last()))
+        if (separator)
         {
             os  << nl;
         }
+        separator = addLine;
+
+        // Write entry
+        os  << e;
 
         // Check stream before going to next entry.
         if (!os.good())
         {
             WarningInFunction
-                << "Can't write entry " << iter().keyword()
+                << "Cannot write entry " << e.keyword()
                 << " for dictionary " << name()
                 << endl;
         }
     }
+}
+
+
+void Foam::dictionary::write(Ostream& os, const bool subDict) const
+{
+    if (subDict)
+    {
+        os  << nl;
+        os.beginBlock();
+    }
+
+    writeEntries(os, !subDict);
 
     if (subDict)
     {
-        os  << decrIndent << indent << token::END_BLOCK << endl;
+        os.endBlock();
     }
 }
 
@@ -252,559 +229,6 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const dictionary& dict)
 {
     dict.write(os, true);
     return os;
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Foam::List<Foam::Tuple2<Foam::word, Foam::string>>
-unsetConfigEntries(const dictionary& configDict)
-{
-    const wordRe unsetPattern("<.*>");
-    unsetPattern.compile();
-
-    List<Tuple2<word, string>> unsetArgs;
-
-    forAllConstIter(IDLList<entry>, configDict, iter)
-    {
-        if (iter().isStream())
-        {
-            ITstream& its = iter().stream();
-            OStringStream oss;
-            bool isUnset = false;
-
-            forAll(its, i)
-            {
-                oss << its[i];
-                if (its[i].isWord() && unsetPattern.match(its[i].wordToken()))
-                {
-                    isUnset = true;
-                }
-            }
-
-            if (isUnset)
-            {
-                unsetArgs.append
-                (
-                    Tuple2<word, string>
-                    (
-                        iter().keyword(),
-                        oss.str()
-                    )
-                );
-            }
-        }
-        else
-        {
-            List<Tuple2<word, string>> subUnsetArgs =
-                unsetConfigEntries(iter().dict());
-
-            forAll(subUnsetArgs, i)
-            {
-                unsetArgs.append
-                (
-                    Tuple2<word, string>
-                    (
-                        iter().keyword() + '/' + subUnsetArgs[i].first(),
-                        subUnsetArgs[i].second()
-                    )
-                );
-            }
-        }
-    }
-
-    return unsetArgs;
-}
-
-
-void listConfigFiles
-(
-    const fileName& dir,
-    HashSet<word>& foMap
-)
-{
-    // Search specified directory for configuration files
-    {
-        fileNameList foFiles(fileHandler().readDir(dir));
-        forAll(foFiles, f)
-        {
-            if (foFiles[f].ext().empty())
-            {
-                foMap.insert(foFiles[f]);
-            }
-        }
-    }
-
-    // Recurse into sub-directories
-    {
-        fileNameList foDirs(fileHandler().readDir(dir, fileType::directory));
-        forAll(foDirs, fd)
-        {
-            listConfigFiles(dir/foDirs[fd], foMap);
-        }
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Foam::fileName Foam::findConfigFile
-(
-    const word& configName,
-    const fileName& configFilesPath,
-    const word& configFilesDir,
-    const word& region
-)
-{
-    // First check if there is a configuration file in the
-    // region configFilesDir directory
-    {
-        const fileName dictFile
-        (
-            stringOps::expandEnvVar("$FOAM_CASE")
-           /configFilesDir/region/configName
-        );
-
-        if (isFile(dictFile))
-        {
-            return dictFile;
-        }
-    }
-
-    // Next, if the region is specified, check if there is a configuration file
-    // in the global configFilesDir directory
-    if (region != word::null)
-    {
-        const fileName dictFile
-        (
-            stringOps::expandEnvVar("$FOAM_CASE")/configFilesDir/configName
-        );
-
-        if (isFile(dictFile))
-        {
-            return dictFile;
-        }
-    }
-
-    // Finally, check etc directories
-    {
-        const fileNameList etcDirs(findEtcDirs(configFilesPath));
-
-        forAll(etcDirs, i)
-        {
-            const fileName dictFile(search(configName, etcDirs[i]));
-
-            if (!dictFile.empty())
-            {
-                return dictFile;
-            }
-        }
-    }
-
-    return fileName::null;
-}
-
-
-Foam::wordList Foam::listAllConfigFiles
-(
-    const fileName& configFilesPath
-)
-{
-    HashSet<word> foMap;
-
-    fileNameList etcDirs(findEtcDirs(configFilesPath));
-
-    forAll(etcDirs, ed)
-    {
-        listConfigFiles(etcDirs[ed], foMap);
-    }
-
-    return foMap.sortedToc();
-}
-
-
-Foam::string Foam::expandArg
-(
-    const string& arg,
-    dictionary& dict,
-    const label lineNumber
-)
-{
-    // Add a temporary dummy_ entry to set the arg lineNumber in dict
-    dict.set(primitiveEntry("dummy_", token(word("<dummy>"), lineNumber)));
-
-    string expandedArg(arg);
-    stringOps::inplaceExpandEntry(expandedArg, dict, true, false);
-
-    // Remove temporary dummy_ entry
-    dict.remove("dummy_");
-
-    return expandedArg;
-}
-
-
-void Foam::addArgEntry
-(
-    dictionary& dict,
-    const word& keyword,
-    const string& value,
-    const label lineNumber
-)
-{
-    IStringStream entryStream(dict.name(), keyword + ' ' + value + ';');
-    entryStream.lineNumber() = lineNumber;
-    autoPtr<entry> argEntry(entry::New(entryStream));
-    if (argEntry.valid())
-    {
-        dict.set(argEntry.ptr());
-    }
-    else
-    {
-        FatalIOErrorInFunction(dict)
-            << "Cannot construct argument entry from string "
-            << entryStream.str() << nl
-            << "    on line " << lineNumber << " of dictionary " << dict.name()
-            << exit(FatalIOError);
-    }
-}
-
-
-bool Foam::readConfigFile
-(
-    const word& configType,
-    const Tuple2<string, label>& argStringLine,
-    dictionary& parentDict,
-    const fileName& configFilesPath,
-    const word& configFilesDir,
-    const word& region,
-    const string& command
-)
-{
-    word funcType;
-    List<Tuple2<wordRe, label>> args;
-    List<Tuple3<word, string, label>> namedArgs;
-
-    dictArgList(argStringLine, funcType, args, namedArgs);
-
-    // Search for the configuration file
-    fileName path = findConfigFile
-    (
-        funcType,
-        configFilesPath,
-        configFilesDir,
-        region
-    );
-
-    if (path == fileName::null)
-    {
-        if (funcType == word::null)
-        {
-            FatalIOErrorInFunction(parentDict)
-                << "configuration file name not specified"
-                << nl << nl
-                << "Available configured objects:"
-                << listAllConfigFiles(configFilesPath)
-                << exit(FatalIOError);
-        }
-        else
-        {
-            FatalIOErrorInFunction(parentDict)
-                << "Cannot find configuration file "
-                << funcType << nl << nl
-                << "Available configured objects:"
-                << listAllConfigFiles(configFilesPath)
-                << exit(FatalIOError);
-        }
-
-        return false;
-    }
-
-    // Read the configuration file
-    autoPtr<ISstream> fileStreamPtr(fileHandler().NewIFstream(path));
-    ISstream& fileStream = fileStreamPtr();
-
-    // Delay processing the functionEntries
-    // until after the argument entries have been added
-    entry::disableFunctionEntries = true;
-    dictionary funcDict(fileName(funcType), parentDict, fileStream);
-    entry::disableFunctionEntries = false;
-
-    // Store the funcDict as read for error reporting context
-    const dictionary funcDict0(funcDict);
-
-    // Insert the 'field' and/or 'fields' and 'objects' entries corresponding
-    // to both the arguments and the named arguments
-    DynamicList<wordAndDictionary> fieldArgs;
-    bool print = false;
-    forAll(args, i)
-    {
-        if (const_cast<const wordRe&>(args[i].first()).strip(" \n") == "print")
-        {
-            print = true;
-        }
-        else
-        {
-            fieldArgs.append
-            (
-                wordAndDictionary
-                (
-                    expandArg(args[i].first(), funcDict, args[i].second()),
-                    dictionary::null
-                )
-            );
-        }
-    }
-    forAll(namedArgs, i)
-    {
-        if (namedArgs[i].first() == "field")
-        {
-            IStringStream iss(namedArgs[i].second());
-            fieldArgs.append(wordAndDictionary(iss));
-        }
-        if
-        (
-            namedArgs[i].first() == "fields"
-         || namedArgs[i].first() == "objects"
-        )
-        {
-            IStringStream iss(namedArgs[i].second());
-            fieldArgs.append(List<wordAndDictionary>(iss));
-        }
-    }
-    if (fieldArgs.size() == 1)
-    {
-        funcDict.set("field", fieldArgs[0].first());
-        funcDict.merge(fieldArgs[0].second());
-    }
-    if (fieldArgs.size() >= 1)
-    {
-        funcDict.set("fields", fieldArgs);
-        funcDict.set("objects", fieldArgs);
-    }
-
-    // Insert non-field arguments
-    forAll(namedArgs, i)
-    {
-        if
-        (
-            namedArgs[i].first() != "field"
-         && namedArgs[i].first() != "fields"
-         && namedArgs[i].first() != "objects"
-         && namedArgs[i].first() != "funcName"
-         && namedArgs[i].first() != "name"
-        )
-        {
-            const Pair<word> dAk(dictAndKeyword(namedArgs[i].first()));
-            dictionary& subDict(funcDict.scopedDict(dAk.first()));
-            addArgEntry
-            (
-                subDict,
-                dAk.second(),
-                expandArg
-                (
-                    namedArgs[i].second(),
-                    funcDict,
-                    namedArgs[i].third()
-                ),
-                namedArgs[i].third()
-            );
-        }
-    }
-
-    // Insert the region name if specified
-    if (region != word::null)
-    {
-        funcDict.set("region", region);
-    }
-
-    // Set the name of the entry to that specified by the optional
-    // name argument otherwise automatically generate a unique name
-    // from the type and arguments
-    word entryName(funcType);
-    if (args.size() || namedArgs.size())
-    {
-        bool named = false;
-        forAll(namedArgs, i)
-        {
-            if
-            (
-                namedArgs[i].first() == "funcName"
-             || namedArgs[i].first() == "name"
-            )
-            {
-                entryName = expandArg
-                (
-                    namedArgs[i].second(),
-                    funcDict,
-                    namedArgs[i].third()
-                );
-                entryName.strip(" \n");
-                named = true;
-            }
-        }
-
-        if (!named)
-        {
-            entryName += '(';
-            forAll(args, i)
-            {
-                if (i > 0)
-                {
-                    entryName += ',';
-                }
-                entryName += args[i].first();
-            }
-            forAll(namedArgs, i)
-            {
-                if (args.size() || i > 0)
-                {
-                    entryName += ',';
-                }
-                entryName += namedArgs[i].first();
-                entryName += '=';
-                entryName += expandArg
-                (
-                    namedArgs[i].second(),
-                    funcDict,
-                    namedArgs[i].third()
-                );
-            }
-            entryName += ')';
-            string::stripInvalid<word>(entryName);
-        }
-    }
-
-    // Check for anything in the configuration that has not been set
-    List<Tuple2<word, string>> unsetArgs = unsetConfigEntries(funcDict);
-    bool hasUnsetError = false;
-    forAll(unsetArgs, i)
-    {
-        if
-        (
-            unsetArgs[i].first() != "fields"
-         && unsetArgs[i].first() != "objects"
-        )
-        {
-            hasUnsetError = true;
-        }
-    }
-    if (!hasUnsetError)
-    {
-        forAll(unsetArgs, i)
-        {
-            funcDict.set(unsetArgs[i].first(), wordList());
-        }
-    }
-    else
-    {
-        FatalIOErrorInFunction(funcDict0)
-            << nl;
-
-        forAll(unsetArgs, i)
-        {
-            FatalIOErrorInFunction(funcDict0)
-                << "Essential value for keyword '" << unsetArgs[i].first()
-                << "' not set" << nl;
-        }
-
-        FatalIOErrorInFunction(funcDict0)
-            << nl << "In " << configType << " entry:" << nl
-            << "    " << argStringLine.first().c_str() << nl;
-
-        if (command != string::null)
-        {
-            FatalIOErrorInFunction(funcDict0)
-                << nl << "In command:" << nl
-                << "    " << command.c_str() << endl;
-        }
-
-        if (argStringLine.second() >= 0)
-        {
-            FatalIOErrorInFunction(funcDict0)
-                << nl << "In dictionary:" << nl
-                << "    " << parentDict.name().c_str()
-                << " starting at line " << argStringLine.second() << nl;
-        }
-
-        FatalIOErrorInFunction(funcDict0)
-            << nl << "Including file:" << nl
-            << "    " << path.c_str() << nl;
-
-        word funcType;
-        List<Tuple2<wordRe, label>> args;
-        List<Tuple3<word, string, label>> namedArgs;
-        dictArgList(argStringLine, funcType, args, namedArgs);
-
-        string argList;
-        forAll(args, i)
-        {
-            args[i].first().strip(" \n");
-            argList += (argList.size() ? ", " : "") + args[i].first();
-        }
-        forAll(namedArgs, i)
-        {
-            namedArgs[i].second().strip(" \n");
-            argList +=
-                (argList.size() ? ", " : "")
-              + namedArgs[i].first() + " = " + namedArgs[i].second();
-        }
-        forAll(unsetArgs, i)
-        {
-            unsetArgs[i].second().strip(" \n");
-            argList +=
-                (argList.size() ? ", " : "")
-              + unsetArgs[i].first() + " = " + unsetArgs[i].second();
-        }
-
-        FatalIOErrorInFunction(funcDict0)
-            << nl << "The " << configType << " entry should be:" << nl
-            << "    " << funcType << '(' << argList.c_str() << ')'
-            << exit(FatalIOError);
-    }
-
-    // Expand the funcDict executing the functionEntries
-    // now that the argument entries have been added
-    dictionary funcArgsDict;
-    funcArgsDict.add(entryName, funcDict);
-
-    {
-        OTstream os(fileStream.name());
-        funcArgsDict.write(os);
-        funcArgsDict = dictionary
-        (
-            funcType,
-            funcDict,
-            ITstream(os.name(), os)()
-        );
-    }
-
-    // Merge this configuration dictionary into parentDict
-    parentDict.merge(funcArgsDict);
-    parentDict.subDict(entryName).name() = funcDict.name();
-
-    if (print)
-    {
-        printDictionary::set(parentDict.subDict(entryName));
-    }
-
-    return true;
-}
-
-
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-void Foam::writeEntry(Ostream& os, const dictionary& value)
-{
-    os << value;
 }
 
 

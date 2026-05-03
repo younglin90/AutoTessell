@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::symmetryPlaneFvPatchField
+
+Group
+    grpConstraintBoundaryConditions
 
 Description
     This boundary condition enforces a symmetryPlane constraint
@@ -56,7 +61,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class symmetryPlaneFvPatchField Declaration
+                         Class symmetryPlaneFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -64,7 +69,7 @@ class symmetryPlaneFvPatchField
 :
     public basicSymmetryFvPatchField<Type>
 {
-    // Private Data
+    // Private data
 
         //- Local reference cast into the symmetryPlane patch
         const symmetryPlaneFvPatch& symmetryPlanePatch_;
@@ -82,14 +87,14 @@ public:
         symmetryPlaneFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         symmetryPlaneFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -99,37 +104,40 @@ public:
         (
             const symmetryPlaneFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         symmetryPlaneFvPatchField
         (
             const symmetryPlaneFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         symmetryPlaneFvPatchField
         (
             const symmetryPlaneFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new symmetryPlaneFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Return gradient at boundary
         virtual tmp<Field<Type>> snGrad() const;
@@ -137,17 +145,11 @@ public:
         //- Evaluate the patch field
         virtual void evaluate
         (
-            const Pstream::commsTypes commsType=Pstream::commsTypes::blocking
+            const Pstream::commsTypes commsType=Pstream::commsTypes::buffered
         );
 
         //- Return face-gradient transform diagonal
         virtual tmp<Field<Type>> snGradTransformDiag() const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using basicSymmetryFvPatchField<Type>::operator=;
 };
 
 

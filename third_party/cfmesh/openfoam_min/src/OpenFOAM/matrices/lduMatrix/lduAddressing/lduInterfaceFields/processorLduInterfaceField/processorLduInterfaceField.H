@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,7 +39,6 @@ SourceFiles
 #define processorLduInterfaceField_H
 
 #include "primitiveFieldsFwd.H"
-#include "transformer.H"
 #include "typeInfo.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -45,12 +47,11 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class processorLduInterfaceField Declaration
+                  Class processorLduInterfaceField Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorLduInterfaceField
 {
-
 public:
 
     //- Runtime type information
@@ -59,13 +60,12 @@ public:
 
     // Constructors
 
-        //- Construct given coupled patch
-        processorLduInterfaceField()
-        {}
+        //- Default construct
+        processorLduInterfaceField() = default;
 
 
     //- Destructor
-    virtual ~processorLduInterfaceField();
+    virtual ~processorLduInterfaceField() = default;
 
 
     // Member Functions
@@ -81,17 +81,14 @@ public:
             //- Return neighbour processor number
             virtual int neighbProcNo() const = 0;
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const = 0;
+            //- Is the transform required
+            virtual bool doTransform() const = 0;
+
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const = 0;
 
             //- Return rank of component for transform
             virtual int rank() const = 0;
-
-            //- Is the transform required
-            bool transforms() const
-            {
-                return transform().transforms() && rank() != 0;
-            }
 
 
         //- Transform given patch field
@@ -101,7 +98,7 @@ public:
         //- Transform given patch component field
         void transformCoupleField
         (
-            scalarField& f,
+            solveScalarField& f,
             const direction cmpt
         ) const;
 };
@@ -121,9 +118,16 @@ void Foam::processorLduInterfaceField::transformCoupleField
     Field<Type>& f
 ) const
 {
-    if (transforms())
+    if (doTransform())
     {
-        transform().transform(f, f);
+        if (forwardT().size() == 1)
+        {
+            transform(f, forwardT()[0], f);
+        }
+        else
+        {
+            transform(f, forwardT(), f);
+        }
     }
 }
 

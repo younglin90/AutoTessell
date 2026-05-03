@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,16 +46,16 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class wedgeFvPatch Declaration
+                           Class wedgeFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class wedgeFvPatch
 :
     public fvPatch
 {
-    // Private Data
+    // Private data
 
-        const wedgePolyPatch& wedgePoly_;
+        const wedgePolyPatch& wedgePolyPatch_;
 
 
 public:
@@ -68,20 +70,20 @@ public:
         wedgeFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm);
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
             //- Return face transformation tensor
             const tensor& faceT() const
             {
-                return wedgePoly_.faceT();
+                return wedgePolyPatch_.faceT();
             }
 
             //- Return neighbour-cell transformation tensor
             const tensor& cellT() const
             {
-                return wedgePoly_.cellT();
+                return wedgePolyPatch_.cellT();
             }
 };
 

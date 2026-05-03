@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,11 +28,11 @@ Class
     Foam::syncTools
 
 Description
-    Various tools to aid synchronising lists across coupled patches. WIP.
+    Various tools to aid synchronizing lists across coupled patches. WIP.
 
     Require
     - combineOperator (e.g. sumEqOp - not sumOp!) that is defined for the
-      type and combineReduce(UList\<T\>, combineOperator) should be defined.
+      type be defined.
     - null value which gets overridden by any valid value.
     - transform function
 
@@ -39,32 +42,34 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef syncTools_H
-#define syncTools_H
+#ifndef Foam_syncTools_H
+#define Foam_syncTools_H
 
 #include "Pstream.H"
-#include "EdgeMap.H"
-#include "PackedBoolList.H"
+#include "edgeHashes.H"
+#include "bitSet.H"
 #include "polyMesh.H"
 #include "coupledPolyPatch.H"
-#include "distributionMap.H"
+#include "mapDistribute.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class polyBoundaryMesh;
 
 /*---------------------------------------------------------------------------*\
-                          Class syncTools Declaration
+                           Class syncTools Declaration
 \*---------------------------------------------------------------------------*/
 
 class syncTools
 {
     // Private Member Functions
 
-        //- Combine value with existing value in map.
+        //- Combine val with existing value in pointValues map at given index
+        //  No communication
         template<class T, class CombineOp>
         static void combine
         (
@@ -74,7 +79,8 @@ class syncTools
             const T& val
         );
 
-        //- Combine val with existing value at (implicit index) e.
+        //- Combine val with existing value in edgeValues at edge index
+        //  No communication
         template<class T, class CombineOp>
         static void combine
         (
@@ -87,96 +93,105 @@ class syncTools
 
 public:
 
+        // Basic routines with user-supplied transformation.
+        // Preferably use specialisations below.
 
-        // Basic routines with user-supplied transformation. Preferably
-        // use specialisations below.
-
-            //- Synchronise values on selected points.
+            //- Synchronize values on selected points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp, class TransformOp>
             static void syncPointMap
             (
-                const polyMesh&,
+                const polyMesh& mesh,
                 Map<T>& pointValues,
                 const CombineOp& cop,
                 const TransformOp& top
             );
 
-            //- Synchronise values on selected edges.
+            //- Synchronize values on selected edges.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp, class TransformOp>
             static void syncEdgeMap
             (
-                const polyMesh&,
+                const polyMesh& mesh,
                 EdgeMap<T>& edgeValues,
                 const CombineOp& cop,
                 const TransformOp& top
             );
 
-            //- Synchronise values on all mesh points.
+            //- Synchronize values on all mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp, class TransformOp>
             static void syncPointList
             (
-                const polyMesh&,
-                List<T>&,
+                const polyMesh& mesh,
+                List<T>& pointValues,
                 const CombineOp& cop,
                 const T& nullValue,
                 const TransformOp& top
             );
 
-            //- Synchronise values on selected mesh points.
+            //- Synchronize values on selected mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp, class TransformOp>
             static void syncPointList
             (
-                const polyMesh&,
-                const labelList& meshPoints,
-                List<T>&,
+                const polyMesh& mesh,
+                const labelUList& meshPoints,
+                List<T>& pointValues,
                 const CombineOp& cop,
                 const T& nullValue,
                 const TransformOp& top
             );
 
-            //- Synchronise values on all mesh edges.
-            template<class T, class CombineOp, class TransformOp>
+            //- Synchronize values on all mesh edges.
+            //  Communication if UPstream::parRun() == true.
+            template<class T, class CombineOp, class TransformOp, class FlipOp>
             static void syncEdgeList
             (
-                const polyMesh&,
-                List<T>&,
+                const polyMesh& mesh,
+                List<T>& edgeValues,
                 const CombineOp& cop,
                 const T& nullValue,
-                const TransformOp& top
+                const TransformOp& top,
+                const FlipOp& fop
             );
 
-            //- Synchronise values on selected mesh edges.
-            template<class T, class CombineOp, class TransformOp>
+            //- Synchronize values on selected mesh edges.
+            //  Communication if UPstream::parRun() == true.
+            template<class T, class CombineOp, class TransformOp, class FlipOp>
             static void syncEdgeList
             (
-                const polyMesh&,
-                const labelList& meshEdges,
-                List<T>&,
+                const polyMesh& mesh,
+                const labelUList& meshEdges,
+                List<T>& edgeValues,
                 const CombineOp& cop,
                 const T& nullValue,
-                const TransformOp& top
+                const TransformOp& top,
+                const FlipOp& fop
             );
 
-            //- Synchronise values on boundary faces only.
+            //- Synchronize values on boundary faces only.
             template<class T, class CombineOp, class TransformOp>
             static void syncBoundaryFaceList
             (
-                const polyMesh&,
-                UList<T>&,
+                const polyMesh& mesh,
+                UList<T>& faceValues,
                 const CombineOp& cop,
                 const TransformOp& top,
-                const bool parRun = Pstream::parRun()
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             );
 
 
         // Synchronise point-wise data
 
-            //- Synchronise values on all mesh points.
+            //- Synchronize values on all mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncPointList
             (
                 const polyMesh& mesh,
-                List<T>& l,
+                List<T>& pointValues,
                 const CombineOp& cop,
                 const T& nullValue
             )
@@ -184,19 +199,20 @@ public:
                 syncPointList
                 (
                     mesh,
-                    l,
+                    pointValues,
                     cop,
                     nullValue,
-                    distributionMap::transform()
+                    mapDistribute::transform()
                 );
             }
 
-            //- Synchronise locations on all mesh points.
+            //- Synchronize locations on all mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class CombineOp>
             static void syncPointPositions
             (
                 const polyMesh& mesh,
-                List<point>& l,
+                List<point>& positions,
                 const CombineOp& cop,
                 const point& nullValue
             )
@@ -204,20 +220,21 @@ public:
                 syncPointList
                 (
                     mesh,
-                    l,
+                    positions,
                     cop,
                     nullValue,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition()
                 );
             }
 
-            //- Synchronise values on selected mesh points.
+            //- Synchronize values on selected mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncPointList
             (
                 const polyMesh& mesh,
-                const labelList& meshPoints,
-                List<T>& l,
+                const labelUList& meshPoints,
+                List<T>& pointValues,
                 const CombineOp& cop,
                 const T& nullValue
             )
@@ -226,20 +243,21 @@ public:
                 (
                     mesh,
                     meshPoints,
-                    l,
+                    pointValues,
                     cop,
                     nullValue,
-                    distributionMap::transform()
+                    mapDistribute::transform()
                 );
             }
 
-            //- Synchronise locations on selected mesh points.
+            //- Synchronize locations on selected mesh points.
+            //  Communication if UPstream::parRun() == true.
             template<class CombineOp>
             static void syncPointPositions
             (
                 const polyMesh& mesh,
-                const labelList& meshPoints,
-                List<point>& l,
+                const labelUList& meshPoints,
+                List<point>& positions,
                 const CombineOp& cop,
                 const point& nullValue
             )
@@ -248,22 +266,23 @@ public:
                 (
                     mesh,
                     meshPoints,
-                    l,
+                    positions,
                     cop,
                     nullValue,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition()
                 );
             }
 
 
         // Synchronise edge-wise data
 
-            //- Synchronise values on all mesh edges.
+            //- Synchronize values on all mesh edges.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncEdgeList
             (
                 const polyMesh& mesh,
-                List<T>& l,
+                List<T>& edgeValues,
                 const CombineOp& cop,
                 const T& nullValue
             )
@@ -271,19 +290,21 @@ public:
                 syncEdgeList
                 (
                     mesh,
-                    l,
+                    edgeValues,
                     cop,
                     nullValue,
-                    distributionMap::transform()
+                    mapDistribute::transform(),
+                    identityOp()  // No flipping
                 );
             }
 
-            //- Synchronise locations on all mesh edges.
+            //- Synchronize locations on all mesh edges.
+            //  Communication if UPstream::parRun() == true.
             template<class CombineOp>
             static void syncEdgePositions
             (
                 const polyMesh& mesh,
-                List<point>& l,
+                List<point>& positions,
                 const CombineOp& cop,
                 const point& nullValue
             )
@@ -291,20 +312,22 @@ public:
                 syncEdgeList
                 (
                     mesh,
-                    l,
+                    positions,
                     cop,
                     nullValue,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition(),
+                    identityOp()  // No flipping
                 );
             }
 
-            //- Synchronise values on selected mesh edges.
+            //- Synchronize values on selected mesh edges.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncEdgeList
             (
                 const polyMesh& mesh,
-                const labelList& meshEdges,
-                List<T>& l,
+                const labelUList& meshEdges,
+                List<T>& edgeValues,
                 const CombineOp& cop,
                 const T& nullValue
             )
@@ -313,20 +336,22 @@ public:
                 (
                     mesh,
                     meshEdges,
-                    l,
+                    edgeValues,
                     cop,
                     nullValue,
-                    distributionMap::transform()
+                    mapDistribute::transform(),
+                    identityOp()  // No flipping
                 );
             }
 
-            //- Synchronise locations on selected mesh edges.
+            //- Synchronize locations on selected mesh edges.
+            //  Communication if UPstream::parRun() == true.
             template<class CombineOp>
             static void syncEdgePositions
             (
                 const polyMesh& mesh,
-                const labelList& meshEdges,
-                List<point>& l,
+                const labelUList& meshEdges,
+                List<point>& positions,
                 const CombineOp& cop,
                 const point& nullValue
             )
@@ -335,10 +360,11 @@ public:
                 (
                     mesh,
                     meshEdges,
-                    l,
+                    positions,
                     cop,
                     nullValue,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition(),
+                    identityOp()  // No flipping
                 );
             }
 
@@ -346,55 +372,57 @@ public:
 
         // Synchronise face-wise data
 
-            //- Synchronise values on boundary faces only.
+            //- Synchronize values on boundary faces only.
             template<class T, class CombineOp>
             static void syncBoundaryFaceList
             (
                 const polyMesh& mesh,
-                UList<T>& l,
+                UList<T>& faceValues,
                 const CombineOp& cop
             )
             {
                 syncBoundaryFaceList
                 (
                     mesh,
-                    l,
+                    faceValues,
                     cop,
-                    distributionMap::transform()
+                    mapDistribute::transform()
                 );
             }
 
-            //- Synchronise locations on boundary faces only.
+            //- Synchronize locations on boundary faces only.
             template<class CombineOp>
             static void syncBoundaryFacePositions
             (
                 const polyMesh& mesh,
-                UList<point>& l,
+                UList<point>& positions,
                 const CombineOp& cop
             )
             {
                 syncBoundaryFaceList
                 (
                     mesh,
-                    l,
+                    positions,
                     cop,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition()
                 );
             }
 
-            //- Synchronise values on all mesh faces.
+            //- Synchronize values on all mesh faces.
             template<class T, class CombineOp>
             static void syncFaceList
             (
                 const polyMesh& mesh,
-                UList<T>& l,
-                const CombineOp& cop
+                UList<T>& faceValues,
+                const CombineOp& cop,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             )
             {
                 SubList<T> bndValues
                 (
-                    l,
-                    mesh.nFaces()-mesh.nInternalFaces(),
+                    faceValues,
+                    mesh.nBoundaryFaces(),
                     mesh.nInternalFaces()
                 );
 
@@ -403,23 +431,26 @@ public:
                     mesh,
                     bndValues,
                     cop,
-                    distributionMap::transform()
+                    mapDistribute::transform(),
+                    parRun
                 );
             }
 
-            //- Synchronise locations on all mesh faces.
+            //- Synchronize locations on all mesh faces.
             template<class CombineOp>
             static void syncFacePositions
             (
                 const polyMesh& mesh,
-                UList<point>& l,
-                const CombineOp& cop
+                UList<point>& positions,
+                const CombineOp& cop,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             )
             {
                 SubList<point> bndValues
                 (
-                    l,
-                    mesh.nFaces()-mesh.nInternalFaces(),
+                    positions,
+                    mesh.nBoundaryFaces(),
                     mesh.nInternalFaces()
                 );
                 syncBoundaryFaceList
@@ -427,55 +458,64 @@ public:
                     mesh,
                     bndValues,
                     cop,
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition(),
+                    parRun
                 );
             }
 
-            //- Swap coupled boundary face values.
+            //- Swap coupled boundary face values. Uses eqOp
             template<class T>
             static void swapBoundaryFaceList
             (
                 const polyMesh& mesh,
-                UList<T>& l
+                UList<T>& faceValues,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             )
             {
                 syncBoundaryFaceList
                 (
                     mesh,
-                    l,
+                    faceValues,
                     eqOp<T>(),
-                    distributionMap::transform()
+                    mapDistribute::transform(),
+                    parRun
                 );
             }
 
-             //- Swap coupled positions.
+            //- Swap coupled positions. Uses eqOp
             static void swapBoundaryFacePositions
             (
                 const polyMesh& mesh,
-                UList<point>& l
+                UList<point>& positions,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             )
             {
                 syncBoundaryFaceList
                 (
                     mesh,
-                    l,
+                    positions,
                     eqOp<point>(),
-                    distributionMap::transformPosition()
+                    mapDistribute::transformPosition(),
+                    parRun
                 );
             }
 
-            //- Swap coupled face values.
+            //- Swap coupled face values. Uses eqOp
             template<class T>
             static void swapFaceList
             (
                 const polyMesh& mesh,
-                UList<T>& l
+                UList<T>& faceValues,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             )
             {
                 SubList<T> bndValues
                 (
-                    l,
-                    mesh.nFaces()-mesh.nInternalFaces(),
+                    faceValues,
+                    mesh.nBoundaryFaces(),
                     mesh.nInternalFaces()
                 );
                 syncBoundaryFaceList
@@ -483,142 +523,250 @@ public:
                     mesh,
                     bndValues,
                     eqOp<T>(),
-                    distributionMap::transform()
+                    mapDistribute::transform(),
+                    parRun
                 );
             }
 
-            //- Swap to obtain neighbour cell values for all boundary faces
+            //- Extract and swap to obtain neighbour cell values
+            //- for all boundary faces
             template<class T>
             static void swapBoundaryCellList
             (
                 const polyMesh& mesh,
                 const UList<T>& cellData,
-                List<T>& neighbourCellData
+                List<T>& neighbourCellData,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             );
 
-            //- Swap to obtain neighbour cell positions for all boundary faces
+            //- Extract and swap to obtain neighbour cell positions
+            //- for all boundary faces
             static void swapBoundaryCellPositions
             (
                 const polyMesh& mesh,
                 const UList<point>& cellData,
-                List<point>& neighbourCellData
+                List<point>& neighbourCellData,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             );
+
+
+            //- Return neighbour cell values for all boundary faces
+            //- by swapping via boundary faces
+            template<class T>
+            FOAM_NODISCARD static List<T> swapBoundaryCellList
+            (
+                const polyMesh& mesh,
+                const UList<T>& cellData,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
+            )
+            {
+                List<T> nbrCellData;
+                swapBoundaryCellList(mesh, cellData, nbrCellData, parRun);
+                return nbrCellData;
+            }
+
+            //- Return neighbour cell positions for all boundary faces
+            //- by swapping via boundary faces
+            FOAM_NODISCARD static List<point> swapBoundaryCellPositions
+            (
+                const polyMesh& mesh,
+                const UList<point>& cellData,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
+            )
+            {
+                List<point> nbrCellData;
+                swapBoundaryCellPositions(mesh, cellData, nbrCellData, parRun);
+                return nbrCellData;
+            }
+
 
         // Sparse versions
 
-            //- Synchronise values on selected points.
+            //- Synchronize values on selected points.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncPointMap
             (
                 const polyMesh& mesh,
-                Map<T>& l,
-                const CombineOp& cop
-            )
-            {
-                syncPointMap(mesh, l, cop, distributionMap::transform());
-            }
-
-            //- Synchronise locations on selected points.
-            template<class CombineOp>
-            static void syncPointPositions
-            (
-                const polyMesh& mesh,
-                Map<point>& l,
+                Map<T>& pointValues,
                 const CombineOp& cop
             )
             {
                 syncPointMap
                 (
                     mesh,
-                    l,
+                    pointValues,
                     cop,
-                    distributionMap::transformPosition()
+                    mapDistribute::transform()
                 );
             }
 
-            //- Synchronise values on selected edges. Edges are represented
-            //  by the two vertices that make it up so global edges never get
-            //  constructed.
+            //- Synchronize locations on selected points.
+            //  Communication if UPstream::parRun() == true.
+            template<class CombineOp>
+            static void syncPointPositions
+            (
+                const polyMesh& mesh,
+                Map<point>& positions,
+                const CombineOp& cop
+            )
+            {
+                syncPointMap
+                (
+                    mesh,
+                    positions,
+                    cop,
+                    mapDistribute::transformPosition()
+                );
+            }
+
+            //- Synchronize values on selected edges.
+            //- Edges are represented by the two vertices that make it up
+            //- so global edges never get constructed.
+            //  Communication if UPstream::parRun() == true.
             template<class T, class CombineOp>
             static void syncEdgeMap
             (
                 const polyMesh& mesh,
-                EdgeMap<T>& l,
+                EdgeMap<T>& edgeValues,
                 const CombineOp& cop
             )
             {
-                syncEdgeMap(mesh, l, cop, distributionMap::transform());
+                syncEdgeMap
+                (
+                    mesh,
+                    edgeValues,
+                    cop,
+                    mapDistribute::transform()
+                );
             }
 
-            //- Synchronise locations on selected edges.
+            //- Synchronize locations on selected edges.
+            //  Communication if UPstream::parRun() == true.
             template<class CombineOp>
             static void syncEdgePositions
             (
                 const polyMesh& mesh,
-                EdgeMap<point>& l,
+                EdgeMap<point>& edgePositions,
                 const CombineOp& cop
             )
             {
-                syncEdgeMap(mesh, l, cop, distributionMap::transformPosition());
+                syncEdgeMap
+                (
+                    mesh,
+                    edgePositions,
+                    cop,
+                    mapDistribute::transformPosition()
+                );
             }
+
 
         // PackedList versions
 
-            template<unsigned nBits, class CombineOp>
+            //- Synchronize face values from PackedList/bitSet
+            //
+            //  \param mesh The mesh
+            //  \param isBoundaryOnly True if faceValues are for the boundary
+            //      only and not the entire mesh. This determines the face
+            //      offset when accessing values.
+            //  \param faceValues The face values to synchronize
+            //  \param cop The combine operation
+            //  \param parRun Allow parallel communication
+            template<unsigned Width, class CombineOp>
             static void syncFaceList
             (
                 const polyMesh& mesh,
-                PackedList<nBits>& faceValues,
+                const bool isBoundaryOnly,
+                PackedList<Width>& faceValues,
                 const CombineOp& cop,
-                const bool parRun = Pstream::parRun()
+                const bool parRun = UPstream::parRun()
             );
 
-            template<unsigned nBits>
+            //- Synchronize mesh face values from PackedList/bitSet
+            template<unsigned Width, class CombineOp>
+            static void syncFaceList
+            (
+                const polyMesh& mesh,
+                PackedList<Width>& faceValues,
+                const CombineOp& cop,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
+            );
+
+            //- Synchronize boundary face values from PackedList/bitSet
+            template<unsigned Width, class CombineOp>
+            static void syncBoundaryFaceList
+            (
+                const polyMesh& mesh,
+                PackedList<Width>& faceValues,
+                const CombineOp& cop,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
+            );
+
+            //- Swap coupled face values. Uses eqOp
+            template<unsigned Width>
             static void swapFaceList
             (
                 const polyMesh& mesh,
-                PackedList<nBits>& faceValues
+                PackedList<Width>& faceValues,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
             );
 
-            template<unsigned nBits, class CombineOp>
+            //- Swap coupled boundary face values. Uses eqOp
+            template<unsigned Width>
+            static void swapBoundaryFaceList
+            (
+                const polyMesh& mesh,
+                PackedList<Width>& faceValues,
+                //! Allow parallel communication
+                const bool parRun = UPstream::parRun()
+            );
+
+            template<unsigned Width, class CombineOp>
             static void syncPointList
             (
                 const polyMesh& mesh,
-                PackedList<nBits>& pointValues,
+                PackedList<Width>& pointValues,
                 const CombineOp& cop,
                 const unsigned int nullValue
             );
 
-            template<unsigned nBits, class CombineOp>
+            template<unsigned Width, class CombineOp>
             static void syncEdgeList
             (
                 const polyMesh& mesh,
-                PackedList<nBits>& edgeValues,
+                PackedList<Width>& edgeValues,
                 const CombineOp& cop,
                 const unsigned int nullValue
             );
+
 
         // Other
 
             //- Get per point whether it is uncoupled or a master of a
-            //  coupled set of points
-            static PackedBoolList getMasterPoints(const polyMesh&);
+            //- coupled set of points
+            static bitSet getMasterPoints(const polyMesh& mesh);
 
             //- Get per edge whether it is uncoupled or a master of a
-            //  coupled set of edges
-            static PackedBoolList getMasterEdges(const polyMesh&);
+            //- coupled set of edges
+            static bitSet getMasterEdges(const polyMesh& mesh);
 
             //- Get per face whether it is uncoupled or a master of a
-            //  coupled set of faces
-            static PackedBoolList getMasterFaces(const polyMesh&);
+            //- coupled set of faces
+            static bitSet getMasterFaces(const polyMesh& mesh);
 
             //- Get per face whether it is internal or a master of a
-            //  coupled set of faces
-            static PackedBoolList getInternalOrMasterFaces(const polyMesh&);
+            //- coupled set of faces
+            static bitSet getInternalOrMasterFaces(const polyMesh& mesh);
 
             //- Get per face whether it is internal or coupled
-            static PackedBoolList getInternalOrCoupledFaces(const polyMesh&);
-
+            static bitSet getInternalOrCoupledFaces(const polyMesh& mesh);
 };
 
 

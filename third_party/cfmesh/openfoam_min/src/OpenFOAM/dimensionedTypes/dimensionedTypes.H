@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,16 +26,18 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dimensionedTypes_H
-#define dimensionedTypes_H
+#ifndef Foam_dimensionedTypes_H
+#define Foam_dimensionedTypes_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+#include "dimensionedLabel.H"
 #include "dimensionedScalar.H"
 #include "dimensionedVector.H"
 #include "dimensionedSphericalTensor.H"
 #include "dimensionedSymmTensor.H"
 #include "dimensionedTensor.H"
+#include "dimensionedMinMax.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

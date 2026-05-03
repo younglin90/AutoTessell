@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,21 +46,11 @@ namespace Foam
         processorCyclicGAMGInterfaceField,
         lduInterfaceField
     );
-
-    // Add under name nonConformalProcessorCyclic
-    addNamedToRunTimeSelectionTable
+    addToRunTimeSelectionTable
     (
         GAMGInterfaceField,
         processorCyclicGAMGInterfaceField,
-        lduInterface,
-        nonConformalProcessorCyclic
-    );
-    addNamedToRunTimeSelectionTable
-    (
-        GAMGInterfaceField,
-        processorCyclicGAMGInterfaceField,
-        lduInterfaceField,
-        nonConformalProcessorCyclic
+        Istream
     );
 }
 
@@ -78,10 +70,21 @@ Foam::processorCyclicGAMGInterfaceField::processorCyclicGAMGInterfaceField
 Foam::processorCyclicGAMGInterfaceField::processorCyclicGAMGInterfaceField
 (
     const GAMGInterface& GAMGCp,
+    const bool doTransform,
     const int rank
 )
 :
-    processorGAMGInterfaceField(GAMGCp, rank)
+    processorGAMGInterfaceField(GAMGCp, doTransform, rank)
+{}
+
+
+Foam::processorCyclicGAMGInterfaceField::processorCyclicGAMGInterfaceField
+(
+    const GAMGInterface& GAMGCp,
+    Istream& is
+)
+:
+    processorGAMGInterfaceField(GAMGCp, is)
 {}
 
 

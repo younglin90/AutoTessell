@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,19 +38,16 @@ Foam::VectorSpace<Form, Cmpt, Ncmpts>::VectorSpace
     Istream& is
 )
 {
-    // Read beginning of VectorSpace<Cmpt>
-    is.readBegin("VectorSpace<Form, Cmpt, Ncmpts>");
+    is.readBegin("VectorSpace");
 
     for (direction i=0; i<Ncmpts; i++)
     {
         is >> v_[i];
     }
 
-    // Read end of VectorSpace<Cmpt>
-    is.readEnd("VectorSpace<Form, Cmpt, Ncmpts>");
+    is.readEnd("VectorSpace");
 
-    // Check state of Istream
-    is.check("VectorSpace<Form, Cmpt, Ncmpts>::VectorSpace(Istream&)");
+    is.check(FUNCTION_NAME);
 }
 
 
@@ -62,7 +61,7 @@ Foam::word Foam::name
 
     buf << '(' << vs.v_[0];
 
-    for (direction i=1; i<Ncmpts; i++)
+    for (direction i=1; i<Ncmpts; ++i)
     {
         buf << ',' << vs.v_[i];
     }
@@ -70,15 +69,6 @@ Foam::word Foam::name
     buf << ')';
 
     return buf.str();
-}
-
-
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-template<class Form, class Cmpt, Foam::direction Ncmpts>
-void Foam::writeEntry(Ostream& os, const VectorSpace<Form, Cmpt, Ncmpts>& value)
-{
-    os << value;
 }
 
 
@@ -91,19 +81,16 @@ Foam::Istream& Foam::operator>>
     VectorSpace<Form, Cmpt, Ncmpts>& vs
 )
 {
-    // Read beginning of VectorSpace<Cmpt, Ncmpts>
-    is.readBegin("VectorSpace<Form, Cmpt, Ncmpts>");
+    is.readBegin("VectorSpace");
 
     for (direction i=0; i<Ncmpts; i++)
     {
         is >> vs.v_[i];
     }
 
-    // Read end of VectorSpace<Cmpt, Ncmpts>
-    is.readEnd("VectorSpace<Form, Cmpt, Ncmpts>");
+    is.readEnd("VectorSpace");
 
-    // Check state of Istream
-    is.check("operator>>(Istream&, VectorSpace<Form, Cmpt, Ncmpts>&)");
+    is.check(FUNCTION_NAME);
 
     return is;
 }
@@ -118,16 +105,14 @@ Foam::Ostream& Foam::operator<<
 {
     os << token::BEGIN_LIST << vs.v_[0];
 
-    for (direction i=1; i<Ncmpts; i++)
+    for (direction i=1; i<Ncmpts; ++i)
     {
         os << token::SPACE << vs.v_[i];
     }
 
     os << token::END_LIST;
 
-    // Check state of Ostream
-    os.check("operator<<(Ostream&, const VectorSpace<Form, Cmpt, Ncmpts>&)");
-
+    os.check(FUNCTION_NAME);
     return os;
 }
 

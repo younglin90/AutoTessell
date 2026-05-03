@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::totalTemperatureFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a total temperature condition.
 
@@ -32,9 +37,9 @@ Usage
         Property     | Description             | Required    | Default value
         U            | Velocity field name     | no          | U
         phi          | Flux field name         | no          | phi
-        psi          | Compressibility field name | no       | psi
+        psi          | Compressibility field name | no       | thermo:psi
         gamma        | ratio of specific heats (Cp/Cv) | yes |
-        T0           | reference temperature   | yes         |
+        T0           | total temperature       | yes         |
     \endtable
 
     Example of the boundary condition specification:
@@ -42,7 +47,8 @@ Usage
     <patchName>
     {
         type            totalTemperature;
-        T0              uniform 300;
+        gamma           1.4;
+        T0              uniform 800;
     }
     \endverbatim
 
@@ -72,7 +78,7 @@ class totalTemperatureFvPatchScalarField
 :
     public fixedValueFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Name of the velocity field
         word UName_;
@@ -86,7 +92,7 @@ class totalTemperatureFvPatchScalarField
         //- Heat capacity ratio
         scalar gamma_;
 
-        //- Reference temperature
+        //- Total temperature
         scalarField T0_;
 
 
@@ -98,11 +104,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        totalTemperatureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         totalTemperatureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -112,47 +125,50 @@ public:
         (
             const totalTemperatureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         totalTemperatureFvPatchScalarField
         (
             const totalTemperatureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         totalTemperatureFvPatchScalarField
         (
             const totalTemperatureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new totalTemperatureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
-            //- Return the reference temperature
+            //- Return the total pressure
             const scalarField& T0() const
             {
                 return T0_;
             }
 
-            //- Return reference to the temperature to allow adjustment
+            //- Return reference to the total pressure to allow adjustment
             scalarField& T0()
             {
                 return T0_;
@@ -161,12 +177,18 @@ public:
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchScalarField&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchScalarField&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchScalarField&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -177,12 +199,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

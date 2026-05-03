@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,13 +30,18 @@ Class
 Description
     A HashTable to objects of type \<T\> with a label key.
 
+Note
+    The Map contents are unordered.
+    When the key order is important, use the sortedToc() method to obtain
+    a list of sorted keys and use that for further access.
+
 See also
     PtrMap
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Map_H
-#define Map_H
+#ifndef Foam_Map_H
+#define Foam_Map_H
 
 #include "HashTable.H"
 
@@ -51,12 +59,92 @@ class Map
 :
     public HashTable<T, label, Hash<label>>
 {
-
 public:
+
+    //- The template instance used for this Map
+    typedef Map<T> this_type;
+
+    //- The template instance used for the parent HashTable
+    typedef HashTable<T, label, Hash<label>> parent_type;
+
+    using iterator = typename parent_type::iterator;
+    using const_iterator = typename parent_type::const_iterator;
+
 
     // Constructors
 
-        using HashTable<T, label, Hash<label>>::HashTable;
+        //- Default construct: empty without allocation (capacity=0)
+        Map() noexcept = default;
+
+        //- Construct empty without allocation (capacity=0)
+        explicit Map(const Foam::zero) noexcept
+        :
+            parent_type(Foam::zero{})
+        {}
+
+        //- Construct empty with given initial table capacity
+        explicit Map(const label initialCapacity)
+        :
+            parent_type(initialCapacity)
+        {}
+
+        //- Construct from Istream (with default initial table capacity)
+        Map(Istream& is)
+        :
+            parent_type(is)
+        {}
+
+        //- Copy construct
+        Map(const this_type& map)
+        :
+            parent_type(map)
+        {}
+
+        //- Move construct
+        Map(this_type&& map) noexcept
+        :
+            parent_type(std::move(map))
+        {}
+
+        //- Construct from key/value pairs in initializer list
+        //  By default, uses insert not overwrite semantics for duplicates.
+        Map
+        (
+            std::initializer_list<std::pair<label, T>> map,
+            const bool overwrite = false
+        )
+        :
+            parent_type(map, overwrite)
+        {}
+
+        //- Construct from key/value pairs
+        //  By default, uses insert not overwrite semantics for duplicates.
+        Map
+        (
+            const UList<label>& keys,
+            const UList<T>& values,
+            const bool overwrite = false
+        )
+        :
+            parent_type(keys, values, overwrite)
+        {}
+
+
+    // Member Operators
+
+        using parent_type::operator=;
+
+        //- Copy assignment
+        void operator=(const this_type& rhs)
+        {
+            parent_type::operator=(rhs);
+        }
+
+        //- Move assignment
+        void operator=(this_type&& rhs)
+        {
+            parent_type::operator=(std::move(rhs));
+        }
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,7 @@ Class
     Foam::extendedCellToFaceStencil
 
 Description
-    Calculates/contains the extended cell-to-face stencil.
+    Calculates/constains the extended cell-to-face stencil.
 
     The stencil is a list of indices into either cells or boundary faces
     in a compact way. (element 0 is owner, 1 is neighbour). The index numbering
@@ -48,7 +50,7 @@ SourceFiles
 #ifndef extendedCellToFaceStencil_H
 #define extendedCellToFaceStencil_H
 
-#include "distributionMap.H"
+#include "mapDistribute.H"
 #include "volFields.H"
 #include "surfaceFields.H"
 
@@ -72,14 +74,14 @@ protected:
         const polyMesh& mesh_;
 
 
-    // Protected Member Functions
+    // Protected member functions
 
         //- Write some statistics about stencil
         static void writeStencilStats
         (
             Ostream& os,
             const labelListList& stencil,
-            const distributionMap& map
+            const mapDistribute& map
         );
 
 
@@ -98,23 +100,23 @@ public:
     // Member Functions
 
         //- Use map to get the data into stencil order
-        template<class Type>
+        template<class T>
         static void collectData
         (
-            const distributionMap& map,
+            const mapDistribute& map,
             const labelListList& stencil,
-            const VolField<Type>& fld,
-            List<List<Type>>& stencilFld
+            const GeometricField<T, fvPatchField, volMesh>& fld,
+            List<List<T>>& stencilFld
         );
 
         //- Sum vol field contributions to create face values
         template<class Type>
-        static tmp<SurfaceField<Type>>
+        static tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         weightedSum
         (
-            const distributionMap& map,
+            const mapDistribute& map,
             const labelListList& stencil,
-            const VolField<Type>& fld,
+            const GeometricField<Type, fvPatchField, volMesh>& fld,
             const List<List<scalar>>& stencilWeights
         );
 };

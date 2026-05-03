@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2020-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,158 +25,222 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "CodedFunction1.H"
+#include "dynamicCode.H"
+#include "dynamicCodeContext.H"
+#include "dictionaryContent.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-template<class Type>
-const Foam::wordList Foam::Function1s::Coded<Type>::codeKeys
-(
-    {"code", "codeInclude"}
-);
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-const Foam::wordList Foam::Function1s::Coded<Type>::codeDictVars
-(
-    {word::null, word::null}
-);
-
-template<class Type>
-const Foam::word Foam::Function1s::Coded<Type>::codeOptions
-(
-    "codedFunction1Options"
-);
-
-template<class Type>
-const Foam::wordList Foam::Function1s::Coded<Type>::compileFiles
+Foam::dlLibraryTable&
+Foam::Function1Types::CodedFunction1<Type>::libs() const
 {
-    "codedFunction1Template.C"
-};
+    return this->time().libs();
+}
+
 
 template<class Type>
-const Foam::wordList Foam::Function1s::Coded<Type>::copyFiles
+Foam::string
+Foam::Function1Types::CodedFunction1<Type>::description() const
 {
-    "codedFunction1Template.H"
-};
+    return "CodedFunction1 " + redirectName_;
+}
+
+
+template<class Type>
+void Foam::Function1Types::CodedFunction1<Type>::clearRedirect() const
+{
+    redirectFunctionPtr_.reset(nullptr);
+}
+
+
+template<class Type>
+const Foam::dictionary&
+Foam::Function1Types::CodedFunction1<Type>::codeContext() const
+{
+    // What else would make sense?
+    return dict_;
+}
+
+
+template<class Type>
+const Foam::dictionary&
+Foam::Function1Types::CodedFunction1<Type>::codeDict
+(
+    const dictionary& dict
+) const
+{
+    // Use named subdictionary if present to provide the code.
+    // This allows running with multiple Function1s
+
+    return
+    (
+        dict.found("code")
+      ? dict
+      : dict.subDict(redirectName_)
+    );
+}
+
+
+template<class Type>
+const Foam::dictionary&
+Foam::Function1Types::CodedFunction1<Type>::codeDict() const
+{
+    return codeDict(dict_);
+}
+
+
+template<class Type>
+void Foam::Function1Types::CodedFunction1<Type>::prepare
+(
+    dynamicCode& dynCode,
+    const dynamicCodeContext& context
+) const
+{
+    if (context.code().empty())
+    {
+        FatalIOErrorInFunction(dict_)
+            << "No code section in input dictionary for Function1 "
+            << " name " << redirectName_
+            << exit(FatalIOError);
+    }
+
+    // Take no chances - typeName must be identical to redirectName_
+    dynCode.setFilterVariable("typeName", redirectName_);
+
+    // Set TemplateType and FieldType filter variables
+    dynCode.setFieldTemplates<Type>();
+
+    // Compile filtered C template
+    dynCode.addCompileFile(codeTemplateC);
+
+    // Copy filtered H template
+    dynCode.addCopyFile(codeTemplateH);
+
+    #ifdef FULLDEBUG
+    dynCode.setFilterVariable("verbose", "true");
+    DetailInfo
+        <<"compile " << redirectName_ << " sha1: " << context.sha1() << endl;
+    #endif
+
+    // Define Make/options
+    dynCode.setMakeOptions
+    (
+        "EXE_INC = -g \\\n"
+        "-I$(LIB_SRC)/meshTools/lnInclude \\\n"
+      + context.options()
+      + "\n\nLIB_LIBS = \\\n"
+        "    -lOpenFOAM \\\n"
+        "    -lmeshTools \\\n"
+      + context.libs()
+    );
+}
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::Coded<Type>::Coded
+Foam::Function1Types::CodedFunction1<Type>::CodedFunction1
 (
-    const word& name,
-    const Function1s::unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    Function1<Type>(name),
-    codedBase
-    (
-        dict.lookup("name"),
-        dict,
-        codeKeys,
-        codeDictVars,
-        codeOptions,
-        compileFiles,
-        copyFiles
-    ),
-    units_(units)
+    Function1<Type>(entryName, dict, obrPtr),
+    codedBase(),
+    dict_(dict),
+    redirectName_(dict.getOrDefault<word>("name", entryName))
 {
-    // Set variable substitutions
-    varSubstitutions().set
-    (
-        {
-            {"TemplateType", pTraits<Type>::typeName},
-            {"verbose", Foam::name(bool(debug))}
-        }
-    );
+    this->codedBase::setCodeContext(dict_);
 
-    this->updateLibrary(dict);
+    // No additional code chunks...
 
-    dictionary redirectDict(dict);
-    redirectDict.set(codeName(), codeName());
-
-    redirectFunction1Ptr_ =
-        Function1<Type>::New(codeName(), units::any, units::any, redirectDict);
+    updateLibrary(redirectName_);
 }
 
 
 template<class Type>
-Foam::Function1s::Coded<Type>::Coded(const Coded<Type>& cf1)
+Foam::Function1Types::CodedFunction1<Type>::CodedFunction1
+(
+    const CodedFunction1<Type>& rhs
+)
 :
-    Function1<Type>(cf1),
-    codedBase(cf1),
-    units_(cf1.units_),
-    redirectFunction1Ptr_(cf1.redirectFunction1Ptr_, false)
-{}
-
-
-template<class Type>
-Foam::tmp<Foam::Function1<Type>> Foam::Function1s::Coded<Type>::clone() const
-{
-    return tmp<Function1<Type>>(new Coded<Type>(*this));
-}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::Function1s::Coded<Type>::~Coded()
+    Function1<Type>(rhs),
+    codedBase(),
+    dict_(rhs.dict_),
+    redirectName_(rhs.redirectName_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::tmp<Foam::Field<Type>> Foam::Function1s::Coded<Type>::value
-(
-    const scalarField& x
-) const
+const Foam::Function1<Type>&
+Foam::Function1Types::CodedFunction1<Type>::redirectFunction() const
 {
-    return
-        units_.value.toStandard
+    if (!redirectFunctionPtr_)
+    {
+        dictionary constructDict;
+        // Force 'redirectName_' sub-dictionary into existence
+        dictionary& coeffs = constructDict.subDictOrAdd(redirectName_);
+
+        coeffs = dict_;  // Copy input code and coefficients
+        coeffs.remove("name");      // Redundant
+        coeffs.set("type", redirectName_);  // Specify our new (redirect) type
+
+        redirectFunctionPtr_.reset
         (
-            redirectFunction1Ptr_->value
+            Function1<Type>::New
             (
-                units_.x.toUser(tmp<scalarField>(x))
+                redirectName_,
+                constructDict,
+                this->whichDb()
             )
         );
+
+        // Forward copy of codeContext to the code template
+        auto* contentPtr =
+            dynamic_cast<dictionaryContent*>(redirectFunctionPtr_.get());
+
+        if (contentPtr)
+        {
+            contentPtr->dict(this->codeContext());
+        }
+        else
+        {
+            WarningInFunction
+                << redirectName_ << " Did not derive from dictionaryContent"
+                << nl << nl;
+        }
+    }
+    return *redirectFunctionPtr_;
 }
 
 
 template<class Type>
-inline Type Foam::Function1s::Coded<Type>::integral
+Type Foam::Function1Types::CodedFunction1<Type>::value
 (
-    const scalar x1,
-    const scalar x2
+    const scalar x
 ) const
 {
-    NotImplemented;
-    return pTraits<Type>::zero;
+    // Ensure library containing user-defined code is up-to-date
+    updateLibrary(redirectName_);
+
+    return redirectFunction().value(x);
 }
 
 
 template<class Type>
-Foam::tmp<Foam::Field<Type>> Foam::Function1s::Coded<Type>::integral
+void Foam::Function1Types::CodedFunction1<Type>::writeData
 (
-    const scalarField& x1,
-    const scalarField& x2
+    Ostream& os
 ) const
 {
-    NotImplemented;
-    return tmp<Field<Type>>();
-}
-
-
-template<class Type>
-void Foam::Function1s::Coded<Type>::write
-(
-    Ostream& os,
-    const unitSets& units
-) const
-{
-    codedBase::write(os);
+    // Should really only output only relevant entries but since using
+    // Function1-from-subdict upon construction our dictionary contains
+    // only the relevant entries.
+    dict_.writeEntry(this->name(), os);
 }
 
 

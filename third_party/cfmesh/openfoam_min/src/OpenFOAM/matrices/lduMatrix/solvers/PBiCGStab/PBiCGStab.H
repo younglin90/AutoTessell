@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ Class
     Foam::PBiCGStab
 
 Description
-    Preconditioned bi-conjugate gradient stabilised solver for asymmetric
+    Preconditioned bi-conjugate gradient stabilized solver for asymmetric
     lduMatrices using a run-time selectable preconditioner.
 
     References:
@@ -59,13 +62,27 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class PBiCGStab Declaration
+                           Class PBiCGStab Declaration
 \*---------------------------------------------------------------------------*/
 
 class PBiCGStab
 :
     public lduMatrix::solver
 {
+    // Private Member Data
+
+        //- Cached preconditioner
+        mutable autoPtr<lduMatrix::preconditioner> preconPtr_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        PBiCGStab(const PBiCGStab&) = delete;
+
+        //- No copy assignment
+        void operator=(const PBiCGStab&) = delete;
+
 
 public:
 
@@ -86,16 +103,20 @@ public:
             const dictionary& solverControls
         );
 
-        //- Disallow default bitwise copy construction
-        PBiCGStab(const PBiCGStab&) = delete;
-
 
     //- Destructor
-    virtual ~PBiCGStab()
-    {}
+    virtual ~PBiCGStab() = default;
 
 
     // Member Functions
+
+        //- Solve the matrix with this solver
+        virtual solverPerformance scalarSolve
+        (
+            solveScalarField& psi,
+            const solveScalarField& source,
+            const direction cmpt = 0
+        ) const;
 
         //- Solve the matrix with this solver
         virtual solverPerformance solve
@@ -104,12 +125,6 @@ public:
             const scalarField& source,
             const direction cmpt=0
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PBiCGStab&) = delete;
 };
 
 

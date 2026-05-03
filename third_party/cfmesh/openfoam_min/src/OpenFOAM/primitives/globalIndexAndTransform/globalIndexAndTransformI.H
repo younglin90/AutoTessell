@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -111,7 +114,7 @@ Foam::labelList Foam::globalIndexAndTransform::decodeTransformIndex
     const label transformIndex
 ) const
 {
-    labelList permutation(transforms_.size(), 0);
+    labelList permutation(transforms_.size(), Zero);
 
     label t = transformIndex;
     forAll(permutation, i)
@@ -139,7 +142,7 @@ Foam::label Foam::globalIndexAndTransform::addToTransformIndex
     if (matchTransI >= transforms_.size())
     {
         FatalErrorInFunction
-            << "patch:" << mesh_.boundary()[patchi].name()
+            << "patch:" << mesh_.boundaryMesh()[patchi].name()
             << " transform:" << matchTransI
             << " out of possible transforms:" << transforms_
             << exit(FatalError);
@@ -173,7 +176,7 @@ Foam::label Foam::globalIndexAndTransform::addToTransformIndex
             {
                 // sent from patch without a transformation. Do nothing.
                 FatalErrorInFunction
-                    << "patch:" << mesh_.boundary()[patchi].name()
+                    << "patch:" << mesh_.boundaryMesh()[patchi].name()
                     << " transform:" << matchTransI << " sign:" << sign
                     << "  current transforms:" << permutation
                     << exit(FatalError);
@@ -187,12 +190,12 @@ Foam::label Foam::globalIndexAndTransform::addToTransformIndex
                 // once +1)
                 bool antiCyclic = false;
 
-                const transformer& vt = transforms_[matchTransI];
-                if (vt.transforms())
+                const vectorTensorTransform& vt = transforms_[matchTransI];
+                if (mag(vt.t()) < SMALL && vt.hasR())
                 {
-                    const tensor& T = vt.T();
-                    scalar sumDiag = tr(T);
-                    scalar sumMagDiag = mag(T.xx()) + mag(T.yy()) + mag(T.zz());
+                    const tensor& R = vt.R();
+                    scalar sumDiag = tr(R);
+                    scalar sumMagDiag = mag(R.xx())+mag(R.yy())+mag(R.zz());
 
                     if (mag(sumMagDiag-3) < tol && mag(sumDiag+1) < tol)
                     {
@@ -210,7 +213,7 @@ Foam::label Foam::globalIndexAndTransform::addToTransformIndex
                     FatalErrorInFunction
                         << "More than one patch accessing the same transform "
                         << "but not of the same sign." << endl
-                        << "patch:" << mesh_.boundary()[patchi].name()
+                        << "patch:" << mesh_.boundaryMesh()[patchi].name()
                         << " transform:" << matchTransI << " sign:" << sign
                         << "  current transforms:" << permutation
                         << exit(FatalError);
@@ -374,14 +377,14 @@ Foam::label Foam::globalIndexAndTransform::nIndependentTransforms() const
 }
 
 
-const Foam::List<Foam::transformer>&
+const Foam::List<Foam::vectorTensorTransform>&
 Foam::globalIndexAndTransform::transforms() const
 {
     return transforms_;
 }
 
 
-const Foam::List<Foam::transformer>&
+const Foam::List<Foam::vectorTensorTransform>&
 Foam::globalIndexAndTransform::transformPermutations() const
 {
     return transformPermutations_;
@@ -401,7 +404,7 @@ Foam::globalIndexAndTransform::patchTransformSign() const
 }
 
 
-const Foam::transformer& Foam::globalIndexAndTransform::transform
+const Foam::vectorTensorTransform& Foam::globalIndexAndTransform::transform
 (
     label transformIndex
 ) const
@@ -415,7 +418,7 @@ Foam::labelList Foam::globalIndexAndTransform::transformIndicesForPatches
     const labelHashSet& patchis
 ) const
 {
-    labelList permutation(transforms_.size(), 0);
+    labelList permutation(transforms_.size(), Zero);
 
     labelList selectedTransformIs(0);
 
@@ -424,10 +427,8 @@ Foam::labelList Foam::globalIndexAndTransform::transformIndicesForPatches
         return selectedTransformIs;
     }
 
-    forAllConstIter(labelHashSet, patchis, iter)
+    for (const label patchi : patchis)
     {
-        label patchi = iter.key();
-
         const labelPair& transSign = patchTransformSign_[patchi];
 
         label matchTransI = transSign.first();
@@ -458,7 +459,7 @@ Foam::labelList Foam::globalIndexAndTransform::transformIndicesForPatches
         }
     }
 
-    label nUsedTrans = round(sum(mag(SubField<label>(permutation))));
+    label nUsedTrans = round(sum(mag(permutation)));
 
     if (nUsedTrans == 0)
     {
@@ -593,12 +594,16 @@ Foam::pointField Foam::globalIndexAndTransform::transformPatches
 {
     labelList transIs = transformIndicesForPatches(patchis);
 
+    // Pout<< patchis << nl << transIs << endl;
+
     pointField transPts(transIs.size());
 
     forAll(transIs, tII)
     {
-        transPts[tII] =
-            transformPermutations_[transIs[tII]].transformPosition(pt);
+        transPts[tII] = transformPermutations_[transIs[tII]].transformPosition
+        (
+            pt
+        );
     }
 
     return transPts;

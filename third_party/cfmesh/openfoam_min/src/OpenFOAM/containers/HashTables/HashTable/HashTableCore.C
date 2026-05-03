@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
+    Copyright (C) 2017-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,48 +26,61 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "HashTable.H"
+#include "HashTableCore.H"
 #include "uLabel.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
-defineTypeNameAndDebug(HashTableCore, 0);
+    defineTypeNameAndDebug(HashTableCore, 0);
 }
 
-const Foam::label Foam::HashTableCore::maxTableSize
-(
-    Foam::HashTableCore::canonicalSize
-    (
-        Foam::labelMax/2
-    )
-);
+// Approximately labelMax/4
+const Foam::label Foam::HashTableCore::maxTableSize(1L << (sizeof(label)*8-3));
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-Foam::label Foam::HashTableCore::canonicalSize(const label size)
+Foam::label Foam::HashTableCore::canonicalSize(const label requested_size)
 {
-    if (size < 1)
+    if (requested_size < 1)
     {
         return 0;
     }
-
-    // enforce power of two
-    uLabel goodSize = size;
-
-    if (goodSize & (goodSize - 1))
+    else if (requested_size >= maxTableSize)
     {
-        // brute-force is fast enough
-        goodSize = 1;
-        while (goodSize < unsigned(size))
-        {
-            goodSize <<= 1;
-        }
+        return maxTableSize;
     }
 
-    return goodSize;
+    // Enforce power of two for fast modulus in hash index calculations.
+    // Use unsigned for these calculations.
+    //
+    // - The lower limit (8) is somewhat arbitrary, but if the hash table
+    //   is too small, there will be many direct table collisions.
+    // - The upper limit (approx. labelMax/4) must be a power of two,
+    //   need not be extremely large for hashing.
+
+    uLabel powerOfTwo = 8u; // lower-limit
+
+    const uLabel size = requested_size;
+    if (size <= powerOfTwo)
+    {
+        return powerOfTwo;
+    }
+
+    if (size & (size-1))  // <- Modulus of i^2
+    {
+        // Determine power-of-two. Brute-force is fast enough.
+        while (powerOfTwo < size)
+        {
+            powerOfTwo <<= 1;
+        }
+
+        return powerOfTwo;
+    }
+
+    return size;
 }
 
 

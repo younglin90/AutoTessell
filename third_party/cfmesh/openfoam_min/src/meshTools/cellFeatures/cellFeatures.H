@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,8 +39,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cellFeatures_H
-#define cellFeatures_H
+#ifndef Foam_cellFeatures_H
+#define Foam_cellFeatures_H
 
 #include "faceList.H"
 #include "labelList.H"
@@ -52,16 +54,16 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class primitiveMesh;
 
 /*---------------------------------------------------------------------------*\
-                        Class cellFeatures Declaration
+                           Class cellFeatures Declaration
 \*---------------------------------------------------------------------------*/
 
 class cellFeatures
 {
-    // Private Data
+    // Private data
 
         const primitiveMesh& mesh_;
 
@@ -75,7 +77,7 @@ class cellFeatures
         labelHashSet featureEdge_;
 
         //- (demand driven) Faces after removing internal points&edges
-        mutable faceList* facesPtr_;
+        mutable std::unique_ptr<faceList> facesPtr_;
 
         //- New to old face mapping
         mutable List<DynamicList<label>> faceMap_;
@@ -105,6 +107,12 @@ class cellFeatures
         void calcSuperFaces() const;
 
 
+        //- No copy construct
+        cellFeatures(const cellFeatures&) = delete;
+
+        //- No copy assignment
+        void operator=(const cellFeatures&) = delete;
+
 public:
 
     // Constructors
@@ -116,9 +124,6 @@ public:
             const scalar minCos,    // angle to use for feature recognition.
             const label celli
         );
-
-        //- Disallow default bitwise copy construction
-        cellFeatures(const cellFeatures&) = delete;
 
 
     //- Destructor
@@ -172,11 +177,6 @@ public:
             //  point
             bool isFeatureVertex(const label facei, const label vertI) const;
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const cellFeatures&) = delete;
 };
 
 

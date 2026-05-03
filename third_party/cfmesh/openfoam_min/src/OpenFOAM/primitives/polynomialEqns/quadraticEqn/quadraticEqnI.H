@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +27,9 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::quadraticEqn::quadraticEqn()
-{}
-
-
 inline Foam::quadraticEqn::quadraticEqn(const Foam::zero)
 :
-    VectorSpace<quadraticEqn, scalar, 3>(Foam::zero())
+    VectorSpace<quadraticEqn, scalar, 3>(Foam::zero{})
 {}
 
 
@@ -42,49 +40,13 @@ inline Foam::quadraticEqn::quadraticEqn
     const scalar c
 )
 {
-    this->v_[coefficient::a] = a;
-    this->v_[coefficient::b] = b;
-    this->v_[coefficient::c] = c;
+    this->v_[A] = a;
+    this->v_[B] = b;
+    this->v_[C] = c;
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline Foam::scalar Foam::quadraticEqn::a() const
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar Foam::quadraticEqn::b() const
-{
-    return this->v_[coefficient::b];
-}
-
-
-inline Foam::scalar Foam::quadraticEqn::c() const
-{
-    return this->v_[coefficient::c];
-}
-
-
-inline Foam::scalar& Foam::quadraticEqn::a()
-{
-    return this->v_[coefficient::a];
-}
-
-
-inline Foam::scalar& Foam::quadraticEqn::b()
-{
-    return this->v_[coefficient::b];
-}
-
-
-inline Foam::scalar& Foam::quadraticEqn::c()
-{
-    return this->v_[coefficient::c];
-}
-
 
 inline Foam::scalar Foam::quadraticEqn::value(const scalar x) const
 {
@@ -101,8 +63,8 @@ inline Foam::scalar Foam::quadraticEqn::derivative(const scalar x) const
 inline Foam::scalar Foam::quadraticEqn::error(const scalar x) const
 {
     return
-        small*mag(x)*(mag(x*a()) + mag(b()))
-      + small*(mag(x*(x*a() + b())) + mag(c()));
+        SMALL*mag(x)*(mag(x*a()) + mag(b()))
+      + SMALL*(mag(x*(x*a() + b())) + mag(c()));
 }
 
 

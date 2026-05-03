@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::boundedConvectionScheme
+
+Group
+    grpFvConvectionSchemes
 
 Description
     Bounded form of the selected convection scheme.
@@ -55,7 +60,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class boundedConvectionScheme Declaration
+                       Class boundedConvectionScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -63,9 +68,18 @@ class boundedConvectionScheme
 :
     public fv::convectionScheme<Type>
 {
-    // Private Data
+    // Private data
 
         tmp<fv::convectionScheme<Type>> scheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        boundedConvectionScheme(const boundedConvectionScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const boundedConvectionScheme&) = delete;
 
 
 public:
@@ -91,41 +105,34 @@ public:
             )
         {}
 
-        //- Disallow default bitwise copy construction
-        boundedConvectionScheme(const boundedConvectionScheme&) = delete;
-
 
     // Member Functions
 
-        tmp<SurfaceField<Type>> interpolate
+        const convectionScheme<Type>& scheme() const;
+
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> interpolate
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<SurfaceField<Type>> flux
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> flux
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
         tmp<fvMatrix<Type>> fvmDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<VolField<Type>> fvcDiv
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const boundedConvectionScheme&) = delete;
 };
 
 

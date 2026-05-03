@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,8 +33,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef lduMesh_H
-#define lduMesh_H
+#ifndef Foam_lduMesh_H
+#define Foam_lduMesh_H
 
 #include "lduAddressing.H"
 #include "lduInterfacePtrsList.H"
@@ -43,11 +46,8 @@ Description
 namespace Foam
 {
 
+// Forward Declarations
 class objectRegistry;
-
-
-// Forward declaration of friend functions and operators
-
 class lduMesh;
 
 Ostream& operator<<(Ostream&, const InfoProxy<lduMesh>&);
@@ -59,32 +59,31 @@ Ostream& operator<<(Ostream&, const InfoProxy<lduMesh>&);
 
 class lduMesh
 {
-
 public:
 
     //- Runtime type information
     TypeName("lduMesh");
 
 
-    // Constructors
-
     //- Destructor
-    virtual ~lduMesh()
-    {}
+    virtual ~lduMesh() = default;
 
 
     // Member Functions
 
         // Access
 
+            //- Return true if thisDb() is a valid DB
+            virtual bool hasDb() const = 0;
+
             //- Return the object registry
-            virtual const objectRegistry& db() const;
+            virtual const objectRegistry& thisDb() const;
 
             //- Return ldu addressing
             virtual const lduAddressing& lduAddr() const = 0;
 
             //- Return a list of pointers for each patch
-            //  with only those pointing to interfaces being set
+            //- with only those pointing to interfaces being set
             virtual lduInterfacePtrsList interfaces() const = 0;
 
             //- Return communicator used for parallel communication
@@ -99,17 +98,14 @@ public:
             ) const;
 
 
-        // Info
+    // Info
 
-            //- Return info proxy.
-            //  Used to print mesh information to a stream
-            InfoProxy<lduMesh> info() const
-            {
-                return *this;
-            }
+        //- Return info proxy,
+        //- used to print mesh information to a stream
+        InfoProxy<lduMesh> info() const noexcept { return *this; }
 
 
-    // Ostream operator
+    // Ostream Operator
 
         friend Ostream& operator<<(Ostream&, const InfoProxy<lduMesh>&);
 };

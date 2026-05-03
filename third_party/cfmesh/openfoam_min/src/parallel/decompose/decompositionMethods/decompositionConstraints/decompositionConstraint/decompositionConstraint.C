@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "decompositionConstraint.H"
+#include "syncTools.H"
+#include "cyclicAMIPolyPatch.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -33,13 +38,113 @@ namespace Foam
     defineRunTimeSelectionTable(decompositionConstraint, dictionary);
 }
 
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+void Foam::decompositionConstraint::getMinBoundaryValue
+(
+    const polyMesh& mesh,
+    const labelList& decomposition,
+    labelList& destProc
+) const
+{
+    destProc.setSize(mesh.nBoundaryFaces());
+    destProc = labelMax;
+
+    const polyBoundaryMesh& pbm = mesh.boundaryMesh();
+
+    for (const polyPatch& pp : pbm)
+    {
+        const labelUList& faceCells = pp.faceCells();
+
+        forAll(faceCells, i)
+        {
+            label bFacei = pp.offset()+i;
+            destProc[bFacei] = decomposition[faceCells[i]];
+        }
+    }
+
+    // Take minimum of coupled faces (over all patches!)
+    syncTools::syncBoundaryFaceList(mesh, destProc, minEqOp<label>());
+
+    // Do cyclicAMI ourselves
+    for (const auto& pp : pbm)
+    {
+        const auto* ppp = isA<cyclicAMIPolyPatch>(pp);
+        if (ppp)
+        {
+            const auto& cycPp = *ppp;
+            const auto& nbrPp = cycPp.neighbPatch();
+            const labelList nbrDecomp(decomposition, nbrPp.faceCells());
+            labelList thisDecomp(decomposition, cycPp.faceCells());
+
+            if (cycPp.owner())
+            {
+                cycPp.AMI().interpolateToSource
+                (
+                    nbrDecomp,
+                    []
+                    (
+                        label& res,
+                        const label facei,
+                        const label& fld,
+                        const scalar& w
+                    )
+                    {
+                        res = min(res, fld);
+                    },
+                    thisDecomp,
+                    thisDecomp      // used in case of low-weight-corr
+                );
+            }
+            else
+            {
+                nbrPp.AMI().interpolateToTarget
+                (
+                    nbrDecomp,
+                    []
+                    (
+                        label& res,
+                        const label facei,
+                        const label& fld,
+                        const scalar& w
+                    )
+                    {
+                        res = min(res, fld);
+                    },
+                    thisDecomp,
+                    thisDecomp      // used in case of low-weight-corr
+                );
+            }
+
+            forAll(thisDecomp, i)
+            {
+                label& proc = destProc[cycPp.offset()+i];
+                proc = min(proc, thisDecomp[i]);
+            }
+        }
+    }
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::decompositionConstraint::decompositionConstraint
 (
-    const dictionary& constraintsDict,
-    const word& type
+    const dictionary& constraintDict
 )
+:
+    coeffDict_(constraintDict)
+{}
+
+
+Foam::decompositionConstraint::decompositionConstraint
+(
+    const dictionary& constraintDict,
+    const word&
+)
+:
+    coeffDict_(constraintDict)
 {}
 
 
@@ -48,37 +153,41 @@ Foam::decompositionConstraint::decompositionConstraint
 Foam::autoPtr<Foam::decompositionConstraint>
 Foam::decompositionConstraint::New
 (
-    const dictionary& dict,
-    const word& modelType
+    const dictionary& dict
 )
 {
-    Info<< indentOrNl
-        << "Selecting decompositionConstraint " << modelType << endl;
-
-    dictionaryConstructorTable::iterator cstrIter =
-        dictionaryConstructorTablePtr_->find(modelType);
-
-    if (cstrIter == dictionaryConstructorTablePtr_->end())
-    {
-        FatalIOErrorInFunction(dict)
-            << "Unknown decompositionConstraint type "
-            << modelType << nl << nl
-            << "Valid decompositionConstraint types:" << endl
-            << dictionaryConstructorTablePtr_->sortedToc()
-            << exit(FatalIOError);
-    }
-
-    return autoPtr<decompositionConstraint>
+    return decompositionConstraint::New
     (
-        cstrIter()(dict, modelType)
+        dict,
+        dict.get<word>("type")
     );
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+Foam::autoPtr<Foam::decompositionConstraint>
+Foam::decompositionConstraint::New
+(
+    const dictionary& dict,
+    const word& modelType
+)
+{
+    Info<< "Selecting decompositionConstraint " << modelType << endl;
 
-Foam::decompositionConstraint::~decompositionConstraint()
-{}
+    auto* ctorPtr = dictionaryConstructorTable(modelType);
+
+    if (!ctorPtr)
+    {
+        FatalIOErrorInLookup
+        (
+            dict,
+            "decompositionConstraint",
+            modelType,
+            *dictionaryConstructorTablePtr_
+        ) << exit(FatalIOError);
+    }
+
+    return autoPtr<decompositionConstraint>(ctorPtr(dict));
+}
 
 
 // ************************************************************************* //

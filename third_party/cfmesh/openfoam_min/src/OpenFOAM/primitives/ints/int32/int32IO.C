@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,95 +27,169 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "int32.H"
+#include "error.H"
+#include "parsing.H"
 #include "IOstreams.H"
-
-#include <inttypes.h>
-#include <sstream>
-#include <cerrno>
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Foam::word Foam::name(const int32_t val)
-{
-    std::ostringstream buf;
-    buf << val;
-    return buf.str();
-}
-
+#include <cinttypes>
+#include <cmath>
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Istream& Foam::operator>>(Istream& is, int32_t& i)
+int32_t Foam::readInt32(const char* buf)
 {
-    token t(is);
+    char *endptr = nullptr;
+    errno = 0;
+    const intmax_t parsed = ::strtoimax(buf, &endptr, 10);
 
-    if (!t.good())
-    {
-        is.setBad();
-        return is;
-    }
+    const int32_t val = int32_t(parsed);
 
-    if (t.isInteger32())
+    const parsing::errorType err =
+    (
+        (parsed < INT32_MIN || parsed > INT32_MAX)
+      ? parsing::errorType::RANGE
+      : parsing::checkConversion(buf, endptr)
+    );
+
+    if (err != parsing::errorType::NONE)
     {
-        i = t.integer32Token();
-    }
-    else
-    {
-        is.setBad();
-        FatalIOErrorInFunction(is)
-            << "wrong token type - expected int32_t, found " << t.info()
+        FatalIOErrorInFunction("unknown")
+            << parsing::errorNames[err] << " '" << buf << "'"
             << exit(FatalIOError);
-
-        return is;
     }
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, int32_t&)");
+    return val;
+}
 
-    return is;
+
+bool Foam::readInt32(const char* buf, int32_t& val)
+{
+    char *endptr = nullptr;
+    errno = 0;
+    const intmax_t parsed = ::strtoimax(buf, &endptr, 10);
+
+    val = int32_t(parsed);
+
+    return
+    (
+        (parsed < INT32_MIN || parsed > INT32_MAX)
+      ? false
+      : (parsing::checkConversion(buf, endptr) == parsing::errorType::NONE)
+    );
 }
 
 
 int32_t Foam::readInt32(Istream& is)
 {
-    int32_t val;
+    int32_t val(0);
     is >> val;
 
     return val;
 }
 
 
-bool Foam::read(const char* buf, int32_t& s)
+Foam::Istream& Foam::operator>>(Istream& is, int32_t& val)
 {
-    char *endptr = nullptr;
-    errno = 0;
-    intmax_t l = strtoimax(buf, &endptr, 10);
-    s = int32_t(l);
-    return
-        (*endptr == 0) && (errno == 0)
-     && (l >= INT32_MIN) && (l <= INT32_MAX);
+    token t(is);
+
+    if (!t.good())
+    {
+        FatalIOErrorInFunction(is)
+            << "Bad token - could not get int32"
+            << exit(FatalIOError);
+        is.setBad();
+        return is;
+    }
+
+    // Accept separated '-' (or '+') while expecting a number.
+    // This can arise during dictionary expansions (Eg, -$value)
+
+    char prefix = 0;
+    if (t.isPunctuation())
+    {
+        prefix = t.pToken();
+        if (prefix == token::PLUS || prefix == token::MINUS)
+        {
+            is >> t;
+        }
+    }
+
+    if (t.isLabel())
+    {
+        val = int32_t
+        (
+            (prefix == token::MINUS)
+          ? (0 - t.labelToken())
+          : t.labelToken()
+        );
+    }
+    else if (t.isScalar())
+    {
+        const scalar sval
+        (
+            (prefix == token::MINUS)
+          ? (0 - t.scalarToken())
+          : t.scalarToken()
+        );
+        const intmax_t parsed = intmax_t(std::round(sval));
+        val = 0 + int32_t(parsed);
+
+        // Accept integral floating-point values.
+        // Eg, from string expression evaluation (#1696)
+
+        if (parsed < INT32_MIN || parsed > INT32_MAX)
+        {
+            FatalIOErrorInFunction(is)
+                << "Expected integral (int32), value out-of-range "
+                << t.info()
+                << exit(FatalIOError);
+            is.setBad();
+            return is;
+        }
+        else if (1e-4 < std::abs(sval - scalar(parsed)))
+        {
+            FatalIOErrorInFunction(is)
+                << "Expected integral (int32), found non-integral value "
+                << t.info()
+                << exit(FatalIOError);
+            is.setBad();
+            return is;
+        }
+    }
+    else
+    {
+        FatalIOErrorInFunction(is)
+            << "Wrong token type - expected label (int32), found ";
+        if (prefix == token::PLUS || prefix == token::MINUS)
+        {
+            FatalIOError << '\'' << prefix << "' followed by ";
+        }
+        FatalIOError << t.info() << exit(FatalIOError);
+        is.setBad();
+        return is;
+    }
+
+    is.check(FUNCTION_NAME);
+    return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const int32_t i)
+Foam::Ostream& Foam::operator<<(Ostream& os, const int32_t val)
 {
-    os.write(i);
-    os.check("Ostream& operator<<(Ostream&, const int32_t)");
+    os.write(label(val));
+    os.check(FUNCTION_NAME);
     return os;
 }
 
 
-#if WM_ARCH_OPTION == 32
-Foam::Istream& Foam::operator>>(Istream& is, long& i)
+#if (__SIZEOF_LONG__ == 4)
+Foam::Istream& Foam::operator>>(Istream& is, long& val)
 {
-    return operator>>(is, reinterpret_cast<int32_t&>(i));
+    return operator>>(is, reinterpret_cast<int32_t&>(val));
 }
 
-
-Foam::Ostream& Foam::operator<<(Ostream& os, const long i)
+Foam::Ostream& Foam::operator<<(Ostream& os, const long val)
 {
-    os << int32_t(i);
-    return os;
+    return (os << int32_t(val));
 }
 #endif
 

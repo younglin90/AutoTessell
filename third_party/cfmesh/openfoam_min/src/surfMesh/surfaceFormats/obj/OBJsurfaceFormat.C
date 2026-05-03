@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,11 +28,9 @@ License
 
 #include "OBJsurfaceFormat.H"
 #include "clock.H"
-#include "IFstream.H"
-#include "IStringStream.H"
-#include "Ostream.H"
-#include "OFstream.H"
-#include "ListOps.H"
+#include "Fstream.H"
+#include "stringOps.H"
+#include "faceTraits.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -51,151 +52,169 @@ bool Foam::fileFormats::OBJsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
-    const bool mustTriangulate = this->isTri();
+    // Clear everything
     this->clear();
 
     IFstream is(filename);
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << filename
+            << "Cannot read file " << filename << nl
             << exit(FatalError);
     }
 
-    // assume that the groups are not intermixed
+    // Assume that the groups are not intermixed
+    // Place faces without a group in zone0.
+    // zoneId = -1 to signal uninitialized
+    label zoneId = -1;
     bool sorted = true;
 
     DynamicList<point> dynPoints;
-    DynamicList<Face>  dynFaces;
-    DynamicList<label> dynZones;
-    DynamicList<word>  dynNames;
-    DynamicList<label> dynSizes;
-    HashTable<label>   lookup;
+    DynamicList<label> dynVerts;
 
-    // place faces without a group in zone0
-    label zoneI = 0;
-    lookup.insert("zone0", zoneI);
-    dynNames.append("zone0");
-    dynSizes.append(0);
+    DynamicList<label> dynElemId; // unused
+    DynamicList<Face>  dynFaces;
+
+    DynamicList<word>  dynNames;
+    DynamicList<label> dynZones;
+    DynamicList<label> dynSizes;
+
+    HashTable<label>   groupLookup;
 
     while (is.good())
     {
-        const string line = this->getLineNoComment(is);
+        string line = this->getLineNoComment(is);
 
-        // Read first word
-        IStringStream lineStream(line);
-        word cmd;
-        lineStream >> cmd;
+        // Line continuations
+        while (line.removeEnd('\\'))
+        {
+            line += this->getLineNoComment(is);
+        }
+
+        const auto tokens = stringOps::splitSpace(line);
+
+        // Require command and some arguments
+        if (tokens.size() < 2)
+        {
+            continue;
+        }
+
+        const word cmd = word::validate(tokens[0]);
 
         if (cmd == "v")
         {
-            scalar x, y, z;
-            lineStream >> x >> y >> z;
-            dynPoints.append(point(x, y, z));
+            // Vertex
+            // v x y z
+
+            dynPoints.append
+            (
+                point
+                (
+                    readScalar(tokens[1]),
+                    readScalar(tokens[2]),
+                    readScalar(tokens[3])
+                )
+            );
         }
         else if (cmd == "g")
         {
-            word name;
-            lineStream >> name;
+            // Grouping
+            // g name
 
-            HashTable<label>::const_iterator fnd = lookup.find(name);
-            if (fnd != lookup.end())
+            const word groupName = word::validate(tokens[1]);
+            const auto iterGroup = groupLookup.cfind(groupName);
+
+            if (iterGroup.good())
             {
-                if (zoneI != fnd())
+                if (zoneId != *iterGroup)
                 {
-                    // group appeared out of order
-                    sorted = false;
+                    sorted = false; // Group appeared out of order
                 }
-                zoneI = fnd();
+                zoneId = *iterGroup;
             }
             else
             {
-                zoneI = dynSizes.size();
-                lookup.insert(name, zoneI);
-                dynNames.append(name);
+                zoneId = dynSizes.size();
+                groupLookup.insert(groupName, zoneId);
+                dynNames.append(groupName);
                 dynSizes.append(0);
             }
         }
         else if (cmd == "f")
         {
-            DynamicList<label> dynVertices;
+            // Face
+            // f v1 v2 v3 ...
+            // OR
+            // f v1/vt1 v2/vt2 v3/vt3 ...
 
-            // Assume 'f' is followed by space.
-            string::size_type endNum = 1;
-
-            while (true)
+            // Ensure it has as valid grouping
+            if (zoneId < 0)
             {
-                string::size_type startNum =
-                    line.find_first_not_of(' ', endNum);
-
-                if (startNum == string::npos)
-                {
-                    break;
-                }
-
-                endNum = line.find(' ', startNum);
-
-                string vertexSpec;
-                if (endNum != string::npos)
-                {
-                    vertexSpec = line.substr(startNum, endNum-startNum);
-                }
-                else
-                {
-                    vertexSpec = line.substr(startNum, line.size() - startNum);
-                }
-
-                string::size_type slashPos = vertexSpec.find('/');
-
-                label vertI = 0;
-                if (slashPos != string::npos)
-                {
-                    IStringStream intStream(vertexSpec.substr(0, slashPos));
-
-                    intStream >> vertI;
-                }
-                else
-                {
-                    IStringStream intStream(vertexSpec);
-
-                    intStream >> vertI;
-                }
-                dynVertices.append(vertI - 1);
+                zoneId = 0;
+                groupLookup.insert("zone0", 0);
+                dynNames.append("zone0");
+                dynSizes.append(0);
             }
-            dynVertices.shrink();
 
-            labelUList& f = static_cast<labelUList&>(dynVertices);
+            dynVerts.clear();
 
-            if (mustTriangulate && f.size() > 3)
+            bool first = true;
+            for (const auto& tok : tokens)
+            {
+                if (first)
+                {
+                    // skip initial "f" or "l"
+                    first = false;
+                    continue;
+                }
+
+                const string vrtSpec(tok);
+                const auto slash = vrtSpec.find('/');
+
+                const label vertId =
+                (
+                    slash != string::npos
+                  ? readLabel(vrtSpec.substr(0, slash))
+                  : readLabel(vrtSpec)
+                );
+
+                dynVerts.append(vertId - 1);
+            }
+
+            const labelUList& f = dynVerts;
+
+            if (faceTraits<Face>::isTri() && f.size() > 3)
             {
                 // simple face triangulation about f[0]
                 // points may be incomplete
                 for (label fp1 = 1; fp1 < f.size() - 1; fp1++)
                 {
-                    label fp2 = f.fcIndex(fp1);
+                    const label fp2 = f.fcIndex(fp1);
 
-                    dynFaces.append(triFace(f[0], f[fp1], f[fp2]));
-                    dynZones.append(zoneI);
-                    dynSizes[zoneI]++;
+                    dynFaces.append(Face{f[0], f[fp1], f[fp2]});
+                    dynZones.append(zoneId);
+                    dynSizes[zoneId]++;
                 }
             }
-            else
+            else if (f.size() >= 3)
             {
                 dynFaces.append(Face(f));
-                dynZones.append(zoneI);
-                dynSizes[zoneI]++;
+                dynZones.append(zoneId);
+                dynSizes[zoneId]++;
             }
         }
     }
 
 
-    // transfer to normal lists
+    // Transfer to normal lists
     this->storedPoints().transfer(dynPoints);
 
-    this->sortFacesAndStore(move(dynFaces), move(dynZones), sorted);
+    this->sortFacesAndStore(dynFaces, dynZones, dynElemId, sorted);
 
-    // add zones, culling empty ones
-    this->addZones(dynSizes, dynNames, true);
+    // Add zones (retaining empty ones)
+    this->addZones(dynSizes, dynNames);
+    this->addZonesToFaces(); // for labelledTri
+
     return true;
 }
 
@@ -204,15 +223,20 @@ template<class Face>
 void Foam::fileFormats::OBJsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
+
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&  faceLst  = surf.surfFaces();
+    const UList<label>& faceMap  = surf.faceMap();
 
     // for no zones, suppress the group name
-    const List<surfZone>& zones =
+    const surfZoneList zones =
     (
         surf.surfZones().empty()
       ? surfaceFormatsCore::oneZone(faceLst, "")
@@ -221,85 +245,68 @@ void Foam::fileFormats::OBJsurfaceFormat<Face>::write
 
     const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
 
-    OFstream os(filename);
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
 
     os  << "# Wavefront OBJ file written " << clock::dateTime().c_str() << nl
-        << "o " << os.name().lessExt().name() << nl
+        << "o " << os.name().stem() << nl
         << nl
         << "# points : " << pointLst.size() << nl
         << "# faces  : " << faceLst.size() << nl
         << "# zones  : " << zones.size() << nl;
 
     // Print zone names as comment
-    forAll(zones, zoneI)
+    forAll(zones, zonei)
     {
-        os  << "#   " << zoneI << "  " << zones[zoneI].name()
-            << "  (nFaces: " << zones[zoneI].size() << ")" << nl;
+        os  << "#   " << zonei << "  " << zones[zonei].name()
+            << "  (nFaces: " << zones[zonei].size() << ")" << nl;
     }
 
     os  << nl
         << "# <points count=\"" << pointLst.size() << "\">" << nl;
 
     // Write vertex coords
-    forAll(pointLst, ptI)
+    for (const point& pt : pointLst)
     {
-        const point& pt = pointLst[ptI];
-
         os  << "v " << pt.x() << ' '  << pt.y() << ' '  << pt.z() << nl;
     }
 
     os  << "# </points>" << nl
         << nl
-        << "# <faces count=\"" << faceLst.size() << "\">" << endl;
+        << "# <faces count=\"" << faceLst.size() << "\">" << nl;
 
 
     label faceIndex = 0;
-    forAll(zones, zoneI)
-    {
-        const surfZone& zone = zones[zoneI];
 
+    for (const surfZone& zone : zones)
+    {
         if (zone.name().size())
         {
-            os << "g " << zone.name() << endl;
+            os << "g " << zone.name() << nl;
         }
 
-        if (useFaceMap)
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
         {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceMap[faceIndex++]];
+            const label facei =
+                (useFaceMap ? faceMap[faceIndex] : faceIndex);
 
-                os << 'f';
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp] + 1;
-                }
-                os << endl;
-            }
-        }
-        else
-        {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceIndex++];
+            const Face& f = faceLst[facei];
 
-                os << 'f';
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp] + 1;
-                }
-                os << endl;
+            os << 'f';
+            for (const label verti : f)
+            {
+                os << ' ' << (verti + 1);
             }
+            os << nl;
         }
     }
-    os << "# </faces>" << endl;
+    os << "# </faces>" << nl;
 }
 
 

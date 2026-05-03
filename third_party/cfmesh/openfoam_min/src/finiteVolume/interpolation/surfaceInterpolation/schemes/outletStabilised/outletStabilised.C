@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,122 +25,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "fvMesh.H"
 #include "outletStabilised.H"
-#include "zeroGradientFvPatchField.H"
-#include "mixedFvPatchField.H"
-#include "directionMixedFvPatchField.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<class Type>
-inline Foam::tmp<Foam::surfaceScalarField>
-Foam::outletStabilised<Type>::weights
-(
-    const VolField<Type>& vf
-) const
-{
-    tmp<surfaceScalarField> tw = tScheme_().weights(vf);
-    surfaceScalarField& w = tw.ref();
-
-    const fvMesh& mesh_ = this->mesh();
-    const cellList& cells = mesh_.cells();
-
-    forAll(vf.boundaryField(), patchi)
-    {
-        if
-        (
-            isA<zeroGradientFvPatchField<Type>>
-                (vf.boundaryField()[patchi])
-         || isA<mixedFvPatchField<Type>>(vf.boundaryField()[patchi])
-         || isA<directionMixedFvPatchField<Type>>
-            (vf.boundaryField()[patchi])
-        )
-        {
-            const labelList& pFaceCells =
-                mesh_.boundary()[patchi].faceCells();
-
-            forAll(pFaceCells, pFacei)
-            {
-                const cell& pFaceCell = cells[pFaceCells[pFacei]];
-
-                forAll(pFaceCell, fi)
-                {
-                    label facei = pFaceCell[fi];
-
-                    if (mesh_.isInternalFace(facei))
-                    {
-                        // Apply upwind interpolation
-                        w[facei] = pos0(faceFlux_[facei]);
-                    }
-                }
-            }
-        }
-    }
-
-    return tw;
-}
-
-
-template<class Type>
-Foam::tmp<Foam::SurfaceField<Type>>
-inline Foam::outletStabilised<Type>::correction
-(
-    const VolField<Type>& vf
-) const
-{
-    if (tScheme_().corrected())
-    {
-        tmp<SurfaceField<Type>> tcorr =
-            tScheme_().correction(vf);
-
-        SurfaceField<Type>& corr =
-            tcorr.ref();
-
-        const fvMesh& mesh_ = this->mesh();
-        const cellList& cells = mesh_.cells();
-
-        forAll(vf.boundaryField(), patchi)
-        {
-            if
-            (
-                isA<zeroGradientFvPatchField<Type>>
-                    (vf.boundaryField()[patchi])
-             || isA<mixedFvPatchField<Type>>
-                    (vf.boundaryField()[patchi])
-            )
-            {
-                const labelList& pFaceCells =
-                    mesh_.boundary()[patchi].faceCells();
-
-                forAll(pFaceCells, pFacei)
-                {
-                    const cell& pFaceCell = cells[pFaceCells[pFacei]];
-
-                    forAll(pFaceCell, fi)
-                    {
-                        label facei = pFaceCell[fi];
-
-                        if (mesh_.isInternalFace(facei))
-                        {
-                            // Remove correction
-                            corr[facei] = Zero;
-                        }
-                    }
-                }
-            }
-        }
-
-        return tcorr;
-    }
-    else
-    {
-        return tmp<SurfaceField<Type>>
-        (
-            nullptr
-        );
-    }
-}
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

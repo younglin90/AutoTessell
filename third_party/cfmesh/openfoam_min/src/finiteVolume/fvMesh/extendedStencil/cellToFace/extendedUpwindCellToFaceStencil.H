@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -61,14 +63,14 @@ class extendedUpwindCellToFaceStencil
 :
     public extendedCellToFaceStencil
 {
-    // Private Data
+    // Private data
 
         //- Does stencil contain upwind points only
         const bool pureUpwind_;
 
         //- Swap map for getting neighbouring data
-        autoPtr<distributionMap> ownMapPtr_;
-        autoPtr<distributionMap> neiMapPtr_;
+        autoPtr<mapDistribute> ownMapPtr_;
+        autoPtr<mapDistribute> neiMapPtr_;
 
         //- Per face the stencil.
         labelListList ownStencil_;
@@ -113,6 +115,16 @@ class extendedUpwindCellToFaceStencil
         );
 
 
+        //- No copy construct
+        extendedUpwindCellToFaceStencil
+        (
+            const extendedUpwindCellToFaceStencil&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const extendedUpwindCellToFaceStencil&) = delete;
+
+
 public:
 
     // Constructors
@@ -134,12 +146,6 @@ public:
             const cellToFaceStencil&
         );
 
-        //- Disallow default bitwise copy construction
-        extendedUpwindCellToFaceStencil
-        (
-            const extendedUpwindCellToFaceStencil&
-        ) = delete;
-
 
     // Member Functions
 
@@ -149,15 +155,15 @@ public:
         }
 
         //- Return reference to the parallel distribution map
-        const distributionMap& ownMap() const
+        const mapDistribute& ownMap() const
         {
-            return ownMapPtr_();
+            return *ownMapPtr_;
         }
 
         //- Return reference to the parallel distribution map
-        const distributionMap& neiMap() const
+        const mapDistribute& neiMap() const
         {
-            return neiMapPtr_();
+            return *neiMapPtr_;
         }
 
         //- Return reference to the stencil
@@ -174,19 +180,14 @@ public:
 
         //- Sum vol field contributions to create face values
         template<class Type>
-        tmp<SurfaceField<Type>> weightedSum
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> weightedSum
         (
             const surfaceScalarField& phi,
-            const VolField<Type>& fld,
+            const GeometricField<Type, fvPatchField, volMesh>& fld,
             const List<List<scalar>>& ownWeights,
             const List<List<scalar>>& neiWeights
         ) const;
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const extendedUpwindCellToFaceStencil&) = delete;
 };
 
 

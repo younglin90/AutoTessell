@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,46 +26,49 @@ License
 Class
     Foam::fixedProfileFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition provides a fixed value profile condition.
 
 Usage
     \table
-        Property     | Description       | Required | Default value
-        profile      | Profile function  | yes      |
-        direction    | Direction of the line along which the profile is \\
-                               evaluated | yes      |
-        origin       | Origin of the line along which the profile is \\
-                               evaluated | yes      |
+        Property     | Description              | Required | Default value
+        profile      | Profile Function1        | yes |
+        direction    | Profile direction        | yes |
+        origin       | Profile origin           | yes |
     \endtable
 
     Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
-        type            fixedProfile;
-        profile
+        type       fixedProfile;
+        profile    csvFile;
+
+        profileCoeffs
         {
-            type                table;
-            file                "UProfile";
-            format              csv;
-            nHeaderLine         0;
-            columns             (0 (1 2 3));
-            separator           ",";
-            mergeSeparators     no;
-            outOfBounds         clamp;
-            interpolationScheme linear;
+            nHeaderLine         0;          // Number of header lines
+            refColumn           0;          // Reference column index
+            componentColumns    (1 2 3);    // Component column indices
+            separator           ",";        // Optional (defaults to ",")
+            mergeSeparators     no;         // Merge multiple separators
+            file                "Uprofile.csv";  // name of csv data file
+            outOfBounds         clamp;      // Optional out-of-bounds handling
+            interpolationScheme linear;     // Optional interpolation scheme
         }
         direction        (0 1 0);
         origin           0;
     }
     \endverbatim
 
-    Example setting a parabolic inlet profile for the pitzDaily case:
+    Example setting a parabolic inlet profile for the PitzDaily case:
     \verbatim
     inlet
     {
         type            fixedProfile;
+
         profile         polynomial
         (
             ((1 0 0)        (0 0 0))
@@ -74,8 +79,14 @@ Usage
     }
     \endverbatim
 
+Note
+    The profile entry is a Function1 type.  The example above gives the
+    usage for supplying csv file.
+
 See also
-    Foam::Function1s
+    Foam::fixedValueFvPatchField
+    Foam::Function1Types
+    Foam::timeVaryingMappedFixedValueFvPatchField
 
 SourceFiles
     fixedProfileFvPatchField.C
@@ -94,7 +105,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class fixedProfileFvPatchField Declaration
+                Class fixedProfileFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -102,16 +113,16 @@ class fixedProfileFvPatchField
 :
     public fixedValueFvPatchField<Type>
 {
-    // Private Data
+    // Private data
 
-        //- Profile function
+        //- Profile data
         autoPtr<Function1<Type>> profile_;
 
-        //- Origin of the line along which the profile is evaluated
-        scalar origin_;
+        //- Profile direction
+        vector dir_;
 
-        //- Direction of the line along which the profile is evaluated
-        vector direction_;
+        //- Profile origin
+        scalar origin_;
 
 
 public:
@@ -122,11 +133,26 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedProfileFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
+        //- Construct from patch and internal field and patch field
+        fixedProfileFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&,
+            const Field<Type>& fld
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedProfileFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -136,37 +162,40 @@ public:
         (
             const fixedProfileFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedProfileFvPatchField
         (
             const fixedProfileFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedProfileFvPatchField
         (
             const fixedProfileFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedProfileFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -176,12 +205,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchField<Type>::operator=;
 };
 
 

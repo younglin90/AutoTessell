@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,8 +32,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef IOmanip_H
-#define IOmanip_H
+#ifndef Foam_IOmanip_H
+#define Foam_IOmanip_H
 
 #include "Istream.H"
 #include "Ostream.H"
@@ -40,7 +43,7 @@ Description
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<class T> class Smanip;
 template<class T> class Imanip;
@@ -60,9 +63,10 @@ inline Ostream& operator<<(Ostream& os, const Omanip<T>& m);
 
 
 /*---------------------------------------------------------------------------*\
-                           Class Smanip Declaration
+                        Class Smanip Declaration
 \*---------------------------------------------------------------------------*/
 
+//- An IOstream manipulator taking arguments
 template<class T>
 class Smanip
 {
@@ -99,9 +103,10 @@ inline Ostream& operator<<(Ostream& os, const Smanip<T>& m)
 
 
 /*---------------------------------------------------------------------------*\
-                           Class Imanip Declaration
+                        Class Imanip Declaration
 \*---------------------------------------------------------------------------*/
 
+//- An Istream manipulator taking arguments
 template<class T>
 class Imanip
 {
@@ -129,9 +134,10 @@ inline Istream& operator>>(Istream& is, const Imanip<T>& m)
 
 
 /*---------------------------------------------------------------------------*\
-                           Class Omanip Declaration
+                        Class Omanip Declaration
 \*---------------------------------------------------------------------------*/
 
+//- An Ostream manipulator taking arguments
 template<class T>
 class Omanip
 {
@@ -160,39 +166,33 @@ inline Ostream& operator<<(Ostream& os, const Omanip<T>& m)
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-inline Smanip<ios_base::fmtflags> setf
-(
-    const ios_base::fmtflags flags
-)
+inline Smanip<std::ios_base::fmtflags> setf(std::ios_base::fmtflags flags)
 {
-    return Smanip<ios_base::fmtflags>(&IOstream::setf, flags);
+    return Smanip<std::ios_base::fmtflags>(&IOstream::setf, flags);
 }
 
 
-inline Omanip<IOstream::streamFormat> setformat
-(
-    const IOstream::streamFormat fmt
-)
+inline Omanip<char> setfill(char fillch)
 {
-    return Omanip<IOstream::streamFormat>(&IOstream::format, fmt);
+    return Omanip<char>(&Ostream::fill, fillch);
 }
 
 
-inline Omanip<IOstream::versionNumber> setversion
+inline Omanip<IOstreamOption::streamFormat> setformat
 (
-    const IOstream::versionNumber ver
+    const IOstreamOption::streamFormat fmt
 )
 {
-    return Omanip<IOstream::versionNumber>(&IOstream::version, ver);
+    return Omanip<IOstreamOption::streamFormat>(&IOstreamOption::format, fmt);
 }
 
 
-inline Omanip<IOstream::compressionType> setcompression
+inline Omanip<IOstreamOption::versionNumber> setversion
 (
-    const IOstream::compressionType cmp
+    const IOstreamOption::versionNumber ver
 )
 {
-    return Omanip<IOstream::compressionType>(&IOstream::compression, cmp);
+    return Omanip<IOstreamOption::versionNumber>(&IOstreamOption::version, ver);
 }
 
 

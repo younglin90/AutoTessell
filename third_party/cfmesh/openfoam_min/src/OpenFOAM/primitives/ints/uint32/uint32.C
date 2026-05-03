@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +28,19 @@ License
 
 #include "uint32.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+const char* const Foam::pTraits<uint32_t>::componentNames[] = { "" };
 
 const uint32_t Foam::pTraits<uint32_t>::zero = 0;
 const uint32_t Foam::pTraits<uint32_t>::one = 1;
 const uint32_t Foam::pTraits<uint32_t>::min = 0;
 const uint32_t Foam::pTraits<uint32_t>::max = UINT32_MAX;
+const uint32_t Foam::pTraits<uint32_t>::rootMin = 0;
+const uint32_t Foam::pTraits<uint32_t>::rootMax = pTraits<uint32_t>::max;
 
-const char* const Foam::pTraits<uint32_t>::componentNames[] = { "" };
 
-Foam::pTraits<uint32_t>::pTraits(const uint32_t& p)
-:
-    p_(p)
-{}
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::pTraits<uint32_t>::pTraits(Istream& is)
 {

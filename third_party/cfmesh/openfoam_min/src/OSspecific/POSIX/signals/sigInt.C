@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,31 +28,26 @@ License
 
 #include "sigInt.H"
 #include "error.H"
-#include "jobInfo.H"
+#include "JobInfo.H"
 #include "IOstreams.H"
+
+// File-local functions
+#include "signalMacros.C"
+
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-struct sigaction Foam::sigInt::oldAction_;
+bool Foam::sigInt::sigActive_ = false;
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 void Foam::sigInt::sigHandler(int)
 {
-    // Reset old handling
-    if (sigaction(SIGINT, &oldAction_, nullptr) < 0)
-    {
-        FatalErrorInFunction
-            << "Cannot reset SIGINT trapping"
-            << abort(FatalError);
-    }
+    resetHandler("SIGINT", SIGINT);
 
-    // Update jobInfo file
-    jobInfo_.signalEnd();
-
-    // Throw signal (to old handler)
-    raise(SIGINT);
+    JobInfo::shutdown();        // From running -> finished
+    ::raise(SIGINT);            // Throw signal (to old handler)
 }
 
 
@@ -57,7 +55,7 @@ void Foam::sigInt::sigHandler(int)
 
 Foam::sigInt::sigInt()
 {
-    oldAction_.sa_handler = nullptr;
+    set(false);
 }
 
 
@@ -65,37 +63,33 @@ Foam::sigInt::sigInt()
 
 Foam::sigInt::~sigInt()
 {
-    // Reset old handling
-    if (sigaction(SIGINT, &oldAction_, nullptr) < 0)
-    {
-        FatalErrorInFunction
-            << "Cannot reset SIGINT trapping"
-            << abort(FatalError);
-    }
+    unset(false);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::sigInt::set(const bool)
+void Foam::sigInt::set(bool)
 {
-    if (oldAction_.sa_handler)
+    if (sigActive_)
     {
-        FatalErrorInFunction
-            << "Cannot call sigInt::set() more than once"
-            << abort(FatalError);
+        return;
     }
+    sigActive_ = true;
 
-    struct sigaction newAction;
-    newAction.sa_handler = sigHandler;
-    newAction.sa_flags = SA_NODEFER;
-    sigemptyset(&newAction.sa_mask);
-    if (sigaction(SIGINT, &newAction, &oldAction_) < 0)
+    setHandler("SIGINT", SIGINT, sigHandler);
+}
+
+
+void Foam::sigInt::unset(bool)
+{
+    if (!sigActive_)
     {
-        FatalErrorInFunction
-            << "Cannot set SIGINT trapping"
-            << abort(FatalError);
+        return;
     }
+    sigActive_ = false;
+
+    resetHandler("SIGINT", SIGINT);
 }
 
 

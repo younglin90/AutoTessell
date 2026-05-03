@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,18 +53,12 @@ Foam::CentredFitSnGradData<Polynomial>::CentredFitSnGradData
     ),
     coeffs_(mesh.nFaces())
 {
-    if (debug)
-    {
-        InfoInFunction
-            << "Constructing CentredFitSnGradData<Polynomial>" << endl;
-    }
+    DebugInFunction
+        << "Constructing CentredFitSnGradData<Polynomial>" << nl;
 
     calcFit();
 
-    if (debug)
-    {
-        Info<< "    Finished constructing polynomialFit data" << endl;
-    }
+    DebugInfo << "    Finished constructing polynomialFit data" << endl;
 }
 
 
@@ -97,7 +94,7 @@ void Foam::CentredFitSnGradData<Polynomial>::calcFit
     scalar scale = 1;
 
     // Matrix of the polynomial components
-    scalarRectangularMatrix B(C.size(), this->minSize(), scalar(0));
+    scalarRectangularMatrix B(C.size(), this->minSize(), Zero);
 
     forAll(C, ip)
     {
@@ -133,7 +130,7 @@ void Foam::CentredFitSnGradData<Polynomial>::calcFit
     bool goodFit = false;
     for (int iIt = 0; iIt < 8 && !goodFit; iIt++)
     {
-        SVD svd(B, small);
+        SVD svd(B, SMALL);
         scalarRectangularMatrix invB(svd.VSinvUt());
 
         for (label i=0; i<stencilSize; i++)

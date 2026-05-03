@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,26 +39,26 @@ Foam::LduMatrix<Type, DType, LUType>::smoother::New
     const dictionary& smootherDict
 )
 {
-    word smootherName = smootherDict.lookup("smoother");
+    const word smootherName(smootherDict.get<word>("smoother"));
 
     if (matrix.symmetric())
     {
-        typename symMatrixConstructorTable::iterator constructorIter =
-            symMatrixConstructorTablePtr_->find(smootherName);
+        auto* ctorPtr = symMatrixConstructorTable(smootherName);
 
-        if (constructorIter == symMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction(smootherDict)
-                << "Unknown symmetric matrix smoother " << smootherName
-                << endl << endl
-                << "Valid symmetric matrix smoothers are :" << endl
-                << symMatrixConstructorTablePtr_->toc()
-                << exit(FatalIOError);
+            FatalIOErrorInLookup
+            (
+                smootherDict,
+                "symmetric matrix smoother",
+                smootherName,
+                *symMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<typename LduMatrix<Type, DType, LUType>::smoother>
         (
-            constructorIter()
+            ctorPtr
             (
                 fieldName,
                 matrix
@@ -64,39 +67,34 @@ Foam::LduMatrix<Type, DType, LUType>::smoother::New
     }
     else if (matrix.asymmetric())
     {
-        typename asymMatrixConstructorTable::iterator constructorIter =
-            asymMatrixConstructorTablePtr_->find(smootherName);
+        auto* ctorPtr = asymMatrixConstructorTable(smootherName);
 
-        if (constructorIter == asymMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction(smootherDict)
-                << "Unknown asymmetric matrix smoother " << smootherName
-                << endl << endl
-                << "Valid asymmetric matrix smoothers are :" << endl
-                << asymMatrixConstructorTablePtr_->toc()
-                << exit(FatalIOError);
+            FatalIOErrorInLookup
+            (
+                smootherDict,
+                "asymmetric matrix smoother",
+                smootherName,
+                *asymMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<typename LduMatrix<Type, DType, LUType>::smoother>
         (
-            constructorIter()
+            ctorPtr
             (
                 fieldName,
                 matrix
             )
         );
     }
-    else
-    {
-        FatalIOErrorInFunction(smootherDict)
-            << "cannot solve incomplete matrix, no off-diagonal coefficients"
-            << exit(FatalIOError);
 
-        return autoPtr<typename LduMatrix<Type, DType, LUType>::smoother>
-        (
-            nullptr
-        );
-    }
+    FatalIOErrorInFunction(smootherDict)
+        << "cannot solve incomplete matrix, no off-diagonal coefficients"
+        << exit(FatalIOError);
+
+    return nullptr;
 }
 
 

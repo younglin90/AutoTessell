@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,34 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "calculatedFvPatchField.H"
-#include "fieldMapper.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-    template<class Type>
-    Type calculatedFvPatchFieldNaN()
-    {
-        return pTraits<Type>::nan;
-    }
-
-    template<>
-    inline label calculatedFvPatchFieldNaN<label>()
-    {
-        return -labelMax;
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<class Type>
-const Foam::word& Foam::fvPatchField<Type>::calculatedType()
-{
-    return calculatedFvPatchField<Type>::typeName;
-}
-
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -59,7 +35,7 @@ template<class Type>
 Foam::calculatedFvPatchField<Type>::calculatedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(p, iF)
@@ -70,12 +46,12 @@ template<class Type>
 Foam::calculatedFvPatchField<Type>::calculatedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict,
-    const bool valueRequired
+    IOobjectOption::readOption requireValue
 )
 :
-    fvPatchField<Type>(p, iF, dict, valueRequired)
+    fvPatchField<Type>(p, iF, dict, requireValue)
 {}
 
 
@@ -84,25 +60,29 @@ Foam::calculatedFvPatchField<Type>::calculatedFvPatchField
 (
     const calculatedFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper,
-    const bool mappingRequired
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    fvPatchField<Type>(ptf, p, iF, mapper, false)
-{
-    if (mappingRequired)
-    {
-        mapper(*this, ptf, calculatedFvPatchFieldNaN<Type>());
-    }
-}
+    fvPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::calculatedFvPatchField<Type>::calculatedFvPatchField
+(
+    const calculatedFvPatchField<Type>& ptf
+)
+:
+    fvPatchField<Type>(ptf)
+{}
 
 
 template<class Type>
 Foam::calculatedFvPatchField<Type>::calculatedFvPatchField
 (
     const calculatedFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(ptf, iF)
@@ -116,15 +96,14 @@ Foam::fvPatchField<Type>::NewCalculatedType
     const fvPatch& p
 )
 {
-    typename patchConstructorTable::iterator patchTypeCstrIter =
-        patchConstructorTablePtr_->find(p.type());
+    auto* patchTypeCtor = patchConstructorTable(p.type());
 
-    if (patchTypeCstrIter != patchConstructorTablePtr_->end())
+    if (patchTypeCtor)
     {
-        return patchTypeCstrIter()
+        return patchTypeCtor
         (
             p,
-            DimensionedField<Type, fvMesh>::null()
+            DimensionedField<Type, volMesh>::null()
         );
     }
     else
@@ -134,7 +113,7 @@ Foam::fvPatchField<Type>::NewCalculatedType
             new calculatedFvPatchField<Type>
             (
                 p,
-                DimensionedField<Type, fvMesh>::null()
+                DimensionedField<Type, volMesh>::null()
             )
         );
     }
@@ -142,10 +121,11 @@ Foam::fvPatchField<Type>::NewCalculatedType
 
 
 template<class Type>
-template<class Type2>
-Foam::tmp<Foam::fvPatchField<Type>> Foam::fvPatchField<Type>::NewCalculatedType
+template<class AnyType>
+Foam::tmp<Foam::fvPatchField<Type>>
+Foam::fvPatchField<Type>::NewCalculatedType
 (
-    const fvPatchField<Type2>& pf
+    const fvPatchField<AnyType>& pf
 )
 {
     return NewCalculatedType(pf.patch());
@@ -153,17 +133,6 @@ Foam::tmp<Foam::fvPatchField<Type>> Foam::fvPatchField<Type>::NewCalculatedType
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-void Foam::calculatedFvPatchField<Type>::map
-(
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
-)
-{
-    mapper(*this, ptf, calculatedFvPatchFieldNaN<Type>());
-}
-
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
@@ -243,7 +212,7 @@ template<class Type>
 void Foam::calculatedFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

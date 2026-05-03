@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,16 +23,10 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::scalarListIOList
-
-Description
-    Scalar container classes
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef scalarListIOList_H
-#define scalarListIOList_H
+#ifndef Foam_scalarListIOList_H
+#define Foam_scalarListIOList_H
 
 #include "scalarList.H"
 #include "CompactIOList.H"
@@ -39,8 +35,11 @@ Description
 
 namespace Foam
 {
+    //! IO for a List of scalarList
     typedef IOList<scalarList> scalarListIOList;
-    typedef CompactIOList<scalarList> scalarListCompactIOList;
+
+    //! Compact IO for a List of scalarList
+    typedef CompactIOList<scalarList, scalar> scalarListCompactIOList;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

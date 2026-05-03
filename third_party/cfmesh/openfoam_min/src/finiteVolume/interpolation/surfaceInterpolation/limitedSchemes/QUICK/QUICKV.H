@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,10 +28,10 @@ Class
 
 Description
     Class with limiter function which returns the limiter for the
-    quadratic-upwind interpolation scheme.
+    quadratic-upwind differencing scheme.
 
     Note that the weighting factors are not bounded between upwind and
-    centred interpolation, some downwind contribution is possible although
+    central-differencing, some downwind contribution is possible although
     the interpolate is limited to be between the upwind and downwind cell
     values.
 
@@ -51,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class QUICKVLimiter Declaration
+                           Class QUICKVLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -94,10 +96,10 @@ public:
         }
 
         // Calculate the effective limiter for the QUICK interpolation
-        scalar QLimiter = (phif - phiU)/stabilise(phiCD - phiU, small);
+        scalar QLimiter = (phif - phiU)/stabilise(phiCD - phiU, SMALL);
 
         // Limit the limiter between upwind and downwind
-        return max(min(QLimiter, 2), 0);
+        return clamp(QLimiter, 0, 2);
     }
 };
 

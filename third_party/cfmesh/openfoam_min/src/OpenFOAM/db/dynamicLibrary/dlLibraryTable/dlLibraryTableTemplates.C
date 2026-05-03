@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,6 @@ License
 
 #include "dlLibraryTable.H"
 #include "dictionary.H"
-#include "fileNameList.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -34,50 +36,34 @@ bool Foam::dlLibraryTable::open
 (
     const dictionary& dict,
     const word& libsEntry,
-    const TablePtr& tablePtr
+    const TablePtr& tablePtr,
+    bool verbose
 )
 {
-    if (dict.found(libsEntry))
+    List<fileName> libNames;
+    dict.readIfPresent(libsEntry, libNames, keyType::LITERAL);
+
+    label nOpen = 0;
+
+    for (const fileName& libName : libNames)
     {
-        fileNameList libNames(dict.lookup(libsEntry));
+        const label nEntries = (tablePtr ? tablePtr->size() : -1);
 
-        bool allOpened = (libNames.size() > 0);
-
-        forAll(libNames, i)
+        if (dlLibraryTable::open(libName, verbose))
         {
-            const fileName& libName = libNames[i];
+            ++nOpen;
 
-            label nEntries = 0;
-
-            if (tablePtr)
-            {
-                nEntries = tablePtr->size();
-            }
-
-            bool opened = dlLibraryTable::open(libName);
-            allOpened = opened && allOpened;
-
-            if (!opened)
-            {
-                WarningInFunction
-                    << "Could not open library " << libName
-                    << endl << endl;
-            }
-            else if (debug && (!tablePtr || tablePtr->size() <= nEntries))
+            if (debug && tablePtr != nullptr && tablePtr->size() <= nEntries)
             {
                 WarningInFunction
                     << "library " << libName
                     << " did not introduce any new entries"
-                    << endl << endl;
+                    << nl << endl;
             }
         }
+    }
 
-        return allOpened;
-    }
-    else
-    {
-        return false;
-    }
+    return nOpen && nOpen == libNames.size();
 }
 
 

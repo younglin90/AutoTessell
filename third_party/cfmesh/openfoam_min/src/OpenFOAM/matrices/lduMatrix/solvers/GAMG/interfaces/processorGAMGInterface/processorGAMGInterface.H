@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class processorGAMGInterface Declaration
+                  Class processorGAMGInterface Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorGAMGInterface
@@ -52,7 +55,7 @@ class processorGAMGInterface
     public GAMGInterface,
     public processorLduInterface
 {
-    // Private Data
+    // Private data
 
         //- Communicator to use for parallel communication
         const label comm_;
@@ -63,11 +66,20 @@ class processorGAMGInterface
         //- Neighbouring processor rank in communicator
         label neighbProcNo_;
 
-        //- Transformation
-        transformer transform_;
+        //- Transformation tensor
+        tensorField forwardT_;
 
         //- Message tag used for sending
         int tag_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        processorGAMGInterface(const processorGAMGInterface&) = delete;
+
+        //- No copy assignment
+        void operator=(const processorGAMGInterface&) = delete;
 
 
 public:
@@ -78,7 +90,7 @@ public:
     // Constructors
 
         //- Construct from fine-level interface,
-        //  local and neighbour restrict addressing
+        //- local and neighbour restrict addressing
         processorGAMGInterface
         (
             const label index,
@@ -100,7 +112,7 @@ public:
             const label coarseComm,
             const label myProcNo,
             const label neighbProcNo,
-            const transformer& transform,
+            const tensorField& forwardT,
             const int tag
         );
 
@@ -112,12 +124,9 @@ public:
             Istream& is
         );
 
-        //- Disallow default bitwise copy construction
-        processorGAMGInterface(const processorGAMGInterface&) = delete;
-
 
     //- Destructor
-    virtual ~processorGAMGInterface();
+    virtual ~processorGAMGInterface() = default;
 
 
     // Member Functions
@@ -129,6 +138,15 @@ public:
             (
                 const Pstream::commsTypes commsType,
                 const labelUList& iF
+            ) const;
+
+
+            //- Initialise neighbour field transfer using faceCells mapping
+            virtual void initInternalFieldTransfer
+            (
+                const Pstream::commsTypes commsType,
+                const labelUList& iF,
+                const labelUList& faceCells
             ) const;
 
             //- Transfer and return internal field adjacent to the interface
@@ -159,10 +177,10 @@ public:
                 return neighbProcNo_;
             }
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
             {
-                return transform_;
+                return forwardT_;
             }
 
             //- Return message tag used for sending
@@ -175,13 +193,7 @@ public:
         // I/O
 
             //- Write to stream
-            virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const processorGAMGInterface&) = delete;
+            virtual void write(Ostream& os) const;
 };
 
 

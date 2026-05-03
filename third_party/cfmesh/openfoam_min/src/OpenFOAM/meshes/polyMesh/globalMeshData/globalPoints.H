@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,10 +49,10 @@ Description
 
     means point 93 on proc7 is connected to point 731 on proc4 and 114 on proc3.
     It then assigns the lowest numbered processor to be the local 'master' and
-    constructs a distributionMap to send all data to this master.
+    constructs a mapDistribute to send all data to this master.
 
     Algorithm:
-        - get meshPoints of all my points on processor patches and initialise
+        - get meshPoints of all my points on processor patches and initialize
           equivalence lists to this.
      loop
         - send to all neighbours in relative form:
@@ -74,8 +76,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef globalPoints_H
-#define globalPoints_H
+#ifndef Foam_globalPoints_H
+#define Foam_globalPoints_H
 
 #include "DynamicList.H"
 #include "indirectPrimitivePatch.H"
@@ -92,15 +94,15 @@ class polyMesh;
 class polyBoundaryMesh;
 class cyclicPolyPatch;
 class polyPatch;
-class distributionMap;
+class mapDistribute;
 
 /*---------------------------------------------------------------------------*\
-                        Class globalPoints Declaration
+                           Class globalPoints Declaration
 \*---------------------------------------------------------------------------*/
 
 class globalPoints
 {
-    // Private Data
+    // Private data
 
         //- Mesh reference
         const polyMesh& mesh_;
@@ -123,17 +125,17 @@ class globalPoints
         Map<label> meshToProcPoint_;
 
 
-        // Calculated distributionMap addressing
+        // Calculated mapDistribute addressing
 
-            //- Non-transformed connected points per point (in distributionMap
+            //- Non-transformed connected points per point (in mapDistribute
             //  indices)
             labelListList pointPoints_;
 
-            //- Transformed points per point (in distributionMap indices)
+            //- Transformed points per point (in mapDistribute indices)
             labelListList transformedPointPoints_;
 
             //- Corresponding map
-            autoPtr<distributionMap> map_;
+            autoPtr<mapDistribute> map_;
 
 
 
@@ -218,7 +220,7 @@ class globalPoints
             const labelPairList& pointInfo
         ) const;
 
-        //- Initialise procPoints_ to my patch points. allPoints = true:
+        //- Initialize procPoints_ to my patch points. allPoints = true:
         //  seed with all patch points, = false: only boundaryPoints().
         void initOwnPoints
         (
@@ -262,6 +264,12 @@ class globalPoints
             const bool mergeSeparated
         );
 
+        //- No copy construct
+        globalPoints(const globalPoints&) = delete;
+
+        //- No copy assignment
+        void operator=(const globalPoints&) = delete;
+
 
 public:
 
@@ -295,82 +303,75 @@ public:
             const bool mergeSeparated
         );
 
-        //- Disallow default bitwise copy construction
-        globalPoints(const globalPoints&) = delete;
-
 
     // Member Functions
 
         // Access
 
             //- Global numbering of untransformed (mesh or patch) points
-            const globalIndex& globalIndices() const
+            const globalIndex& globalIndices() const noexcept
             {
                 return globalIndices_;
             }
 
             //- Global numbering of transformed (mesh or patch) points
-            const globalIndexAndTransform& globalTransforms() const
+            const globalIndexAndTransform& globalTransforms() const noexcept
             {
                 return globalTransforms_;
             }
 
-            //- Non-transformed connected points per point (in distributionMap
-            //  indices)
-            const labelListList& pointPoints() const
+            //- Non-transformed connected points per point
+            //- (in mapDistribute indices)
+            const labelListList& pointPoints() const noexcept
             {
                 return pointPoints_;
             }
 
-            //- Non-transformed connected points per point (in distributionMap
-            //  indices)
-            labelListList& pointPoints()
+            //- Non-transformed connected points per point
+            //- (in mapDistribute indices)
+            labelListList& pointPoints() noexcept
             {
                 return pointPoints_;
             }
 
-            //- Transformed points per point (in distributionMap indices)
-            const labelListList& transformedPointPoints() const
+            //- Transformed points per point
+            //- (in mapDistribute indices)
+            const labelListList& transformedPointPoints() const noexcept
             {
                 return transformedPointPoints_;
             }
 
-            //- Transformed points per point (in distributionMap indices)
-            labelListList& transformedPointPoints()
+            //- Transformed points per point
+            //- (in mapDistribute indices)
+            labelListList& transformedPointPoints() noexcept
             {
                 return transformedPointPoints_;
             }
 
             //- Corresponding map
-            const distributionMap& map() const
+            const mapDistribute& map() const
             {
-                return map_();
+                return *map_;
             }
 
             //- Corresponding map
-            distributionMap& map()
+            mapDistribute& map()
             {
-                return map_();
+                return *map_;
             }
 
             //- From (mesh or patch) point to index in procPoints
-            const Map<label>& meshToProcPoint() const
+            const Map<label>& meshToProcPoint() const noexcept
             {
                 return meshToProcPoint_;
             }
 
-            //- procPoints is per point the connected points (in
-            //  globalTransformAndIndex point numbers)
-            const DynamicList<labelPairList>& procPoints() const
+            //- The procPoints are per point the connected points
+            //- (in globalTransformAndIndex point numbers)
+            const DynamicList<labelPairList>& procPoints() const noexcept
             {
                 return procPoints_;
             }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const globalPoints&) = delete;
 };
 
 

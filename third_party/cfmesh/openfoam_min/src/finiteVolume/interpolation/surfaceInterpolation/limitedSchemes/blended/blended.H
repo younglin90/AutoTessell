@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,11 @@ License
 Class
     Foam::blended
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
-    linear/upwind blended interpolation scheme.
+    linear/upwind blended differencing scheme.
 
 SourceFiles
     blended.C
@@ -53,9 +59,18 @@ class blended
     public limitedSurfaceInterpolationScheme<Type>,
     public blendedSchemeBase<Type>
 {
-    // Private Data
+    // Private data
 
         const scalar blendingFactor_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        blended(const blended&) = delete;
+
+        //- No copy assignment
+        void operator=(const blended&) = delete;
 
 
 public:
@@ -103,13 +118,9 @@ public:
             blendingFactor_(readScalar(is))
         {}
 
-        //- Disallow default bitwise copy construction
-        blended(const blended&) = delete;
-
 
     //- Destructor
-    virtual ~blended()
-    {}
+    virtual ~blended() = default;
 
 
     // Member Functions
@@ -117,47 +128,73 @@ public:
         //- Return the face-based blending factor
         virtual tmp<surfaceScalarField> blendingFactor
         (
-             const VolField<Type>& vf
+             const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
-            return surfaceScalarField::New
+            return tmp<surfaceScalarField>
             (
-                vf.name() + "BlendingFactor",
-                this->mesh(),
-                dimensionedScalar(dimless, blendingFactor_)
+                new surfaceScalarField
+                (
+                    IOobject
+                    (
+                        vf.name() + "BlendingFactor",
+                        this->mesh().time().timeName(),
+                        this->mesh().thisDb(),
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        IOobject::NO_REGISTER
+                    ),
+                    this->mesh(),
+                    dimensionedScalar
+                    (
+                        "blendingFactor",
+                        dimless,
+                        blendingFactor_
+                    )
+                )
             );
         }
 
         //- Return the interpolation limiter
         virtual tmp<surfaceScalarField> limiter
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
-            return surfaceScalarField::New
+            return tmp<surfaceScalarField>
             (
-                "blendedLimiter",
-                this->mesh(),
-                dimensionedScalar(dimless, 1 - blendingFactor_)
+                new surfaceScalarField
+                (
+                    IOobject
+                    (
+                        "blendedLimiter",
+                        this->mesh().time().timeName(),
+                        this->mesh().thisDb(),
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        IOobject::NO_REGISTER
+                    ),
+                    this->mesh(),
+                    dimensionedScalar
+                    (
+                        "blendedLimiter",
+                        dimless,
+                        1 - blendingFactor_
+                    )
+                )
             );
         }
 
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             return
                 blendingFactor_*this->mesh().surfaceInterpolation::weights()
               + (1 - blendingFactor_)*pos0(this->faceFlux_);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const blended&) = delete;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,15 +30,15 @@ License
 #include "addToRunTimeSelectionTable.H"
 #include "dictionary.H"
 #include "SubField.H"
-#include "demandDrivenData.H"
 #include "matchPoints.H"
 #include "OFstream.H"
 #include "polyMesh.H"
 #include "Time.H"
+#include "transformList.H"
 #include "PstreamBuffers.H"
-#include "ConstCirculator.H"
+#include "Circulator.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
@@ -44,7 +47,24 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+Foam::word Foam::processorPolyPatch::newName
+(
+    const label myProcNo,
+    const label neighbProcNo
+)
+{
+    return word
+    (
+        "procBoundary"
+      + std::to_string(myProcNo) + "to" + std::to_string(neighbProcNo),
+        false  // No stripping needed
+    );
+}
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::processorPolyPatch::processorPolyPatch
 (
@@ -54,10 +74,12 @@ Foam::processorPolyPatch::processorPolyPatch
     const label index,
     const polyBoundaryMesh& bm,
     const int myProcNo,
-    const int neighbProcNo
+    const int neighbProcNo,
+    const transformType transform,
+    const word& patchType
 )
 :
-    coupledPolyPatch(name, size, start, index, bm),
+    coupledPolyPatch(name, size, start, index, bm, patchType, transform),
     myProcNo_(myProcNo),
     neighbProcNo_(neighbProcNo),
     neighbFaceCentres_(),
@@ -73,7 +95,9 @@ Foam::processorPolyPatch::processorPolyPatch
     const label index,
     const polyBoundaryMesh& bm,
     const int myProcNo,
-    const int neighbProcNo
+    const int neighbProcNo,
+    const transformType transform,
+    const word& patchType
 )
 :
     coupledPolyPatch
@@ -82,7 +106,9 @@ Foam::processorPolyPatch::processorPolyPatch
         size,
         start,
         index,
-        bm
+        bm,
+        patchType,
+        transform
     ),
     myProcNo_(myProcNo),
     neighbProcNo_(neighbProcNo),
@@ -97,12 +123,13 @@ Foam::processorPolyPatch::processorPolyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    coupledPolyPatch(name, dict, index, bm),
-    myProcNo_(dict.lookup<label>("myProcNo")),
-    neighbProcNo_(dict.lookup<label>("neighbProcNo")),
+    coupledPolyPatch(name, dict, index, bm, patchType),
+    myProcNo_(dict.get<label>("myProcNo")),
+    neighbProcNo_(dict.get<label>("neighbProcNo")),
     neighbFaceCentres_(),
     neighbFaceAreas_(),
     neighbFaceCellCentres_()
@@ -142,35 +169,49 @@ Foam::processorPolyPatch::processorPolyPatch
 {}
 
 
+Foam::processorPolyPatch::processorPolyPatch
+(
+    const processorPolyPatch& pp,
+    const polyBoundaryMesh& bm,
+    const label index,
+    const labelUList& mapAddressing,
+    const label newStart
+)
+:
+    coupledPolyPatch(pp, bm, index, mapAddressing, newStart),
+    myProcNo_(pp.myProcNo_),
+    neighbProcNo_(pp.neighbProcNo_),
+    neighbFaceCentres_(),
+    neighbFaceAreas_(),
+    neighbFaceCellCentres_()
+{}
+
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::processorPolyPatch::~processorPolyPatch()
 {
-    nbrPointsPtr_.clear();
-    nbrEdgesPtr_.clear();
+    neighbPointsPtr_.clear();
+    neighbEdgesPtr_.clear();
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-Foam::word Foam::processorPolyPatch::newName
-(
-    const label myProcNo,
-    const label neighbProcNo
-)
-{
-    return
-        "procBoundary"
-      + Foam::name(myProcNo)
-      + "to"
-      + Foam::name(neighbProcNo);
-}
-
-
-void Foam::processorPolyPatch::initCalcGeometry(PstreamBuffers& pBufs)
+void Foam::processorPolyPatch::initGeometry(PstreamBuffers& pBufs)
 {
     if (Pstream::parRun())
     {
+        if (neighbProcNo() >= pBufs.nProcs())
+        {
+            FatalErrorInFunction
+                << "On patch " << name()
+                << " trying to access out of range neighbour processor "
+                << neighbProcNo() << ". This can happen if" << nl
+                << "    trying to run on an incorrect number of processors"
+                << exit(FatalError);
+        }
+
         UOPstream toNeighbProc(neighbProcNo(), pBufs);
 
         toNeighbProc
@@ -206,47 +247,61 @@ void Foam::processorPolyPatch::calcGeometry(PstreamBuffers& pBufs)
         // Calculate normals from areas and check
         forAll(faceNormals, facei)
         {
-            scalar magSf = magFaceAreas()[facei];
-            scalar nbrMagSf = mag(neighbFaceAreas_[facei]);
-            scalar avSf = (magSf + nbrMagSf)/2.0;
+            const scalar magSf = mag(faceAreas()[facei]);
+            const scalar nbrMagSf = mag(neighbFaceAreas_[facei]);
 
             // For small face area calculation the results of the area
             // calculation have been found to only be accurate to ~1e-20
-            if (magSf < small || nbrMagSf < small)
+            if (magSf < SMALL || nbrMagSf < SMALL)
             {
                 // Undetermined normal. Use dummy normal to force separation
                 // check.
                 faceNormals[facei] = point(1, 0, 0);
                 nbrFaceNormals[facei] = -faceNormals[facei];
-                tols[facei] = great;
+                tols[facei] = GREAT;
             }
             else if (mag(magSf - nbrMagSf) > matchTolerance()*sqr(tols[facei]))
             {
-                const fileName patchOBJName
+                const scalar avgMagSf = 0.5*(magSf + nbrMagSf);
+
+                fileName nm
                 (
-                    mesh().time().path()/name() + "_faces.obj"
+                    boundaryMesh().mesh().time().path()
+                   /name()+"_faces.obj"
                 );
 
                 Pout<< "processorPolyPatch::calcGeometry : Writing my "
-                    << size() << " faces to " << patchOBJName << endl;
+                    << size()
+                    << " faces to OBJ file " << nm << endl;
 
-                writeOBJ(patchOBJName, *this);
+                writeOBJ(nm, *this, points());
 
-                const fileName centresOBJName
+                OFstream ccStr
                 (
-                    mesh().time().path()/name()
-                  + "_faceCentresConnections.obj"
+                    boundaryMesh().mesh().time().path()
+                    /name() + "_faceCentresConnections.obj"
                 );
 
                 Pout<< "processorPolyPatch::calcGeometry :"
-                    << " Dumping lines between corresponding face centres to "
-                    << centresOBJName.name() << endl;
+                    << " Dumping cell centre lines between"
+                    << " corresponding face centres to OBJ file" << ccStr.name()
+                    << endl;
 
-                writeOBJ(centresOBJName, neighbFaceCentres_, faceCentres());
+                label vertI = 0;
+
+                const vectorField::subField ownFaceCentres = faceCentres();
+
+                forAll(ownFaceCentres, facej)
+                {
+                    const point& c0 = neighbFaceCentres_[facej];
+                    const point& c1 = ownFaceCentres[facej];
+
+                    writeOBJ(ccStr, c0, c1, vertI);
+                }
 
                 FatalErrorInFunction
                     << "face " << facei << " area does not match neighbour by "
-                    << 100*mag(magSf - nbrMagSf)/avSf
+                    << 100*mag(magSf - nbrMagSf)/avgMagSf
                     << "% -- possible face ordering problem." << endl
                     << "patch:" << name()
                     << " my area:" << magSf
@@ -256,7 +311,7 @@ void Foam::processorPolyPatch::calcGeometry(PstreamBuffers& pBufs)
                     << endl
                     << "Mesh face:" << start()+facei
                     << " vertices:"
-                    << UIndirectList<point>(points(), operator[](facei))()
+                    << UIndirectList<point>(points(), operator[](facei))
                     << endl
                     << "If you are certain your matching is correct"
                     << " you can increase the 'matchTolerance' setting"
@@ -271,6 +326,17 @@ void Foam::processorPolyPatch::calcGeometry(PstreamBuffers& pBufs)
                 nbrFaceNormals[facei] = neighbFaceAreas_[facei]/nbrMagSf;
             }
         }
+
+        calcTransformTensors
+        (
+            faceCentres(),
+            neighbFaceCentres_,
+            faceNormals,
+            nbrFaceNormals,
+            matchTolerance()*tols,
+            matchTolerance(),
+            transform()
+        );
     }
 }
 
@@ -282,7 +348,7 @@ void Foam::processorPolyPatch::initMovePoints
 )
 {
     polyPatch::movePoints(pBufs, p);
-    processorPolyPatch::initCalcGeometry(pBufs);
+    processorPolyPatch::initGeometry(pBufs);
 }
 
 
@@ -296,12 +362,22 @@ void Foam::processorPolyPatch::movePoints
 }
 
 
-void Foam::processorPolyPatch::initTopoChange(PstreamBuffers& pBufs)
+void Foam::processorPolyPatch::initUpdateMesh(PstreamBuffers& pBufs)
 {
-    polyPatch::initTopoChange(pBufs);
+    polyPatch::initUpdateMesh(pBufs);
 
     if (Pstream::parRun())
     {
+        if (neighbProcNo() >= pBufs.nProcs())
+        {
+            FatalErrorInFunction
+                << "On patch " << name()
+                << " trying to access out of range neighbour processor "
+                << neighbProcNo() << ". This can happen if" << nl
+                << "    trying to run on an incorrect number of processors"
+                << exit(FatalError);
+        }
+
         // Express all points as patch face and index in face.
         labelList pointFace(nPoints());
         labelList pointIndex(nPoints());
@@ -314,7 +390,7 @@ void Foam::processorPolyPatch::initTopoChange(PstreamBuffers& pBufs)
 
             const face& f = localFaces()[facei];
 
-            pointIndex[patchPointi] = findIndex(f, patchPointi);
+            pointIndex[patchPointi] = f.find(patchPointi);
         }
 
         // Express all edges as patch face and index in face.
@@ -329,7 +405,7 @@ void Foam::processorPolyPatch::initTopoChange(PstreamBuffers& pBufs)
 
             const labelList& fEdges = faceEdges()[facei];
 
-            edgeIndex[patchEdgeI] = findIndex(fEdges, patchEdgeI);
+            edgeIndex[patchEdgeI] = fEdges.find(patchEdgeI);
         }
 
         UOPstream toNeighbProc(neighbProcNo(), pBufs);
@@ -343,13 +419,13 @@ void Foam::processorPolyPatch::initTopoChange(PstreamBuffers& pBufs)
 }
 
 
-void Foam::processorPolyPatch::topoChange(PstreamBuffers& pBufs)
+void Foam::processorPolyPatch::updateMesh(PstreamBuffers& pBufs)
 {
     // For completeness
-    polyPatch::topoChange(pBufs);
+    polyPatch::updateMesh(pBufs);
 
-    nbrPointsPtr_.clear();
-    nbrEdgesPtr_.clear();
+    neighbPointsPtr_.clear();
+    neighbEdgesPtr_.clear();
 
     if (Pstream::parRun())
     {
@@ -382,8 +458,8 @@ void Foam::processorPolyPatch::topoChange(PstreamBuffers& pBufs)
         // Convert points.
         // ~~~~~~~~~~~~~~~
 
-        nbrPointsPtr_.reset(new labelList(nPoints(), -1));
-        labelList& nbrPoints = nbrPointsPtr_();
+        neighbPointsPtr_.reset(new labelList(nPoints(), -1));
+        labelList& neighbPoints = neighbPointsPtr_();
 
         forAll(nbrPointFace, nbrPointi)
         {
@@ -393,32 +469,32 @@ void Foam::processorPolyPatch::topoChange(PstreamBuffers& pBufs)
             label index = (f.size() - nbrPointIndex[nbrPointi]) % f.size();
             label patchPointi = f[index];
 
-            if (nbrPoints[patchPointi] == -1)
+            if (neighbPoints[patchPointi] == -1)
             {
                 // First reference of point
-                nbrPoints[patchPointi] = nbrPointi;
+                neighbPoints[patchPointi] = nbrPointi;
             }
-            else if (nbrPoints[patchPointi] >= 0)
+            else if (neighbPoints[patchPointi] >= 0)
             {
                 // Point already visited. Mark as duplicate.
-                nbrPoints[patchPointi] = -2;
+                neighbPoints[patchPointi] = -2;
             }
         }
 
         // Reset all duplicate entries to -1.
-        forAll(nbrPoints, patchPointi)
+        forAll(neighbPoints, patchPointi)
         {
-            if (nbrPoints[patchPointi] == -2)
+            if (neighbPoints[patchPointi] == -2)
             {
-                nbrPoints[patchPointi] = -1;
+                neighbPoints[patchPointi] = -1;
             }
         }
 
         // Convert edges.
         // ~~~~~~~~~~~~~~
 
-        nbrEdgesPtr_.reset(new labelList(nEdges(), -1));
-        labelList& nbrEdges = nbrEdgesPtr_();
+        neighbEdgesPtr_.reset(new labelList(nEdges(), -1));
+        labelList& neighbEdges = neighbEdgesPtr_();
 
         forAll(nbrEdgeFace, nbrEdgeI)
         {
@@ -427,24 +503,24 @@ void Foam::processorPolyPatch::topoChange(PstreamBuffers& pBufs)
             label index = (f.size() - nbrEdgeIndex[nbrEdgeI] - 1) % f.size();
             label patchEdgeI = f[index];
 
-            if (nbrEdges[patchEdgeI] == -1)
+            if (neighbEdges[patchEdgeI] == -1)
             {
                 // First reference of edge
-                nbrEdges[patchEdgeI] = nbrEdgeI;
+                neighbEdges[patchEdgeI] = nbrEdgeI;
             }
-            else if (nbrEdges[patchEdgeI] >= 0)
+            else if (neighbEdges[patchEdgeI] >= 0)
             {
                 // Edge already visited. Mark as duplicate.
-                nbrEdges[patchEdgeI] = -2;
+                neighbEdges[patchEdgeI] = -2;
             }
         }
 
         // Reset all duplicate entries to -1.
-        forAll(nbrEdges, patchEdgeI)
+        forAll(neighbEdges, patchEdgeI)
         {
-            if (nbrEdges[patchEdgeI] == -2)
+            if (neighbEdges[patchEdgeI] == -2)
             {
-                nbrEdges[patchEdgeI] = -1;
+                neighbEdges[patchEdgeI] = -1;
             }
         }
 
@@ -455,27 +531,27 @@ void Foam::processorPolyPatch::topoChange(PstreamBuffers& pBufs)
 }
 
 
-const Foam::labelList& Foam::processorPolyPatch::nbrPoints() const
+const Foam::labelList& Foam::processorPolyPatch::neighbPoints() const
 {
-    if (!nbrPointsPtr_.valid())
+    if (!neighbPointsPtr_)
     {
         FatalErrorInFunction
             << "No extended addressing calculated for patch " << name()
             << abort(FatalError);
     }
-    return nbrPointsPtr_();
+    return *neighbPointsPtr_;
 }
 
 
-const Foam::labelList& Foam::processorPolyPatch::nbrEdges() const
+const Foam::labelList& Foam::processorPolyPatch::neighbEdges() const
 {
-    if (!nbrEdgesPtr_.valid())
+    if (!neighbEdgesPtr_)
     {
         FatalErrorInFunction
             << "No extended addressing calculated for patch " << name()
             << abort(FatalError);
     }
-    return nbrEdgesPtr_();
+    return *neighbEdgesPtr_;
 }
 
 
@@ -485,35 +561,187 @@ void Foam::processorPolyPatch::initOrder
     const primitivePatch& pp
 ) const
 {
-    if (!Pstream::parRun())
+    if
+    (
+        !Pstream::parRun()
+     || transform() == NOORDERING
+    )
     {
         return;
     }
 
-    if (owner())
+    if (debug)
     {
-        ownToNbrOrderData ownToNbr;
-        autoPtr<ownToNbrDebugOrderData> ownToNbrDebugPtr
+        fileName nm
         (
-            coupledPolyPatch::debug
-          ? new ownToNbrDebugOrderData()
-          : nullptr
+            boundaryMesh().mesh().time().path()
+           /name()+"_faces.obj"
         );
+        Pout<< "processorPolyPatch::order : Writing my " << pp.size()
+            << " faces to OBJ file " << nm << endl;
+        writeOBJ(nm, pp, pp.points());
 
-        coupledPolyPatch::initOrder
+        // Calculate my face centres
+        const pointField& fc = pp.faceCentres();
+
+        OFstream localStr
         (
-            ownToNbr,
-            ownToNbrDebugPtr,
-            pp
+            boundaryMesh().mesh().time().path()
+           /name() + "_localFaceCentres.obj"
         );
+        Pout<< "processorPolyPatch::order : "
+            << "Dumping " << fc.size()
+            << " local faceCentres to " << localStr.name() << endl;
 
-        UOPstream toNeighbour(neighbProcNo(), pBufs);
-        toNeighbour << ownToNbr;
-        if (coupledPolyPatch::debug)
+        forAll(fc, facei)
         {
-            toNeighbour << ownToNbrDebugPtr();
+            writeOBJ(localStr, fc[facei]);
         }
     }
+
+    if (owner())
+    {
+        if (transform() == COINCIDENTFULLMATCH)
+        {
+            // Pass the patch points and faces across
+            UOPstream toNeighbour(neighbProcNo(), pBufs);
+            toNeighbour << pp.localPoints()
+                        << pp.localFaces();
+        }
+        else
+        {
+            const pointField& ppPoints = pp.points();
+
+            pointField anchors(getAnchorPoints(pp, ppPoints, transform()));
+
+            // Get the average of the points of each face. This is needed in
+            // case the face centroid calculation is incorrect due to the face
+            // having a very high aspect ratio.
+            pointField facePointAverages(pp.size(), Zero);
+            forAll(pp, fI)
+            {
+                const labelList& facePoints = pp[fI];
+
+                forAll(facePoints, pI)
+                {
+                    facePointAverages[fI] += ppPoints[facePoints[pI]];
+                }
+
+                facePointAverages[fI] /= facePoints.size();
+            }
+
+            // Now send all info over to the neighbour
+            UOPstream toNeighbour(neighbProcNo(), pBufs);
+            toNeighbour << pp.faceCentres() << pp.faceNormals()
+                        << anchors << facePointAverages;
+        }
+    }
+}
+
+
+Foam::label Foam::processorPolyPatch::matchFace
+(
+    const face& a,
+    const pointField& aPts,
+    const face& b,
+    const pointField& bPts,
+    const bool sameOrientation,
+    const scalar absTolSqr,
+    scalar& matchDistSqr
+)
+{
+    if (a.size() != b.size())
+    {
+        return -1;
+    }
+
+    enum CirculatorBase::direction circulateDirection
+        = CirculatorBase::CLOCKWISE;
+
+    if (!sameOrientation)
+    {
+        circulateDirection = CirculatorBase::ANTICLOCKWISE;
+    }
+
+    label matchFp = -1;
+
+    scalar closestMatchDistSqr = sqr(GREAT);
+
+    ConstCirculator<face> aCirc(a);
+    ConstCirculator<face> bCirc(b);
+
+    do
+    {
+        const scalar diffSqr = magSqr(aPts[*aCirc] - bPts[*bCirc]);
+
+        if (diffSqr < absTolSqr)
+        {
+            // Found a matching point. Set the fulcrum of b to the iterator
+            ConstCirculator<face> bCirc2(bCirc);
+            ++aCirc;
+
+            bCirc2.setFulcrumToIterator();
+
+            if (!sameOrientation)
+            {
+                --bCirc2;
+            }
+            else
+            {
+                ++bCirc2;
+            }
+
+            matchDistSqr = diffSqr;
+
+            do
+            {
+                const scalar diffSqr2 = magSqr(aPts[*aCirc] - bPts[*bCirc2]);
+
+                if (diffSqr2 > absTolSqr)
+                {
+                    // No match.
+                    break;
+                }
+
+                matchDistSqr += diffSqr2;
+            }
+            while
+            (
+                aCirc.circulate(CirculatorBase::CLOCKWISE),
+                bCirc2.circulate(circulateDirection)
+            );
+
+            if (!aCirc.circulate())
+            {
+                if (matchDistSqr < closestMatchDistSqr)
+                {
+                    closestMatchDistSqr = matchDistSqr;
+
+                    if (!sameOrientation)
+                    {
+                        matchFp = a.size() - bCirc.nRotations();
+                    }
+                    else
+                    {
+                        matchFp = bCirc.nRotations();
+                    }
+
+                    if (closestMatchDistSqr == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // Reset aCirc
+            aCirc.setIteratorToFulcrum();
+        }
+
+    } while (bCirc.circulate(circulateDirection));
+
+    matchDistSqr = closestMatchDistSqr;
+
+    return matchFp;
 }
 
 
@@ -525,48 +753,396 @@ bool Foam::processorPolyPatch::order
     labelList& rotation
 ) const
 {
-    if (!Pstream::parRun())
+    // Note: we only get the faces that originate from internal faces.
+
+    if
+    (
+        !Pstream::parRun()
+     || transform() == NOORDERING
+    )
     {
         return false;
     }
 
-    ownToNbrOrderData ownToNbr;
-    autoPtr<ownToNbrDebugOrderData> ownToNbrDebugPtr
-    (
-        coupledPolyPatch::debug
-      ? new ownToNbrDebugOrderData()
-      : nullptr
-    );
+    faceMap.setSize(pp.size());
+    faceMap = -1;
 
-    if (!owner())
+    rotation.setSize(pp.size());
+    rotation = 0;
+
+    bool change = false;
+
+    if (owner())
     {
-        UIPstream fromOwner(neighbProcNo(), pBufs);
-        fromOwner >> ownToNbr;
-        ownToNbr.transform(transform());
-        if (coupledPolyPatch::debug)
+        // Do nothing (i.e. identical mapping, zero rotation).
+        // See comment at top.
+        forAll(faceMap, patchFacei)
         {
-            fromOwner >> ownToNbrDebugPtr();
-            ownToNbrDebugPtr->transform(transform());
+            faceMap[patchFacei] = patchFacei;
+        }
+
+        if (transform() != COINCIDENTFULLMATCH)
+        {
+            const pointField& ppPoints = pp.points();
+
+            pointField anchors(getAnchorPoints(pp, ppPoints, transform()));
+
+            // Calculate typical distance from face centre
+            scalarField tols
+            (
+                matchTolerance()*calcFaceTol(pp, pp.points(), pp.faceCentres())
+            );
+
+            forAll(faceMap, patchFacei)
+            {
+                const point& wantedAnchor = anchors[patchFacei];
+
+                rotation[patchFacei] = getRotation
+                (
+                    ppPoints,
+                    pp[patchFacei],
+                    wantedAnchor,
+                    tols[patchFacei]
+                );
+
+                if (rotation[patchFacei] > 0)
+                {
+                    change = true;
+                }
+            }
+        }
+
+        return change;
+    }
+    else
+    {
+        // Calculate the absolute matching tolerance
+        scalarField tols
+        (
+            matchTolerance()*calcFaceTol(pp, pp.points(), pp.faceCentres())
+        );
+
+        if (transform() == COINCIDENTFULLMATCH)
+        {
+            vectorField masterPts;
+            faceList masterFaces;
+
+            {
+                UIPstream fromNeighbour(neighbProcNo(), pBufs);
+                fromNeighbour >> masterPts >> masterFaces;
+            }
+
+            const pointField& localPts = pp.localPoints();
+            const faceList& localFaces = pp.localFaces();
+
+            label nMatches = 0;
+
+            forAll(pp, lFacei)
+            {
+                const face& localFace = localFaces[lFacei];
+                label faceRotation = -1;
+
+                const scalar absTolSqr = sqr(tols[lFacei]);
+
+                scalar closestMatchDistSqr = sqr(GREAT);
+                scalar matchDistSqr = sqr(GREAT);
+                label closestFaceMatch = -1;
+                label closestFaceRotation = -1;
+
+                forAll(masterFaces, mFacei)
+                {
+                    const face& masterFace = masterFaces[mFacei];
+
+                    faceRotation = matchFace
+                    (
+                        localFace,
+                        localPts,
+                        masterFace,
+                        masterPts,
+                        false,
+                        absTolSqr,
+                        matchDistSqr
+                    );
+
+                    if
+                    (
+                        faceRotation != -1
+                     && matchDistSqr < closestMatchDistSqr
+                    )
+                    {
+                        closestMatchDistSqr = matchDistSqr;
+                        closestFaceMatch = mFacei;
+                        closestFaceRotation = faceRotation;
+                    }
+
+                    if (closestMatchDistSqr == 0)
+                    {
+                        break;
+                    }
+                }
+
+                if
+                (
+                    closestFaceRotation != -1
+                 && closestMatchDistSqr < absTolSqr
+                )
+                {
+                    faceMap[lFacei] = closestFaceMatch;
+
+                    rotation[lFacei] = closestFaceRotation;
+
+                    if (lFacei != closestFaceMatch || closestFaceRotation > 0)
+                    {
+                        change = true;
+                    }
+
+                    nMatches++;
+                }
+                else
+                {
+                    Pout<< "Number of matches = " << nMatches << " / "
+                        << pp.size() << endl;
+
+                    pointField pts(localFace.size());
+                    forAll(localFace, pI)
+                    {
+                        const label localPtI = localFace[pI];
+                        pts[pI] = localPts[localPtI];
+                    }
+
+                    FatalErrorInFunction
+                        << "No match for face " << localFace << nl << pts
+                        << abort(FatalError);
+                }
+            }
+
+            return change;
+        }
+        else
+        {
+            vectorField masterCtrs;
+            vectorField masterNormals;
+            vectorField masterAnchors;
+            vectorField masterFacePointAverages;
+
+            // Receive data from neighbour
+            {
+                UIPstream fromNeighbour(neighbProcNo(), pBufs);
+                fromNeighbour >> masterCtrs >> masterNormals
+                              >> masterAnchors >> masterFacePointAverages;
+            }
+
+            if (debug || masterCtrs.size() != pp.size())
+            {
+                {
+                    OFstream nbrStr
+                    (
+                        boundaryMesh().mesh().time().path()
+                       /name() + "_nbrFaceCentres.obj"
+                    );
+                    Pout<< "processorPolyPatch::order : "
+                        << "Dumping neighbour faceCentres to " << nbrStr.name()
+                        << endl;
+                    forAll(masterCtrs, facei)
+                    {
+                        writeOBJ(nbrStr, masterCtrs[facei]);
+                    }
+                }
+
+                if (masterCtrs.size() != pp.size())
+                {
+                    FatalErrorInFunction
+                        << "in patch:" << name() << " : "
+                        << "Local size of patch is " << pp.size() << " (faces)."
+                        << endl
+                        << "Received from neighbour " << masterCtrs.size()
+                        << " faceCentres!"
+                        << abort(FatalError);
+                }
+            }
+
+            // Geometric match of face centre vectors
+            // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+            // 1. Try existing ordering and transformation
+            bool matchedAll = matchPoints
+            (
+                pp.faceCentres(),
+                masterCtrs,
+                pp.faceNormals(),
+                masterNormals,
+                tols,
+                false,
+                faceMap
+            );
+
+            // Fallback: try using face point average for matching
+            if (!matchedAll)
+            {
+                const pointField& ppPoints = pp.points();
+
+                pointField facePointAverages(pp.size(), Zero);
+                forAll(pp, fI)
+                {
+                    const labelList& facePoints = pp[fI];
+
+                    forAll(facePoints, pI)
+                    {
+                        facePointAverages[fI] += ppPoints[facePoints[pI]];
+                    }
+
+                    facePointAverages[fI] /= facePoints.size();
+                }
+
+                scalarField tols2
+                (
+                    matchTolerance()
+                   *calcFaceTol(pp, pp.points(), facePointAverages)
+                );
+
+                // Note that we do not use the faceNormals anymore for
+                // comparison. Since we're
+                // having problems with the face centres (e.g. due to extreme
+                // aspect ratios) we will probably also have problems with
+                // reliable normals calculation
+                labelList faceMap2(faceMap.size(), -1);
+                matchPoints
+                (
+                    facePointAverages,
+                    masterFacePointAverages,
+                    tols2,
+                    true,
+                    faceMap2
+                );
+
+                matchedAll = true;
+
+                forAll(faceMap, oldFacei)
+                {
+                    if (faceMap[oldFacei] == -1)
+                    {
+                        faceMap[oldFacei] = faceMap2[oldFacei];
+
+                        if (faceMap[oldFacei] == -1)
+                        {
+                            matchedAll = false;
+                        }
+                    }
+                }
+            }
+
+            if (!matchedAll || debug)
+            {
+                // Dump faces
+                fileName str
+                (
+                    boundaryMesh().mesh().time().path()
+                   /name() + "_faces.obj"
+                );
+                Pout<< "processorPolyPatch::order :"
+                    << " Writing faces to OBJ file " << str.name() << endl;
+                writeOBJ(str, pp, pp.points());
+
+                OFstream ccStr
+                (
+                    boundaryMesh().mesh().time().path()
+                   /name() + "_faceCentresConnections.obj"
+                );
+
+                Pout<< "processorPolyPatch::order :"
+                    << " Dumping newly found match as lines between"
+                    << " corresponding face centres to OBJ file "
+                    << ccStr.name()
+                    << endl;
+
+                label vertI = 0;
+
+                forAll(pp.faceCentres(), facei)
+                {
+                    label masterFacei = faceMap[facei];
+
+                    if (masterFacei != -1)
+                    {
+                        const point& c0 = masterCtrs[masterFacei];
+                        const point& c1 = pp.faceCentres()[facei];
+                        writeOBJ(ccStr, c0, c1, vertI);
+                    }
+                }
+            }
+
+            if (!matchedAll)
+            {
+                SeriousErrorInFunction
+                    << "in patch:" << name() << " : "
+                    << "Cannot match vectors to faces on both sides of patch"
+                    << endl
+                    << "    masterCtrs[0]:" << masterCtrs[0] << endl
+                    << "    ctrs[0]:" << pp.faceCentres()[0] << endl
+                    << "    Check your topology changes or maybe you have"
+                    << " multiple separated (from cyclics) processor patches"
+                    << endl
+                    << "    Continuing with incorrect face ordering from now on"
+                    << endl;
+
+                return false;
+            }
+
+            // Set rotation.
+            forAll(faceMap, oldFacei)
+            {
+                // The face f will be at newFacei (after morphing) and we want
+                // its anchorPoint (= f[0]) to align with the anchorpoint for
+                // the corresponding face on the other side.
+
+                label newFacei = faceMap[oldFacei];
+
+                const point& wantedAnchor = masterAnchors[newFacei];
+
+                rotation[newFacei] = getRotation
+                (
+                    pp.points(),
+                    pp[oldFacei],
+                    wantedAnchor,
+                    tols[oldFacei]
+                );
+
+                if (rotation[newFacei] == -1)
+                {
+                    SeriousErrorInFunction
+                        << "in patch " << name()
+                        << " : "
+                        << "Cannot find point on face " << pp[oldFacei]
+                        << " with vertices "
+                        << UIndirectList<point>(pp.points(), pp[oldFacei])
+                        << " that matches point " << wantedAnchor
+                        << " when matching the halves of processor patch "
+                        << name()
+                        << "Continuing with incorrect face ordering from now on"
+                        << endl;
+
+                    return false;
+                }
+            }
+
+            forAll(faceMap, facei)
+            {
+                if (faceMap[facei] != facei || rotation[facei] != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
-
-    return
-        coupledPolyPatch::order
-        (
-            ownToNbr,
-            ownToNbrDebugPtr,
-            pp,
-            faceMap,
-            rotation
-        );
 }
 
 
 void Foam::processorPolyPatch::write(Ostream& os) const
 {
     coupledPolyPatch::write(os);
-    writeEntry(os, "myProcNo", myProcNo_);
-    writeEntry(os, "neighbProcNo", neighbProcNo_);
+    os.writeEntry("myProcNo", myProcNo_);
+    os.writeEntry("neighbProcNo", neighbProcNo_);
 }
 
 

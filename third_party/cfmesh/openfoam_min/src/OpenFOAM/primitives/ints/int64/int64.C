@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +28,19 @@ License
 
 #include "int64.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+const char* const Foam::pTraits<int64_t>::componentNames[] = { "" };
 
 const int64_t Foam::pTraits<int64_t>::zero = 0;
 const int64_t Foam::pTraits<int64_t>::one = 1;
 const int64_t Foam::pTraits<int64_t>::min = INT64_MIN;
 const int64_t Foam::pTraits<int64_t>::max = INT64_MAX;
+const int64_t Foam::pTraits<int64_t>::rootMin = pTraits<int64_t>::min;
+const int64_t Foam::pTraits<int64_t>::rootMax = pTraits<int64_t>::max;
 
-const char* const Foam::pTraits<int64_t>::componentNames[] = { "" };
 
-Foam::pTraits<int64_t>::pTraits(const int64_t& p)
-:
-    p_(p)
-{}
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::pTraits<int64_t>::pTraits(Istream& is)
 {

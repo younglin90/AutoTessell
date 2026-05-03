@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef ReadHex_H
-#define ReadHex_H
+#ifndef Foam_ReadHex_H
+#define Foam_ReadHex_H
 
 #include "ISstream.H"
 
@@ -42,9 +44,9 @@ SourceFiles
 namespace Foam
 {
 
-//- Read a hex label from an input stream
+//- Read a hex integer from an input stream
 template<class T>
-T ReadHex(ISstream&);
+T ReadHex(ISstream& is);
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

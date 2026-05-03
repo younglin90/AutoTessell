@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -54,8 +57,8 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class dictionary;
-class OTstream;
 
 /*---------------------------------------------------------------------------*\
                         Class functionEntry Declaration
@@ -65,169 +68,63 @@ class functionEntry
 :
     public primitiveEntry
 {
-    // Private Member Functions
-
-        //- Read the rest of the argument list following the part attached
-        // to the function name
-        void readRestOfArgs(string& fNameArgs, Istream& is) const;
-
-
 protected:
-
-    // Constructors
-
-        //- Construct from function type and parent dictionary
-        functionEntry
-        (
-            const functionName&,
-            const label lineNumber,
-            const dictionary&
-        );
-
-        //- Construct from function type, parent dictionary and a token
-        functionEntry
-        (
-            const functionName&,
-            const label lineNumber,
-            const dictionary&,
-            const Istream& is,
-            const token&
-        );
-
-        //- Construct from function type, parent dictionary and tokenList
-        functionEntry
-        (
-            const functionName&,
-            const label lineNumber,
-            const dictionary&,
-            const Istream& is,
-            const tokenList&
-        );
-
-        //- Copy construct
-        functionEntry(const functionEntry&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const = 0;
-
 
     // Protected Member Functions
 
-        tokenList readArgList
+        //- Read line and return as a string token
+        static token readLine(const word& key, Istream& is);
+
+        //- Read a List of strings values, treating a single entry like a
+        //- list of size 1.
+        template<class StringType>
+        static List<StringType> readStringList(Istream& is);
+
+        //- Slurp a string until a closing '}' is found.
+        //  Track balanced bracket/brace pairs, with max stack depth of 60.
+        static bool continueReadUntilRightBrace
         (
-            const functionName& functionType,
             Istream& is,
-            const bool optional = false
-        ) const;
-
-        //- Read the function name and optional argument list
-        //  The argument list can be on one or more lines.
-        tokenList readFuncNameArgList
-        (
-            const functionName& functionType,
-            Istream& is
-        ) const;
-
-        //- Read the filen name and optional argument list
-        //  The argument list can be on one or more lines.
-        tokenList readFileNameArgList
-        (
-            const functionName& functionType,
-            Istream& is
-        ) const;
-
-        //- Read a single argument or list
-        tokenList readArgOrList
-        (
-            const functionName& functionType,
-            Istream& is
-        ) const;
-
-        //- Read entry starting from token t and insert into contextDict
-        static bool insert
-        (
-            const dictionary& parentDict,
-            dictionary& contextDict,
-            const token& t,
-            Istream& is
+            std::string& str,
+            const bool stripComments = true
         );
 
-        //- Insert token t into contextEntry, expanding as required
-        //  which may read subsequent tokens from Istream
-        static bool insert
-        (
-            const dictionary& parentDict,
-            primitiveEntry& contextEntry,
-            const token& t,
-            Istream& is
-        );
+        //- No copy construct
+        functionEntry(const functionEntry&) = delete;
 
-        //- Read entry from the given OTstream and insert into contextDict
-        static bool insert
-        (
-            dictionary& contextDict,
-            const OTstream&
-        );
-
-        //- Read tokens from the given OTstream and insert into contextEntry
-        static bool insert
-        (
-            const dictionary& parentDict,
-            primitiveEntry& contextEntry,
-            const OTstream&
-        );
-
-        //- Read entry from the given string and insert into contextDict
-        static bool insert
-        (
-            dictionary& contextDict,
-            const string&
-        );
-
-        //- Read tokens from the given string and insert into contextEntry
-        static bool insert
-        (
-            const dictionary& parentDict,
-            primitiveEntry& contextEntry,
-            const string&
-        );
-
+        //- No copy assignment
+        void operator=(const functionEntry&) = delete;
 
 public:
 
-    FunctionTypeName("functionEntry");
+    // Constructors
 
-    // Declare run-time constructor selection tables
-
-        declareRunTimeSelectionTable
-        (
-            autoPtr,
-            functionEntry,
-            dictionary,
-            (
-                const label lineNumber,
-                const dictionary& parentDict,
-                Istream& is
-            ),
-            (lineNumber, parentDict, is)
-        );
-
-
-    // Selectors
-
-        //- Construct from Istream and insert into dictionary
-        static autoPtr<functionEntry> New
-        (
-            const keyType& functionName,
-            const dictionary& parentDict,
-            Istream& is
-        );
+        //- Construct from keyword, parent dictionary and Istream
+        functionEntry(const word& key, const dictionary& dict, Istream& is);
 
 
     // Member Function Selectors
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream& is) = 0;
+        declareMemberFunctionSelectionTable
+        (
+            bool,
+            functionEntry,
+            execute,
+            dictionaryIstream,
+            (
+                dictionary& parentDict,
+                Istream& is
+            ),
+            (parentDict, is)
+        );
+
+        //- Execute the functionEntry in a sub-dict context
+        static bool execute
+        (
+            const word& functionName,
+            dictionary& parentDict,
+            Istream& is
+        );
 
         declareMemberFunctionSelectionTable
         (
@@ -236,36 +133,36 @@ public:
             execute,
             primitiveEntryIstream,
             (
-                const dictionary& contextDict,
-                primitiveEntry& contextEntry,
+                const dictionary& parentDict,
+                primitiveEntry& entry,
                 Istream& is
             ),
-            (contextDict, entry, is)
+            (parentDict, entry, is)
         );
 
-        //- Expand the functionEntry into the contextEntry
+        //- Execute the functionEntry in a primitiveEntry context
         static bool execute
         (
             const word& functionName,
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
         );
 
         //- Write
-        virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const functionEntry&) = delete;
+        virtual void write(Ostream& os) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+    #include "functionEntryTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

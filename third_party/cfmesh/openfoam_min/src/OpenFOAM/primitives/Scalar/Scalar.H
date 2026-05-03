@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,27 @@ Typedef
     Foam::Scalar
 
 Description
-    Single floating point number (float or double)
+    Floating-point number (float or double)
+
+Note
+    The floor/ceil/round operations could easily be extended to handle
+    VectorSpace when the need arises. For example,
+
+    \code
+    template<class T>
+    struct floorOp
+    {
+        T operator()(const T& x) const
+        {
+            T ret;
+            for (direction cmpt=0; cmpt < pTraits<T>::nComponents; ++cmpt)
+            {
+                setComponent(ret, cmpt) = std::floor(component(x, cmpt));
+            }
+            return ret;
+        }
+    };
+    \endcode
 
 SourceFiles
     Scalar.C
@@ -39,7 +62,7 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-// template specialisation for pTraits<Scalar>
+// Template specialisation for pTraits<Scalar>
 template<>
 class pTraits<Scalar>
 {
@@ -47,23 +70,28 @@ class pTraits<Scalar>
 
 public:
 
-    //- Component type
-    typedef Scalar cmptType;
+    // Typedefs
 
-    //- Equivalent type of labels used for valid component indexing
-    typedef label labelType;
+        //- Component type
+        typedef Scalar cmptType;
+
+        //- Magnitude type
+        typedef Scalar magType;
+
+        //- Equivalent type of labels used for valid component indexing
+        typedef label labelType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Dimensionality of space
-        static const direction dim = 3;
+        static constexpr direction dim = 3;
 
         //- Rank of Scalar is 0
-        static const direction rank = 0;
+        static constexpr direction rank = 0;
 
         //- Number of components in Scalar is 1
-        static const direction nComponents = 1;
+        static constexpr direction nComponents = 1;
 
 
     // Static Data Members
@@ -76,39 +104,84 @@ public:
         static const Scalar min;
         static const Scalar rootMax;
         static const Scalar rootMin;
-        static const Scalar nan;
+        static const Scalar vsmall;
 
 
     // Constructors
 
-        //- Construct from primitive
-        explicit pTraits(const Scalar&);
+        //- Copy construct from primitive
+        explicit pTraits(Scalar val) noexcept
+        :
+            p_(val)
+        {}
 
-        //- Construct from Istream
-        pTraits(Istream&);
+        //- Read construct from Istream
+        explicit pTraits(Istream& is);
 
 
     // Member Functions
 
-        //- Access to the Scalar value
-        operator Scalar() const
+        //- Return the value
+        operator Scalar() const noexcept
         {
             return p_;
         }
 
-        //- Access to the Scalar value
-        operator Scalar&()
+        //- Access the value
+        operator Scalar&() noexcept
         {
             return p_;
         }
 };
 
 
+// * * * * * * * * * * * * * * * IO/Conversion * * * * * * * * * * * * * * * //
+
+//- A word representation of a floating-point value.
+//  Uses stringstream instead of std::to_string for more consistent formatting.
+word name(const Scalar val);
+
+
+//- A word representation of a floating-point value.
+template<>
+struct nameOp<Scalar>
+{
+    word operator()(const Scalar val) const
+    {
+        return Foam::name(val);
+    }
+};
+
+
+//- Parse entire buffer as a float/double, skipping leading/trailing whitespace.
+//  \return Parsed value or FatalIOError on any problem
+Scalar ScalarRead(const char* buf);
+
+//- Parse entire buffer as a float/double, skipping leading/trailing whitespace.
+//  \return True if successful.
+bool ScalarRead(const char* buf, Scalar& val);
+
+//- Parse entire string as a float/double, skipping leading/trailing whitespace.
+//  \return Parsed value or FatalIOError on any problem
+inline Scalar ScalarRead(const std::string& str)
+{
+    return ScalarRead(str.c_str());
+}
+
+//- Parse entire string as a float/double, skipping leading/trailing whitespace.
+//  \return True if successful.
+inline bool ScalarRead(const std::string& str, Scalar& val)
+{
+    return ScalarRead(str.c_str(), val);
+}
+
+
+Scalar ScalarRead(Istream& is);
+Istream& operator>>(Istream& is, Scalar& val);
+Ostream& operator<<(Ostream& os, const Scalar val);
+
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-//- Return a string representation of a Scalar
-word name(const Scalar);
-
 
 // Standard C++ transcendental functions
 transFunc(sqrt)
@@ -137,85 +210,101 @@ transFunc(erfc)
 transFunc(lgamma)
 transFunc(tgamma)
 
-transFunc(j0)
-transFunc(j1)
+besselFunc(j0)
+besselFunc(j1)
+besselFunc(y0)
+besselFunc(y1)
+besselFunc2(jn)
+besselFunc2(yn)
 
-transFunc(y0)
-transFunc(y1)
 
-
-inline Scalar& setComponent(Scalar& s, const direction)
+//- Non-const access to scalar-type (has no components)
+inline Scalar& setComponent(Scalar& val, const direction) noexcept
 {
-    return s;
+    return val;
 }
 
 
-inline Scalar component(const Scalar s, const direction)
+//- Return scalar value (has no components)
+inline constexpr Scalar component(const Scalar val, const direction) noexcept
 {
-    return s;
+    return val;
 }
 
 
-//- Return 1 if s is positive or 0 otherwise -1
-inline int sign(const Scalar s)
+//- Return 1 if s is greater_equal zero, or otherwise -1
+inline Scalar sign(const Scalar s) noexcept
 {
-    return (s >= 0) ? 1: -1;
+    return (s >= 0)? 1: -1;
 }
 
 
-//- Return 1 if s is positive but not 0
-inline int pos(const Scalar s)
+//- Return 1 if s is greater than zero, otherwise 0
+inline Scalar pos(const Scalar s) noexcept
 {
-    return (s > 0) ? 1: 0;
+    return (s > 0)? 1: 0;
 }
 
 
-//- Return 1 if s is positive or 0
-inline int pos0(const Scalar s)
+//- Return 1 if s is greater_equal zero, or otherwise 0
+inline Scalar pos0(const Scalar s) noexcept
 {
-    return (s >= 0) ? 1: 0;
+    return (s >= 0)? 1: 0;
 }
 
 
-//- Return 1 if s is negative but not 0
-inline int neg(const Scalar s)
+//- Return 1 if s is less than zero, or otherwise 0
+inline Scalar neg(const Scalar s) noexcept
 {
-    return (s < 0) ? 1: 0;
+    return (s < 0)? 1: 0;
 }
 
 
-//- Return 1 if s is negative or 0
-inline int neg0(const Scalar s)
+//- Return 1 if s is less_equal zero, or otherwise 0
+inline Scalar neg0(const Scalar s) noexcept
 {
-    return (s <= 0) ? 1: 0;
+    return (s <= 0)? 1: 0;
 }
 
 
-//- Return the positive part of s
-inline Scalar posPart(const Scalar s)
+//- Return the positive part of s, otherwise zero. Same as max(0, s).
+inline Scalar posPart(const Scalar s) noexcept
 {
     return (s > 0)? s: 0;
 }
 
 
-//- Return the negative part of s.
-//  Note: this function returns the actual negative part of s as a
-//  negative number and does not change the sign
-inline Scalar negPart(const Scalar s)
+//- Return the negative part of s, otherwise zero. Same as min(0, s).
+//  Does not change the sign
+inline Scalar negPart(const Scalar s) noexcept
 {
     return (s < 0)? s: 0;
 }
 
 
-inline bool equal(const Scalar& s1, const Scalar& s2)
+inline bool equal(const Scalar& a, const Scalar& b)
 {
-    return mag(s1 - s2) <= ScalarVSmall;
+    return mag(a - b) <= ScalarVSMALL;
 }
 
 
-inline bool notEqual(const Scalar s1, const Scalar s2)
+inline bool notEqual(const Scalar a, const Scalar b)
 {
-    return mag(s1 - s2) > ScalarVSmall;
+    return mag(a - b) > ScalarVSMALL;
+}
+
+
+//- Clamp scalar value to a 0-1 range
+inline Scalar clamp(const Scalar val, const Foam::zero_one)
+{
+    return (val < 0) ? 0 : (1 < val) ? 1 : val;
+}
+
+
+// Fast implementation, and with scalar promotion of upper/lower limits
+inline Scalar clamp(const Scalar val, const Scalar lower, const Scalar upper)
+{
+    return (val < lower) ? lower : (upper < val) ? upper : val;
 }
 
 
@@ -228,6 +317,15 @@ inline Scalar limit(const Scalar s1, const Scalar s2)
 inline Scalar minMod(const Scalar s1, const Scalar s2)
 {
     return (mag(s1) < mag(s2)) ? s1: s2;
+}
+
+
+//- Linear interpolation of scalars a and b by factor t
+//  Explicit form (not fused multiply add etc) for exact values at end points.
+//  Unlike std::lerp (C++20) there are no isfinite() checks etc.
+inline constexpr Scalar lerp(const Scalar a, const Scalar b, const Scalar t)
+{
+    return (Scalar{1}-t)*a + t*b;
 }
 
 
@@ -276,20 +374,6 @@ inline Scalar pow025(const Scalar s)
 inline Scalar inv(const Scalar s)
 {
     return 1.0/s;
-}
-
-
-template<class Type>
-inline Type dot(const Scalar s, const Type& t)
-{
-    return s*t;
-}
-
-
-template<class Type>
-inline Type dot(const Type& t, const Scalar s)
-{
-    return t*s;
 }
 
 
@@ -347,64 +431,152 @@ inline Scalar cmptMag(const Scalar s)
 }
 
 
+inline Scalar cmptMagSqr(const Scalar s)
+{
+    return magSqr(s);
+}
+
+
 inline Scalar sqrtSumSqr(const Scalar a, const Scalar b)
 {
-    Scalar maga = mag(a);
-    Scalar magb = mag(b);
+    const Scalar maga = mag(a);
+    const Scalar magb = mag(b);
 
     if (maga > magb)
     {
-        return maga*sqrt(1 + sqr(magb/maga));
+        return maga*sqrt(1.0 + sqr(magb/maga));
     }
     else
     {
-        return magb < ScalarVSmall ? 0 : magb*sqrt(1 + sqr(maga/magb));
+        return magb < ScalarVSMALL ? 0.0 : magb*sqrt(1.0 + sqr(maga/magb));
     }
 }
 
 
 //- Stabilisation around zero for division
-inline Scalar stabilise(const Scalar s, const Scalar small)
+inline Scalar stabilise(const Scalar s, const Scalar tol)
 {
     if (s >= 0)
     {
-        return s + small;
+        return s + tol;
     }
     else
     {
-        return s - small;
+        return s - tol;
     }
 }
 
 
-//- Divide two numbers and protect the result from overflowing
-inline Scalar protectedDivide(const Scalar a, const Scalar b)
+// Specializations
+
+// Default definition in ops.H
+template<class T> struct compareOp;
+
+//- Compare scalar values
+template<>
+struct compareOp<Scalar>
 {
-    return mag(a)/ScalarVGreat < mag(b) ? a/b : sign(a)*sign(b)*ScalarVGreat;
-}
+    const Scalar tolerance;
+
+    //- Construct with specified tolerance (non-negative value)
+    compareOp(Scalar tol = ScalarVSMALL)
+    :
+        tolerance(tol)
+    {}
+
+    Scalar operator()(const Scalar& a, const Scalar& b) const
+    {
+        return (mag(a - b) <= tolerance) ? 0 : (a - b);
+    }
+};
 
 
-//- Divide two numbers, protect the result from overflowing, and clip the
-//  result between 0 and 1
-inline Scalar protectedDivideAndClip01(const Scalar a, const Scalar b)
+// Default definition in ops.H
+template<class T> struct equalOp;
+
+//- Compare scalar values for equality
+template<>
+struct equalOp<Scalar>
 {
-    const Scalar bStar = max(mag(a), mag(b));
+    const Scalar tolerance;
 
-    return bStar == 0 ? 0 : max(a*sign(b), 0)/bStar;
-}
+    //- Construct with specified tolerance (non-negative value)
+    equalOp(Scalar tol = ScalarVSMALL)
+    :
+        tolerance(tol)
+    {}
+
+    bool operator()(const Scalar& a, const Scalar& b) const
+    {
+        return mag(a - b) <= tolerance;
+    }
+};
 
 
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
+// Default definition in ops.H
+template<class T> struct notEqualOp;
 
-Scalar readScalar(Istream&);
+//- Compare scalar values for inequality
+template<>
+struct notEqualOp<Scalar>
+{
+    const Scalar tolerance;
 
-void writeEntry(Ostream& os, const Scalar value);
+    //- Construct with specified tolerance (non-negative value)
+    notEqualOp(Scalar tol = ScalarVSMALL)
+    :
+        tolerance(tol)
+    {}
+
+    bool operator()(const Scalar& a, const Scalar& b) const
+    {
+        return mag(a - b) > tolerance;
+    }
+};
 
 
-// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Istream& operator>>(Istream&, Scalar&);
-Ostream& operator<<(Ostream&, const Scalar);
+// Default definition in ops.H (future?)
+template<class T> struct floorOp;
+
+//- Round scalar downwards - functor version of std::floor
+template<>
+struct floorOp<Scalar>
+{
+    Scalar operator()(const Scalar& x) const
+    {
+        return std::floor(x);
+    }
+};
+
+
+// Default definition in ops.H (future?)
+template<class T> struct ceilOp;
+
+//- Round scalar upwards - functor version of std::ceil
+template<>
+struct ceilOp<Scalar>
+{
+    Scalar operator()(const Scalar& x) const
+    {
+        return std::ceil(x);
+    }
+};
+
+
+// Default definition in ops.H (future?)
+template<class T> struct roundOp;
+
+//- Round scalar - functor version of std::round
+template<>
+struct roundOp<Scalar>
+{
+    Scalar operator()(const Scalar& x) const
+    {
+        return std::round(x);
+    }
+};
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,7 +38,6 @@ SourceFiles
 #ifndef nearWallDist_H
 #define nearWallDist_H
 
-#include "DemandDrivenMeshObject.H"
 #include "volFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -44,50 +45,40 @@ SourceFiles
 namespace Foam
 {
 
+class fvMesh;
+
 /*---------------------------------------------------------------------------*\
                         Class nearWallDist Declaration
 \*---------------------------------------------------------------------------*/
 
 class nearWallDist
 :
-    public DemandDrivenMeshObject
-    <
-        fvMesh,
-        DeletableMeshObject,
-        nearWallDist
-    >
+    public volScalarField::Boundary
 {
-    // Private Data
+    // Private data
 
-        //- Near-well distance-to-wall boundary field
-        volScalarField::Boundary y_;
+        //- Reference to mesh
+        const fvMesh& mesh_;
 
 
-protected:
+    // Private Member Functions
 
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        DeletableMeshObject,
-        nearWallDist
-    >;
+        //- Do all calculations
+        void calculate();
 
-    // Protected Constructors
+        //- No copy construct
+        nearWallDist(const nearWallDist&) = delete;
 
-        //- Construct from mesh
-        explicit nearWallDist(const fvMesh& mesh);
+        //- No copy assignment
+        void operator=(const nearWallDist&) = delete;
 
 
 public:
 
-    // Declare name of the class and its debug switch
-    ClassName("nearWallDist");
-
-
     // Constructors
 
-        //- Disallow default bitwise copy construction
-        nearWallDist(const nearWallDist&) = delete;
+        //- Construct from components
+        nearWallDist(const fvMesh& mesh);
 
 
     //- Destructor
@@ -96,17 +87,13 @@ public:
 
     // Member Functions
 
-        //- Access to the near-wall distances
         const volScalarField::Boundary& y() const
         {
-            return y_;
+            return *this;
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const nearWallDist&) = delete;
+        //- Correct for mesh geom/topo changes
+        virtual void correct();
 };
 
 

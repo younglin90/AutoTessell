@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,57 +31,48 @@ License
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::Square<Type>::Square
+Foam::Function1Types::Square<Type>::Square
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, Square<Type>>(name),
-    amplitude_(Function1<Type>::New("amplitude", units, dict)),
-    frequency_(dict.lookup<scalar>("frequency", units::unitless/units.x)),
-    start_(dict.lookupOrDefault<scalar>("start", units.x, 0)),
-    level_(Function1<Type>::New("level", units, dict)),
-    markSpace_(dict.lookupOrDefault<scalar>("markSpace", units::unitless, 1)),
-    integrable_(amplitude_->constant() && level_->constant())
+    Sine<Type>(entryName, dict, obrPtr),
+    mark_(dict.getOrDefaultCompat<scalar>("mark", {{"markSpace", 2006}}, 1)),
+    space_(dict.getOrDefault<scalar>("space", 1))
 {}
 
 
 template<class Type>
-Foam::Function1s::Square<Type>::Square(const Square<Type>& se)
+Foam::Function1Types::Square<Type>::Square(const Square<Type>& rhs)
 :
-    FieldFunction1<Type, Square<Type>>(se),
-    amplitude_(se.amplitude_, false),
-    frequency_(se.frequency_),
-    start_(se.start_),
-    level_(se.level_, false),
-    markSpace_(se.markSpace_),
-    integrable_(se.integrable_)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::Function1s::Square<Type>::~Square()
+    Sine<Type>(rhs),
+    mark_(rhs.mark_),
+    space_(rhs.space_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::Function1s::Square<Type>::write
-(
-    Ostream& os,
-    const unitSets& units
-) const
+void Foam::Function1Types::Square<Type>::writeEntries(Ostream& os) const
 {
-    writeEntry(os, units, amplitude_());
-    writeEntry(os, "frequency", units::unitless/units.x, frequency_);
-    writeEntry(os, "start", units.x, start_);
-    writeEntry(os, units, level_());
-    writeEntry(os, "markSpace", units::unitless, markSpace_);
+    os.writeEntryIfDifferent<scalar>("mark", 1, mark_);
+    os.writeEntryIfDifferent<scalar>("space", 1, space_);
+    Sine<Type>::writeEntries(os);
+}
+
+
+template<class Type>
+void Foam::Function1Types::Square<Type>::writeData(Ostream& os) const
+{
+    Function1<Type>::writeData(os);
+    os.endEntry();
+
+    os.beginBlock(word(this->name() + "Coeffs"));
+    writeEntries(os);
+    os.endBlock();
 }
 
 

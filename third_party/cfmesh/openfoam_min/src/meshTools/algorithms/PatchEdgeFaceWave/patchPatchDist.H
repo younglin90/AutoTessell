@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,20 +51,20 @@ namespace Foam
 class polyPatch;
 
 /*---------------------------------------------------------------------------*\
-                       Class patchPatchDist Declaration
+                         Class patchPatchDist Declaration
 \*---------------------------------------------------------------------------*/
 
 class patchPatchDist
 :
     public scalarField
 {
-    // Private Data
+    // Private Member Data
 
         //- Patch to operate on
         const polyPatch& patch_;
 
         //- Patches to determine the distance to
-        const labelHashSet nbrPatchIndices_;
+        const labelHashSet nbrPatchIDs_;
 
         //- Number of unset faces.
         label nUnset_;
@@ -79,7 +82,7 @@ public:
 
 
     //- Destructor
-    virtual ~patchPatchDist();
+    virtual ~patchPatchDist() = default;
 
 
     // Member Functions

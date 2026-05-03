@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +28,26 @@ License
 
 #include "patchIdentifier.H"
 #include "dictionary.H"
-#include "ListOps.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::patchIdentifier::patchIdentifier()
+:
+    name_(),
+    index_(0)
+{}
+
+
+Foam::patchIdentifier::patchIdentifier
+(
+    const word& name,
+    const label index
+)
+:
+    name_(name),
+    index_(index)
+{}
+
 
 Foam::patchIdentifier::patchIdentifier
 (
@@ -51,8 +71,7 @@ Foam::patchIdentifier::patchIdentifier
     const label index
 )
 :
-    name_(name),
-    index_(index)
+    patchIdentifier(name, index)
 {
     dict.readIfPresent("physicalType", physicalType_);
     dict.readIfPresent("inGroups", inGroups_);
@@ -61,50 +80,77 @@ Foam::patchIdentifier::patchIdentifier
 
 Foam::patchIdentifier::patchIdentifier
 (
-    const patchIdentifier& p,
-    const label index
+    const patchIdentifier& ident,
+    const label newIndex
 )
 :
-    name_(p.name_),
-    index_(index),
-    physicalType_(p.physicalType_),
-    inGroups_(p.inGroups_)
-{}
+    patchIdentifier(ident)
+{
+    if (newIndex >= 0)
+    {
+        index_ = newIndex;
+    }
+}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::patchIdentifier::~patchIdentifier()
-{}
+Foam::patchIdentifier::patchIdentifier
+(
+    patchIdentifier&& ident,
+    const label newIndex
+)
+:
+    patchIdentifier(std::move(ident))
+{
+    if (newIndex >= 0)
+    {
+        index_ = newIndex;
+    }
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-bool Foam::patchIdentifier::inGroup(const word& name) const
+void Foam::patchIdentifier::removeGroup(const word& name)
 {
-    return findIndex(inGroups_, name) != -1;
+    label idx = name.empty() ? -1 : inGroups_.find(name);
+
+    if (idx >= 0)
+    {
+        for (label i = idx + 1; i < inGroups_.size(); ++i)
+        {
+            if (inGroups_[i] != name)
+            {
+                inGroups_[idx] = std::move(inGroups_[i]);
+                ++idx;
+            }
+        }
+        inGroups_.resize(idx);
+    }
 }
 
 
 void Foam::patchIdentifier::write(Ostream& os) const
 {
-    if (physicalType_.size())
+    if (!physicalType_.empty())
     {
-        writeEntry(os, "physicalType", physicalType_);
+        os.writeEntry("physicalType", physicalType_);
     }
-    if (inGroups_.size())
+
+    if (!inGroups_.empty())
     {
-        writeEntry(os, "inGroups", inGroups_);
+        os.writeKeyword("inGroups");
+        inGroups_.writeList(os, 0);  // Flat output
+        os.endEntry();
     }
 }
 
 
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const patchIdentifier& pi)
+Foam::Ostream& Foam::operator<<(Ostream& os, const patchIdentifier& ident)
 {
-    pi.write(os);
-    os.check("Ostream& operator<<(Ostream&, const patchIdentifier&)");
+    ident.write(os);
+    os.check(FUNCTION_NAME);
     return os;
 }
 

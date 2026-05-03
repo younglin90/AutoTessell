@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,10 +25,10 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Primitive
-    uint64
+    uint64_t
 
 Description
-    64bit uinteger
+    64bit unsigned integer
 
 SourceFiles
     uint64.C
@@ -33,42 +36,100 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef uint64_H
-#define uint64_H
+#ifndef Foam_primitives_uint64_H
+#define Foam_primitives_uint64_H
 
 #include <cstdint>
 #include <climits>
 #include <cstdlib>
 
-#include "word.H"
-#include "pTraits.H"
 #include "direction.H"
-
-#ifndef UINT64_MIN
-#define UINT64_MIN 0
-#endif
+#include "pTraits.H"
+#include "word.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class Istream;
-class Ostream;
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-//- Return a word representation of an uint64
-word name(const uint64_t);
+//- A word representation of uint64 value
+inline word name(const uint64_t val)
+{
+    return word(std::to_string(val), false); // Needs no stripping
+}
+
+
+//- A word representation of uint64 value
+template<>
+struct nameOp<uint64_t>
+{
+    word operator()(const uint64_t val) const
+    {
+        return word(std::to_string(val), false); // Needs no stripping
+    }
+};
+
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-uint64_t readUint64(Istream&);
-bool read(const char*, uint64_t&);
-Istream& operator>>(Istream&, uint64_t&);
-Ostream& operator<<(Ostream&, const uint64_t);
+//- Read uint64_t from stream.
+uint64_t readUint64(Istream& is);
 
-//- Template specialisation for pTraits<uint64_t>
+//- Parse entire buffer as uint64_t, skipping leading/trailing whitespace.
+//  \return Parsed value or FatalIOError on any problem
+uint64_t readUint64(const char* buf);
+
+//- Parse entire string as uint64_t, skipping leading/trailing whitespace.
+//  \return Parsed value or FatalIOError on any problem
+inline uint64_t readUint64(const std::string& str)
+{
+    return readUint64(str.c_str());
+}
+
+//- Parse entire buffer as uint64_t, skipping leading/trailing whitespace.
+//  \return True if successful.
+bool readUint64(const char* buf, uint64_t& val);
+
+//- Parse entire string as uint64_t, skipping leading/trailing whitespace.
+//  \return True if successful.
+inline bool readUint64(const std::string& str, uint64_t& val)
+{
+    return readUint64(str.c_str(), val);
+}
+
+//- Same as readUint64
+//  \return True if successful.
+inline bool read(const char* buf, uint64_t& val)
+{
+    return readUint64(buf, val);
+}
+
+//- Same as readUint64
+//  \return True if successful.
+inline bool read(const std::string& str, uint64_t& val)
+{
+    return readUint64(str, val);
+}
+
+
+Istream& operator>>(Istream& is, uint64_t& val);
+Ostream& operator<<(Ostream& os, const uint64_t val);
+
+// On Darwin:
+// unsigned long is not unambiguously (uint32_t | uint64_t)
+// - explicitly resolve for output
+#ifdef __APPLE__
+    Ostream& operator<<(Ostream& os, const unsigned long val);
+#endif
+
+
+/*---------------------------------------------------------------------------*\
+                       Specialization pTraits<uint64_t>
+\*---------------------------------------------------------------------------*/
+
+//- Template specialization for pTraits<uint64_t>
 template<>
 class pTraits<uint64_t>
 {
@@ -76,20 +137,22 @@ class pTraits<uint64_t>
 
 public:
 
-    //- Component type
-    typedef uint64_t cmptType;
+    // Typedefs
+
+        //- Component type
+        typedef uint64_t cmptType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Dimensionality of space
-        static const direction dim = 3;
+        static constexpr direction dim = 3;
 
         //- Rank of uint64_t is 0
-        static const direction rank = 0;
+        static constexpr direction rank = 0;
 
         //- Number of components in uint64_t is 1
-        static const direction nComponents = 1;
+        static constexpr direction nComponents = 1;
 
 
     // Static Data Members
@@ -100,30 +163,29 @@ public:
         static const uint64_t one;
         static const uint64_t min;
         static const uint64_t max;
+        static const uint64_t rootMax;
+        static const uint64_t rootMin;
 
 
     // Constructors
 
-        //- Construct from primitive
-        explicit pTraits(const uint64_t&);
+        //- Copy construct from primitive
+        explicit pTraits(uint64_t val) noexcept
+        :
+            p_(val)
+        {}
 
-        //- Construct from Istream
-        pTraits(Istream&);
+        //- Read construct from Istream
+        explicit pTraits(Istream& is);
 
 
     // Member Functions
 
-        //- Access to the uint64_t value
-        operator uint64_t() const
-        {
-            return p_;
-        }
+        //- Return the value
+        operator uint64_t() const noexcept { return p_; }
 
-        //- Access to the uint64_t value
-        operator uint64_t&()
-        {
-            return p_;
-        }
+        //- Access the value
+        operator uint64_t&() noexcept { return p_; }
 };
 
 

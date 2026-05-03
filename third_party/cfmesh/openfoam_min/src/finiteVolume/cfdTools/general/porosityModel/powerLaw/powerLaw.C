@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,22 +48,16 @@ namespace Foam
 Foam::porosityModels::powerLaw::powerLaw
 (
     const word& name,
+    const word& modelType,
     const fvMesh& mesh,
     const dictionary& dict,
-    const dictionary& coeffDict,
-    const word& cellZoneName
+    const wordRe& cellZoneName
 )
 :
-    porosityModel(name, mesh, dict, coeffDict, cellZoneName),
-    C0_(coeffDict.lookup<scalar>("C0")),
-    C1_(coeffDict.lookup<scalar>("C1")),
-    rhoName_(coeffDict.lookupOrDefault<word>("rho", "rho"))
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::porosityModels::powerLaw::~powerLaw()
+    porosityModel(name, modelType, mesh, dict, cellZoneName),
+    C0_(coeffs_.get<scalar>("C0")),
+    C1_(coeffs_.get<scalar>("C1")),
+    rhoName_(coeffs_.getOrDefault<word>("rho", "rho"))
 {}
 
 
@@ -80,7 +77,7 @@ void Foam::porosityModels::powerLaw::calcForce
     vectorField& force
 ) const
 {
-    scalarField Udiag(U.size(), 0.0);
+    scalarField Udiag(U.size(), Zero);
     const scalarField& V = mesh_.V();
 
     apply(Udiag, V, rho, U);
@@ -100,7 +97,7 @@ void Foam::porosityModels::powerLaw::correct
 
     if (UEqn.dimensions() == dimForce)
     {
-        const volScalarField& rho = mesh_.lookupObject<volScalarField>
+        const auto& rho = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(rhoName_, U.group())
         );
@@ -116,6 +113,21 @@ void Foam::porosityModels::powerLaw::correct
 
 void Foam::porosityModels::powerLaw::correct
 (
+    fvVectorMatrix& UEqn,
+    const volScalarField& rho,
+    const volScalarField& mu
+) const
+{
+    const vectorField& U = UEqn.psi();
+    const scalarField& V = mesh_.V();
+    scalarField& Udiag = UEqn.diag();
+
+    apply(Udiag, V, rho, U);
+}
+
+
+void Foam::porosityModels::powerLaw::correct
+(
     const fvVectorMatrix& UEqn,
     volTensorField& AU
 ) const
@@ -124,7 +136,7 @@ void Foam::porosityModels::powerLaw::correct
 
     if (UEqn.dimensions() == dimForce)
     {
-        const volScalarField& rho = mesh_.lookupObject<volScalarField>
+        const auto& rho = mesh_.lookupObject<volScalarField>
         (
             IOobject::groupName(rhoName_, U.group())
         );
@@ -135,6 +147,14 @@ void Foam::porosityModels::powerLaw::correct
     {
         apply(AU, geometricOneField(), U);
     }
+}
+
+
+bool Foam::porosityModels::powerLaw::writeData(Ostream& os) const
+{
+    dict_.writeEntry(name_, os);
+
+    return true;
 }
 
 

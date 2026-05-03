@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,20 +28,29 @@ License
 
 #include "slicedFvsPatchField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
 (
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const Field<Type>& completeField
+    const Field<Type>& completeOrBoundaryField,
+    const bool isBoundaryOnly
 )
 :
     fvsPatchField<Type>(p, iF, Field<Type>())
 {
-    // Set the fvsPatchField to a slice of the given complete field
-    UList<Type>::shallowCopy(p.patchSlice(completeField));
+    if (isBoundaryOnly)
+    {
+        // Set to a slice of the boundary field
+        UList<Type>::shallowCopy(p.boundarySlice(completeOrBoundaryField));
+    }
+    else
+    {
+        // Set to a slice of the complete field
+        UList<Type>::shallowCopy(p.patchSlice(completeOrBoundaryField));
+    }
 }
 
 
@@ -46,14 +58,42 @@ template<class Type>
 Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, surfaceMesh>& iF,
-    const fvsPatchField<Type>& pf
+    const DimensionedField<Type, surfaceMesh>& iF
 )
 :
-    fvsPatchField<Type>(p, iF, Field<Type>())
+    fvsPatchField<Type>(p, iF)
+{}
+
+
+template<class Type>
+Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, surfaceMesh>& iF,
+    const dictionary& dict
+)
+:
+    fvsPatchField<Type>(p, iF)  // bypass dictionary constructor
 {
-    // Set the fvsPatchField values to the given fvsPatchField
-    UList<Type>::shallowCopy(pf);
+    fvsPatchFieldBase::readDict(dict);
+    // Read "value" if present...
+
+    NotImplemented;
+}
+
+
+template<class Type>
+Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
+(
+    const slicedFvsPatchField<Type>& ptf,
+    const fvPatch& p,
+    const DimensionedField<Type, surfaceMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fvsPatchField<Type>(ptf, p, iF, mapper)
+{
+    NotImplemented;
 }
 
 
@@ -72,17 +112,13 @@ Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
 
 
 template<class Type>
-Foam::tmp<Foam::fvsPatchField<Type>>
-Foam::slicedFvsPatchField<Type>::clone
+Foam::slicedFvsPatchField<Type>::slicedFvsPatchField
 (
-    const DimensionedField<Type, surfaceMesh>& iF
-) const
-{
-    return tmp<fvsPatchField<Type>>
-    (
-        new slicedFvsPatchField<Type>(*this, iF)
-    );
-}
+    const slicedFvsPatchField<Type>& ptf
+)
+:
+    slicedFvsPatchField<Type>(ptf, ptf.internalField())
+{}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -90,9 +126,8 @@ Foam::slicedFvsPatchField<Type>::clone
 template<class Type>
 Foam::slicedFvsPatchField<Type>::~slicedFvsPatchField()
 {
-    // Set the fvsPatchField storage pointer to nullptr before its destruction
-    // to protect the field it a slice of.
-    UList<Type>::shallowCopy(UList<Type>(nullptr, 0));
+    // Set to nullptr to avoid deletion of underlying field
+    UList<Type>::shallowCopy(nullptr);
 }
 
 
@@ -102,7 +137,7 @@ template<class Type>
 void Foam::slicedFvsPatchField<Type>::write(Ostream& os) const
 {
     fvsPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvsPatchField<Type>::writeValueEntry(os);
 }
 
 

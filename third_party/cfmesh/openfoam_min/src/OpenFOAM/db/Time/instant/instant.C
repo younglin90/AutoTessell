@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,86 +26,95 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "instantList.H"
+#include "instant.H"
 #include "Time.H"
+#include "Pair.H"
+#include "UList.H"
+#include <cstdlib>  // std::atof
+#include <utility>  // std::move
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 const char* const Foam::instant::typeName = "instant";
 
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+Foam::label Foam::instant::findStart
+(
+    const UList<instant>& times,
+    const scalar timeVal
+)
+{
+    for (label i = 0; i < times.size(); ++i)
+    {
+        if (timeVal <= times[i].value())
+        {
+            return i;
+        }
+    }
+    return 0;
+}
+
+
+Foam::Pair<Foam::label> Foam::instant::findRange
+(
+    const UList<instant>& times,
+    const scalar timeVal,
+    const label start
+)
+{
+    Pair<label> range(start, -1);  // lower/upper
+
+    for (label i = start+1; i < times.size(); ++i)
+    {
+        if (timeVal < times[i].value())
+        {
+            break;
+        }
+        else
+        {
+            range.first() = i;
+        }
+    }
+
+    if (range.first() < 0 || range.first() >= times.size())
+    {
+        // Invalid
+        return Pair<label>(-1, -1);
+    }
+
+    if (range.first() < times.size()-1)
+    {
+        // Upper part of range within bounds
+        range.second() = range.first()+1;
+    }
+
+    return range;
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::instant::instant()
-{}
-
-Foam::instant::instant(const scalar val, const word& tname)
+Foam::instant::instant(scalar timeValue)
 :
-    value_(val),
-    name_(tname)
+    Instant<word>(timeValue, Time::timeName(timeValue))
 {}
 
-Foam::instant::instant(const scalar val)
+
+Foam::instant::instant(const word& timeName)
 :
-    value_(val),
-    name_(Time::timeName(val))
-{}
+    Instant<word>(0, timeName)
+{
+    value() = std::atof(name().c_str());
+}
 
-Foam::instant::instant(const word& tname)
+
+Foam::instant::instant(word&& timeName)
 :
-    value_(atof(tname.c_str())),
-    name_(tname)
-{}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-bool Foam::instant::equal(const scalar b) const
+    Instant<word>(0, std::move(timeName))
 {
-    return (value_ < b + small  && value_ > b - small);
-}
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-bool Foam::operator==(const instant& a, const instant& b)
-{
-    return a.equal(b.value_);
-}
-
-
-bool Foam::operator!=(const instant& a, const instant& b)
-{
-    return !operator==(a, b);
-}
-
-
-bool Foam::operator<(const instant& a, const instant& b)
-{
-    return a.value_ < b.value_;
-}
-
-
-bool Foam::operator>(const instant& a, const instant& b)
-{
-    return a.value_ > b.value_;
-}
-
-
-// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
-
-Foam::Istream& Foam::operator>>(Istream& is, instant& I)
-{
-    is >> I.value_ >> I.name_;
-
-    return is;
-}
-
-
-Foam::Ostream& Foam::operator<<(Ostream& os, const instant& I)
-{
-   os << I.value_ << tab << I.name_;
-
-   return os;
+    value() = std::atof(name().c_str());
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,7 +34,7 @@ template<class Type>
 Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     basicSymmetryFvPatchField<Type>(p, iF),
@@ -43,36 +45,10 @@ Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
 template<class Type>
 Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
 (
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    basicSymmetryFvPatchField<Type>(p, iF, dict),
-    symmetryPlanePatch_(refCast<const symmetryPlaneFvPatch>(p))
-{
-    if (!isType<symmetryPlaneFvPatch>(p))
-    {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "\n    patch type '" << p.type()
-            << "' not constraint type '" << typeName << "'"
-            << "\n    for patch " << p.name()
-            << " of field " << this->internalField().name()
-            << " in file " << this->internalField().objectPath()
-            << exit(FatalIOError);
-    }
-}
-
-
-template<class Type>
-Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
-(
     const symmetryPlaneFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     basicSymmetryFvPatchField<Type>(ptf, p, iF, mapper),
@@ -81,6 +57,31 @@ Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
     if (!isType<symmetryPlaneFvPatch>(this->patch()))
     {
         FatalErrorInFunction
+            << "\n    patch type '" << p.type()
+            << "' not constraint type '" << typeName << "'"
+            << "\n    for patch " << p.name()
+            << " of field " << this->internalField().name()
+            << " in file " << this->internalField().objectPath()
+            << exit(FatalError);
+    }
+}
+
+
+template<class Type>
+Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    basicSymmetryFvPatchField<Type>(p, iF, dict),
+    symmetryPlanePatch_(refCast<const symmetryPlaneFvPatch>(p, dict))
+{
+    if (!isType<symmetryPlaneFvPatch>(p))
+    {
+        FatalIOErrorInFunction(dict)
+            << "\n    patch type '" << p.type()
             << "' not constraint type '" << typeName << "'"
             << "\n    for patch " << p.name()
             << " of field " << this->internalField().name()
@@ -93,8 +94,19 @@ Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
 template<class Type>
 Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
 (
+    const symmetryPlaneFvPatchField<Type>& ptf
+)
+:
+    basicSymmetryFvPatchField<Type>(ptf),
+    symmetryPlanePatch_(ptf.symmetryPlanePatch_)
+{}
+
+
+template<class Type>
+Foam::symmetryPlaneFvPatchField<Type>::symmetryPlaneFvPatchField
+(
     const symmetryPlaneFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     basicSymmetryFvPatchField<Type>(ptf, iF),
@@ -145,27 +157,21 @@ Foam::symmetryPlaneFvPatchField<Type>::snGradTransformDiag() const
 {
     vector nHat(symmetryPlanePatch_.n());
 
-    const vector diag
-    (
-        mag(nHat.component(vector::X)),
-        mag(nHat.component(vector::Y)),
-        mag(nHat.component(vector::Z))
-    );
+    const vector diag(mag(nHat.x()), mag(nHat.y()), mag(nHat.z()));
 
-    return tmp<Field<Type>>
+    return tmp<Field<Type>>::New
     (
-        new Field<Type>
+        this->size(),
+        transformMask<Type>
         (
-            this->size(),
-            transformMask<Type>
+            //pow<vector, pTraits<Type>::rank>(diag)
+            pow
             (
-                // pow<vector, pTraits<Type>::rank>(diag)
-                pow
-                (
-                    diag,
-                    pTraits<typename powProduct<vector, pTraits<Type>::rank>
-                    ::type>::zero
-                )
+                diag,
+                pTraits
+                <
+                    typename powProduct<vector, pTraits<Type>::rank>::type
+                >::zero
             )
         )
     );

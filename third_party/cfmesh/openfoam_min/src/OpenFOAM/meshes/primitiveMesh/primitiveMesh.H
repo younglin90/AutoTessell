@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,8 +50,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef primitiveMesh_H
-#define primitiveMesh_H
+#ifndef Foam_primitiveMesh_H
+#define Foam_primitiveMesh_H
 
 #include "DynamicList.H"
 #include "edgeList.H"
@@ -66,15 +69,17 @@ SourceFiles
 namespace Foam
 {
 
-class PackedBoolList;
+// Forward Declarations
+class bitSet;
+class boundBox;
 
 /*---------------------------------------------------------------------------*\
-                        Class primitiveMesh Declaration
+                      Class primitiveMesh Declaration
 \*---------------------------------------------------------------------------*/
 
 class primitiveMesh
 {
-    // Private Data
+    // Permanent data
 
         // Primitive size data
 
@@ -90,7 +95,7 @@ class primitiveMesh
             //- Number of internal edges using 0 or 1 boundary points
             mutable label nInternal1Edges_;
 
-            //- Number of internal edges using 0,1 or 2boundary points
+            //- Number of internal edges using 0,1 or 2 boundary points
             mutable label nInternalEdges_;
 
             //- Number of edges
@@ -174,13 +179,17 @@ class primitiveMesh
             //- Face areas
             mutable vectorField* faceAreasPtr_;
 
-            //- Face area magnitudes
-            mutable scalarField* magFaceAreasPtr_;
-
 
     // Private Member Functions
 
-        // Topological calculations
+        //- No copy construct
+        primitiveMesh(const primitiveMesh&) = delete;
+
+        //- No copy assignment
+        void operator=(const primitiveMesh&) = delete;
+
+
+        // Topological Calculations
 
             //- Calculate cell shapes
             void calcCellShapes() const;
@@ -197,6 +206,9 @@ class primitiveMesh
             //- Calculate edge list
             void calcCellEdges() const;
 
+            //- Calculate cell-point addressing
+            void calcCellPoints() const;
+
             //- Calculate point-point addressing
             void calcPointPoints() const;
 
@@ -204,24 +216,30 @@ class primitiveMesh
             //  During edge calculation, a larger set of data is assembled.
             //  Create and destroy as a set, using clearOutEdges()
             void calcEdges(const bool doFaceEdges) const;
-
             void clearOutEdges();
 
-            //- Helper: return (after optional creation) edge between two points
-            static label getEdge
-            (
-                List<DynamicList<label>>&,
-                DynamicList<edge>&,
-                const label,
-                const label
-            );
 
-            //- For on-the-fly addressing calculation
-            static label findFirstCommonElementFromSortedLists
-            (
-                const labelList&,
-                const labelList&
-            );
+protected:
+
+    // Static data members
+
+        //- Static data to control mesh checking
+
+            //- Cell closedness warning threshold
+            //  set as the fraction of un-closed area to closed area
+            static scalar closedThreshold_;
+
+            //- Aspect ratio warning threshold
+            static scalar aspectThreshold_;
+
+            //- Non-orthogonality warning threshold in deg
+            static scalar nonOrthThreshold_;
+
+            //- Skewness warning threshold
+            static scalar skewThreshold_;
+
+            //- Threshold where faces are considered coplanar
+            static scalar planarCosAngle_;
 
 
         // Geometrical calculations
@@ -229,55 +247,134 @@ class primitiveMesh
             //- Calculate face centres and areas
             void calcFaceCentresAndAreas() const;
 
-            //- Calculate face centres and areas
-            void makeFaceCentresAndAreas
-            (
-                const pointField& p,
-                vectorField& fCtrs,
-                vectorField& fAreas,
-                scalarField& magfAreas
-            ) const;
-
             //- Calculate cell centres and volumes
             void calcCellCentresAndVols() const;
-
-            //- Calculate cell centres and volumes
-            void makeCellCentresAndVols
-            (
-                const vectorField& fCtrs,
-                const vectorField& fAreas,
-                vectorField& cellCtrs,
-                scalarField& cellVols
-            ) const;
 
             //- Calculate edge vectors
             void calcEdgeVectors() const;
 
 
-protected:
+        // Mesh checking
 
-    // Protected Static Member Functions
+            //- Check if all points on face are shared with another face.
+            bool checkDuplicateFaces
+            (
+                const label,
+                const Map<label>&,
+                label& nBaffleFaces,
+                labelHashSet*
+            ) const;
 
-        //- Test if the supplied methods are the same. Same type overload.
-        //  Compares pointers.
-        template<class Class, class Type>
-        static inline bool isMethod
-        (
-            const Type& (Class::*method)() const,
-            const Type& (Class::*otherMethod)() const
-        );
+            //- Check that shared points are in consecutive order.
+            bool checkCommonOrder
+            (
+                const label,
+                const Map<label>&,
+                labelHashSet*
+            ) const;
 
-        //- Test if the supplied methods are the same. Different type
-        //  overload. Returns false.
-        template<class Class, class Type, class OtherType>
-        static inline bool isMethod
-        (
-            const Type& (Class::*method)() const,
-            const OtherType& (Class::*otherMethod)() const
-        );
+            //- Check boundary for closedness
+            bool checkClosedBoundary
+            (
+                const vectorField& areas,
+                const bool report,
+                const bitSet& internalOrCoupledFaces
+            ) const;
 
+            //- Check cells for closedness
+            bool checkClosedCells
+            (
+                const vectorField& faceAreas,
+                const scalarField& cellVolumes,
+                const bool report,
+                labelHashSet* setPtr,
+                labelHashSet* aspectSetPtr,
+                const Vector<label>& meshD
+            ) const;
 
-    // Protected Constructors
+            //- Check for negative face areas
+            bool checkFaceAreas
+            (
+                const vectorField& faceAreas,
+                const bool report,
+                const bool detailedReport,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check for negative cell volumes
+            bool checkCellVolumes
+            (
+                const scalarField& vols,
+                const bool report,
+                const bool detailedReport,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check for non-orthogonality
+            bool checkFaceOrthogonality
+            (
+                const vectorField& fAreas,
+                const vectorField& cellCtrs,
+                const bool report,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check face pyramid volume
+            bool checkFacePyramids
+            (
+                const pointField& points,
+                const vectorField& ctrs,
+                const bool report,
+                const bool detailedReport,
+                const scalar minPyrVol,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check face skewness
+            bool checkFaceSkewness
+            (
+                const pointField& points,
+                const vectorField& fCtrs,
+                const vectorField& fAreas,
+                const vectorField& cellCtrs,
+                const bool report,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check face angles
+            //  Allows a slight non-convexity.  E.g. maxDeg = 10 allows for
+            //  angles < 190 (or 10 degrees concavity) (if truly concave and
+            //  points not visible from face centre the face-pyramid check in
+            //  checkMesh will fail)
+            bool checkFaceAngles
+            (
+                const pointField& points,
+                const vectorField& faceAreas,
+                const bool report,
+                const scalar maxDeg,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check face warpage
+            bool checkFaceFlatness
+            (
+                const pointField& points,
+                const vectorField& faceCentres,
+                const vectorField& faceAreas,
+                const bool report,
+                const scalar warnFlatness,
+                labelHashSet* setPtr
+            ) const;
+
+            //- Check for concave cells by the planes of faces
+            bool checkConcaveCells
+            (
+                const vectorField& fAreas,
+                const pointField& fCentres,
+                const bool report,
+                labelHashSet* setPtr
+            ) const;
+
 
         //- Construct null
         primitiveMesh();
@@ -285,41 +382,39 @@ protected:
 
 public:
 
-    //- Runtime type information
-    ClassName("primitiveMesh");
+        // Static data
 
+            ClassName("primitiveMesh");
 
-    // Static data
+            //- Estimated number of cells per edge
+            static const unsigned cellsPerEdge_ = 4;
 
-        //- Estimated number of cells per edge
-        static const unsigned cellsPerEdge_ = 4;
+            //- Estimated number of cells per point
+            static const unsigned cellsPerPoint_ = 8;
 
-        //- Estimated number of cells per point
-        static const unsigned cellsPerPoint_ = 8;
+            //- Estimated number of faces per cell
+            static const unsigned facesPerCell_ = 6;
 
-        //- Estimated number of faces per cell
-        static const unsigned facesPerCell_ = 6;
+            //- Estimated number of faces per edge
+            static const unsigned facesPerEdge_ = 4;
 
-        //- Estimated number of faces per edge
-        static const unsigned facesPerEdge_ = 4;
+            //- Estimated number of faces per point
+            static const unsigned facesPerPoint_ = 12;
 
-        //- Estimated number of faces per point
-        static const unsigned facesPerPoint_ = 12;
+            //- Estimated number of edges per cell
+            static const unsigned edgesPerCell_ = 12;
 
-        //- Estimated number of edges per cell
-        static const unsigned edgesPerCell_ = 12;
+            //- Estimated number of edges per cell
+            static const unsigned edgesPerFace_ = 4;
 
-        //- Estimated number of edges per cell
-        static const unsigned edgesPerFace_ = 4;
+            //- Estimated number of edges per point
+            static const unsigned edgesPerPoint_ = 6;
 
-        //- Estimated number of edges per point
-        static const unsigned edgesPerPoint_ = 6;
+            //- Estimated number of points per cell
+            static const unsigned pointsPerCell_ = 8;
 
-        //- Estimated number of points per cell
-        static const unsigned pointsPerCell_ = 8;
-
-        //- Estimated number of points per face
-        static const unsigned pointsPerFace_ = 4;
+            //- Estimated number of points per face
+            static const unsigned pointsPerFace_ = 4;
 
 
     // Constructors
@@ -332,12 +427,6 @@ public:
             const label nFaces,
             const label nCells
         );
-
-        //- Move constructor
-        primitiveMesh(primitiveMesh&&) = default;
-
-        //- Disallow default bitwise copy construction
-        primitiveMesh(const primitiveMesh&) = delete;
 
 
     //- Destructor
@@ -365,41 +454,59 @@ public:
             cellList& cells
         );
 
-        //- Reset this primitiveMesh given the primitive array sizes and cells
-        void reset
+        //- Reset the local geometry
+        void resetGeometry
         (
-            const label nPoints,
-            const label nInternalFaces,
-            const label nFaces,
-            const label nCells,
-            cellList&& cells
+            pointField&& faceCentres,
+            pointField&& faceAreas,
+            pointField&& cellCentres,
+            scalarField&& cellVolumes
         );
+
+        //- Initialise all non-demand-driven data
+        virtual bool init(const bool doInit)
+        {
+            return false;
+        }
 
 
         // Access
 
             // Mesh size parameters
 
-                inline label nPoints() const;
+                //- Number of mesh points
+                inline label nPoints() const noexcept;
+
+                //- Number of mesh edges
                 inline label nEdges() const;
-                inline label nInternalFaces() const;
-                inline label nFaces() const;
-                inline label nCells() const;
 
-                // If points are ordered (nInternalPoints != -1):
+                //- Number of mesh faces
+                inline label nFaces() const noexcept;
 
-                    //- Points not on boundary
-                    inline label nInternalPoints() const;
+                //- Number of mesh cells
+                inline label nCells() const noexcept;
 
-                    //- Internal edges (i.e. not on boundary face) using
-                    //  no boundary point
-                    inline label nInternal0Edges() const;
+                //- Number of internal faces
+                inline label nInternalFaces() const noexcept;
 
-                    //- Internal edges using 0 or 1 boundary point
-                    inline label nInternal1Edges() const;
+                //- Number of boundary faces (== nFaces - nInternalFaces)
+                inline label nBoundaryFaces() const noexcept;
 
-                    //- Internal edges using 0,1 or 2 boundary points
-                    inline label nInternalEdges() const;
+
+            // If points are ordered (nInternalPoints != -1):
+
+                //- Points not on boundary
+                inline label nInternalPoints() const noexcept;
+
+                //- Internal edges (i.e. not on boundary face) using
+                //- no boundary point
+                inline label nInternal0Edges() const;
+
+                //- Internal edges using 0 or 1 boundary point
+                inline label nInternal1Edges() const;
+
+                //- Internal edges using 0,1 or 2 boundary points
+                inline label nInternalEdges() const;
 
 
             // Primitive mesh data
@@ -478,13 +585,12 @@ public:
                 const vectorField& faceCentres() const;
                 const scalarField& cellVolumes() const;
                 const vectorField& faceAreas() const;
-                const scalarField& magFaceAreas() const;
 
 
             // Mesh motion
 
-                //- Move points, returns volumes swept by faces in motion
-                tmp<scalarField> movePoints
+                //- Move points
+                void movePoints
                 (
                     const pointField& p,
                     const pointField& oldP
@@ -492,20 +598,214 @@ public:
 
 
             //- Return true if given face label is internal to the mesh
-            inline bool isInternalFace(const label faceIndex) const;
+            inline bool isInternalFace(const label faceIndex) const noexcept;
 
 
-        // Storage management
+            // Topological checks
+
+                //- Check face ordering
+                virtual bool checkUpperTriangular
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check cell zip-up
+                virtual bool checkCellsZipUp
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check uniqueness of face vertices
+                virtual bool checkFaceVertices
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check for unused points
+                virtual bool checkPoints
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check face-face connectivity
+                virtual bool checkFaceFaces
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+
+            // Geometric checks
+
+                //- Check boundary for closedness
+                virtual bool checkClosedBoundary(const bool report = false)
+                const;
+
+                //- Check cells for closedness
+                virtual bool checkClosedCells
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr,
+                    labelHashSet* highAspectSetPtr = nullptr,
+                    const Vector<label>& solutionD = Vector<label>::one
+                ) const;
+
+                //- Check for negative face areas
+                virtual bool checkFaceAreas
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check for negative cell volumes
+                virtual bool checkCellVolumes
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check for non-orthogonality
+                virtual bool checkFaceOrthogonality
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check face pyramid volume
+                virtual bool checkFacePyramids
+                (
+                    const bool report = false,
+                    const scalar minPyrVol = -SMALL,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check face skewness
+                virtual bool checkFaceSkewness
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check face angles
+                virtual bool checkFaceAngles
+                (
+                    const bool report = false,
+                    const scalar maxSin = 10,    // In degrees
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check face warpage: decompose face and check ratio between
+                //  magnitude of sum of triangle areas and sum of magnitude of
+                //  triangle areas.
+                virtual bool checkFaceFlatness
+                (
+                    const bool report,
+                    const scalar warnFlatness,  // When to include in set.
+                    labelHashSet* setPtr
+                ) const;
+
+                //- Check for point-point-nearness,
+                //  e.g. colocated points which may be part of baffles.
+                virtual bool checkPointNearness
+                (
+                    const bool report,
+                    const scalar reportDistSqr,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check edge length
+                virtual bool checkEdgeLength
+                (
+                    const bool report,
+                    const scalar minLenSqr,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+                //- Check for concave cells by the planes of faces
+                virtual bool checkConcaveCells
+                (
+                    const bool report = false,
+                    labelHashSet* setPtr = nullptr
+                ) const;
+
+
+            //- Check mesh topology for correctness.
+            //  Returns false for no error.
+            virtual bool checkTopology(const bool report = false) const;
+
+            //- Check mesh geometry (& implicitly topology) for correctness.
+            //  Returns false for no error.
+            virtual bool checkGeometry(const bool report = false) const;
+
+            //- Check mesh for correctness. Returns false for no error.
+            virtual bool checkMesh(const bool report = false) const;
+
+            //- Set the closedness ratio warning threshold
+            static scalar setClosedThreshold(const scalar);
+
+            //- Set the aspect ratio warning threshold
+            static scalar setAspectThreshold(const scalar);
+
+            //- Set the non-orthogonality warning threshold in degrees
+            static scalar setNonOrthThreshold(const scalar);
+
+            //- Set the skewness warning threshold as percentage
+            //  of the face area vector
+            static scalar setSkewThreshold(const scalar);
+
+
+        // Useful derived info
+
+            //- The bounding box for given cell index
+            boundBox cellBb(const label celli) const;
+
+            //- Return true if the point in the cell bounding box.
+            //  The bounding box may be isotropically inflated by the fraction
+            //  inflationFraction
+            bool pointInCellBB
+            (
+                const point& p,
+                label celli,
+                scalar inflationFraction = 0
+            ) const;
+
+            //- Return true if the point is in the cell
+            bool pointInCell(const point& p, label celli) const;
+
+            //- Find the cell with the nearest cell centre to location
+            label findNearestCell(const point& location) const;
+
+            //- Find cell enclosing this location (-1 if not in mesh)
+            label findCell(const point& location) const;
+
+
+        //  Storage management
 
             //- Print a list of all the currently allocated mesh data
             void printAllocated() const;
 
-            //- Return whether the result of the given method has been allocated
-            template<class Type>
-            inline bool has
-            (
-                const Type& (primitiveMesh::*method)() const
-            ) const;
+            // Per storage whether allocated
+            inline bool hasCellShapes() const noexcept;
+            inline bool hasEdges() const noexcept;
+            inline bool hasCellCells() const noexcept;
+            inline bool hasEdgeCells() const noexcept;
+            inline bool hasPointCells() const noexcept;
+            inline bool hasCells() const noexcept;
+            inline bool hasEdgeFaces() const noexcept;
+            inline bool hasPointFaces() const noexcept;
+            inline bool hasCellEdges() const noexcept;
+            inline bool hasFaceEdges() const noexcept;
+            inline bool hasPointEdges() const noexcept;
+            inline bool hasPointPoints() const noexcept;
+            inline bool hasCellPoints() const noexcept;
+            inline bool hasCellCentres() const noexcept;
+            inline bool hasCellVolumes() const noexcept;
+            inline bool hasFaceCentres() const noexcept;
+            inline bool hasFaceAreas() const noexcept;
 
             // On-the-fly addressing calculation. These functions return either
             // a reference to the full addressing (if already calculated) or
@@ -526,6 +826,7 @@ public:
             const labelList& cellPoints
             (
                 const label celli,
+                labelHashSet&,
                 DynamicList<label>&
             ) const;
 
@@ -580,25 +881,27 @@ public:
             const labelList& cellEdges
             (
                 const label celli,
+                labelHashSet&,
                 DynamicList<label>&
             ) const;
 
             const labelList& cellEdges(const label celli) const;
 
+            //- Update all geometric data
+            virtual void updateGeom();
+
             //- Clear geometry
             void clearGeom();
+
+            //- Clear cell-based geometry only
+            //  Use with care! currently used by cyclicACMI
+            void clearCellGeom();
 
             //- Clear topological data
             void clearAddressing();
 
             //- Clear all geometry and addressing unnecessary for CFD
             void clearOut();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const primitiveMesh&) = delete;
 };
 
 

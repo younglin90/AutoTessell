@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,54 +31,86 @@ License
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::Sine<Type>::Sine
+Foam::Function1Types::Sine<Type>::Sine
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, Sine<Type>>(name),
-    amplitude_(Function1<Type>::New("amplitude", units, dict)),
-    constantAmplitude_(amplitude_->constant()),
-    frequency_(dict.lookup<scalar>("frequency", units::unitless/units.x)),
-    start_(dict.lookupOrDefault<scalar>("start", units.x, 0)),
-    level_(Function1<Type>::New("level", units, dict))
-{}
+    Function1<Type>(entryName, dict, obrPtr),
+    t0_(dict.getOrDefault<scalar>("t0", 0)),
+    amplitude_
+    (
+        Function1<scalar>::NewIfPresent("amplitude", dict, word::null, obrPtr)
+    ),
+    period_
+    (
+        Function1<scalar>::NewIfPresent("period", dict, word::null, obrPtr)
+    ),
+    frequency_(nullptr),
+    scale_(Function1<Type>::New("scale", dict, obrPtr)),
+    level_(Function1<Type>::New("level", dict, obrPtr))
+{
+    if (!period_)
+    {
+        frequency_ = Function1<scalar>::New("frequency", dict, obrPtr);
+    }
+}
 
 
 template<class Type>
-Foam::Function1s::Sine<Type>::Sine(const Sine<Type>& se)
+Foam::Function1Types::Sine<Type>::Sine(const Sine<Type>& rhs)
 :
-    FieldFunction1<Type, Sine<Type>>(se),
-    amplitude_(se.amplitude_, false),
-    constantAmplitude_(amplitude_->constant()),
-    frequency_(se.frequency_),
-    start_(se.start_),
-    level_(se.level_, false)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::Function1s::Sine<Type>::~Sine()
+    Function1<Type>(rhs),
+    t0_(rhs.t0_),
+    amplitude_(rhs.amplitude_.clone()),
+    period_(rhs.period_.clone()),
+    frequency_(rhs.frequency_.clone()),
+    scale_(rhs.scale_.clone()),
+    level_(rhs.level_.clone())
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::Function1s::Sine<Type>::write
-(
-    Ostream& os,
-    const unitSets& units
-) const
+void Foam::Function1Types::Sine<Type>::userTimeToTime(const Time& t)
 {
-    writeEntry(os, units, amplitude_());
-    writeEntry(os, "frequency", units::unitless/units.x, frequency_);
-    writeEntry(os, "start", units.x, start_);
-    writeEntry(os, units, level_());
+    t0_ = t.userTimeToTime(t0_);
+}
+
+
+template<class Type>
+void Foam::Function1Types::Sine<Type>::writeEntries(Ostream& os) const
+{
+    os.writeEntryIfDifferent<scalar>("t0", 0, t0_);
+    if (amplitude_)
+    {
+        amplitude_->writeData(os);
+    }
+    if (period_)
+    {
+        period_->writeData(os);
+    }
+    if (frequency_)
+    {
+        frequency_->writeData(os);
+    }
+    scale_->writeData(os);
+    level_->writeData(os);
+}
+
+
+template<class Type>
+void Foam::Function1Types::Sine<Type>::writeData(Ostream& os) const
+{
+    Function1<Type>::writeData(os);
+    os.endEntry();
+
+    os.beginBlock(word(this->name() + "Coeffs"));
+    writeEntries(os);
+    os.endBlock();
 }
 
 

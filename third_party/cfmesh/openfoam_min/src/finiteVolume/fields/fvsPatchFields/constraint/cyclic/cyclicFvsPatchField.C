@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +26,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "cyclicFvsPatchField.H"
-#include "GeometricField.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -49,14 +50,12 @@ Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
 )
 :
     coupledFvsPatchField<Type>(p, iF, dict),
-    cyclicPatch_(refCast<const cyclicFvPatch>(p))
+    cyclicPatch_(refCast<const cyclicFvPatch>(p, dict))
 {
     if (!isA<cyclicFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "patch " << this->patch().index() << " not cyclic type. "
+        FatalIOErrorInFunction(dict)
+            << "patch " << this->patch().index() << " not cyclic type. "
             << "Patch type = " << p.type()
             << exit(FatalIOError);
     }
@@ -69,7 +68,7 @@ Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
     const cyclicFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     coupledFvsPatchField<Type>(ptf, p, iF, mapper),
@@ -90,6 +89,17 @@ Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
 template<class Type>
 Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
 (
+    const cyclicFvsPatchField<Type>& ptf
+)
+:
+    coupledFvsPatchField<Type>(ptf),
+    cyclicPatch_(ptf.cyclicPatch_)
+{}
+
+
+template<class Type>
+Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
+(
     const cyclicFvsPatchField<Type>& ptf,
     const DimensionedField<Type, surfaceMesh>& iF
 )
@@ -97,31 +107,6 @@ Foam::cyclicFvsPatchField<Type>::cyclicFvsPatchField
     coupledFvsPatchField<Type>(ptf, iF),
     cyclicPatch_(ptf.cyclicPatch_)
 {}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::tmp<Foam::Field<Type>>
-Foam::cyclicFvsPatchField<Type>::patchNeighbourField
-(
-    const Pstream::commsTypes commsType
-) const
-{
-    const SurfaceField<Type>& gf =
-        refCast<const SurfaceField<Type>>(this->internalField());
-
-    const cyclicFvPatch& cp = refCast<const cyclicFvPatch>(this->patch());
-
-    tmp<Field<Type>> tresult
-    (
-        new Field<Type>(gf.boundaryField()[cp.nbrPatchIndex()])
-    );
-
-    cp.transform().transform(tresult.ref(), tresult.ref());
-
-    return tresult;
-}
 
 
 // ************************************************************************* //

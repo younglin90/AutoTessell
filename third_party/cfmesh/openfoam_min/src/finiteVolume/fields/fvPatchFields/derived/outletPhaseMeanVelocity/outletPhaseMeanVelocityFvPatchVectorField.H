@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::outletPhaseMeanVelocityFvPatchVectorField
 
+Group
+    grpOutletBoundaryConditions
+
 Description
     This boundary condition adjusts the velocity for the given phase to achieve
     the specified mean thus causing the phase-fraction to adjust according to
@@ -35,7 +40,7 @@ Description
 Usage
     \table
         Property     | Description             | Required    | Default value
-        UnMean       | mean velocity normal to the boundary [m/s] | yes |
+        Umean        | mean velocity normal to the boundary [m/s] | yes |
         alpha        | phase-fraction field    | yes |
     \endtable
 
@@ -44,7 +49,7 @@ Usage
     <patchName>
     {
         type            outletPhaseMeanVelocity;
-        UnMean          1.2;
+        Umean           1.2;
         alpha           alpha.water;
         value           uniform (1.2 0 0);
     }
@@ -63,24 +68,23 @@ SourceFiles
 #define outletPhaseMeanVelocityFvPatchVectorField_H
 
 #include "mixedFvPatchFields.H"
-#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 /*---------------------------------------------------------------------------*\
-          Class outletPhaseMeanVelocityFvPatchVectorField Declaration
+    Class outletPhaseMeanVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class outletPhaseMeanVelocityFvPatchVectorField
 :
     public mixedFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
-        //- Mean velocity normal to the boundary
-        autoPtr<Function1<scalar>> UnMean_;
+        //- Inlet integral flow rate
+        scalar Umean_;
 
         //- Name of the phase-fraction field
         word alphaName_;
@@ -94,11 +98,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        outletPhaseMeanVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         outletPhaseMeanVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -109,53 +120,61 @@ public:
         (
             const outletPhaseMeanVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         outletPhaseMeanVelocityFvPatchVectorField
         (
             const outletPhaseMeanVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         outletPhaseMeanVelocityFvPatchVectorField
         (
             const outletPhaseMeanVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new outletPhaseMeanVelocityFvPatchVectorField
-                (
-                    *this,
-                    iF
-                )
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
+
+        // Access
+
+            //- Return the flux
+            scalar Umean() const
+            {
+                return Umean_;
+            }
+
+            //- Return reference to the flux to allow adjustment
+            scalar& Umean()
+            {
+                return Umean_;
+            }
+
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchVectorField::operator=;
 };
 
 

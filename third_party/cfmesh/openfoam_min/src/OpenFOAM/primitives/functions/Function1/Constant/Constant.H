@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,24 +25,36 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::Function1s::Constant
+    Foam::Function1Types::Constant
 
 Description
     Templated function that returns a constant value.
 
-Usage
-    For entry \<name\> returning the value <value>:
+    Usage - for entry \<entryName\> returning the value \<value\>,
+    can be specified is different formats.
+
+    Inline specification:
     \verbatim
-        <name>    constant  <value>
+        <entryName>  constant <value>
+    \endverbatim
+
+    Dictionary format:
+    \verbatim
+        <entryName>
+        {
+            type    constant;
+            value   <value>;
+        }
     \endverbatim
 
 SourceFiles
     Constant.C
+    ConstantI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Constant_H
-#define Constant_H
+#ifndef Foam_Function1Types_Constant_H
+#define Foam_Function1Types_Constant_H
 
 #include "Function1.H"
 
@@ -47,22 +62,22 @@ SourceFiles
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class Constant Declaration
+                           Class Constant Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class Constant
 :
-    public FieldFunction1<Type, Constant<Type>>
+    public Function1<Type>
 {
     // Private Data
 
         //- Constant value
-        const Type value_;
+        Type value_;
 
 
 public:
@@ -71,61 +86,74 @@ public:
     TypeName("constant");
 
 
+    // Generated Methods
+
+        //- No copy assignment
+        void operator=(const Constant<Type>&) = delete;
+
+
     // Constructors
 
-        //- Construct from name and value
-        Constant(const word& name, const Type& val);
-
-        //- Construct from name and dictionary
+        //- Construct from components
         Constant
         (
-            const word& name,
-            const unitSets& units,
-            const dictionary& dict
+            const word& entryName,
+            const Type& value,
+            const objectRegistry* obrPtr = nullptr
         );
 
-        //- Construct from name and Istream
-        Constant(const word& name, const unitSets& units, Istream& is);
+        //- Construct from entry name, dictionary and optional registry
+        Constant
+        (
+            const word& entryName,
+            const dictionary& dict,
+            const objectRegistry* obrPtr = nullptr
+        );
+
+        //- Construct from entry name and Istream
+        //  Reads the constant value without the Function1 type
+        //  for backward compatibility
+        Constant(const word& entryName, Istream& is);
 
         //- Copy constructor
-        Constant(const Constant<Type>& cnst);
+        explicit Constant(const Constant<Type>& rhs);
 
-        //- Construct and return a clone
+        //- Return a clone
         virtual tmp<Function1<Type>> clone() const
         {
-            return tmp<Function1<Type>>(new Constant<Type>(*this));
+            return Function1<Type>::Clone(*this);
         }
 
 
     //- Destructor
-    virtual ~Constant();
+    virtual ~Constant() = default;
 
 
     // Member Functions
+
+        //- Change the constant value
+        inline void reset(const Type& val);
+
+        //- Value is independent of x
+        virtual inline bool constant() const { return true; }
 
         //- Return constant value
         virtual inline Type value(const scalar) const;
 
         //- Integrate between two values
-        virtual inline Type integral(const scalar x1, const scalar x2) const;
+        virtual inline Type integrate(const scalar x1, const scalar x2) const;
 
-        //- Is this function guaranteed to be constant?
-        virtual inline bool constant() const;
+        //- Return value as a function of (scalar) independent variable
+        virtual tmp<Field<Type>> value(const scalarField& x) const;
 
-        //- Write in dictionary format
-        virtual void write(Ostream& os, const unitSets& units) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const Constant<Type>&) = delete;
+        //- Write as primitive (inline) format
+        virtual void writeData(Ostream& os) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Function1s
+} // End namespace Function1Types
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

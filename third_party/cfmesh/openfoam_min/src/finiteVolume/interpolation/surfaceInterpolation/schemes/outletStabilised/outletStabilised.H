@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+   \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +26,15 @@ License
 Class
     Foam::outletStabilised
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Outlet-stabilised interpolation scheme which applies upwind interpolation
+    Outlet-stabilised interpolation scheme which applies upwind differencing
     to the faces of the cells adjacent to outlets.
 
     This is particularly useful to stabilise the velocity at entrainment
-    boundaries for LES cases using linear or other centred interpolation
+    boundaries for LES cases using linear or other centred differencing
     schemes.
 
 SourceFiles
@@ -41,6 +46,12 @@ SourceFiles
 #define outletStabilised_H
 
 #include "surfaceInterpolationScheme.H"
+#include "skewCorrectionVectors.H"
+#include "linear.H"
+#include "gaussGrad.H"
+#include "zeroGradientFvPatchField.H"
+#include "mixedFvPatchField.H"
+#include "directionMixedFvPatchField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -56,10 +67,19 @@ class outletStabilised
 :
     public surfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private member data
 
         const surfaceScalarField& faceFlux_;
         tmp<surfaceInterpolationScheme<Type>> tScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        outletStabilised(const outletStabilised&) = delete;
+
+        //- No copy assignment
+        void operator=(const outletStabilised&) = delete;
 
 
 public:
@@ -108,17 +128,55 @@ public:
             )
         {}
 
-        //- Disallow default bitwise copy construction
-        outletStabilised(const outletStabilised&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
-        inline tmp<surfaceScalarField> weights
+        tmp<surfaceScalarField> weights
         (
-            const VolField<Type>& vf
-        ) const;
+            const GeometricField<Type, fvPatchField, volMesh>& vf
+        ) const
+        {
+            tmp<surfaceScalarField> tw = tScheme_().weights(vf);
+            surfaceScalarField& w = tw.ref();
+
+            const fvMesh& mesh_ = this->mesh();
+            const cellList& cells = mesh_.cells();
+
+            forAll(vf.boundaryField(), patchi)
+            {
+                if
+                (
+                    isA<zeroGradientFvPatchField<Type>>
+                        (vf.boundaryField()[patchi])
+                 || isA<mixedFvPatchField<Type>>(vf.boundaryField()[patchi])
+                 || isA<directionMixedFvPatchField<Type>>
+                    (vf.boundaryField()[patchi])
+                )
+                {
+                    const labelList& pFaceCells =
+                        mesh_.boundary()[patchi].faceCells();
+
+                    forAll(pFaceCells, pFacei)
+                    {
+                        const cell& pFaceCell = cells[pFaceCells[pFacei]];
+
+                        forAll(pFaceCell, fi)
+                        {
+                            label facei = pFaceCell[fi];
+
+                            if (mesh_.isInternalFace(facei))
+                            {
+                                // Apply upwind differencing
+                                w[facei] = pos0(faceFlux_[facei]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return tw;
+        }
 
         //- Return true if this scheme uses an explicit correction
         virtual bool corrected() const
@@ -128,17 +186,61 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  set to zero on the near-boundary faces where upwind is applied
-        inline virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
-        ) const;
+            const GeometricField<Type, fvPatchField, volMesh>& vf
+        ) const
+        {
+            if (tScheme_().corrected())
+            {
+                tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tcorr =
+                    tScheme_().correction(vf);
 
+                GeometricField<Type, fvsPatchField, surfaceMesh>& corr =
+                    tcorr.ref();
 
-    // Member Operators
+                const fvMesh& mesh_ = this->mesh();
+                const cellList& cells = mesh_.cells();
 
-        //- Disallow default bitwise assignment
-        void operator=(const outletStabilised&) = delete;
+                forAll(vf.boundaryField(), patchi)
+                {
+                    if
+                    (
+                        isA<zeroGradientFvPatchField<Type>>
+                            (vf.boundaryField()[patchi])
+                     || isA<mixedFvPatchField<Type>>
+                            (vf.boundaryField()[patchi])
+                    )
+                    {
+                        const labelList& pFaceCells =
+                            mesh_.boundary()[patchi].faceCells();
+
+                        forAll(pFaceCells, pFacei)
+                        {
+                            const cell& pFaceCell = cells[pFaceCells[pFacei]];
+
+                            forAll(pFaceCell, fi)
+                            {
+                                label facei = pFaceCell[fi];
+
+                                if (mesh_.isInternalFace(facei))
+                                {
+                                    // Remove correction
+                                    corr[facei] = Zero;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return tcorr;
+            }
+            else
+            {
+                return nullptr;
+            }
+        }
 };
 
 

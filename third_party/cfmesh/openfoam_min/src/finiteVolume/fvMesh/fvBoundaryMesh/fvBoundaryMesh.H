@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,10 +35,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvBoundaryMesh_H
-#define fvBoundaryMesh_H
+#ifndef Foam_fvBoundaryMesh_H
+#define Foam_fvBoundaryMesh_H
 
-#include "fvPatchList.H"
+#include "fvPatch.H"
 #include "lduInterfacePtrsList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -43,8 +46,10 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class fvMesh;
 class polyBoundaryMesh;
+class wordRes;
 
 /*---------------------------------------------------------------------------*\
                        Class fvBoundaryMesh Declaration
@@ -62,9 +67,8 @@ class fvBoundaryMesh
 
     // Private Member Functions
 
-        //- Add fvPatches corresponding to the given polyBoundaryMesh
-        void addPatches(const polyBoundaryMesh&);
-
+        //- Assign fvPatches corresponding to the given polyBoundaryMesh
+        void addPatches(const polyBoundaryMesh& pbm);
 
 protected:
 
@@ -74,50 +78,66 @@ protected:
 
 public:
 
+    //- Declare friendship with fvMesh
     friend class fvMesh;
+
+
+    // Generated Methods
+
+        //- No copy construct
+        fvBoundaryMesh(const fvBoundaryMesh&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvBoundaryMesh&) = delete;
 
 
     // Constructors
 
-        //- Construct with zero size
-        fvBoundaryMesh(const fvMesh&);
+        //- Construct zero size with mesh reference
+        explicit fvBoundaryMesh(const fvMesh&);
 
         //- Construct from polyBoundaryMesh
         fvBoundaryMesh(const fvMesh&, const polyBoundaryMesh&);
 
-        //- Move constructor
-        fvBoundaryMesh(fvBoundaryMesh&&) = default;
-
-        //- Disallow default bitwise copy construction
-        fvBoundaryMesh(const fvBoundaryMesh&) = delete;
-
 
     // Member Functions
 
-        // Access
+        //- Return the mesh reference
+        const fvMesh& mesh() const noexcept { return mesh_; }
 
-            //- Return the mesh reference
-            const fvMesh& mesh() const
-            {
-                return mesh_;
-            }
+        //- Return a list of faceCells for each patch
+        UPtrList<const labelUList> faceCells() const;
 
-            //- Return a list of pointers for each patch
-            //  with only those pointing to interfaces being set
-            lduInterfacePtrsList interfaces() const;
+        //- Return a list of pointers for each patch
+        //- with only those pointing to interfaces being set
+        lduInterfacePtrsList interfaces() const;
 
-            //- Find patch index given a name
-            label findIndex(const word& patchName) const;
+        //- Return (sorted) patch indices for all matches.
+        //  A no-op (returns empty list) for an empty matcher
+        labelList indices(const wordRe& matcher, const bool useGroups) const;
 
-            //- Find patch indices given a name
-            labelList findIndices(const wordRe&, const bool useGroups) const;
+        //- Return (sorted) patch indices for all matches.
+        //  A no-op (returns empty list) for an empty matcher
+        labelList indices(const wordRes& matcher, const bool useGroups) const;
 
+        //- Return (sorted) patch indices for all selected matches that
+        //- are not ignored.
+        //- The selection logic as per Foam::wordRes::filter.
+        //  Optionally matches patch groups.
+        //  A no-op (returns empty list) for an empty select matcher
+        labelList indices
+        (
+            const wordRes& select,
+            const wordRes& ignore,
+            const bool useGroups
+        ) const;
 
-        //- Reorders patches. Ordering does not have to be done in
-        //  ascending or descending order. Reordering has to be unique.
-        //  (is shuffle). If validBoundary call needs to be parallel
-        //  sync
-        void shuffle(const labelUList& newToOld, const bool validBoundary);
+        //- Find patch index given a name
+        //  A no-op (returns -1) for an empty patchName
+        label findPatchID(const word& patchName) const;
+
+        //- Correct patches after moving points
+        void movePoints();
 
 
     // Member Operators
@@ -126,16 +146,20 @@ public:
         using fvPatchList::operator[];
 
         //- Return const reference to fvPatch by name.
-        const fvPatch& operator[](const word&) const;
+        const fvPatch& operator[](const word& patchName) const;
 
         //- Return reference to fvPatch by name.
-        fvPatch& operator[](const word&);
+        fvPatch& operator[](const word& patchName);
 
 
-    // Member Operators
+    // Housekeeping
 
-        //- Disallow default bitwise assignment
-        void operator=(const fvBoundaryMesh&) = delete;
+        //- Identical to the indices() method (AUG-2018)
+        FOAM_DEPRECATED_FOR(2018-08, "indices() method")
+        labelList findIndices(const wordRe& key, bool useGroups) const
+        {
+            return indices(key, useGroups);
+        }
 };
 
 

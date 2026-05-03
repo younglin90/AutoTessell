@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,16 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "calculatedFvsPatchField.H"
-#include "fieldMapper.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<class Type>
-const Foam::word& Foam::fvsPatchField<Type>::calculatedType()
-{
-    return calculatedFvsPatchField<Type>::typeName;
-}
-
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -56,12 +50,7 @@ Foam::calculatedFvsPatchField<Type>::calculatedFvsPatchField
     const dictionary& dict
 )
 :
-    fvsPatchField<Type>
-    (
-        p,
-        iF,
-        Field<Type>("value", iF.dimensions(), dict, p.size())
-    )
+    fvsPatchField<Type>(p, iF, dict, IOobjectOption::MUST_READ)
 {}
 
 
@@ -71,10 +60,20 @@ Foam::calculatedFvsPatchField<Type>::calculatedFvsPatchField
     const calculatedFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     fvsPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::calculatedFvsPatchField<Type>::calculatedFvsPatchField
+(
+    const calculatedFvsPatchField<Type>& ptf
+)
+:
+    fvsPatchField<Type>(ptf)
 {}
 
 
@@ -96,12 +95,11 @@ Foam::fvsPatchField<Type>::NewCalculatedType
     const fvPatch& p
 )
 {
-    typename patchConstructorTable::iterator patchTypeCstrIter =
-        patchConstructorTablePtr_->find(p.type());
+    auto* patchTypeCtor = patchConstructorTable(p.type());
 
-    if (patchTypeCstrIter != patchConstructorTablePtr_->end())
+    if (patchTypeCtor)
     {
-        return patchTypeCstrIter()
+        return patchTypeCtor
         (
             p,
             DimensionedField<Type, surfaceMesh>::null()
@@ -122,11 +120,11 @@ Foam::fvsPatchField<Type>::NewCalculatedType
 
 
 template<class Type>
-template<class Type2>
+template<class AnyType>
 Foam::tmp<Foam::fvsPatchField<Type>>
 Foam::fvsPatchField<Type>::NewCalculatedType
 (
-    const fvsPatchField<Type2>& pf
+    const fvsPatchField<AnyType>& pf
 )
 {
     return NewCalculatedType(pf.patch());
@@ -139,7 +137,7 @@ template<class Type>
 void Foam::calculatedFvsPatchField<Type>::write(Ostream& os) const
 {
     fvsPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvsPatchField<Type>::writeValueEntry(os);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,12 +31,13 @@ License
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-Foam::labelList Foam::PatchTools::edgeOwner
+Foam::labelList
+Foam::PatchTools::edgeOwner
 (
     const PrimitivePatch<FaceList, PointField>& p
 )
 {
-    typedef typename PrimitivePatch<FaceList, PointField>::FaceType FaceType;
+    typedef typename PrimitivePatch<FaceList, PointField>::face_type FaceType;
 
     const edgeList& edges = p.edges();
     const labelListList& edgeFaces = p.edgeFaces();
@@ -54,13 +58,13 @@ Foam::labelList Foam::PatchTools::edgeOwner
         {
             // Find the first face whose vertices are aligned with the edge.
             // with multiply connected edges, this is the best we can do
-            forAll(nbrFaces, i)
+            for (const label nbrFacei : nbrFaces)
             {
-                const FaceType& f = localFaces[nbrFaces[i]];
+                const FaceType& f = localFaces[nbrFacei];
 
                 if (f.edgeDirection(edges[edgeI]) > 0)
                 {
-                    edgeOwner[edgeI] = nbrFaces[i];
+                    edgeOwner[edgeI] = nbrFacei;
                     break;
                 }
             }
@@ -71,7 +75,7 @@ Foam::labelList Foam::PatchTools::edgeOwner
                     << "Edge " << edgeI << " vertices:" << edges[edgeI]
                     << " is used by faces " << nbrFaces
                     << " vertices:"
-                    << UIndirectList<FaceType>(localFaces, nbrFaces)()
+                    << UIndirectList<FaceType>(localFaces, nbrFaces)
                     << " none of which use the edge vertices in the same order"
                     << nl << "I give up" << abort(FatalError);
             }

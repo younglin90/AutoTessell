@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -20,9 +23,6 @@ License
 
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
-
-Description
-    Generic fieldField type.
 
 \*---------------------------------------------------------------------------*/
 
@@ -105,7 +105,7 @@ void checkFields
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<template<class> class Field, class Type>
-FieldField<Field, Type>::FieldField()
+constexpr FieldField<Field, Type>::FieldField() noexcept
 :
     PtrList<Field<Type>>()
 {}
@@ -135,43 +135,44 @@ FieldField<Field, Type>::FieldField
 
 
 template<template<class> class Field, class Type>
-FieldField<Field, Type>::FieldField(const FieldField<Field, Type>& f)
+FieldField<Field, Type>::FieldField(const FieldField<Field, Type>& ff)
 :
-    tmp<FieldField<Field, Type>>::refCount(),
-    PtrList<Field<Type>>(f)
+    PtrList<Field<Type>>(ff)
 {}
 
 
 template<template<class> class Field, class Type>
-FieldField<Field, Type>::FieldField(FieldField<Field, Type>&& f)
+FieldField<Field, Type>::FieldField(FieldField<Field, Type>&& ff)
 :
-    tmp<FieldField<Field, Type>>::refCount(),
-    PtrList<Field<Type>>(move(f))
+    PtrList<Field<Type>>(std::move(ff))
 {}
 
 
 template<template<class> class Field, class Type>
-FieldField<Field, Type>::FieldField(FieldField<Field, Type>& f, bool reuse)
+FieldField<Field, Type>::FieldField(FieldField<Field, Type>& ff, bool reuse)
 :
-    PtrList<Field<Type>>(f, reuse)
+    PtrList<Field<Type>>(ff, reuse)
 {}
 
 
 template<template<class> class Field, class Type>
-FieldField<Field, Type>::FieldField(const PtrList<Field<Type>>& tl)
+FieldField<Field, Type>::FieldField(const PtrList<Field<Type>>& list)
 :
-    PtrList<Field<Type>>(tl)
+    PtrList<Field<Type>>(list)
+{}
+
+
+template<template<class> class Field, class Type>
+FieldField<Field, Type>::FieldField(PtrList<Field<Type>>&& list)
+:
+    PtrList<Field<Type>>(std::move(list))
 {}
 
 
 template<template<class> class Field, class Type>
 FieldField<Field, Type>::FieldField(const tmp<FieldField<Field, Type>>& tf)
 :
-    PtrList<Field<Type>>
-    (
-        const_cast<FieldField<Field, Type>&>(tf()),
-        tf.isTmp()
-    )
+    PtrList<Field<Type>>(tf.constCast(), tf.movable())
 {
     tf.clear();
 }
@@ -187,7 +188,7 @@ FieldField<Field, Type>::FieldField(Istream& is)
 template<template<class> class Field, class Type>
 tmp<FieldField<Field, Type>> FieldField<Field, Type>::clone() const
 {
-    return tmp<FieldField<Field, Type>>(new FieldField<Field, Type>(*this));
+    return tmp<FieldField<Field, Type>>::New(*this);
 }
 
 
@@ -198,17 +199,17 @@ tmp<FieldField<Field, Type>> FieldField<Field, Type>::NewCalculatedType
     const FieldField<Field, Type2>& ff
 )
 {
-    FieldField<Field, Type>* nffPtr
-    (
-        new FieldField<Field, Type>(ff.size())
-    );
+    const label len = ff.size();
 
-    forAll(*nffPtr, i)
+    auto tresult = tmp<FieldField<Field, Type>>::New(len);
+    auto& result = tresult.ref();
+
+    for (label i=0; i<len; ++i)
     {
-        nffPtr->set(i, Field<Type>::NewCalculatedType(ff[i]).ptr());
+        result.set(i, Field<Type>::NewCalculatedType(ff[i]).ptr());
     }
 
-    return tmp<FieldField<Field, Type>>(nffPtr);
+    return tresult;
 }
 
 
@@ -225,21 +226,31 @@ void FieldField<Field, Type>::negate()
 
 
 template<template<class> class Field, class Type>
+void FieldField<Field, Type>::normalise()
+{
+    forAll(*this, i)
+    {
+        this->operator[](i).normalise();
+    }
+}
+
+
+template<template<class> class Field, class Type>
 tmp<FieldField<Field, typename FieldField<Field, Type>::cmptType>>
 FieldField<Field, Type>::component
 (
     const direction d
 ) const
 {
-    tmp<FieldField<Field, cmptType>> Component
-    (
-        FieldField<Field, typename FieldField<Field, Type>::cmptType>::
-            NewCalculatedType(*this)
-    );
+    auto tres =
+        FieldField
+        <
+            Field, typename FieldField<Field, Type>::cmptType
+        >::NewCalculatedType(*this);
 
-    ::Foam::component(Component.ref(), *this, d);
+    ::Foam::component(tres.ref(), *this, d);
 
-    return Component;
+    return tres;
 }
 
 
@@ -272,74 +283,156 @@ void FieldField<Field, Type>::replace
 
 
 template<template<class> class Field, class Type>
+void FieldField<Field, Type>::clamp_min
+(
+    const Type& lower
+)
+{
+    for (auto& ff : *this)
+    {
+        ff.clamp_min(lower);
+    }
+}
+
+
+template<template<class> class Field, class Type>
+void FieldField<Field, Type>::clamp_max
+(
+    const Type& upper
+)
+{
+    for (auto& ff : *this)
+    {
+        ff.clamp_max(upper);
+    }
+}
+
+
+template<template<class> class Field, class Type>
+void FieldField<Field, Type>::clamp_range
+(
+    const Type& lower,
+    const Type& upper
+)
+{
+    // Note: no checks for bad/invalid clamping ranges
+
+    for (auto& ff : *this)
+    {
+        ff.clamp_range(lower, upper);
+    }
+}
+
+
+template<template<class> class Field, class Type>
+void FieldField<Field, Type>::clamp_range
+(
+    const MinMax<Type>& range
+)
+{
+    // Note: no checks for bad/invalid clamping ranges
+
+    for (auto& ff : *this)
+    {
+        ff.clamp_range(range.min(), range.max());
+    }
+}
+
+
+template<template<class> class Field, class Type>
 tmp<FieldField<Field, Type>> FieldField<Field, Type>::T() const
 {
-    tmp<FieldField<Field, Type>> transpose
+    auto tres
     (
         FieldField<Field, Type>::NewCalculatedType(*this)
     );
 
-    ::Foam::T(transpose.ref(), *this);
-    return transpose;
+    ::Foam::T(tres.ref(), *this);
+    return tres;
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<template<class> class Field, class Type>
-void FieldField<Field, Type>::operator=(const FieldField<Field, Type>& f)
+const Type& FieldField<Field, Type>::operator[](const labelPair& index) const
 {
-    if (this == &f)
+    return this->operator[](index.first())[index.second()];
+}
+
+
+template<template<class> class Field, class Type>
+Type& FieldField<Field, Type>::operator[](const labelPair& index)
+{
+    return this->operator[](index.first())[index.second()];
+}
+
+
+template<template<class> class Field, class Type>
+void FieldField<Field, Type>::operator=(const FieldField<Field, Type>& ff)
+{
+    if (this == &ff)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
+
+    // No size checking done
 
     forAll(*this, i)
     {
-        this->operator[](i) = f[i];
+        this->operator[](i) = ff[i];
     }
 }
 
 
 template<template<class> class Field, class Type>
-void FieldField<Field, Type>::operator=(FieldField<Field, Type>&& f)
+void FieldField<Field, Type>::operator=(FieldField<Field, Type>&& ff)
 {
-    if (this == &f)
+    if (this == &ff)
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
-    PtrList<Field<Type>>::operator=(move(f));
+    PtrList<Field<Type>>::transfer(ff);
 }
 
 
 template<template<class> class Field, class Type>
 void FieldField<Field, Type>::operator=(const tmp<FieldField>& tf)
 {
-    if (this == &(tf()))
+    // The cref() method also checks that tmp is not nullptr.
+    if (this == &(tf.cref()))
     {
-        FatalErrorInFunction
-            << "attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
-    // This is dodgy stuff, don't try this at home.
-    FieldField* fieldPtr = tf.ptr();
-    PtrList<Field<Type>>::transfer(*fieldPtr);
-    delete fieldPtr;
+    PtrList<Field<Type>>::clear();
+
+    // Release the tmp pointer, or clone const reference for a new pointer.
+    // Error potential when tmp is non-unique.
+
+    auto* tptr = tf.ptr();
+    PtrList<Field<Type>>::transfer(*tptr);
+    delete tptr;
 }
 
 
 template<template<class> class Field, class Type>
-void FieldField<Field, Type>::operator=(const Type& t)
+void FieldField<Field, Type>::operator=(const Type& val)
 {
     forAll(*this, i)
     {
-        this->operator[](i) = t;
+        this->operator[](i) = val;
+    }
+}
+
+
+template<template<class> class Field, class Type>
+void FieldField<Field, Type>::operator=(const Foam::zero)
+{
+    forAll(*this, i)
+    {
+        this->operator[](i) = Foam::zero{};
     }
 }
 
@@ -407,6 +500,6 @@ Ostream& operator<<(Ostream& os, const tmp<FieldField<Field, Type>>& tf)
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-    #include "FieldFieldFunctions.C"
+#include "FieldFieldFunctions.C"
 
 // ************************************************************************* //

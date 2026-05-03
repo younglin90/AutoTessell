@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::syringePressureFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions
+
 Description
     This boundary condition provides a pressure condition, obtained from a
     zero-D model of the cylinder of a syringe.
@@ -37,15 +42,15 @@ Description
 Usage
     \table
         Property     | Description             | Required    | Default value
-        Ap           | syringe piston area [m^2] | yes        |
+        Ap           | syringe piston area [m2] | yes        |
         Sp           | syringe piston speed [m/s] | yes      |
-        VsI          | initial syringe volume [m^3] | yes     |
+        VsI          | initial syringe volume [m3] | yes     |
         tas          | start of piston acceleration [s] | yes |
         tae          | end of piston acceleration [s] | yes  |
         tds          | start of piston deceleration [s] | yes |
         tde          | end of piston deceleration [s] | yes  |
         psI          | initial syringe pressure [Pa] | yes   |
-        psi          | gas compressibility [m^2/s^2] | yes     |
+        psi          | gas compressibility [m2/s2] | yes     |
         ams          | added (or removed) gas mass [kg] | yes |
     \endtable
 
@@ -87,14 +92,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-              Class syringePressureFvPatchScalarField Declaration
+             Class syringePressureFvPatchScalarField Declaration
 \*---------------------------------------------------------------------------*/
 
 class syringePressureFvPatchScalarField
 :
     public fixedValueFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Syringe piston area
         scalar Ap_;
@@ -150,11 +155,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        syringePressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         syringePressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -164,37 +176,40 @@ public:
         (
             const syringePressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         syringePressureFvPatchScalarField
         (
             const syringePressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         syringePressureFvPatchScalarField
         (
             const syringePressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new syringePressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -204,12 +219,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,15 +40,15 @@ Foam::SymmetricSquareMatrix<Type> Foam::invDecomposed
 
     SymmetricSquareMatrix<Type> inv(n, Zero);
 
-    for (label i=0; i<n; i++)
+    for (label i = 0; i < n; ++i)
     {
         inv(i, i) = 1.0/matrix(i, i);
 
-        for (label j=0; j<i; j++)
+        for (label j = 0; j < i; ++j)
         {
             Type sum = Zero;
 
-            for (label k=j; k<i; k++)
+            for (label k = j; k < i; ++k)
             {
                 sum -= matrix(i, k)*inv(k, j);
             }
@@ -56,11 +59,11 @@ Foam::SymmetricSquareMatrix<Type> Foam::invDecomposed
 
     SymmetricSquareMatrix<Type> result(n, Zero);
 
-    for (label k=0; k<n; k++)
+    for (label k = 0; k < n; ++k)
     {
-        for (label i=0; i <= k; i++)
+        for (label i = 0; i <= k; ++i)
         {
-            for (label j=0; j <= k; j++)
+            for (label j = 0; j <= k; ++j)
             {
                 result(i, j) += inv(k, i)*inv(k, j);
             }
@@ -89,7 +92,7 @@ Type Foam::detDecomposed(const SymmetricSquareMatrix<Type>& matrix)
 {
     Type diagProduct = pTraits<Type>::one;
 
-    for (label i=0; i<matrix.m(); i++)
+    for (label i = 0; i < matrix.m(); ++i)
     {
         diagProduct *= matrix(i, i);
     }
@@ -105,6 +108,21 @@ Type Foam::det(const SymmetricSquareMatrix<Type>& matrix)
     LUDecompose(matrixTmp);
 
     return detDecomposed(matrixTmp);
+}
+
+
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+template<class Type>
+template<class AnyType>
+void Foam::SymmetricSquareMatrix<Type>::operator=(const Identity<AnyType>)
+{
+    Matrix<SymmetricSquareMatrix<Type>, Type>::operator=(Foam::zero{});
+
+    for (label i=0; i < this->n(); ++i)
+    {
+        this->operator()(i, i) = pTraits<Type>::one;
+    }
 }
 
 

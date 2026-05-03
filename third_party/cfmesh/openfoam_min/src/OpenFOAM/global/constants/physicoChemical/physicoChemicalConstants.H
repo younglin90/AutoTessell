@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,30 +49,24 @@ namespace physicoChemical
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
     //- Group name for physico-chemical constants
-    extern const char* const group;
+    constexpr const char* const group = "physicoChemical";
 
     //- Universal gas constant: default SI units: [J/mol/K]
     extern const dimensionedScalar R;
 
-    //- Universal gas constant: default SI units: [J/kmol/K]
-    extern const dimensionedScalar RR;
-
     //- Faraday constant: default SI units: [C/mol]
     extern const dimensionedScalar F;
 
-    //- Faraday constant: default SI units: [C/kmol]
-    extern const dimensionedScalar FF;
-
-    //- Stefan-Boltzmann constant: default SI units: [W/m^2/K^4]
+    //- Stefan-Boltzmann constant: default SI units: [W/m2/K4]
     extern const dimensionedScalar sigma;
 
-    //- Wien displacement law constant: default SI units: [m K]
+    //- Wien displacement law constant: default SI units: [m.K]
     extern const dimensionedScalar b;
 
-    //- First radiation constant: default SI units: [W/m^2]
+    //- First radiation constant: default SI units: [W/m2]
     extern const dimensionedScalar c1;
 
-    //- Second radiation constant: default SI units: [m K]
+    //- Second radiation constant: default SI units: [m.K]
     extern const dimensionedScalar c2;
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

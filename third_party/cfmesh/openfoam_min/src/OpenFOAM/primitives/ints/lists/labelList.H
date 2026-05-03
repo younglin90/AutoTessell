@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,41 +24,33 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::labelList
-
-Description
-    A List of labels
-
-Typedef
-    Foam::labelListList
-
-Description
-    A List of labelList
-
-Typedef
-    Foam::labelListListList
-
-Description
-    A List of labelListList
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef labelList_H
-#define labelList_H
+#ifndef Foam_labelList_H
+#define Foam_labelList_H
 
 #include "label.H"
 #include "List.H"
+#include "SubList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-    // Note: frequently used UList version is located in container itself
+    // labelList    = defined in List.H
+    // labelSubList = defined in SubList.H
+    // labelUList   = defined in UList.H
 
-    typedef List<label> labelList;
+    //! List of labelList
     typedef List<labelList> labelListList;
+
+    //! List of labelListList
     typedef List<labelListList> labelListListList;
+
+
+    //- A zero-sized list of labels
+    //  \deprecated(2019-02) use labelList::null() instead
+    extern const labelList emptyLabelList;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

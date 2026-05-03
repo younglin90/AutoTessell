@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,7 +25,10 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::fv::CentredFitSnGradScheme
+    Foam::CentredFitSnGradScheme
+
+Group
+    grpFvSnGradSchemes
 
 Description
     Centred fit snGrad scheme which applies an explicit correction to snGrad
@@ -47,7 +53,7 @@ class fvMesh;
 namespace fv
 {
 /*---------------------------------------------------------------------------*\
-                Class CentredFitSnGradSnGradScheme Declaration
+                           Class CentredFitSnGradSnGradScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class Polynomial, class Stencil>
@@ -68,10 +74,10 @@ class CentredFitSnGradScheme
 
     // Private Member Functions
 
-        //- Disallow default bitwise copy construction
+        //- No copy construct
         CentredFitSnGradScheme(const CentredFitSnGradScheme&) = delete;
 
-        //- Disallow default bitwise assignment
+        //- No copy assignment
         void operator=(const CentredFitSnGradScheme&) = delete;
 
 
@@ -97,23 +103,23 @@ public:
         //- Return the interpolation weighting factors for the given field
         virtual tmp<surfaceScalarField> deltaCoeffs
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return this->mesh().nonOrthDeltaCoeffs();
         }
 
         //- Return true if this scheme uses an explicit correction
-        virtual bool corrected() const
+        virtual bool corrected() const noexcept
         {
             return true;
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -132,7 +138,7 @@ public:
                     centralWeight_
                 );
 
-            tmp<SurfaceField<Type>> sft
+            tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> sft
             (
                 stencil.weightedSum(vf, cfd.coeffs())
             );

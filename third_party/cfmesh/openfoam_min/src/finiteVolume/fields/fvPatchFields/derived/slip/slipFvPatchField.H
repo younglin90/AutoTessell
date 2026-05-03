@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::slipFvPatchField
+
+Group
+    grpWallBoundaryConditions grpGenericBoundaryConditions
 
 Description
     This boundary condition provides a slip constraint.
@@ -73,14 +78,14 @@ public:
         slipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         slipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -89,34 +94,40 @@ public:
         (
             const slipFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        slipFvPatchField(const slipFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        slipFvPatchField
+        (
+            const slipFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         slipFvPatchField
         (
             const slipFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new slipFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Attributes
 
@@ -127,10 +138,27 @@ public:
             }
 
 
-    // Member Operators
+    // Member operators
 
-        //- Inherit assignment
-        using basicSymmetryFvPatchField<Type>::operator=;
+        // virtual void operator=(const UList<Type>&) {}
+
+        // virtual void operator=(const fvPatchField<Type>&) {}
+        // virtual void operator+=(const fvPatchField<Type>&) {}
+        // virtual void operator-=(const fvPatchField<Type>&) {}
+        // virtual void operator*=(const fvPatchField<scalar>&) {}
+        // virtual void operator/=(const fvPatchField<scalar>&) {}
+
+        // virtual void operator+=(const Field<Type>&) {}
+        // virtual void operator-=(const Field<Type>&) {}
+
+        // virtual void operator*=(const Field<scalar>&) {}
+        // virtual void operator/=(const Field<scalar>&) {}
+
+        // virtual void operator=(const Type&) {}
+        // virtual void operator+=(const Type&) {}
+        // virtual void operator-=(const Type&) {}
+        // virtual void operator*=(const scalar) {}
+        // virtual void operator/=(const scalar) {}
 };
 
 

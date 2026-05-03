@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,28 +29,110 @@ License
 #include "ISstream.H"
 #include "int.H"
 #include "token.H"
-#include "DynamicList.H"
 #include <cctype>
+#include <cstring>
+
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+// Truncate error message for readability
+static constexpr const unsigned errLen = 80;
+
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace
+{
+
+// Convert a single character to a word with length 1
+inline Foam::word charToWord(char c)
+{
+    return Foam::word(std::string(1, c), false);
+}
+
+
+// Permit slash-scoping of entries
+inline bool validVariableChar(char c)
+{
+    return (Foam::word::valid(c) || c == '/');
+}
+
+
+inline void inplaceTrimRight(std::string& s)
+{
+    auto end = s.length();
+    if (end)
+    {
+        while (end && Foam::isspace(s[end-1]))
+        {
+            --end;
+        }
+
+        s.erase(end);
+    }
+}
+
+} // End anonymous namespace
+
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+bool Foam::ISstream::readCompoundToken
+(
+    token& tok,
+    const word& compoundType
+)
+{
+    return tok.readCompoundToken(compoundType, *this);
+}
+
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
+
+bool Foam::ISstream::seekCommentEnd_Cstyle()
+{
+    // Search for end of C-style comment - "*/"
+
+    // Can use getLine(nullptr, '*') in the logic,
+    // but written out looks less obscure
+
+    char c = 0;
+    bool star = false;
+
+    while (get(c))
+    {
+        if (c == '*')
+        {
+            star = true;
+        }
+        else if (star)
+        {
+            star = false;
+            if (c == '/')
+            {
+                // Matched "*/"
+                return true;
+            }
+        }
+    }
+
+    // Exhausted stream without finding "*/" sequence
+    return false;
+}
+
 
 char Foam::ISstream::nextValid()
 {
     char c = 0;
 
-    while (true)
+    // Get next non-whitespace character
+    while (get(c))
     {
-        // Get next non-whitespace character
-        while (get(c) && isspace(c))
-        {}
-
-        // Return if stream is bad - ie, previous get() failed
-        if (bad() || isspace(c))
+        if (isspace(c))
         {
-            break;
+            continue;
         }
 
-        // Is this the start of a C/C++ comment?
+        // Check if this starts a C/C++ comment
         if (c == '/')
         {
             if (!get(c))
@@ -58,37 +143,15 @@ char Foam::ISstream::nextValid()
 
             if (c == '/')
             {
-                // C++ style single-line comment - skip through past end-of-line
-                while (get(c) && c != '\n')
-                {}
+                // C++ comment: discard through newline
+                (void) getLine(nullptr, '\n');
             }
             else if (c == '*')
             {
-                // Within a C-style comment
-                while (true)
+                // C-style comment: discard through to "*/" ending
+                if (!seekCommentEnd_Cstyle())
                 {
-                    // Search for end of C-style comment - '*/'
-                    if (get(c) && c == '*')
-                    {
-                        if (get(c))
-                        {
-                            if (c == '/')
-                            {
-                                // Matched '*/'
-                                break;
-                            }
-                            else if (c == '*')
-                            {
-                                // Check again
-                                putback(c);
-                            }
-                        }
-                    }
-
-                    if (!good())
-                    {
-                        return 0;
-                    }
+                    return 0;  // Premature end of stream
                 }
             }
             else
@@ -109,34 +172,387 @@ char Foam::ISstream::nextValid()
 }
 
 
-void Foam::ISstream::readWordToken(token& t)
-{
-    word* wPtr = new word;
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
-    if (read(*wPtr).bad())
+namespace Foam
+{
+
+// Read a verbatim string (excluding block delimiters),
+// continuing until a closing "#}" has been found.
+//
+// The leading "#{" removed from stream prior to calling.
+static ISstream& readVerbatim
+(
+    ISstream& is,
+    std::string& str
+)
+{
+    constexpr const unsigned bufLen = 8000;
+    static char buf[bufLen];
+
+    unsigned nChar = 0;
+    char c;
+
+    str.clear();
+    while (is.get(c))
     {
-        delete wPtr;
-        t.setBad();
+        if (c == token::HASH)
+        {
+            char nextC;
+            is.get(nextC);
+            if (nextC == token::END_BLOCK)
+            {
+                // Found closing "#}" sequence
+                str.append(buf, nChar);
+                return is;
+            }
+            else
+            {
+                // Re-analyze the character
+                is.putback(nextC);
+            }
+        }
+
+        buf[nChar++] = c;
+        if (nChar == bufLen)  // Flush full buffer
+        {
+            str.append(buf, nChar);
+            nChar = 0;
+        }
     }
-    else if (token::compound::isCompound(*wPtr))
+
+
+    // Abnormal exit of the loop
+    str.append(buf, nChar);  // Finalize pending content
+    strncpy(buf, str.c_str(), errLen);
+    buf[errLen] = '\0';
+
+    FatalIOErrorInFunction(is)
+        << "Problem while reading verbatim \"" << buf
+        << "...\" [after " << str.length() << " chars]\n"
+        << exit(FatalIOError);
+
+    return is;
+}
+
+
+// Read a variable or expression.
+// Handles "$var" and "${var}" forms, permits '/' scoping character.
+// Also handles "${{expr}}".
+//
+// Return the token type or ERROR
+//
+// The leading "${" or "$c" removed from stream prior to calling.
+static token::tokenType readVariable
+(
+    ISstream& is,
+    std::string& str,
+    char c  // Next character after '$'
+)
+{
+    constexpr const unsigned bufLen = 1024;
+    static char buf[bufLen];
+
+    token::tokenType tokType(token::tokenType::VARIABLE);
+
+    // The first two characters are known:
+    buf[0] = token::DOLLAR;
+    buf[1] = c;
+
+    unsigned nChar = 2; // Starts with two characters
+    unsigned depth = 0; // Depth of {..} nesting
+
+    str.clear();
+    if (c == token::BEGIN_BLOCK)
     {
-        t = token::compound::New(*wPtr, *this).ptr();
-        delete wPtr;
+        // Processing '${variable}' or '${{expr}}'
+        ++depth;
+
+        int lookahead = is.peek();
+        if (lookahead == token::BEGIN_BLOCK)
+        {
+            // Looks like '${{expr...'
+            tokType = token::tokenType::EXPRESSION;
+        }
+        else if (lookahead == token::END_BLOCK)
+        {
+            // Looks like '${}'
+            IOWarningInFunction(is)
+                << "Ignoring empty ${}" << endl;
+            return token::tokenType::ERROR;
+        }
+
+        while (is.get(c))
+        {
+            buf[nChar++] = c;
+
+            if (c == token::BEGIN_BLOCK)
+            {
+                ++depth;
+            }
+            else if (c == token::END_BLOCK)
+            {
+                --depth;
+                if (!depth)
+                {
+                    // Found closing '}' character
+                    str.append(buf, nChar);
+                    return tokType;
+                }
+            }
+            else if (c == '/' && tokType == token::tokenType::EXPRESSION)
+            {
+                // Strip C/C++ comments from expressions
+                // Note: could also peek instead of get/putback
+
+                if (!is.get(c))
+                {
+                    break;  // Premature end of stream
+                }
+                else if (c == '/')
+                {
+                    --nChar;  // Remove initial '/' from buffer
+
+                    // C++ comment: discard through newline
+                    (void) is.getLine(nullptr, '\n');
+                }
+                else if (c == '*')
+                {
+                    --nChar;  // Remove initial '/' from buffer
+
+                    // C-style comment: seek "*/" ending
+                    if (!is.seekCommentEnd_Cstyle())
+                    {
+                        break;  // Premature end of stream
+                    }
+                }
+                else
+                {
+                    // Re-analyze the character
+                    is.putback(c);
+                }
+            }
+
+            if (nChar == bufLen)  // Flush full buffer
+            {
+                str.append(buf, nChar);
+                nChar = 0;
+            }
+        }
+
+
+        // Abnormal exit of the loop
+
+        str.append(buf, nChar);  // Finalize pending content
+        strncpy(buf, str.c_str(), errLen);
+        buf[errLen] = '\0';
+
+        FatalIOErrorInFunction(is)
+            << "stream terminated while reading variable '" << buf
+            << "...' [after " << str.length() << " chars]\n"
+            << exit(FatalIOError);
+
+        return token::tokenType::ERROR;
+    }
+    else if (validVariableChar(c))
+    {
+        // Processing '$variable'
+
+        while (is.get(c))
+        {
+            if (!validVariableChar(c))
+            {
+                is.putback(c);
+                break;
+            }
+
+            if (c == token::BEGIN_LIST)
+            {
+                ++depth;
+            }
+            else if (c == token::END_LIST)
+            {
+                if (!depth)
+                {
+                    // Closed ')' without opening '(':
+                    // - don't consider it part of our input
+                    is.putback(c);
+                    break;
+                }
+                --depth;
+            }
+
+            buf[nChar++] = c;
+            if (nChar == bufLen)  // Flush full buffer
+            {
+                str.append(buf, nChar);
+                nChar = 0;
+            }
+        }
+
+        str.append(buf, nChar);  // Finalize pending content
+
+        if (depth)
+        {
+            strncpy(buf, str.c_str(), errLen);
+            buf[errLen] = '\0';
+
+            IOWarningInFunction(is)
+                << "Missing " << depth
+                << " closing ')' while parsing" << nl << nl
+                << buf << endl;
+        }
+
+        return tokType;
     }
     else
     {
-        t = wPtr;
+        // Invalid character. Terminate string (for message)
+
+        buf[nChar--] = '\0';
+
+        IOWarningInFunction(is)
+            << "Ignoring bad variable name: " << buf << nl << endl;
     }
+
+    return token::tokenType::ERROR;
+}
+
+
+// Raw, low-level get into a string.
+// Continues reading after an initial opening delimiter (eg, '{')
+// until it finds the matching closing delimiter (eg, '}')
+static bool readUntilBalancedDelimiter
+(
+    ISstream& is,
+    std::string& str,
+    const bool stripComments,
+    const char delimOpen,
+    const char delimClose
+)
+{
+    constexpr const unsigned bufLen = 1024;
+    static char buf[bufLen];
+
+    unsigned nChar = 0;
+    unsigned depth = 1;  // Initial '{' already seen by caller
+    char c = 0;
+
+    str.clear();
+    while (is.get(c))
+    {
+        if ((str.empty() && !nChar) && isspace(c))
+        {
+            continue;  // Ignore leading whitespace
+        }
+
+        buf[nChar++] = c;
+
+        // Note: no '\' escape handling needed at the moment
+
+        if (c == delimOpen)
+        {
+            ++depth;
+        }
+        else if (c == delimClose)
+        {
+            --depth;
+            if (!depth)
+            {
+                // Closing character - do not include in output
+                --nChar;
+                str.append(buf, nChar);
+                inplaceTrimRight(str);  // Remove trailing whitespace
+                return true;
+            }
+        }
+        else if (stripComments && c == '/')
+        {
+            // Strip C/C++ comments from expressions
+            // Note: could also peek instead of get/putback
+
+            if (!is.get(c))
+            {
+                break;  // Premature end of stream
+            }
+            else if (c == '/')
+            {
+                --nChar;  // Remove initial '/' from buffer
+
+                // C++ comment: discard through newline
+                (void) is.getLine(nullptr, '\n');
+            }
+            else if (c == '*')
+            {
+                --nChar;  // Remove initial '/' from buffer
+
+                // C-style comment: discard through to "*/" ending
+                if (!is.seekCommentEnd_Cstyle())
+                {
+                    break;  // Premature end of stream
+                }
+            }
+            else
+            {
+                // Reanalyze the char
+                is.putback(c);
+            }
+        }
+
+        if (nChar == bufLen)
+        {
+            str.append(buf, nChar);  // Flush full buffer
+            nChar = 0;
+        }
+    }
+
+
+    // Abnormal exit of the loop
+
+    str.append(buf, nChar);  // Finalize pending content
+    inplaceTrimRight(str);   // Remove trailing whitespace
+
+    // Exhausted stream without finding closing sequence
+    return false;
+}
+
+} // End namespace Foam
+
+
+// * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
+
+bool Foam::ISstream::continueReadUntilRightBrace
+(
+    std::string& str,
+    const bool stripComments
+)
+{
+    return
+        readUntilBalancedDelimiter
+        (
+            *this,
+            str,
+            stripComments,
+            token::BEGIN_BLOCK,
+            token::END_BLOCK
+        );
 }
 
 
 Foam::Istream& Foam::ISstream::read(token& t)
 {
-    // Return the put back token if it exists
+    constexpr const unsigned bufLen = 128; // Max length for labels/scalars
+    static char buf[bufLen];
+
+    // Return the putback token if it exists
     if (Istream::getBack(t))
     {
         return *this;
     }
+
+    // Reset token, adjust its line number according to the stream
+    t.reset();
+    t.lineNumber(this->lineNumber());
 
     // Assume that the streams supplied are in working order.
     // Lines are counted by '\n'
@@ -145,9 +561,6 @@ Foam::Istream& Foam::ISstream::read(token& t)
     // and/or comments until a semantically valid character is found
 
     char c = nextValid();
-
-    // Set the line number of this token to the current stream line number
-    t.lineNumber() = lineNumber();
 
     // Return on error
     if (!c)
@@ -159,7 +572,7 @@ Foam::Istream& Foam::ISstream::read(token& t)
     // Analyse input starting with this character.
     switch (c)
     {
-        // Check for punctuation first
+        // Check for punctuation first - same as token::isseparator()
 
         case token::END_STATEMENT :
         case token::BEGIN_LIST :
@@ -171,8 +584,8 @@ Foam::Istream& Foam::ISstream::read(token& t)
         case token::COLON :
         case token::COMMA :
         case token::ASSIGN :
-        case token::ADD :
-        // NB: token::SUBTRACT handled later as the possible start of a Number
+        case token::PLUS :
+        // NB: token::MINUS handled later as the possible start of a Number
         case token::MULTIPLY :
         case token::DIVIDE :
         {
@@ -181,100 +594,113 @@ Foam::Istream& Foam::ISstream::read(token& t)
         }
 
         // String: enclosed by double quotes.
-        case token::BEGIN_STRING :
+        case token::DQUOTE :
         {
             putback(c);
-            string* sPtr = new string;
 
-            if (read(*sPtr).bad())
+            string val;
+            if (read(val).bad())
             {
-                delete sPtr;
                 t.setBad();
             }
             else
             {
-                t = sPtr;
+                t = std::move(val); // Move contents to token
             }
 
             return *this;
         }
 
-        // Possible verbatim string or dictionary functionEntry
+        // Verbatim string '#{ .. #}' or dictionary '#directive'
         case token::HASH :
         {
             char nextC;
-            if (read(nextC).bad())
-            {
-                // Return hash as word
-                t = token(word(c));
-                return *this;
-            }
-            else if (nextC == token::BEGIN_BLOCK)
-            {
-                // Verbatim string
-                verbatimString* vsPtr = new verbatimString;
+            int lookahead = peek();
 
-                if (readVerbatim(*vsPtr).bad())
+            if (lookahead == token::BEGIN_BLOCK)
+            {
+                // Verbatim string: #{ ... #}
+                // Token stored without the surrounding delimiters
+
+                (void) get(nextC);  // Discard '{' lookahead
+
+                string val;
+                if (readVerbatim(*this, val).bad())
                 {
-                    delete vsPtr;
                     t.setBad();
                 }
                 else
                 {
-                    t = vsPtr;
+                    t = std::move(val); // Move contents to token
+                    t.setType(token::tokenType::VERBATIM);
                 }
-                return *this;
             }
-            else
+            else if (read(nextC).bad())
             {
-                // Function name beginning with a #
+                // Return lone '#' as word
+                t = charToWord(c);
+            }
+            else if (word::valid(nextC))
+            {
+                // Directive (wordToken) beginning with '#'. Eg, "#include"
+                // Put back both so that '#...' is included in the directive
+
                 putback(nextC);
                 putback(c);
 
-                functionName* fnPtr = new functionName;
-
-                if (read(*fnPtr).bad())
+                word val;
+                if (read(val).bad())
                 {
-                    delete fnPtr;
                     t.setBad();
                 }
                 else
                 {
-                    t = fnPtr;
+                    t = std::move(val); // Move contents to token
+                    t.setType(token::tokenType::DIRECTIVE);
                 }
-                return *this;
             }
+            else
+            {
+                // '#' followed by non-word. Just ignore leading '#'?
+                putback(nextC);
+
+                IOWarningInFunction(*this)
+                    << "Invalid sequence #" << char(nextC)
+                    << " ... ignoring the leading '#'" << nl << endl;
+            }
+
+            return *this;
         }
 
-        case '$' :
+        // Dictionary variable or ${{ expression }}
+        case token::DOLLAR :
         {
-            // Look ahead
             char nextC;
             if (read(nextC).bad())
             {
-                // Return $ as a word
-                t = token(word(c));
-                return *this;
+                // Return lone '$' as word. Could also ignore
+                t = charToWord(c);
             }
             else
             {
-                putback(nextC);
-                putback(c);
+                // NB: the parser is slightly generous here.
+                // It will also accept '$  {' as input.
+                // - to be revisited (2021-05-17)
 
-                variable* vPtr = new variable;
-
-                if (readVariable(*vPtr).bad())
+                string val;
+                token::tokenType tokType = readVariable(*this, val, nextC);
+                if (tokType == token::tokenType::ERROR)
                 {
-                    delete vPtr;
                     t.setBad();
                 }
                 else
                 {
-                    t = vPtr;
+                    t = std::move(val); // Move contents to token
+                    t.setType(tokType);
                 }
-
-                return *this;
             }
+
+            return *this;
         }
 
         // Number: integer or floating point
@@ -288,12 +714,12 @@ Foam::Istream& Foam::ISstream::read(token& t)
         case '0' : case '1' : case '2' : case '3' : case '4' :
         case '5' : case '6' : case '7' : case '8' : case '9' :
         {
-            bool asLabel = (c != '.');
+            label labelVal = (c != '.'); // used as bool here
 
-            buf_.clear();
-            buf_.append(c);
+            unsigned nChar = 0;
+            buf[nChar++] = c;
 
-            // Get everything that could resemble a number and let
+            // get everything that could resemble a number and let
             // readScalar determine the validity
             while
             (
@@ -308,17 +734,30 @@ Foam::Istream& Foam::ISstream::read(token& t)
                 )
             )
             {
-                if (asLabel)
+                if (labelVal)
                 {
-                    asLabel = isdigit(c);
+                    labelVal = isdigit(c);
                 }
 
-                buf_.append(c);
+                buf[nChar++] = c;
+                if (nChar == bufLen)
+                {
+                    // Runaway argument - avoid buffer overflow
+                    buf[bufLen-1] = '\0';
+
+                    FatalIOErrorInFunction(*this)
+                        << "Number '" << buf << "...'\n"
+                        << "    is too long (max. " << bufLen << " characters)"
+                        << exit(FatalIOError);
+
+                    t.setBad();
+                    return *this;
+                }
             }
+            buf[nChar] = '\0';  // Terminate string
 
-            buf_.append('\0');
+            syncState();
 
-            setState(is_.rdstate());
             if (is_.bad())
             {
                 t.setBad();
@@ -327,52 +766,22 @@ Foam::Istream& Foam::ISstream::read(token& t)
             {
                 is_.putback(c);
 
-                if (buf_.size() == 2 && buf_[0] == '-')
+                if (nChar == 1 && buf[0] == '-')
                 {
                     // A single '-' is punctuation
-                    t = token::punctuationToken(token::SUBTRACT);
+                    t = token::punctuationToken(token::MINUS);
                 }
-                else if (asLabel)
+                else if (labelVal && Foam::read(buf, labelVal))
                 {
-                    label labelVal = 0;
-                    uLabel uLabelVal = 0;
-                    #if WM_LABEL_SIZE == 32
-                    int64_t int64Val = 0;
-                    uint64_t uint64Val = 0;
-                    #endif
-                    scalar scalarVal;
-                    if (Foam::read(buf_.cdata(), labelVal))
-                    {
-                        t = labelVal;
-                    }
-                    else if (Foam::read(buf_.cdata(), uLabelVal))
-                    {
-                        t = uLabelVal;
-                    }
-                    #if WM_LABEL_SIZE == 32
-                    else if (Foam::read(buf_.cdata(), int64Val))
-                    {
-                        t = int64Val;
-                    }
-                    else if (Foam::read(buf_.cdata(), uint64Val))
-                    {
-                        t = uint64Val;
-                    }
-                    #endif
-                    else if (readScalar(buf_.cdata(), scalarVal))
-                    {
-                        t = scalarVal;
-                    }
-                    else
-                    {
-                        t.setBad();
-                    }
+                    t = labelVal;
                 }
                 else
                 {
                     scalar scalarVal;
-                    if (readScalar(buf_.cdata(), scalarVal))
+
+                    if (readScalar(buf, scalarVal))
                     {
+                        // A scalar or too big to fit as a label
                         t = scalarVal;
                     }
                     else
@@ -389,7 +798,20 @@ Foam::Istream& Foam::ISstream::read(token& t)
         default:
         {
             putback(c);
-            readWordToken(t);
+
+            word val;
+            if (read(val).bad())
+            {
+                t.setBad();
+            }
+            else if
+            (
+                !token::compound::isCompound(val)
+             || !readCompoundToken(t, val)
+            )
+            {
+                t = std::move(val);  // Move contents to token
+            }
 
             return *this;
         }
@@ -406,56 +828,79 @@ Foam::Istream& Foam::ISstream::read(char& c)
 
 Foam::Istream& Foam::ISstream::read(word& str)
 {
-    buf_.clear();
+    constexpr const unsigned bufLen = 1024;
+    static char buf[bufLen];
 
-    int listDepth = 0;
+    unsigned nChar = 0;
+    unsigned depth = 0;  // Depth of (..) nesting
     char c;
 
-    while (get(c) && word::valid(c))
+    str.clear();
+    while (get(c))
     {
+        if (!word::valid(c))
+        {
+            putback(c);
+            break;
+        }
+
         if (c == token::BEGIN_LIST)
         {
-            listDepth++;
+            ++depth;
         }
         else if (c == token::END_LIST)
         {
-            if (listDepth)
+            if (!depth)
             {
-                listDepth--;
-            }
-            else
-            {
+                // Closed ')' without opening '(':
+                // - don't consider it part of our input
+                putback(c);
                 break;
             }
+            --depth;
         }
 
-        buf_.append(c);
+        buf[nChar++] = c;
+        if (nChar == bufLen)  // Flush full buffer
+        {
+            str.append(buf, nChar);
+            nChar = 0;
+        }
     }
+
+    str.append(buf, nChar);  // Finalize pending content
 
     if (bad())
     {
-        // Truncate the string to the maximum error length
-        buf_.data()[bufErrorLength] = buf_.last() = '\0';
+        // Could probably skip this check
+
+        strncpy(buf, str.c_str(), errLen);
+        buf[errLen] = '\0';
 
         FatalIOErrorInFunction(*this)
-            << "problem while reading word '" << buf_.cdata() << "...' after "
-            << buf_.size() << " characters\n"
+            << "Problem while reading word '" << buf
+            << "...' [after " << str.length() << " chars]\n"
             << exit(FatalIOError);
 
         return *this;
     }
 
-    if (buf_.empty())
+    if (str.empty())
     {
         FatalIOErrorInFunction(*this)
-            << "invalid first character found : " << c
+            << "Invalid first character found : " << c
             << exit(FatalIOError);
     }
+    else if (depth)
+    {
+        strncpy(buf, str.c_str(), errLen);
+        buf[errLen] = '\0';
 
-    // Append end string character
-    buf_.append('\0');
-    str = buf_.cdata();
-    putback(c);
+        IOWarningInFunction(*this)
+            << "Missing " << depth
+            << " closing ')' while parsing" << nl << nl
+            << buf << nl << endl;
+    }
 
     return *this;
 }
@@ -463,8 +908,10 @@ Foam::Istream& Foam::ISstream::read(word& str)
 
 Foam::Istream& Foam::ISstream::read(string& str)
 {
-    buf_.clear();
+    constexpr const unsigned bufLen = 1024;
+    static char buf[bufLen];
 
+    unsigned nChar = 0;
     char c;
 
     if (!get(c))
@@ -477,7 +924,7 @@ Foam::Istream& Foam::ISstream::read(string& str)
     }
 
     // Note, we could also handle single-quoted strings here (if desired)
-    if (c != token::BEGIN_STRING)
+    if (c != token::DQUOTE)
     {
         FatalIOErrorInFunction(*this)
             << "Incorrect start of string character found : " << c
@@ -486,22 +933,25 @@ Foam::Istream& Foam::ISstream::read(string& str)
         return *this;
     }
 
+    str.clear();
     bool escaped = false;
-
     while (get(c))
     {
-        if (c == token::END_STRING)
+        if (c == '\\')
+        {
+            escaped = !escaped;  // Toggle state (retains backslashes)
+        }
+        else if (c == token::DQUOTE)
         {
             if (escaped)
             {
                 escaped = false;
-                buf_.remove(); // Overwrite backslash
+                --nChar;  // Overwrite backslash
             }
             else
             {
-                // Append end string character
-                buf_.append('\0');
-                str = buf_.cdata();
+                // Done reading
+                str.append(buf, nChar);
                 return *this;
             }
         }
@@ -510,334 +960,108 @@ Foam::Istream& Foam::ISstream::read(string& str)
             if (escaped)
             {
                 escaped = false;
-                buf_.remove(); // Overwrite backslash
+                --nChar;  // Overwrite backslash
             }
             else
             {
-                // Truncate the string to the maximum error length
-                buf_.data()[bufErrorLength] = buf_.last() = '\0';
+                str.append(buf, nChar);  // Finalize pending content
+                strncpy(buf, str.c_str(), errLen);
+                buf[errLen] = '\0';
 
                 FatalIOErrorInFunction(*this)
-                    << "found '\\n' while reading string \""
-                    << buf_.cdata() << "...\""
+                    << "Unescaped '\\n' while reading string \"" << buf
+                    << "...\" [after " << str.length() << " chars]\n"
                     << exit(FatalIOError);
 
                 return *this;
             }
-        }
-        else if (c == '\\')
-        {
-            escaped = !escaped;    // Toggle state (retains backslashes)
         }
         else
         {
             escaped = false;
         }
 
-        buf_.append(c);
+        buf[nChar++] = c;
+        if (nChar == bufLen)  // Flush full buffer
+        {
+            // Keep lookback character (eg, for backslash escaping)
+            str.append(buf, nChar-1);
+            nChar = 1;
+            buf[0] = c;
+        }
     }
 
-    // Truncate the string to the maximum error length
-    buf_.data()[bufErrorLength] = buf_.last() = '\0';
+
+    // Abnormal exit of the loop
+    // Don't worry about a dangling backslash if string terminated prematurely
+
+    str.append(buf, nChar);  // Finalize pending content
+    strncpy(buf, str.c_str(), errLen);
+    buf[errLen] = '\0';
 
     FatalIOErrorInFunction(*this)
-        << "problem while reading string \"" << buf_.cdata() << "...\""
+        << "Problem while reading string \"" << buf << "...\""
         << exit(FatalIOError);
 
     return *this;
 }
 
 
-Foam::Istream& Foam::ISstream::readVariable(string& str)
+Foam::Istream& Foam::ISstream::read(label& val)
 {
-    buf_.clear();
+    is_ >> val;
+    syncState();
+    return *this;
+}
 
-    char c;
 
-    if (!get(c) || c != '$')
+Foam::Istream& Foam::ISstream::read(float& val)
+{
+    is_ >> val;
+    syncState();
+    return *this;
+}
+
+
+Foam::Istream& Foam::ISstream::read(double& val)
+{
+    is_ >> val;
+    syncState();
+    return *this;
+}
+
+
+Foam::Istream& Foam::ISstream::read(char* data, std::streamsize count)
+{
+    beginRawRead();
+    readRaw(data, count);
+    endRawRead();
+
+    return *this;
+}
+
+
+Foam::Istream& Foam::ISstream::readRaw(char* data, std::streamsize count)
+{
+    if (count)
     {
-        FatalIOErrorInFunction(*this)
-            << "invalid first character found : " << c
-            << exit(FatalIOError);
-    }
-
-    buf_.append(c);
-
-    // Read next character to see if '{'
-    if (get(c) && c == token::BEGIN_BLOCK)
-    {
-        // Read, counting brackets
-        buf_.append(c);
-
-        while
-        (
-            get(c)
-         && (
-                c == token::BEGIN_BLOCK
-             || c == token::END_BLOCK
-             || variable::valid(c)
-            )
-        )
+        if (data)
         {
-            buf_.append(c);
-
-            int blockCount = 1;
-
-            if (c == token::BEGIN_BLOCK)
-            {
-                blockCount++;
-            }
-            else if (c == token::END_BLOCK)
-            {
-                if (blockCount)
-                {
-                    blockCount--;
-                }
-                else
-                {
-                    break;
-                }
-            }
+            is_.read(data, count);
+        }
+        else
+        {
+            is_.ignore(count);
         }
     }
-    else
-    {
-        buf_.append(c);
-
-        int listDepth = 0;
-
-        while (get(c) && variable::valid(c))
-        {
-            if (c == token::BEGIN_LIST)
-            {
-                listDepth++;
-            }
-            else if (c == token::END_LIST)
-            {
-                if (listDepth)
-                {
-                    listDepth--;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            buf_.append(c);
-        }
-    }
-
-    if (bad())
-    {
-        // Truncate the string to the maximum error length
-        buf_.data()[bufErrorLength] = buf_.last() = '\0';
-
-        FatalIOErrorInFunction(*this)
-            << "problem while reading string '" << buf_.cdata() << "...' after "
-            << buf_.size() << " characters\n"
-            << exit(FatalIOError);
-
-        return *this;
-    }
-
-    if (buf_.empty())
-    {
-        FatalIOErrorInFunction(*this)
-            << "invalid first character found : " << c
-            << exit(FatalIOError);
-    }
-
-    // Append end string character
-    buf_.append('\0');
-    str = buf_.cdata();
-
-    // Note: check if we exited due to '}' or just !variable::valid.
-    if (c != token::END_BLOCK)
-    {
-        putback(c);
-    }
-
+    syncState();
     return *this;
 }
 
 
-Foam::Istream& Foam::ISstream::readVerbatim(verbatimString& str)
+bool Foam::ISstream::beginRawRead()
 {
-    buf_.clear();
-
-    char c;
-
-    while (get(c))
-    {
-        if (c == token::HASH)
-        {
-            char nextC;
-            get(nextC);
-            if (nextC == token::END_BLOCK)
-            {
-                buf_.append('\0');
-                str = buf_.cdata();
-                return *this;
-            }
-            else
-            {
-                putback(nextC);
-            }
-        }
-
-        buf_.append(c);
-    }
-
-    // Truncate the string to the maximum error length
-    buf_.data()[bufErrorLength] = buf_.last() = '\0';
-
-    FatalIOErrorInFunction(*this)
-        << "problem while reading string \"" << buf_.cdata() << "...\""
-        << exit(FatalIOError);
-
-    return *this;
-}
-
-
-Foam::ISstream& Foam::ISstream::getLine(string& s, const bool continuation)
-{
-    getline(is_, s);
-    setState(is_.rdstate());
-    lineNumber_++;
-
-    if (continuation && s.size())
-    {
-        while (s.back() == '\\')
-        {
-            string contLine;
-            getline(is_, contLine);
-            setState(is_.rdstate());
-            lineNumber_++;
-            s.pop_back();
-            s += contLine;
-        }
-    }
-
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::readDelimited
-(
-    string& str,
-    const char begin,
-    const char end
-)
-{
-    str.clear();
-
-    int listDepth = 0;
-    char c;
-
-    while (get(c))
-    {
-        str += c;
-
-        if (c == begin)
-        {
-            listDepth++;
-        }
-        else if (c == end)
-        {
-            listDepth--;
-
-            if (listDepth <= 0)
-            {
-                break;
-            }
-        }
-    }
-
-    if (bad() || listDepth != 0)
-    {
-        FatalIOErrorInFunction(*this)
-            << "    problem while reading delimited string \n"
-            << str.c_str() << endl
-            << "    list depth = " << listDepth
-            << exit(FatalIOError);
-    }
-
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::readList(string& str)
-{
-    return readDelimited(str, token::BEGIN_LIST, token::END_LIST);
-}
-
-
-Foam::Istream& Foam::ISstream::readBlock(string& str)
-{
-    return readDelimited(str, token::BEGIN_BLOCK, token::END_BLOCK);
-}
-
-
-Foam::Istream& Foam::ISstream::read(int32_t& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(int64_t& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(uint32_t& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(uint64_t& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(floatScalar& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(doubleScalar& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(longDoubleScalar& val)
-{
-    is_ >> val;
-    setState(is_.rdstate());
-    return *this;
-}
-
-
-Foam::Istream& Foam::ISstream::read(char* buf, std::streamsize count)
-{
-    if (format() != BINARY)
+    if (format() != IOstreamOption::BINARY)
     {
         FatalIOErrorInFunction(*this)
             << "stream format not binary"
@@ -845,39 +1069,31 @@ Foam::Istream& Foam::ISstream::read(char* buf, std::streamsize count)
     }
 
     readBegin("binaryBlock");
-    is_.read(buf, count);
+    syncState();
+    return is_.good();
+}
+
+
+bool Foam::ISstream::endRawRead()
+{
     readEnd("binaryBlock");
-
-    setState(is_.rdstate());
-
-    return *this;
+    syncState();
+    return is_.good();
 }
 
 
-Foam::Istream& Foam::ISstream::rewind()
+void Foam::ISstream::rewind()
 {
-    stdStream().rdbuf()->pubseekpos(0);
+    lineNumber_ = 1;      // Reset line number
 
-    // Clear the put back token (if any)
-    token t;
-    Istream::getBack(t);
+    stdStream().clear();  // Clear the iostate error state flags
+    setGood();            // Sync local copy of iostate
 
-    return *this;
-}
+    stdStream().rdbuf()->pubseekpos(0, std::ios_base::in);
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-
-std::ios_base::fmtflags Foam::ISstream::flags() const
-{
-    return is_.flags();
-}
-
-
-std::ios_base::fmtflags Foam::ISstream::flags(const ios_base::fmtflags f)
-{
-    return is_.flags(f);
+    // NOTE: this form of rewind does not work with igzstream.
+    // However, igzstream is usually wrapped as IFstream which has its
+    // own dedicated rewind treatment for igzstream.
 }
 
 

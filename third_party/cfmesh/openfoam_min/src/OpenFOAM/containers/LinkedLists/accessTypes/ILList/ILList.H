@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +36,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef ILList_H
-#define ILList_H
+#ifndef Foam_ILList_H
+#define Foam_ILList_H
 
 #include "UILList.H"
 
@@ -43,17 +46,13 @@ SourceFiles
 namespace Foam
 {
 
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
-
+// Forward Declarations
 template<class LListBase, class T> class ILList;
 
 template<class LListBase, class T> Istream& operator>>
 (
-    Istream&,
-    ILList<LListBase, T>&
+    Istream& is,
+    ILList<LListBase, T>& lst
 );
 
 
@@ -70,79 +69,76 @@ class ILList
 
         //- Read from Istream using given Istream constructor class
         template<class INew>
-        void read(Istream&, const INew&);
+        void readIstream(Istream& is, const INew& inew);
 
 
 public:
 
     // Constructors
 
-        //- Null construct
-        ILList()
-        {}
+        //- Default construct
+        ILList() = default;
 
-        //- Construct given initial T
-        ILList(T* a)
+        //- Construct and add initial item pointer
+        explicit ILList(T* item)
         :
-            UILList<LListBase, T>(a)
+            UILList<LListBase, T>(item)
         {}
 
         //- Construct from Istream
-        ILList(Istream&);
+        explicit ILList(Istream& is);
 
-        //- Copy constructor
-        ILList(const ILList<LListBase, T>&);
+        //- Copy construct using the 'clone()' method for each element
+        ILList(const ILList<LListBase, T>& lst);
 
-        //- Move constructor
-        ILList(ILList<LListBase, T>&&);
+        //- Move construct
+        ILList(ILList<LListBase, T>&& lst);
 
-        //- Copy constructor with additional argument for clone
+        //- Copy constructor with additional argument for clone 'clone()'
         template<class CloneArg>
         ILList(const ILList<LListBase, T>& lst, const CloneArg& cloneArg);
 
         //- Construct from Istream using given Istream constructor class
         template<class INew>
-        ILList(Istream&, const INew&);
+        ILList(Istream& is, const INew& inew);
 
 
-    //- Destructor
+    //- Destructor. Calls clear()
     ~ILList();
 
 
     // Member Functions
 
-        // Edit
+        //- Clear the contents of the list
+        void clear();
 
-            //- Remove the head element specified from the list and delete it
-            bool eraseHead();
+        //- Remove first element(s) from the list (deletes pointers)
+        void pop_front(label n = 1);
 
-            //- Remove the specified element from the list and delete it
-            bool erase(T* p);
+        //- Remove the specified element from the list and delete it
+        bool erase(T* item);
 
-            //- Clear the contents of the list
-            void clear();
-
-            //- Transfer the contents of the argument into this List
-            //  and annul the argument list.
-            void transfer(ILList<LListBase, T>&);
+        //- Transfer the contents of the argument into this List
+        //- and annul the argument list.
+        void transfer(ILList<LListBase, T>& lst);
 
 
     // Member Operators
 
-        //- Assignment operator
-        void operator=(const ILList<LListBase, T>&);
+        //- Copy assignment using the 'clone()' method for each element
+        void operator=(const ILList<LListBase, T>& lst);
 
-        //- Move assignment operator
-        void operator=(ILList<LListBase, T>&&);
+        //- Move assignment
+        void operator=(ILList<LListBase, T>&& lst);
 
 
-    // Istream operator
+    // Istream Operator
 
-        //- Read List from Istream, discarding contents of existing List.
+        //- Read from Istream, discarding existing contents.
         friend Istream& operator>> <LListBase, T>
         (
-            Istream&,
-            ILList<LListBase, T>&
+            Istream& is,
+            ILList<LListBase, T>& list
         );
 };
 
@@ -155,6 +151,7 @@ public:
 
 #ifdef NoRepository
     #include "ILList.C"
+    #include "ILListIO.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

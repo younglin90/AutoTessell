@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,43 +26,100 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "Sine.H"
 #include "mathematicalConstants.H"
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-inline Type Foam::Function1s::Sine<Type>::value(const scalar x) const
+inline Foam::scalar Foam::Function1Types::Sine<Type>::cycle
+(
+    const scalar t
+) const
 {
-    const scalar phi = constant::mathematical::twoPi*frequency_*(x - start_);
-
-    return amplitude_->value(x)*sin(phi) + level_->value(x);
+    // The cycle: (freq * time) or (time / period)
+    return
+    (
+        frequency_
+      ? (t - t0_) * frequency_->value(t)
+      : (t - t0_) / (period_->value(t) + VSMALL)
+    );
 }
 
 
 template<class Type>
-inline Type Foam::Function1s::Sine<Type>::integral
+inline Foam::scalar
+Foam::Function1Types::Sine<Type>::cosForm(const scalar t) const
+{
+    return
+    (
+        cos(constant::mathematical::twoPi * this->cycle(t))
+      * (amplitude_ ? amplitude_->value(t) : 1.0)
+    );
+}
+
+
+template<class Type>
+inline Foam::scalar
+Foam::Function1Types::Sine<Type>::sinForm(const scalar t) const
+{
+    return
+    (
+        sin(constant::mathematical::twoPi * this->cycle(t))
+      * (amplitude_ ? amplitude_->value(t) : 1.0)
+    );
+}
+
+
+template<class Type>
+inline Foam::scalar
+Foam::Function1Types::Sine<Type>::squareForm
 (
-    const scalar x1,
-    const scalar x2
+    const scalar t,
+    const scalar posFrac
 ) const
 {
-    using namespace constant::mathematical;
-
-    if (!constantAmplitude_)
-    {
-        FatalErrorInFunction
-            << "Integration is not defined for " << type() << " functions "
-            << "unless the amplitude is constant"
-            << exit(FatalError);
-    }
-
-    const scalar phi1 = constant::mathematical::twoPi*frequency_*(x1 - start_);
-    const scalar phi2 = constant::mathematical::twoPi*frequency_*(x2 - start_);
+    const scalar cyc = this->cycle(t);
 
     return
-      - amplitude_->value(NaN)*(cos(phi2) - cos(phi1))/(twoPi*frequency_)
-      + level_->integral(x1, x2);
+    (
+        // Fraction of incomplete cycle
+        ((cyc - std::floor(cyc)) < posFrac ? 1.0 : -1.0)
+      * (amplitude_ ? amplitude_->value(t) : 1.0)
+    );
+}
+
+
+template<class Type>
+inline Type Foam::Function1Types::Sine<Type>::cosValue(const scalar t) const
+{
+    return
+    (
+        cosForm(t) * scale_->value(t) + level_->value(t)
+    );
+}
+
+
+template<class Type>
+inline Type Foam::Function1Types::Sine<Type>::sinValue(const scalar t) const
+{
+    return
+    (
+        sinForm(t) * scale_->value(t) + level_->value(t)
+    );
+}
+
+
+template<class Type>
+inline Type Foam::Function1Types::Sine<Type>::squareValue
+(
+    const scalar t,
+    const scalar posFrac
+) const
+{
+    return
+    (
+        squareForm(t, posFrac) * scale_->value(t) + level_->value(t)
+    );
 }
 
 

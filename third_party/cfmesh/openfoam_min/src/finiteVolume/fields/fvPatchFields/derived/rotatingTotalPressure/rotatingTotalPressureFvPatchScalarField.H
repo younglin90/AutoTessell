@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::rotatingTotalPressureFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a total pressure condition for patches
     in a rotating frame.
@@ -37,9 +42,7 @@ Usage
         psi          | compressibility field name | no       | none
         gamma        | ratio of specific heats (Cp/Cv) | yes |
         p0           | static pressure reference | yes       |
-        origin       | origin of rotation in Cartesian co-ordinates | yes|
-        axis         | axis of rotation        | yes         |
-        omega        | angular velocity of the frame | no |
+        omega        | angular velocty of the frame [rad/s] | yes    |
     \endtable
 
     Example of the boundary condition specification:
@@ -53,17 +56,16 @@ Usage
         psi             psi;
         gamma           1.4;
         p0              uniform 1e5;
-        origin          (0 0 0);
-        axis            (0 0 1);
-        omega           100 [rpm];
+        omega           100;
     }
     \endverbatim
 
-    The \c omega entry is a Function1 of time, see Foam::Function1s.
+    The \c omega entry is a Function1 type, able to describe time varying
+    functions.
 
 See also
     Foam::totalPressureFvPatchScalarField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     rotatingTotalPressureFvPatchScalarField.C
@@ -74,7 +76,7 @@ SourceFiles
 #define rotatingTotalPressureFvPatchScalarField_H
 
 #include "totalPressureFvPatchScalarField.H"
-#include "omega1.H"
+#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -89,16 +91,10 @@ class rotatingTotalPressureFvPatchScalarField
 :
     public totalPressureFvPatchScalarField
 {
-    // Private Data
-
-        //- Origin of the rotation
-        vector origin_;
-
-        //- Axis of the rotation
-        vector axis_;
+    // Private data
 
         //- Angular velocity of the frame
-        Function1s::omega omega_;
+        autoPtr<Function1<vector>> omega_;
 
 
 public:
@@ -109,11 +105,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        rotatingTotalPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         rotatingTotalPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -123,37 +126,40 @@ public:
         (
             const rotatingTotalPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         rotatingTotalPressureFvPatchScalarField
         (
             const rotatingTotalPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         rotatingTotalPressureFvPatchScalarField
         (
             const rotatingTotalPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new rotatingTotalPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Evaluation functions
 
@@ -163,12 +169,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using totalPressureFvPatchScalarField::operator=;
 };
 
 

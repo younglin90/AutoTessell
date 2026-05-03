@@ -30,6 +30,7 @@ Note
 \*---------------------------------------------------------------------------*/
 
 #include "UPstream.H"
+#include "Pstream.H"
 #include "debug.H"
 #include "registerSwitch.H"
 #include "dictionary.H"

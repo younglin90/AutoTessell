@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,75 +28,163 @@ License
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-template<class Matcher, class StringType>
-Foam::labelList Foam::findMatchingStrings
+template<class UnaryMatchPredicate, class StringType>
+Foam::label Foam::firstMatchingString
 (
-    const Matcher& matcher,
-    const UList<StringType>& lst,
+    const UnaryMatchPredicate& matcher,
+    const UList<StringType>& input,
     const bool invert
 )
 {
-    labelList indices(lst.size());
+    const label len = input.size();
 
-    label nElem = 0;
-    forAll(lst, elemI)
+    for (label i=0; i < len; ++i)
     {
-        if (matcher.match(lst[elemI]) ? !invert : invert)
+        if (matcher(input[i]) ? !invert : invert)
         {
-            indices[nElem++] = elemI;
+            return i;
         }
     }
-    indices.setSize(nElem);
+
+    return -1;
+}
+
+
+template<class UnaryMatchPredicate, class StringType>
+Foam::labelList Foam::findMatchingStrings
+(
+    const UnaryMatchPredicate& matcher,
+    const UList<StringType>& input,
+    const bool invert
+)
+{
+    const label len = input.size();
+
+    labelList indices(len);
+
+    label count = 0;
+    for (label i=0; i < len; ++i)
+    {
+        if (matcher(input[i]) ? !invert : invert)
+        {
+            indices[count] = i;
+            ++count;
+        }
+    }
+    indices.resize(count);
 
     return indices;
 }
 
 
-template<class Matcher, class StringListType>
+template<class UnaryMatchPredicate, class StringListType>
 StringListType Foam::subsetMatchingStrings
 (
-    const Matcher& matcher,
-    const StringListType& lst,
+    const UnaryMatchPredicate& matcher,
+    const StringListType& input,
     const bool invert
 )
 {
-    // Create copy
-    StringListType newLst(lst.size());
+    const label len = input.size();
 
-    // ensure consistent addressable size (eg, DynamicList)
-    newLst.setSize(lst.size());
+    StringListType output(len);
+    output.resize(len);   // Consistent sizing (eg, DynamicList)
 
-    label nElem = 0;
-    forAll(lst, elemI)
+    label count = 0;
+    for (label i=0; i < len; ++i)
     {
-        if (matcher.match(lst[elemI]) ? !invert : invert)
+        if (matcher(input[i]) ? !invert : invert)
         {
-            newLst[nElem++] = lst[elemI];
+            output[count] = input[i];
+            ++count;
         }
     }
-    newLst.setSize(nElem);
+    output.resize(count);
 
-    return newLst;
+    return output;
 }
 
 
-template<class Matcher, class StringListType>
+template<class UnaryMatchPredicate, class StringListType>
 void Foam::inplaceSubsetMatchingStrings
 (
-    const Matcher& matcher,
-    StringListType& lst,
+    const UnaryMatchPredicate& matcher,
+    StringListType& input,
     const bool invert
 )
 {
-    label nElem = 0;
-    forAll(lst, elemI)
+    const label len = input.size();
+
+    label count = 0;
+    for (label i=0; i < len; ++i)
     {
-        if (matcher.match(lst[elemI]) ? !invert : invert)
+        if (matcher(input[i]) ? !invert : invert)
         {
-            lst[nElem++] = lst[elemI];
+            if (count != i)
+            {
+                input[count] = std::move(input[i]);
+            }
+            ++count;
         }
     }
-    lst.setSize(nElem);
+    input.resize(count);
+}
+
+
+template<class StringListType, class AccessOp>
+Foam::labelList Foam::stringListOps::findMatching
+(
+    const StringListType& input,
+    const wordRes::filter& pred,
+    AccessOp aop
+)
+{
+    const label len = input.size();
+
+    if (pred.empty())
+    {
+        // Accept all
+        return identity(len);
+    }
+
+    labelList indices(len);
+
+    label count = 0;
+    for (label i=0; i < len; ++i)
+    {
+        const std::string& text = aop(input[i]);
+
+        if (pred(text))
+        {
+            indices[count] = i;
+            ++count;
+        }
+    }
+    indices.resize(count);
+
+    return indices;
+}
+
+
+template<class StringListType, class AccessOp>
+Foam::labelList Foam::stringListOps::findMatching
+(
+    const StringListType& input,
+    const wordRes& allow,
+    const wordRes& deny,
+    AccessOp aop
+)
+{
+    if (allow.empty() && deny.empty())
+    {
+        // Accept all
+        return identity(input.size());
+    }
+
+    // Use combined accept/reject filter
+    const wordRes::filter pred(allow, deny);
+
+    return stringListOps::findMatching(input, pred, aop);
 }
 
 

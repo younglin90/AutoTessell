@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef procLduInterface_H
-#define procLduInterface_H
+#ifndef Foam_procLduInterface_H
+#define Foam_procLduInterface_H
 
 #include "labelList.H"
 #include "scalarField.H"
@@ -43,15 +46,12 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
 class lduInterfaceField;
-
-
-// Forward declaration of friend functions and operators
-
 class procLduInterface;
 
+Istream& operator>>(Istream&, procLduInterface&);
 Ostream& operator<<(Ostream&, const procLduInterface&);
-
 
 /*---------------------------------------------------------------------------*\
                       Class procLduInterface Declaration
@@ -68,10 +68,16 @@ class procLduInterface
         label tag_;
         label comm_;
 
-
 public:
 
+    //- Friendship
     friend class LUscalarMatrix;
+
+
+    // Generated Methods
+
+        //- No copy construct
+        procLduInterface(const procLduInterface&) = delete;
 
 
     // Constructors
@@ -82,25 +88,27 @@ public:
             const scalarField& coeffs
         );
 
-        procLduInterface(Istream& is);
-
-        //- Disallow construction as copy
-        procLduInterface(const procLduInterface&) = delete;
+        //- Read construct from Istream
+        explicit procLduInterface(Istream& is);
 
         autoPtr<procLduInterface> clone()
         {
             NotImplemented;
-            return autoPtr<procLduInterface>(nullptr);
+            return nullptr;
         }
 
         static autoPtr<procLduInterface> New(Istream& is)
         {
-            return autoPtr<procLduInterface>(new procLduInterface(is));
+            return autoPtr<procLduInterface>::New(is);
         }
 
 
-    // Ostream operator
+    // IO Operations
 
+        void read(Istream& is);
+        void write(Ostream& os) const;
+
+        friend Istream& operator>>(Istream&, procLduInterface&);
         friend Ostream& operator<<(Ostream&, const procLduInterface&);
 };
 

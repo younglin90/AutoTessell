@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -56,10 +58,20 @@ Foam::cyclicSlipFvsPatchField<Type>::cyclicSlipFvsPatchField
     const cyclicSlipFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     cyclicFvsPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::cyclicSlipFvsPatchField<Type>::cyclicSlipFvsPatchField
+(
+    const cyclicSlipFvsPatchField<Type>& ptf
+)
+:
+    cyclicFvsPatchField<Type>(ptf)
 {}
 
 

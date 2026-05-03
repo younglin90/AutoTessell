@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,13 +26,93 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include <iostream>
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+inline std::string::size_type Foam::string::find_ext(const std::string& str)
+{
+    const auto i = str.find_last_of("./");
+
+    if (i == npos || i == 0 || str[i] == '/')
+    {
+        return npos;
+    }
+
+    return i;
+}
+
+
+inline std::string::size_type Foam::string::find_ext() const
+{
+    return find_ext(*this);
+}
+
+
+inline bool Foam::string::has_ext() const
+{
+    return (std::string::npos != find_ext());
+}
+
+
+inline bool Foam::string::has_ext(const char* ending) const
+{
+    const auto n1 = size();
+    const auto n2 = strlen(ending);
+
+    // Like ends_with with extra check for dot
+    return
+    (
+        n1 > n2
+     && operator[](n1-n2-1) == '.'  // Require a dot separator
+     && !compare(n1-n2, npos, ending, n2)
+    );
+}
+
+
+inline bool Foam::string::has_ext(const std::string& ending) const
+{
+    const auto n1 = size();
+    const auto n2 = ending.size();
+
+    // Like ends_with with extra check for dot
+    return
+    (
+        n1 > n2
+     && operator[](n1-n2-1) == '.'  // Require a dot separator
+     && !compare(n1-n2, npos, ending)
+    );
+}
+
+
+inline bool Foam::string::remove_path()
+{
+    const auto i = rfind('/');
+
+    if (npos == i)
+    {
+        return false;
+    }
+
+    erase(0, i+1);
+    return true;
+}
+
+
+inline bool Foam::string::remove_ext()
+{
+    const auto i = find_ext();
+
+    if (npos == i)
+    {
+        return false;
+    }
+
+    erase(i);
+    return true;
+}
+
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-inline Foam::string::string()
-{}
-
 
 inline Foam::string::string(const std::string& str)
 :
@@ -37,15 +120,9 @@ inline Foam::string::string(const std::string& str)
 {}
 
 
-inline Foam::string::string(const string& str)
+inline Foam::string::string(std::string&& str)
 :
-    std::string(str)
-{}
-
-
-inline Foam::string::string(string&& str)
-:
-    std::string(move(str))
+    std::string(std::move(str))
 {}
 
 
@@ -73,48 +150,44 @@ inline Foam::string::string(const size_type len, const char c)
 {}
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-template<class String>
-inline bool Foam::string::valid(const string& str)
+template<class StringType>
+inline bool Foam::string::valid(const std::string& str)
 {
-    for (const_iterator iter = str.begin(); iter != str.end(); ++iter)
+    for (auto iter = str.cbegin(); iter != str.cend(); ++iter)
     {
-        if (!String::valid(*iter))
+        if (!StringType::valid(*iter))
         {
             return false;
         }
     }
+
     return true;
 }
 
 
-template<class String>
-inline bool Foam::string::stripInvalid(string& str)
+template<class StringType>
+inline bool Foam::string::stripInvalid(std::string& str)
 {
-    if (!valid<String>(str))
+    if (!string::valid<StringType>(str))
     {
-        size_type nValid = 0;
-        iterator iter2 = str.begin();
+        size_type nChar = 0;
+        iterator outIter = str.begin();
 
-        for
-        (
-            const_iterator iter1 = iter2;
-            iter1 != const_cast<const string&>(str).end();
-            iter1++
-        )
+        for (auto iter = str.cbegin(); iter != str.cend(); ++iter)
         {
-            char c = *iter1;
+            const char c = *iter;
 
-            if (String::valid(c))
+            if (StringType::valid(c))
             {
-                *iter2 = c;
-                ++iter2;
-                ++nValid;
+                *outIter = c;
+                ++outIter;
+                ++nChar;
             }
         }
 
-        str.resize(nValid);
+        str.erase(nChar);
 
         return true;
     }
@@ -123,118 +196,52 @@ inline bool Foam::string::stripInvalid(string& str)
 }
 
 
-template<class String>
-inline bool Foam::string::meta(const string& str, const char quote)
+template<class StringType>
+inline StringType Foam::string::validate(const std::string& str)
 {
-    int escaped = 0;
-    for (const_iterator iter = str.begin(); iter != str.end(); ++iter)
+    StringType out;
+    out.resize(str.size());
+
+    size_type len = 0;
+    for (auto iter = str.cbegin(); iter != str.cend(); ++iter)
     {
-        if (quote && *iter == quote)
+        const char c = *iter;
+        if (StringType::valid(c))
         {
-            escaped ^= 1;  // toggle state
-        }
-        else if (escaped)
-        {
-            escaped = false;
-        }
-        else if (String::meta(*iter))
-        {
-            return true;
+            out[len] = c;
+            ++len;
         }
     }
-    return false;
+
+    out.erase(len);
+
+    return out;
 }
 
 
-template<class String>
-inline Foam::string
-Foam::string::quotemeta(const string& str, const char quote)
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+inline bool Foam::string::match(const std::string& text) const
 {
-    if (!quote)
-    {
-        return str;
-    }
-
-    string sQuoted;
-    sQuoted.reserve(2*str.length());
-
-    int escaped = 0;
-    for (const_iterator iter = str.begin(); iter != str.end(); ++iter)
-    {
-        if (*iter == quote)
-        {
-            escaped ^= 1;  // toggle state
-        }
-        else if (escaped)
-        {
-            escaped = 0;
-        }
-        else if (String::meta(*iter))
-        {
-            sQuoted += quote;
-        }
-
-        sQuoted += *iter;
-    }
-
-    sQuoted.resize(sQuoted.length());
-
-    return sQuoted;
+    return !compare(text);  // Always compare as literal string
 }
 
 
-template<class String>
-inline String Foam::string::validate(const string& str)
+inline void Foam::string::swap(std::string& str)
 {
-    string ss = str;
-    stripInvalid<String>(ss);
-    return ss;
-}
-
-inline bool Foam::string::match(const std::string& str) const
-{
-    // check as string
-    return (str == *this);
+    if (this != &str)
+    {
+        // Self-swap is a no-op
+        std::string::swap(str);
+    }
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline Foam::string Foam::string::operator()
-(
-    const size_type i,
-    const size_type n
-) const
+inline bool Foam::string::operator()(const std::string& text) const
 {
-    return substr(i, n);
-}
-
-
-inline Foam::string Foam::string::operator()(const size_type n) const
-{
-    return substr(0, n);
-}
-
-
-inline unsigned Foam::string::hash::operator()
-(
-    const string& key,
-    unsigned seed
-) const
-{
-    return Hasher(key.data(), key.size(), seed);
-}
-
-
-void Foam::string::operator=(const string& str)
-{
-    std::string::operator=(str);
-}
-
-
-void Foam::string::operator=(string&& str)
-{
-    std::string::operator=(move(str));
+    return !compare(text);  // Always compare as literal string
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,73 +28,124 @@ Namespace
     Foam::functionObjects
 
 Description
-    Namespace for functionObjects.
+    Function objects are OpenFOAM utilities to ease workflow configurations and
+    enhance workflows by producing additional user-requested data both during
+    runtime and postprocessing calculations, typically in the form of
+    additional logging to the screen, or generating text, image and field files.
 
-    OpenFOAM includes a collection of functionObjects selected by the user at
-    run-time to manipulate the simulation and provide mechanisms to extract
-    field and derived quantities.  Alternatively, the same actions can be
-    executed after the simulation using the \c -postProcess command-line option.
+    Function objects eliminate the need to store all runtime generated data,
+    hence saving considerable resources. Furthermore, function objects are
+    readily applied to batch-driven processes, improving reliability by
+    standardising the sequence of operations and reducing the amount of manual
+    interaction.
 
-    functionObjects are selected by entries in the $FOAM_CASE/system/functions
-    dictionary e.g. to select the \c functionObjectType functionObject the
-    following entry would be specified:
+    In addition, the output of most function objects, e.g. output fields, are
+    stored on the mesh database so that it can be retrieved and used for other
+    applications (e.g. directly using \c wallShearStress function object output
+    in \c fieldAverage function object to produce \c wallShearStressMean field).
+
+    \section secFunctionObjects Using function objects
+
+    Function objects can be executed by using two methods:
+
+      - \c functions sub-dictionary in the \c system/controlDict file
+      - \c postProcess command-line utility
+
+    For the first method, each selected function object should be listed inside
+    \c functions sub-dictionary of the \c system/controlDict file as a nested
+    sub-dictionary, typically as in the following example:
 
     \verbatim
-    <functionObjectName>
+    functions   // sub-dictionary name under the system/controlDict file
     {
-        type                functionObjectType;
-        libs                ("libMyFunctionObjectlib.so");
-        region              defaultRegion;
-        enabled             yes;
-        startTime           0;
-        endTime             10;
-        writeControl        writeTime;
-        writeInterval       1;
+        ..optional entries..
+
+        <dictName1>
+        {
+            // Mandatory entries
+            type    <functionObjectTypeName>;
+            libs    (<libType>FunctionObjects);
+
+            // Mandatory entries defined in <functionObjectType>
+            ...
+
+            // Optional entries defined in <functionObjectType>
+            ...
+
+            // Optional (inherited) entries
+            region              region0;
+            enabled             true;
+            log                 true;
+            timeStart           0;
+            timeEnd             1000;
+            executeControl      timeStep;
+            executeInterval     1;
+            writeControl        timeStep;
+            writeInterval       1;
+        }
+
+        <dictName2>
+        {
+            ...
+        }
+
         ...
+
+        <dictNameN>
+        {
+            ...
+        }
     }
     \endverbatim
 
-    Where:
+    where the entries mean:
     \table
-        Property          | Description              | Required | Default value
-        type              | Type of functionObject         | yes |
-        libs              | Shared libraries               | no  |
-        region            | Name of region                 | no  |
-        enabled           | On/off switch                  | no  | yes
-        log               | Print data to log              | no  | no
-        startTime         | Start time                     | no  |
-        endTime           | End time                       | no  |
-        executeAtStart    | Execute at start time switch   | no  | yes
-        executeControl    | See time controls below        | no  | timeStep
-        executeInterval   | Steps between each execution   | no  |
-        executeTimes      | List of execution times        | no  |
-        writeControl      | See time controls below        | no  | timeStep
-        writeInterval     | Steps between each write       | no  |
-        writeTimes        | List of write times            | no  |
-        writeFrequencies  | List of write frequencies      | no  |
+        Property | Description                            | Type | Reqd | Deflt
+        type     | Type name of function object           | word |  yes  | -
+        libs     | Library name(s) for implementation     | words | no  | -
+        enabled  | Switch to turn function object on/off  | bool | no | true
+        errors   | Error handling (default/warn/ignore/strict) | word | no | inherits
+        log     | Switch to write log info to standard output | bool | no | true
+        useNamePrefix | Add scoping prefix to names       | bool | no | inherits
+        region   | Name of region for multi-region cases  | word | no | region0
+        timeStart | Start time for function object execution | scalar | no | 0
+        timeEnd   | End time for function object execution   | scalar | no | inf
+        executeControl  | See time controls below     | word | no    | timeStep
+        executeInterval | Steps/time between execute phases  | label | no  | 1
+        writeControl    | See time controls below     | word | no    | timeStep
+        writeInterval   | Steps/time between write phases    | label | no  | 1
     \endtable
+
+    If the \c errors entry is missing, it uses the value (if any)
+    specified within the top-level functionObjectList.
+
+    If the \c useNamePrefix entry is missing, it uses the value (if any)
+    specified within the top-level functionObjectList or otherwise
+    uses the current value of functionObject::defaultUseNamePrefix
 
     Time controls:
     \table
         Option            | Description
-        timeStep          | Execute/write every 'Interval' time-steps
-        writeTime         | Execute/write every 'Interval' write times
-        adjustableRunTime | Execute/write every 'Interval' run time period
-        runTime           | Execute/write every 'Interval' run time period
-        runTimes          | Execute/write at specified list of run times
-        clockTime         | Execute/write every 'Interval' clock time period
-        cpuTime           | Execute/write every 'Interval' CPU time period
-        none              | No execution
+        none              | Trigger is disabled
+        timeStep          | Trigger every 'Interval' time-steps
+        writeTime         | Trigger every 'Interval' output times
+        runTime           | Trigger every 'Interval' run time period
+        adjustableRunTime | Currently identical to "runTime"
+        clockTime         | Trigger every 'Interval' clock time period
+        cpuTime           | Trigger every 'Interval' CPU time period
+        onEnd             | Trigger on end of simulation run
     \endtable
 
-    The sub-dictionary name \c \<functionObjectName\> is chosen by the user, and
-    is typically used as the name of the output directory for any data written
-    by the functionObject.  The \c type entry defines the type of function
-    object properties that follow.  FunctionObjects are packaged into separate
-    libraries and the \c libs entry is used to specify which library should be
-    loaded.
+    The sub-dictionary name \c \<userDefinedSubDictName\> is chosen by the user,
+    and is typically used as the name of the output directory for any data
+    written by the function object.
 
-    Each functionObject has two separate run phases:
+    As the base mandatory entries, the \c type entry defines the type of
+    function object properties that follow.  Function objects are packaged into
+    separate libraries for flexibility and the \c libs entry is used to specify
+    which library should be loaded.
+
+    Each function object has two separate run phases:
 
       - The \c execute phase is meant to be used for updating calculations
         or for management tasks.
@@ -99,27 +153,56 @@ Description
 
     For each phase the respective time controls are provided, as listed above.
 
+
+    The second method of executing function objects is to use \c postProcess
+    utility.
+
+    When specified without additional arguments, the \c postProcess utility
+    executes all function objects defined in the \c system/controlDict file
+    for all time directories:
+
+    \verbatim
+        postProcess
+    \endverbatim
+
+    Most function objects can be invoked directly without the need to specify
+    the input dictionary using the \c -func option, e.g. to execute the Courant
+    number function object:
+
+    \verbatim
+        postProcess -func CourantNo
+    \endverbatim
+
+    In addition, the \c -postProcess option is available to all solvers,
+    and operates similarly to the stand-alone \c postProcess utility.
+    For example, having completed a \c simpleFoam calculation, the following
+    will execute all function objects defined in the \c system/controlDict file
+    for all time directories:
+
+    \verbatim
+        simpleFoam -postProcess
+    \endverbatim
+
 Class
     Foam::functionObject
 
 Description
-    Abstract base-class for Time/database functionObjects.
+    Abstract base-class for Time/database function objects.
 
 See also
-    Foam::functionObjectList
-    Foam::functionObjects::timeControl
+    - Foam::functionObjectList
+    - Foam::functionObjects::timeControl
 
 SourceFiles
     functionObject.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef functionObject_H
-#define functionObject_H
+#ifndef Foam_functionObject_H
+#define Foam_functionObject_H
 
 #include "typeInfo.H"
 #include "autoPtr.H"
-#include "Switch.H"
 #include "runTimeSelectionTables.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -127,12 +210,10 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class Time;
 class polyMesh;
-class polyTopoChangeMap;
-class polyMeshMap;
-class polyDistributionMap;
+class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
                        Class functionObject Declaration
@@ -142,31 +223,47 @@ class functionObject
 {
     // Private Data
 
-        //- Name
+        //- Function object name
         const word name_;
+
+        //- Flag to indicate that names should be prefixed
+        bool useNamePrefix_;
 
 
 protected:
 
-        //- Reference to time
-        const Time& time_;
+    // Protected Member Functions
+
+        //- Return a scoped (prefixed) name
+        //  Used to construct local field names, controlled by useNamePrefix_
+        word scopedName(const word& name) const;
 
 
 public:
 
-    ClassName("functionObject");
+    // Forward Declarations
+    class unavailableFunctionObject;
 
-    //- Runtime type information
-    virtual const word& type() const = 0;
 
-    //- Global post-processing mode switch
-    static bool postProcess;
+    // Public Data
 
-    //- Switch write log to Info
-    Switch log;
+        //- Flag to write log into Info
+        bool log;
 
-    //- Switch execute at start time
-    Switch executeAtStart_;
+
+    // Static Data Members
+
+        //- Flag to execute debug content
+        static int debug;
+
+        //- Global post-processing mode switch
+        static bool postProcess;
+
+        //- Global default for useNamePrefix
+        static bool defaultUseNamePrefix;
+
+        //- Directory prefix
+        static word outputPrefix;
 
 
     // Declare run-time constructor selection tables
@@ -184,25 +281,18 @@ public:
     // Constructors
 
         //- Construct from components
-        functionObject(const word& name, const Time& runTime);
-
-        //- Construct from dictionary
-        functionObject
+        explicit functionObject
         (
             const word& name,
-            const Time& runTime,
-            const dictionary& dict
+            const bool withNamePrefix = defaultUseNamePrefix
         );
 
         //- Return clone
         autoPtr<functionObject> clone() const
         {
             NotImplemented;
-            return autoPtr<functionObject>(nullptr);
+            return nullptr;
         }
-
-        //- Disallow default bitwise copy construction
-        functionObject(const functionObject&) = delete;
 
 
     // Selectors
@@ -211,67 +301,97 @@ public:
         static autoPtr<functionObject> New
         (
             const word& name,
-            const Time&,
-            const dictionary&
+            const Time& runTime,
+            const dictionary& dict
         );
 
 
     //- Destructor
-    virtual ~functionObject();
+    virtual ~functionObject() = default;
 
 
     // Member Functions
 
+        //- Runtime type information
+        virtual const word& type() const = 0;
+
         //- Return the name of this functionObject
-        const word& name() const;
+        const word& name() const noexcept;
 
-        //- Read and set the functionObject if its data have changed
-        virtual bool read(const dictionary&);
+        //- Return the flag for adding a scoping name prefix
+        bool useNamePrefix() const noexcept;
 
-        //- Return the list of fields required
-        virtual wordList fields() const = 0;
+        //- Modify the flag for adding a scoping name prefix
+        //  \return previous value.
+        bool useNamePrefix(bool on) noexcept;
 
-        //- Return true if the functionObject should be executed at the start
-        virtual bool executeAtStart() const;
+        //- Read and set the function object if its data have changed
+        virtual bool read(const dictionary& dict);
 
         //- Called at each ++ or += of the time-loop.
-        //  foamPostProcess overrides the usual executeControl behaviour and
+        //  postProcess overrides the usual executeControl behaviour and
         //  forces execution (used in post-processing mode)
         virtual bool execute() = 0;
 
+        //- Execute using the specified subIndex.
+        //  The base implementation is a no-op.
+        //  \param subIndex an execution sub-index corresponding to a
+        //      sub-cycle or something similar.
+        virtual bool execute(const label subIndex);
+
         //- Called at each ++ or += of the time-loop.
-        //  foamPostProcess overrides the usual writeControl behaviour and
+        //  postProcess overrides the usual writeControl behaviour and
         //  forces writing always (used in post-processing mode)
         virtual bool write() = 0;
 
         //- Called when Time::run() determines that the time-loop exits.
+        //  The base implementation is a no-op.
         virtual bool end();
 
-        //- Called by Time::adjustTimeStep(). Allows the functionObject to
-        //  insert a write time earlier than that already in use by the run
-        //  time. Returns the write time, or vGreat.
-        virtual scalar timeToNextAction();
+        //- Called at the end of Time::adjustDeltaT() if adjustTime is true
+        virtual bool adjustTimeStep();
 
-        //- Return the maximum time-step for stable operation
-        virtual scalar maxDeltaT() const;
+        //- Did any file get changed during execution?
+        virtual bool filesModified() const;
 
-        //- Update topology using the given map
+        //- Update for changes of mesh
+        //  The base implementation is a no-op.
+        virtual void updateMesh(const mapPolyMesh& mpm);
+
+        //- Update for changes of mesh
+        //  The base implementation is a no-op.
         virtual void movePoints(const polyMesh& mesh);
-
-        //- Update topology using the given map
-        virtual void topoChange(const polyTopoChangeMap& map);
-
-        //- Update from another mesh using the given map
-        virtual void mapMesh(const polyMeshMap&);
-
-        //- Redistribute or update using the given distribution map
-        virtual void distribute(const polyDistributionMap&);
+};
 
 
-    // Member Operators
+/*---------------------------------------------------------------------------*\
+          Class functionObject::unavailableFunctionObject Declaration
+\*---------------------------------------------------------------------------*/
 
-        //- Disallow default bitwise assignment
-        void operator=(const functionObject&) = delete;
+//- Abstract functionObject to report when a real version is unavailable.
+class functionObject::unavailableFunctionObject
+:
+    public functionObject
+{
+protected:
+
+    //- Construct with name
+    explicit unavailableFunctionObject(const word& name);
+
+    //- Report it is unavailable, emitting a FatalError for try/catch
+    //- in the caller
+    void carp(std::string message = "") const;
+
+
+public:
+
+    // Member Functions
+
+        //- No nothing
+        virtual bool execute();
+
+        //- No nothing
+        virtual bool write();
 };
 
 

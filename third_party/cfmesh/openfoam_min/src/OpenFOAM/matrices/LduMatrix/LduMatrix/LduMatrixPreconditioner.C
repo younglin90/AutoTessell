@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,28 +38,29 @@ Foam::LduMatrix<Type, DType, LUType>::preconditioner::New
     const dictionary& preconditionerDict
 )
 {
-    word preconditionerName = preconditionerDict.lookup("preconditioner");
+    const word preconditionerName
+    (
+        preconditionerDict.get<word>("preconditioner")
+    );
 
     if (sol.matrix().symmetric())
     {
-        typename symMatrixConstructorTable::iterator constructorIter =
-            symMatrixConstructorTablePtr_->find(preconditionerName);
+        auto* ctorPtr = symMatrixConstructorTable(preconditionerName);
 
-        if (constructorIter == symMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction
+            FatalIOErrorInLookup
             (
-                preconditionerDict
-            )   << "Unknown symmetric matrix preconditioner "
-                << preconditionerName << endl << endl
-                << "Valid symmetric matrix preconditioners are :" << endl
-                << symMatrixConstructorTablePtr_->toc()
-                << exit(FatalIOError);
+                preconditionerDict,
+                "symmetric matrix preconditioner",
+                preconditionerName,
+                *symMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<typename LduMatrix<Type, DType, LUType>::preconditioner>
         (
-            constructorIter()
+            ctorPtr
             (
                 sol,
                 preconditionerDict
@@ -65,44 +69,35 @@ Foam::LduMatrix<Type, DType, LUType>::preconditioner::New
     }
     else if (sol.matrix().asymmetric())
     {
-        typename asymMatrixConstructorTable::iterator constructorIter =
-            asymMatrixConstructorTablePtr_->find(preconditionerName);
+        auto* ctorPtr = asymMatrixConstructorTable(preconditionerName);
 
-        if (constructorIter == asymMatrixConstructorTablePtr_->end())
+        if (!ctorPtr)
         {
-            FatalIOErrorInFunction
+            FatalIOErrorInLookup
             (
-                preconditionerDict
-            )   << "Unknown asymmetric matrix preconditioner "
-                << preconditionerName << endl << endl
-                << "Valid asymmetric matrix preconditioners are :" << endl
-                << asymMatrixConstructorTablePtr_->toc()
-                << exit(FatalIOError);
+                preconditionerDict,
+                "asymmetric matrix preconditioner",
+                preconditionerName,
+                *asymMatrixConstructorTablePtr_
+            ) << exit(FatalIOError);
         }
 
         return autoPtr<typename LduMatrix<Type, DType, LUType>::preconditioner>
         (
-            constructorIter()
+            ctorPtr
             (
                 sol,
                 preconditionerDict
             )
         );
     }
-    else
-    {
-        FatalIOErrorInFunction
-        (
-            preconditionerDict
-        )   << "cannot precondition incomplete matrix, "
-               "no diagonal or off-diagonal coefficient"
-            << exit(FatalIOError);
 
-        return autoPtr<typename LduMatrix<Type, DType, LUType>::preconditioner>
-        (
-            nullptr
-        );
-    }
+    FatalIOErrorInFunction(preconditionerDict)
+        << "Cannot precondition incomplete matrix, "
+           "no diagonal or off-diagonal coefficient"
+        << exit(FatalIOError);
+
+    return nullptr;
 }
 
 

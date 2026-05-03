@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,23 @@ Class
     Foam::fileFormats::OBJsurfaceFormat
 
 Description
-    Provide a means of reading/writing Alias/Wavefront OBJ format.
+    Read/write Alias/Wavefront OBJ format.
 
     Does not handle negative face indices.
+
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
 
 SourceFiles
     OBJsurfaceFormat.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef OBJsurfaceFormat_H
-#define OBJsurfaceFormat_H
+#ifndef Foam_OBJsurfaceFormat_H
+#define Foam_OBJsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -49,7 +58,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class OBJsurfaceFormat Declaration
+                Class fileFormats::OBJsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -62,48 +71,52 @@ public:
     // Constructors
 
         //- Construct from file name
-        OBJsurfaceFormat(const fileName&);
-
-        //- Disallow default bitwise copy construction
-        OBJsurfaceFormat(const OBJsurfaceFormat<Face>&) = delete;
-
-
-    // Selectors
-
-        //- Read file and return surface
-        static autoPtr<MeshedSurface<Face>> New(const fileName& name)
-        {
-            return autoPtr<MeshedSurface<Face>>
-            (
-                new OBJsurfaceFormat<Face>(name)
-            );
-        }
+        explicit OBJsurfaceFormat(const fileName& filename);
 
 
     //- Destructor
-    virtual ~OBJsurfaceFormat()
-    {}
+    virtual ~OBJsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components (by proxy) in OBJ format
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
         //- Read from file
-        virtual bool read(const fileName&);
+        virtual bool read(const fileName& filename) override;
 
-        //- Write object file
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const OBJsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +47,7 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<class Type>
 class SolverPerformance;
@@ -72,7 +75,7 @@ Ostream& operator<<
 
 
 /*---------------------------------------------------------------------------*\
-                      Class SolverPerformance Declaration
+                       Class SolverPerformance Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -94,7 +97,7 @@ class SolverPerformance
 
 public:
 
-    // Static data
+    // Static Data
 
         // Declare name of the class and its debug switch
         ClassName("SolverPerformance");
@@ -145,66 +148,66 @@ public:
     // Member Functions
 
         //- Return solver name
-        const word& solverName() const
+        const word& solverName() const noexcept
         {
             return solverName_;
         }
 
         //- Return solver name
-        word& solverName()
+        word& solverName() noexcept
         {
             return solverName_;
         }
 
 
         //- Return field name
-        const word& fieldName() const
+        const word& fieldName() const noexcept
         {
             return fieldName_;
         }
 
 
         //- Return initial residual
-        const Type& initialResidual() const
+        const Type& initialResidual() const noexcept
         {
             return initialResidual_;
         }
 
         //- Return initial residual
-        Type& initialResidual()
+        Type& initialResidual() noexcept
         {
             return initialResidual_;
         }
 
 
         //- Return final residual
-        const Type& finalResidual() const
+        const Type& finalResidual() const noexcept
         {
             return finalResidual_;
         }
 
         //- Return final residual
-        Type& finalResidual()
+        Type& finalResidual() noexcept
         {
             return finalResidual_;
         }
 
 
         //- Return number of iterations
-        const labelType& nIterations() const
+        const labelType& nIterations() const noexcept
         {
             return nIterations_;
         }
 
         //- Return number of iterations
-        labelType& nIterations()
+        labelType& nIterations() noexcept
         {
             return nIterations_;
         }
 
 
         //- Has the solver converged?
-        bool converged() const
+        bool converged() const noexcept
         {
             return converged_;
         }
@@ -216,7 +219,8 @@ public:
         bool checkConvergence
         (
             const Type& tolerance,
-            const Type& relTolerance
+            const Type& relTolerance,
+            const int logLevel = 0
         );
 
         //- Singularity test
@@ -242,7 +246,7 @@ public:
         bool operator!=(const SolverPerformance<Type>&) const;
 
 
-    // Friend Functions
+    // Friend functions
 
         //- Return the element-wise maximum of two SolverPerformance<Type>s
         friend SolverPerformance<Type> Foam::max <Type>
@@ -288,7 +292,7 @@ template<>                                                                     \
 const scalar solverPerformance##Type::small_(1e-20);                           \
                                                                                \
 template<>                                                                     \
-const scalar solverPerformance##Type::vsmall_(vSmall);                         \
+const scalar solverPerformance##Type::vsmall_(VSMALL);                         \
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

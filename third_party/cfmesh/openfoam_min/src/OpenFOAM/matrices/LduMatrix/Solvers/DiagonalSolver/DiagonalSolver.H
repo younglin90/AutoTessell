@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DiagonalSolver_H
-#define DiagonalSolver_H
+#ifndef Foam_DiagonalSolver_H
+#define Foam_DiagonalSolver_H
 
 #include "LduMatrix.H"
 
@@ -43,7 +45,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class DiagonalSolver Declaration
+                           Class DiagonalSolver Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -51,8 +53,16 @@ class DiagonalSolver
 :
     public LduMatrix<Type, DType, LUType>::solver
 {
-
 public:
+
+    // Generated Methods
+
+        //- No copy construct
+        DiagonalSolver(const DiagonalSolver&) = delete;
+
+        //- No copy assignment
+        void operator=(const DiagonalSolver&) = delete;
+
 
     //- Runtime type information
     TypeName("diagonal");
@@ -68,9 +78,6 @@ public:
             const dictionary& solverDict
         );
 
-        //- Disallow default bitwise copy construction
-        DiagonalSolver(const DiagonalSolver&) = delete;
-
 
     // Member Functions
 
@@ -79,12 +86,6 @@ public:
 
         //- Solve the matrix with this solver
         virtual SolverPerformance<Type> solve(Field<Type>& psi) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const DiagonalSolver&) = delete;
 };
 
 

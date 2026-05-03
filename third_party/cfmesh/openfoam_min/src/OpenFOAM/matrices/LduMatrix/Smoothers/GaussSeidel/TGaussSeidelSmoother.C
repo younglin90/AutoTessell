@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -89,34 +92,29 @@ void Foam::TGaussSeidelSmoother<Type, DType, LUType>::smooth
     // Parallel boundary initialisation.  The parallel boundary is treated
     // as an effective jacobi interface in the boundary.
     // Note: there is a change of sign in the coupled
-    // interface update to add the contribution to the r.h.s.
-
-    FieldField<Field, LUType> mBouCoeffs(matrix_.interfacesUpper().size());
-
-    forAll(mBouCoeffs, patchi)
-    {
-        if (matrix_.interfaces().set(patchi))
-        {
-            mBouCoeffs.set(patchi, -matrix_.interfacesUpper()[patchi]);
-        }
-    }
+    // interface update to add the contibution to the r.h.s.
 
     for (label sweep=0; sweep<nSweeps; sweep++)
     {
         bPrime = matrix_.source();
 
+        const label startRequest = UPstream::nRequests();
+
         matrix_.initMatrixInterfaces
         (
-            mBouCoeffs,
+            false,
+            matrix_.interfacesUpper(),
             psi,
             bPrime
         );
 
         matrix_.updateMatrixInterfaces
         (
-            mBouCoeffs,
+            false,
+            matrix_.interfacesUpper(),
             psi,
-            bPrime
+            bPrime,
+            startRequest
         );
 
         Type curPsi;

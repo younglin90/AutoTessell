@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2017 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,27 +39,44 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-inline label sign(const label s)
+//- Return 1 if s is greater_equal zero, or otherwise -1
+inline label sign(const label s) noexcept
 {
     return (s >= 0)? 1: -1;
 }
 
-inline label pos0(const label s)
+
+//- Return 1 if s is greater_equal zero, or otherwise 0
+inline label pos0(const label s) noexcept
 {
     return (s >= 0)? 1: 0;
 }
 
-inline label neg(const label s)
+
+//- Return 1 if s is less than zero, or otherwise 0
+inline label neg(const label s) noexcept
 {
     return (s < 0)? 1: 0;
 }
 
-inline label posPart(const label s)
+
+//- Return 1 if s is less_equal zero, or otherwise 0
+inline label neg0(const label s) noexcept
+{
+    return (s <= 0)? 1: 0;
+}
+
+
+//- Return the positive part of s, otherwise zero. Same as max(0, s).
+inline label posPart(const label s) noexcept
 {
     return (s > 0)? s: 0;
 }
 
-inline label negPart(const label s)
+
+//- Return the negative part of s, otherwise zero. Same as min(0, s).
+//  Does not change the sign
+inline label negPart(const label s) noexcept
 {
     return (s < 0)? s: 0;
 }
@@ -66,4 +86,4 @@ inline label negPart(const label s)
 
 } // End namespace Foam
 
-// ************************************************************************* //
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

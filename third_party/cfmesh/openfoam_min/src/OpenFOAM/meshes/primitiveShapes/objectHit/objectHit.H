@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,11 +29,12 @@ Class
 
 Description
     This class describes a combination of target object index and success flag.
+    Behaves somewhat like std::optional
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef objectHit_H
-#define objectHit_H
+#ifndef Foam_objectHit_H
+#define Foam_objectHit_H
 
 #include "bool.H"
 #include "label.H"
@@ -40,8 +44,12 @@ Description
 namespace Foam
 {
 
+// Forward Declarations
+class objectHit;
+inline Ostream& operator<<(Ostream& os, const objectHit& obj);
+
 /*---------------------------------------------------------------------------*\
-                          Class objectHit Declaration
+                           Class objectHit Declaration
 \*---------------------------------------------------------------------------*/
 
 class objectHit
@@ -51,71 +59,108 @@ class objectHit
         //- Hit success
         bool hit_;
 
-        //- Object of hit
-        label hitObject_;
+        //- The hit object index
+        label index_;
 
 
 public:
 
     // Constructors
 
-        //- Construct null
-        objectHit()
+        //- Default construct. Nothing hit and object index = -1
+        constexpr objectHit() noexcept
         :
             hit_(false),
-            hitObject_(-1)
+            index_(-1)
         {}
 
         //- Construct from components
-        objectHit(const bool success, const label obj)
+        objectHit(const bool success, const label index) noexcept
         :
             hit_(success),
-            hitObject_(obj)
+            index_(index)
         {}
 
         //- Construct from Istream
-        objectHit(Istream& is)
+        explicit objectHit(Istream& is)
         :
             hit_(readBool(is)),
-            hitObject_(readLabel(is))
+            index_(readLabel(is))
         {}
 
 
     // Member Functions
 
-        //- Is there a hit
-        bool hit() const
+    // Access
+
+        //- Is there a hit?
+        bool hit() const noexcept
         {
             return hit_;
         }
 
-        //- Return hit object
-        label hitObject() const
+        //- Return the hit object index
+        label index() const noexcept
         {
-            return hitObject_;
+            return index_;
+        }
+
+        //- Identical to index()
+        label hitObject() const noexcept
+        {
+            return index_;
         }
 
 
-    // Friend Operators
+    // Edit
 
-        inline friend bool operator==(const objectHit& a, const objectHit& b)
+        //- Reset to default construct state (false, -1)
+        void reset() noexcept
         {
-            return (a.hit_ == b.hit_) && (a.hitObject_ == b.hitObject_);
+            hit_ = false;
+            index_ = -1;
         }
 
-        inline friend bool operator!=(const objectHit& a, const objectHit& b)
+        //- Set the hit status \em on
+        void setHit() noexcept
         {
-            return !(a == b);
+            hit_ = true;
+        }
+
+        //- Set the hit status \em off
+        void setMiss() noexcept
+        {
+            hit_ = false;
+        }
+
+        //- Set the hit object index
+        void setIndex(const label index) noexcept
+        {
+            index_ = index;
         }
 
 
-    // Ostream operator
+    // Ostream Operator
 
         inline friend Ostream& operator<<(Ostream& os, const objectHit& obj)
         {
-             return os << obj.hit() << token::SPACE << obj.hitObject();
+             return os << obj.hit() << token::SPACE << obj.index();
         }
 };
+
+
+// * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * * //
+
+inline bool operator==(const objectHit& a, const objectHit& b)
+{
+    return a.hit() == b.hit() && a.index() == b.index();
+}
+
+
+inline bool operator!=(const objectHit& a, const objectHit& b)
+{
+    return !(a == b);
+}
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,24 @@ Class
     Foam::linearEqn
 
 Description
-    Linear equation of the form a*x + b = 0
+    Container to encapsulate various operations for
+    linear equation of the forms with real coefficients:
+
+    \f[
+        a*x + b = 0
+          x + B = 0
+    \f]
+
+See also
+    Test-linearEqn.C
 
 SourceFiles
     linearEqnI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef linearEqn_H
-#define linearEqn_H
+#ifndef Foam_linearEqn_H
+#define Foam_linearEqn_H
 
 #include "Roots.H"
 
@@ -43,7 +55,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class linearEqn Declaration
+                         Class linearEqn Declaration
 \*---------------------------------------------------------------------------*/
 
 class linearEqn
@@ -52,19 +64,16 @@ class linearEqn
 {
 public:
 
-    //- Coefficient indexing enumeration
-    struct coefficient
-    {
-        enum {a, b};
-    };
+    //- Component labeling enumeration
+    enum components { A, B };
 
 
     // Constructors
 
-        //- Construct null
-        inline linearEqn();
+        //- Default construct
+        linearEqn() = default;
 
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline linearEqn(const Foam::zero);
 
         //- Construct from components
@@ -73,24 +82,27 @@ public:
 
     // Member Functions
 
-        // Access
+    // Access
 
-            inline scalar a() const;
-            inline scalar b() const;
+        scalar a() const noexcept { return this->v_[A]; }
+        scalar b() const noexcept { return this->v_[B]; }
 
-            inline scalar& a();
-            inline scalar& b();
+        scalar& a() noexcept { return this->v_[A]; }
+        scalar& b() noexcept { return this->v_[B]; }
 
-        //- Evaluate at x
+
+    // Evaluate
+
+        //- Evaluate the linear equation at x
         inline scalar value(const scalar x) const;
 
-        //- Evaluate the derivative at x
+        //- Evaluate the derivative of the linear equation at x
         inline scalar derivative(const scalar x) const;
 
-        //- Estimate the error of evaluation at x
+        //- Estimate the error of evaluation of the linear equation at x
         inline scalar error(const scalar x) const;
 
-        //- Get the roots
+        //- Return the real root of the linear equation
         inline Roots<1> roots() const;
 };
 

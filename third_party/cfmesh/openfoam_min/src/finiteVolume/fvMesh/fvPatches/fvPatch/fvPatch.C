@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,11 +44,28 @@ namespace Foam
 }
 
 
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+const Foam::fvPatch& Foam::fvPatch::lookupPatch(const polyPatch& p)
+{
+    const fvMesh* meshptr = isA<fvMesh>(p.boundaryMesh().mesh());
+
+    if (!meshptr)
+    {
+        FatalErrorInFunction
+            << "The polyPatch is not attached to a base fvMesh" << nl
+            << exit(FatalError);
+    }
+
+    return meshptr->boundary()[p.index()];
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::fvPatch::fvPatch(const polyPatch& p, const fvBoundaryMesh& bm)
 :
-    poly_(p),
+    polyPatch_(p),
     boundaryMesh_(bm)
 {}
 
@@ -53,106 +73,83 @@ Foam::fvPatch::fvPatch(const polyPatch& p, const fvBoundaryMesh& bm)
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::fvPatch::~fvPatch()
-{}
+{}  // fvBoundaryMesh was forward declared
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::objectRegistry& Foam::fvPatch::db() const
+bool Foam::fvPatch::constraintType(const word& patchType)
 {
-    return boundaryMesh_.mesh();
+    return
+    (
+        !patchType.empty()
+     && fvPatchField<scalar>::patchConstructorTablePtr_
+     && fvPatchField<scalar>::patchConstructorTablePtr_->found(patchType)
+    );
 }
 
 
-const Foam::fvMesh& Foam::fvPatch::mesh() const
+Foam::wordList Foam::fvPatch::constraintTypes()
 {
-    return boundaryMesh_.mesh();
-}
+    const auto& cnstrTable = *polyPatchConstructorTablePtr_;
 
+    wordList cTypes(cnstrTable.size());
 
-const Foam::Time& Foam::fvPatch::time() const
-{
-    return boundaryMesh_.mesh().time();
+    label i = 0;
+
+    forAllConstIters(cnstrTable, iter)
+    {
+        if (constraintType(iter.key()))
+        {
+            cTypes[i++] = iter.key();
+        }
+    }
+
+    cTypes.resize(i);
+
+    return cTypes;
 }
 
 
 const Foam::labelUList& Foam::fvPatch::faceCells() const
 {
-    return poly_.faceCells();
+    return polyPatch_.faceCells();
 }
 
 
 const Foam::vectorField& Foam::fvPatch::Cf() const
 {
-    return mesh().Cf().boundaryField()[index()];
+    return boundaryMesh().mesh().Cf().boundaryField()[index()];
 }
-
-
-const Foam::DimensionedField<Foam::vector, Foam::fvPatch>&
-Foam::fvPatch::C() const
-{
-    if (!CPtr_.valid())
-    {
-        CPtr_ = new SlicedDimensionedField<vector, fvPatch>
-        (
-            IOobject
-            (
-                "C",
-                mesh().time().name(),
-                mesh(),
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            *this,
-            dimLength,
-            Cf()
-        );
-    }
-    else
-    {
-        CPtr_->reset(Cf());
-    }
-
-    return *CPtr_;
-}
-
 
 
 Foam::tmp<Foam::vectorField> Foam::fvPatch::Cn() const
 {
-    tmp<vectorField> tcc(new vectorField(size()));
-    vectorField& cc = tcc.ref();
+    return patchInternalField(boundaryMesh().mesh().cellCentres());
+}
 
-    const labelUList& faceCells = this->faceCells();
 
-    // get reference to global cell centres
-    const vectorField& gcc = mesh().cellCentres();
+const Foam::vectorField& Foam::fvPatch::Sf() const
+{
+    return boundaryMesh().mesh().Sf().boundaryField()[index()];
+}
 
-    forAll(faceCells, facei)
-    {
-        cc[facei] = gcc[faceCells[facei]];
-    }
 
-    return tcc;
+const Foam::scalarField& Foam::fvPatch::magSf() const
+{
+    return boundaryMesh().mesh().magSf().boundaryField()[index()];
+}
+
+
+Foam::tmp<Foam::vectorField> Foam::fvPatch::unitSf() const
+{
+    return Sf()/magSf();
 }
 
 
 Foam::tmp<Foam::vectorField> Foam::fvPatch::nf() const
 {
     return Sf()/magSf();
-}
-
-
-const Foam::vectorField& Foam::fvPatch::Sf() const
-{
-    return mesh().Sf().boundaryField()[index()];
-}
-
-
-const Foam::scalarField& Foam::fvPatch::magSf() const
-{
-    return mesh().magSf().boundaryField()[index()];
 }
 
 
@@ -164,41 +161,41 @@ Foam::tmp<Foam::vectorField> Foam::fvPatch::delta() const
 }
 
 
-Foam::tmp<Foam::scalarField> Foam::fvPatch::polyFaceFraction() const
-{
-    return
-        mesh().conformal()
-      ? tmp<scalarField>(new scalarField(size(), scalar(1)))
-      : magSf()
-       /scalarField
-        (
-            mesh().magFaceAreas(),
-            mesh().polyFacesBf()[index()]
-        );
-}
-
-
 void Foam::fvPatch::makeWeights(scalarField& w) const
 {
     w = 1.0;
 }
 
 
+void Foam::fvPatch::makeDeltaCoeffs(scalarField& w) const
+{}
+
+
+void Foam::fvPatch::makeNonOrthoDeltaCoeffs(scalarField& w) const
+{}
+
+
+void Foam::fvPatch::makeNonOrthoCorrVectors(vectorField& w) const
+{}
+
+
+void Foam::fvPatch::initMovePoints()
+{}
+
+
+void Foam::fvPatch::movePoints()
+{}
+
+
 const Foam::scalarField& Foam::fvPatch::deltaCoeffs() const
 {
-    return mesh().deltaCoeffs().boundaryField()[index()];
+    return boundaryMesh().mesh().deltaCoeffs().boundaryField()[index()];
 }
 
 
 const Foam::scalarField& Foam::fvPatch::weights() const
 {
-    return mesh().weights().boundaryField()[index()];
-}
-
-
-const Foam::fvMesh& Foam::fvPatch::operator()() const
-{
-    return mesh();
+    return boundaryMesh().mesh().weights().boundaryField()[index()];
 }
 
 

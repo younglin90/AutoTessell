@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,93 +37,154 @@ template<class FaceList, class PointField>
 void Foam::PatchTools::gatherAndMerge
 (
     const scalar mergeDist,
-    const PrimitivePatch<FaceList, PointField>& p,
-    Field<typename PrimitivePatch<FaceList, PointField>::PointType>&
-        mergedPoints,
-    List<typename PrimitivePatch<FaceList, PointField>::FaceType>& mergedFaces,
-    labelList& pointMergeMap
+    const PrimitivePatch<FaceList, PointField>& pp,
+    Field
+    <
+        typename PrimitivePatch<FaceList, PointField>::point_type
+    >& mergedPoints,
+    List
+    <
+        typename PrimitivePatch<FaceList, PointField>::face_type
+    >& mergedFaces,
+    globalIndex& pointAddr,
+    globalIndex& faceAddr,
+    labelList& pointMergeMap,
+    const bool useLocal
 )
 {
-    typedef typename PrimitivePatch<FaceList, PointField>::FaceType FaceType;
-    typedef typename PrimitivePatch<FaceList, PointField>::PointType PointType;
+    typedef typename PrimitivePatch<FaceList, PointField>::face_type FaceType;
 
-    // Collect points from all processors
-    labelList pointSizes;
+    // Faces from all ranks
+    faceAddr.reset(globalIndex::gatherOnly{}, pp.size());
+
+    // Points from all ranks
+    pointAddr.reset
+    (
+        globalIndex::gatherOnly{},
+        (useLocal ? pp.localPoints().size() : pp.points().size())
+    );
+
+    if (useLocal)
     {
-        List<Field<PointType>> gatheredPoints(Pstream::nProcs());
-        gatheredPoints[Pstream::myProcNo()] = p.points();
+        faceAddr.gather(pp.localFaces(), mergedFaces);
+        pointAddr.gather(pp.localPoints(), mergedPoints);
+    }
+    else
+    {
+        faceAddr.gather(pp, mergedFaces);
+        pointAddr.gather(pp.points(), mergedPoints);
+    }
 
-        Pstream::gatherList(gatheredPoints);
+    // Relabel faces according to global point offsets
+    for (const label proci : faceAddr.subProcs())
+    {
+        SubList<FaceType> slot(mergedFaces, faceAddr.range(proci));
 
-        if (Pstream::master())
+        for (auto& f : slot)
         {
-            pointSizes = ListListOps::subSizes
-            (
-                gatheredPoints,
-                accessOp<Field<PointType>>()
-            );
-
-            mergedPoints = ListListOps::combine<Field<PointType>>
-            (
-                gatheredPoints,
-                accessOp<Field<PointType>>()
-            );
+            pointAddr.inplaceToGlobal(proci, f);
         }
     }
 
-    // Collect faces from all processors and renumber using sizes of
-    // gathered points
+
+    // Merging points
+    label nPointsChanged(0);
+
+    labelList boundaryPoints;
+
+    if (UPstream::parRun())
     {
-        List<List<FaceType>> gatheredFaces(Pstream::nProcs());
-        gatheredFaces[Pstream::myProcNo()] = p;
-        Pstream::gatherList(gatheredFaces);
-
-        if (Pstream::master())
-        {
-            mergedFaces = static_cast<const List<FaceType>&>
-            (
-                ListListOps::combineOffset<List<FaceType>>
-                (
-                    gatheredFaces,
-                    pointSizes,
-                    accessOp<List<FaceType>>(),
-                    offsetOp<FaceType>()
-                )
-            );
-        }
-    }
-
-    if (Pstream::master())
-    {
-        Field<PointType> newPoints;
-        labelList oldToNew;
-
-        bool hasMerged = mergePoints
+        const globalIndex localPointAddr
         (
-            mergedPoints,
-            mergeDist,
-            false,                  // verbosity
-            oldToNew,
-            newPoints
+            globalIndex::gatherOnly{},
+            pp.localPoints().size()
         );
 
-        if (hasMerged)
+        const globalIndex bndPointAddr
+        (
+            globalIndex::gatherOnly{},
+            pp.boundaryPoints().size()
+        );
+
+        bndPointAddr.gather(pp.boundaryPoints(), boundaryPoints);
+
+        // Relabel according to global point offsets
+        for (const label proci : localPointAddr.subProcs())
         {
-            // Store point mapping
-            pointMergeMap.transfer(oldToNew);
+            SubList<label> slot(boundaryPoints, bndPointAddr.range(proci));
+            localPointAddr.inplaceToGlobal(proci, slot);
+        }
+    }
 
-            // Copy points
-            mergedPoints.transfer(newPoints);
 
-            // Relabel faces
-            List<FaceType>& faces = mergedFaces;
+    if (UPstream::parRun() && UPstream::master())
+    {
+        labelList pointToUnique;
 
-            forAll(faces, facei)
+        nPointsChanged = Foam::inplaceMergePoints
+        (
+            mergedPoints,
+            boundaryPoints,  // selection of points to merge
+            mergeDist,
+            false,           // verbose = false
+            pointToUnique
+        );
+
+        if (nPointsChanged)
+        {
+            // Renumber faces to use unique point numbers
+            for (auto& f : mergedFaces)
             {
-                inplaceRenumber(pointMergeMap, faces[facei]);
+                inplaceRenumber(pointToUnique, f);
+            }
+
+            // Store point mapping
+            if (notNull(pointMergeMap))
+            {
+                pointMergeMap.transfer(pointToUnique);
             }
         }
     }
+
+    if (!nPointsChanged && notNull(pointMergeMap))
+    {
+        // Safety
+        pointMergeMap = identity(mergedPoints.size());
+    }
+}
+
+
+template<class FaceList, class PointField>
+void Foam::PatchTools::gatherAndMerge
+(
+    const scalar mergeDist,
+    const PrimitivePatch<FaceList, PointField>& pp,
+    Field
+    <
+        typename PrimitivePatch<FaceList, PointField>::point_type
+    >& mergedPoints,
+    List
+    <
+        typename PrimitivePatch<FaceList, PointField>::face_type
+    >& mergedFaces,
+    labelList& pointMergeMap,
+    const bool useLocal
+)
+{
+    globalIndex pointAddr;
+    globalIndex faceAddr;
+
+    PatchTools::gatherAndMerge<FaceList, PointField>
+    (
+        mergeDist,
+        pp,
+        mergedPoints,
+        mergedFaces,
+        pointAddr,
+        faceAddr,
+        pointMergeMap,
+        useLocal
+    );
 }
 
 
@@ -142,9 +206,9 @@ void Foam::PatchTools::gatherAndMerge
 {
     typedef typename FaceList::value_type FaceType;
 
-    if (Pstream::parRun())
+    if (UPstream::parRun())
     {
-        // Renumber the setPatch points/faces into unique points
+        // Renumber the points/faces into unique points
         globalPointsPtr = mesh.globalData().mergePoints
         (
             meshPoints,
@@ -155,69 +219,26 @@ void Foam::PatchTools::gatherAndMerge
 
         globalFacesPtr.reset(new globalIndex(localFaces.size()));
 
-        if (Pstream::master())
+        // Renumber faces locally
+        List<FaceType> myFaces(localFaces);
+        for (auto& f : myFaces)
         {
-            // Get renumbered local data
-            pointField myPoints(mesh.points(), uniqueMeshPointLabels);
-            List<FaceType> myFaces(localFaces);
-            forAll(myFaces, i)
-            {
-                inplaceRenumber(pointToGlobal, myFaces[i]);
-            }
-
-
-            mergedFaces.setSize(globalFacesPtr().size());
-            mergedPoints.setSize(globalPointsPtr().size());
-
-            // Insert master data first
-            label pOffset = globalPointsPtr().offset(Pstream::masterNo());
-            SubList<point>(mergedPoints, myPoints.size(), pOffset) = myPoints;
-
-            label fOffset = globalFacesPtr().offset(Pstream::masterNo());
-            SubList<FaceType>(mergedFaces, myFaces.size(), fOffset) = myFaces;
-
-
-            // Receive slave ones
-            for (int slave=1; slave<Pstream::nProcs(); slave++)
-            {
-                IPstream fromSlave(Pstream::commsTypes::scheduled, slave);
-
-                pointField slavePoints(fromSlave);
-                List<FaceType> slaveFaces(fromSlave);
-
-                label pOffset = globalPointsPtr().offset(slave);
-                SubList<point>(mergedPoints, slavePoints.size(), pOffset) =
-                    slavePoints;
-
-                label fOffset = globalFacesPtr().offset(slave);
-                SubList<FaceType>(mergedFaces, slaveFaces.size(), fOffset) =
-                    slaveFaces;
-            }
+            inplaceRenumber(pointToGlobal, f);
         }
-        else
-        {
-            // Get renumbered local data
-            pointField myPoints(mesh.points(), uniqueMeshPointLabels);
-            List<FaceType> myFaces(localFaces);
-            forAll(myFaces, i)
-            {
-                inplaceRenumber(pointToGlobal, myFaces[i]);
-            }
 
-            // Construct processor stream with estimate of size. Could
-            // be improved.
-            OPstream toMaster
-            (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo(),
-                myPoints.byteSize() + 4*sizeof(label)*myFaces.size()
-            );
-            toMaster << myPoints << myFaces;
-        }
+        // Can also use
+        //     UIndirectList<point>(mesh.points(), uniqueMeshPointLabels)
+        // but favour communication over local memory use
+        globalPointsPtr().gather
+        (
+            pointField(mesh.points(), uniqueMeshPointLabels),
+            mergedPoints
+        );
+        globalFacesPtr().gather(myFaces, mergedFaces);
     }
     else
     {
-        pointToGlobal = identityMap(meshPoints.size());
+        pointToGlobal = identity(meshPoints.size());
         uniqueMeshPointLabels = pointToGlobal;
 
         globalPointsPtr.reset(new globalIndex(meshPoints.size()));

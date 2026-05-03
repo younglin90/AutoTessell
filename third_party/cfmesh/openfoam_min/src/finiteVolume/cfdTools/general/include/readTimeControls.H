@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,12 +33,12 @@ Description
 \*---------------------------------------------------------------------------*/
 
 adjustTimeStep =
-    runTime.controlDict().lookupOrDefault("adjustTimeStep", false);
+    runTime.controlDict().getOrDefault("adjustTimeStep", false);
 
 maxCo =
-    runTime.controlDict().lookupOrDefault<scalar>("maxCo", 1.0);
+    runTime.controlDict().getOrDefault<scalar>("maxCo", 1);
 
 maxDeltaT =
-    runTime.controlDict().lookupOrDefault<scalar>("maxDeltaT", great);
+    runTime.controlDict().getOrDefault<scalar>("maxDeltaT", GREAT);
 
 // ************************************************************************* //

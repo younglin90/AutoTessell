@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,6 +29,24 @@ License
 inline const Foam::word& Foam::MRFZone::name() const
 {
     return name_;
+}
+
+
+inline bool Foam::MRFZone::active() const
+{
+    return active_;
+}
+
+
+inline const Foam::vector& Foam::MRFZone::origin() const
+{
+    return origin_;
+}
+
+
+inline const Foam::vector& Foam::MRFZone::axis() const
+{
+    return axis_;
 }
 
 

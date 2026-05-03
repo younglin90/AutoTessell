@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,7 +30,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "PatchTools.H"
-#include "PackedBoolList.H"
+#include "bitSet.H"
 #include "boundBox.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -102,7 +105,8 @@ void Foam::PatchTools::markZone
 
 
 template<class BoolListType, class FaceList, class PointField>
-Foam::label Foam::PatchTools::markZones
+Foam::label
+Foam::PatchTools::markZones
 (
     const PrimitivePatch<FaceList, PointField>& p,
     const BoolListType& borderEdge,
@@ -133,7 +137,8 @@ Foam::label Foam::PatchTools::markZones
 
 
 template<class BoolListType, class FaceList, class PointField>
-void Foam::PatchTools::subsetMap
+void
+Foam::PatchTools::subsetMap
 (
     const PrimitivePatch<FaceList, PointField>& p,
     const BoolListType& includeFaces,
@@ -141,43 +146,30 @@ void Foam::PatchTools::subsetMap
     labelList& faceMap
 )
 {
-    typedef typename PrimitivePatch<FaceList, PointField>::FaceType FaceType;
+    const auto& localFaces = p.localFaces();
+
+    faceMap.resize(localFaces.size());
+    pointMap.clear();
+
+    bitSet pointUsed(p.nPoints());
 
     label facei  = 0;
-    label pointi = 0;
 
-    const List<FaceType>& localFaces = p.localFaces();
-
-    faceMap.setSize(localFaces.size());
-    pointMap.setSize(p.nPoints());
-
-    boolList pointHad(pointMap.size(), false);
-
-    forAll(p, oldFacei)
+    forAll(localFaces, oldFacei)
     {
         if (includeFaces[oldFacei])
         {
-            // Store new faces compact
+            // Compact storage for new faces
             faceMap[facei++] = oldFacei;
 
-            // Renumber labels for face
-            const FaceType& f = localFaces[oldFacei];
-
-            forAll(f, fp)
-            {
-                const label ptLabel = f[fp];
-                if (!pointHad[ptLabel])
-                {
-                    pointHad[ptLabel]  = true;
-                    pointMap[pointi++] = ptLabel;
-                }
-            }
+            // Local points used by face
+            pointUsed.set(localFaces[oldFacei]);
         }
     }
 
-    // Trim
-    faceMap.setSize(facei);
-    pointMap.setSize(pointi);
+    // The newToOld mappings
+    faceMap.resize(facei);
+    pointMap = pointUsed.sortedToc();
 }
 
 
@@ -189,29 +181,23 @@ void Foam::PatchTools::calcBounds
     label& nPoints
 )
 {
-    typedef typename PrimitivePatch<FaceList, PointField>::FaceType FaceType;
-
     // Unfortunately nPoints constructs meshPoints() so do compact version
     // ourselves
     const PointField& points = p.points();
 
-    PackedBoolList pointIsUsed(points.size());
+    bitSet pointUsed(points.size());
 
     nPoints = 0;
-    bb = boundBox::invertedBox;
+    bb.reset();
 
-    forAll(p, facei)
+    for (const auto& f : p)
     {
-        const FaceType& f = p[facei];
-
-        forAll(f, fp)
+        for (const label pointi : f)
         {
-            label pointi = f[fp];
-            if (pointIsUsed.set(pointi, 1u))
+            if (pointUsed.set(pointi))
             {
-                bb.min() = ::Foam::min(bb.min(), points[pointi]);
-                bb.max() = ::Foam::max(bb.max(), points[pointi]);
-                nPoints++;
+                bb.add(points[pointi]);
+                ++nPoints;
             }
         }
     }

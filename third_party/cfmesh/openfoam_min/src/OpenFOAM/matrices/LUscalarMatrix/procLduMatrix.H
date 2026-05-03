@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef procLduMatrix_H
-#define procLduMatrix_H
+#ifndef Foam_procLduMatrix_H
+#define Foam_procLduMatrix_H
 
 #include "labelList.H"
 #include "scalarField.H"
@@ -45,15 +48,13 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
+class procLduMatrix;
 class procLduInterface;
 class lduMatrix;
 
-// Forward declaration of friend functions and operators
-
-class procLduMatrix;
-
+Istream& operator>>(Istream&, procLduMatrix&);
 Ostream& operator<<(Ostream&, const procLduMatrix&);
-
 
 /*---------------------------------------------------------------------------*\
                         Class procLduMatrix Declaration
@@ -70,14 +71,24 @@ class procLduMatrix
         scalarField lower_;
         PtrList<procLduInterface> interfaces_;
 
-
 public:
 
+    //- Friendship
     friend class LUscalarMatrix;
+
+
+    // Generated Methods
+
+        //- Default construct
+        procLduMatrix() = default;
+
+        //- No copy construct
+        procLduMatrix(const procLduMatrix&) = delete;
 
 
     // Constructors
 
+        //- Construct from components. Extracts active interfaces
         procLduMatrix
         (
             const lduMatrix& ldum,
@@ -85,22 +96,26 @@ public:
             const lduInterfaceFieldPtrsList& interfaces
         );
 
-        procLduMatrix(Istream& is);
-
-        //- Disallow construction as copy
-        procLduMatrix(const procLduMatrix&) = delete;
+        //- Read construct from Istream
+        explicit procLduMatrix(Istream& is);
 
 
     // Member Functions
 
-        label size() const
+        label size() const noexcept
         {
             return diag_.size();
         }
 
+        // void clear();
 
-    // Ostream operator
 
+    // IO Operations
+
+        void read(Istream& is);
+        void write(Ostream& os) const;
+
+        friend Istream& operator>>(Istream&, procLduMatrix&);
         friend Ostream& operator<<(Ostream&, const procLduMatrix&);
 };
 

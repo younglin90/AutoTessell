@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020,2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,9 @@ License
 #include "meshWavePatchDistMethod.H"
 #include "fvMesh.H"
 #include "volFields.H"
-#include "fvPatchDistWave.H"
+#include "patchWave.H"
+#include "patchDataWave.H"
+#include "wallPointData.H"
 #include "emptyFvPatchFields.H"
 #include "addToRunTimeSelectionTable.H"
 
@@ -51,8 +56,8 @@ Foam::patchDistMethods::meshWave::meshWave
 )
 :
     patchDistMethod(mesh, patchIDs),
-    nCorrectors_(dict.lookupOrDefault<label>("nCorrectors", 2)),
-    minFaceFraction_(dict.lookupOrDefault<scalar>("minFaceFraction", 1e-1))
+    correctWalls_(dict.getOrDefault("correctWalls", true)),
+    nUnset_(0)
 {}
 
 
@@ -60,13 +65,12 @@ Foam::patchDistMethods::meshWave::meshWave
 (
     const fvMesh& mesh,
     const labelHashSet& patchIDs,
-    const label nCorrectors,
-    const scalar minFaceFraction
+    const bool correctWalls
 )
 :
     patchDistMethod(mesh, patchIDs),
-    nCorrectors_(nCorrectors),
-    minFaceFraction_(minFaceFraction)
+    correctWalls_(correctWalls),
+    nUnset_(0)
 {}
 
 
@@ -74,22 +78,34 @@ Foam::patchDistMethods::meshWave::meshWave
 
 bool Foam::patchDistMethods::meshWave::correct(volScalarField& y)
 {
-    y = dimensionedScalar(dimLength, great);
+    y = dimensionedScalar("yWall", dimLength, GREAT);
 
-    const label nUnset =
-        fvPatchDistWave::calculateAndCorrect
-        (
-            mesh_,
-            patchIndices_,
-            minFaceFraction_,
-            nCorrectors_,
-            y
-        );
+    // Calculate distance starting from patch faces
+    patchWave wave(mesh_, patchIDs_, correctWalls_);
 
-    // Update coupled and transform BCs
+    // Transfer cell values from wave into y
+    y.transfer(wave.distance());
+
+    // Transfer values on patches into boundaryField of y
+    volScalarField::Boundary& ybf = y.boundaryFieldRef();
+
+    forAll(ybf, patchi)
+    {
+        if (!isA<emptyFvPatchScalarField>(ybf[patchi]))
+        {
+            scalarField& waveFld = wave.patchDistance()[patchi];
+
+            ybf[patchi].transfer(waveFld);
+        }
+    }
+
+    // Make sure boundary values are up-to-date
     y.correctBoundaryConditions();
 
-    return nUnset > 0;
+    // Transfer number of unset values
+    nUnset_ = wave.nUnset();
+
+    return nUnset_ > 0;
 }
 
 
@@ -99,24 +115,57 @@ bool Foam::patchDistMethods::meshWave::correct
     volVectorField& n
 )
 {
-    y = dimensionedScalar(dimLength, great);
+    y = dimensionedScalar("yWall", dimLength, GREAT);
 
-    const label nUnset =
-        fvPatchDistWave::calculateAndCorrect
-        (
-            mesh_,
-            patchIndices_,
-            minFaceFraction_,
-            nCorrectors_,
-            y,
-            n
-        );
+    // Collect pointers to data on patches
+    UPtrList<vectorField> patchData(mesh_.boundaryMesh().size());
 
-    // Update coupled and transform BCs
+    volVectorField::Boundary& nbf = n.boundaryFieldRef();
+
+    forAll(nbf, patchi)
+    {
+        patchData.set(patchi, &nbf[patchi]);
+    }
+
+    // Do mesh wave
+    patchDataWave<wallPointData<vector>> wave
+    (
+        mesh_,
+        patchIDs_,
+        patchData,
+        correctWalls_
+    );
+
+    // Transfer cell values from wave into y and n
+    y.transfer(wave.distance());
+
+    n.transfer(wave.cellData());
+
+    // Transfer values on patches into boundaryField of y and n
+    volScalarField::Boundary& ybf = y.boundaryFieldRef();
+
+    forAll(ybf, patchi)
+    {
+        scalarField& waveFld = wave.patchDistance()[patchi];
+
+        if (!isA<emptyFvPatchScalarField>(ybf[patchi]))
+        {
+            ybf[patchi].transfer(waveFld);
+
+            vectorField& wavePatchData = wave.patchData()[patchi];
+
+            nbf[patchi].transfer(wavePatchData);
+        }
+    }
+
+    // Make sure boundary values are up-to-date
     y.correctBoundaryConditions();
     n.correctBoundaryConditions();
 
-    return nUnset > 0;
+    // Transfer number of unset values
+    nUnset_ = wave.nUnset();
+
+    return nUnset_ > 0;
 }
 
 

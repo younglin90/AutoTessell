@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,30 +24,231 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
+Note
+    Included by global/globals.C
+
 \*---------------------------------------------------------------------------*/
 
 #include "error.H"
 #include "dictionary.H"
+#include "foamVersion.H"
 #include "Pstream.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-int Foam::messageStream::level(Foam::debug::debugSwitch("level", 2));
+// Default is 2 : report source file name and line number if available
+int Foam::messageStream::level(Foam::debug::infoSwitch("outputLevel", 2));
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+int Foam::messageStream::redirect(0);
+
+// Default is 1 : report to Info
+int Foam::infoDetailLevel(1);
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::messageStream::messageStream
 (
-    const string& title,
-    const errorSeverity sev,
-    const int maxErrors
+    const char* title,
+    errorSeverity severity,
+    int maxErrors,
+    bool use_stderr
 )
 :
-    title_(title),
-    severity_(sev),
+    title_(),
+    severity_(severity),
     maxErrors_(maxErrors),
     errorCount_(0)
+{
+    if (title)
+    {
+        title_ = title;
+    }
+    if (use_stderr)
+    {
+        severity_ |= errorSeverity::USE_STDERR;
+    }
+}
+
+
+Foam::messageStream::messageStream(const dictionary& dict)
+:
+    title_(dict.get<string>("title")),
+    severity_(errorSeverity::FATAL),
+    maxErrors_(0),
+    errorCount_(0)
 {}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+Foam::OSstream& Foam::messageStream::stream
+(
+    OSstream* alternative
+)
+{
+    if (level)
+    {
+        // Serlal (master only) output?
+        const bool serialOnly
+        (
+            !UPstream::parRun()
+         || ((severity_ & ~errorSeverity::USE_STDERR) == errorSeverity::INFO)
+         || ((severity_ & ~errorSeverity::USE_STDERR) == errorSeverity::WARNING)
+        );
+
+        if (serialOnly && (UPstream::parRun() && !UPstream::master()))
+        {
+            return Snull;  // Non-serial, non-master: exit early
+        }
+
+
+        // Use stderr instead of stdout:
+        // - requested via static <redirect> variable
+        // - explicit:  with USE_STDERR mask
+        // - inferred:  WARNING -> stderr when infoDetailLevel == 0
+        const bool use_stderr =
+        (
+            (redirect == 2)
+         || (severity_ & errorSeverity::USE_STDERR)
+         || (severity_ == errorSeverity::WARNING && Foam::infoDetailLevel == 0)
+        );
+
+
+        OSstream* osptr;
+
+        if (serialOnly)
+        {
+            // Use supplied alternative? Valid for serial only
+
+            osptr =
+            (
+                alternative
+              ? alternative
+              : (use_stderr ? &Serr : &Sout)
+            );
+        }
+        else
+        {
+            // Non-serial
+            osptr = (use_stderr ? &Perr : &Pout);
+        }
+
+        if (!title_.empty())
+        {
+            (*osptr) << title_.c_str();
+        }
+
+        if (maxErrors_ && (++errorCount_ >= maxErrors_))
+        {
+            FatalErrorInFunction
+                << "Too many errors..."
+                << abort(FatalError);
+        }
+
+        return *osptr;
+    }
+
+    return Snull;
+}
+
+
+Foam::OSstream& Foam::messageStream::masterStream(const label communicator)
+{
+    if (UPstream::warnComm >= 0 && communicator != UPstream::warnComm)
+    {
+        Perr<< "** messageStream with comm:" << communicator << endl;
+        error::printStack(Perr);
+    }
+
+    if (communicator == UPstream::worldComm || UPstream::master(communicator))
+    {
+        return this->stream();
+    }
+
+    return Snull;
+}
+
+
+std::ostream& Foam::messageStream::stdStream()
+{
+    return this->stream().stdStream();
+}
+
+
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+Foam::OSstream& Foam::messageStream::operator()
+(
+    const std::string& functionName
+)
+{
+    OSstream& os = this->stream();
+
+    if (!functionName.empty())
+    {
+        os  << nl
+            << "    From " << functionName.c_str() << nl;
+    }
+
+    return os;
+}
+
+
+Foam::OSstream& Foam::messageStream::deprecated
+(
+    const int afterVersion,
+    const char* functionName,
+    const char* sourceFileName,
+    const int sourceFileLineNumber
+)
+{
+    OSstream& os = this->stream();
+
+    // No warning for 0 (unversioned) or -ve values (silent versioning).
+    // Also no warning for (version >= foamVersion::api), which
+    // can be used to denote future expiry dates of transition features.
+
+    if (afterVersion > 0 && afterVersion < foamVersion::api)
+    {
+        const int months =
+        (
+            // YYMM -> months
+            (12 * (foamVersion::api/100) + (foamVersion::api % 100))
+          - (12 * (afterVersion/100)  + (afterVersion % 100))
+        );
+
+        os  << nl
+            << ">>> DEPRECATED after version " << afterVersion;
+
+        if (afterVersion < 1000)
+        {
+            // Predates YYMM versioning (eg, 240 for version 2.4)
+            os  << ". This is very old! <<<" << nl;
+        }
+        else
+        {
+            os  << ". This is about " << months << " months old. <<<" << nl;
+        }
+    }
+
+
+    os  << nl;
+    if (functionName)  // nullptr check
+    {
+        {
+            os  << "    From " << functionName << nl;
+        }
+        if (sourceFileName)
+        {
+            os  << "    in file " << sourceFileName
+                << " at line " << sourceFileLineNumber << nl;
+        }
+    }
+    os  << "    ";
+
+    return os;
+}
 
 
 Foam::OSstream& Foam::messageStream::operator()
@@ -54,12 +258,12 @@ Foam::OSstream& Foam::messageStream::operator()
     const int sourceFileLineNumber
 )
 {
-    OSstream& os = operator OSstream&();
+    OSstream& os = this->stream();
 
-    os  << endl
-        << "    From function " << functionName << endl
+    os  << nl
+        << "    From " << functionName << nl
         << "    in file " << sourceFileName
-        << " at line " << sourceFileLineNumber << endl
+        << " at line " << sourceFileLineNumber << nl
         << "    ";
 
     return os;
@@ -68,7 +272,7 @@ Foam::OSstream& Foam::messageStream::operator()
 
 Foam::OSstream& Foam::messageStream::operator()
 (
-    const string& functionName,
+    const std::string& functionName,
     const char* sourceFileName,
     const int sourceFileLineNumber
 )
@@ -87,21 +291,28 @@ Foam::OSstream& Foam::messageStream::operator()
     const char* functionName,
     const char* sourceFileName,
     const int sourceFileLineNumber,
-    const string& ioFileName,
-    const label ioLineNumber
+    const std::string& ioFileName,
+    const label ioStartLineNumber,
+    const label ioEndLineNumber
 )
 {
-    OSstream& os = operator OSstream&();
+    OSstream& os = operator()
+    (
+        functionName,
+        sourceFileName,
+        sourceFileLineNumber
+    );
 
-    os  << endl
-        << "    From function " << functionName << endl
-        << "    in file " << sourceFileName
-        << " at line " << sourceFileLineNumber << endl
-        << "    Reading " << ioFileName;
+    os  << "Reading \"" << ioFileName.c_str() << '"';
 
-    if (ioLineNumber >= 0)
+    if (ioStartLineNumber >= 0)
     {
-        os  << " at line " << ioLineNumber;
+        os  << " at line " << ioStartLineNumber;
+
+        if (ioStartLineNumber < ioEndLineNumber)
+        {
+            os  << " to " << ioEndLineNumber;
+        }
     }
 
     os << endl  << "    ";
@@ -123,8 +334,9 @@ Foam::OSstream& Foam::messageStream::operator()
         functionName,
         sourceFileName,
         sourceFileLineNumber,
-        ioStream.name(),
-        ioStream.lineNumber()
+        ioStream.relativeName(),
+        ioStream.lineNumber(),
+        -1  // No known endLineNumber
     );
 }
 
@@ -142,88 +354,41 @@ Foam::OSstream& Foam::messageStream::operator()
         functionName,
         sourceFileName,
         sourceFileLineNumber,
-        dict.name(),
+        dict.relativeName(),
+        dict.startLineNumber(),
         dict.endLineNumber()
     );
 }
 
 
-Foam::OSstream& Foam::messageStream::operator()(label communicator)
-{
-    if (communicator != -1)
-    {
-        if (UPstream::warnComm != -1 && communicator != UPstream::warnComm)
-        {
-            Pout<< "** messageStream with comm:" << communicator
-                << endl;
-            error::printStack(Pout);
-        }
-    }
-    else
-    {
-        communicator = UPstream::worldComm;
-    }
+// * * * * * * * * * * * * * * * Global Variables  * * * * * * * * * * * * * //
 
-    if (messageStream::level >= 1)
-    {
-        const bool master = Pstream::master(communicator);
-
-        const bool collect = severity_ == INFO || severity_ == WARNING;
-
-        const bool prefix =
-            (Pstream::parRun() && !collect)
-         || communicator != UPstream::worldComm;
-
-        OSstream& os = prefix ? Pout : Sout;
-
-        if (!master && collect)
-        {
-            return Snull;
-        }
-        else
-        {
-            if (title().size())
-            {
-                os << title().c_str();
-            }
-
-            if (maxErrors_)
-            {
-                errorCount_++;
-
-                if (errorCount_ >= maxErrors_)
-                {
-                    FatalErrorInFunction
-                        << "Too many errors"
-                        << abort(FatalError);
-                }
-            }
-
-            return os;
-        }
-    }
-
-    return Snull;
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Foam::messageStream Foam::SeriousError
+Foam::messageStream Foam::Info
 (
-    "--> FOAM Serious Error: ",
-    messageStream::SERIOUS,
-    100
+    "",  // No title
+    Foam::messageStream::INFO
+);
+
+Foam::messageStream Foam::InfoErr
+(
+    "",  // No title
+    Foam::messageStream::INFO,
+    0,
+    true  // use_stderr = true
 );
 
 Foam::messageStream Foam::Warning
 (
-    "--> FOAM Warning: ",
-    messageStream::WARNING
+    "--> FOAM Warning : ",
+    Foam::messageStream::WARNING
 );
 
-Foam::messageStream Foam::Info("", messageStream::INFO);
+Foam::messageStream Foam::SeriousError
+(
+    "--> FOAM Serious Error : ",
+    Foam::messageStream::SERIOUS,
+    100
+);
 
-bool Foam::writeInfoHeader = true;
 
 // ************************************************************************* //

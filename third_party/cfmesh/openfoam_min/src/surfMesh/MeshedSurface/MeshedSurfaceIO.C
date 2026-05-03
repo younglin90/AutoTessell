@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016-2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,42 +28,83 @@ License
 
 #include "MeshedSurface.H"
 #include "boundBox.H"
+#include "faceTraits.H"
+#include "Istream.H"
 #include "Ostream.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Face>
+Foam::Istream& Foam::MeshedSurface<Face>::read(Istream& is)
+{
+    is  >> this->storedZones()
+        >> this->storedPoints()
+        >> this->storedFaces();
+
+    is.check(FUNCTION_NAME);
+    return is;
+}
+
+
+template<class Face>
+Foam::Ostream& Foam::MeshedSurface<Face>::write(Ostream& os) const
+{
+    os  << this->surfZones()
+        << this->points()
+        << this->surfFaces();
+
+    os.check(FUNCTION_NAME);
+    return os;
+}
+
+
+template<class Face>
 void Foam::MeshedSurface<Face>::writeStats(Ostream& os) const
 {
-    os  << indent << "points      : " << this->points().size() << nl;
-    if (MeshedSurface<Face>::isTri())
+    os  << "points      : " << this->points().size() << nl;
+    if (faceTraits<Face>::isTri())
     {
-        os << indent << "triangles   : " << this->size() << nl;
+        os << "triangles   : " << this->size() << nl;
     }
     else
     {
-        label nTri = 0;
-        label nQuad = 0;
-        forAll(*this, i)
+        label nTri = 0, nQuad = 0;
+        for (const Face& f : *this)
         {
-            const label n = this->operator[](i).size();
+            const label n = f.size();
 
             if (n == 3)
             {
-                nTri++;
+                ++nTri;
             }
             else if (n == 4)
             {
-                nQuad++;
+                ++nQuad;
             }
         }
 
-        os  << indent << "faces       : " << this->size()
+        os  << "faces       : " << this->size()
             << "  (tri:" << nTri << " quad:" << nQuad
-            << " poly:" << (this->size() - nTri - nQuad ) << ")" << nl;
+            << " poly:" << (this->size() - nTri - nQuad) << ")" << nl;
     }
 
-    os  << indent << "boundingBox : " << boundBox(this->points()) << endl;
+    os  << "boundingBox : " << boundBox(this->points()) << endl;
+}
+
+
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
+
+template<class Face>
+Foam::Istream& Foam::operator>>(Istream& is, MeshedSurface<Face>& surf)
+{
+    return surf.read(is);
+}
+
+
+template<class Face>
+Foam::Ostream& Foam::operator<<(Ostream& os, const MeshedSurface<Face>& surf)
+{
+    return surf.write(os);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ Description
     to adjust the zone information (eg, surface refinement).
 
 See also
-    The Foam::MeshedSurface - which is organised as a surface mesh, but
+    The Foam::MeshedSurface - which is organized as a surface mesh, but
     with independent zone information.
 
 SourceFiles
@@ -43,33 +46,36 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef UnsortedMeshedSurface_H
-#define UnsortedMeshedSurface_H
+#ifndef Foam_UnsortedMeshedSurface_H
+#define Foam_UnsortedMeshedSurface_H
 
 #include "MeshedSurface.H"
 #include "surfZoneIdentifierList.H"
 #include "surfZoneList.H"
 #include "surfaceFormatsCore.H"
+#include "HashSet.H"
 #include "runTimeSelectionTables.H"
 #include "memberFunctionSelectionTables.H"
-#include "HashSet.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
+// Forward Declarations
 class Time;
-class IFstream;
 
 template<class Face> class MeshedSurface;
 template<class Face> class MeshedSurfaceProxy;
 template<class Face> class UnsortedMeshedSurface;
 
+template<class Face>
+Istream& operator>>(Istream&, UnsortedMeshedSurface<Face>&);
+template<class Face>
+Ostream& operator<<(Ostream&, const UnsortedMeshedSurface<Face>&);
+
 /*---------------------------------------------------------------------------*\
-                    Class UnsortedMeshedSurface Declaration
+                   Class UnsortedMeshedSurface Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -77,16 +83,18 @@ class UnsortedMeshedSurface
 :
     public MeshedSurface<Face>
 {
-    // friends - despite different face representationsx
+    // Friends, regardless of face representations
     template<class Face2> friend class MeshedSurface;
     template<class Face2> friend class UnsortedMeshedSurface;
+
+    // Friendship with surfMesh is needed for transferring
     friend class surfMesh;
 
 private:
 
-    // Private Typedefs for convenience
+    // Private Typedefs (convenience)
 
-        typedef MeshedSurface<Face>       ParentType;
+        typedef MeshedSurface<Face>       MeshReference;
         typedef MeshedSurface<Face>       FriendType;
         typedef MeshedSurfaceProxy<Face>  ProxyType;
 
@@ -104,18 +112,35 @@ private:
     // Private Member Functions
 
         //- Disable resize with value
-        void resize(const label, const Face&);
+        void resize(const label, const Face&) = delete;
 
         //- Disable setSize with value
-        void setSize(const label, const Face&);
+        void setSize(const label, const Face&) = delete;
+
+        //- Read/construct from Istream
+        bool readIstream(Istream& is);
+
+        //- Write to Ostream
+        void writeOstream(Ostream& os) const;
+
+
+        //- Return a new surface using specified pointMap and faceMap
+        //
+        //  \param[in] pointMap from subsetMeshMap
+        //  \param[in] faceMap from subsetMeshMap
+        UnsortedMeshedSurface subsetMeshImpl
+        (
+            const labelList& pointMap,
+            const labelList& faceMap
+        ) const;
 
 
 protected:
 
-    // Protected Member functions
+    // Protected Member Functions
 
         //- Return non-const access to the zone Ids
-        List<label>& storedZoneIds()
+        labelList& storedZoneIds()
         {
             return zoneIds_;
         }
@@ -127,80 +152,97 @@ protected:
         }
 
         //- Set new zones from faceMap
-        virtual void remapFaces(const labelUList& faceMap);
+        virtual void remapFaces(const labelUList& faceMapNewToOld);
 
 
 public:
 
     // Public Typedefs
 
-        //- Face type used
-        typedef Face FaceType;
+        //- The face type (same as the underlying PrimitivePatch)
+        typedef Face face_type;
 
-        //- Runtime type information
-        TypeName("UnsortedMeshedSurface");
+        //- The point type (same as the underlying PrimitivePatch)
+        typedef point point_type;
 
 
-    // Static
+    //- Declare type-name, virtual type (with debug switch)
+    TypeName("UnsortedMeshedSurface");
 
-        //- Can we read this file format?
-        static bool canReadType(const word& ext, const bool verbose=false);
 
-        //- Can we read this file format?
-        static bool canRead(const fileName&, const bool verbose=false);
+    // Static Functions
 
-        //- Can we write this file format?
-        static bool canWriteType(const word& ext, const bool verbose=false);
-
+        //- Known readable file-types, without friends or proxies
         static wordHashSet readTypes();
+
+        //- Known writable file-types, without friends or proxies
         static wordHashSet writeTypes();
+
+        //- Can we read this file format? Also checks friend types.
+        static bool canReadType(const word& fileType, bool verbose=false);
+
+        //- Can we write this file format? Also checks friend types.
+        static bool canWriteType(const word& fileType, bool verbose=false);
+
+        //- Can we read this file format?
+        static bool canRead(const fileName& name, bool verbose=false);
 
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         UnsortedMeshedSurface();
 
-        //- Construct by transferring components
-        //  (points, faces, zone ids, zone info).
+        //- Copy construct
+        UnsortedMeshedSurface(const UnsortedMeshedSurface<Face>& surf);
+
+        //- Construct from a MeshedSurface
+        UnsortedMeshedSurface(const MeshedSurface<Face>& surf);
+
+        //- Move construct from a UnsortedMeshedSurface
+        UnsortedMeshedSurface(UnsortedMeshedSurface<Face>&& surf);
+
+        //- Move construct from MeshedSurface
+        UnsortedMeshedSurface(MeshedSurface<Face>&& surf);
+
+        //- Move construct from components (points, faces, zone ids).
+        //  Zone information is fairly lightweight and is copied.
         UnsortedMeshedSurface
         (
-            pointField&&,
-            List<Face>&&,
+            pointField&& pointLst,
+            List<Face>&& faceLst,
             List<label>&& zoneIds,
-            surfZoneIdentifierList&&
+            UList<surfZoneIdentifier>& tocInfo
         );
 
-        //- Construct by transferring points, faces.
-        //  Use zone information, or set single default zone
+        //- Construct from file name (uses extension to determine type)
+        explicit UnsortedMeshedSurface(const fileName& name);
+
+        //- Construct from file name with given format type.
+        //  If the format type is "", uses the file extension.
+        UnsortedMeshedSurface(const fileName& name, const word& fileType);
+
+        //- Construct from Istream
+        explicit UnsortedMeshedSurface(Istream& is);
+
+        //- Construct from database (as surfMesh) with default name
+        explicit UnsortedMeshedSurface(const Time& runTime);
+
+        //- Construct from database (as surfMesh) with given surface name
+        UnsortedMeshedSurface(const Time& runTime, const word& surfName);
+
+        //- Read construct using IO to find the file location.
+        //  Dictionary may contain the following entries:
+        //  - \c file = alternative file name (default is dictionary name)
+        //  - \c fileType = file format (default is from file extension)
+        //  - \c scale (eg, 0.001: mm to m)
+        //  .
         UnsortedMeshedSurface
         (
-            pointField&&,
-            List<Face>&&,
-            const labelUList& zoneSizes = labelUList(),
-            const UList<word>& zoneNames = UList<word>()
+            const IOobject& io,
+            const dictionary& dict,
+            const bool isGlobal = true  //!< resolve as a global file
         );
-
-        //- Copy constructor
-        UnsortedMeshedSurface(const UnsortedMeshedSurface<Face>&);
-
-        //- Construct from a meshedSurface
-        UnsortedMeshedSurface(const MeshedSurface<Face>&);
-
-        //- Construct by transferring the contents from a UnsortedMeshedSurface
-        UnsortedMeshedSurface(UnsortedMeshedSurface<Face>&&);
-
-        //- Construct by transferring the contents from a meshedSurface
-        UnsortedMeshedSurface(MeshedSurface<Face>&&);
-
-        //- Construct from file name (uses extension to determine type)
-        UnsortedMeshedSurface(const fileName&);
-
-        //- Construct from file name (uses extension to determine type)
-        UnsortedMeshedSurface(const fileName&, const word&);
-
-        //- Construct from objectRegistry and a named surface
-        UnsortedMeshedSurface(const Time&, const word& surfName="");
 
 
     // Declare run-time constructor selection table
@@ -219,19 +261,23 @@ public:
 
     // Selectors
 
-        //- Select constructed from filename (explicit extension)
+        //- Read construct from filename with given file type
+        //
+        //  \note Use mandatory=false if support for the file type
+        //  is optional (the file still needs to exist!).
         static autoPtr<UnsortedMeshedSurface> New
         (
-            const fileName&,
-            const word& ext
+            const fileName& name,
+            const word& fileType,
+            bool mandatory = true
         );
 
-        //- Select constructed from filename (implicit extension)
-        static autoPtr<UnsortedMeshedSurface> New(const fileName&);
+        //- Read construct from filename (implicit extension)
+        static autoPtr<UnsortedMeshedSurface> New(const fileName& name);
 
 
     //- Destructor
-    virtual ~UnsortedMeshedSurface();
+    virtual ~UnsortedMeshedSurface() = default;
 
 
     // Member Function Selectors
@@ -244,131 +290,222 @@ public:
             fileExtension,
             (
                 const fileName& name,
-                const UnsortedMeshedSurface<Face>& surf
+                const UnsortedMeshedSurface<Face>& surf,
+                IOstreamOption streamOpt,
+                const dictionary& options
             ),
-            (name, surf)
+            (name, surf, streamOpt, options)
         );
 
-        //- Write to file
-        static void write(const fileName&, const UnsortedMeshedSurface<Face>&);
+        //- Write to file, select based on its extension
+        static void write
+        (
+            const fileName& name,
+            const UnsortedMeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        );
+
+        //- Write to file with given format type.
+        //  If the format type is "", uses the file extension.
+        static void write
+        (
+            const fileName& name,
+            const word& fileType,
+            const UnsortedMeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        );
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- The surface size is the number of faces
-            label size() const
-            {
-                return ParentType::size();
-            }
+        //- The surface size is the number of faces
+        label size() const
+        {
+            return MeshReference::size();
+        }
 
-            //- Reset size of face and zone list
-            void setSize(const label);
+        //- Reset size of face and zone list
+        void setSize(const label);
 
-            //- Return const access to the zone ids
-            const List<label>& zoneIds() const
-            {
-                return zoneIds_;
-            }
+        //- Return const access to the zone ids
+        virtual const labelList& zoneIds() const
+        {
+            return zoneIds_;
+        }
 
-            //- Return const access to the zone table-of-contents
-            const List<surfZoneIdentifier>& zoneToc() const
-            {
-                return zoneToc_;
-            }
+        //- Return const access to the zone table-of-contents
+        const List<surfZoneIdentifier>& zoneToc() const
+        {
+            return zoneToc_;
+        }
 
-            //- Sort faces according to zoneIds
-            //  Returns a surfZoneList and sets faceMap to index within faces()
-            //  (i.e. map from original,unsorted to sorted)
-            surfZoneList sortedZones(labelList& faceMap) const;
+        //- Sort faces according to zoneIds
+        //  Returns a surfZoneList and sets faceMap to index within faces()
+        //  (i.e. map from original,unsorted to sorted)
+        surfZoneList sortedZones(labelList& faceMap) const;
 
-            //- Set zones to 0 and set a single zone
-            void setOneZone();
+        //- Set zones to 0 and set a single zone
+        void setOneZone();
 
-            //- Set zone ids and zones
-            void setZones(const surfZoneList&);
+        //- Set zone ids and zones
+        void setZones(const surfZoneList& zoneLst);
 
-            //- Set zone ids and zones
-            void setZones(const labelUList& sizes, const UList<word>& names);
+        //- Set zone ids and zones
+        void setZones(const labelUList& sizes, const UList<word>& names);
 
-            //- Set zone ids and zones with default names
-            void setZones(const labelUList& sizes);
-
-
-        // Edit
-
-            //- Clear all storage
-            virtual void clear();
-
-            //- Return new surface.
-            //  Returns return pointMap, faceMap from subsetMeshMap
-            UnsortedMeshedSurface subsetMesh
-            (
-                const labelHashSet& include,
-                labelList& pointMap,
-                labelList& faceMap
-            ) const;
-
-            //- Return new surface.
-            UnsortedMeshedSurface subsetMesh
-            (
-                const labelHashSet& include
-            ) const;
-
-            //- Inherit reset from MeshedSurface<Face>
-            using MeshedSurface<Face>::reset;
-
-            //- Transfer components (points, faces, zone ids).
-            virtual void reset
-            (
-                pointField&&,
-                List<Face>&&,
-                List<label>&& zoneIds
-            );
-
-            //- Transfer components (points, faces, zone ids).
-            virtual void reset
-            (
-                List<point>&&,
-                List<Face>&&,
-                List<label>&& zoneIds
-            );
-
-            //- Transfer the contents of the argument and annul the argument
-            void transfer(UnsortedMeshedSurface<Face>&);
-
-            //- Transfer the contents of the argument and annul the argument
-            void transfer(MeshedSurface<Face>&);
+        //- Set zone ids and zones with default names
+        void setZones(const labelUList& sizes);
 
 
-        // Read
+    // Edit
 
-            //- Read from file. Chooses reader based on explicit extension
-            bool read(const fileName&, const word& ext);
+        //- Clear all storage
+        virtual void clear();
 
-            //- Read from file. Chooses reader based on detected extension
-            virtual bool read(const fileName&);
+        //- Create mappings for a sub-surface
+        //
+        //  \param[in] include the faces to select
+        //  \param[out] pointMap from new to old localPoints
+        //  \param[out] faceMap from new to old localFaces
+        template<class BoolListType>
+        void subsetMeshMap
+        (
+            const BoolListType& include,
+            labelList& pointMap,
+            labelList& faceMap
+        ) const
+        {
+            PatchTools::subsetMap(*this, include, pointMap, faceMap);
+        }
+
+        //- Return a new surface subsetted on the selected faces.
+        //
+        //  \param[in] include the faces to select
+        //  \param[out] pointMap from new to old localPoints
+        //  \param[out] faceMap from new to old localFaces
+        UnsortedMeshedSurface subsetMesh
+        (
+            const UList<bool>& include,
+            labelList& pointMap,
+            labelList& faceMap
+        ) const;
+
+        //- Return a new surface subsetted on the selected faces.
+        //
+        //  \param[in] include the faces to select
+        //  \param[out] pointMap from new to old localPoints
+        //  \param[out] faceMap from new to old localFaces
+        UnsortedMeshedSurface subsetMesh
+        (
+            const bitSet& include,
+            labelList& pointMap,
+            labelList& faceMap
+        ) const;
+
+        //- Return a new surface subsetted on the selected faces.
+        //
+        //  \param[in] include the faces to select
+        UnsortedMeshedSurface subsetMesh(const UList<bool>& include) const;
+
+        //- Return a new surface subsetted on the selected faces.
+        //
+        //  \param[in] include the faces to select
+        UnsortedMeshedSurface subsetMesh(const bitSet& include) const;
 
 
-        // Write
+        //- Swap contents - disabled
+        void swap(MeshedSurface<Face>& surf) = delete;
 
-            //- Generic write routine. Chooses writer based on extension.
-            virtual void write(const fileName& name) const
-            {
-                write(name, *this);
-            }
+        //- Swap contents
+        void swap(UnsortedMeshedSurface<Face>& surf);
 
-            //- Write to database
-            void write(const Time&, const word& surfName="") const;
+        //- Transfer the contents of the argument and annul the argument
+        void transfer(UnsortedMeshedSurface<Face>& surf);
+
+        //- Transfer the contents of the argument and annul the argument
+        void transfer(MeshedSurface<Face>& surf);
+
+        //- Release (clear) stored zoneIds and return for reuse
+        autoPtr<labelList> releaseZoneIds();
 
 
-        // Member Operators
+    // Read
 
-            void operator=(const UnsortedMeshedSurface<Face>&);
+        //- Read from file with given format type.
+        //  If the format type is "", uses the file extension.
+        bool read(const fileName& name, const word& fileType);
 
-            //- Conversion operator to MeshedSurfaceProxy
-            operator MeshedSurfaceProxy<Face>() const;
+        //- Read from file. Chooses reader based on detected extension
+        virtual bool read(const fileName& name);
+
+
+    // Write
+
+        //- Write to file, choosing writer based on the file extension.
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const
+        {
+            write(name, *this, streamOpt, options);
+        }
+
+        //- Write to file with given format type.
+        //  If the format type is "", uses the file extension.
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const
+        {
+            write(name, fileType, *this, streamOpt, options);
+        }
+
+        //- Write to database
+        void write
+        (
+            const Time& t,
+            const word& surfName = word::null
+        ) const;
+
+
+    // Member Operators
+
+        //- Copy assignment
+        void operator=(const UnsortedMeshedSurface<Face>& surf);
+
+        //- Move assignment
+        void operator=(UnsortedMeshedSurface<Face>&& surf);
+
+        //- Conversion operator to MeshedSurfaceProxy
+        operator MeshedSurfaceProxy<Face>() const;
+
+
+    // IOstream Operators
+
+        //- Read UnsortedMeshedSurface from Istream.
+        //  Avoid using to read/write file content (fragile).
+        friend Istream& operator>> <Face>
+        (
+            Istream& is,
+            UnsortedMeshedSurface<Face>& surf
+        );
+
+        //- Write UnsortedMeshedSurface to Ostream.
+        //  Avoid using to read/write file content (fragile).
+        friend Ostream& operator<< <Face>
+        (
+            Ostream& os,
+            const UnsortedMeshedSurface<Face>& surf
+        );
 };
 
 

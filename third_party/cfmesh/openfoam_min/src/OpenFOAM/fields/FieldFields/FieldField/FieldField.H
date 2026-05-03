@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2022-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,17 +28,18 @@ Class
     Foam::FieldField
 
 Description
-    Generic field type.
+    A field of fields is a PtrList of fields with reference counting.
 
 SourceFiles
     FieldField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef FieldField_H
-#define FieldField_H
+#ifndef Foam_FieldField_H
+#define Foam_FieldField_H
 
 #include "tmp.H"
+#include "Pair.H"
 #include "PtrList.H"
 #include "scalar.H"
 #include "direction.H"
@@ -46,7 +50,7 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<template<class> class Field, class Type>
 class FieldField;
@@ -67,16 +71,15 @@ Ostream& operator<<
 
 
 /*---------------------------------------------------------------------------*\
-                         Class FieldField Declaration
+                           Class FieldField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<template<class> class Field, class Type>
 class FieldField
 :
-    public tmp<FieldField<Field, Type>>::refCount,
+    public refCount,
     public PtrList<Field<Type>>
 {
-
 public:
 
     //- Component type
@@ -87,34 +90,35 @@ public:
 
         //- Construct null
         //  Used for temporary fields which are initialised after construction
-        FieldField();
+        constexpr FieldField() noexcept;
 
         //- Construct given size
         //  Used for temporary fields which are initialised after construction
-        explicit FieldField(const label);
+        explicit FieldField(const label size);
 
-        //- Construct using the Field sizes from the given FieldField
-        //  and the given Field type.
-        //  Used for temporary fields which are initialised after construction
-        FieldField(const word&, const FieldField<Field, Type>&);
+        //- Clone construct with new type
+        FieldField(const word& type, const FieldField<Field, Type>& ff);
 
-        //- Copy constructor
-        FieldField(const FieldField<Field, Type>&);
+        //- Copy construct, cloning each element
+        FieldField(const FieldField<Field, Type>& ff);
 
-        //- Move constructor
-        FieldField(FieldField<Field, Type>&&);
+        //- Move construct
+        FieldField(FieldField<Field, Type>&& ff);
 
-        //- Construct as copy or reuse as specified.
-        FieldField(FieldField<Field, Type>&, bool reuse);
+        //- Construct as copy or re-use as specified.
+        FieldField(FieldField<Field, Type>& ff, bool reuse);
 
-        //- Construct as copy of a PtrList<Field, Type>
-        FieldField(const PtrList<Field<Type>>&);
+        //- Copy construct from PtrList
+        FieldField(const PtrList<Field<Type>>& list);
 
-        //- Construct as copy of tmp<FieldField>
-        FieldField(const tmp<FieldField<Field, Type>>&);
+        //- Move construct from PtrList
+        FieldField(PtrList<Field<Type>>&& list);
+
+        //- Move/copy construct from tmp<FieldField>
+        FieldField(const tmp<FieldField<Field, Type>>& tf);
 
         //- Construct from Istream
-        FieldField(Istream&);
+        FieldField(Istream& is);
 
         //- Clone
         tmp<FieldField<Field, Type>> clone() const;
@@ -130,8 +134,11 @@ public:
 
     // Member Functions
 
-        //- Negate this field
+        //- Negate this field. See notes in Field
         void negate();
+
+        //- Normalise this field. See notes in Field
+        void normalise();
 
         //- Return a component field of the field
         tmp<FieldField<Field, cmptType>> component(const direction) const;
@@ -142,16 +149,49 @@ public:
         //- Replace a component field of the field
         void replace(const direction, const cmptType&);
 
+        //- Impose lower (floor) clamp on the field values (in-place)
+        void clamp_min(const Type& lower);
+
+        //- Impose upper (ceiling) clamp on the field values (in-place)
+        void clamp_max(const Type& upper);
+
+        //- Clamp field values (in-place) to the specified range.
+        //  Does not check if range is valid or not.
+        void clamp_range(const Type& lower, const Type& upper);
+
+        //- Clamp field values (in-place) to the specified range.
+        //  Does not check if range is valid or not.
+        void clamp_range(const MinMax<Type>& range);
+
         //- Return the field transpose (only defined for second rank tensors)
         tmp<FieldField<Field, Type>> T() const;
 
 
     // Member Operators
 
+        //- Const or non-const access to a field
+        using PtrList<Field<Type>>::operator[];
+
+        //- Const access to a single field element via (fieldi, elemi)
+        inline const Type& operator[](const labelPair& index) const;
+
+        //- Non-const access to a single field element via (fieldi, elemi)
+        inline Type& operator[](const labelPair& index);
+
+        //- Copy assignment
         void operator=(const FieldField<Field, Type>&);
+
+        //- Move assignment
         void operator=(FieldField<Field, Type>&&);
+
+        //- Move or clone assignment
         void operator=(const tmp<FieldField<Field, Type>>&);
-        void operator=(const Type&);
+
+        //- Assign uniform value
+        void operator=(const Type& val);
+
+        //- Assign uniform zero
+        void operator=(const Foam::zero);
 
         void operator+=(const FieldField<Field, Type>&);
         void operator+=(const tmp<FieldField<Field, Type>>&);
@@ -172,7 +212,7 @@ public:
         void operator/=(const scalar&);
 
 
-    // IOstream Operators
+    // IOstream operators
 
         friend Ostream& operator<< <Field, Type>
         (

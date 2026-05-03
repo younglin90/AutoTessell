@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,18 +27,40 @@ License
 
 #include "symmetryPlaneFvPatchFields.H"
 #include "addToRunTimeSelectionTable.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
+#include "volFields.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-makeNullConstructablePatchFields(symmetryPlane);
+namespace Foam
+{
+    makePatchFields(symmetryPlane);
+}
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Foam
+// * * * * * * * * * * * * * * * Specialisations * * * * * * * * * * * * * * //
+
+template<>
+Foam::tmp<Foam::scalarField>
+Foam::symmetryPlaneFvPatchField<Foam::scalar>::snGrad() const
+{
+    return tmp<scalarField>::New(size(), Zero);
+}
+
+
+template<>
+void Foam::symmetryPlaneFvPatchField<Foam::scalar>::evaluate
+(
+    const Pstream::commsTypes
+)
+{
+    if (!updated())
+    {
+        updateCoeffs();
+    }
+
+    scalarField::operator=(patchInternalField());
+    transformFvPatchField<scalar>::evaluate();
+}
+
 
 // ************************************************************************* //

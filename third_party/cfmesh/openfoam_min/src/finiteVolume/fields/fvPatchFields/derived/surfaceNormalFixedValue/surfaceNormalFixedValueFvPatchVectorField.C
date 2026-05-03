@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,7 @@ License
 #include "surfaceNormalFixedValueFvPatchVectorField.H"
 #include "addToRunTimeSelectionTable.H"
 #include "volFields.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -34,14 +37,35 @@ Foam::surfaceNormalFixedValueFvPatchVectorField::
 surfaceNormalFixedValueFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchVectorField(p, iF),
+    refValue_(p.size()),
+    ramp_(nullptr)
+{}
+
+
+Foam::surfaceNormalFixedValueFvPatchVectorField::
+surfaceNormalFixedValueFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchVectorField(p, iF, dict, false),
-    refValue_("refValue", iF.dimensions(), dict, p.size())
+    fixedValueFvPatchVectorField(p, iF, dict, IOobjectOption::NO_READ),
+    refValue_("refValue", dict, p.size()),
+    ramp_(Function1<scalar>::NewIfPresent("ramp", dict, word::null, &db()))
 {
-    fvPatchVectorField::operator=(refValue_*patch().nf());
+    tmp<vectorField> tvalues(refValue_*patch().nf());
+
+    if (ramp_)
+    {
+        tvalues.ref() *= ramp_->value(this->db().time().timeOutputValue());
+    }
+
+    fvPatchVectorField::operator=(tvalues);
 }
 
 
@@ -50,62 +74,79 @@ surfaceNormalFixedValueFvPatchVectorField
 (
     const surfaceNormalFixedValueFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchVectorField(p, iF),
-    refValue_(mapper(ptf.refValue_))
+    refValue_(ptf.refValue_, mapper, pTraits<scalar>::zero),
+    ramp_(ptf.ramp_.clone())
 {
-    // Note: calculate product only on ptf to avoid multiplication on
-    // unset values in reconstructPar.
-    fvPatchVectorField::operator=
-    (
-        mapper(ptf.refValue_*ptf.patch().nf())
-    );
+    // Note: refValue_ will have default value of 0 for unmapped faces. This
+    // can temporarily happen during e.g. redistributePar. We should not
+    // access ptf.patch() instead since redistributePar has destroyed this
+    // at the time of mapping.
+
+    tmp<vectorField> tvalues(refValue_*patch().nf());
+
+    if (ramp_)
+    {
+        tvalues.ref() *= ramp_->value(this->db().time().timeOutputValue());
+    }
+
+    fvPatchVectorField::operator=(tvalues);
 }
 
 
 Foam::surfaceNormalFixedValueFvPatchVectorField::
 surfaceNormalFixedValueFvPatchVectorField
 (
-    const surfaceNormalFixedValueFvPatchVectorField& pivpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const surfaceNormalFixedValueFvPatchVectorField& ptf
 )
 :
-    fixedValueFvPatchVectorField(pivpvf, iF),
-    refValue_(pivpvf.refValue_)
+    fixedValueFvPatchVectorField(ptf),
+    refValue_(ptf.refValue_),
+    ramp_(ptf.ramp_.clone())
+{}
+
+
+Foam::surfaceNormalFixedValueFvPatchVectorField::
+surfaceNormalFixedValueFvPatchVectorField
+(
+    const surfaceNormalFixedValueFvPatchVectorField& ptf,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchVectorField(ptf, iF),
+    refValue_(ptf.refValue_),
+    ramp_(ptf.ramp_.clone())
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::surfaceNormalFixedValueFvPatchVectorField::map
+void Foam::surfaceNormalFixedValueFvPatchVectorField::autoMap
 (
-    const fvPatchVectorField& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 {
-    fixedValueFvPatchVectorField::map(ptf, mapper);
-
-    const surfaceNormalFixedValueFvPatchVectorField& tiptf =
-        refCast<const surfaceNormalFixedValueFvPatchVectorField>(ptf);
-
-    mapper(refValue_, tiptf.refValue_);
+    fixedValueFvPatchVectorField::autoMap(mapper);
+    refValue_.autoMap(mapper);
 }
 
 
-void Foam::surfaceNormalFixedValueFvPatchVectorField::reset
+void Foam::surfaceNormalFixedValueFvPatchVectorField::rmap
 (
-    const fvPatchVectorField& ptf
+    const fvPatchVectorField& ptf,
+    const labelList& addr
 )
 {
-    fixedValueFvPatchVectorField::reset(ptf);
+    fixedValueFvPatchVectorField::rmap(ptf, addr);
 
     const surfaceNormalFixedValueFvPatchVectorField& tiptf =
         refCast<const surfaceNormalFixedValueFvPatchVectorField>(ptf);
 
-    refValue_.reset(tiptf.refValue_);
+    refValue_.rmap(tiptf.refValue_, addr);
 }
 
 
@@ -116,15 +157,26 @@ void Foam::surfaceNormalFixedValueFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    fvPatchVectorField::operator=(refValue_*patch().nf());
+    tmp<vectorField> tvalues(refValue_*patch().nf());
+
+    if (ramp_)
+    {
+        tvalues.ref() *= ramp_->value(this->db().time().timeOutputValue());
+    }
+
+    fvPatchVectorField::operator=(tvalues);
     fvPatchVectorField::updateCoeffs();
 }
 
 
 void Foam::surfaceNormalFixedValueFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntry(os, "refValue", refValue_);
+    fvPatchField<vector>::write(os);
+    refValue_.writeEntry("refValue", os);
+    if (ramp_)
+    {
+        ramp_->writeData(os);
+    }
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,13 +32,10 @@ Description
     It is derived from DictionaryBase instantiated on a memory managed form of
     intrusive doubly-linked list of \<T\>.
 
-SourceFiles
-    PtrDictionary.C
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef PtrDictionary_H
-#define PtrDictionary_H
+#ifndef Foam_PtrDictionary_H
+#define Foam_PtrDictionary_H
 
 #include "DictionaryBase.H"
 #include "DLPtrList.H"
@@ -55,26 +54,41 @@ class PtrDictionary
 :
     public DictionaryBase<DLPtrList<T>, T>
 {
-
 public:
+
+    //- The template instance used for the dictionary content
+    typedef DictionaryBase<DLPtrList<T>, T> dict_type;
+
 
     // Constructors
 
-        //- Construct given initial table size
-        PtrDictionary(const label size = 128);
+        //- Default construct: empty without allocation (capacity=0).
+        PtrDictionary() = default;
 
-        //- Copy constructor
-        PtrDictionary(const PtrDictionary&);
+        //- Construct empty with initial table capacity
+        explicit PtrDictionary(const label initialCapacity)
+        :
+            dict_type(initialCapacity)
+        {}
 
-        //- Move constructor
-        PtrDictionary(PtrDictionary&&);
+        //- Copy construct
+        PtrDictionary(const PtrDictionary& dict)
+        :
+            dict_type(dict)
+        {}
 
         //- Construct from Istream using given Istream constructor class
         template<class INew>
-        PtrDictionary(Istream&, const INew&);
+        PtrDictionary(Istream& is, const INew& inew)
+        :
+            dict_type(is, inew)
+        {}
 
         //- Construct from Istream
-        PtrDictionary(Istream&);
+        explicit PtrDictionary(Istream& is)
+        :
+            dict_type(is)
+        {}
 
 
     // Member Operators
@@ -82,13 +96,13 @@ public:
         //- Find and return entry
         const T& operator[](const word& key) const
         {
-            return *DictionaryBase<DLPtrList<T>, T>::operator[](key);
+            return *(dict_type::lookup(key));
         }
 
         //- Find and return entry
         T& operator[](const word& key)
         {
-            return *DictionaryBase<DLPtrList<T>, T>::operator[](key);
+            return *(dict_type::lookup(key));
         }
 };
 
@@ -96,14 +110,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "PtrDictionary.C"
-#endif
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #endif
 

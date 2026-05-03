@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +27,10 @@ Class
     Foam::wedgeMatcher
 
 Description
-    A cellMatcher for wedge cells
+    A cellMatcher for wedge cells (cellModel::WEDGE).
 
 See also
-    cellMatcher
+    cellMatcher, cellModel
 
 SourceFiles
     wedgeMatcher.C
@@ -55,25 +57,31 @@ class wedgeMatcher
 {
     // Static Data Members
 
-        //- Constants for this shape
-        static const label vertPerCell;
-        static const label facePerCell;
-        static const label maxVertPerFace;
+        // Constants for this shape
+        static constexpr label vertPerCell = 7;
+        static constexpr label facePerCell = 6;
+        static constexpr label maxVertPerFace = 4;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        wedgeMatcher(const wedgeMatcher&) = delete;
+
+        //- No copy assignment
+        wedgeMatcher& operator=(const wedgeMatcher&) = delete;
 
 
 public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         wedgeMatcher();
-
-        //- Disallow default bitwise copy construction
-        wedgeMatcher(const wedgeMatcher&) = delete;
 
 
     //- Destructor
-    ~wedgeMatcher();
+    ~wedgeMatcher() = default;
 
 
     // Member Functions
@@ -116,12 +124,6 @@ public:
             const label celli,
             cellShape& shape
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const wedgeMatcher&) = delete;
 };
 
 

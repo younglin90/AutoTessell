@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,10 +35,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvPatchMapper_H
-#define fvPatchMapper_H
+#ifndef Foam_fvPatchMapper_H
+#define Foam_fvPatchMapper_H
 
-#include "generalFieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "faceMapper.H"
 #include "fvPatch.H"
 #include "primitiveFields.H"
@@ -45,19 +48,19 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class fvPatch;
-class polyTopoChangeMap;
+class mapPolyMesh;
 
 /*---------------------------------------------------------------------------*\
-                        Class fvPatchMapper Declaration
+                       Class fvPatchMapper Declaration
 \*---------------------------------------------------------------------------*/
 
 class fvPatchMapper
 :
-    public generalFieldMapper
+    public fvPatchFieldMapper
 {
-    // Private Data
+    // Private data
 
         //- Reference to patch
         const fvPatch& patch_;
@@ -69,25 +72,31 @@ class fvPatchMapper
         const label sizeBeforeMapping_;
 
 
-    // Demand-driven private data
+    // Demand-Driven Data
+
+        mutable bool hasUnmapped_;
 
         //- Direct addressing (only one for of addressing is used)
-        mutable labelList* directAddrPtr_;
+        mutable std::unique_ptr<labelList> directAddrPtr_;
 
         //- Interpolated addressing (only one for of addressing is used)
-        mutable labelListList* interpolationAddrPtr_;
+        mutable std::unique_ptr<labelListList> interpAddrPtr_;
 
         //- Interpolation weights
-        mutable scalarListList* weightsPtr_;
+        mutable std::unique_ptr<scalarListList> weightsPtr_;
 
 
     // Private Member Functions
 
+        //- No copy construct
+        fvPatchMapper(const fvPatchMapper&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvPatchMapper&) = delete;
+
+
         //- Calculate addressing for mapping with inserted cells
         void calcAddressing() const;
-
-        //- Clear out local storage
-        void clearOut();
 
 
 public:
@@ -101,9 +110,6 @@ public:
             const faceMapper& faceMap
         );
 
-        //- Disallow default bitwise copy construction
-        fvPatchMapper(const fvPatchMapper&) = delete;
-
 
     //- Destructor
     virtual ~fvPatchMapper();
@@ -111,16 +117,27 @@ public:
 
     // Member Functions
 
+        //- Return size
+        virtual label size() const
+        {
+            return patch_.size();
+        }
+
         //- Return size of field before mapping
-        label sizeBeforeMapping() const
+        virtual label sizeBeforeMapping() const
         {
             return sizeBeforeMapping_;
         }
 
-        //- Is the mapping direct?
+        //- Is the mapping direct
         virtual bool direct() const
         {
             return faceMap_.direct();
+        }
+
+        virtual bool hasUnmapped() const
+        {
+            return hasUnmapped_;
         }
 
         //- Return direct addressing
@@ -131,12 +148,6 @@ public:
 
         //- Return interpolation weights
         virtual const scalarListList& weights() const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvPatchMapper&) = delete;
 };
 
 

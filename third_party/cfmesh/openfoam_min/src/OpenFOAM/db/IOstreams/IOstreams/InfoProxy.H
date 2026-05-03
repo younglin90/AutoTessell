@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,37 +32,58 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef InfoProxy_H
-#define InfoProxy_H
+#ifndef Foam_InfoProxy_H
+#define Foam_InfoProxy_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class Ostream;
-
-/*---------------------------------------------------------------------------*\
-                          Class InfoProxy Declaration
-\*---------------------------------------------------------------------------*/
 
 template<class T> class InfoProxy;
 template<class T> Ostream& operator<<(Ostream&, const InfoProxy<T>&);
+
+
+/*---------------------------------------------------------------------------*\
+                           Class InfoProxy Declaration
+\*---------------------------------------------------------------------------*/
 
 template<class T>
 class InfoProxy
 {
 public:
 
-    const T& t_;
+    // Data
 
-    InfoProxy(const T& t)
-    :
-        t_(t)
-    {}
+        //- The captured object reference
+        const T& t_;
 
-    friend Ostream& operator<< <T>
-    (Ostream&, const InfoProxy<T>&);
+
+    // Constructors
+
+        //- Implicit construct from object reference
+        InfoProxy(const T& item) noexcept
+        :
+            t_(item)
+        {}
+
+
+    // Member Functions
+
+        //- Return const reference to the object
+        const T& operator*() const noexcept { return t_; }
+
+        // // TBD: Dereference const pointer to the object
+        // const T* operator->() const noexcept { return &t_; }
+
+
+    // Output Functions
+
+        //- Output information to stream
+        friend Ostream& operator<< <T> (Ostream&, const InfoProxy<T>&);
 };
 
 

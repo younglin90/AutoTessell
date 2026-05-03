@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -55,12 +57,21 @@ class fvMesh;
 template<class Type>
 class surfaceInterpolationScheme
 :
-    public tmp<surfaceInterpolationScheme<Type>>::refCount
+    public refCount
 {
-    // Private Data
+    // Private data
 
         //- Hold reference to mesh
         const fvMesh& mesh_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        surfaceInterpolationScheme(const surfaceInterpolationScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const surfaceInterpolationScheme&) = delete;
 
 
 public:
@@ -105,10 +116,6 @@ public:
             mesh_(mesh)
         {}
 
-        //- Disallow default bitwise copy construction
-        surfaceInterpolationScheme(const surfaceInterpolationScheme&) = delete;
-
-
 
     // Selectors
 
@@ -129,7 +136,7 @@ public:
 
 
     //- Destructor
-    virtual ~surfaceInterpolationScheme();
+    virtual ~surfaceInterpolationScheme() = default;
 
 
     // Member Functions
@@ -143,10 +150,10 @@ public:
 
         //- Return the face-interpolate of the given cell field
         //  with the given owner and neighbour weighting factors
-        static tmp<SurfaceField<Type>>
+        static tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>&,
+            const GeometricField<Type, fvPatchField, volMesh>&,
             const tmp<surfaceScalarField>&,
             const tmp<surfaceScalarField>&
         );
@@ -156,31 +163,33 @@ public:
         template<class SFType>
         static tmp
         <
-            SurfaceField
+            GeometricField
             <
-                typename innerProduct<typename SFType::value_type, Type>::type
+                typename innerProduct<typename SFType::value_type, Type>::type,
+                fvsPatchField,
+                surfaceMesh
             >
         >
         dotInterpolate
         (
             const SFType& Sf,
-            const VolField<Type>& vf,
+            const GeometricField<Type, fvPatchField, volMesh>& vf,
             const tmp<surfaceScalarField>& tlambdas
         );
 
         //- Return the face-interpolate of the given cell field
         //  with the given weighting factors
-        static tmp<SurfaceField<Type>>
+        static tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>&,
+            const GeometricField<Type, fvPatchField, volMesh>&,
             const tmp<surfaceScalarField>&
         );
 
         //- Return the interpolation weighting factors for the given field
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const = 0;
 
         //- Return true if this scheme uses an explicit correction
@@ -191,60 +200,76 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  for the given field
-        virtual tmp<SurfaceField<Type>>
-        correction(const VolField<Type>&) const
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
+        correction(const GeometricField<Type, fvPatchField, volMesh>&) const
         {
-            return tmp<SurfaceField<Type>>
-            (
-                nullptr
-            );
+            return nullptr;
         }
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction dotted with given field Sf
-        virtual tmp<SurfaceField<typename innerProduct<vector, Type>::type>>
+        virtual
+        tmp
+        <
+            GeometricField
+            <
+                typename innerProduct<vector, Type>::type,
+                fvsPatchField,
+                surfaceMesh
+            >
+        >
         dotInterpolate
         (
             const surfaceVectorField& Sf,
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const;
 
         //- Return the face-interpolate of the given tmp cell field
         //  with explicit correction dotted with given field Sf
-        tmp<SurfaceField<typename innerProduct<vector, Type>::type>>
+        tmp
+        <
+            GeometricField
+            <
+                typename innerProduct<vector, Type>::type,
+                fvsPatchField,
+                surfaceMesh
+            >
+        >
         dotInterpolate
         (
             const surfaceVectorField& Sf,
-            const tmp<VolField<Type>>&
+            const tmp<GeometricField<Type, fvPatchField, volMesh>>&
         ) const;
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction
-        virtual tmp<SurfaceField<Type>>
-        interpolate(const VolField<Type>&) const;
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
+        interpolate(const GeometricField<Type, fvPatchField, volMesh>&) const;
 
         //- Return the face-interpolate of the given tmp cell field
         //  with explicit correction
-        tmp<SurfaceField<Type>>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const tmp<VolField<Type>>&
+            const tmp<GeometricField<Type, fvPatchField, volMesh>>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const surfaceInterpolationScheme&) = delete;
 };
 
 
 template<>
-tmp<SurfaceField<typename innerProduct<vector, scalar>::type>>
+tmp
+<
+    GeometricField
+    <
+        typename innerProduct<vector, scalar>::type,
+        fvsPatchField,
+        surfaceMesh
+    >
+>
 surfaceInterpolationScheme<scalar>::dotInterpolate
 (
     const surfaceVectorField& Sf,
-    const VolField<scalar>&
+    const GeometricField<scalar, fvPatchField, volMesh>&
 ) const;
 
 

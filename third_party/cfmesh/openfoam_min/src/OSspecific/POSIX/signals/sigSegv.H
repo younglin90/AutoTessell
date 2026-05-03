@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,6 +32,9 @@ Description
 
     The standard interrupt handler is overridden to ensure that the
     runningJob file is removed.
+    Can be used either directly through the static member functions or
+    through the scope of the object (constructor sets trapping; destructor
+    restores original).
 
 See also
     Foam::JobInfo
@@ -38,10 +44,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef sigSegv_H
-#define sigSegv_H
-
-#include <signal.h>
+#ifndef Foam_sigSegv_H
+#define Foam_sigSegv_H
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -56,8 +60,8 @@ class sigSegv
 {
     // Private Data
 
-        //- Saved old signal trapping setting
-        static struct sigaction oldAction_;
+        //- Signal trapping enabled?
+        static bool sigActive_;
 
 
     // Private Member Functions
@@ -70,7 +74,7 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         sigSegv();
 
 
@@ -81,7 +85,10 @@ public:
     // Member Functions
 
         //- Activate SIGSEGV signal handler
-        void set(const bool verbose);
+        static void set(bool verbose=false);
+
+        //- Deactivate SIGSEGV signal handler
+        static void unset(bool verbose=false);
 };
 
 

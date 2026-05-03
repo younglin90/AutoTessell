@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,13 +29,6 @@ License
 #include "primitiveMesh.H"
 #include "ListOps.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-const Foam::label Foam::wedgeMatcher::vertPerCell = 7;
-const Foam::label Foam::wedgeMatcher::facePerCell = 6;
-const Foam::label Foam::wedgeMatcher::maxVertPerFace = 4;
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::wedgeMatcher::wedgeMatcher()
@@ -43,14 +38,8 @@ Foam::wedgeMatcher::wedgeMatcher()
         vertPerCell,
         facePerCell,
         maxVertPerFace,
-        "wedge"
+        "wedge" // == cellModel::modelNames[cellModel::WEDGE]
     )
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::wedgeMatcher::~wedgeMatcher()
 {}
 
 
@@ -115,7 +104,7 @@ bool Foam::wedgeMatcher::matchShape
 
         vertLabels_[0] = pointMap_[face0[face0vert0]];
         faceLabels_[0] = faceMap_[face0I];
-        // Info<< endl << "Wedge vertex 0: vertex " <<  face0[face0vert0]
+        //Info<< endl << "Wedge vertex 0: vertex " <<  face0[face0vert0]
         //    << " at position " << face0vert0 << " in face " << face0
         //    << endl;
 
@@ -128,7 +117,7 @@ bool Foam::wedgeMatcher::matchShape
                 !(owner[faceMap_[face0I]] == celli)
             );
         vertLabels_[1] = pointMap_[face0[face0vert1]];
-        // Info<< "Wedge vertex 1: vertex " <<  face0[face0vert1]
+        //Info<< "Wedge vertex 1: vertex " <<  face0[face0vert1]
         //    << " at position " << face0vert1 << " in face " << face0
         //    << endl;
 
@@ -142,14 +131,14 @@ bool Foam::wedgeMatcher::matchShape
                 face0I
             );
         const face& face4 = localFaces_[face4I];
-        // Info<< "Stepped to wedge face 4 " << face4
+        //Info<< "Stepped to wedge face 4 " << face4
         //    << " across edge " << face0[face0vert0] << " "
         //    << face0[face0vert1]
         //    << endl;
 
         if (faceSize_[face4I] != 4)
         {
-            // Info<< "Cannot be Wedge Face 4 since size="
+            //Info<< "Cannot be Wedge Face 4 since size="
             //    << faceSize_[face4I] << endl;
             continue;
         }
@@ -165,7 +154,7 @@ bool Foam::wedgeMatcher::matchShape
         // Get index of vertex 0 in face4
         label face4vert0 = pointFaceIndex_[face0[face0vert0]][face4I];
 
-        // Info<< "Wedge vertex 0 also: vertex " <<  face4[face4vert0]
+        //Info<< "Wedge vertex 0 also: vertex " <<  face4[face4vert0]
         //    << " at position " << face4vert0 << " in face " << face4
         //    << endl;
 
@@ -178,7 +167,7 @@ bool Foam::wedgeMatcher::matchShape
                 !(owner[faceMap_[face4I]] == celli)
             );
         vertLabels_[3] = pointMap_[face4[face4vert3]];
-        // Info<< "Wedge vertex 3: vertex " <<  face4[face4vert3]
+        //Info<< "Wedge vertex 3: vertex " <<  face4[face4vert3]
         //    << " at position " << face4vert3 << " in face " << face4
         //    << endl;
 
@@ -193,21 +182,21 @@ bool Foam::wedgeMatcher::matchShape
                 face4I
             );
         const face& face2 = localFaces_[face2I];
-        // Info<< "Stepped to wedge face 2 " << face2
+        //Info<< "Stepped to wedge face 2 " << face2
         //    << " across edge " << face4[face4vert0] << " "
         //    << face4[face4vert3]
         //    << endl;
 
         if (faceSize_[face2I] != 3)
         {
-            // Info<< "Cannot be Wedge Face 2 since size="
+            //Info<< "Cannot be Wedge Face 2 since size="
             //    << faceSize_[face2I] << endl;
             continue;
         }
         faceLabels_[2] = faceMap_[face2I];
 
         // Is wedge for sure now
-        // Info<< "** WEDGE **" << endl;
+        //Info<< "** WEDGE **" << endl;
 
 
         //
@@ -238,7 +227,7 @@ bool Foam::wedgeMatcher::matchShape
             );
         faceLabels_[1] = faceMap_[face1I];
         const face& face1 = localFaces_[face1I];
-        // Info<< "Stepped to wedge face 1 " << face1
+        //Info<< "Stepped to wedge face 1 " << face1
         //    << " across edge " << face2[face2vert3] << " "
         //    << face2[face2vert6]
         //    << endl;
@@ -274,7 +263,7 @@ bool Foam::wedgeMatcher::matchShape
                 !(owner[faceMap_[face0I]] == celli)
             );
         vertLabels_[2] = pointMap_[face0[face0vert2]];
-        // Info<< "Wedge vertex 2: vertex " <<  face0[face0vert2]
+        //Info<< "Wedge vertex 2: vertex " <<  face0[face0vert2]
         //    << " at position " << face0vert2 << " in face " << face0
         //    << endl;
 
@@ -288,8 +277,8 @@ bool Foam::wedgeMatcher::matchShape
                 face0I
             );
         faceLabels_[3] = faceMap_[face3I];
-        // const face& face3 = localFaces_[face3I];
-        // Info<< "Stepped to wedge face 3 " << face3
+        //const face& face3 = localFaces_[face3I];
+        //Info<< "Stepped to wedge face 3 " << face3
         //    << " across edge " << face0[face0vert1] << " "
         //    << face0[face0vert2]
         //    << endl;
@@ -305,8 +294,8 @@ bool Foam::wedgeMatcher::matchShape
                 face0I
             );
         faceLabels_[5] = faceMap_[face5I];
-        // const face& face5 = localFaces_[face5I];
-        // Info<< "Stepped to wedge face 5 " << face5
+        //const face& face5 = localFaces_[face5I];
+        //Info<< "Stepped to wedge face 5 " << face5
         //    << " across edge " << face0[face0vert2] << " "
         //    << face0[face0vert0]
         //    << endl;
@@ -339,31 +328,25 @@ bool Foam::wedgeMatcher::faceSizeMatch
     label nTris = 0;
     label nQuads = 0;
 
-    forAll(myFaces, myFacei)
+    for (const label facei : myFaces)
     {
-        label size = faces[myFaces[myFacei]].size();
+        const label size = faces[facei].size();
 
         if (size == 3)
         {
-            nTris++;
+            ++nTris;
         }
         else if (size == 4)
         {
-            nQuads++;
+            ++nQuads;
         }
         else
         {
             return false;
         }
     }
-    if ((nTris == 2) && (nQuads == 4))
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+
+    return (nTris == 2 && nQuads == 4);
 }
 
 
@@ -386,10 +369,10 @@ bool Foam::wedgeMatcher::isA(const faceList& faces)
     return matchShape
     (
         true,
-        faces,                      // all faces in mesh
-        labelList(faces.size(), 0), // cell 0 is owner of all faces
-        0,                          // cell label
-        identityMap(faces.size())      // faces of cell 0
+        faces,                          // all faces in mesh
+        labelList(faces.size(), Zero),  // cell 0 is owner of all faces
+        0,                              // cell label
+        identity(faces.size())          // faces of cell 0
     );
 }
 
@@ -413,14 +396,11 @@ bool Foam::wedgeMatcher::matches
         )
     )
     {
-        shape = cellShape(model(), vertLabels());
-
+        shape.reset(model(), vertLabels());
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

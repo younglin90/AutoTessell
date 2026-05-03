@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -54,16 +57,10 @@ inline Foam::patchEdgeFaceRegions::patchEdgeFaceRegions
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline const Foam::labelList& Foam::patchEdgeFaceRegions::regions() const
-{
-    return regions_;
-}
-
-
 template<class TrackingData>
 inline bool Foam::patchEdgeFaceRegions::valid(TrackingData& td) const
 {
-    return regions_.size() && (findIndex(regions_, labelMax) == -1);
+    return regions_.size() && !regions_.found(labelMax);
 }
 
 
@@ -84,7 +81,7 @@ inline bool Foam::patchEdgeFaceRegions::updateEdge
 (
     const polyMesh& mesh,
     const Patch& patch,
-    const label edgei,
+    const label edgeI,
     const label facei,
     const patchEdgeFaceRegions& faceInfo,
     const scalar tol,
@@ -92,9 +89,9 @@ inline bool Foam::patchEdgeFaceRegions::updateEdge
 )
 {
     const face& f = patch.localFaces()[facei];
-    const edge& e = patch.edges()[edgei];
+    const edge& e = patch.edges()[edgeI];
 
-    label index = findIndex(patch.faceEdges()[facei], edgei);
+    label index = patch.faceEdges()[facei].find(edgeI);
     bool sameOrientation = (f[index] == e.start());
 
     // Get information in edge-order
@@ -114,7 +111,7 @@ inline bool Foam::patchEdgeFaceRegions::updateEdge
             << "problem." << abort(FatalError);
     }
 
-    if ((findIndex(orientedInfo, -1) != -1) || (findIndex(regions_, -1) != -1))
+    if (orientedInfo.found(-1) || regions_.found(-1))
     {
         // Blocked edge/face
         return false;
@@ -161,7 +158,7 @@ inline bool Foam::patchEdgeFaceRegions::updateEdge
             << "problem." << abort(FatalError);
     }
 
-    if ((findIndex(orientedInfo, -1) != -1) || (findIndex(regions_, -1) != -1))
+    if (orientedInfo.found(-1) || regions_.found(-1))
     {
         // Blocked edge/face
         return false;
@@ -189,17 +186,17 @@ inline bool Foam::patchEdgeFaceRegions::updateFace
     const polyMesh& mesh,
     const Patch& patch,
     const label facei,
-    const label edgei,
+    const label edgeI,
     const patchEdgeFaceRegions& edgeInfo,
     const scalar tol,
     TrackingData& td
 )
 {
     const face& f = patch.localFaces()[facei];
-    const edge& e = patch.edges()[edgei];
+    const edge& e = patch.edges()[edgeI];
 
     // Find starting point of edge on face.
-    label index0 = findIndex(patch.faceEdges()[facei], edgei);
+    label index0 = patch.faceEdges()[facei].find(edgeI);
     label index1 = f.fcIndex(index0);
     bool sameOrientation = (f[index0] == e.start());
 
@@ -221,7 +218,7 @@ inline bool Foam::patchEdgeFaceRegions::updateFace
             << "problem." << abort(FatalError);
     }
 
-    if ((findIndex(orientedInfo, -1) != -1) || (findIndex(regions_, -1) != -1))
+    if (orientedInfo.found(-1) || regions_.found(-1))
     {
         // Blocked edge/face
         return false;
@@ -263,41 +260,19 @@ inline bool Foam::patchEdgeFaceRegions::equal
 
 inline bool Foam::patchEdgeFaceRegions::operator==
 (
-    const Foam::patchEdgeFaceRegions& rhs
+    const patchEdgeFaceRegions& rhs
 ) const
 {
-    return regions() == rhs.regions();
+    return regions_ == rhs.regions_;
 }
 
 
 inline bool Foam::patchEdgeFaceRegions::operator!=
 (
-    const Foam::patchEdgeFaceRegions& rhs
+    const patchEdgeFaceRegions& rhs
 ) const
 {
     return !(*this == rhs);
-}
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-inline Foam::Ostream& Foam::operator<<
-(
-    Foam::Ostream& os,
-    const Foam::patchEdgeFaceRegions& wDist
-)
-{
-    return os << wDist.regions_;
-}
-
-
-inline Foam::Istream& Foam::operator>>
-(
-    Foam::Istream& is,
-    Foam::patchEdgeFaceRegions& wDist
-)
-{
-    return is >> wDist.regions_;
 }
 
 

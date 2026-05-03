@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,10 +24,6 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 \*---------------------------------------------------------------------------*/
-
-#include "primitiveMesh.H"
-#include "cellModeller.H"
-#include "cellModel.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -87,11 +85,10 @@ inline const Foam::cellModel& Foam::cellMatcher::model() const
 {
     if (cellModelPtr_ == nullptr)
     {
-        cellModelPtr_ = cellModeller::lookup(cellModelName_);
+        cellModelPtr_ = cellModel::ptr(cellModelName_);
     }
     return *cellModelPtr_;
 }
-
 
 
 // Key into edgeFaces_. key and key+1 are the entries for edge going from

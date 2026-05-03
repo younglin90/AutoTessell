@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +26,9 @@ License
 
 Class
     Foam::DILUPreconditioner
+
+Group
+    grpLduMatrixPreconditioners
 
 Description
     Simplified diagonal-based incomplete LU preconditioner for asymmetric
@@ -45,17 +51,17 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class DILUPreconditioner Declaration
+                           Class DILUPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 class DILUPreconditioner
 :
     public lduMatrix::preconditioner
 {
-    // Private Data
+    // Private data
 
         //- The reciprocal preconditioned diagonal
-        scalarField rD_;
+        solveScalarField rD_;
 
 
 public:
@@ -75,28 +81,27 @@ public:
 
 
     //- Destructor
-    virtual ~DILUPreconditioner()
-    {}
+    virtual ~DILUPreconditioner() = default;
 
 
     // Member Functions
 
         //- Calculate the reciprocal of the preconditioned diagonal
-        static void calcReciprocalD(scalarField& rD, const lduMatrix& matrix);
+        static void calcReciprocalD(solveScalarField&, const lduMatrix&);
 
         //- Return wA the preconditioned form of residual rA
         virtual void precondition
         (
-            scalarField& wA,
-            const scalarField& rA,
+            solveScalarField& wA,
+            const solveScalarField& rA,
             const direction cmpt=0
         ) const;
 
         //- Return wT the transpose-matrix preconditioned form of residual rT.
         virtual void preconditionT
         (
-            scalarField& wT,
-            const scalarField& rT,
+            solveScalarField& wT,
+            const solveScalarField& rT,
             const direction cmpt=0
         ) const;
 };

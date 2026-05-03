@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,38 +40,35 @@ See also
     configuration directory
 
 SourceFiles
+    stringI.H
     string.C
     stringIO.C
+    stringTemplates.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef string_H
-#define string_H
+#ifndef Foam_string_H
+#define Foam_string_H
 
 #include "char.H"
 #include "Hasher.H"
-
-#include <string>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
+class string;
+class word;
+class wordRe;
 class Istream;
 class Ostream;
 
-// Forward declaration of friend functions and operators
-class string;
-Istream& operator>>(Istream&, string&);
-Ostream& operator<<(Ostream&, const string&);
-Ostream& operator<<(Ostream&, const std::string&);
-
-template<class T>
-class UList;
+template<class T> struct Hash;
 
 /*---------------------------------------------------------------------------*\
                            Class string Declaration
@@ -78,222 +78,331 @@ class string
 :
     public std::string
 {
+protected:
+
+    // Protected Member Functions
+
+        //- Find position of a file extension dot, return npos on failure.
+        //  A wrapped version of find_last_of("./") with additional logic.
+        inline static std::string::size_type find_ext(const std::string& str);
+
+        //- Find position of a file extension dot, return npos on failure.
+        //  A wrapped version of find_last_of("./") with additional logic.
+        inline std::string::size_type find_ext() const;
+
+        //- A printf-style formatter for a primitive.
+        template<class PrimitiveType>
+        static std::string::size_type string_printf
+        (
+            std::string& output,
+            const char* fmt,
+            const PrimitiveType& val
+        );
+
+        //- A printf-style formatter for a primitive.
+        template<class PrimitiveType>
+        static std::string::size_type string_printf
+        (
+            std::string& output,
+            const std::string& fmt,
+            const PrimitiveType& val
+        );
+
+        //- Return file name extension (part after last .)
+        word ext() const;
+
+        //- Append a '.' and the ending.
+        //  The '.' and ending will not be added when the ending is empty,
+        //  or when the object was or ended with a '/'.
+        //
+        //  \return True if append occurred.
+        bool ext(const word& ending);
+
+        //- Return true if it has an extension or simply ends with a '.'
+        inline bool has_ext() const;
+
+        //- Return true if the extension is the same as the given ending.
+        //  No proper nullptr protection.
+        inline bool has_ext(const char* ending) const;
+
+        //- Return true if the extension is the same as the given ending.
+        inline bool has_ext(const std::string& ending) const;
+
+        //- Return true if the extension matches the given ending.
+        bool has_ext(const wordRe& ending) const;
+
+        //- Remove leading path, return true if string changed.
+        inline bool remove_path();
+
+        //- Remove extension, return true if string changed.
+        inline bool remove_ext();
+
+
 public:
+
+    // Public Classes
+
+        //- Hashing functor for string and derived string classes
+        struct hasher
+        {
+            unsigned operator()(const std::string& str, unsigned seed=0) const
+            {
+                return Foam::Hasher(str.data(), str.length(), seed);
+            }
+        };
+
+        //- Deprecated hashing functor - use hasher
+        //  \deprecated(2021-04) - use hasher
+        struct hash : string::hasher {};
+
 
     // Static Data Members
 
+        //- The type name "string"
         static const char* const typeName;
+
+        //- The debug flag
         static int debug;
 
         //- An empty string
         static const string null;
 
 
-    //- Hashing function class, shared by all the derived classes
-    class hash
-    {
-    public:
-        hash()
-        {}
-
-        inline unsigned operator()(const string&, unsigned seed = 0) const;
-    };
-
-
     // Constructors
 
-        //- Construct null
-        inline string();
+        //- Default construct
+        string() = default;
 
-        //- Construct from std::string
-        inline string(const std::string&);
+        //- Copy construct from std::string
+        inline string(const std::string& str);
 
-        //- Copy constructor
-        inline string(const string&);
-
-        //- Move constructor
-        inline string(string&&);
+        //- Move construct from std::string
+        inline string(std::string&& str);
 
         //- Construct as copy of character array
-        inline string(const char*);
+        inline string(const char* str);
 
-        //- Construct as copy of UList of character
-        string(const UList<char>&);
-
-        //- Construct as copy of specified number of characters
-        inline string(const char*, const size_type);
+        //- Construct as copy with a maximum number of characters
+        inline string(const char* str, const size_type len);
 
         //- Construct from a single character
-        inline string(const char);
+        inline explicit string(const char c);
 
-        //- Construct from copies of a single character
-        inline string(const size_type, const char);
+        //- Construct fill copies of a single character
+        inline string(const size_type len, const char c);
 
         //- Construct from Istream
-        string(Istream&);
+        explicit string(Istream& is);
+
+
+    // Static Member Functions
+
+        //- Avoid masking the normal std::string length() method
+        using std::string::length;
+
+        //- Length of the character sequence (with nullptr protection)
+        static inline std::string::size_type length(const char* s)
+        {
+            return (s ? strlen(s) : 0);
+        }
+
+        //- The length of the string
+        static inline std::string::size_type length(const std::string& s)
+        {
+            return s.size();
+        }
+
+        //- Does the string contain valid characters only?
+        template<class StringType>
+        static inline bool valid(const std::string& str);
+
+        //- Strip invalid characters from the given string
+        template<class StringType>
+        static inline bool stripInvalid(std::string& str);
+
+        //- Return a valid String from the given string
+        template<class StringType>
+        static inline StringType validate(const std::string& str);
 
 
     // Member Functions
 
-        //- Count and return the number of a given character in the string
-        size_type count(const char) const;
-
-        //- Is this string type valid?
-        template<class String>
-        static inline bool valid(const string&);
-
-        //- Does this string have particular meta-characters?
-        //  The meta characters can be optionally quoted.
-        template<class String>
-        static inline bool meta(const string&, const char quote='\\');
-
-        //- Strip invalid characters from the given string
-        template<class String>
-        static inline bool stripInvalid(string&);
-
-        //- Return a valid String from the given string
-        template<class String>
-        static inline String validate(const string&);
-
-        //- Return a String with quoted meta-characters from the given string
-        template<class String>
-        static inline string quotemeta(const string&, const char quote='\\');
-
-        //- True when strings match literally
-        inline bool match(const std::string&) const;
+        //- Test for equality.
+        //  \return True when strings match literally.
+        inline bool match(const std::string& text) const;
 
         //- Avoid masking the normal std::string replace
         using std::string::replace;
 
-        //- In this string replace first occurrence of sub-string oldStr
-        //  with newStr starting at start
+        //- Replace first occurrence of sub-string s1 with s2,
+        //- beginning at pos
         string& replace
         (
-            const string& oldStr,
-            const string& newStr,
-            size_type start = 0
+            const std::string& s1,
+            const std::string& s2,
+            size_type pos = 0
         );
 
-        //- Replace first occurrence of sub-string oldStr with newStr
-        //  starting at start
-        string replace
-        (
-            const string& oldStr,
-            const string& newStr,
-            size_type start = 0
-        ) const;
-
-        //- In this string replace all occurrences of sub-string oldStr
-        //  with newStr starting at start
+        //- Replace all occurrences of sub-string s1 with s2,
+        //- beginning at pos in the string.
+        //  A no-op if s1 is empty.
         string& replaceAll
         (
-            const string& oldStr,
-            const string& newStr,
-            size_type start = 0
+            const std::string& s1,
+            const std::string& s2,
+            size_type pos = 0
         );
 
-        //- Replace all occurrences of sub-string oldStr with newStr
-        //  starting at start
-        string replaceAll
+        //- Replace any occurrence of s1 characters with c2,
+        //- beginning at pos in the string.
+        //  A no-op if s1 is empty.
+        string& replaceAny
         (
-            const string& oldStr,
-            const string& newStr,
-            size_type start = 0
-        ) const;
+            const std::string& s1,
+            const char c2,
+            size_type pos = 0
+        );
 
-        //- Expand initial tildes and all occurrences of environment variables
-        //  Expansion includes:
-        //  -# environment variables
-        //    - "$VAR", "${VAR}"
-        //  -# current directory
-        //    - leading "./" : the current directory
-        //  -# tilde expansion
-        //    - leading "~/" : home directory
-        //    - leading "~user" : home directory for specified user
-        //    - leading "~OpenFOAM" : site/user OpenFOAM configuration directory
+        //- Inplace expand initial tags, tildes, and all occurrences of
+        //- environment variables as per stringOps::expand
         //
         //  Any unknown entries are removed silently if allowEmpty is true
         //  \sa
         //  Foam::findEtcFile
         string& expand(const bool allowEmpty = false);
 
-        //- Remove all occurrences of character returning true if string changed
-        bool remove(const char);
+        //- Remove repeated characters
+        //  \return True if string changed
+        bool removeRepeated(const char character);
 
-        //- Remove all occurrences of character and return the string
-        string remove(const char) const;
+        //- Remove the given text from the start of the string.
+        //  \return True if the removal occurred
+        bool removeStart(const std::string& text);
 
-        //- Remove repeated character returning true if string changed
-        bool removeRepeated(const char);
+        //- Remove leading character, unless string is a single character
+        //  \return True if the removal occurred
+        bool removeStart(const char c);
 
-        //- Remove repeated character and return the string
-        string removeRepeated(const char) const;
+        //- Remove the given text from the end of the string.
+        //  \return True if the removal occurred
+        bool removeEnd(const std::string& text);
 
-        //- Remove trailing character returning true if string changed
-        bool removeTrailing(const char);
+        //- Remove trailing character, unless string is a single character
+        //  \return True if the removal occurred
+        bool removeEnd(const char c);
 
-        //- Return string with trailing character removed
-        string removeTrailing(const char) const;
 
-        //- Remove trailing string returning true if string changed
-        bool removeTrailing(const string&);
+    // Editing
 
-        //- Return string with trailing string removed
-        string removeTrailing(const string&) const;
-
-        //- Strip characters from the start and end of the string
-        void strip(const string&);
-
-        //- Strip characters from the start and end of the string
-        string strip(const string&) const;
-
-        //- Find the closing character. Brackets counting algorithm. The
-        //  opening bracket character is taken to be the one at the starting
-        //  position. The closing character is provided by argument.
-        //
-        //  Examples:
-        //
-        //          [char #1]       [char #15]
-        //               |             |
-        //               V             V
-        //      string("0(2(4,6)8,a(c)e)g").findClosing(')',1) == 15
-        //
-        //          [char #3] [char #7]
-        //                 |   |
-        //                 V   V
-        //      string("0(2(4,6)8,a(c)e)g").findClosing(')',3) == 7
-        //
-        size_type findClosing(const char, const size_type) const;
+        //- Swap contents. Self-swapping is a no-op.
+        inline void swap(std::string& str);
 
 
     // Member Operators
 
-        //- Return the sub-string from the i-th character for \a n characters
-        inline string operator()
-        (
-            const size_type i,
-            const size_type n
-        ) const;
-
-        //- Return the sub-string from the first character for \a n characters
-        inline string operator()
-        (
-            const size_type n
-        ) const;
-
-        inline void operator=(const string&);
-        inline void operator=(string&&);
+        //- Test for equality. Allows use as a predicate.
+        //  \return True when strings match literally.
+        inline bool operator()(const std::string& text) const;
 
 
-    // IOstream Operators
+    // Housekeeping
 
-        friend Istream& operator>>(Istream&, string&);
-        friend Ostream& operator<<(Ostream&, const string&);
+        //- True if string contains given character (cf. C++23)
+        bool contains(char c) const noexcept
+        {
+            return (find(c) != std::string::npos);
+        }
+
+        //- True if string contains given [string view] substring (cf. C++23)
+        bool contains(const std::string& s) const noexcept
+        {
+            return (find(s) != std::string::npos);
+        }
+
+        //- True if string contains given substring (cf. C++23)
+        bool contains(const char* s) const
+        {
+            return (find(s) != std::string::npos);
+        }
+
+        //- True if string starts with given character (cf. C++20)
+        bool starts_with(char c) const
+        {
+            return (!empty() && front() == c);
+        }
+
+        //- True if string starts with given [string view] prefix (C++20)
+        bool starts_with(const std::string& s) const
+        {
+            return (size() >= s.size() && !compare(0, s.size(), s));
+        }
+
+        //- True if string starts with given prefix (C++20)
+        bool starts_with(const char* s) const
+        {
+            const auto len = strlen(s);
+            return (size() >= len && !compare(0, len, s, len));
+        }
+
+        //- True if string ends with given character (cf. C++20)
+        bool ends_with(char c) const
+        {
+            return (!empty() && back() == c);
+        }
+
+        //- True if string ends with given [string view] suffix (cf. C++20)
+        bool ends_with(const std::string& s) const
+        {
+            return (size() >= s.size() && !compare(size()-s.size(), npos, s));
+        }
+
+        //- True if string ends with given suffix (cf. C++20)
+        bool ends_with(const char* s) const
+        {
+            const auto len = strlen(s);
+            return (size() >= len && !compare(size()-len, npos, s, len));
+        }
+
+        //- Count the number of occurrences of the specified character
+        //- in the string
+        //  Partially deprecated (NOV-2017) in favour of stringOps::count
+        size_type count(const char c) const;
+
+        //- Deprecated(2019-11)
+        //  \deprecated(2019-11) use starts_with instead
+        bool startsWith(const std::string& s) const { return starts_with(s); }
+
+        //- Deprecated(2019-11)
+        //  \deprecated(2019-11) use ends_with instead
+        bool endsWith(const std::string& s) const { return ends_with(s); }
+
+        //- Deprecated(2019-11)
+        //  \deprecated(2019-11) use removeEnd instead
+        bool removeTrailing(const char c) { return removeEnd(c); }
 };
 
 
-void writeEntry(Ostream& os, const char* value);
-void writeEntry(Ostream& os, const string& value);
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+//- Hashing for Foam::string
+template<> struct Hash<string> : string::hasher {};
+
+//- Hashing for std:::string
+template<> struct Hash<std::string> : string::hasher {};
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// IOstream Operators
+
+//- Read operator
+Istream& operator>>(Istream& is, string& val);
+
+//- Write operator
+Ostream& operator<<(Ostream& os, const string& val);
+
+//- Write operator
+Ostream& operator<<(Ostream& os, const std::string& val);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -303,6 +412,10 @@ void writeEntry(Ostream& os, const string& value);
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #include "stringI.H"
+
+#ifdef NoRepository
+    #include "stringTemplates.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

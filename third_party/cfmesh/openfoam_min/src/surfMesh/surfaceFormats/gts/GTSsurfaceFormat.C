@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,10 +29,42 @@ License
 #include "GTSsurfaceFormat.H"
 #include "surfaceFormatsCore.H"
 #include "clock.H"
-#include "IFstream.H"
-#include "IStringStream.H"
-#include "Ostream.H"
-#include "OFstream.H"
+#include "Fstream.H"
+#include "StringStream.H"
+#include "faceTraits.H"
+
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+template<class Face>
+bool Foam::fileFormats::GTSsurfaceFormat<Face>::checkIfTriangulated
+(
+    const UList<Face>& faceLst
+)
+{
+    label nNonTris = 0;
+
+    if (!faceTraits<Face>::isTri())
+    {
+        for (const auto& f : faceLst)
+        {
+            if (f.size() != 3)
+            {
+                ++nNonTris;
+            }
+        }
+    }
+
+    if (nNonTris)
+    {
+        FatalErrorInFunction
+            << "Surface has " << nNonTris << '/' << faceLst.size()
+            << " non-triangulated faces - not writing!" << endl;
+    }
+
+    return nNonTris == 0;
+}
+
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -51,13 +86,14 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
+    // Clear everything
     this->clear();
 
     IFstream is(filename);
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << filename
+            << "Cannot read file " << filename << nl
             << exit(FatalError);
     }
 
@@ -74,14 +110,14 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
     }
 
 
-    // write directly into the lists:
-    pointField&  pointLst = this->storedPoints();
-    List<Face>&  faceLst  = this->storedFaces();
-    List<label>& zoneIds  = this->storedZoneIds();
+    // Write directly into the lists
+    auto& pointLst = this->storedPoints();
+    auto& faceLst  = this->storedFaces();
+    auto& zoneIds  = this->storedZoneIds();
 
-    pointLst.setSize(nPoints);
-    faceLst.setSize(nElems);
-    zoneIds.setSize(nElems);
+    pointLst.resize(nPoints);
+    faceLst.resize(nElems);
+    zoneIds.resize(nElems);
 
     // Read points
     forAll(pointLst, pointi)
@@ -97,7 +133,7 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
         pointLst[pointi] = point(x, y, z);
     }
 
-    // Read edges (Foam indexing)
+    // Read edges (OpenFOAM indexing)
     edgeList edges(nEdges);
     forAll(edges, edgei)
     {
@@ -125,7 +161,7 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
             lineStream
                 >> e0Label >> e1Label >> e2Label;
 
-            // Optional zone number: read first, then check state on stream
+            // Optional zone number: read first, then check stream state
             if (lineStream)
             {
                 label num;
@@ -160,10 +196,10 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
                 << exit(FatalError);
         }
 
-        label e0Far = e0.otherVertex(common01);
-        label e1Far = e1.otherVertex(common01);
+        const label e0Far = e0.otherVertex(common01);
+        const label e1Far = e1.otherVertex(common01);
 
-        label common12 = e1.commonVertex(e2);
+        const label common12 = e1.commonVertex(e2);
         if (common12 == -1)
         {
             FatalErrorInFunction
@@ -173,7 +209,7 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
                 << "    edge2:" << e2
                 << exit(FatalError);
         }
-        label e2Far = e2.otherVertex(common12);
+        const label e2Far = e2.otherVertex(common12);
 
         // Does edge2 sit between edge1 and 0?
         if (common12 != e1Far || e2Far != e0Far)
@@ -187,22 +223,23 @@ bool Foam::fileFormats::GTSsurfaceFormat<Face>::read
                 << exit(FatalError);
         }
 
-        faceLst[facei] = triFace(e0Far, common01, e1Far);
+        faceLst[facei] = Face{e0Far, common01, e1Far};
         zoneIds[facei] = zoneI;
     }
 
 
     List<surfZoneIdentifier> newZones(maxZone+1);
-    forAll(newZones, zoneI)
+    forAll(newZones, zonei)
     {
-        newZones[zoneI] = surfZoneIdentifier
+        newZones[zonei] = surfZoneIdentifier
         (
-            "zone" + ::Foam::name(zoneI),
-            zoneI
+            surfZoneIdentifier::defaultName(zonei),
+            zonei
         );
     }
 
     this->storedZoneToc().transfer(newZones);
+    this->addZonesToFaces(); // for labelledTri
 
     return true;
 }
@@ -212,48 +249,31 @@ template<class Face>
 void Foam::fileFormats::GTSsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurface<Face>& surf
+    const MeshedSurface<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>& faceLst  = surf.faces();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
 
-    const List<surfZone>& zones =
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>& faceLst = surf.surfFaces();
+
+    const surfZoneList zones =
     (
         surf.surfZones().size()
       ? surf.surfZones()
       : surfaceFormatsCore::oneZone(faceLst)
     );
 
-    // check if output triangulation would be required
-    // It is too annoying to triangulate on-the-fly
-    // just issue a warning and get out
-    if (!MeshedSurface<Face>::isTri())
-    {
-        label nNonTris = 0;
-        forAll(faceLst, facei)
-        {
-            if (faceLst[facei].size() != 3)
-            {
-                ++nNonTris;
-            }
-        }
+    checkIfTriangulated(faceLst);
 
-        if (nNonTris)
-        {
-            FatalErrorInFunction
-                << "Surface has " << nNonTris << "/" << faceLst.size()
-                << " non-triangulated faces - not writing!" << endl;
-            return;
-        }
-    }
-
-
-    OFstream os(filename);
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
@@ -262,23 +282,21 @@ void Foam::fileFormats::GTSsurfaceFormat<Face>::write
     os  << "# GTS file" << nl
         << "# Zones:" << nl;
 
-    forAll(zones, zoneI)
+    forAll(zones, zonei)
     {
-        os  << "#     " << zoneI << "    "
-            << zones[zoneI].name() << nl;
+        os  << "#     " << zonei << "    "
+            << zones[zonei].name() << nl;
     }
     os  << "#" << nl;
 
     os  << "# nPoints  nEdges  nTriangles" << nl
         << pointLst.size() << ' ' << surf.nEdges() << ' '
-        << surf.size() << endl;
+        << surf.size() << nl;
 
 
     // Write vertex coords
-    forAll(pointLst, pointi)
+    for (const point& pt : pointLst)
     {
-        const point& pt = pointLst[pointi];
-
         os  << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
     }
 
@@ -288,29 +306,33 @@ void Foam::fileFormats::GTSsurfaceFormat<Face>::write
     const edgeList& es = surf.edges();
     const labelList& meshPts = surf.meshPoints();
 
-    forAll(es, edgei)
+    for (const edge& e : es)
     {
-        os  << meshPts[es[edgei].start()] + 1 << ' '
-            << meshPts[es[edgei].end()] + 1 << endl;
+        os  << meshPts[e.start()] + 1 << ' '
+            << meshPts[e.end()] + 1 << nl;
     }
 
-    // Write faces in terms of edges.
+    // Write faces in terms of edges
     const labelListList& faceEs = surf.faceEdges();
 
     label faceIndex = 0;
-    forAll(zones, zoneI)
-    {
-        const surfZone& zone = zones[zoneI];
+    label zoneIndex = 0;
 
-        forAll(zone, localFacei)
+    for (const surfZone& zone : zones)
+    {
+        for (label nLocal = zone.size(); nLocal--; ++faceIndex)
         {
-            const labelList& fEdges = faceEs[faceIndex++];
+            const label facei = faceIndex;
+
+            const labelList& fEdges = faceEs[facei];
 
             os  << fEdges[0] + 1 << ' '
                 << fEdges[1] + 1 << ' '
                 << fEdges[2] + 1 << ' '
-                << zoneI << endl;
+                << zoneIndex << nl;
         }
+
+        ++zoneIndex;
     }
 }
 
@@ -319,43 +341,26 @@ template<class Face>
 void Foam::fileFormats::GTSsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const UnsortedMeshedSurface<Face>& surf
+    const UnsortedMeshedSurface<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst   = surf.points();
-    const List<Face>& faceLst    = surf.faces();
-    const List<label>& zoneIds   = surf.zoneIds();
-    const List<surfZoneIdentifier>& zoneToc = surf.zoneToc();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
 
-    // check if output triangulation would be required
-    // It is too annoying to triangulate on-the-fly
-    // just issue a warning and get out
-    if (!MeshedSurface<Face>::isTri())
-    {
-        label nNonTris = 0;
-        forAll(faceLst, facei)
-        {
-            if (faceLst[facei].size() != 3)
-            {
-                ++nNonTris;
-            }
-        }
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>& faceLst = surf.surfFaces();
+    const UList<label>& zoneIds = surf.zoneIds();
+    const UList<surfZoneIdentifier>& zoneToc = surf.zoneToc();
 
-        if (nNonTris)
-        {
-            FatalErrorInFunction
-                << "Surface has " << nNonTris << "/" << faceLst.size()
-                << " non-triangulated faces - not writing!" << endl;
-            return;
-        }
-    }
+    checkIfTriangulated(faceLst);
 
-
-    OFstream os(filename);
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
@@ -364,25 +369,22 @@ void Foam::fileFormats::GTSsurfaceFormat<Face>::write
     os  << "# GTS file" << nl
         << "# Zones:" << nl;
 
-    forAll(zoneToc, zoneI)
+    forAll(zoneToc, zonei)
     {
-        os  << "#     " << zoneI << "    "
-            << zoneToc[zoneI].name() << nl;
+        os  << "#     " << zonei << "    "
+            << zoneToc[zonei].name() << nl;
     }
-    os  << "#" << endl;
-
+    os  << "#" << nl;
 
     os  << "# nPoints  nEdges  nTriangles" << nl
         << pointLst.size() << ' ' << surf.nEdges() << ' '
-        << surf.size() << endl;
+        << surf.size() << nl;
 
 
     // Write vertex coords
-    forAll(pointLst, pointi)
+    for (const point& pt : pointLst)
     {
-        os  << pointLst[pointi].x() << ' '
-            << pointLst[pointi].y() << ' '
-            << pointLst[pointi].z() << endl;
+        os  << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
     }
 
 
@@ -391,12 +393,11 @@ void Foam::fileFormats::GTSsurfaceFormat<Face>::write
     const edgeList& es = surf.edges();
     const labelList& meshPts = surf.meshPoints();
 
-    forAll(es, edgeI)
+    for (const edge& e : es)
     {
-        os  << meshPts[es[edgeI].start()] + 1 << ' '
-            << meshPts[es[edgeI].end()] + 1 << endl;
+        os  << meshPts[e.start()] + 1 << ' '
+            << meshPts[e.end()] + 1 << nl;
     }
-
 
     // Write faces in terms of edges.
     const labelListList& faceEs = surf.faceEdges();
@@ -408,7 +409,7 @@ void Foam::fileFormats::GTSsurfaceFormat<Face>::write
         os  << fEdges[0] + 1 << ' '
             << fEdges[1] + 1 << ' '
             << fEdges[2] + 1 << ' '
-            << zoneIds[facei] << endl;
+            << zoneIds[facei] << nl;
     }
 }
 

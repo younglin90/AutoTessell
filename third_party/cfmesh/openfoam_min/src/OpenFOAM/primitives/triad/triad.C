@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,31 +52,25 @@ const Foam::Vector<Foam::vector> Foam::triad::vsType::one
 template<>
 const Foam::Vector<Foam::vector> Foam::triad::vsType::max
 (
-    triad::uniform(vector::uniform(vGreat))
+    triad::uniform(vector::uniform(VGREAT))
 );
 
 template<>
 const Foam::Vector<Foam::vector> Foam::triad::vsType::min
 (
-    triad::uniform(vector::uniform(-vGreat))
+    triad::uniform(vector::uniform(-VGREAT))
 );
 
 template<>
 const Foam::Vector<Foam::vector> Foam::triad::vsType::rootMax
 (
-    triad::uniform(vector::uniform(rootVGreat))
+    triad::uniform(vector::uniform(ROOTVGREAT))
 );
 
 template<>
 const Foam::Vector<Foam::vector> Foam::triad::vsType::rootMin
 (
-    triad::uniform(vector::uniform(-rootVGreat))
-);
-
-template<>
-const Foam::Vector<Foam::vector> Foam::triad::vsType::nan
-(
-    triad::uniform(vector::uniform(NaN))
+    triad::uniform(vector::uniform(-ROOTVGREAT))
 );
 
 const Foam::triad Foam::triad::I
@@ -86,7 +82,7 @@ const Foam::triad Foam::triad::I
 
 const Foam::triad Foam::triad::unset
 (
-    triad::uniform(vector::uniform(vGreat))
+    triad::uniform(vector::uniform(VGREAT))
 );
 
 
@@ -101,18 +97,12 @@ Foam::triad::triad(const quaternion& q)
 }
 
 
-Foam::triad::triad(const tensor& t)
-{
-    x() = t.x();
-    y() = t.y();
-    z() = t.z();
-}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::triad::orthogonalise()
 {
+    //int which = ((set(0) ? 1 : 0) | (set(1) ? 2 : 0) | (set(2) ? 4 : 0));
+
     // Hack for 2D z-slab cases
     // if (!set(2))
     // {
@@ -136,20 +126,11 @@ void Foam::triad::orthogonalise()
     // If all the axes are set
     if (set())
     {
-        for (direction i=0; i<2; i++)
+        for (int i=0; i<2; i++)
         {
-            const scalar o01
-            (
-                (set(0) && set(1)) ? mag(operator[](0) & operator[](1)) : vGreat
-            );
-            const scalar o02
-            (
-                (set(0) && set(2)) ? mag(operator[](0) & operator[](2)) : vGreat
-            );
-            const scalar o12
-            (
-                (set(1) && set(2)) ? mag(operator[](1) & operator[](2)) : vGreat
-            );
+            scalar o01 = Foam::mag(operator[](0) & operator[](1));
+            scalar o02 = Foam::mag(operator[](0) & operator[](2));
+            scalar o12 = Foam::mag(operator[](1) & operator[](2));
 
             if (o01 < o02 && o01 < o12)
             {
@@ -214,8 +195,8 @@ void Foam::triad::operator+=(const triad& t2)
 
     if (set() && t2.set())
     {
-        direction correspondence[3]{0, 0, 0};
-        label signd[3];
+        direction correspondance[3]{0, 0, 0};
+        short signd[3];
 
         for (direction i=0; i<3; i++)
         {
@@ -231,7 +212,7 @@ void Foam::triad::operator+=(const triad& t2)
                 bool set = false;
                 for (direction k=0; k<i; k++)
                 {
-                    if (correspondence[k] == j)
+                    if (correspondance[k] == j)
                     {
                         set = true;
                         break;
@@ -241,18 +222,18 @@ void Foam::triad::operator+=(const triad& t2)
                 if (!set)
                 {
                     scalar a = operator[](i) & t2.operator[](j);
-                    scalar maga = mag(a);
+                    scalar maga = Foam::mag(a);
 
                     if (maga > mostAligned)
                     {
-                        correspondence[i] = j;
+                        correspondance[i] = j;
                         mostAligned = maga;
                         signd[i] = sign(a);
                     }
                 }
             }
 
-            operator[](i) += signd[i]*t2.operator[](correspondence[i]);
+            operator[](i) += signd[i]*t2.operator[](correspondance[i]);
         }
     }
 }
@@ -264,9 +245,9 @@ void Foam::triad::align(const vector& v)
     {
         vector mostAligned
         (
-            mag(v & operator[](0)),
-            mag(v & operator[](1)),
-            mag(v & operator[](2))
+            Foam::mag(v & operator[](0)),
+            Foam::mag(v & operator[](1)),
+            Foam::mag(v & operator[](2))
         );
 
         scalar mav;
@@ -314,13 +295,13 @@ Foam::triad Foam::triad::sortxyz() const
 
     if
     (
-        mag(operator[](0).x()) > mag(operator[](1).x())
-     && mag(operator[](0).x()) > mag(operator[](2).x())
+        Foam::mag(operator[](0).x()) > Foam::mag(operator[](1).x())
+     && Foam::mag(operator[](0).x()) > Foam::mag(operator[](2).x())
     )
     {
         t[0] = operator[](0);
 
-        if (mag(operator[](1).y()) > mag(operator[](2).y()))
+        if (Foam::mag(operator[](1).y()) > Foam::mag(operator[](2).y()))
         {
             t[1] = operator[](1);
             t[2] = operator[](2);
@@ -333,12 +314,12 @@ Foam::triad Foam::triad::sortxyz() const
     }
     else if
     (
-        mag(operator[](1).x()) > mag(operator[](2).x())
+        Foam::mag(operator[](1).x()) > Foam::mag(operator[](2).x())
     )
     {
         t[0] = operator[](1);
 
-        if (mag(operator[](0).y()) > mag(operator[](2).y()))
+        if (Foam::mag(operator[](0).y()) > Foam::mag(operator[](2).y()))
         {
             t[1] = operator[](0);
             t[2] = operator[](2);
@@ -353,7 +334,7 @@ Foam::triad Foam::triad::sortxyz() const
     {
         t[0] = operator[](2);
 
-        if (mag(operator[](0).y()) > mag(operator[](1).y()))
+        if (Foam::mag(operator[](0).y()) > Foam::mag(operator[](1).y()))
         {
             t[1] = operator[](0);
             t[2] = operator[](1);
@@ -394,16 +375,6 @@ Foam::triad::operator Foam::quaternion() const
 }
 
 
-// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
-
-void Foam::triad::operator=(const tensor& t)
-{
-    x() = t.x();
-    y() = t.y();
-    z() = t.z();
-}
-
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 Foam::scalar Foam::diff(const triad& A, const triad& B)
@@ -422,9 +393,9 @@ Foam::scalar Foam::diff(const triad& A, const triad& B)
 
         scalar cosPhi =
             (tmpA[dir] & tmpB[dir])
-           /(mag(tmpA[dir])*mag(tmpA[dir]) + small);
+           /(Foam::mag(tmpA[dir])*Foam::mag(tmpA[dir]) + SMALL);
 
-        cosPhi = min(max(cosPhi, -1), 1);
+        cosPhi = clamp(cosPhi, -1, 1);
 
         sumDifference += mag(cosPhi - 1);
     }

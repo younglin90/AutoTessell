@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,8 +41,8 @@ See also
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef MatrixSpace_H
-#define MatrixSpace_H
+#ifndef Foam_MatrixSpace_H
+#define Foam_MatrixSpace_H
 
 #include "VectorSpace.H"
 
@@ -57,35 +60,36 @@ class MatrixSpace
 :
     public VectorSpace<Form, Cmpt, Mrows*Ncols>
 {
-
 public:
 
-    //- MatrixSpace type
-    typedef MatrixSpace<Form, Cmpt, Mrows, Ncols> msType;
+    // Typedefs
+
+        //- MatrixSpace type
+        typedef MatrixSpace<Form, Cmpt, Mrows, Ncols> msType;
 
 
-    // Member constants
+    // Member Constants
 
-        static const direction mRows = Mrows;
-        static const direction nCols = Ncols;
+        static constexpr direction mRows = Mrows;
+        static constexpr direction nCols = Ncols;
 
 
-    // Static member functions
+    // Static Member Functions
 
-        //- Return the number of rows
-        static direction m()
+        //- The number of rows
+        static direction m() noexcept
         {
             return Mrows;
         }
 
-        //- Return the number of columns
-        static direction n()
+        //- The number of columns
+        static direction n() noexcept
         {
             return Ncols;
         }
 
-        //- Return the identity matrix for square matrix spaces
-        inline static msType identityMap();
+        //- An identity matrix for square matrix-spaces
+        inline static msType identity();
 
 
     // Sub-Block Classes
@@ -117,7 +121,7 @@ public:
             //- Construct for the given matrix
             inline ConstBlock(const msType& matrix);
 
-            //- Construct and return the sub-ensor corresponding to this block
+            //- Construct and return the sub-tensor corresponding to this block
             inline SubTensor operator()() const;
 
             //- (i, j) const element access operator
@@ -146,13 +150,13 @@ public:
             static const direction mRows = SubTensor::mRows;
             static const direction nCols = SubTensor::nCols;
 
-            //- Return the number of rows in the block
+            //- The number of rows in the block
             static direction m()
             {
                 return mRows;
             }
 
-            //- Return the number of columns in the block
+            //- The number of columns in the block
             static direction n()
             {
                 return nCols;
@@ -196,12 +200,15 @@ public:
         };
 
 
+    // Generated Methods
+
+        //- Default construct
+        MatrixSpace() = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline MatrixSpace();
-
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline MatrixSpace(const Foam::zero);
 
         //- Construct as copy of a VectorSpace with the same size
@@ -224,44 +231,47 @@ public:
         );
 
         //- Construct from Istream
-        MatrixSpace(Istream&);
+        explicit MatrixSpace(Istream& is);
 
 
     // Member Functions
 
         //- Fast const element access using compile-time addressing
         template<direction Row, direction Col>
-        inline const Cmpt& elmt() const;
+        inline const Cmpt& elmt() const noexcept;
 
         //- Fast element access using compile-time addressing
         template<direction Row, direction Col>
-        inline Cmpt& elmt();
+        inline Cmpt& elmt() noexcept;
+
 
         // Const element access functions for a 3x3
         // Compile-time errors are generated for inappropriate use
 
-            inline const Cmpt& xx() const;
-            inline const Cmpt& xy() const;
-            inline const Cmpt& xz() const;
-            inline const Cmpt& yx() const;
-            inline const Cmpt& yy() const;
-            inline const Cmpt& yz() const;
-            inline const Cmpt& zx() const;
-            inline const Cmpt& zy() const;
-            inline const Cmpt& zz() const;
+            const Cmpt& xx() const noexcept { return elmt<0,0>(); }
+            const Cmpt& xy() const noexcept { return elmt<0,1>(); }
+            const Cmpt& xz() const noexcept { return elmt<0,2>(); }
+            const Cmpt& yx() const noexcept { return elmt<1,0>(); }
+            const Cmpt& yy() const noexcept { return elmt<1,1>(); }
+            const Cmpt& yz() const noexcept { return elmt<1,2>(); }
+            const Cmpt& zx() const noexcept { return elmt<2,0>(); }
+            const Cmpt& zy() const noexcept { return elmt<2,1>(); }
+            const Cmpt& zz() const noexcept { return elmt<2,2>(); }
+
 
         // Element access functions for a 3x3
         // Compile-time errors are generated for inappropriate use
 
-            inline Cmpt& xx();
-            inline Cmpt& xy();
-            inline Cmpt& xz();
-            inline Cmpt& yx();
-            inline Cmpt& yy();
-            inline Cmpt& yz();
-            inline Cmpt& zx();
-            inline Cmpt& zy();
-            inline Cmpt& zz();
+            Cmpt& xx() noexcept { return elmt<0,0>(); }
+            Cmpt& xy() noexcept { return elmt<0,1>(); }
+            Cmpt& xz() noexcept { return elmt<0,2>(); }
+            Cmpt& yx() noexcept { return elmt<1,0>(); }
+            Cmpt& yy() noexcept { return elmt<1,1>(); }
+            Cmpt& yz() noexcept { return elmt<1,2>(); }
+            Cmpt& zx() noexcept { return elmt<2,0>(); }
+            Cmpt& zy() noexcept { return elmt<2,1>(); }
+            Cmpt& zz() noexcept { return elmt<2,2>(); }
+
 
         //- Return the transpose of the matrix
         inline typename typeOfTranspose<Cmpt, Form>::type T() const;

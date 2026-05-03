@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,31 +28,29 @@ Class
     Foam::fvSurfaceMapper
 
 Description
-    FV surface mapper.
+    A finiteVolume surface mapper.
 
 SourceFiles
     fvSurfaceMapper.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvSurfaceMapper_H
-#define fvSurfaceMapper_H
+#ifndef Foam_fvSurfaceMapper_H
+#define Foam_fvSurfaceMapper_H
 
 #include "morphFieldMapper.H"
 #include "fvMesh.H"
 #include "faceMapper.H"
 #include "HashSet.H"
-#include "polyTopoChangeMap.H"
+#include "mapPolyMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
-
 /*---------------------------------------------------------------------------*\
-                       Class fvSurfaceMapper Declaration
+                         Class fvSurfaceMapper Declaration
 \*---------------------------------------------------------------------------*/
 
 class fvSurfaceMapper
@@ -65,29 +66,33 @@ class fvSurfaceMapper
         const faceMapper& faceMap_;
 
 
-    // Demand-driven private data
+    // Demand-Driven Data
 
         //- Direct addressing (only one for of addressing is used)
-        mutable labelList* directAddrPtr_;
+        mutable std::unique_ptr<labelList> directAddrPtr_;
 
         //- Interpolated addressing (only one for of addressing is used)
-        mutable labelListList* interpolationAddrPtr_;
+        mutable std::unique_ptr<labelListList> interpAddrPtr_;
 
         //- Interpolation weights
-        mutable scalarListList* weightsPtr_;
+        mutable std::unique_ptr<scalarListList> weightsPtr_;
 
         //- Inserted faces
-        mutable labelList* insertedObjectLabelsPtr_;
+        mutable std::unique_ptr<labelList> insertedObjectsPtr_;
 
 
 
     // Private Member Functions
 
+        //- No copy construct
+        fvSurfaceMapper(const fvSurfaceMapper&) = delete;
+
+        //- No copy assignment
+        void operator=(const fvSurfaceMapper&) = delete;
+
+
         //- Calculate addressing
         void calcAddressing() const;
-
-        //- Clear out local storage
-        void clearOut();
 
 
 public:
@@ -98,11 +103,8 @@ public:
         fvSurfaceMapper
         (
             const fvMesh& mesh,
-            const faceMapper& fMapper
+            const faceMapper& mapper
         );
-
-        //- Disallow default bitwise copy construction
-        fvSurfaceMapper(const fvSurfaceMapper&) = delete;
 
 
     //- Destructor
@@ -111,10 +113,28 @@ public:
 
     // Member Functions
 
+        //- Return size
+        virtual label size() const
+        {
+            return mesh_.nInternalFaces();
+        }
+
+        //- Return size of field before mapping
+        virtual label sizeBeforeMapping() const
+        {
+            return faceMap_.internalSizeBeforeMapping();
+        }
+
         //- Is the mapping direct
         virtual bool direct() const
         {
             return faceMap_.direct();
+        }
+
+        //- Has unmapped elements
+        virtual bool hasUnmapped() const
+        {
+            return insertedObjects();
         }
 
         //- Return direct addressing
@@ -125,12 +145,6 @@ public:
 
         //- Return interpolation weights
         virtual const scalarListList& weights() const;
-
-        //- Return size of field before mapping
-        virtual label sizeBeforeMapping() const
-        {
-            return faceMap_.internalSizeBeforeMapping();
-        }
 
         //- Are there any inserted faces
         virtual bool insertedObjects() const
@@ -146,12 +160,6 @@ public:
         {
             return faceMap_.flipFaceFlux();
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const fvSurfaceMapper&) = delete;
 };
 
 

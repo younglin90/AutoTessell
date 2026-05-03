@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,94 +27,217 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "sampledPatchInternalField.H"
+#include "dictionary.H"
+#include "polyMesh.H"
+#include "polyPatch.H"
+#include "volFields.H"
+
 #include "addToRunTimeSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace sampledSurfaces
-{
-    defineTypeNameAndDebug(patchInternalField, 0);
-    addToRunTimeSelectionTable(sampledSurface, patchInternalField, word);
-}
+    defineTypeNameAndDebug(sampledPatchInternalField, 0);
+    addNamedToRunTimeSelectionTable
+    (
+        sampledSurface,
+        sampledPatchInternalField,
+        word,
+        patchInternalField
+    );
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::sampledSurfaces::patchInternalField::patchInternalField
+Foam::sampledPatchInternalField::sampledPatchInternalField
 (
     const word& name,
     const polyMesh& mesh,
     const dictionary& dict
 )
 :
-    patch(name, mesh, dict),
-    mappers_(patchIndices().size())
+    sampledPatch(name, mesh, dict),
+    mappers_(patchIDs().size())
 {
-    // Negate the distance so that we sample cells inside the patch
-    dictionary mappersDict(dict);
-    if (dict.found("distance"))
-    {
-        mappersDict.set("distance", -mappersDict.lookup<scalar>("distance"));
-    }
-
-    forAll(patchIndices(), i)
-    {
-        mappers_.set
+    mappedPatchBase::offsetMode mode =
+        mappedPatchBase::offsetModeNames_.getOrDefault
         (
-            i,
-            new mappedInternalPatchBase
-            (
-                mesh.boundary()[patchIndices()[i]],
-                mappersDict
-            )
+            "offsetMode", dict, mappedPatchBase::NORMAL
         );
+
+    switch (mode)
+    {
+        case mappedPatchBase::NORMAL:
+        {
+            const scalar distance(dict.get<scalar>("distance"));
+            forAll(patchIDs(), i)
+            {
+                mappers_.set
+                (
+                    i,
+                    new mappedPatchBase
+                    (
+                        mesh.boundaryMesh()[patchIDs()[i]],
+                        mesh.name(),                        // sampleRegion
+                        mappedPatchBase::NEARESTCELL,       // sampleMode
+                        word::null,                         // samplePatch
+                        -distance                  // sample inside my domain
+                    )
+                );
+            }
+        }
+        break;
+
+        case mappedPatchBase::UNIFORM:
+        {
+            const point offset(dict.get<point>("offset"));
+            forAll(patchIDs(), i)
+            {
+                mappers_.set
+                (
+                    i,
+                    new mappedPatchBase
+                    (
+                        mesh.boundaryMesh()[patchIDs()[i]],
+                        mesh.name(),                        // sampleRegion
+                        mappedPatchBase::NEARESTCELL,       // sampleMode
+                        word::null,                         // samplePatch
+                        offset                  // sample inside my domain
+                    )
+                );
+            }
+        }
+        break;
+
+        case mappedPatchBase::NONUNIFORM:
+        {
+            const pointField offsets(dict.get<pointField>("offsets"));
+            forAll(patchIDs(), i)
+            {
+                mappers_.set
+                (
+                    i,
+                    new mappedPatchBase
+                    (
+                        mesh.boundaryMesh()[patchIDs()[i]],
+                        mesh.name(),                        // sampleRegion
+                        mappedPatchBase::NEARESTCELL,       // sampleMode
+                        word::null,                         // samplePatch
+                        offsets                  // sample inside my domain
+                    )
+                );
+            }
+        }
+        break;
     }
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::sampledSurfaces::patchInternalField::~patchInternalField()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-#define IMPLEMENT_SAMPLE(Type, nullArg)                                        \
-    Foam::tmp<Foam::Field<Foam::Type>>                                         \
-    Foam::sampledSurfaces::patchInternalField::sample                          \
-    (                                                                          \
-        const VolField<Type>& vField                                           \
-    ) const                                                                    \
-    {                                                                          \
-        return sampleField(vField);                                            \
-    }
-FOR_ALL_FIELD_TYPES(IMPLEMENT_SAMPLE);
-#undef IMPLEMENT_SAMPLE
-
-
-#define IMPLEMENT_INTERPOLATE(Type, nullArg)                                   \
-    Foam::tmp<Foam::Field<Foam::Type>>                                         \
-    Foam::sampledSurfaces::patchInternalField::interpolate                     \
-    (                                                                          \
-        const interpolation<Type>& interpolator                                \
-    ) const                                                                    \
-    {                                                                          \
-        return interpolateField(interpolator);                                 \
-    }
-FOR_ALL_FIELD_TYPES(IMPLEMENT_INTERPOLATE);
-#undef IMPLEMENT_INTERPOLATE
-
-
-void Foam::sampledSurfaces::patchInternalField::print(Ostream& os) const
+Foam::tmp<Foam::scalarField> Foam::sampledPatchInternalField::sample
+(
+    const interpolation<scalar>& sampler
+) const
 {
-    os  << "patchInternalField: " << name() << " :"
-        << "  patches:" << patchNames()
-        << "  faces:" << faces().size()
-        << "  points:" << points().size();
+    return sampleOnFaces(sampler);
+}
+
+
+Foam::tmp<Foam::vectorField> Foam::sampledPatchInternalField::sample
+(
+    const interpolation<vector>& sampler
+) const
+{
+    return sampleOnFaces(sampler);
+}
+
+
+Foam::tmp<Foam::sphericalTensorField> Foam::sampledPatchInternalField::sample
+(
+    const interpolation<sphericalTensor>& sampler
+) const
+{
+    return sampleOnFaces(sampler);
+}
+
+
+Foam::tmp<Foam::symmTensorField> Foam::sampledPatchInternalField::sample
+(
+    const interpolation<symmTensor>& sampler
+) const
+{
+    return sampleOnFaces(sampler);
+}
+
+
+Foam::tmp<Foam::tensorField> Foam::sampledPatchInternalField::sample
+(
+    const interpolation<tensor>& sampler
+) const
+{
+    return sampleOnFaces(sampler);
+}
+
+
+Foam::tmp<Foam::scalarField> Foam::sampledPatchInternalField::interpolate
+(
+    const interpolation<scalar>& interpolator
+) const
+{
+    return sampleOnPoints(interpolator);
+}
+
+
+Foam::tmp<Foam::vectorField> Foam::sampledPatchInternalField::interpolate
+(
+    const interpolation<vector>& interpolator
+) const
+{
+    return sampleOnPoints(interpolator);
+}
+
+
+Foam::tmp<Foam::sphericalTensorField>
+Foam::sampledPatchInternalField::interpolate
+(
+    const interpolation<sphericalTensor>& interpolator
+) const
+{
+    return sampleOnPoints(interpolator);
+}
+
+
+Foam::tmp<Foam::symmTensorField> Foam::sampledPatchInternalField::interpolate
+(
+    const interpolation<symmTensor>& interpolator
+) const
+{
+    return sampleOnPoints(interpolator);
+}
+
+
+Foam::tmp<Foam::tensorField> Foam::sampledPatchInternalField::interpolate
+(
+    const interpolation<tensor>& interpolator
+) const
+{
+    return sampleOnPoints(interpolator);
+}
+
+
+void Foam::sampledPatchInternalField::print(Ostream& os, int level) const
+{
+    os  << "sampledPatchInternalField: " << name() << " :"
+        << " patches:" << patchNames();
+
+    if (level)
+    {
+        os  << "  faces:" << faces().size()
+            << "  points:" << points().size();
+    }
 }
 
 

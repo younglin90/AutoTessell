@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Class
     Foam::smoothSolver
 
+Group
+    grpLduMatrixSolvers
+
 Description
     Iterative solver for symmetric and asymmetric matrices which uses a
     run-time selected smoother e.g. GaussSeidel to converge the solution to
@@ -37,8 +43,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef smoothSolver_H
-#define smoothSolver_H
+#ifndef Foam_smoothSolver_H
+#define Foam_smoothSolver_H
 
 #include "lduMatrix.H"
 
@@ -48,7 +54,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class smoothSolver Declaration
+                           Class smoothSolver Declaration
 \*---------------------------------------------------------------------------*/
 
 class smoothSolver
@@ -57,13 +63,14 @@ class smoothSolver
 {
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- Number of sweeps before the evaluation of residual
         label nSweeps_;
 
         //- Read the control parameters from the controlDict_
         virtual void readControls();
+
 
 public:
 
@@ -86,8 +93,8 @@ public:
 
 
     //- Destructor
-    virtual ~smoothSolver()
-    {}
+    virtual ~smoothSolver() = default;
+
 
     // Member Functions
 

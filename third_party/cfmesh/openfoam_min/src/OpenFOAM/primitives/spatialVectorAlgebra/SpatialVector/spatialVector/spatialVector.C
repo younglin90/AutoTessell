@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -54,31 +56,25 @@ const Foam::spatialVector Foam::spatialVector::vsType::one
 template<>
 const Foam::spatialVector Foam::spatialVector::vsType::max
 (
-    spatialVector::uniform(vGreat)
+    spatialVector::uniform(VGREAT)
 );
 
 template<>
 const Foam::spatialVector Foam::spatialVector::vsType::min
 (
-    spatialVector::uniform(-vGreat)
+    spatialVector::uniform(-VGREAT)
 );
 
 template<>
 const Foam::spatialVector Foam::spatialVector::vsType::rootMax
 (
-    spatialVector::uniform(rootVGreat)
+    spatialVector::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::spatialVector Foam::spatialVector::vsType::rootMin
 (
-    spatialVector::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::spatialVector Foam::spatialVector::vsType::nan
-(
-    spatialVector::uniform(NaN)
+    spatialVector::uniform(-ROOTVGREAT)
 );
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,22 +41,22 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 Su
 (
-    const VolField<Type>& su,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& su,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return su;
 }
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 Su
 (
-    const tmp<VolField<Type>>& tsu,
-    const VolField<Type>& vf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tsu,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return tsu;
@@ -62,22 +64,22 @@ Su
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 Sp
 (
     const volScalarField& sp,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return sp*vf;
 }
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 Sp
 (
     const tmp<volScalarField>& tsp,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return tsp*vf;
@@ -85,11 +87,11 @@ Sp
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 Sp
 (
     const dimensionedScalar& sp,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return sp*vf;
@@ -97,22 +99,22 @@ Sp
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 SuSp
 (
     const volScalarField& sp,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return sp*vf;
 }
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 SuSp
 (
     const tmp<volScalarField>& tsp,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return tsp*vf;

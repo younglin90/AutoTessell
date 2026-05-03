@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,19 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "X3DsurfaceFormat.H"
-#include "clock.H"
-#include "IFstream.H"
-#include "IStringStream.H"
-#include "Ostream.H"
 #include "OFstream.H"
-#include "ListOps.H"
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Face>
-Foam::fileFormats::X3DsurfaceFormat<Face>::X3DsurfaceFormat()
-{}
-
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -44,98 +35,89 @@ template<class Face>
 void Foam::fileFormats::X3DsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption streamOpt,
+    const dictionary&
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
+    // ASCII only, allow output compression
+    streamOpt.format(IOstreamOption::ASCII);
+
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&   faceLst = surf.surfFaces();
+    const UList<label>&  faceMap = surf.faceMap();
 
     // for no zones, suppress the group name
-    const List<surfZone>& zones =
+    const surfZoneList zones =
     (
         surf.surfZones().empty()
-      ? surfaceFormatsCore::oneZone(faceLst, "")
+      ? surfaceFormatsCore::oneZone(faceLst, word::null)
       : surf.surfZones()
     );
 
     const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
 
-    OFstream os(filename);
+    OFstream os(filename, streamOpt);
     if (!os.good())
     {
         FatalErrorInFunction
-            << "Cannot open file for writing " << filename
+            << "Cannot write file " << filename << nl
             << exit(FatalError);
     }
 
     writeHeader(os);
-
-    os  << "\n"
-        "<Group>\n"
-        " <Shape>\n";
-
+    beginGroup(os);
     writeAppearance(os);
 
-
-    // NOTE: we could provide an optimised IndexedTriangleSet output for
+    // NOTE: we could provide an optimized IndexedTriangleSet output for
     // triangulated surfaces too
 
     os  <<
         "  <IndexedFaceSet coordIndex='\n";
 
     label faceIndex = 0;
-    forAll(zones, zoneI)
+    for (const surfZone& zone : zones)
     {
-        const surfZone& zone = zones[zoneI];
+        const label nLocalFaces = zone.size();
 
         if (useFaceMap)
         {
-            forAll(zone, localFacei)
+            for (label i=0; i<nLocalFaces; ++i)
             {
                 const Face& f = faceLst[faceMap[faceIndex++]];
 
-                forAll(f, fp)
+                for (const label vrti : f)
                 {
-                    os << f[fp] << ' ';
+                    os << vrti << ' ';
                 }
                 os << "-1\n";
             }
         }
         else
         {
-            forAll(zone, localFacei)
+            for (label i=0; i<nLocalFaces; ++i)
             {
                 const Face& f = faceLst[faceIndex++];
 
-                forAll(f, fp)
+                for (const label vrti : f)
                 {
-                    os << f[fp] << ' ';
+                    os << vrti << ' ';
                 }
                 os << "-1\n";
             }
         }
     }
 
-    os <<
-        "' >\n"
-        "    <Coordinate point='\n";
+    os  <<
+        "' >\n";
 
-    // Write vertex coords
-    forAll(pointLst, ptI)
-    {
-        const point& pt = pointLst[ptI];
-
-        os  << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
-    }
+    writePoints(os, pointLst);
 
     os  <<
-        "' />\n"                       // end Coordinate
-        "   </IndexedFaceSet>\n"
-        "  </Shape>\n"
-        " </Group>\n"
-        "</X3D>\n";
+        "   </IndexedFaceSet>\n";
 
+    endGroup(os);
+    writeFooter(os);
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,28 +26,20 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class MatrixType>
-inline Foam::QRMatrix<MatrixType>::QRMatrix()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class MatrixType>
-inline const typename Foam::QRMatrix<MatrixType>::QMatrixType&
-Foam::QRMatrix<MatrixType>::Q() const
+inline Foam::SquareMatrix<typename MatrixType::cmptType>
+Foam::QRMatrix<MatrixType>::P() const
 {
-    return Q_;
-}
+    SquareMatrix<cmptType> P(p_.size(), Zero);
 
+    forAll(p_, jcol)
+    {
+        P(p_[jcol], jcol) = pTraits<cmptType>::one;
+    }
 
-template<class MatrixType>
-inline const typename Foam::QRMatrix<MatrixType>::RMatrixType&
-Foam::QRMatrix<MatrixType>::R() const
-{
-    return R_;
+    return P;
 }
 
 

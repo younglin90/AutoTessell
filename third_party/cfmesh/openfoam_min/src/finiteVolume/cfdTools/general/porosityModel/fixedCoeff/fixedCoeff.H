@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,8 +42,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fixedCoeff_H
-#define fixedCoeff_H
+#ifndef Foam_porosityModels_fixedCoeff_H
+#define Foam_porosityModels_fixedCoeff_H
 
 #include "porosityModel.H"
 #include "dimensionedTensor.H"
@@ -53,7 +56,7 @@ namespace porosityModels
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class fixedCoeff Declaration
+                          Class fixedCoeff Declaration
 \*---------------------------------------------------------------------------*/
 
 class fixedCoeff
@@ -69,14 +72,10 @@ class fixedCoeff
         dimensionedVector betaXYZ_;
 
         //- Model alpha coefficient - converted from alphaXYZ [1/s]
-        tensorField alpha_;
+        List<tensorField> alpha_;
 
         //- Model beta coefficient - converted from betaXYZ [1/m]
-        tensorField beta_;
-
-        bool rhoRefFound_;
-
-        scalar rhoRef_;
+        List<tensorField> beta_;
 
 
     // Private Member Functions
@@ -99,29 +98,30 @@ class fixedCoeff
             const scalar rho
         ) const;
 
+        //- No copy construct
+        fixedCoeff(const fixedCoeff&) = delete;
+
+        //- No copy assignment
+        void operator=(const fixedCoeff&) = delete;
+
 
 public:
 
     //- Runtime type information
     TypeName("fixedCoeff");
 
-    // Constructors
-
-        fixedCoeff
-        (
-            const word& name,
-            const fvMesh& mesh,
-            const dictionary& dict,
-            const dictionary& coeffDict,
-            const word& cellZoneName
-        );
-
-        //- Disallow default bitwise copy construction
-        fixedCoeff(const fixedCoeff&) = delete;
-
+    //- Constructor
+    fixedCoeff
+    (
+        const word& name,
+        const word& modelType,
+        const fvMesh& mesh,
+        const dictionary& dict,
+        const wordRe& cellZoneName
+    );
 
     //- Destructor
-    virtual ~fixedCoeff();
+    virtual ~fixedCoeff() = default;
 
 
     // Member Functions
@@ -144,17 +144,24 @@ public:
         //- Add resistance
         virtual void correct
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        ) const;
+
+        //- Add resistance
+        virtual void correct
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU
         ) const;
 
 
-    // Member Operators
+    // I-O
 
-        //- Disallow default bitwise assignment
-        void operator=(const fixedCoeff&) = delete;
+        //- Write
+        bool writeData(Ostream& os) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

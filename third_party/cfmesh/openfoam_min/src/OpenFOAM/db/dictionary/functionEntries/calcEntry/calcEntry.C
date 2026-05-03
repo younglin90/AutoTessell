@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +27,9 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "calcEntry.H"
-#include "codeIncludeEntry.H"
-#include "dictionary.H"
 #include "codeStream.H"
+#include "dictionary.H"
+#include "dynamicCode.H"
 #include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
@@ -35,29 +38,63 @@ namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(calcEntry, 0);
-
-    addToMemberFunctionSelectionTable
+    addNamedToMemberFunctionSelectionTable
     (
         functionEntry,
         calcEntry,
         execute,
-        primitiveEntryIstream
+        dictionaryIstream,
+        calc
     );
-}
-}
+
+    addNamedToMemberFunctionSelectionTable
+    (
+        functionEntry,
+        calcEntry,
+        execute,
+        primitiveEntryIstream,
+        calc
+    );
+} // End namespace functionEntries
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-Foam::string Foam::functionEntries::calcEntry::codeString
+Foam::string Foam::functionEntries::calcEntry::evaluate
 (
-    const label index,
-    const dictionary& codeDict,
+    const dictionary& parentDict,
     Istream& is
 )
 {
-    return streamEntry::codeString(index, codeDict, is, "os << (", ");");
+    DetailInfo
+        << "Using #calc - line "
+        << is.lineNumber() << " in file "
+        << parentDict.relativeName() << nl;
+
+    dynamicCode::checkSecurity
+    (
+        "functionEntries::calcEntry::evaluate(..)",
+        parentDict
+    );
+
+    // Read string
+    string s(is);
+
+    // Construct codeDict for codeStream
+    dictionary codeSubDict;
+    codeSubDict.add("code", "os << (" + s + ");");
+    dictionary codeDict(parentDict, codeSubDict);
+
+    // Use function to write stream
+    OStringStream buf(is.format());
+    buf.precision(16);      // Some reasonably high precision
+
+    streamingFunctionType function = getFunction(parentDict, codeDict);
+    (*function)(buf, parentDict);
+
+    // Return evaluated content as string
+    return buf.str();
 }
 
 
@@ -65,17 +102,28 @@ Foam::string Foam::functionEntries::calcEntry::codeString
 
 bool Foam::functionEntries::calcEntry::execute
 (
-    const dictionary& contextDict,
-    primitiveEntry& contextEntry,
+    const dictionary& parentDict,
+    primitiveEntry& entry,
     Istream& is
 )
 {
-    return insert
-    (
-        contextDict,
-        contextEntry,
-        resultStream(contextDict, is, "os << (", ");")
-    );
+    IStringStream result(evaluate(parentDict, is));
+    entry.read(parentDict, result);
+
+    return true;
+}
+
+
+bool Foam::functionEntries::calcEntry::execute
+(
+    dictionary& parentDict,
+    Istream& is
+)
+{
+    IStringStream result(evaluate(parentDict, is));
+    parentDict.read(result);
+
+    return true;
 }
 
 

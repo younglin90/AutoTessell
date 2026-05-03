@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,11 +26,15 @@ License
 Class
     Foam::fixedNormalInletOutletVelocityFvPatchVectorField
 
-Description
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
 
+Description
     This velocity inlet/outlet boundary condition combines a fixed normal
     component obtained from the "normalVelocity" patchField supplied with a
-    fixed or zero-gradiented tangential component depending on the direction
+    fixed or zero-gradiented tangential component.
+
+    The tangential component is set depending on the direction
     of the flow and the setting of "fixTangentialInflow":
     - Outflow: apply zero-gradient condition to tangential components
     - Inflow:
@@ -56,9 +62,9 @@ Usage
         normalVelocity
         {
             type            uniformFixedValue;
-            uniformValue
+            uniformValue    sine;
+            uniformValueCoeffs
             {
-                type      sine;
                 frequency 1;
                 amplitude table
                 (
@@ -93,14 +99,16 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-      Class fixedNormalInletOutletVelocityFvPatchVectorField Declaration
+       Class fixedNormalInletOutletVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class fixedNormalInletOutletVelocityFvPatchVectorField
 :
     public directionMixedFvPatchVectorField
 {
-    // Private Data
+protected:
+
+    // Protected data
 
         //- Flux field name
         word phiName_;
@@ -120,11 +128,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedNormalInletOutletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedNormalInletOutletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -134,45 +149,43 @@ public:
         (
             const fixedNormalInletOutletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedNormalInletOutletVelocityFvPatchVectorField
         (
             const fixedNormalInletOutletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedNormalInletOutletVelocityFvPatchVectorField
         (
             const fixedNormalInletOutletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new fixedNormalInletOutletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Attributes
-
-            //- Return true: this patch field is altered by assignment
-            virtual bool assignable() const
-            {
-                return true;
-            }
+        //- True: this patch field is altered by assignment.
+        virtual bool assignable() const { return true; }
 
 
         // Access
@@ -203,12 +216,18 @@ public:
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchVectorField&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchVectorField&,
+                const labelList&
+            );
 
 
         //- Update the coefficients associated with the patch field
@@ -218,12 +237,9 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const fvPatchField<vector>& pvf);
-
-        //- Inherit assignment
-        using directionMixedFvPatchVectorField::operator=;
 };
 
 

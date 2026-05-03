@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,7 +42,7 @@ SourceFiles
 #define LeastSquaresVectors_H
 
 #include "extendedCentredCellToCellStencil.H"
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -58,13 +61,18 @@ namespace fv
 template<class Stencil>
 class LeastSquaresVectors
 :
-    public DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        LeastSquaresVectors<Stencil>
-    >
+    public MeshObject<fvMesh, MoveableMeshObject, LeastSquaresVectors<Stencil>>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            fvMesh,
+            MoveableMeshObject,
+            LeastSquaresVectors<Stencil>
+        > MeshObject_type;
+
+
     // Private Data
 
         //- Least-squares gradient vectors
@@ -77,28 +85,16 @@ class LeastSquaresVectors
         void calcLeastSquaresVectors();
 
 
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        LeastSquaresVectors<Stencil>
-    >;
-
-    // Protected Constructors
-
-        //- Construct given an fvMesh and the minimum determinant criterion
-        LeastSquaresVectors
-        (
-            const fvMesh&
-        );
-
-
 public:
 
     // Declare name of the class and its debug switch
     TypeName("LeastSquaresVectors");
+
+
+    // Constructors
+
+        //- Construct given an fvMesh and the minimum determinant criterion
+        explicit LeastSquaresVectors(const fvMesh& mesh);
 
 
     //- Destructor
@@ -107,13 +103,13 @@ public:
 
     // Member Functions
 
-        //- Return reference to the stencil
+        //- Return const reference to the stencil
         const extendedCentredCellToCellStencil& stencil() const
         {
-            return Stencil::New(this->mesh());
+            return Stencil::New(this->mesh_);
         }
 
-        //- Return reference to the least square vectors
+        //- Return const reference to the least square vectors
         const List<List<vector>>& vectors() const
         {
             return vectors_;

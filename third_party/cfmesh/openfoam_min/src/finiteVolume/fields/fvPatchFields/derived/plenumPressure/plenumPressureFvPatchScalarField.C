@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016-2017 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "plenumPressureFvPatchScalarField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 #include "surfaceFields.H"
 
@@ -34,43 +37,54 @@ License
 Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    fixedValueFvPatchScalarField(p, iF),
+    gamma_(1.4),
+    R_(287.04),
+    supplyMassFlowRate_(1.0),
+    supplyTotalTemperature_(300.0),
+    plenumVolume_(1.0),
+    plenumDensity_(1.0),
+    plenumDensityOld_(1.0),
+    plenumTemperature_(300.0),
+    plenumTemperatureOld_(300.0),
+    rho_(1.0),
+    hasRho_(false),
+    inletAreaRatio_(1.0),
+    inletDischargeCoefficient_(1.0),
+    timeScale_(0.0),
+    timeIndex_(-1),
+    phiName_("phi"),
+    UName_("U")
+{}
+
+
+Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
     fixedValueFvPatchScalarField(p, iF, dict),
-    gamma_(dict.lookup<scalar>("gamma", dimless)),
-    R_(dict.lookup<scalar>("R", dimGasConstant)),
-    supplyMassFlowRate_
-    (
-        dict.lookup<scalar>("supplyMassFlowRate", dimMass/dimTime)
-    ),
-    supplyTotalTemperature_
-    (
-        dict.lookup<scalar>("supplyTotalTemperature", dimTemperature)
-    ),
-    plenumVolume_(dict.lookup<scalar>("plenumVolume", dimVolume)),
-    plenumDensity_(dict.lookup<scalar>("plenumDensity", dimDensity)),
-    plenumTemperature_
-    (
-        dict.lookup<scalar>("plenumTemperature", dimTemperature)
-    ),
+    gamma_(dict.get<scalar>("gamma")),
+    R_(dict.get<scalar>("R")),
+    supplyMassFlowRate_(dict.get<scalar>("supplyMassFlowRate")),
+    supplyTotalTemperature_(dict.get<scalar>("supplyTotalTemperature")),
+    plenumVolume_(dict.get<scalar>("plenumVolume")),
+    plenumDensity_(dict.get<scalar>("plenumDensity")),
+    plenumTemperature_(dict.get<scalar>("plenumTemperature")),
     rho_(1.0),
     hasRho_(false),
-    inletAreaRatio_(dict.lookup<scalar>("inletAreaRatio", units::fraction)),
-    inletDischargeCoefficient_
-    (
-        dict.lookup<scalar>("inletDischargeCoefficient", units::fraction)
-    ),
-    timeScale_(dict.lookupOrDefault<scalar>("timeScale", dimTime, 0.0)),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
-    UName_(dict.lookupOrDefault<word>("U", "U"))
+    inletAreaRatio_(dict.get<scalar>("inletAreaRatio")),
+    inletDischargeCoefficient_(dict.get<scalar>("inletDischargeCoefficient")),
+    timeScale_(dict.getOrDefault<scalar>("timeScale", 0)),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
+    UName_(dict.getOrDefault<word>("U", "U"))
 {
-    if (dict.found("rho"))
-    {
-        rho_ = dict.lookup<scalar>("rho", dimDensity);
-        hasRho_ = true;
-    }
+    hasRho_ = dict.readIfPresent("rho", rho_);
 }
 
 
@@ -78,8 +92,8 @@ Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
 (
     const plenumPressureFvPatchScalarField& ptf,
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchScalarField(ptf, p, iF, mapper),
@@ -102,8 +116,31 @@ Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
 
 Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
 (
+    const plenumPressureFvPatchScalarField& tppsf
+)
+:
+    fixedValueFvPatchScalarField(tppsf),
+    gamma_(tppsf.gamma_),
+    R_(tppsf.R_),
+    supplyMassFlowRate_(tppsf.supplyMassFlowRate_),
+    supplyTotalTemperature_(tppsf.supplyTotalTemperature_),
+    plenumVolume_(tppsf.plenumVolume_),
+    plenumDensity_(tppsf.plenumDensity_),
+    plenumTemperature_(tppsf.plenumTemperature_),
+    rho_(tppsf.rho_),
+    hasRho_(tppsf.hasRho_),
+    inletAreaRatio_(tppsf.inletAreaRatio_),
+    inletDischargeCoefficient_(tppsf.inletDischargeCoefficient_),
+    timeScale_(tppsf.timeScale_),
+    phiName_(tppsf.phiName_),
+    UName_(tppsf.UName_)
+{}
+
+
+Foam::plenumPressureFvPatchScalarField::plenumPressureFvPatchScalarField
+(
     const plenumPressureFvPatchScalarField& tppsf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedValueFvPatchScalarField(tppsf, iF),
@@ -140,26 +177,25 @@ void Foam::plenumPressureFvPatchScalarField::updateCoeffs()
         (
             internalField().name()
         ).oldTime().boundaryField()[patch().index()];
-    const fvPatchField<vector>& U =
-        patch().lookupPatchField<volVectorField, vector>(UName_);
-    const fvsPatchField<scalar>& phi =
-        patch().lookupPatchField<surfaceScalarField, scalar>(phiName_);
+
+    const auto& U = patch().lookupPatchField<volVectorField>(UName_);
+    const auto& phi = patch().lookupPatchField<surfaceScalarField>(phiName_);
 
     // Get the timestep
-    const scalar dt = time().deltaTValue();
+    const scalar dt = db().time().deltaTValue();
 
     // Check if operating at a new time index and update the old-time properties
     // if so
-    if (timeIndex_ != time().timeIndex())
+    if (timeIndex_ != db().time().timeIndex())
     {
-        timeIndex_ = time().timeIndex();
+        timeIndex_ = db().time().timeIndex();
         plenumDensityOld_ = plenumDensity_;
         plenumTemperatureOld_ = plenumTemperature_;
     }
 
     // Calculate the current mass flow rate
     scalar massFlowRate(1.0);
-    if (phi.internalField().dimensions() == dimVolumetricFlux)
+    if (phi.internalField().dimensions() == dimVolume/dimTime)
     {
         if (hasRho_)
         {
@@ -172,11 +208,7 @@ void Foam::plenumPressureFvPatchScalarField::updateCoeffs()
                 << exit(FatalError);
         }
     }
-    else if
-    (
-        phi.internalField().dimensions()
-     == dimMassFlux
-    )
+    else if (phi.internalField().dimensions() == dimMass/dimTime)
     {
         if (hasRho_)
         {
@@ -199,7 +231,7 @@ void Foam::plenumPressureFvPatchScalarField::updateCoeffs()
             << exit(FatalError);
     }
 
-    // Calcaulate the specific heats
+    // Calculate the specific heats
     const scalar cv = R_/(gamma_ - 1), cp = R_*gamma_/(gamma_ - 1);
 
     // Calculate the new plenum properties
@@ -240,7 +272,12 @@ void Foam::plenumPressureFvPatchScalarField::updateCoeffs()
     // Limit to prevent outflow
     const scalarField p_new
     (
-        neg(phi)*t*plenumPressure + pos0(phi)*max(p, plenumPressure)
+        lerp
+        (
+            t*plenumPressure,           // Negative phi
+            max(p, plenumPressure),     // Positive phi
+            pos0(phi)                   // 0-1 selector
+        )
     );
 
     // Relaxation fraction
@@ -248,36 +285,31 @@ void Foam::plenumPressureFvPatchScalarField::updateCoeffs()
     const scalar fraction = oneByFraction < 1.0 ? 1.0 : 1.0/oneByFraction;
 
     // Set the new value
-    operator==((1.0 - fraction)*p_old + fraction*p_new);
+    operator==(lerp(p_old, p_new, fraction));
     fixedValueFvPatchScalarField::updateCoeffs();
 }
 
 
 void Foam::plenumPressureFvPatchScalarField::write(Ostream& os) const
 {
-    fvPatchScalarField::write(os);
-    writeEntry(os, "gamma", gamma_);
-    writeEntry(os, "R", R_);
-    writeEntry(os, "supplyMassFlowRate", supplyMassFlowRate_);
-    writeEntry(os, "supplyTotalTemperature", supplyTotalTemperature_);
-    writeEntry(os, "plenumVolume", plenumVolume_);
-    writeEntry(os, "plenumDensity", plenumDensity_);
-    writeEntry(os, "plenumTemperature", plenumTemperature_);
+    fvPatchField<scalar>::write(os);
+    os.writeEntry("gamma", gamma_);
+    os.writeEntry("R", R_);
+    os.writeEntry("supplyMassFlowRate", supplyMassFlowRate_);
+    os.writeEntry("supplyTotalTemperature", supplyTotalTemperature_);
+    os.writeEntry("plenumVolume", plenumVolume_);
+    os.writeEntry("plenumDensity", plenumDensity_);
+    os.writeEntry("plenumTemperature", plenumTemperature_);
     if (hasRho_)
     {
-        writeEntry(os, "rho", rho_);
+        os.writeEntry("rho", rho_);
     }
-    writeEntry(os, "inletAreaRatio", inletAreaRatio_);
-    writeEntry
-    (
-        os,
-        "inletDischargeCoefficient",
-        inletDischargeCoefficient_
-    );
-    writeEntryIfDifferent<scalar>(os, "timeScale", 0.0, timeScale_);
-    writeEntryIfDifferent<word>(os, "phi", "phi", phiName_);
-    writeEntryIfDifferent<word>(os, "U", "U", UName_);
-    writeEntry(os, "value", *this);
+    os.writeEntry("inletAreaRatio", inletAreaRatio_);
+    os.writeEntry("inletDischargeCoefficient", inletDischargeCoefficient_);
+    os.writeEntryIfDifferent<scalar>("timeScale", 0.0, timeScale_);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    os.writeEntryIfDifferent<word>("U", "U", UName_);
+    fvPatchField<scalar>::writeValueEntry(os);
 }
 
 

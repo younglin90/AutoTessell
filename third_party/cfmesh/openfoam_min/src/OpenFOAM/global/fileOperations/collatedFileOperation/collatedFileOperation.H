@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +31,12 @@ Description
     Version of masterUncollatedFileOperation that collates regIOobjects
     into a container in the processors/ subdirectory.
 
-    Uses threading if maxThreadFileBufferSize > 0.
+    Uses threading if maxThreadFileBufferSize != 0.
+        > 0 : Can use mpi inside thread to collect data if buffer is not
+              large enough. Does need full thread support inside MPI.
+
+        < 0 : special : -maxThreadFileBufferSize is guaranteed large enough
+              for all writing. Initialises MPI without thread support.
 
 See also
     masterUncollatedFileOperation
@@ -38,10 +46,11 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef collatedFileOperation_fileOperation_H
-#define collatedFileOperation_fileOperation_H
+#ifndef Foam_fileOperations_collatedFileOperation_H
+#define Foam_fileOperations_collatedFileOperation_H
 
 #include "masterUncollatedFileOperation.H"
+#include "fileOperationInitialise.H"
 #include "OFstreamCollator.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -59,51 +68,47 @@ class collatedFileOperation
 :
     public masterUncollatedFileOperation
 {
+    // Private Data
+
+        //- Communicator allocated/managed by us
+        mutable label managedComm_;
+
+
+    // Private Member Functions
+
+        //- Any initialisation steps after constructing
+        void init(bool verbose);
+
+
 protected:
 
-    // Protected data
-
-        //- Any communicator allocated by me
-        const label myComm_;
+    // Protected Data
 
         //- Threaded writer
         mutable OFstreamCollator writer_;
 
-        // For non-parallel operation
 
-            //- Number of processors (overall)
-            label nProcs_;
+    // Protected Member Functions
 
-            //- Ranks of IO handlers
-            const labelList ioRanks_;
+        //- Print banner information, optionally with io ranks
+        void printBanner(const bool withRanks = false) const;
 
-
-   // Private Member Functions
-
-        static labelList ioRanks();
-
-        //- Is proci master of communicator (in parallel) or master of
-        //  the io ranks (non-parallel)
-        bool isMasterRank(const label proci) const;
-
-        //- Append to processors/ file
+        //- Append to processorsNN/ file
         bool appendObject
         (
             const regIOobject& io,
-            const fileName& filePath,
-            IOstream::streamFormat fmt,
-            IOstream::versionNumber ver,
-            IOstream::compressionType cmp
+            const fileName& pathName,
+            IOstreamOption streamOpt
         ) const;
 
 
 public:
 
-        //- Runtime type information
-        TypeName("collated");
+    //- Runtime type information
+    TypeName("collated");
 
 
-    // Static data
+    // Static Data
 
         //- Max size of thread buffer size. This is the overall size of
         //  all files to be written. Starts blocking if not enough size.
@@ -113,16 +118,15 @@ public:
 
     // Constructors
 
-        //- Construct null
-        collatedFileOperation(const bool verbose);
+        //- Default construct
+        explicit collatedFileOperation(bool verbose = false);
 
-        //- Construct from user communicator
-        collatedFileOperation
+        //- Construct from communicator with specified io-ranks
+        explicit collatedFileOperation
         (
-            const label comm,
-            const labelList& ioRanks,
-            const word& typeName,
-            const bool verbose
+            const Tuple2<label, labelList>& commAndIORanks,
+            const bool distributedRoots,
+            bool verbose = false
         );
 
 
@@ -132,12 +136,18 @@ public:
 
     // Member Functions
 
+        //- Transfer ownership of communicator to this fileOperation.
+        //- Use with caution
+        virtual void storeComm() const;
+
+
         // (reg)IOobject functionality
 
             //- Generate disk file name for object. Opposite of filePath.
             virtual fileName objectPath
             (
-                const IOobject& io
+                const IOobject& io,
+                const word& typeName
             ) const;
 
             //- Writes a regIOobject (so header, contents and divider).
@@ -145,11 +155,10 @@ public:
             virtual bool writeObject
             (
                 const regIOobject&,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion,
-                IOstream::compressionType compression=IOstream::UNCOMPRESSED,
-                const bool write = true
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
+
 
         // Other
 
@@ -161,45 +170,40 @@ public:
 
             //- Actual name of processors dir
             virtual word processorsDir(const fileName&) const;
-
-            //- Set number of processor directories/results. Only used in
-            //  decomposePar
-            virtual void setNProcs(const label nProcs);
 };
 
 
 /*---------------------------------------------------------------------------*\
-               Class collatedFileOperationInitialise Declaration
+               Class fileOperationInitialise_collated Declaration
 \*---------------------------------------------------------------------------*/
 
-class collatedFileOperationInitialise
+//- A fileOperation initialiser for collated file handlers.
+//- Requires threading for non-zero maxThreadFileBufferSize.
+class fileOperationInitialise_collated
 :
-    public masterUncollatedFileOperationInitialise
+    public fileOperationInitialise
 {
 public:
 
     // Constructors
 
         //- Construct from components
-        collatedFileOperationInitialise(int& argc, char**& argv)
+        fileOperationInitialise_collated(int& argc, char**& argv)
         :
-            masterUncollatedFileOperationInitialise(argc, argv)
+            fileOperationInitialise(argc, argv)
         {}
 
 
     //- Destructor
-    virtual ~collatedFileOperationInitialise()
-    {}
+    virtual ~fileOperationInitialise_collated() = default;
 
 
     // Member Functions
 
-        //- Needs threading
+        //- The (MPI) threading requirement depends on buffering
         virtual bool needsThreading() const
         {
-            return
-                collatedFileOperation::maxThreadFileBufferSize
-              > 0;
+            return (collatedFileOperation::maxThreadFileBufferSize > 0);
         }
 };
 

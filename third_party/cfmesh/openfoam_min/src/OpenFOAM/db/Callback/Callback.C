@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -64,10 +67,8 @@ bool Foam::Callback<CallbackType>::checkIn()
         cbr_.append(static_cast<CallbackType*>(this));
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 
@@ -76,21 +77,12 @@ bool Foam::Callback<CallbackType>::checkOut()
 {
     if (Callback<CallbackType>::link::registered())
     {
-        CallbackType* cbPtr = cbr_.remove(static_cast<CallbackType*>(this));
+        CallbackType* ptr = cbr_.remove(static_cast<CallbackType*>(this));
 
-        if (cbPtr)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+        return ptr;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

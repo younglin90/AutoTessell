@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,17 @@ Class
     Foam::GlobalIOField
 
 Description
-    A primitive field of type \<Type\> with automated input and output.
+    IOField with global data (so optionally read from master)
+
+SourceFiles
+    GlobalIOField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef GlobalIOField_H
-#define GlobalIOField_H
+#ifndef Foam_GlobalIOField_H
+#define Foam_GlobalIOField_H
 
-#include "GlobalIOList.H"
-#include "Field.H"
+#include "IOField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,10 +52,13 @@ namespace Foam
 template<class Type>
 class GlobalIOField
 :
-    public GlobalIOListBase<Field, GlobalIOField, Type>
+    public regIOobject,
+    public Field<Type>
 {
-
 public:
+
+    //- The underlying content type
+    typedef Field<Type> content_type;
 
     //- Runtime type information
     TypeName("Field");
@@ -58,28 +66,76 @@ public:
 
     // Constructors
 
-        //- Inherit constructors
-        using GlobalIOListBase<Field, GlobalIOField, Type>::GlobalIOListBase;
+        //- Default copy construct
+        GlobalIOField(const GlobalIOField&) = default;
+
+        //- Construct from IOobject
+        explicit GlobalIOField(const IOobject& io);
+
+        //- Construct from IOobject and field size (if not read)
+        GlobalIOField(const IOobject& io, const label len);
+
+        //- Construct from IOobject and copy of List/Field content
+        GlobalIOField(const IOobject& io, const UList<Type>& content);
+
+        //- Construct by transferring the Field content
+        GlobalIOField(const IOobject& io, Field<Type>&& content);
+
+        //- Construct by copying/moving tmp content
+        GlobalIOField(const IOobject& io, const tmp<Field<Type>>& tfld);
+
+
+    // Factory Methods
+
+        //- Read and return contents. The IOobject is never registered
+        static Field<Type> readContents(const IOobject& io);
+
+
+    //- Destructor
+    virtual ~GlobalIOField() = default;
+
+
+    // Member Functions
+
+        //- The object is global
+        virtual bool global() const
+        {
+            return true;
+        }
+
+        //- Return complete path + object name if the file exists
+        //- either in the case/processor or case, otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
+
+        //- The readData method for regIOobject read operation
+        virtual bool readData(Istream& is);
+
+        //- The writeData method for regIOobject write operation
+        bool writeData(Ostream& os) const;
 
 
     // Member Operators
 
-        //- Inherit assignment operators
-        using GlobalIOListBase<Field, GlobalIOField, Type>::operator=;
-};
+        //- Copy assignment of entries
+        void operator=(const GlobalIOField<Type>& rhs);
 
-
-//- Trait for obtaining global status
-template<class Type>
-struct typeGlobal<GlobalIOField<Type>>
-{
-    static const bool global = true;
+        //- Copy or move assignment of entries
+        using Field<Type>::operator=;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+#   include "GlobalIOField.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

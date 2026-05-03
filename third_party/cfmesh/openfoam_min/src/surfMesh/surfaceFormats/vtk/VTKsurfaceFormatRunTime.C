@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
+    Copyright (C) 2016 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,6 +55,14 @@ addNamedTemplatedToRunTimeSelectionTable
     fileExtension,
     vtk
 );
+addNamedTemplatedToRunTimeSelectionTable
+(
+    MeshedSurface,
+    VTKsurfaceFormat,
+    labelledTri,
+    fileExtension,
+    vtk
+);
 
 // write MeshedSurfaceProxy
 addNamedTemplatedToMemberFunctionSelectionTable
@@ -68,6 +79,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     MeshedSurfaceProxy,
     VTKsurfaceFormat,
     triFace,
+    write,
+    fileExtension,
+    vtk
+);
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    MeshedSurfaceProxy,
+    VTKsurfaceFormat,
+    labelledTri,
     write,
     fileExtension,
     vtk
@@ -92,7 +112,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     fileExtension,
     vtk
 );
-
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    UnsortedMeshedSurface,
+    VTKsurfaceFormat,
+    labelledTri,
+    write,
+    fileExtension,
+    vtk
+);
 
 }
 }

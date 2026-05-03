@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,55 +37,139 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PatchEdgeFaceWave_H
-#define PatchEdgeFaceWave_H
+#ifndef Foam_PatchEdgeFaceWave_H
+#define Foam_PatchEdgeFaceWave_H
 
+#include "bitSet.H"
 #include "scalarField.H"
-#include "PackedBoolList.H"
-#include "PrimitivePatch.H"
-#include "transformer.H"
+#include "primitivePatch.H"
+#include "vectorTensorTransform.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyMesh;
 
 /*---------------------------------------------------------------------------*\
-                    Class PatchEdgeFaceWaveName Declaration
+                    Class PatchEdgeFaceWaveBase Declaration
 \*---------------------------------------------------------------------------*/
 
-TemplateName(PatchEdgeFaceWave);
+class PatchEdgeFaceWaveBase
+{
+protected:
+
+    // Protected Static Data
+
+        //- Relative tolerance.
+        //  Stop propagation if relative changes less than this tolerance
+        //  (responsibility for checking this is up to Type implementation)
+        static scalar propagationTol_;
+
+
+    // Protected Data
+
+        //- Reference to mesh
+        const polyMesh& mesh_;
+
+        //- Track if edge has changed
+        bitSet changedEdge_;
+
+        //- Track if face has changed
+        bitSet changedFace_;
+
+        //- List of changed edges
+        DynamicList<label> changedEdges_;
+
+        //- List of changed faces
+        DynamicList<label> changedFaces_;
+
+        //- Number of unvisited edges
+        label nUnvisitedEdges_;
+
+        //- Number of unvisited faces
+        label nUnvisitedFaces_;
+
+
+public:
+
+    //- Default trackData value (for default template argument)
+    static label dummyTrackData_;
+
+
+    //- Runtime type information
+    ClassName("PatchEdgeFaceWave");
+
+
+    // Constructors
+
+        //- Construct with mesh reference and set initial sizes
+        PatchEdgeFaceWaveBase
+        (
+            const polyMesh& mesh,
+            const label nEdges,
+            const label nFaces
+        );
+
+
+    // Static Functions
+
+        //- Access to propagation tolerance
+        static scalar propagationTol() noexcept
+        {
+            return propagationTol_;
+        }
+
+        //- Change propagation tolerance, return previous value
+        static scalar setPropagationTol(const scalar tol) noexcept
+        {
+            scalar old(propagationTol_);
+            propagationTol_ = tol;
+            return old;
+        }
+
+
+    // Member Functions
+
+        //- Return access to the mesh
+        const polyMesh& mesh() const noexcept { return mesh_; }
+
+        //- Current number of changed edges
+        label nChangedEdges() const noexcept { return changedEdges_.size(); }
+
+        //- Current number of changed faces
+        label nChangedFaces() const noexcept { return changedFaces_.size(); }
+
+        //- Number of unvisited faces, i.e. faces that were not (yet)
+        //- reached from walking across patch.
+        //
+        //  This can happen from
+        //  - not enough iterations done
+        //  - a disconnected patch
+        //  - a patch without walls in it
+        label nUnvisitedFaces() const noexcept { return nUnvisitedFaces_; }
+
+        label nUnvisitedEdges() const noexcept { return nUnvisitedEdges_; }
+};
 
 
 /*---------------------------------------------------------------------------*\
-                      Class PatchEdgeFaceWave Declaration
+                           Class PatchEdgeFaceWave Declaration
 \*---------------------------------------------------------------------------*/
 
 template
 <
     class PrimitivePatchType,
     class Type,
-    class TrackingData = int
+    class TrackingData = label
 >
 class PatchEdgeFaceWave
 :
-    public PatchEdgeFaceWaveName
+    public PatchEdgeFaceWaveBase
 {
-    // Private static data
-
-        //- Relative tolerance. Stop propagation if relative changes
-        //  less than this tolerance (responsibility for checking this is
-        //  up to Type implementation)
-        static scalar propagationTol_;
-
-
     // Private Data
-
-        //- Reference to mesh
-        const polyMesh& mesh_;
 
         //- Reference to patch
         const PrimitivePatchType& patch_;
@@ -96,46 +183,29 @@ class PatchEdgeFaceWave
         //- Additional data to be passed into container
         TrackingData& td_;
 
-        //- Has edge changed
-        PackedBoolList changedEdge_;
-
-        //- List of changed edges
-        DynamicList<label> changedEdges_;
-
-        //- Has face changed
-        PackedBoolList changedFace_;
-
-        //- List of changed faces
-        DynamicList<label> changedFaces_;
-
         //- Number of evaluations
         label nEvals_;
-
-        //- Number of unvisited faces/edges
-        label nUnvisitedEdges_;
-        label nUnvisitedFaces_;
-
 
         // Addressing between edges of patch_ and globalData.coupledPatch()
         labelList patchEdges_;
         labelList coupledEdges_;
-        PackedBoolList sameEdgeOrientation_;
+        bitSet sameEdgeOrientation_;
 
 
     // Private Member Functions
 
-        //- Updates edgeInfo with information from neighbour. Updates all
-        //  statistics.
+        //- Updates edgeInfo with information from neighbour.
+        //  Updates all statistics.
         bool updateEdge
         (
-            const label edgei,
+            const label edgeI,
             const label neighbourFacei,
             const Type& neighbourInfo,
             Type& edgeInfo
         );
 
-        //- Updates faceInfo with information from neighbour. Updates all
-        //  statistics.
+        //- Updates faceInfo with information from neighbour.
+        //  Updates all statistics.
         bool updateFace
         (
             const label facei,
@@ -147,34 +217,20 @@ class PatchEdgeFaceWave
         //- Update coupled edges
         void syncEdges();
 
+        //- No copy construct
+        PatchEdgeFaceWave(const PatchEdgeFaceWave&) = delete;
+
+        //- No copy assignment
+        void operator=(const PatchEdgeFaceWave&) = delete;
+
 
 public:
-
-    // Static Data
-
-        //- Default tracking data to go with default template argument
-        static int defaultTrackingData_;
-
-
-    // Static Functions
-
-        //- Access to tolerance
-        static scalar propagationTol()
-        {
-            return propagationTol_;
-        }
-
-        //- Change tolerance
-        static void setPropagationTol(const scalar tol)
-        {
-            propagationTol_ = tol;
-        }
-
 
     // Constructors
 
         //- Construct from patch, list of changed edges with the Type
-        //  for these edges. Gets work arrays to operate on, one of size
+        //- for these edges.
+        //  Obtains work arrays to operate on, one of size
         //  number of patch edges, the other number of patch faces.
         //  Iterates until nothing changes or maxIter reached.
         //  (maxIter can be 0)
@@ -187,52 +243,40 @@ public:
             UList<Type>& allEdgeInfo,
             UList<Type>& allFaceInfo,
             const label maxIter,
-            TrackingData& td = defaultTrackingData_
+            TrackingData& td = PatchEdgeFaceWaveBase::dummyTrackData_
         );
 
-        //- Construct from patch. Use setEdgeInfo and iterate() to do
-        //  actual calculation
+        //- Construct from patch.
+        //  Use setEdgeInfo() and iterate() to do actual calculation
         PatchEdgeFaceWave
         (
             const polyMesh& mesh,
             const PrimitivePatchType& patch,
             UList<Type>& allEdgeInfo,
             UList<Type>& allFaceInfo,
-            TrackingData& td = defaultTrackingData_
+            TrackingData& td = PatchEdgeFaceWaveBase::dummyTrackData_
         );
-
-        //- Disallow default bitwise copy construction
-        PatchEdgeFaceWave(const PatchEdgeFaceWave&) = delete;
 
 
     // Member Functions
 
         //- Access allEdgeInfo
-        UList<Type>& allEdgeInfo() const
+        UList<Type>& allEdgeInfo() const noexcept
         {
             return allEdgeInfo_;
         }
 
         //- Access allFaceInfo
-        UList<Type>& allFaceInfo() const
+        UList<Type>& allFaceInfo() const noexcept
         {
             return allFaceInfo_;
         }
 
         //- Additional data to be passed into container
-        const TrackingData& data() const
+        const TrackingData& data() const noexcept
         {
             return td_;
         }
-
-        //- Get number of unvisited faces, i.e. faces that were not (yet)
-        //  reached from walking across patch. This can happen from
-        //  - not enough iterations done
-        //  - a disconnected patch
-        //  - a patch without walls in it
-        label getUnsetFaces() const;
-
-        label getUnsetEdges() const;
 
         //- Copy initial data into allEdgeInfo_
         void setEdgeInfo
@@ -241,23 +285,17 @@ public:
             const List<Type>& changedEdgesInfo
         );
 
-        //- Propagate from edge to face. Returns total number of faces
-        //  (over all processors) changed.
+        //- Propagate from edge to face.
+        //  \return total number of faces (over all processors) changed.
         label edgeToFace();
 
-        //- Propagate from face to edge. Returns total number of edges
-        //  (over all processors) changed.
+        //- Propagate from face to edge.
+        //  \return total number of edges (over all processors) changed.
         label faceToEdge();
 
-        //- Iterate until no changes or maxIter reached. Returns actual
-        //  number of iterations.
+        //- Iterate until no changes or maxIter reached.
+        //  \return actual number of iterations.
         label iterate(const label maxIter);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PatchEdgeFaceWave&) = delete;
 };
 
 
@@ -279,6 +317,7 @@ class updateOp
     TrackingData& td_;
 
 public:
+
     updateOp
     (
         const polyMesh& mesh,
@@ -319,6 +358,7 @@ class transformOp
     TrackingData& td_;
 
 public:
+
     transformOp
     (
         const polyMesh& mesh,
@@ -335,7 +375,7 @@ public:
 
     void operator()
     (
-        const transformer& vt,
+        const vectorTensorTransform& vt,
         const bool forward,
         List<Type>& fld
     ) const
@@ -344,14 +384,14 @@ public:
         {
             forAll(fld, i)
             {
-                fld[i].transform(mesh_, patch_, vt.T(), tol_, td_);
+                fld[i].transform(mesh_, patch_, vt.R(), tol_, td_);
             }
         }
         else
         {
             forAll(fld, i)
             {
-                fld[i].transform(mesh_, patch_, vt.T().T(), tol_, td_);
+                fld[i].transform(mesh_, patch_, vt.R().T(), tol_, td_);
             }
         }
     }

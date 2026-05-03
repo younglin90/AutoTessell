@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,6 +30,8 @@ License
 #include "leastSquaresVectors.H"
 #include "gaussGrad.H"
 #include "fvMesh.H"
+#include "volMesh.H"
+#include "surfaceMesh.H"
 #include "GeometricField.H"
 #include "extrapolatedCalculatedFvPatchField.H"
 
@@ -35,34 +40,42 @@ License
 template<class Type>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::leastSquaresGrad<Type>::calcGrad
 (
-    const VolField<Type>& vsf,
+    const GeometricField<Type, fvPatchField, volMesh>& vsf,
     const word& name
 ) const
 {
     typedef typename outerProduct<vector, Type>::type GradType;
+    typedef GeometricField<GradType, fvPatchField, volMesh> GradFieldType;
 
     const fvMesh& mesh = vsf.mesh();
 
-    tmp<VolField<GradType>> tlsGrad
+    tmp<GradFieldType> tlsGrad
     (
-        VolField<GradType>::New
+        new GradFieldType
         (
-            name,
-            mesh,
-            dimensioned<GradType>
+            IOobject
             (
-                "zero",
-                vsf.dimensions()/dimLength,
-                Zero
+                name,
+                vsf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
             ),
-            extrapolatedCalculatedFvPatchField<GradType>::typeName
+            mesh,
+            dimensioned<GradType>(vsf.dimensions()/dimLength, Zero),
+            fvPatchFieldBase::extrapolatedCalculatedType()
         )
     );
-    VolField<GradType>& lsGrad = tlsGrad.ref();
+    GradFieldType& lsGrad = tlsGrad.ref();
 
     // Get reference to least square vectors
     const leastSquaresVectors& lsv = leastSquaresVectors::New(mesh);
@@ -75,10 +88,10 @@ Foam::fv::leastSquaresGrad<Type>::calcGrad
 
     forAll(own, facei)
     {
-        label ownFacei = own[facei];
-        label neiFacei = nei[facei];
+        const label ownFacei = own[facei];
+        const label neiFacei = nei[facei];
 
-        Type deltaVsf = vsf[neiFacei] - vsf[ownFacei];
+        const Type deltaVsf(vsf[neiFacei] - vsf[ownFacei]);
 
         lsGrad[ownFacei] += ownLs[facei]*deltaVsf;
         lsGrad[neiFacei] -= neiLs[facei]*deltaVsf;

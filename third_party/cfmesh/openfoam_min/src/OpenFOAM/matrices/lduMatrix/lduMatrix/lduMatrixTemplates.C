@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,16 +35,11 @@ Description
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::lduMatrix::H(const Field<Type>& psi) const
 {
-    tmp<Field<Type>> tHpsi
-    (
-        new Field<Type>(lduAddr().size(), Zero)
-    );
+    auto tHpsi = tmp<Field<Type>>::New(lduAddr().size(), Foam::zero{});
 
     if (lowerPtr_ || upperPtr_)
     {
-        Field<Type> & Hpsi = tHpsi.ref();
-
-        Type* __restrict__ HpsiPtr = Hpsi.begin();
+        Type* __restrict__ HpsiPtr = tHpsi.ref().begin();
 
         const Type* __restrict__ psiPtr = psi.begin();
 
@@ -86,8 +83,8 @@ Foam::lduMatrix::faceH(const Field<Type>& psi) const
         const labelUList& l = lduAddr().lowerAddr();
         const labelUList& u = lduAddr().upperAddr();
 
-        tmp<Field<Type>> tfaceHpsi(new Field<Type> (Lower.size()));
-        Field<Type> & faceHpsi = tfaceHpsi.ref();
+        auto tfaceHpsi = tmp<Field<Type>>::New(Lower.size());
+        auto& faceHpsi = tfaceHpsi.ref();
 
         for (label face=0; face<l.size(); face++)
         {
@@ -98,15 +95,13 @@ Foam::lduMatrix::faceH(const Field<Type>& psi) const
 
         return tfaceHpsi;
     }
-    else
-    {
-        FatalErrorInFunction
-            << "Cannot calculate faceH"
-               " the matrix does not have any off-diagonal coefficients."
-            << exit(FatalError);
 
-        return tmp<Field<Type>>(nullptr);
-    }
+    FatalErrorInFunction
+        << "Cannot calculate faceH"
+           " the matrix does not have any off-diagonal coefficients."
+        << exit(FatalError);
+
+    return nullptr;
 }
 
 

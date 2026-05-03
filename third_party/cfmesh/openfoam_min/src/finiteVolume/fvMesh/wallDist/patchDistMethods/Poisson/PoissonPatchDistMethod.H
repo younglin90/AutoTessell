@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -81,6 +83,10 @@ Description
         {
             solver          GAMG;
             smoother        GaussSeidel;
+            cacheAgglomeration true;
+            nCellsInCoarsestLevel 10;
+            agglomerator    faceAreaPair;
+            mergeLevels     1;
             tolerance       1e-5;
             relTol          0;
         }
@@ -108,17 +114,26 @@ namespace patchDistMethods
 {
 
 /*---------------------------------------------------------------------------*\
-                           Class Poisson Declaration
+                          Class Poisson Declaration
 \*---------------------------------------------------------------------------*/
 
 class Poisson
 :
     public patchDistMethod
 {
-    // Private Data
+    // Private Member Data
 
         //- Cache yPsi for moving meshes
         tmp<volScalarField> tyPsi_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        Poisson(const Poisson&) = delete;
+
+        //- No copy assignment
+        void operator=(const Poisson&) = delete;
 
 
 public:
@@ -145,9 +160,6 @@ public:
             const labelHashSet& patchIDs
         );
 
-        //- Disallow default bitwise copy construction
-        Poisson(const Poisson&) = delete;
-
 
     // Member Functions
 
@@ -156,12 +168,6 @@ public:
 
         //- Correct the given distance-to-patch and normal-to-patch fields
         virtual bool correct(volScalarField& y, volVectorField& n);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const Poisson&) = delete;
 };
 
 

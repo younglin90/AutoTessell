@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,26 @@ Class
     Foam::processorFvsPatchField
 
 Description
-    Foam::processorFvsPatchField
+    This boundary condition enables processor communication across patches.
+
+    The "value" entry is MUST_READ.
+
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type    processor;
+        value   uniform (0 0 0);   // Mandatory
+    }
+    \endverbatim
 
 SourceFiles
     processorFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorFvsPatchField_H
-#define processorFvsPatchField_H
+#ifndef Foam_processorFvsPatchField_H
+#define Foam_processorFvsPatchField_H
 
 #include "coupledFvsPatchField.H"
 #include "processorFvPatch.H"
@@ -56,9 +70,6 @@ class processorFvsPatchField
 
         //- Local reference cast into the processor patch
         const processorFvPatch& procPatch_;
-
-        //- Receive buffer for non-blocking communication
-        mutable Field<Type> receiveBuf_;
 
 
 public:
@@ -84,7 +95,8 @@ public:
             const Field<Type>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is MUST_READ.
         processorFvsPatchField
         (
             const fvPatch&,
@@ -98,88 +110,46 @@ public:
             const processorFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        processorFvsPatchField(const processorFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        processorFvsPatchField(const processorFvsPatchField<Type>&);
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         processorFvsPatchField
         (
             const processorFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvsPatchField<Type>> clone
-        (
-            const DimensionedField<Type, surfaceMesh>& iF
-        ) const
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new processorFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this);
         }
 
-        //- Construct and return a clone onto a new patch
-        //  setting internal field reference
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
-            const fvPatch& patch,
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new processorFvsPatchField<Type>(patch, iF, *this)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
 
 
     //- Destructor
-    virtual ~processorFvsPatchField();
+    virtual ~processorFvsPatchField() = default;
 
 
     // Member Functions
 
-        // Access
-
-            //- Return true if running parallel
-            virtual bool coupled() const
-            {
-                if (Pstream::parRun())
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-
-
-        // Evaluation functions
-
-            //- Initialise return of the patchField on the opposite patch of a
-            //  coupled patch
-            virtual void initPatchNeighbourField
-            (
-                const Pstream::commsTypes commsType
-            ) const;
-
-            //- Return patchField on the opposite patch of a coupled patch
-            virtual tmp<Field<Type>> patchNeighbourField
-            (
-                const Pstream::commsTypes commsType
-            ) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using coupledFvsPatchField<Type>::operator=;
+        //- True if running parallel
+        virtual bool coupled() const
+        {
+            return UPstream::parRun();
+        }
 };
 
 

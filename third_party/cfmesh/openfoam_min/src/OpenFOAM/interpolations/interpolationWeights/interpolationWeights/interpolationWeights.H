@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +53,7 @@ class fvMesh;
 class objectRegistry;
 
 /*---------------------------------------------------------------------------*\
-                    Class interpolationWeights Declaration
+                       Class interpolationWeights Declaration
 \*---------------------------------------------------------------------------*/
 
 class interpolationWeights
@@ -59,8 +62,16 @@ protected:
 
     // Protected Data
 
-        //- Cached samples
         const scalarField& samples_;
+
+
+    // Protected Member Functions
+
+        //- No copy construct
+        interpolationWeights(const interpolationWeights&) = delete;
+
+        //- No copy assignment
+        void operator=(const interpolationWeights&) = delete;
 
 
 public:
@@ -86,10 +97,7 @@ public:
     // Constructors
 
         //- Construct from components
-        interpolationWeights(const scalarField& samples);
-
-        //- Disallow default bitwise copy construction
-        interpolationWeights(const interpolationWeights&) = delete;
+        explicit interpolationWeights(const scalarField& samples);
 
 
     // Selectors
@@ -103,7 +111,7 @@ public:
 
 
     //- Destructor
-    virtual ~interpolationWeights();
+    virtual ~interpolationWeights() = default;
 
 
     // Member Functions
@@ -127,7 +135,7 @@ public:
             scalarField& weights
         ) const = 0;
 
-        //- Weighted sum helper method
+        //- Helper: weighted sum
         template<class ListType1, class ListType2>
         static typename outerProduct
         <
@@ -136,11 +144,6 @@ public:
         >::type
         weightedSum(const ListType1& f1, const ListType2& f2);
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const interpolationWeights&) = delete;
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

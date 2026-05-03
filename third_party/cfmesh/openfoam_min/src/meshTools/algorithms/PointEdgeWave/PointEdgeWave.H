@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -55,51 +58,133 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef PointEdgeWave_H
-#define PointEdgeWave_H
+#ifndef Foam_PointEdgeWave_H
+#define Foam_PointEdgeWave_H
 
-#include "boolList.H"
+#include "bitSet.H"
 #include "scalarField.H"
 #include "tensorField.H"
+#include "PstreamBuffers.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyMesh;
 class polyPatch;
-class transformer;
 
 /*---------------------------------------------------------------------------*\
-                      Class PointEdgeWaveName Declaration
+                        Class PointEdgeWaveBase Declaration
 \*---------------------------------------------------------------------------*/
 
-TemplateName(PointEdgeWave);
+class PointEdgeWaveBase
+{
+protected:
+
+    // Protected Static Data
+
+        //- Relative tolerance.
+        //  Stop propagation if relative changes less than this tolerance
+        //  (responsibility for checking this is up to Type implementation)
+        static scalar propagationTol_;
+
+
+    // Protected Data
+
+        //- Reference to mesh
+        const polyMesh& mesh_;
+
+        //- Buffers when updating processor patches
+        PstreamBuffers pBufs_;
+
+        //- Track if point has changed
+        bitSet changedPoint_;
+
+        //- Track if edge has changed
+        bitSet changedEdge_;
+
+        //- List of changed points
+        DynamicList<label> changedPoints_;
+
+        //- List of changed edges
+        DynamicList<label> changedEdges_;
+
+        //- Number of unvisited points
+        label nUnvisitedPoints_;
+
+        //- Number of unvisited edges
+        label nUnvisitedEdges_;
+
+
+public:
+
+    //- Default trackData value (for default template argument)
+    static int dummyTrackData_;
+
+
+    //- Runtime type information
+    ClassName("PointEdgeWave");
+
+
+    // Constructors
+
+        //- Construct with mesh reference and set initial sizes
+        explicit PointEdgeWaveBase(const polyMesh& mesh);
+
+
+    // Static Functions
+
+        //- Access to propagation tolerance
+        static scalar propagationTol() noexcept
+        {
+            return propagationTol_;
+        }
+
+        //- Change propagation tolerance, return previous value
+        static scalar setPropagationTol(const scalar tol) noexcept
+        {
+            scalar old(propagationTol_);
+            propagationTol_ = tol;
+            return old;
+        }
+
+
+    // Member Functions
+
+        //- Return access to the mesh
+        const polyMesh& mesh() const noexcept { return mesh_; }
+
+        //- Current number of changed points
+        label nChangedPoints() const noexcept { return changedPoints_.size(); }
+
+        //- Current number of changed edges
+        label nChangedEdges() const noexcept { return changedEdges_.size(); }
+
+        //- Number of unvisited edges,
+        //- i.e. edges that were not (yet) reached from walking across mesh.
+        // This can happen from
+        //  - not enough iterations done
+        //  - a disconnected mesh
+        //  - a mesh without walls in it
+        label nUnvisitedEdges() const noexcept { return nUnvisitedEdges_; }
+
+        //- Get number of unvisited points
+        label nUnvisitedPoints() const noexcept { return nUnvisitedPoints_; }
+};
 
 
 /*---------------------------------------------------------------------------*\
-                        Class PointEdgeWave Declaration
+                           Class PointEdgeWave Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class TrackingData = int>
 class PointEdgeWave
 :
-    public PointEdgeWaveName
+    public PointEdgeWaveBase
 {
-  // Private static data
-
-        //- Relative tolerance. Stop propagation if relative changes
-        //  less than this tolerance (responsibility for checking this is
-        //  up to Type implementation)
-        static scalar propagationTol_;
-
-
     // Private Data
-
-        //- Reference to mesh
-        const polyMesh& mesh_;
 
         //- Wall information for all points
         UList<Type>& allPointInfo_;
@@ -110,44 +195,41 @@ class PointEdgeWave
         //- Additional data to be passed into container
         TrackingData& td_;
 
-        //- Has point changed
-        boolList changedPoint_;
-
-        //- List of changed points
-        labelList changedPoints_;
-
-        //- Number of changed points
-        label nChangedPoints_;
-
-        //- Edges that have changed
-        boolList changedEdge_;
-        labelList changedEdges_;
-        label nChangedEdges_;
-
         //- Number of cyclic patches
         label nCyclicPatches_;
 
         //- Number of evaluations
         label nEvals_;
 
-        //- Number of unvisited edges/points
-        label nUnvisitedPoints_;
-        label nUnvisitedEdges_;
-
 
     // Private Member Functions
 
-        //- Transform across an interface. Implementation referred to Type
-        void transform
+        //- Adapt pointInfo for leaving domain
+        void leaveDomain
         (
-            const polyPatch& patch,
+            const polyPatch&,
             const List<label>& patchPointLabels,
-            const transformer& transform,
             List<Type>& pointInfo
         ) const;
 
-        //- Updates pointInfo with information from neighbour. Updates all
-        //  statistics.
+        //- Adapt pointInfo for entering domain
+        void enterDomain
+        (
+            const polyPatch&,
+            const List<label>& patchPointLabels,
+            List<Type>& pointInfo
+        ) const;
+
+        //- Transform. Implementation referred to Type
+        void transform
+        (
+            const polyPatch& patch,
+            const tensorField& rotTensor,
+            List<Type>& pointInfo
+        ) const;
+
+        //- Updates pointInfo with information from neighbour.
+        //  Updates all statistics.
         bool updatePoint
         (
             const label pointi,
@@ -156,8 +238,8 @@ class PointEdgeWave
             Type& pointInfo
         );
 
-        //- Updates pointInfo with information from same point. Updates all
-        //  statistics.
+        //- Updates pointInfo with information from same point.
+        //  Updates all statistics.
         bool updatePoint
         (
             const label pointi,
@@ -165,8 +247,8 @@ class PointEdgeWave
             Type& pointInfo
         );
 
-        //- Updates edgeInfo with information from neighbour. Updates all
-        //  statistics.
+        //- Updates edgeInfo with information from neighbour.
+        //  Updates all statistics.
         bool updateEdge
         (
             const label edgeI,
@@ -174,6 +256,7 @@ class PointEdgeWave
             const Type& neighbourInfo,
             Type& edgeInfo
         );
+
 
         // Parallel, cyclic
 
@@ -191,28 +274,14 @@ class PointEdgeWave
             label handleCollocatedPoints();
 
 
+        //- No copy construct
+        PointEdgeWave(const PointEdgeWave&) = delete;
+
+        //- No copy assignment
+        void operator=(const PointEdgeWave&) = delete;
+
+
 public:
-
-    // Static Data
-
-        //- Default tracking data to go with default template argument
-        static int defaultTrackingData_;
-
-
-    // Static Functions
-
-        //- Access to tolerance
-        static scalar propagationTol()
-        {
-            return propagationTol_;
-        }
-
-        //- Change tolerance
-        static void setPropagationTol(const scalar tol)
-        {
-            propagationTol_ = tol;
-        }
-
 
     // Constructors
 
@@ -224,12 +293,12 @@ public:
         PointEdgeWave
         (
             const polyMesh& mesh,
-            const labelList& startPoints,
-            const List<Type>& startPointsInfo,
+            const labelList& initialPoints,
+            const List<Type>& initialPointsInfo,
             UList<Type>& allPointInfo,
             UList<Type>& allEdgeInfo,
             const label maxIter,
-            TrackingData& td = defaultTrackingData_
+            TrackingData& td = dummyTrackData_
         );
 
         //- Construct from mesh. Use setPointInfo and iterate() to do
@@ -239,51 +308,39 @@ public:
             const polyMesh& mesh,
             UList<Type>& allPointInfo,
             UList<Type>& allEdgeInfo,
-            TrackingData& td = defaultTrackingData_
+            TrackingData& td = dummyTrackData_
         );
-
-        //- Disallow default bitwise copy construction
-        PointEdgeWave(const PointEdgeWave&) = delete;
 
 
     //- Destructor
-    ~PointEdgeWave();
+    ~PointEdgeWave() = default;
 
 
     // Member Functions
 
         //- Access allPointInfo
-        UList<Type>& allPointInfo() const
+        UList<Type>& allPointInfo() const noexcept
         {
             return allPointInfo_;
         }
 
         //- Access allEdgeInfo
-        UList<Type>& allEdgeInfo() const
+        UList<Type>& allEdgeInfo() const noexcept
         {
             return allEdgeInfo_;
         }
 
         //- Additional data to be passed into container
-        const TrackingData& data() const
+        const TrackingData& data() const noexcept
         {
             return td_;
         }
 
-        //- Get number of unvisited edges, i.e. edges that were not (yet)
-        //  reached from walking across mesh. This can happen from
-        //  - not enough iterations done
-        //  - a disconnected mesh
-        //  - a mesh without walls in it
-        label getUnsetEdges() const;
-
-        label getUnsetPoints() const;
-
-        //- Copy start data into allPointInfo_
+        //- Copy initial data into allPointInfo_
         void setPointInfo
         (
-            const labelList& startPoints,
-            const List<Type>& startPointsInfo
+            const labelList& changedPoints,
+            const List<Type>& changedPointsInfo
         );
 
         //- Propagate from point to edge. Returns total number of edges
@@ -297,12 +354,6 @@ public:
         //- Iterate until no changes or maxIter reached. Returns actual
         //  number of iterations.
         label iterate(const label maxIter);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PointEdgeWave&) = delete;
 };
 
 
@@ -323,6 +374,7 @@ class listUpdateOp
     TrackingData& td_;
 
 public:
+
     listUpdateOp(const scalar tol, TrackingData& td)
     :
         tol_(tol),

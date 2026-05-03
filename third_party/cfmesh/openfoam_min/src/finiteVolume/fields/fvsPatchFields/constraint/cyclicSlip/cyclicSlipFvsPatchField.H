@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +46,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class cyclicSlipFvsPatch Declaration
+                           Class cyclicSlipFvsPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,7 +54,6 @@ class cyclicSlipFvsPatchField
 :
     public cyclicFvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -82,36 +83,36 @@ public:
             const cyclicSlipFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        cyclicSlipFvsPatchField(const cyclicSlipFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        cyclicSlipFvsPatchField
+        (
+            const cyclicSlipFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         cyclicSlipFvsPatchField
         (
             const cyclicSlipFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new cyclicSlipFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using cyclicFvsPatchField<Type>::operator=;
 };
 
 

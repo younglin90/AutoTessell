@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,13 +46,13 @@ template<class Type>
 tmp<fvMatrix<Type>>
 ddt
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fv::ddtScheme<Type>::New
     (
         vf.mesh(),
-        vf.mesh().schemes().ddt("ddt(" + vf.name() + ')')
+        vf.mesh().ddtScheme("ddt(" + vf.name() + ')')
     ).ref().fvmDdt(vf);
 }
 
@@ -59,40 +61,8 @@ template<class Type>
 tmp<fvMatrix<Type>>
 ddt
 (
-    const dimensionedScalar& rho,
-    const VolField<Type>& vf
-)
-{
-    return fv::ddtScheme<Type>::New
-    (
-        vf.mesh(),
-        vf.mesh().schemes().ddt("ddt(" + rho.name() + ',' + vf.name() + ')')
-    ).ref().fvmDdt(rho, vf);
-}
-
-
-template<class Type>
-tmp<fvMatrix<Type>>
-ddt
-(
-    const volScalarField& rho,
-    const VolField<Type>& vf
-)
-{
-    return fv::ddtScheme<Type>::New
-    (
-        vf.mesh(),
-        vf.mesh().schemes().ddt("ddt(" + rho.name() + ',' + vf.name() + ')')
-    ).ref().fvmDdt(rho, vf);
-}
-
-
-template<class Type>
-tmp<fvMatrix<Type>>
-ddt
-(
-    const one&,
-    const VolField<Type>& vf
+    const Foam::one,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return ddt(vf);
@@ -103,15 +73,47 @@ template<class Type>
 tmp<fvMatrix<Type>>
 ddt
 (
-    const volScalarField& alpha,
-    const volScalarField& rho,
-    const VolField<Type>& vf
+    const dimensionedScalar& rho,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fv::ddtScheme<Type>::New
     (
         vf.mesh(),
-        vf.mesh().schemes().ddt
+        vf.mesh().ddtScheme("ddt(" + rho.name() + ',' + vf.name() + ')')
+    ).ref().fvmDdt(rho, vf);
+}
+
+
+template<class Type>
+tmp<fvMatrix<Type>>
+ddt
+(
+    const volScalarField& rho,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
+)
+{
+    return fv::ddtScheme<Type>::New
+    (
+        vf.mesh(),
+        vf.mesh().ddtScheme("ddt(" + rho.name() + ',' + vf.name() + ')')
+    ).ref().fvmDdt(rho, vf);
+}
+
+
+template<class Type>
+tmp<fvMatrix<Type>>
+ddt
+(
+    const volScalarField& alpha,
+    const volScalarField& rho,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
+)
+{
+    return fv::ddtScheme<Type>::New
+    (
+        vf.mesh(),
+        vf.mesh().ddtScheme
         (
             "ddt("
           + alpha.name() + ','
@@ -126,9 +128,9 @@ template<class Type>
 tmp<fvMatrix<Type>>
 ddt
 (
-    const one&,
-    const one&,
-    const VolField<Type>& vf
+    const Foam::one,
+    const Foam::one,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return ddt(vf);
@@ -139,9 +141,9 @@ template<class Type>
 tmp<fvMatrix<Type>>
 ddt
 (
-    const one&,
+    const Foam::one,
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return ddt(rho, vf);
@@ -153,8 +155,8 @@ tmp<fvMatrix<Type>>
 ddt
 (
     const volScalarField& alpha,
-    const one&,
-    const VolField<Type>& vf
+    const Foam::one,
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return ddt(alpha, vf);

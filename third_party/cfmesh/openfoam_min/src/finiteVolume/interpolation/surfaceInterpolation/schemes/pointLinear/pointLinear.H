@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::pointLinear
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     Face-point interpolation scheme class derived from linear and
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class pointLinear Declaration
+                           Class pointLinear Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -54,6 +59,14 @@ class pointLinear
 :
     public linear<Type>
 {
+    // Private Member Functions
+
+        //- No copy construct
+        pointLinear(const pointLinear&) = delete;
+
+        //- No copy assignment
+        void operator=(const pointLinear&) = delete;
+
 
 public:
 
@@ -92,9 +105,6 @@ public:
             linear<Type>(mesh)
         {}
 
-        //- Disallow default bitwise copy construction
-        pointLinear(const pointLinear&) = delete;
-
 
     // Member Functions
 
@@ -105,17 +115,11 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const pointLinear&) = delete;
 };
 
 

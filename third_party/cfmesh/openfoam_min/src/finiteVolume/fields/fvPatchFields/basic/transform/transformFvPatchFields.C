@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,17 +29,33 @@ License
 #include "fvPatchFields.H"
 #include "addToRunTimeSelectionTable.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
+    makePatchFieldTypeNames(transform);
+}
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-makePatchFieldTypeNames(transform);
+// * * * * * * * * * * * * * * * Specialisations * * * * * * * * * * * * * * //
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+template<>
+Foam::tmp<Foam::scalarField>
+Foam::transformFvPatchField<Foam::scalar>::valueInternalCoeffs
+(
+    const tmp<scalarField>&
+) const
+{
+    return tmp<scalarField>::New(size(), 1.0);
+}
 
-} // End namespace Foam
+
+template<>
+Foam::tmp<Foam::scalarField>
+Foam::transformFvPatchField<Foam::scalar>::gradientInternalCoeffs() const
+{
+    return tmp<scalarField>::New(size(), Zero);
+}
+
 
 // ************************************************************************* //

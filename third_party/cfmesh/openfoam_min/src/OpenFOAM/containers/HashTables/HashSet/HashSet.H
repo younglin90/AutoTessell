@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,193 +28,460 @@ Class
     Foam::HashSet
 
 Description
-    A HashTable with keys but without contents.
+    A HashTable with keys but without contents that is similar to
+    \c std::unordered_set.
+
+    The entries are considered \a unordered since their placement
+    depends on the method used to generate the hash key index, the
+    table capacity, insertion order etc. When the key order is
+    important, use the sortedToc() method to obtain a list of sorted
+    keys and use that for further access.
+
+Note
+    The HashSet iterator dereferences to the key, so the following
+    range-for works as expected:
+    \code
+        labelHashSet someLabels{10, 20, 30, 40, ...};
+        for (const label i : someLabels)
+        {
+            Info<< "val:" << i << nl;
+        }
+    \endcode
 
 Typedef
     Foam::wordHashSet
 
 Description
-    A HashSet with (the default) word keys.
+    A HashSet with word keys and string hasher.
 
 Typedef
     Foam::labelHashSet
 
 Description
-    A HashSet with label keys.
+    A HashSet with label keys and label hasher.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef HashSet_H
-#define HashSet_H
+#ifndef Foam_HashSet_H
+#define Foam_HashSet_H
 
 #include "HashTable.H"
-#include "nil.H"
+#include "IndirectList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
+template<class T> class MinMax;
+template<class Key, class Hash> class HashSet;
+
+// Common hash-set types
+
+//- A HashSet of words, uses string hasher.
+typedef HashSet<word, Hash<word>> wordHashSet;
+
+//- A HashSet of labels, uses label hasher.
+typedef HashSet<label, Hash<label>> labelHashSet;
+
+
 /*---------------------------------------------------------------------------*\
                            Class HashSet Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class Key=word, class Hash=string::hash>
+template<class Key, class Hash=Foam::Hash<Key>>
 class HashSet
 :
-    public HashTable<nil, Key, Hash>
+    public HashTable<Foam::zero, Key, Hash>
 {
+    // Private Member Functions
+
+        //- Assign from the input iterator range
+        template<class InputIter>
+        inline label assignMany
+        (
+            const label nItems,
+            InputIter first,
+            InputIter last
+        );
+
 
 public:
 
-    typedef typename HashTable<nil, Key, Hash>::iterator iterator;
-    typedef typename HashTable<nil, Key, Hash>::const_iterator const_iterator;
+    //- The template instance used for this HashSet
+    typedef HashSet<Key, Hash> this_type;
+
+    //- The template instance used for the parent HashTable
+    typedef HashTable<Foam::zero, Key, Hash> parent_type;
+
+    //- An iterator, returning reference to the key
+    using iterator = typename parent_type::key_iterator;
+
+    //- A const_iterator, returning reference to the key
+    using const_iterator = typename parent_type::const_key_iterator;
 
 
     // Constructors
 
-        //- Construct given initial size
-        HashSet(const label size = 128)
+        //- Default construct: empty without allocation (capacity=0)
+        HashSet() noexcept = default;
+
+        //- Construct empty without allocation (capacity=0)
+        explicit HashSet(const Foam::zero) noexcept
         :
-            HashTable<nil, Key, Hash>(size)
+            parent_type(Foam::zero{})
         {}
 
-        //- Construct from Istream
-        HashSet(Istream& is)
+        //- Construct empty with initial table capacity
+        explicit HashSet(const label initialCapacity)
         :
-            HashTable<nil, Key, Hash>(is)
+            parent_type(initialCapacity)
         {}
 
-        //- Construct from UList of Key
-        HashSet(const UList<Key>&);
+        //- Copy construct
+        HashSet(const this_type& rhs)
+        :
+            parent_type(rhs)
+        {}
+
+        //- Move construct
+        HashSet(this_type&& rhs) noexcept
+        :
+            parent_type(std::move(rhs))
+        {}
+
+        //- Construct from Istream with default initial table capacity
+        explicit HashSet(Istream& is)
+        :
+            parent_type(is)
+        {}
 
         //- Construct from FixedList of Key
-        template<unsigned Size>
-        HashSet(const FixedList<Key, Size>&);
+        template<unsigned N>
+        explicit HashSet(const FixedList<Key, N>& list);
 
-        //- Copy constructor
-        HashSet(const HashSet<Key, Hash>& hs) = default;
+        //- Construct from UList of Key
+        explicit HashSet(const UList<Key>& list);
 
-        //- Move constructor
-        HashSet(HashSet<Key, Hash>&& hs) = default;
+        //- Construct from an indirect list
+        template<class Addr>
+        explicit HashSet(const IndirectListBase<Key, Addr>& list);
+
+        //- Construct from an initializer list of Key
+        HashSet(std::initializer_list<Key> list);
 
         //- Construct from the keys of another HashTable,
-        //  the type of values held is arbitrary.
+        //- the type of values held is arbitrary.
         template<class AnyType, class AnyHash>
-        HashSet(const HashTable<AnyType, Key, AnyHash>&);
-
-        //- Construct from an initialiser list
-        HashSet(std::initializer_list<Key>);
+        explicit HashSet(const HashTable<AnyType, Key, AnyHash>& tbl);
 
 
     // Member Functions
 
-        //- Insert a new entry
+        //- Same as contains() - return true if key exists in the set.
+        //  Method name compatibility with bitSet and boolList.
+        bool test(const Key& key) const
+        {
+            return this->contains(key);
+        }
+
+
+    // Edit
+
+        //- Insert a new entry, not overwriting existing entries.
+        //  \return True if the entry inserted, which means that it did
+        //  not previously exist in the set.
         bool insert(const Key& key)
         {
-            return HashTable<nil, Key, Hash>::insert(key, nil());
+            return this->parent_type::emplace(key);
         }
 
-        //- Insert keys from a UList of Key
-        //  Return the number of new elements inserted
-        label insert(const UList<Key>&);
-
-        //- Insert keys from a HashSet of Key
-        //  Return the number of new elements inserted
-        label insert(const HashSet<Key, Hash>&);
-
-        //- Same as insert (cannot overwrite nil content)
+        //- Same as insert (no value to overwrite)
         bool set(const Key& key)
         {
-            return insert(key);
-        }
-
-        //- Same as insert (cannot overwrite nil content)
-        label set(const UList<Key>& lst)
-        {
-            return insert(lst);
+            return this->parent_type::emplace(key);
         }
 
         //- Unset the specified key - same as erase
+        //  \return True if the entry existed and was removed
         bool unset(const Key& key)
         {
-            return HashTable<nil, Key, Hash>::erase(key);
+            return this->parent_type::erase(key);
+        }
+
+        //- Attempts to extract entries from source parameter and insert them
+        //- into \c this, does not overwrite existing entries.
+        //- The source will contains any items that could not be merged.
+        void merge(HashSet<Key, Hash>& source);
+
+        //- Attempts to extract entries from source parameter and insert them
+        //- into \c this, does not overwrite existing entries.
+        //- The source will contains any items that could not be merged.
+        void merge(HashSet<Key, Hash>&& source);
+
+
+    // Convenience
+
+        //- Insert keys from the input iterator range
+        //  \return The number of new elements inserted
+        template<class InputIter>
+        inline label insert(InputIter first, InputIter last);
+
+        //- Insert keys from a initializer list of Key
+        //  \return The number of new elements inserted
+        inline label insert(std::initializer_list<Key> list);
+
+        //- Insert keys from the list of Key
+        //  \return The number of new elements inserted
+        template<unsigned N>
+        inline label insert(const FixedList<Key, N>& list);
+
+        //- Insert keys from the list of Key
+        //  \return The number of new elements inserted
+        inline label insert(const UList<Key>& list);
+
+        //- Insert keys from the list of Key
+        //  \return The number of new elements inserted
+        template<class Addr>
+        inline label insert(const IndirectListBase<Key, Addr>& list);
+
+        //- Same as insert (no value to overwrite)
+        template<class InputIter>
+        inline label set(InputIter first, InputIter last)
+        {
+            return insert(first, last);
+        }
+
+        //- Same as insert (no value to overwrite)
+        inline label set(std::initializer_list<Key> list)
+        {
+            return insert(list);
+        }
+
+        //- Same as insert (no value to overwrite)
+        template<unsigned N>
+        inline label set(const FixedList<Key, N>& list)
+        {
+            return insert(list);
+        }
+
+        //- Same as insert (no value to overwrite)
+        inline label set(const UList<Key>& list)
+        {
+            return insert(list);
+        }
+
+        //- Same as insert (no value to overwrite)
+        template<class Addr>
+        inline label set(const IndirectListBase<Key, Addr>& list)
+        {
+            return insert(list);
+        }
+
+        //- Same as insert (no value to overwrite)
+        //  \note Method name compatibility with bitSet
+        template<class InputIter>
+        inline label setMany(InputIter first, InputIter last)
+        {
+            return insert(first, last);
+        }
+
+        //- Unset the keys listed in the input iterator range
+        //  \return The number of items removed
+        template<class InputIter>
+        inline label unset(InputIter first, InputIter last);
+
+        //- Unset the listed keys - same as erase
+        //  \return The number of items removed
+        inline label unset(std::initializer_list<Key> list);
+
+        //- Unset the listed keys - same as erase
+        //  \return The number of items removed
+        template<unsigned N>
+        inline label unset(const FixedList<Key, N>& list);
+
+        //- Unset the listed keys - same as erase
+        //  \return The number of items removed
+        inline label unset(const UList<Key>& list);
+
+        //- Unset the listed keys - same as erase
+        //  \return The number of items removed
+        template<class Addr>
+        inline label unset(const IndirectListBase<Key, Addr>& list);
+
+
+    // STL iterators
+
+        inline iterator begin();
+        inline const_iterator begin() const;
+        inline const_iterator cbegin() const;
+
+        inline iterator end() noexcept;
+        inline const_iterator end() const noexcept;
+        inline constexpr const_iterator cend() const noexcept;
+
+
+    // Writing
+
+        //- Write unordered keys (list), with line-breaks
+        //- when length exceeds shortLen.
+        //  Using '0' suppresses line-breaks entirely.
+        Ostream& writeList(Ostream& os, const label shortLen=0) const
+        {
+            return this->writeKeys(os, shortLen);
         }
 
 
     // Member Operators
 
-        //- Return true if the entry exists, same as found()
-        inline bool operator[](const Key&) const;
+        //- Return true if the entry exists, same as contains()
+        //  \note this allows use of HashSet as a predicate test
+        inline bool operator()(const Key& key) const noexcept;
 
-        //- Assignment operator
-        void operator=(const HashSet<Key, Hash>&);
+        //- Return true if the entry exists, same as contains().
+        inline bool operator[](const Key& key) const noexcept;
 
-        //- Move assignment operator
-        void operator=(HashSet<Key, Hash>&&);
-
-        //- Equality. Two hashtables are equal when their contents are equal.
-        //  Independent of table size or order.
-        bool operator==(const HashSet<Key, Hash>&) const;
-
-        //- The opposite of the equality operation.
-        bool operator!=(const HashSet<Key, Hash>&) const;
-
-
-        //- Combine entries from HashSets
-        void operator|=(const HashSet<Key, Hash>&);
-
-        //- Only retain entries found in both HashSets
-        void operator&=(const HashSet<Key, Hash>&);
-
-        //- Only retain unique entries (xor)
-        void operator^=(const HashSet<Key, Hash>&);
-
-        //- Add entries listed in the given HashSet to this HashSet
-        inline void operator+=(const HashSet<Key, Hash>& rhs)
+        //- Copy assign
+        void operator=(const this_type& rhs)
         {
-            this->operator|=(rhs);
+            parent_type::operator=(rhs);
         }
 
-        //- Remove entries listed in the given HashSet from this HashSet
-        void operator-=(const HashSet<Key, Hash>&);
+        //- Move assign
+        void operator=(this_type&& rhs)
+        {
+            parent_type::operator=(std::move(rhs));
+        }
+
+
+    // Comparison
+
+        //- Sets are equal if all keys are equal,
+        //- independent of order or underlying storage size.
+        bool operator==(const this_type& rhs) const;
+
+        //- The opposite of the equality operation.
+        bool operator!=(const this_type& rhs) const;
+
+
+    // Assignment
+
+        //- Assignment from a UList of keys
+        void operator=(const UList<Key>& rhs);
+
+        //- Assignment from a FixedList of keys
+        template<unsigned N>
+        void operator=(const FixedList<Key, N>& rhs);
+
+        //- Assignment from an initializer list of keys
+        void operator=(std::initializer_list<Key> rhs);
+
+
+    // Logical and set operations
+
+        //- Add entries to this HashSet
+        this_type& operator|=(const this_type& rhs);
+
+        //- Only retain entries contained in both HashSets
+        inline this_type& operator&=(const this_type& rhs);
+
+        //- Only retain unique entries (xor)
+        this_type& operator^=(const this_type& rhs);
+
+        //- Add entries to this HashSet. Same as the '|=' operator
+        inline this_type& operator+=(const this_type& rhs);
+
+        //- Remove entries from this HashSet. Uses erase()
+        inline this_type& operator-=(const this_type& rhs);
+
+
+    // Housekeeping
+
+        //- Not applicable for HashSet
+        template<class UnaryPredicate>
+        List<Key> tocValues(const UnaryPredicate&, const bool) = delete;
+
+        //- Not applicable for HashSet
+        template<class BinaryPredicate>
+        List<Key> tocEntries(const BinaryPredicate&, const bool) = delete;
+
+        //- Not applicable for HashSet
+        template<class UnaryPredicate>
+        label countValues(const UnaryPredicate&, const bool) = delete;
+
+        //- Not applicable for HashSet
+        template<class BinaryPredicate>
+        label countEntries(const BinaryPredicate&, const bool) = delete;
+
+        //- Not applicable for HashSet
+        template<class UnaryPredicate>
+        label filterValues(const UnaryPredicate&, const bool) = delete;
+
+        //- Not applicable for HashSet
+        template<class BinaryPredicate>
+        label filterEntries(const BinaryPredicate&, const bool) = delete;
 };
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Global Functions
+
+//- Find the min value in labelHashSet, optionally limited by second argument.
+//  For an empty set, returns the second argument (eg, labelMax).
+label min(const labelHashSet& set, label minValue = labelMax);
+
+//- Find the max value in labelHashSet, optionally limited by second argument.
+//  For an empty set, returns the second argument (eg, labelMin).
+label max(const labelHashSet& set, label maxValue = labelMin);
+
+//- Find the min/max values of labelHashSet
+MinMax<label> minMax(const labelHashSet& set);
 
 
 // Global Operators
 
-//- Combine entries from HashSets
+//- Write the list of HashSet keys
 template<class Key, class Hash>
-HashSet<Key,Hash> operator|
+Ostream& operator<<(Ostream& os, const HashSet<Key, Hash>& rhs);
+
+
+//- Combine entries (OR) for two HashSets
+//  See HashSet::operator|= for more details.
+template<class Key, class Hash>
+HashSet<Key, Hash> operator|
 (
-    const HashSet<Key,Hash>& hash1,
-    const HashSet<Key,Hash>& hash2
+    const HashSet<Key, Hash>& a,
+    const HashSet<Key, Hash>& b
 );
 
-
-//- Create a HashSet that only contains entries found in both HashSets
+//- Subset (AND) intersection of two HashSet
+//  See HashSet::operator&= for more details.
 template<class Key, class Hash>
-HashSet<Key,Hash> operator&
+HashSet<Key, Hash> operator&
 (
-    const HashSet<Key,Hash>& hash1,
-    const HashSet<Key,Hash>& hash2
+    const HashSet<Key, Hash>& a,
+    const HashSet<Key, Hash>& b
 );
 
-
-//- Create a HashSet that only contains unique entries (xor)
+//- Create a HashSet that only contains unique entries (XOR)
+//  See HashSet::operator^= for more details.
 template<class Key, class Hash>
-HashSet<Key,Hash> operator^
+HashSet<Key, Hash> operator^
 (
-    const HashSet<Key,Hash>& hash1,
-    const HashSet<Key,Hash>& hash2
+    const HashSet<Key, Hash>& a,
+    const HashSet<Key, Hash>& b
 );
 
-
-//- A HashSet with word keys.
-typedef HashSet<> wordHashSet;
-
-//- A HashSet with label keys.
-typedef HashSet<label, Hash<label>> labelHashSet;
+//- Subset difference of two HashSets
+//  See HashSet::operator-= for more details.
+template<class Key, class Hash>
+HashSet<Key, Hash> operator-
+(
+    const HashSet<Key, Hash>& a,
+    const HashSet<Key, Hash>& b
+);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

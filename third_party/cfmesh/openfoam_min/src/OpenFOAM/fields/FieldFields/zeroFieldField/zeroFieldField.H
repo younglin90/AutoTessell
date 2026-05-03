@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,10 +37,11 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef zeroFieldField_H
-#define zeroFieldField_H
+#ifndef Foam_zeroFieldField_H
+#define Foam_zeroFieldField_H
 
 #include "zeroField.H"
+#include "Pair.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -45,36 +49,40 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class zeroField Declaration
+                       Class zeroFieldField Declaration
 \*---------------------------------------------------------------------------*/
 
 class zeroFieldField
 :
     public zero
 {
-
 public:
 
     // Constructors
 
-        //- Construct null
-        zeroFieldField()
-        {}
+        //- Default construct
+        zeroFieldField() noexcept = default;
 
 
     // Member Operators
 
-        inline zeroField operator[](const label) const;
+        //- Return the field
+        zeroField operator[](const label) const noexcept
+        {
+            return zeroField{};
+        }
+
+        //- Return the field element
+        zero operator[](const labelPair&) const noexcept
+        {
+            return zero{};
+        }
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-    #include "zeroFieldFieldI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

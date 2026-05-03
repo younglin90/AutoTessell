@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,23 +54,19 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
+// Forward Declarations
 class spatialTransform;
 Istream& operator>>(Istream&, spatialTransform&);
 Ostream& operator<<(Ostream&, const spatialTransform&);
 
 
 /*---------------------------------------------------------------------------*\
-                      Class spatialTransform Declaration
+                         Class spatialTransform Declaration
 \*---------------------------------------------------------------------------*/
 
 class spatialTransform
 {
-    // Private Data
+    // Private data
 
         //- Rotation tensor
         tensor E_;
@@ -77,7 +75,7 @@ class spatialTransform
         vector r_;
 
 
-    // Private Member Functions
+    // Private member functions
 
         //- Return E . *r
         inline tensor Erx() const;

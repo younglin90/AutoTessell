@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::harmonic
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Harmonic-mean interpolation scheme class.
+    Harmonic-mean differencing scheme class.
 
     This scheme interpolates 1/field using a scheme specified at run-time
     and return the reciprocal of the interpolate.
@@ -49,13 +54,18 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class harmonic Declaration
+                           Class harmonic Declaration
 \*---------------------------------------------------------------------------*/
 
 class harmonic
 :
     public surfaceInterpolationScheme<scalar>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const harmonic&) = delete;
+
 
 public:
 
@@ -100,29 +110,22 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<scalar>&
+            const GeometricField<scalar, fvPatchField, volMesh>&
         ) const
         {
             NotImplemented;
-
-            return tmp<surfaceScalarField>(nullptr);
+            return nullptr;
         }
 
         //- Return the face-interpolate of the given cell field
-        virtual tmp<SurfaceField<scalar>>
+        virtual tmp<GeometricField<scalar, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<scalar>& vf
+            const GeometricField<scalar, fvPatchField, volMesh>& vf
         ) const
         {
             return 1.0/(reverseLinear<scalar>(vf.mesh()).interpolate(1.0/vf));
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const harmonic&) = delete;
 };
 
 

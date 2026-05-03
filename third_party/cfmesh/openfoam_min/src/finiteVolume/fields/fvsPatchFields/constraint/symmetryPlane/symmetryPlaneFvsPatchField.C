@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2015 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,14 +49,12 @@ Foam::symmetryPlaneFvsPatchField<Type>::symmetryPlaneFvsPatchField
     const dictionary& dict
 )
 :
-    fvsPatchField<Type>(p, iF, dict)
+    fvsPatchField<Type>(p, iF, dict, IOobjectOption::MUST_READ)
 {
     if (!isType<symmetryPlaneFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "patch " << this->patch().index() << " not symmetryPlane type. "
+        FatalIOErrorInFunction(dict)
+            << "patch " << this->patch().index() << " not symmetryPlane type. "
             << "Patch type = " << p.type()
             << exit(FatalIOError);
     }
@@ -66,7 +67,7 @@ Foam::symmetryPlaneFvsPatchField<Type>::symmetryPlaneFvsPatchField
     const symmetryPlaneFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     fvsPatchField<Type>(ptf, p, iF, mapper)
@@ -94,13 +95,23 @@ Foam::symmetryPlaneFvsPatchField<Type>::symmetryPlaneFvsPatchField
 {}
 
 
+template<class Type>
+Foam::symmetryPlaneFvsPatchField<Type>::symmetryPlaneFvsPatchField
+(
+    const symmetryPlaneFvsPatchField<Type>& ptf
+)
+:
+    symmetryPlaneFvsPatchField<Type>(ptf, ptf.internalField())
+{}
+
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 void Foam::symmetryPlaneFvsPatchField<Type>::write(Ostream& os) const
 {
     fvsPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvsPatchField<Type>::writeValueEntry(os);
 }
 
 

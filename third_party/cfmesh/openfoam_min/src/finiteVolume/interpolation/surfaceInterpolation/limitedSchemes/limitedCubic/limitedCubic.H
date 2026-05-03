@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::limitedCubicLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class with limiter function which returns the limiter for the
-    TVD limited centred-cubic interpolation scheme based on r obtained from
+    TVD limited centred-cubic differencing scheme based on r obtained from
     the LimiterFunc class.
 
     Used in conjunction with the template class LimitedScheme.
@@ -47,7 +52,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class limitedCubicLimiter Declaration
+                      Class limitedCubicLimiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -73,7 +78,7 @@ public:
         }
 
         // Avoid the /0 when k_ = 0
-        twoByk_ = 2.0/max(k_, small);
+        twoByk_ = 2.0/max(k_, SMALL);
     }
 
     scalar limiter
@@ -111,7 +116,7 @@ public:
         scalar phiCD = cdWeight*phiP + (1 - cdWeight)*phiN;
 
         // Calculate the effective limiter for the cubic interpolation
-        scalar cubicLimiter = (phif - phiU)/stabilise(phiCD - phiU, small);
+        scalar cubicLimiter = (phif - phiU)/stabilise(phiCD - phiU, SMALL);
 
         /*
         if (twor < 0.05)
@@ -119,11 +124,11 @@ public:
             cubicLimiter = twor;
         }
 
-        return max(min(cubicLimiter, 2), 0);
+        return clamp(cubicLimiter, 0, 2);
         */
 
         // Limit the limiter to obey the TVD constraint
-        return max(min(min(twor, cubicLimiter), 2), 0);
+        return clamp(min(twor, cubicLimiter), 0, 2);
     }
 };
 

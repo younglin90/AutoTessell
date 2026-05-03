@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,20 +26,22 @@ License
 Class
     Foam::swirlInletVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    Velocity inlet boundary condition creating axial, radial and tangential
-    velocity fields specified by functions of time and radius or by a given
-    angular speed.
+    This boundary condition describes an inlet vector boundary condition in
+    swirl coordinates given a central axis, central point, axial, radial and
+    tangential velocity profiles.
 
 Usage
     \table
         Property     | Description             | Required    | Default value
-        origin       | Origin of rotation      | no          | patch centre
-        axis         | Axis of rotation        | no          | patch normal
-        axialVelocity| Axial velocity [m/s]    | yes         |
-        radialVelocity | Radial velocity [m/s] | yes         |
-        omega        | Angular velocity of the frame | no |
-        tangentialVelocity | Tangential velocity [m/s] | no  |
+        axis         | Axis of rotation        | yes         |
+        origin       |Origin of rotation      | yes         |
+        axialVelocity | Axial velocity profile [m/s] | yes    |
+        radialVelocity | Radial velocity profile [m/s] | yes  |
+        tangentialVelocity | tangential velocity profile [m/s] | yes  |
     \endtable
 
     Example of the boundary condition specification:
@@ -45,22 +49,22 @@ Usage
     <patchName>
     {
         type            swirlInletVelocity;
-        origin          (0 0 0);
         axis            (0 0 1);
+        origin          (0 0 0);
         axialVelocity   constant 30;
         radialVelocity  constant 10;
         tangentialVelocity  constant 100;
     }
     \endverbatim
 
-    The \c axialVelocity, \c radialVelocity and \c tangentialVelocity
-    entries are Function2 of time and radius, see see Foam::Function2s. The \c
-    omega is a Function1 of time, see Foam::Function1s.
+Note
+    The \c axialVelocity, \c radialVelocity and \c tangentialVelocity entries
+    are Function1 types, able to describe time varying functions.  The example
+    above gives the usage for supplying constant values.
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
-    Foam::Function2s
+    Foam::Function1Types
 
 SourceFiles
     swirlInletVelocityFvPatchVectorField.C
@@ -71,22 +75,21 @@ SourceFiles
 #define swirlInletVelocityFvPatchVectorField_H
 
 #include "fixedValueFvPatchFields.H"
-#include "Function2.H"
-#include "omega1.H"
+#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 /*---------------------------------------------------------------------------*\
-            Class swirlInletVelocityFvPatchVectorField Declaration
+         Class swirlInletVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class swirlInletVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Origin of the rotation
         const vector origin_;
@@ -95,16 +98,13 @@ class swirlInletVelocityFvPatchVectorField
         const vector axis_;
 
         //- Axial velocity
-        autoPtr<Function2<scalar>> axialVelocity_;
+        autoPtr<Function1<scalar>> axialVelocity_;
 
         //- Radial velocity
-        autoPtr<Function2<scalar>> radialVelocity_;
-
-        //- Angular velocity of the frame
-        autoPtr<Function1s::omega> omega_;
+        autoPtr<Function1<scalar>> radialVelocity_;
 
         //- Tangential velocity
-        autoPtr<Function2<scalar>> tangentialVelocity_;
+        autoPtr<Function1<scalar>> tangentialVelocity_;
 
 
 public:
@@ -115,11 +115,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        swirlInletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         swirlInletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -130,49 +137,46 @@ public:
         (
             const swirlInletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         swirlInletVelocityFvPatchVectorField
         (
             const swirlInletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         swirlInletVelocityFvPatchVectorField
         (
             const swirlInletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new swirlInletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

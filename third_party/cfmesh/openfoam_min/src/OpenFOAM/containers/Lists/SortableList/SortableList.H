@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,15 +31,20 @@ Description
     A list that is sorted upon construction or when explicitly requested
     with the sort() method.
 
-    Uses the Foam::stableSort() algorithm.
+    Uses the std::stable_sort() algorithm.
+
+Note
+    In many cases you may wish to reuse list storage.
+    The Foam::sortedOrder() function and the Foam::SortList container
+    provide two other alternatives.
 
 SourceFiles
     SortableList.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SortableList_H
-#define SortableList_H
+#ifndef Foam_SortableList_H
+#define Foam_SortableList_H
 
 #include "labelList.H"
 
@@ -56,7 +64,7 @@ class SortableList
 {
     // Private Data
 
-        //- Original indices
+        //- Indices from last sort()
         labelList indices_;
 
 
@@ -64,78 +72,101 @@ public:
 
     // Constructors
 
-        //- Null constructor, sort later (eg, after assignment or transfer)
-        SortableList();
+        //- Default construct
+        SortableList() noexcept = default;
 
-        //- Construct from UList, sorting immediately
-        explicit SortableList(const UList<T>&);
-
-        //- Move constructor transferring List, sorting immediately
-        explicit SortableList(List<T>&&);
-
-        //- Construct given size. Sort later on
+        //- Construct given size, sort later.
         //  The indices remain empty until the list is sorted
-        explicit SortableList(const label size);
+        inline explicit SortableList(const label size);
 
-        //- Construct given size and initial value. Sort later on
+        //- Construct zero-initialized with given size, sort later.
         //  The indices remain empty until the list is sorted
-        SortableList(const label size, const T&);
+        inline SortableList(const label size, const Foam::zero);
 
-        //- Copy constructor
-        SortableList(const SortableList<T>&);
+        //- Construct given size and initial value, sorting later.
+        //  The indices remain empty until the list is sorted
+        inline SortableList(const label size, const T& val);
 
-        //- Move constructor
-        SortableList(SortableList<T>&&);
+        //- Copy construct
+        inline SortableList(const SortableList<T>& lst);
 
-        //- Construct from an initialiser list, sorting immediately
-        SortableList(std::initializer_list<T>);
+        //- Move construct
+        inline SortableList(SortableList<T>&& lst);
+
+        //- Copy construct from UList, sorting immediately
+        explicit inline SortableList(const UList<T>& values);
+
+        //- Move construct from List, sorting immediately
+        inline SortableList(List<T>&& values);
+
+        //- Construct from an initializer list, sorting immediately
+        inline SortableList(std::initializer_list<T> values);
 
 
     // Member Functions
 
         //- Return the list of sorted indices. Updated every sort
-        const labelList& indices() const
+        const labelList& indices() const noexcept
         {
             return indices_;
         }
 
         //- Return non-const access to the sorted indices. Updated every sort
-        labelList& indices()
+        labelList& indices() noexcept
         {
             return indices_;
         }
 
         //- Clear the list and the indices
-        void clear();
+        inline void clear();
 
         //- Clear the indices and return a reference to the underlying List
-        List<T>& shrink();
+        inline List<T>& shrink();
 
-        //- (stable) sort the list (if changed after construction time)
-        //  also resizes the indices as required
+        //- Forward (stable) sort the list (if changed after construction).
+        //  Resizes the indices as required
         void sort();
 
         //- Reverse (stable) sort the list
+        //  Resizes the indices as required
         void reverseSort();
+
+        //- Forward partial sort the list until the middle point
+        void partialSort(label n, label start=0);
+
+        //- Reverse partial sort the list until the middle point
+        void partialReverseSort(label n, label start=0);
+
+        //- Swap content with another SortableList in constant time
+        inline void swap(SortableList<T>& other);
 
 
     // Member Operators
 
-        //- Assignment of all entries to the given value
-        inline void operator=(const T&);
+        //- Assignment of all entries to the given value, removing indices.
+        inline void operator=(const T& val);
 
-        //- Assignment to UList operator. Takes linear time
-        inline void operator=(const UList<T>&);
+        //- Assignment to UList operator, removing indices. Takes linear time
+        inline void operator=(const UList<T>& lst);
 
         //- Assignment operator. Takes linear time
-        inline void operator=(const SortableList<T>&);
+        inline void operator=(const SortableList<T>& lst);
 
-        //- Move assignment operator
-        inline void operator=(SortableList<T>&&);
+        //- Move assignment, removing indices. Takes linear time
+        inline void operator=(List<T>&& lst);
 
-        //- Assignment to an initialiser list
-        void operator=(std::initializer_list<T>);
+        //- Move operator (constant time)
+        inline void operator=(SortableList<T>&& lst);
+
+        //- Assignment to an initializer list
+        void operator=(std::initializer_list<T> lst);
 };
+
+
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+
+// Does not need std::swap or Foam::Swap() specialization
+// since SortableList is MoveConstructible and MoveAssignable
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

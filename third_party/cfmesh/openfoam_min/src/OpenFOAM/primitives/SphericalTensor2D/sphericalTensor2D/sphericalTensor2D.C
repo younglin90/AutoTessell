@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -54,31 +56,25 @@ const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::one
 template<>
 const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::max
 (
-    sphericalTensor2D::uniform(vGreat)
+    sphericalTensor2D::uniform(VGREAT)
 );
 
 template<>
 const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::min
 (
-    sphericalTensor2D::uniform(-vGreat)
+    sphericalTensor2D::uniform(-VGREAT)
 );
 
 template<>
 const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::rootMax
 (
-    sphericalTensor2D::uniform(rootVGreat)
+    sphericalTensor2D::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::rootMin
 (
-    sphericalTensor2D::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::sphericalTensor2D Foam::sphericalTensor2D::vsType::nan
-(
-    sphericalTensor2D::uniform(NaN)
+    sphericalTensor2D::uniform(-ROOTVGREAT)
 );
 
 template<>

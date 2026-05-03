@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,27 +28,45 @@ License
 
 #include "VTKsurfaceFormat.H"
 #include "vtkUnstructuredReader.H"
+#include "labelIOField.H"
 #include "scalarIOField.H"
+#include "faceTraits.H"
+#include <fstream>
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Face>
-void Foam::fileFormats::VTKsurfaceFormat<Face>::writeHeaderPolygons
+void Foam::fileFormats::VTKsurfaceFormat<Face>::writePolys
 (
-    Ostream& os,
-    const UList<Face>& faceLst
+    vtk::formatter& format,
+    const UList<Face>& faces
 )
 {
-    label nNodes = 0;
-
-    forAll(faceLst, facei)
+    // connectivity count without additional storage (done internally)
+    label nConnectivity = 0;
+    for (const Face& f : faces)
     {
-        nNodes += faceLst[facei].size();
+        nConnectivity += f.size();
     }
 
-    os  << nl
-        << "POLYGONS " << faceLst.size() << ' '
-        << faceLst.size() + nNodes << nl;
+    vtk::legacy::beginPolys
+    (
+        format.os(),
+        faces.size(),
+        nConnectivity
+    );
+
+
+    // legacy: size + connectivity together
+    // [nPts, id1, id2, ..., nPts, id1, id2, ...]
+
+    for (const Face& f : faces)
+    {
+        format.write(f.size());  // The size prefix
+        vtk::writeList(format, f);
+    }
+
+    format.flush();
 }
 
 
@@ -69,40 +90,33 @@ bool Foam::fileFormats::VTKsurfaceFormat<Face>::read
     const fileName& filename
 )
 {
-    const bool mustTriangulate = this->isTri();
+    // Clear everything
     this->clear();
 
     IFstream is(filename);
     if (!is.good())
     {
         FatalErrorInFunction
-            << "Cannot read file " << filename
+            << "Cannot read file " << filename << nl
             << exit(FatalError);
     }
 
-    // assume that the groups are not intermixed
+    // Assume groups are not intermixed
     bool sorted = true;
 
 
-    // Construct dummy time so we have something to create an objectRegistry
-    // from
-    Time dummyTime
-    (
-        "dummyRoot",
-        "dummyCase",
-        false           // enableFunctionObjects
-    );
+    // Use dummy Time for objectRegistry
+    autoPtr<Time> dummyTimePtr(Time::New());
 
-    // Make dummy object registry
     objectRegistry obr
     (
         IOobject
         (
-            "dummy",
-            dummyTime,
-            IOobject::NO_READ,
-            IOobject::NO_WRITE,
-            false
+            "vtk::surfaceFormat",
+            *dummyTimePtr,
+            IOobjectOption::NO_READ,
+            IOobjectOption::NO_WRITE,
+            IOobjectOption::NO_REGISTER
         )
     );
 
@@ -111,100 +125,115 @@ bool Foam::fileFormats::VTKsurfaceFormat<Face>::read
     const faceList& faces = reader.faces();
 
     // Assume all faces in zone0 unless a region field is present
-    labelList zones(faces.size(), 0);
-    if (reader.cellData().foundObject<scalarIOField>("region"))
+    labelList zones(faces.size(), Zero);
+
+    for (auto fieldName : { "region", "STLSolidLabeling" })
     {
-        const scalarIOField& region =
-            reader.cellData().lookupObject<scalarIOField>
-            (
-                "region"
-            );
-        forAll(region, i)
+        const labelIOField* lptr =
+            reader.cellData().findObject<labelIOField>(fieldName);
+
+        if (lptr)
         {
-            zones[i] = label(region[i]);
+            label i = 0;
+            for (const auto& region : *lptr)
+            {
+                zones[i++] = label(region);
+            }
+            break;
+        }
+
+        const scalarIOField* sptr =
+            reader.cellData().findObject<scalarIOField>(fieldName);
+
+        if (sptr)
+        {
+            label i = 0;
+            for (const auto& region : *sptr)
+            {
+                zones[i++] = label(region);
+            }
+            break;
         }
     }
-    else if (reader.cellData().foundObject<scalarIOField>("STLSolidLabeling"))
-    {
-        const scalarIOField& region =
-            reader.cellData().lookupObject<scalarIOField>
-            (
-                "STLSolidLabeling"
-            );
-        forAll(region, i)
-        {
-            zones[i] = label(region[i]);
-        }
-    }
+
 
     // Create zone names
     const label nZones = max(zones)+1;
     wordList zoneNames(nZones);
     forAll(zoneNames, i)
     {
-        zoneNames[i] = "zone" + Foam::name(i);
+        zoneNames[i] = surfZone::defaultName(i);
     }
 
 
-    // See if needs triangulation
+    // Check if it needs triangulation
     label nTri = 0;
-    if (mustTriangulate)
+    if (faceTraits<Face>::isTri())
     {
-        forAll(faces, facei)
+        for (const face& f : faces)
         {
-            nTri += faces[facei].size()-2;
+            nTri += f.nTriangles();
         }
     }
 
-    if (nTri > 0)
+    DynamicList<label> dynElemId; // unused
+
+    if (nTri > faces.size())
     {
+        // We are here if the target surface needs triangles and
+        // the source surface has non-triangles
+
         DynamicList<Face> dynFaces(nTri);
         DynamicList<label> dynZones(nTri);
+
         forAll(faces, facei)
         {
             const face& f = faces[facei];
             for (label fp1 = 1; fp1 < f.size() - 1; fp1++)
             {
-                label fp2 = f.fcIndex(fp1);
+                const label fp2 = f.fcIndex(fp1);
 
-                dynFaces.append(triFace(f[0], f[fp1], f[fp2]));
+                dynFaces.append(Face{f[0], f[fp1], f[fp2]});
                 dynZones.append(zones[facei]);
             }
         }
+        zones.clear();
 
         // Count
-        labelList zoneSizes(nZones, 0);
-        forAll(dynZones, triI)
+        labelList zoneSizes(nZones, Zero);
+        for (const label zonei : dynZones)
         {
-            zoneSizes[dynZones[triI]]++;
+            zoneSizes[zonei]++;
         }
 
-        this->sortFacesAndStore(move(dynFaces), move(dynZones), sorted);
+        this->sortFacesAndStore(dynFaces, dynZones, dynElemId, sorted);
 
-        // add zones, culling empty ones
-        this->addZones(zoneSizes, zoneNames, true);
+        // Add zones (retaining empty ones)
+        this->addZones(zoneSizes, zoneNames);
     }
     else
     {
         DynamicList<Face> dynFaces(faces.size());
-        forAll(faces, facei)
+        DynamicList<label> dynZones(std::move(zones));
+
+        for (const face& f : faces)
         {
-            const face& f = faces[facei];
             dynFaces.append(Face(f));
         }
 
         // Count
-        labelList zoneSizes(nZones, 0);
-        forAll(zones, facei)
+        labelList zoneSizes(nZones, Zero);
+        for (const label zonei : dynZones)
         {
-            zoneSizes[zones[facei]]++;
+            zoneSizes[zonei]++;
         }
 
-        this->sortFacesAndStore(move(dynFaces), move(zones), sorted);
+        this->sortFacesAndStore(dynFaces, dynZones, dynElemId, sorted);
 
-        // add zones, culling empty ones
-        this->addZones(zoneSizes, zoneNames, true);
+        // Add zones (retaining empty ones)
+        this->addZones(zoneSizes, zoneNames);
     }
+    this->addZonesToFaces(); // for labelledTri
 
     // transfer to normal lists
     this->storedPoints().transfer(reader.points());
@@ -217,14 +246,16 @@ template<class Face>
 void Foam::fileFormats::VTKsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const MeshedSurfaceProxy<Face>& surf
+    const MeshedSurfaceProxy<Face>& surf,
+    IOstreamOption,
+    const dictionary& options
 )
 {
-    const pointField& pointLst = surf.points();
-    const List<Face>&  faceLst = surf.faces();
-    const List<label>& faceMap = surf.faceMap();
+    const UList<point>& pointLst = surf.points();
+    const UList<Face>&   faceLst = surf.surfFaces();
+    const UList<label>&  faceMap = surf.faceMap();
 
-    const List<surfZone>& zones =
+    const surfZoneList zones =
     (
         surf.surfZones().empty()
       ? surfaceFormatsCore::oneZone(faceLst)
@@ -233,54 +264,55 @@ void Foam::fileFormats::VTKsurfaceFormat<Face>::write
 
     const bool useFaceMap = (surf.useFaceMap() && zones.size() > 1);
 
-    OFstream os(filename);
-    if (!os.good())
+    vtk::outputOptions opts = formatOptions(options);
+
+    std::ofstream os(filename, std::ios::binary);
+
+    autoPtr<vtk::formatter> format = opts.newFormatter(os);
+
+    writeHeader(format(), pointLst);
+
+    if (useFaceMap)
     {
-        FatalErrorInFunction
-            << "Cannot open file for writing " << filename
-            << exit(FatalError);
-    }
-
-
-    writeHeader(os, pointLst);
-    writeHeaderPolygons(os, faceLst);
-
-    label faceIndex = 0;
-    forAll(zones, zoneI)
-    {
-        const surfZone& zone = zones[zoneI];
-
-        if (useFaceMap)
+        // connectivity count without additional storage (done internally)
+        label nConnectivity = 0;
+        for (const Face& f : faceLst)
         {
-            forAll(zone, localFacei)
+            nConnectivity += f.size();
+        }
+
+        vtk::legacy::beginPolys
+        (
+            format().os(),
+            faceLst.size(),
+            nConnectivity
+        );
+
+        label faceIndex = 0;
+        for (const surfZone& zone : zones)
+        {
+            forAll(zone, i)
             {
                 const Face& f = faceLst[faceMap[faceIndex++]];
 
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-                os << ' ' << nl;
+                format().write(f.size());  // The size prefix
+                vtk::writeList(format(), f);
             }
         }
-        else
-        {
-            forAll(zone, localFacei)
-            {
-                const Face& f = faceLst[faceIndex++];
 
-                os << f.size();
-                forAll(f, fp)
-                {
-                    os << ' ' << f[fp];
-                }
-                os << ' ' << nl;
-            }
-        }
+        format().flush();
+    }
+    else
+    {
+        // Easy to write polys without a faceMap
+        writePolys(format(), faceLst);
     }
 
-    writeTail(os, zones);
+    // Write regions (zones) as CellData
+    if (zones.size() > 1)
+    {
+        writeCellData(format(), zones);
+    }
 }
 
 
@@ -288,36 +320,24 @@ template<class Face>
 void Foam::fileFormats::VTKsurfaceFormat<Face>::write
 (
     const fileName& filename,
-    const UnsortedMeshedSurface<Face>& surf
+    const UnsortedMeshedSurface<Face>& surf,
+    IOstreamOption,
+    const dictionary& options
 )
 {
-    OFstream os(filename);
-    if (!os.good())
-    {
-        FatalErrorInFunction
-            << "Cannot open file for writing " << filename
-            << exit(FatalError);
-    }
+    vtk::outputOptions opts = formatOptions(options);
 
+    std::ofstream os(filename, std::ios::binary);
 
-    const List<Face>& faceLst = surf.faces();
+    autoPtr<vtk::formatter> format = opts.newFormatter(os);
 
-    writeHeader(os, surf.points());
-    writeHeaderPolygons(os, faceLst);
+    writeHeader(format(), surf.points());
 
-    forAll(faceLst, facei)
-    {
-        const Face& f = faceLst[facei];
+    // Easy to write polys without a faceMap
+    writePolys(format(), surf.surfFaces());
 
-        os << f.size();
-        forAll(f, fp)
-        {
-            os << ' ' << f[fp];
-        }
-        os << ' ' << nl;
-    }
-
-    writeTail(os, surf.zoneIds());
+    // Write regions (zones) as CellData
+    writeCellData(format(), surf.zoneIds());
 }
 
 

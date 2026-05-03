@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Class
     Foam::mixedFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition provides a base class for 'mixed' type boundary
     conditions, i.e. conditions that mix fixed value and patch-normal gradient
@@ -37,23 +43,24 @@ Description
 
     where
     \vartable
-        x_p    | patch values
-        x_c    | patch internal cell values
-        w      | weight field (0-1)
-        \Delta | inverse distance from face centre to internal cell centre
+        x_p   | patch values
+        x_c   | patch internal cell values
+        \Delta| inverse distance from face centre to internal cell centre
+        w     | weighting values (0-1)
     \endvartable
+
 
 Usage
     \table
-        Property      | Description               | Required | Default value
-        refValue      | reference value           | yes      |
-        refGradient   | reference normal gradient | yes      |
-        valueFraction | weight field              | yes      |
+        Property     | Description                          | Required | Default
+        refValue     | fixed value                          | yes |
+        refGradient  | patch normal gradient                | yes |
+        valueFraction | value weighting (0-1)               | yes |
     \endtable
 
-    Note:
-        This condition is not usually applied directly; instead, use a derived
-        mixed condition such as \c inletOutlet
+Note
+    This condition is not usually applied directly; instead, use a derived
+    mixed condition such as \c inletOutlet
 
 See also
     Foam::inletOutletFvPatchField
@@ -63,8 +70,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef mixedFvPatchField_H
-#define mixedFvPatchField_H
+#ifndef Foam_mixedFvPatchField_H
+#define Foam_mixedFvPatchField_H
 
 #include "fvPatchField.H"
 
@@ -93,6 +100,23 @@ class mixedFvPatchField
         //- Fraction (0-1) of value used for boundary condition
         scalarField valueFraction_;
 
+        //- Source field
+        Field<Type> source_;
+
+protected:
+
+        //- Read the 'refValue', 'refGradient' and 'valueFraction' entries
+        //- into their respective places.
+        //  The reading can be optional (default), mandatory etc.
+        //  If 'refValue' is to be read, refGradient and valueFraction must
+        //  also exist.
+        //  \returns True on success
+        bool readMixedEntries
+        (
+            const dictionary& dict,
+            IOobjectOption::readOption readOpt = IOobjectOption::LAZY_READ
+        );
+
 
 public:
 
@@ -106,16 +130,27 @@ public:
         mixedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
+        );
+
+        //- Construct from patch and internal field,
+        //- initialise as zero-gradient
+        mixedFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&,
+            const Foam::zero
         );
 
         //- Construct from patch, internal field and dictionary
         mixedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&,
-            const bool valuesRequired=true
+            //! The "refValue", "refGradient", "valueFraction" entries
+            //! (default: mandatory)
+            IOobjectOption::readOption requireMixed = IOobjectOption::MUST_READ
         );
 
         //- Construct by mapping the given mixedFvPatchField onto a new patch
@@ -123,51 +158,46 @@ public:
         (
             const mixedFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&,
-            const bool mappingRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        mixedFvPatchField(const mixedFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        mixedFvPatchField
+        (
+            const mixedFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         mixedFvPatchField
         (
             const mixedFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new mixedFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Access
+        //- True: this patch field fixes a value.
+        virtual bool fixesValue() const { return true; }
 
-            //- Return true if this patch field fixes a value.
-            //  Needed to check if a level has to be specified while solving
-            //  Poissons equations.
-            virtual bool fixesValue() const
-            {
-                return true;
-            }
-
-            //- Return false: this patch field is not altered by assignment
-            virtual bool assignable() const
-            {
-                return false;
-            }
+        //- False: this patch field is not altered by assignment.
+        virtual bool assignable() const { return false; }
 
 
         // Return defining fields
@@ -202,15 +232,31 @@ public:
                 return valueFraction_;
             }
 
+            virtual Field<Type>& source()
+            {
+                return source_;
+            }
+
+            virtual const Field<Type>& source() const
+            {
+                return source_;
+            }
+
 
         // Mapping functions
 
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchField<Type>&, const fieldMapper&);
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            );
 
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchField<Type>&);
+            //- Reverse map the given fvPatchField onto this fvPatchField
+            virtual void rmap
+            (
+                const fvPatchField<Type>&,
+                const labelList&
+            );
 
 
         // Evaluation functions
@@ -222,7 +268,7 @@ public:
             virtual void evaluate
             (
                 const Pstream::commsTypes commsType =
-                    Pstream::commsTypes::blocking
+                    Pstream::commsTypes::buffered
             );
 
             //- Return the matrix diagonal coefficients corresponding to the
@@ -252,7 +298,7 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const UList<Type>&) {}
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013 OpenFOAM Foundation
+    Copyright (C) 2022-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,40 +37,54 @@ Foam::lduSchedule Foam::lduPrimitiveMesh::nonBlockingSchedule
 )
 {
     lduSchedule schedule(2*interfaces.size());
-    label slotI = 0;
 
-    forAll(interfaces, i)
+    label patchEvali = 0;
+    label numProcPatches = 0;
+
+    //
+    // 1. Schedule non-processor patches
+    //
+
+    forAll(interfaces, patchi)
     {
-        if (interfaces.set(i) && !isA<ProcPatch>(interfaces[i]))
+        if (interfaces.set(patchi))
         {
-            schedule[slotI].patch = i;
-            schedule[slotI].init = true;
-            slotI++;
-            schedule[slotI].patch = i;
-            schedule[slotI].init = false;
-            slotI++;
+            if (isA<ProcPatch>(interfaces[patchi]))
+            {
+                ++numProcPatches;
+            }
+            else
+            {
+                schedule[patchEvali++].setInitEvaluate(patchi);
+                schedule[patchEvali++].setEvaluate(patchi);
+            }
         }
     }
 
-    forAll(interfaces, i)
+
+    //
+    // 2. Schedule processor patches
+    //
+
+    if (numProcPatches)
     {
-        if (interfaces.set(i) && isA<ProcPatch>(interfaces[i]))
+        forAll(interfaces, patchi)
         {
-            schedule[slotI].patch = i;
-            schedule[slotI].init = true;
-            slotI++;
+            if (interfaces.set(patchi) && isA<ProcPatch>(interfaces[patchi]))
+            {
+                schedule[patchEvali].setInitEvaluate(patchi);
+                schedule[patchEvali + numProcPatches].setEvaluate(patchi);
+                ++patchEvali;
+            }
         }
     }
 
-    forAll(interfaces, i)
-    {
-        if (interfaces.set(i) && isA<ProcPatch>(interfaces[i]))
-        {
-            schedule[slotI].patch = i;
-            schedule[slotI].init = false;
-            slotI++;
-        }
-    }
+    // Caution:
+    // The schedule is only valid for a subset of its range
+    // (where interfaces are defined) but must retain the full list length
+    // for later (external) bookkeeping
+
+    schedule.setSize(patchEvali);
 
     return schedule;
 }

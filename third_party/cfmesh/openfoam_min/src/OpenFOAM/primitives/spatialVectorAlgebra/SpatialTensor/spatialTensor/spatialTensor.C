@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -57,37 +59,31 @@ const Foam::spatialTensor Foam::spatialTensor::vsType::one
 template<>
 const Foam::spatialTensor Foam::spatialTensor::vsType::max
 (
-    spatialTensor::uniform(vGreat)
+    spatialTensor::uniform(VGREAT)
 );
 
 template<>
 const Foam::spatialTensor Foam::spatialTensor::vsType::min
 (
-    spatialTensor::uniform(-vGreat)
+    spatialTensor::uniform(-VGREAT)
 );
 
 template<>
 const Foam::spatialTensor Foam::spatialTensor::vsType::rootMax
 (
-    spatialTensor::uniform(rootVGreat)
+    spatialTensor::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::spatialTensor Foam::spatialTensor::vsType::rootMin
 (
-    spatialTensor::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::spatialTensor Foam::spatialTensor::vsType::nan
-(
-    spatialTensor::uniform(NaN)
+    spatialTensor::uniform(-ROOTVGREAT)
 );
 
 template<>
 const Foam::spatialTensor Foam::spatialTensor::I
 (
-    Foam::spatialTensor::identityMap()
+    Foam::spatialTensor::identity()
 );
 
 

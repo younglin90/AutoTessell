@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +28,10 @@ Class
     Foam::hexMatcher
 
 Description
-    A cellMatcher for hex cells
+    A cellMatcher for hex cells (cellModel::HEX).
 
 See also
-    cellMatcher
+    cellMatcher, cellModel
 
 SourceFiles
     hexMatcher.C
@@ -55,25 +58,42 @@ class hexMatcher
 {
     // Static Data Members
 
-        //- Constants for this shape
-        static const label vertPerCell;
-        static const label facePerCell;
-        static const label maxVertPerFace;
+        // Constants for this shape
+        static constexpr label vertPerCell = 8;
+        static constexpr label facePerCell = 6;
+        static constexpr label maxVertPerFace = 4;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        hexMatcher(const hexMatcher&) = delete;
+
+        //- No copy assignment
+        hexMatcher& operator=(const hexMatcher&) = delete;
 
 
 public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         hexMatcher();
-
-        //- Disallow default bitwise copy construction
-        hexMatcher(const hexMatcher&) = delete;
 
 
     //- Destructor
-    ~hexMatcher();
+    ~hexMatcher() = default;
+
+
+    // Static Functions
+
+        //- Test if given list of faces satisfies criteria for HEX.
+        //- (6 quad)
+        static bool test(const UList<face>& faces);
+
+        //- Test if given cell satisfies criteria for HEX.
+        //- (6 quad)
+        static bool test(const primitiveMesh& mesh, const label celli);
 
 
     // Member Functions
@@ -106,9 +126,15 @@ public:
             const labelList& myFaces
         );
 
-        virtual bool isA(const primitiveMesh& mesh, const label celli);
+        virtual bool isA(const faceList& faces)
+        {
+            return hexMatcher::test(faces);
+        }
 
-        virtual bool isA(const faceList&);
+        virtual bool isA(const primitiveMesh& mesh, const label celli)
+        {
+            return hexMatcher::test(mesh, celli);
+        }
 
         virtual bool matches
         (
@@ -116,12 +142,6 @@ public:
             const label celli,
             cellShape& shape
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const hexMatcher&) = delete;
 };
 
 

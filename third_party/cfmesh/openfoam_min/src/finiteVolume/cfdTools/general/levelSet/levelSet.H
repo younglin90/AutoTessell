@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,8 +36,10 @@ SourceFiles:
 #ifndef levelSet_H
 #define levelSet_H
 
-#include "volFields.H"
-#include "pointFields.H"
+#include "DimensionedField.H"
+#include "fvMesh.H"
+#include "pointMesh.H"
+#include "volMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,15 +51,15 @@ namespace Foam
 //- Calculate the average value of two fields, one on each side of a level set
 //  The level set and the fields are given both on the points and cell-centres.
 template<class Type>
-tmp<Field<Type>> levelSetAverage
+tmp<DimensionedField<Type, volMesh>> levelSetAverage
 (
     const fvMesh& mesh,
     const scalarField& levelC,
     const scalarField& levelP,
-    const Field<Type>& positiveC,
-    const Field<Type>& positiveP,
-    const Field<Type>& negativeC,
-    const Field<Type>& negativeP
+    const DimensionedField<Type, volMesh>& positiveC,
+    const DimensionedField<Type, pointMesh>& positiveP,
+    const DimensionedField<Type, volMesh>& negativeC,
+    const DimensionedField<Type, pointMesh>& negativeP
 );
 
 //- As the above overload, but on the faces of a patch
@@ -71,22 +75,10 @@ tmp<Field<Type>> levelSetAverage
     const Field<Type>& negativeP
 );
 
-//- As the above overload, but both in cells and on patch faces
-template<class Type>
-tmp<VolField<Type>> levelSetAverage
-(
-    const volScalarField& levelC,
-    const pointScalarField& levelP,
-    const VolField<Type>& positiveC,
-    const PointField<Type>& positiveP,
-    const VolField<Type>& negativeC,
-    const PointField<Type>& negativeP
-);
-
-//- Calculate the volume-fraction that a level set occupies. This gives the
+//- Calculate the volume-fraction that a level set occupies. This gives the the
 //  same result as levelSetAverage if the fields passed to the latter are
 //  uniformly 0 and 1. The above flag flips the direction.
-tmp<scalarField> levelSetFraction
+tmp<DimensionedField<scalar, volMesh>> levelSetFraction
 (
     const fvMesh& mesh,
     const scalarField& levelC,
@@ -100,14 +92,6 @@ tmp<scalarField> levelSetFraction
     const fvPatch& patch,
     const scalarField& levelF,
     const scalarField& levelP,
-    const bool above
-);
-
-//- As the above overload, but both in cells and on patch faces
-tmp<volScalarField> levelSetFraction
-(
-    const volScalarField& levelC,
-    const pointScalarField& levelP,
     const bool above
 );
 

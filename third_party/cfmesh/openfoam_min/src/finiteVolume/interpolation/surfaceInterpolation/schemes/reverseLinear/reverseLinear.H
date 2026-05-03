@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::reverseLinear
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Inversed weight centred interpolation interpolation scheme class.
+    Inversed weight central-differencing interpolation scheme class.
 
     Useful for inverse weighted and harmonic interpolations.
 
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class reverseLinear Declaration
+                       Class reverseLinear Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -54,6 +59,12 @@ class reverseLinear
 :
     public surfaceInterpolationScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const reverseLinear&) = delete;
+
+
 public:
 
     //- Runtime type information
@@ -91,7 +102,7 @@ public:
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             const fvMesh& mesh = this->mesh();
@@ -102,23 +113,19 @@ public:
             );
             const surfaceScalarField& cdWeights = tcdWeights();
 
-            tmp<surfaceScalarField> treverseLinearWeights
+            auto treverseLinearWeights = surfaceScalarField::New
             (
-                surfaceScalarField::New
-                (
-                    "reverseLinearWeights",
-                    mesh,
-                    dimless
-                )
+                "reverseLinearWeights",
+                IOobject::NO_REGISTER,
+                mesh,
+                dimless
             );
-            surfaceScalarField& reverseLinearWeights =
-                treverseLinearWeights.ref();
+            auto& reverseLinearWeights = treverseLinearWeights.ref();
 
             reverseLinearWeights.primitiveFieldRef() =
                 1.0 - cdWeights.primitiveField();
 
-            surfaceScalarField::Boundary& rlwbf =
-                reverseLinearWeights.boundaryFieldRef();
+            auto& rlwbf = reverseLinearWeights.boundaryFieldRef();
 
 
             forAll(mesh.boundary(), patchi)
@@ -135,12 +142,6 @@ public:
 
             return treverseLinearWeights;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const reverseLinear&) = delete;
 };
 
 

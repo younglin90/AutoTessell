@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,19 +50,19 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class FDICSmoother Declaration
+                           Class FDICSmoother Declaration
 \*---------------------------------------------------------------------------*/
 
 class FDICSmoother
 :
     public lduMatrix::smoother
 {
-    // Private Data
+    // Private data
 
         //- The reciprocal preconditioned diagonal
-        scalarField rD_;
-        scalarField rDuUpper_;
-        scalarField rDlUpper_;
+        solveScalarField rD_;
+        solveScalarField rDuUpper_;
+        solveScalarField rDlUpper_;
 
 
 public:
@@ -86,8 +89,17 @@ public:
         //- Smooth the solution for a given number of sweeps
         void smooth
         (
-            scalarField& psi,
+            solveScalarField& psi,
             const scalarField& source,
+            const direction cmpt,
+            const label nSweeps
+        ) const;
+
+        //- Smooth the solution for a given number of sweeps
+        virtual void scalarSmooth
+        (
+            solveScalarField& psi,
+            const solveScalarField& source,
             const direction cmpt,
             const label nSweeps
         ) const;

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,20 +32,14 @@ License
 template<class Type>
 Type Foam::triFace::average
 (
-    const pointField& meshPoints,
+    const UList<point>&,
     const Field<Type>& fld
 ) const
 {
     // a triangle, do a direct calculation
     return
     (
-        (1.0/3.0)
-      *
-        (
-            fld[operator[](0)]
-          + fld[operator[](1)]
-          + fld[operator[](2)]
-        )
+        (1.0/3.0) * (fld[a()] + fld[b()] + fld[c()])
     );
 }
 

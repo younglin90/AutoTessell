@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,42 +26,47 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "ListOps.H"
-#include "point.H"
-#include "Field.H"
+#include "ListOps.H"  // sortedOrder
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Implementation  * * * * * * * * * * * * * * //
 
-template<class Type>
-Foam::label Foam::mergePoints
+template<class PointList, class IndexerOp>
+Foam::label Foam::Detail::mergePoints
 (
-    const Field<Type>& points,
+    const PointList& points,
+    const IndexerOp& indexer,
+    const label nSubPoints,
+    labelList& pointToUnique,
+    labelList& uniquePoints,
     const scalar mergeTol,
-    const bool verbose,
-    labelList& pointMap,
-    const Type& origin
+    const bool verbose
 )
 {
-    Type compareOrigin = origin;
+    const label nTotPoints = points.size();
 
-    if (origin == Type::max)
+    if (!nTotPoints || !nSubPoints)
     {
-        if (points.size())
-        {
-            compareOrigin = sum(points)/points.size();
-        }
+        // Nothing to do
+        pointToUnique = identity(nTotPoints);
+        uniquePoints = pointToUnique;
+        return 0;  // No points removed
     }
 
-    // Create a old to new point mapping array
-    pointMap.setSize(points.size());
-    pointMap = -1;
+    // Properly size for old to new mapping array
+    pointToUnique.resize_nocopy(nTotPoints);
 
-    if (points.empty())
+
+    // Use the boundBox minimum as the reference point. This
+    // stretches distances with fewer collisions than a mid-point
+    // reference would.
+
+    auto comparePoint(points[indexer(0)]);
+    for (label pointi = 1; pointi < nSubPoints; ++pointi)
     {
-        return points.size();
+        comparePoint = min(comparePoint, points[indexer(pointi)]);
     }
 
-    // We're comparing distance squared to origin first.
+    // We're comparing distance squared to reference point first.
     // Say if starting from two close points:
     //     x, y, z
     //     x+mergeTol, y+mergeTol, z+mergeTol
@@ -67,138 +75,445 @@ Foam::label Foam::mergePoints
     //     x^2+y^2+z^2 + 2*mergeTol*(x+z+y) + mergeTol^2*...
     // so the difference will be 2*mergeTol*(x+y+z)
 
-    const scalar mergeTolSqr = Foam::sqr(scalar(mergeTol));
+    const scalar mergeTolSqr(magSqr(mergeTol));
 
-    // Sort points by magSqr
-    const Field<Type> d(points - compareOrigin);
-
-    List<scalar> magSqrD(d.size());
-    forAll(d, pointi)
+    // Use magSqr distance for the points sort order
+    List<scalar> sqrDist(nSubPoints);
+    for (label pointi = 0; pointi < nSubPoints; ++pointi)
     {
-        magSqrD[pointi] = magSqr(d[pointi]);
-    }
-    labelList order;
-    sortedOrder(magSqrD, order);
+        const auto& p = points[indexer(pointi)];
 
-
-    Field<scalar> sortedTol(points.size());
-    forAll(order, sortI)
-    {
-        label pointi = order[sortI];
-
-        // Convert to scalar precision
-        const point pt
+        sqrDist[pointi] =
         (
-            scalar(d[pointi].x()),
-            scalar(d[pointi].y()),
-            scalar(d[pointi].z())
+            // Use scalar precision
+            magSqr(scalar(p.x() - comparePoint.x()))
+          + magSqr(scalar(p.y() - comparePoint.y()))
+          + magSqr(scalar(p.z() - comparePoint.z()))
         );
-        sortedTol[sortI] = 2*mergeTol*(mag(pt.x())+mag(pt.y())+mag(pt.z()));
+    }
+    labelList order(Foam::sortedOrder(sqrDist));
+
+    List<scalar> sortedTol(nSubPoints);
+    forAll(order, sorti)
+    {
+        const auto& p = points[indexer(order[sorti])];
+
+        sortedTol[sorti] =
+        (
+            2*mergeTol*
+            (
+                // Use scalar precision
+                mag(scalar(p.x() - comparePoint.x()))
+              + mag(scalar(p.y() - comparePoint.y()))
+              + mag(scalar(p.z() - comparePoint.z()))
+            )
+        );
     }
 
-    label newPointi = 0;
 
+    // Bookkeeping parameters
+    // ~~~~~~~~~~~~~~~~~~~~~~
 
-    // Handle 0th point separately (is always unique)
-    label pointi = order[0];
-    pointMap[pointi] = newPointi++;
+    // Will only be working on a subset of the points
+    // Can use a slice of pointToUnique (full length not needed until later).
+    SubList<label> subPointMap(pointToUnique, nSubPoints);
 
+    // Track number of unique points - this will form an offsets table
+    labelList newPointCounts(nSubPoints, Zero);
 
-    for (label sortI = 1; sortI < order.size(); sortI++)
+    label nNewPoints = 0;
+    for (label sorti = 0; sorti < order.size(); ++sorti)
     {
-        // Get original point index
-        label pointi = order[sortI];
-        const scalar mag2 = magSqrD[order[sortI]];
-        // Convert to scalar precision
-        const point pt
-        (
-            scalar(points[pointi].x()),
-            scalar(points[pointi].y()),
-            scalar(points[pointi].z())
-        );
+        // The (sub)point index
+        const label pointi = order[sorti];
+        const scalar currDist = sqrDist[order[sorti]];
+        const auto& currPoint = points[indexer(pointi)];
 
+        // Compare to previous points to find equal one
+        // - automatically a no-op for sorti == 0 (the first point)
 
-        // Compare to previous points to find equal one.
-        label equalPointi = -1;
+        bool matched = false;
 
         for
         (
-            label prevSortI = sortI - 1;
-            prevSortI >= 0
-         && (mag(magSqrD[order[prevSortI]] - mag2) <= sortedTol[sortI]);
-            prevSortI--
+            label prevSorti = sorti - 1;
+            (
+                prevSorti >= 0
+             && (mag(sqrDist[order[prevSorti]] - currDist) <= sortedTol[sorti])
+            );
+            --prevSorti
         )
         {
-            label prevPointi = order[prevSortI];
-            const point prevPt
+            const label prevPointi = order[prevSorti];
+            const auto& prevPoint = points[indexer(prevPointi)];
+
+            // Matched within tolerance?
+            matched =
             (
-                scalar(points[prevPointi].x()),
-                scalar(points[prevPointi].y()),
-                scalar(points[prevPointi].z())
+                (
+                    // Use scalar precision
+                    magSqr(scalar(currPoint.x() - prevPoint.x()))
+                  + magSqr(scalar(currPoint.y() - prevPoint.y()))
+                  + magSqr(scalar(currPoint.z() - prevPoint.z()))
+                ) <= mergeTolSqr
             );
 
-            if (magSqr(pt - prevPt) <= mergeTolSqr)
+            if (matched)
             {
-                // Found match.
-                equalPointi = prevPointi;
+                // Both pointi and prevPointi have similar coordinates.
+                // Map to the same new point.
+                subPointMap[pointi] = subPointMap[prevPointi];
 
+                if (verbose)
+                {
+                    Pout<< "Foam::mergePoints : [" << subPointMap[pointi]
+                        << "] Point " << pointi << " duplicate of "
+                        << prevPointi << " : coordinates:" << currPoint
+                        << " and " << prevPoint << endl;
+                }
                 break;
             }
         }
 
-
-        if (equalPointi != -1)
-        {
-            // Same coordinate as equalPointi. Map to same new point.
-            pointMap[pointi] = pointMap[equalPointi];
-
-            if (verbose)
-            {
-                Pout<< "Foam::mergePoints : Merging points "
-                    << pointi << " and " << equalPointi
-                    << " with coordinates:" << points[pointi]
-                    << " and " << points[equalPointi]
-                    << endl;
-            }
-        }
-        else
+        if (!matched)
         {
             // Differs. Store new point.
-            pointMap[pointi] = newPointi++;
+            subPointMap[pointi] = nNewPoints++;
+
+            /// Too verbose
+            ///if (verbose)
+            ///{
+            ///    Pout<< "Foam::mergePoints : [" << subPointMap[pointi]
+            ///        << "] Point " << pointi << endl;
+            ///}
+        }
+        ++newPointCounts[subPointMap[pointi]];
+    }
+
+    const label nDupPoints(nSubPoints - nNewPoints);
+    const label nUniqPoints(nTotPoints - nDupPoints);
+
+    if (verbose)
+    {
+        Pout<< "Foam::mergePoints : "
+            << "Merging removed " << nDupPoints << '/'
+            << nTotPoints << " points" << endl;
+    }
+
+    if (!nDupPoints)
+    {
+        // Nothing to do
+        pointToUnique = identity(nTotPoints);
+        uniquePoints = pointToUnique;
+        return 0;  // No points removed
+    }
+
+
+    // The subPointMap now contains a mapping of the sub-selection
+    // to the list of (sorted) merged points.
+    // Get its sort order to bundle according to the merged point target.
+    // This is in effect an adjacent list of graph edges to mapping back
+    // to the merged points, but in compact form.
+    // Use the previously obtained newPointCounts for the offsets list.
+
+    labelList lookupMerged(std::move(order));
+    Foam::sortedOrder(subPointMap, lookupMerged);
+
+    // Remap inplace to the original points ids
+    for (label& idx : lookupMerged)
+    {
+        idx = indexer(idx);
+    }
+    // The subPointMap slice is not needed beyond here
+
+
+    // Setup initial identity +1 mapping for pointToUnique
+    // The +1 allows negatives to mark duplicates
+
+    Foam::identity(pointToUnique, 1);
+
+    // The newPointCounts is an offsets table that we use to walk
+    // across the adjacency list (lookupMerged), picking the original
+    // point with the lowest id as the one to retain (master).
+    {
+        label beg = 0;
+        for (const label len : newPointCounts)
+        {
+            if (!len) continue;  // Can be empty
+
+            const label end = (beg + len);
+
+            // Pass 1:
+            // Find the 'master' (lowest point id)
+
+            label masterPointi = lookupMerged[beg];
+
+            for (label iter = beg + 1; iter < end; ++iter)
+            {
+                const label origPointi = lookupMerged[iter];
+
+                if (masterPointi > origPointi)
+                {
+                    masterPointi = origPointi;
+                }
+            }
+
+            // Pass 2:
+            // Markup duplicate points, encoding information about master
+            for (label iter = beg; iter < end; ++iter)
+            {
+                const label origPointi = lookupMerged[iter];
+
+                if (masterPointi != origPointi)
+                {
+                    // Encode the originating 'master' point
+                    pointToUnique[origPointi] = (-masterPointi-1);
+                }
+            }
+
+            beg = end;
         }
     }
 
-    return newPointi;
+    // Now have all the information needed
+
+    uniquePoints.resize_nocopy(nUniqPoints);
+    {
+        label uniquei = 0;
+
+        forAll(pointToUnique, pointi)
+        {
+            const label origPointi = pointToUnique[pointi];
+
+            if (origPointi > 0)
+            {
+                // Subtract one to align addressing
+                uniquePoints[uniquei] = (origPointi - 1);
+                pointToUnique[pointi] = uniquei;
+                ++uniquei;
+            }
+            else
+            {
+                // A duplicate point. Also guaranteed that the 'master' point
+                // has a lower index and thus already been seen.
+                const label masterPointi = mag(origPointi) - 1;
+                pointToUnique[pointi] = pointToUnique[masterPointi];
+            }
+        }
+    }
+
+    return nDupPoints;
 }
 
 
-template<class Type>
-bool Foam::mergePoints
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class PointList>
+Foam::label Foam::mergePoints
 (
-    const Field<Type>& points,
+    const PointList& points,
+    labelList& pointToUnique,
+    labelList& uniquePoints,
     const scalar mergeTol,
-    const bool verbose,
-    labelList& pointMap,
-    List<Type>& newPoints,
-    const Type& origin
+    const bool verbose
 )
 {
-    label nUnique = mergePoints
-    (
-        points,
-        mergeTol,
-        verbose,
-        pointMap,
-        origin
-    );
+    const label nTotPoints = points.size();
 
-    newPoints.setSize(nUnique);
-    forAll(pointMap, pointi)
+    if (!nTotPoints)
     {
-        newPoints[pointMap[pointi]] = points[pointi];
+        // Nothing to do
+        pointToUnique.clear();
+        uniquePoints.clear();
+        return 0;  // No points removed
     }
 
-    return (nUnique != points.size());
+    return Foam::Detail::mergePoints
+    (
+        points,
+        identityOp(),   // identity indexer
+        nTotPoints,     // == nSubPoints
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+}
+
+
+template<class PointList>
+Foam::label Foam::mergePoints
+(
+    const PointList& points,
+    const labelUList& selection,
+    labelList& pointToUnique,
+    labelList& uniquePoints,
+    const scalar mergeTol,
+    const bool verbose
+)
+{
+    const label nTotPoints = points.size();
+    const label nSubPoints = selection.size();
+
+    if (!nTotPoints || !nSubPoints)
+    {
+        // Nothing to do
+        pointToUnique.clear();
+        uniquePoints.clear();
+        return 0;  // No points removed
+    }
+
+    const auto indexer = [&](const label i) -> label { return selection[i]; };
+
+    return Foam::Detail::mergePoints
+    (
+        points,
+        indexer,
+        nSubPoints,
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+}
+
+
+template<class PointList>
+Foam::label Foam::mergePoints
+(
+    const PointList& points,
+    const scalar mergeTol,
+    const bool verbose,
+    labelList& pointToUnique
+)
+{
+    labelList uniquePoints;
+    const label nChanged = Foam::mergePoints
+    (
+        points,
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+
+    // Number of unique points
+    return (points.size() - nChanged);
+}
+
+
+template<class PointList>
+Foam::label Foam::inplaceMergePoints
+(
+    PointList& points,
+    const scalar mergeTol,
+    const bool verbose,
+    labelList& pointToUnique
+)
+{
+    labelList uniquePoints;
+    const label nChanged = Foam::mergePoints
+    (
+        points,
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+
+    if (nChanged)
+    {
+        // Overwrite
+        points = List<typename PointList::value_type>(points, uniquePoints);
+    }
+    else
+    {
+        // TDB:
+        // pointToUnique.clear();
+    }
+
+    return nChanged;
+}
+
+
+template<class PointList>
+Foam::label Foam::inplaceMergePoints
+(
+    PointList& points,
+    const labelUList& selection,
+    const scalar mergeTol,
+    const bool verbose,
+    labelList& pointToUnique
+)
+{
+    labelList uniquePoints;
+    const label nChanged = Foam::mergePoints
+    (
+        points,
+        selection,
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+
+    if (nChanged)
+    {
+        // Overwrite
+        points = List<typename PointList::value_type>(points, uniquePoints);
+    }
+    else
+    {
+        // TDB:
+        // pointToUnique.clear();
+    }
+
+    return nChanged;
+}
+
+
+template<class PointList>
+Foam::label Foam::mergePoints
+(
+    const PointList& points,
+    const scalar mergeTol,
+    const bool verbose,
+    labelList& pointToUnique,
+    List<typename PointList::value_type>& newPoints
+)
+{
+    const label nTotPoints = points.size();
+
+    if (!nTotPoints)
+    {
+        // Nothing to do
+        pointToUnique.clear();
+        newPoints.clear();
+        return 0;  // No points removed
+    }
+
+    labelList uniquePoints;
+    const label nChanged = Foam::mergePoints
+    (
+        points,
+        pointToUnique,
+        uniquePoints,
+        mergeTol,
+        verbose
+    );
+
+    if (nChanged)
+    {
+        newPoints = List<typename PointList::value_type>(points, uniquePoints);
+    }
+    else
+    {
+        // TDB:
+        // pointToUnique.clear();
+        newPoints = points;
+    }
+
+    return nChanged;
 }
 
 

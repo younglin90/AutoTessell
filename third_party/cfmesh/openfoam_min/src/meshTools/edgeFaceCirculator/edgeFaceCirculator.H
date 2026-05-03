@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -81,36 +83,27 @@ namespace Foam
 class primitiveMesh;
 
 /*---------------------------------------------------------------------------*\
-                     Class edgeFaceCirculator Declaration
+                           Class edgeFaceCirculator Declaration
 \*---------------------------------------------------------------------------*/
 
 class edgeFaceCirculator
 {
-    // Static Data Members
+    // Private Member Data
 
-        //- End iterator primitiveMesh nullptr
-        static const primitiveMesh* const endConstIterMeshPtr;
+        //- The underlying mesh pointer
+        const primitiveMesh* meshPtr_;
 
-        //- End iterator
-        static const edgeFaceCirculator endConstIter;
+        //- Is current side of face the owner side?
+        bool ownerSide_;
 
-
-    // Private Data
-
-        //- Mesh
-        const primitiveMesh& mesh_;
+        //- Is boundary edge?
+        bool isBoundaryEdge_;
 
         //- Current face
         label faceLabel_;
 
-        //- Current side of face
-        bool ownerSide_;
-
         //- Edge (between index and index+1 on faces[faceLabel_]
         label index_;
-
-        //- Is boundary edge?
-        bool isBoundaryEdge_;
 
         //- Starting face so we know when to stop. Used when circulating over
         //  internal edges.
@@ -119,15 +112,20 @@ class edgeFaceCirculator
 
     // Private Member Functions
 
+        //- The underlying mesh
+        inline const primitiveMesh& mesh() const;
+
         //- Set to end() iterator
         inline void setEnd();
 
         //- Check and set faceLabel_ and ownerSide_
         inline void setFace(const label facei, const label celli);
 
-        //- Set faceLabel_ to be the other face on the cell that uses the
-        //  edge.
+        //- Set faceLabel_ to be the other face on the cell that uses the edge.
         inline void otherFace(const label celli);
+
+        //- Default construct - this is also an end iterator
+        inline edgeFaceCirculator();
 
 
 public:
@@ -144,8 +142,8 @@ public:
             const bool isBoundaryEdge
         );
 
-        //- Copy constructor
-        inline edgeFaceCirculator(const edgeFaceCirculator&);
+        //- Construct as copy
+        inline edgeFaceCirculator(const edgeFaceCirculator& circ);
 
 
     // Member Functions
@@ -159,7 +157,11 @@ public:
             const label v1
         );
 
+        //- Return the face label, -1 for end iterator
         inline label faceLabel() const;
+
+        //- Return true if the face label corresponds to an internal face
+        inline bool isInternalFace() const;
 
         inline bool ownerSide() const;
 
@@ -197,8 +199,8 @@ public:
         inline edgeFaceCirculator cbegin() const;
 
         //- Iterator set to beyond the end of the walk.
-        inline const edgeFaceCirculator& end() const;
-        inline const edgeFaceCirculator& cend() const;
+        inline const edgeFaceCirculator end() const;
+        inline const edgeFaceCirculator cend() const;
 };
 
 

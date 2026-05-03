@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,18 +28,196 @@ License
 
 #include "IOField.H"
 
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+template<class Type>
+bool Foam::IOField<Type>::readIOcontents(bool readOnProc)
+{
+    if (isReadRequired())
+    {
+        // Reading
+    }
+    else if (isReadOptional())
+    {
+        if (!headerOk())
+        {
+            readOnProc = false;
+        }
+    }
+    else
+    {
+        return false;
+    }
+
+
+    // Do reading
+    Istream& is = readStream(typeName, readOnProc);
+
+    if (readOnProc)
+    {
+        is >> *this;
+    }
+    close();
+    return true;
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::IOField<Type>::IOField
+Foam::IOField<Type>::IOField(const IOobject& io)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    readIOcontents();
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, const bool readOnProc)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    readIOcontents(readOnProc);
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, Foam::zero)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    readIOcontents();
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, const label len)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    if (!readIOcontents())
+    {
+        Field<Type>::resize(len);
+    }
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, const UList<Type>& content)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    if (!readIOcontents())
+    {
+        Field<Type>::operator=(content);
+    }
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, Field<Type>&& content)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOField<Type>>();
+
+    Field<Type>::transfer(content);
+
+    readIOcontents();
+}
+
+
+template<class Type>
+Foam::IOField<Type>::IOField(const IOobject& io, const tmp<Field<Type>>& tfld)
+:
+    regIOobject(io)
+{
+    const bool reuse = tfld.movable();
+
+    if (reuse)
+    {
+        Field<Type>::transfer(tfld.ref());
+    }
+
+    if (!readIOcontents() && !reuse)
+    {
+        Field<Type>::operator=(tfld());
+    }
+
+    tfld.clear();
+}
+
+
+template<class Type>
+Foam::IOFieldRef<Type>::IOFieldRef
 (
     const IOobject& io,
-    const tmp<Field<Type>>& f
+    const Field<Type>& content
 )
 :
-    IOField(io, f())
+    regIOobject(io),
+    contentRef_(content)  // cref
+{}
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+template<class Type>
+Foam::Field<Type> Foam::IOField<Type>::readContents(const IOobject& io)
 {
-    f.clear();
+    IOobject rio(io, IOobjectOption::NO_REGISTER);
+    if (rio.readOpt() == IOobjectOption::READ_MODIFIED)
+    {
+        rio.readOpt(IOobjectOption::MUST_READ);
+    }
+
+    IOField<Type> reader(rio);
+
+    return Field<Type>(std::move(static_cast<Field<Type>&>(reader)));
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class Type>
+bool Foam::IOField<Type>::writeData(Ostream& os) const
+{
+    os << static_cast<const Field<Type>&>(*this);
+    return os.good();
+}
+
+
+template<class Type>
+bool Foam::IOFieldRef<Type>::writeData(Ostream& os) const
+{
+    os << contentRef_.cref();
+    return os.good();
+}
+
+
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+template<class Type>
+void Foam::IOField<Type>::operator=(const IOField<Type>& rhs)
+{
+    Field<Type>::operator=(rhs);
 }
 
 

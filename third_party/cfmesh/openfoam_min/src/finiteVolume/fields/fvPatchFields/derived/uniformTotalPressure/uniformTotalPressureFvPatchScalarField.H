@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::uniformTotalPressureFvPatchScalarField
+
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
 
 Description
     This boundary condition provides a time-varying form of the uniform total
@@ -44,7 +49,7 @@ Usage
     <patchName>
     {
         type            uniformTotalPressure;
-        p0              1e5;
+        p0              uniform 1e5;
     }
     \endverbatim
 
@@ -52,7 +57,7 @@ Usage
     time varying functions.
 
 See also
-    Foam::Function1s
+    Foam::Function1Types
     Foam::uniformFixedValueFvPatchField
     Foam::totalPressureFvPatchField
 
@@ -80,7 +85,7 @@ class uniformTotalPressureFvPatchScalarField
 :
     public fixedValueFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Name of the velocity field
         word UName_;
@@ -89,7 +94,7 @@ class uniformTotalPressureFvPatchScalarField
         word phiName_;
 
         //- Name of the density field used to normalise the mass flux
-        //  if necessary
+        //- if necessary
         word rhoName_;
 
         //- Name of the compressibility field used to calculate the wave speed
@@ -110,11 +115,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        uniformTotalPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         uniformTotalPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -123,37 +135,40 @@ public:
         (
             const uniformTotalPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         uniformTotalPressureFvPatchScalarField
         (
             const uniformTotalPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         uniformTotalPressureFvPatchScalarField
         (
             const uniformTotalPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new uniformTotalPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
@@ -198,12 +213,6 @@ public:
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

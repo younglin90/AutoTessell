@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,23 +29,26 @@ License
 #include "STARCDsurfaceFormatCore.H"
 #include "clock.H"
 #include "regExp.H"
-#include "IStringStream.H"
+#include "IFstream.H"
+#include "SubStrings.H"
 
-// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 // parse things like this:
 //     CTNAME  1  someName
 // don't bother with the older comma-delimited format
 
 Foam::Map<Foam::word>
-Foam::fileFormats::STARCDsurfaceFormatCore::readInpCellTable
-(
-    IFstream& is
-)
+Foam::fileFormats::STARCDsurfaceFormatCore::readInpCellTable(ISstream& is)
 {
     Map<word> lookup;
 
-    regExp ctnameRE
+    if (!is.good())
+    {
+        return lookup;
+    }
+
+    const regExp ctname
     (
         " *CTNA[^ ]*"        // keyword - min 4 chars
         "[[:space:]]+"       // space delimited
@@ -53,19 +59,18 @@ Foam::fileFormats::STARCDsurfaceFormatCore::readInpCellTable
     );
 
     string line;
-    List<string> groups;
+    regExp::results_type groups;
+
     while (is.good() && is.getLine(line).good())
     {
-        if (ctnameRE.match(line, groups))
+        if (ctname.match(line, groups))
         {
-            const label tableId = atoi(groups[0].c_str());
+            const label tableId = readLabel(groups.str(1));
+            const word tableName = word::validate(groups.str(2), true);
 
-            // strip bad chars
-            string::stripInvalid<word>(groups[1]);
-
-            if (!groups[1].empty())
+            if (!tableName.empty())
             {
-                lookup.insert(tableId, groups[1]);
+                lookup.insert(tableId, tableName);
             }
         }
     }
@@ -77,15 +82,15 @@ Foam::fileFormats::STARCDsurfaceFormatCore::readInpCellTable
 void Foam::fileFormats::STARCDsurfaceFormatCore::writeCase
 (
     Ostream& os,
-    const pointField& pointLst,
+    const UList<point>& pts,
     const label nFaces,
     const UList<surfZone>& zoneLst
 )
 {
-    word caseName = os.name().lessExt().name();
+    const word caseName = os.name().stem();
 
-    os  << "! STAR-CD file written " << clock::dateTime().c_str() << nl
-        << "! " << pointLst.size() << " points, " << nFaces << " faces" << nl
+    os  << "! STARCD file written " << clock::dateTime().c_str() << nl
+        << "! " << pts.size() << " points, " << nFaces << " faces" << nl
         << "! case " << caseName << nl
         << "! ------------------------------" << nl;
 

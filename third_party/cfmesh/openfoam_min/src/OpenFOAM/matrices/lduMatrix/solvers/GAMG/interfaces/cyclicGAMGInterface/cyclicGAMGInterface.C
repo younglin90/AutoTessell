@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019,2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,7 @@ License
 
 #include "cyclicGAMGInterface.H"
 #include "addToRunTimeSelectionTable.H"
-#include "labelPair.H"
-#include "HashTable.H"
+#include "labelPairHashes.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -46,6 +48,7 @@ namespace Foam
         Istream
     );
 
+
     // Add under name cyclicSlip
     addNamedToRunTimeSelectionTable
     (
@@ -60,22 +63,6 @@ namespace Foam
         cyclicGAMGInterface,
         Istream,
         cyclicSlip
-    );
-
-    // Add under name nonConformalCyclic
-    addNamedToRunTimeSelectionTable
-    (
-        GAMGInterface,
-        cyclicGAMGInterface,
-        lduInterface,
-        nonConformalCyclic
-    );
-    addNamedToRunTimeSelectionTable
-    (
-        GAMGInterface,
-        cyclicGAMGInterface,
-        Istream,
-        nonConformalCyclic
     );
 }
 
@@ -94,12 +81,13 @@ Foam::cyclicGAMGInterface::cyclicGAMGInterface
 )
 :
     GAMGInterface(index, coarseInterfaces),
-    nbrPatchIndex_
+    neighbPatchID_
     (
-        refCast<const cyclicLduInterface>(fineInterface).nbrPatchIndex()
+        refCast<const cyclicLduInterface>(fineInterface).neighbPatchID()
     ),
     owner_(refCast<const cyclicLduInterface>(fineInterface).owner()),
-    transform_(refCast<const cyclicLduInterface>(fineInterface).transform())
+    forwardT_(refCast<const cyclicLduInterface>(fineInterface).forwardT()),
+    reverseT_(refCast<const cyclicLduInterface>(fineInterface).reverseT())
 {
     // From coarse face to coarse cell
     DynamicList<label> dynFaceCells(localRestrictAddressing.size());
@@ -110,10 +98,7 @@ Foam::cyclicGAMGInterface::cyclicGAMGInterface
     );
 
     // From coarse cell pair to coarse face
-    HashTable<label, labelPair, labelPair::Hash<>> cellsToCoarseFace
-    (
-        2*localRestrictAddressing.size()
-    );
+    labelPairLookup cellsToCoarseFace(2*localRestrictAddressing.size());
 
     forAll(localRestrictAddressing, ffi)
     {
@@ -140,21 +125,20 @@ Foam::cyclicGAMGInterface::cyclicGAMGInterface
             );
         }
 
-        HashTable<label, labelPair, labelPair::Hash<>>::const_iterator fnd =
-            cellsToCoarseFace.find(cellPair);
+        const auto fnd = cellsToCoarseFace.cfind(cellPair);
 
-        if (fnd == cellsToCoarseFace.end())
+        if (fnd.good())
+        {
+            // Already have coarse face
+            dynFaceRestrictAddressing.append(fnd.val());
+        }
+        else
         {
             // New coarse face
             label coarseI = dynFaceCells.size();
             dynFaceRestrictAddressing.append(coarseI);
             dynFaceCells.append(localRestrictAddressing[ffi]);
             cellsToCoarseFace.insert(cellPair, coarseI);
-        }
-        else
-        {
-            // Already have coarse face
-            dynFaceRestrictAddressing.append(fnd());
         }
     }
 
@@ -171,15 +155,42 @@ Foam::cyclicGAMGInterface::cyclicGAMGInterface
 )
 :
     GAMGInterface(index, coarseInterfaces, is),
-    nbrPatchIndex_(readLabel(is)),
+    neighbPatchID_(readLabel(is)),
     owner_(readBool(is)),
-    transform_(is)
+    forwardT_(is),
+    reverseT_(is)
 {}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::cyclicGAMGInterface::~cyclicGAMGInterface()
+Foam::cyclicGAMGInterface::cyclicGAMGInterface
+(
+    const label index,
+    const lduInterfacePtrsList& coarseInterfaces,
+    const lduInterface& fineInterface,
+    const labelList& interfaceMap,
+    const labelUList& faceCells,
+    const labelUList& faceRestrictAddresssing,
+    const labelUList& faceOffsets,
+    const lduInterfacePtrsList& allInterfaces
+)
+:
+    GAMGInterface
+    (
+        index,
+        coarseInterfaces,
+        faceCells,
+        faceRestrictAddresssing
+    ),
+    neighbPatchID_
+    (
+        interfaceMap.find
+        (
+            refCast<const cyclicLduInterface>(fineInterface).neighbPatchID()
+        )
+    ),
+    owner_(refCast<const cyclicLduInterface>(fineInterface).owner()),
+    forwardT_(refCast<const cyclicLduInterface>(fineInterface).forwardT()),
+    reverseT_(refCast<const cyclicLduInterface>(fineInterface).reverseT())
 {}
 
 
@@ -187,15 +198,15 @@ Foam::cyclicGAMGInterface::~cyclicGAMGInterface()
 
 Foam::tmp<Foam::labelField> Foam::cyclicGAMGInterface::internalFieldTransfer
 (
-    const Pstream::commsTypes,
+    const Pstream::commsTypes commsType,
     const labelUList& iF
 ) const
 {
-    const cyclicGAMGInterface& nbr = nbrPatch();
+    const cyclicGAMGInterface& nbr = neighbPatch();
     const labelUList& nbrFaceCells = nbr.faceCells();
 
-    tmp<labelField> tpnf(new labelField(size()));
-    labelField& pnf = tpnf.ref();
+    auto tpnf = tmp<labelField>::New(size());
+    auto& pnf = tpnf.ref();
 
     forAll(pnf, facei)
     {
@@ -209,9 +220,10 @@ Foam::tmp<Foam::labelField> Foam::cyclicGAMGInterface::internalFieldTransfer
 void Foam::cyclicGAMGInterface::write(Ostream& os) const
 {
     GAMGInterface::write(os);
-    os  << token::SPACE << nbrPatchIndex_
+    os  << token::SPACE << neighbPatchID_
         << token::SPACE << owner_
-        << token::SPACE << transform_;
+        << token::SPACE << forwardT_
+        << token::SPACE << reverseT_;
 }
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,8 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "smoothSolver.H"
+#include "profiling.H"
+#include "PrecisionAdaptor.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -70,23 +75,28 @@ Foam::smoothSolver::smoothSolver
 void Foam::smoothSolver::readControls()
 {
     lduMatrix::solver::readControls();
-    nSweeps_ = controlDict_.lookupOrDefault<label>("nSweeps", 1);
+    nSweeps_ = controlDict_.getOrDefault<label>("nSweeps", 1);
 }
 
 
 Foam::solverPerformance Foam::smoothSolver::solve
 (
-    scalarField& psi,
+    scalarField& psi_s,
     const scalarField& source,
     const direction cmpt
 ) const
 {
+    PrecisionAdaptor<solveScalar, scalar> tpsi(psi_s);
+    solveScalarField& psi = tpsi.ref();
+
     // Setup class containing solver performance data
     solverPerformance solverPerf(typeName, fieldName_);
 
     // If the nSweeps_ is negative do a fixed number of sweeps
     if (nSweeps_ < 0)
     {
+        addProfiling(solve, "lduMatrix::smoother.", fieldName_);
+
         autoPtr<lduMatrix::smoother> smootherPtr = lduMatrix::smoother::New
         (
             fieldName_,
@@ -109,30 +119,39 @@ Foam::solverPerformance Foam::smoothSolver::solve
     }
     else
     {
-        scalar normFactor = 0;
+        solveScalar normFactor = 0;
+        solveScalarField residual;
+
+        ConstPrecisionAdaptor<solveScalar, scalar> tsource(source);
 
         {
-            scalarField Apsi(psi.size());
-            scalarField temp(psi.size());
+            solveScalarField Apsi(psi.size());
+            solveScalarField temp(psi.size());
 
             // Calculate A.psi
             matrix_.Amul(Apsi, psi, interfaceBouCoeffs_, interfaces_, cmpt);
 
             // Calculate normalisation factor
-            normFactor = this->normFactor(psi, source, Apsi, temp);
+            normFactor = this->normFactor(psi, tsource(), Apsi, temp);
+
+            residual = tsource() - Apsi;
+
+            matrix().setResidualField
+            (
+                ConstPrecisionAdaptor<scalar, solveScalar>(residual)(),
+                fieldName_,
+                true
+            );
 
             // Calculate residual magnitude
-            solverPerf.initialResidual() = gSumMag
-            (
-                (source - Apsi)(),
-                matrix().mesh().comm()
-            )/normFactor;
+            solverPerf.initialResidual() =
+                gSumMag(residual, matrix().mesh().comm())/normFactor;
             solverPerf.finalResidual() = solverPerf.initialResidual();
         }
 
-        if (lduMatrix::debug >= 2)
+        if ((log_ >= 2) || (lduMatrix::debug >= 2))
         {
-            Info(matrix().mesh().comm())
+            Info.masterStream(matrix().mesh().comm())
                 << "   Normalisation factor = " << normFactor << endl;
         }
 
@@ -141,9 +160,11 @@ Foam::solverPerformance Foam::smoothSolver::solve
         if
         (
             minIter_ > 0
-         || !solverPerf.checkConvergence(tolerance_, relTol_)
+         || !solverPerf.checkConvergence(tolerance_, relTol_, log_)
         )
         {
+            addProfiling(solve, "lduMatrix::smoother.", fieldName_);
+
             autoPtr<lduMatrix::smoother> smootherPtr = lduMatrix::smoother::New
             (
                 fieldName_,
@@ -165,9 +186,7 @@ Foam::solverPerformance Foam::smoothSolver::solve
                     nSweeps_
                 );
 
-                // Calculate the residual to check convergence
-                solverPerf.finalResidual() = gSumMag
-                (
+                residual =
                     matrix_.residual
                     (
                         psi,
@@ -175,18 +194,27 @@ Foam::solverPerformance Foam::smoothSolver::solve
                         interfaceBouCoeffs_,
                         interfaces_,
                         cmpt
-                    )(),
-                    matrix().mesh().comm()
-                )/normFactor;
+                    );
+
+                // Calculate the residual to check convergence
+                solverPerf.finalResidual() =
+                    gSumMag(residual, matrix().mesh().comm())/normFactor;
             } while
             (
                 (
                     (solverPerf.nIterations() += nSweeps_) < maxIter_
-                && !solverPerf.checkConvergence(tolerance_, relTol_)
+                && !solverPerf.checkConvergence(tolerance_, relTol_, log_)
                 )
              || solverPerf.nIterations() < minIter_
             );
         }
+
+        matrix().setResidualField
+        (
+            ConstPrecisionAdaptor<scalar, solveScalar>(residual)(),
+            fieldName_,
+            false
+        );
     }
 
     return solverPerf;

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2021-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,6 @@ License
 
 #include "GAMGSolver.H"
 #include "GAMGInterface.H"
-#include "diagonalSolver.H"
 #include "PCG.H"
 #include "PBiCGStab.H"
 
@@ -67,7 +69,6 @@ Foam::GAMGSolver::GAMGSolver
 
     // Default values for all controls
     // which may be overridden by those in controlDict
-    cacheAgglomeration_(true),
     nPreSweeps_(0),
     preSweepsLevelMultiplier_(1),
     maxPreSweeps_(4),
@@ -75,9 +76,12 @@ Foam::GAMGSolver::GAMGSolver
     postSweepsLevelMultiplier_(1),
     maxPostSweeps_(4),
     nFinestSweeps_(2),
+
+    cacheAgglomeration_(true),
     interpolateCorrection_(false),
     scaleCorrection_(matrix.symmetric()),
     directSolveCoarsest_(false),
+
     agglomeration_(GAMGAgglomeration::New(matrix_, controlDict_)),
 
     matrixLevels_(agglomeration_.size()),
@@ -117,16 +121,22 @@ Foam::GAMGSolver::GAMGSolver
                     (
                         dummyPrimMeshInterfaces.size()
                     );
+
+                    OCharStream os(IOstreamOption::BINARY);
+                    ISpanStream is(IOstreamOption::BINARY);
+
                     forAll(fineMeshInterfaces, intI)
                     {
                         if (fineMeshInterfaces.set(intI))
                         {
-                            OStringStream os;
+                            os.rewind();
+
                             refCast<const GAMGInterface>
                             (
                                 fineMeshInterfaces[intI]
                             ).write(os);
-                            IStringStream is(os.str());
+
+                            is.reset(os.view());
 
                             dummyPrimMeshInterfaces.set
                             (
@@ -207,8 +217,7 @@ Foam::GAMGSolver::GAMGSolver
         }
     }
 
-
-    if (debug)
+    if ((log_ >= 2) || (debug & 2))
     {
         for
         (
@@ -235,6 +244,8 @@ Foam::GAMGSolver::GAMGSolver
                     {
                         Pout<< "        " << i
                             << "\ttype:" << interfaces[i].type()
+                            << "\tsize:"
+                            << interfaces[i].interface().faceCells().size()
                             << endl;
                     }
                 }
@@ -256,7 +267,7 @@ Foam::GAMGSolver::GAMGSolver
         {
             if (directSolveCoarsest_)
             {
-                coarsestLUMatrixPtr_.set
+                coarsestLUMatrixPtr_.reset
                 (
                     new LUscalarMatrix
                     (
@@ -268,22 +279,26 @@ Foam::GAMGSolver::GAMGSolver
             }
             else
             {
-                coarsestSolverPtr_ =
-                    matrixLevels_[coarsestLevel].diagonal()
-                  ? autoPtr<lduMatrix::solver>
+                entry* coarseEntry = controlDict_.findEntry
+                (
+                    "coarsestLevelCorr",
+                    keyType::LITERAL_RECURSIVE
+                );
+                if (coarseEntry && coarseEntry->isDict())
+                {
+                    coarsestSolverPtr_ = lduMatrix::solver::New
                     (
-                        new diagonalSolver
-                        (
-                            "coarsestLevelCorr",
-                            matrixLevels_[coarsestLevel],
-                            interfaceLevelsBouCoeffs_[coarsestLevel],
-                            interfaceLevelsIntCoeffs_[coarsestLevel],
-                            interfaceLevels_[coarsestLevel],
-                            dictionary()
-                        )
-                    )
-                  : matrixLevels_[coarsestLevel].asymmetric()
-                  ? autoPtr<lduMatrix::solver>
+                        "coarsestLevelCorr",
+                        matrixLevels_[coarsestLevel],
+                        interfaceLevelsBouCoeffs_[coarsestLevel],
+                        interfaceLevelsIntCoeffs_[coarsestLevel],
+                        interfaceLevels_[coarsestLevel],
+                        coarseEntry->dict()
+                    );
+                }
+                else if (matrixLevels_[coarsestLevel].asymmetric())
+                {
+                    coarsestSolverPtr_.reset
                     (
                         new PBiCGStab
                         (
@@ -292,15 +307,13 @@ Foam::GAMGSolver::GAMGSolver
                             interfaceLevelsBouCoeffs_[coarsestLevel],
                             interfaceLevelsIntCoeffs_[coarsestLevel],
                             interfaceLevels_[coarsestLevel],
-                            dictionary::entries
-                            (
-                                "preconditioner", "DILU",
-                                "tolerance", tolerance_,
-                                "relTol", relTol_
-                            )
+                            PBiCGStabSolverDict(tolerance_, relTol_)
                         )
-                    )
-                  : autoPtr<lduMatrix::solver>
+                    );
+                }
+                else
+                {
+                    coarsestSolverPtr_.reset
                     (
                         new PCG
                         (
@@ -309,14 +322,10 @@ Foam::GAMGSolver::GAMGSolver
                             interfaceLevelsBouCoeffs_[coarsestLevel],
                             interfaceLevelsIntCoeffs_[coarsestLevel],
                             interfaceLevels_[coarsestLevel],
-                            dictionary::entries
-                            (
-                                "preconditioner", "DIC",
-                                "tolerance", tolerance_,
-                                "relTol", relTol_
-                            )
+                            PCGsolverDict(tolerance_, relTol_)
                         )
                     );
+                }
             }
         }
     }
@@ -324,9 +333,9 @@ Foam::GAMGSolver::GAMGSolver
     {
         FatalErrorInFunction
             << "No coarse levels created, either matrix too small for GAMG"
-               " or minCellsPerProcessor too large.\n"
+               " or nCellsInCoarsestLevel too large.\n"
                "    Either choose another solver of reduce "
-               "minCellsPerProcessor."
+               "nCellsInCoarsestLevel."
             << exit(FatalError);
     }
 }
@@ -369,9 +378,9 @@ void Foam::GAMGSolver::readControls()
     controlDict_.readIfPresent("scaleCorrection", scaleCorrection_);
     controlDict_.readIfPresent("directSolveCoarsest", directSolveCoarsest_);
 
-    if (debug)
+    if ((log_ >= 2) || debug)
     {
-        Pout<< "GAMGSolver settings :"
+        Info<< "GAMGSolver settings :"
             << " cacheAgglomeration:" << cacheAgglomeration_
             << " nPreSweeps:" << nPreSweeps_
             << " preSweepsLevelMultiplier:" << preSweepsLevelMultiplier_
@@ -390,14 +399,7 @@ void Foam::GAMGSolver::readControls()
 
 const Foam::lduMatrix& Foam::GAMGSolver::matrixLevel(const label i) const
 {
-    if (i == 0)
-    {
-        return matrix_;
-    }
-    else
-    {
-        return matrixLevels_[i - 1];
-    }
+    return i ? matrixLevels_[i-1] : matrix_;
 }
 
 
@@ -406,14 +408,7 @@ const Foam::lduInterfaceFieldPtrsList& Foam::GAMGSolver::interfaceLevel
     const label i
 ) const
 {
-    if (i == 0)
-    {
-        return interfaces_;
-    }
-    else
-    {
-        return interfaceLevels_[i - 1];
-    }
+    return i ? interfaceLevels_[i-1] : interfaces_;
 }
 
 
@@ -423,14 +418,7 @@ Foam::GAMGSolver::interfaceBouCoeffsLevel
     const label i
 ) const
 {
-    if (i == 0)
-    {
-        return interfaceBouCoeffs_;
-    }
-    else
-    {
-        return interfaceLevelsBouCoeffs_[i - 1];
-    }
+    return i ? interfaceLevelsBouCoeffs_[i-1] : interfaceBouCoeffs_;
 }
 
 
@@ -440,14 +428,7 @@ Foam::GAMGSolver::interfaceIntCoeffsLevel
     const label i
 ) const
 {
-    if (i == 0)
-    {
-        return interfaceIntCoeffs_;
-    }
-    else
-    {
-        return interfaceLevelsIntCoeffs_[i - 1];
-    }
+    return i ? interfaceLevelsIntCoeffs_[i-1] : interfaceIntCoeffs_;
 }
 
 

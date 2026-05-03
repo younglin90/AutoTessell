@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,38 +31,8 @@ License
 
 namespace Foam
 {
-defineTypeNameAndDebug(processorLduInterface, 0);
+    defineTypeName(processorLduInterface);
 }
-
-
-// * * * * * * * * * * * * * Private Member Functions *  * * * * * * * * * * //
-
-void Foam::processorLduInterface::resizeBuf
-(
-    List<char>& buf,
-    const label size
-) const
-{
-    if (buf.size() < size)
-    {
-        buf.setSize(size);
-    }
-}
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::processorLduInterface::processorLduInterface()
-:
-    sendBuf_(0),
-    receiveBuf_(0)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::processorLduInterface::~processorLduInterface()
-{}
 
 
 // ************************************************************************* //

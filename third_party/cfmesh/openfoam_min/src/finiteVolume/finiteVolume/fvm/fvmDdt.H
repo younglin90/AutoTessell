@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,6 +38,7 @@ SourceFiles
 #define fvmDdt_H
 
 #include "volFieldsFwd.H"
+#include "fvMatrix.H"
 #include "one.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -43,10 +46,8 @@ SourceFiles
 namespace Foam
 {
 
-template<class Type> class fvMatrix;
-
 /*---------------------------------------------------------------------------*\
-                      Namespace fvm functions Declaration
+                     Namespace fvm functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvm
@@ -54,28 +55,28 @@ namespace fvm
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
+    );
+
+    template<class Type>
+    tmp<fvMatrix<Type>> ddt
+    (
+        const Foam::one,
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
         const dimensionedScalar&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
         const volScalarField&,
-        const VolField<Type>&
-    );
-
-    template<class Type>
-    tmp<fvMatrix<Type>> ddt
-    (
-        const one&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
@@ -83,31 +84,31 @@ namespace fvm
     (
         const volScalarField&,
         const volScalarField&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
-        const one&,
-        const one&,
-        const VolField<Type>&
+        const Foam::one,
+        const Foam::one,
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
-        const one&,
+        const Foam::one,
         const volScalarField&,
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<fvMatrix<Type>> ddt
     (
         const volScalarField&,
-        const one&,
-        const VolField<Type>&
+        const Foam::one,
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 }
 

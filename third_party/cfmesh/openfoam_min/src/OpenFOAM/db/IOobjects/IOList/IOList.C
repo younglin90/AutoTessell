@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,324 +28,145 @@ License
 
 #include "IOList.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase(const IOobject& io)
+template<class T>
+bool Foam::IOList<T>::readIOcontents()
+{
+    if (isReadRequired() || (isReadOptional() && headerOk()))
+    {
+        readStream(typeName) >> *this;
+        close();
+        return true;
+    }
+
+    return false;
+}
+
+
+// * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * * //
+
+template<class T>
+Foam::IOList<T>::IOList(const IOobject& io)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    if (!IOContainer<Type>::rereading)
-    {
-        warnNoRereading<IOContainer<Type>>();
-    }
+    warnNoRereading<IOList<T>>();
 
-    if
-    (
-        (
-            io.readOpt() == IOobject::MUST_READ
-         || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-        )
-     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
-    )
-    {
-        // For if MUST_READ_IF_MODIFIED
-        if (IOContainer<Type>::rereading)
-        {
-            addWatch();
-        }
-
-        readStream(IOContainer<Type>::typeName) >> *this;
-        close();
-    }
+    readIOcontents();
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
-(
-    const IOobject& io,
-    const bool read
-)
+template<class T>
+Foam::IOList<T>::IOList(const IOobject& io, Foam::zero)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    if (!IOContainer<Type>::rereading)
-    {
-        warnNoRereading<IOContainer<Type>>();
-    }
+    warnNoRereading<IOList<T>>();
 
-    if
-    (
-        io.readOpt() == IOobject::MUST_READ
-     || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-    )
-    {
-        // For if MUST_READ_IF_MODIFIED
-        if (IOContainer<Type>::rereading)
-        {
-            addWatch();
-        }
-
-        Istream& is = readStream(IOContainer<Type>::typeName, read);
-
-        if (read)
-        {
-            is >> *this;
-        }
-
-        close();
-    }
-    else if (io.readOpt() == IOobject::READ_IF_PRESENT)
-    {
-        bool haveFile = headerOk();
-
-        Istream& is = readStream(IOContainer<Type>::typeName, haveFile && read);
-
-        if (read && haveFile)
-        {
-            is >> *this;
-        }
-
-        close();
-    }
+    readIOcontents();
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
-(
-    const IOobject& io,
-    const label size
-)
+template<class T>
+Foam::IOList<T>::IOList(const IOobject& io, const label len)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    if (!IOContainer<Type>::rereading)
-    {
-        warnNoRereading<IOContainer<Type>>();
-    }
+    warnNoRereading<IOList<T>>();
 
-    if
-    (
-        (
-            io.readOpt() == IOobject::MUST_READ
-         || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-        )
-     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
-    )
+    if (!readIOcontents())
     {
-        // For if MUST_READ_IF_MODIFIED
-        if (IOContainer<Type>::rereading)
-        {
-            addWatch();
-        }
-
-        readStream(IOContainer<Type>::typeName) >> *this;
-        close();
-    }
-    else
-    {
-        Container<Type>::setSize(size);
+        List<T>::resize(len);
     }
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
-(
-    const IOobject& io,
-    const Container<Type>& l
-)
+template<class T>
+Foam::IOList<T>::IOList(const IOobject& io, const UList<T>& content)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    if (!IOContainer<Type>::rereading)
-    {
-        warnNoRereading<IOContainer<Type>>();
-    }
+    warnNoRereading<IOList<T>>();
 
-    if
-    (
-        (
-            io.readOpt() == IOobject::MUST_READ
-         || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-        )
-     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
-    )
+    if (!readIOcontents())
     {
-        // For if MUST_READ_IF_MODIFIED
-        if (IOContainer<Type>::rereading)
-        {
-            addWatch();
-        }
-
-        readStream(IOContainer<Type>::typeName) >> *this;
-        close();
-    }
-    else
-    {
-        Container<Type>::operator=(l);
+        List<T>::operator=(content);
     }
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
+template<class T>
+Foam::IOList<T>::IOList(const IOobject& io, List<T>&& content)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<IOList<T>>();
+
+    List<T>::transfer(content);
+
+    readIOcontents();
+}
+
+
+template<class T>
+Foam::IOListRef<T>::IOListRef
 (
     const IOobject& io,
-    Container<Type>&& l
+    const List<T>& content
 )
 :
     regIOobject(io),
-    Container<Type>(move(l))
+    contentRef_(content)
+{}
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+template<class T>
+Foam::List<T> Foam::IOList<T>::readContents(const IOobject& io)
 {
-    // Check for MUST_READ_IF_MODIFIED
-    if (!IOContainer<Type>::rereading)
+    IOobject rio(io, IOobjectOption::NO_REGISTER);
+    if (rio.readOpt() == IOobjectOption::READ_MODIFIED)
     {
-        warnNoRereading<IOContainer<Type>>();
+        rio.readOpt(IOobjectOption::MUST_READ);
     }
 
-    if
-    (
-        (
-            io.readOpt() == IOobject::MUST_READ
-         || io.readOpt() == IOobject::MUST_READ_IF_MODIFIED
-        )
-     || (io.readOpt() == IOobject::READ_IF_PRESENT && headerOk())
-    )
-    {
-        // For if MUST_READ_IF_MODIFIED
-        if (IOContainer<Type>::rereading)
-        {
-            addWatch();
-        }
+    IOList<T> reader(rio);
 
-        readStream(IOContainer<Type>::typeName) >> *this;
-        close();
-    }
+    return List<T>(std::move(static_cast<List<T>&>(reader)));
 }
-
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
-(
-    const IOListBase<Container, IOContainer, Type>& f
-)
-:
-    regIOobject(f),
-    Container<Type>(f)
-{}
-
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::IOListBase
-(
-    IOListBase<Container, IOContainer, Type>&& f
-)
-:
-    regIOobject(move(f)),
-    Container<Type>(move(f))
-{}
-
-
-// * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * * //
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::IOListBase<Container, IOContainer, Type>::~IOListBase()
-{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-bool Foam::IOListBase<Container, IOContainer, Type>::writeData
-(
-    Ostream& os
-) const
+template<class T>
+bool Foam::IOList<T>::writeData(Ostream& os) const
 {
-    return (os << static_cast<const Container<Type>&>(*this)).good();
+    os << static_cast<const List<T>&>(*this);
+    return os.good();
+}
+
+
+template<class T>
+bool Foam::IOListRef<T>::writeData(Ostream& os) const
+{
+    os << contentRef_.cref();
+    return os.good();
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-void Foam::IOListBase<Container, IOContainer, Type>::operator=
-(
-    const IOListBase<Container, IOContainer, Type>& rhs
-)
+template<class T>
+void Foam::IOList<T>::operator=(const IOList<T>& rhs)
 {
-    Container<Type>::operator=(rhs);
-}
-
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-void Foam::IOListBase<Container, IOContainer, Type>::operator=
-(
-    IOListBase<Container, IOContainer, Type>&& rhs
-)
-{
-    Container<Type>::operator=(move(rhs));
+    List<T>::operator=(rhs);
 }
 
 

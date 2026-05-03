@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,10 +33,10 @@ template<class Type>
 Foam::slipFvPatchField<Type>::slipFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-   basicSymmetryFvPatchField<Type>(p, iF)
+    basicSymmetryFvPatchField<Type>(p, iF)
 {}
 
 
@@ -42,7 +44,7 @@ template<class Type>
 Foam::slipFvPatchField<Type>::slipFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -55,8 +57,8 @@ Foam::slipFvPatchField<Type>::slipFvPatchField
 (
     const slipFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     basicSymmetryFvPatchField<Type>(ptf, p, iF, mapper)
@@ -67,10 +69,20 @@ template<class Type>
 Foam::slipFvPatchField<Type>::slipFvPatchField
 (
     const slipFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     basicSymmetryFvPatchField<Type>(ptf, iF)
+{}
+
+
+template<class Type>
+Foam::slipFvPatchField<Type>::slipFvPatchField
+(
+    const slipFvPatchField<Type>& ptf
+)
+:
+    basicSymmetryFvPatchField<Type>(ptf)
 {}
 
 

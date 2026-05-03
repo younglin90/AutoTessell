@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +27,27 @@ Class
     Foam::emptyFvsPatchField
 
 Description
-    Foam::emptyFvsPatchField
+    This boundary condition provides an 'empty' condition for reduced
+    dimensions cases.
+
+    The "value" entry is NO_READ, NO_WRITE.
+
+Usage
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type    empty;
+    }
+    \endverbatim
 
 SourceFiles
     emptyFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef emptyFvsPatchField_H
-#define emptyFvsPatchField_H
+#ifndef Foam_emptyFvsPatchField_H
+#define Foam_emptyFvsPatchField_H
 
 #include "fvsPatchField.H"
 #include "emptyFvPatch.H"
@@ -44,7 +58,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class emptyFvsPatch Declaration
+                         Class emptyFvsPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,11 +66,10 @@ class emptyFvsPatchField
 :
     public fvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
-    TypeName(emptyFvPatch::typeName_());
+    TypeName(emptyFvPatch::typeName_());  // fieldTypes::emptyTypeName_()
 
 
     // Constructors
@@ -68,7 +81,8 @@ public:
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
         emptyFvsPatchField
         (
             const fvPatch&,
@@ -82,50 +96,62 @@ public:
             const emptyFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        emptyFvsPatchField(const emptyFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        emptyFvsPatchField
+        (
+            const emptyFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         emptyFvsPatchField
         (
             const emptyFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new emptyFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-        // Mapping functions
+        // Mapping Functions
 
-            //- Map the given fvsPatchField onto this fvsPatchField
-            virtual void map(const fvsPatchField<Type>&, const fieldMapper&)
+            //- Map (and resize as needed) from self given a mapping object
+            virtual void autoMap
+            (
+                const fvPatchFieldMapper&
+            )
             {}
 
-            //- Reset the fvsPatchField to the given fvsPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvsPatchField<Type>&)
+            //- Reverse map the given fvsPatchField onto this fvsPatchField
+            virtual void rmap
+            (
+                const fvsPatchField<Type>&,
+                const labelList&
+            )
             {}
 
 
-    // Member Operators
+    // Member Functions
 
-        //- Inherit assignment
-        using fvsPatchField<Type>::operator=;
+        //- Write without "value" entry!
+        virtual void write(Ostream&) const;
 };
 
 

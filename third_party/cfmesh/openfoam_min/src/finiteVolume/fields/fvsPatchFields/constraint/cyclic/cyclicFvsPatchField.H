@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +27,27 @@ Class
     Foam::cyclicFvsPatchField
 
 Description
-    Foam::cyclicFvsPatchField
+    This boundary condition enforces a cyclic condition between a pair of
+    boundaries.
+
+    The "value" entry is NO_READ, but is written.
+
+Usage
+    Example of the boundary condition specification:
+    \verbatim
+    <patchName>
+    {
+        type            cyclic;
+    }
+    \endverbatim
 
 SourceFiles
     cyclicFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cyclicFvsPatchField_H
-#define cyclicFvsPatchField_H
+#ifndef Foam_cyclicFvsPatchField_H
+#define Foam_cyclicFvsPatchField_H
 
 #include "coupledFvsPatchField.H"
 #include "cyclicFvPatch.H"
@@ -44,7 +58,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class cyclicFvsPatch Declaration
+                     Class cyclicFvsPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -73,7 +87,8 @@ public:
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is MUST_READ.
         cyclicFvsPatchField
         (
             const fvPatch&,
@@ -87,47 +102,36 @@ public:
             const cyclicFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        cyclicFvsPatchField(const cyclicFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        cyclicFvsPatchField
+        (
+            const cyclicFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         cyclicFvsPatchField
         (
             const cyclicFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const
+        {
+            return fvsPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvsPatchField<Type>> clone
         (
             const DimensionedField<Type, surfaceMesh>& iF
         ) const
         {
-            return tmp<fvsPatchField<Type>>
-            (
-                new cyclicFvsPatchField<Type>(*this, iF)
-            );
+            return fvsPatchField<Type>::Clone(*this, iF);
         }
-
-
-    // Member Functions
-
-        // Evaluation functions
-
-            //- Return patchField on the opposite patch of a coupled patch
-            virtual tmp<Field<Type>> patchNeighbourField
-            (
-                const Pstream::commsTypes commsType
-            ) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using coupledFvsPatchField<Type>::operator=;
 };
 
 

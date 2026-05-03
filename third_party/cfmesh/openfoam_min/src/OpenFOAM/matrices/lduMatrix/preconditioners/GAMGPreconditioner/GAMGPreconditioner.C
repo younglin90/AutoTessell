@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "GAMGPreconditioner.H"
+#include "PrecisionAdaptor.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -63,46 +67,40 @@ Foam::GAMGPreconditioner::GAMGPreconditioner
 }
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::GAMGPreconditioner::~GAMGPreconditioner()
-{}
-
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::GAMGPreconditioner::readControls()
 {
     GAMGSolver::readControls();
-    nVcycles_ = controlDict_.lookupOrDefault<label>("nVcycles", 2);
+    nVcycles_ = controlDict_.getOrDefault<label>("nVcycles", 2);
 }
 
 
 void Foam::GAMGPreconditioner::precondition
 (
-    scalarField& wA,
-    const scalarField& rA,
+    solveScalarField& wA,
+    const solveScalarField& rA_ss,
     const direction cmpt
 ) const
 {
-    wA = 0.0;
-    scalarField AwA(wA.size());
-    scalarField finestCorrection(wA.size());
-    scalarField finestResidual(rA);
+    wA = Zero;
+    solveScalarField AwA(wA.size());
+    solveScalarField finestCorrection(wA.size());
+    solveScalarField finestResidual(rA_ss);
 
     // Create coarse grid correction fields
-    PtrList<scalarField> coarseCorrFields;
+    PtrList<solveScalarField> coarseCorrFields;
 
     // Create coarse grid sources
-    PtrList<scalarField> coarseSources;
+    PtrList<solveScalarField> coarseSources;
 
     // Create the smoothers for all levels
     PtrList<lduMatrix::smoother> smoothers;
 
     // Scratch fields if processor-agglomerated coarse level meshes
     // are bigger than original. Usually not needed
-    scalarField ApsiScratch;
-    scalarField finestCorrectionScratch;
+    solveScalarField ApsiScratch;
+    solveScalarField finestCorrectionScratch;
 
     // Initialise the above data structures
     initVcycle
@@ -113,6 +111,10 @@ void Foam::GAMGPreconditioner::precondition
         ApsiScratch,
         finestCorrectionScratch
     );
+
+    // Adapt solveScalarField back to scalarField (as required)
+    ConstPrecisionAdaptor<scalar, solveScalar> rA_adaptor(rA_ss);
+    const scalarField& rA = rA_adaptor.cref();
 
     for (label cycle=0; cycle<nVcycles_; cycle++)
     {
@@ -141,7 +143,7 @@ void Foam::GAMGPreconditioner::precondition
         {
             // Calculate finest level residual field
             matrix_.Amul(AwA, wA, interfaceBouCoeffs_, interfaces_, cmpt);
-            finestResidual = rA;
+            finestResidual = rA_ss;
             finestResidual -= AwA;
         }
     }

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,19 +36,26 @@ namespace Foam
 namespace constant
 {
 
-const char* const universal::group = "universal";
-
-
-// Note: cannot use dimless etc. as they may not have been constructed yet
-
-const Foam::dimensionedScalar universal::hr
+// Note: cannot use dimless etc. since not guaranteed to be constructed
+defineDimensionedConstantWithDefault
 (
-    dimensionedConstant
+    "universal",
+    universal::hr,
+    dimensionedScalar
     (
-        universal::group,
         "hr",
-        universal::h/mathematical::twoPi
-    )
+        universal::h
+       /(
+            dimensionedScalar
+            (
+                "C",
+                dimensionSet(0, 0, 0, 0, 0),//dimless
+                mathematical::twoPi
+            )
+        )
+    ),
+    constantuniversalhr,
+    "hr"
 );
 
 

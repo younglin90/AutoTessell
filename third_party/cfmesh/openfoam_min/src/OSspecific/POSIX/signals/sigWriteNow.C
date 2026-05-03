@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,52 +28,83 @@ License
 
 #include "sigWriteNow.H"
 #include "error.H"
-#include "jobInfo.H"
-#include "IOstreams.H"
 #include "Time.H"
+#include "IOstreams.H"
+
+// File-local functions
+#include "signalMacros.C"
+
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+// Signal number to catch
+int Foam::sigWriteNow::signal_
+(
+    Foam::debug::optimisationSwitch("writeNowSignal", -1)
+);
+
+// Pointer to Time (file-local variable)
+static Foam::Time* runTimePtr_ = nullptr;
+
+
+// * * * * * * * * * * * * * * * Local Classes * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Signal number to catch
-int sigWriteNow::signal_
-(
-    debug::optimisationSwitch("writeNowSignal", -1)
-);
+// Register re-reader
+class addwriteNowSignalToOpt
+:
+    public ::Foam::simpleRegIOobject
+{
+public:
+
+    addwriteNowSignalToOpt(const addwriteNowSignalToOpt&) = delete;
+
+    void operator=(const addwriteNowSignalToOpt&) = delete;
+
+    explicit addwriteNowSignalToOpt(const char* name)
+    :
+        ::Foam::simpleRegIOobject(Foam::debug::addOptimisationObject, name)
+    {}
+
+    virtual ~addwriteNowSignalToOpt() = default;
+
+    virtual void readData(Foam::Istream& is)
+    {
+        is >> sigWriteNow::signal_;
+        sigWriteNow::set(true);
+    }
+
+    virtual void writeData(Foam::Ostream& os) const
+    {
+        os << sigWriteNow::signal_;
+    }
+};
+
+addwriteNowSignalToOpt addwriteNowSignalToOpt_("writeNowSignal");
 
 } // End namespace Foam
-
-
-Foam::Time* Foam::sigWriteNow::runTimePtr_ = nullptr;
-struct sigaction Foam::sigWriteNow::oldAction_;
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 void Foam::sigWriteNow::sigHandler(int)
 {
-    Info<< "sigWriteNow :"
-        << " setting up write at end of the next iteration" << nl << endl;
-    runTimePtr_->writeOnce();
-
-    //// Throw signal (to old handler)
-    // raise(signal_);
+    if (runTimePtr_)
+    {
+        Info<< "sigWriteNow :"
+            << " setting up write at end of the next iteration" << nl << endl;
+        runTimePtr_->writeOnce();
+    }
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::sigWriteNow::sigWriteNow()
-{}
-
-
-Foam::sigWriteNow::sigWriteNow(const bool verbose, Time& runTime)
+Foam::sigWriteNow::sigWriteNow(Time& runTime, bool verbose)
 {
-    // Store runTime
-    runTimePtr_ = &runTime;
-
+    runTimePtr_ = &runTime;  // Store Time reference
     set(verbose);
 }
 
@@ -79,49 +113,31 @@ Foam::sigWriteNow::sigWriteNow(const bool verbose, Time& runTime)
 
 Foam::sigWriteNow::~sigWriteNow()
 {
-    // Reset old handling
-    if (signal_ > 0)
+    if (!active())
     {
-        if (sigaction(signal_, &oldAction_, nullptr) < 0)
-        {
-            FatalErrorInFunction
-                << "Cannot reset " << signal_ << " trapping"
-                << abort(FatalError);
-        }
+        return;
     }
+
+    resetHandler("writeNow", signal_);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::sigWriteNow::set(const bool verbose)
+void Foam::sigWriteNow::set(bool verbose)
 {
-    if (signal_ >= 0)
+    if (!active())
     {
-        struct sigaction newAction;
-        newAction.sa_handler = sigHandler;
-        newAction.sa_flags = SA_NODEFER;
-        sigemptyset(&newAction.sa_mask);
-        if (sigaction(signal_, &newAction, &oldAction_) < 0)
-        {
-            FatalErrorInFunction
-                << "Cannot set " << signal_ << " trapping"
-                << abort(FatalError);
-        }
-
-        if (verbose)
-        {
-            Info<< "sigWriteNow :"
-                << " Enabling writing upon signal " << signal_
-                << endl;
-        }
+        return;
     }
-}
 
+    if (verbose)
+    {
+        Info<< "sigWriteNow :"
+            << " Enabling writing upon signal " << signal_ << nl;
+    }
 
-bool Foam::sigWriteNow::active() const
-{
-    return signal_ > 0;
+    setHandler("writeNow", signal_, sigHandler);
 }
 
 

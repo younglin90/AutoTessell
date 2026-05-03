@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "primitiveMesh.H"
-
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -58,7 +60,7 @@ void Foam::primitiveMesh::calcCellCells() const
     {
         // 1. Count number of internal faces per cell
 
-        labelList ncc(nCells(), 0);
+        labelList ncc(nCells(), Foam::zero{});
 
         const labelList& own = faceOwner();
         const labelList& nei = faceNeighbour();
@@ -71,17 +73,16 @@ void Foam::primitiveMesh::calcCellCells() const
 
         // Create the storage
         ccPtr_ = new labelListList(ncc.size());
-        labelListList& cellCellAddr = *ccPtr_;
-
+        auto& cellCellAddr = *ccPtr_;
 
 
         // 2. Size and fill cellFaceAddr
 
         forAll(cellCellAddr, celli)
         {
-            cellCellAddr[celli].setSize(ncc[celli]);
+            cellCellAddr[celli].resize(ncc[celli]);
+            ncc[celli] = 0;  // reset size counter
         }
-        ncc = 0;
 
         forAll(nei, facei)
         {
@@ -114,7 +115,7 @@ const Foam::labelList& Foam::primitiveMesh::cellCells
     DynamicList<label>& storage
 ) const
 {
-    if (ccPtr_)
+    if (hasCellCells())
     {
         return cellCells()[celli];
     }
@@ -126,19 +127,17 @@ const Foam::labelList& Foam::primitiveMesh::cellCells
 
         storage.clear();
 
-        forAll(cFaces, i)
+        for (const label facei : cFaces)
         {
-            label facei = cFaces[i];
-
             if (facei < nInternalFaces())
             {
                 if (own[facei] == celli)
                 {
-                    storage.append(nei[facei]);
+                    storage.push_back(nei[facei]);
                 }
                 else
                 {
-                    storage.append(own[facei]);
+                    storage.push_back(own[facei]);
                 }
             }
         }

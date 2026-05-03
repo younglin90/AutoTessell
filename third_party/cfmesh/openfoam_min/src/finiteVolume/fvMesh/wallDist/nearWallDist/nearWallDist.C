@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +27,62 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "nearWallDist.H"
-#include "fvPatchDistWave.H"
-#include "wallPolyPatch.H"
+#include "fvMesh.H"
+#include "cellDistFuncs.H"
+#include "wallFvPatch.H"
+#include "surfaceFields.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-namespace Foam
+void Foam::nearWallDist::calculate()
 {
-    defineTypeNameAndDebug(nearWallDist, 0);
+    cellDistFuncs wallUtils(mesh_);
+
+    // Get patch ids of walls
+    labelHashSet wallPatchIDs(wallUtils.getPatchIDs<wallPolyPatch>());
+
+    // Size neighbours array for maximum possible
+
+    DynamicList<label> neighbours(wallUtils.maxPatchSize(wallPatchIDs));
+
+
+    // Correct all cells with face on wall
+
+    const volVectorField& cellCentres = mesh_.C();
+
+    forAll(mesh_.boundary(), patchi)
+    {
+        fvPatchScalarField& ypatch = operator[](patchi);
+
+        const fvPatch& patch = mesh_.boundary()[patchi];
+
+        if (isA<wallFvPatch>(patch))
+        {
+            const polyPatch& pPatch = patch.patch();
+
+            const labelUList& faceCells = patch.faceCells();
+
+            // Check cells with face on wall
+            forAll(patch, patchFacei)
+            {
+                wallUtils.getPointNeighbours(pPatch, patchFacei, neighbours);
+
+                label minFacei = -1;
+
+                ypatch[patchFacei] = wallUtils.smallestDist
+                (
+                    cellCentres[faceCells[patchFacei]],
+                    pPatch,
+                    neighbours,
+                    minFacei
+                );
+            }
+        }
+        else
+        {
+            ypatch = 0.0;
+        }
+    }
 }
 
 
@@ -39,38 +90,15 @@ namespace Foam
 
 Foam::nearWallDist::nearWallDist(const Foam::fvMesh& mesh)
 :
-    DemandDrivenMeshObject
-    <
-        fvMesh,
-        DeletableMeshObject,
-        nearWallDist
-    >(mesh),
-    y_
+    volScalarField::Boundary
     (
         mesh.boundary(),
-        volScalarField::Internal::null(),
-        calculatedFvPatchScalarField::typeName
-    )
+        mesh.V(),           // Dummy internal field,
+        fvPatchFieldBase::calculatedType()
+    ),
+    mesh_(mesh)
 {
-    volScalarField yVf(volScalarField::New("y", mesh, dimLength));
-
-    fvPatchDistWave::correct
-    (
-        mesh,
-        mesh.poly().boundary().findIndices<wallPolyPatch>(),
-        -vGreat,
-        2,
-        yVf
-    );
-
-    forAll(y_, patchi)
-    {
-        const labelUList& faceCells = mesh.boundary()[patchi].faceCells();
-        forAll(y_[patchi], patchFacei)
-        {
-            y_[patchi][patchFacei] = yVf[faceCells[patchFacei]];
-        }
-    }
+    calculate();
 }
 
 
@@ -78,6 +106,35 @@ Foam::nearWallDist::nearWallDist(const Foam::fvMesh& mesh)
 
 Foam::nearWallDist::~nearWallDist()
 {}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+void Foam::nearWallDist::correct()
+{
+    if (mesh_.topoChanging())
+    {
+        const DimensionedField<scalar, volMesh>& V = mesh_.V();
+        const fvBoundaryMesh& bnd = mesh_.boundary();
+
+        this->setSize(bnd.size());
+        forAll(*this, patchi)
+        {
+            this->set
+            (
+                patchi,
+                fvPatchField<scalar>::New
+                (
+                    fvPatchFieldBase::calculatedType(),
+                    bnd[patchi],
+                    V
+                )
+            );
+        }
+    }
+
+    calculate();
+}
 
 
 // ************************************************************************* //

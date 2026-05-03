@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,25 +42,16 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::LUscalarMatrix::LUscalarMatrix()
+Foam::LUscalarMatrix::LUscalarMatrix() noexcept
 :
-    comm_(Pstream::worldComm)
+    comm_(UPstream::worldComm)
 {}
 
 
-Foam::LUscalarMatrix::LUscalarMatrix(const label n)
+Foam::LUscalarMatrix::LUscalarMatrix(const scalarSquareMatrix& mat)
 :
-    scalarSquareMatrix(n),
-    comm_(Pstream::worldComm),
-    pivotIndices_(n)
-{}
-
-
-Foam::LUscalarMatrix::LUscalarMatrix(const scalarSquareMatrix& matrix)
-:
-    scalarSquareMatrix(matrix),
-    comm_(Pstream::worldComm),
-    pivotIndices_(m())
+    scalarSquareMatrix(mat),
+    comm_(UPstream::worldComm)
 {
     LUDecompose(*this, pivotIndices_);
 }
@@ -72,15 +66,16 @@ Foam::LUscalarMatrix::LUscalarMatrix
 :
     comm_(ldum.mesh().comm())
 {
-    if (Pstream::parRun())
+    if (UPstream::parRun())
     {
-        PtrList<procLduMatrix> lduMatrices(Pstream::nProcs(comm_));
-
-        label lduMatrixi = 0;
+        PtrList<procLduMatrix> lduMatrices
+        (
+            UPstream::master(comm_) ? UPstream::nProcs(comm_) : 1
+        );
 
         lduMatrices.set
         (
-            lduMatrixi++,
+            0,  // rank-local matrix (and/or master)
             new procLduMatrix
             (
                 ldum,
@@ -89,112 +84,70 @@ Foam::LUscalarMatrix::LUscalarMatrix
             )
         );
 
-        if (Pstream::master(comm_))
+        if (UPstream::master(comm_))
         {
-            for
-            (
-                int slave=Pstream::firstSlave();
-                slave<=Pstream::lastSlave(comm_);
-                slave++
-            )
+            for (const int proci : UPstream::subProcs(comm_))
             {
-                lduMatrices.set
-                (
-                    lduMatrixi++,
-                    new procLduMatrix
-                    (
-                        IPstream
-                        (
-                            Pstream::commsTypes::scheduled,
-                            slave,
-                            0,          // bufSize
-                            Pstream::msgType(),
-                            comm_
-                        )()
-                    )
-                );
+                auto& mat = lduMatrices.emplace_set(proci);
+
+                IPstream::recv(mat, proci, UPstream::msgType(), comm_);
             }
+
+            convert(lduMatrices);
         }
         else
         {
-            OPstream toMaster
+            OPstream::send
             (
-                Pstream::commsTypes::scheduled,
-                Pstream::masterNo(),
-                0,              // bufSize
-                Pstream::msgType(),
+                lduMatrices[0],  // rank-local matrix
+                UPstream::masterNo(),
+                UPstream::msgType(),
                 comm_
             );
-            procLduMatrix cldum
-            (
-                ldum,
-                interfaceCoeffs,
-                interfaces
-            );
-            toMaster<< cldum;
-
-        }
-
-        if (Pstream::master(comm_))
-        {
-            label nCells = 0;
-            forAll(lduMatrices, i)
-            {
-                nCells += lduMatrices[i].size();
-            }
-
-            scalarSquareMatrix m(nCells, 0.0);
-            transfer(m);
-            convert(lduMatrices);
         }
     }
     else
     {
-        label nCells = ldum.lduAddr().size();
-        scalarSquareMatrix m(nCells, 0.0);
-        transfer(m);
         convert(ldum, interfaceCoeffs, interfaces);
     }
 
-    if (Pstream::master(comm_))
+
+    if (debug && UPstream::master(comm_))
     {
-        label mRows = m();
-        label nColumns = n();
+        const label numRows = nRows();
+        const label numCols = nCols();
 
-        if (debug)
+        Pout<< "LUscalarMatrix : size:" << numRows << endl;
+        for (label rowi = 0; rowi < numRows; ++rowi)
         {
-            Pout<< "LUscalarMatrix : size:" << mRows << endl;
-            for (label rowI = 0; rowI < mRows; rowI++)
+            const scalar* row = operator[](rowi);
+
+            Pout<< "cell:" << rowi << " diagCoeff:" << row[rowi] << nl;
+
+            Pout<< "    connects to upper cells :";
+            for (label coli = rowi+1; coli < numCols; ++coli)
             {
-                const scalar* row = operator[](rowI);
-
-                Pout<< "cell:" << rowI << " diagCoeff:" << row[rowI] << endl;
-
-                Pout<< "    connects to upper cells :";
-                for (label columnI = rowI+1; columnI < nColumns; columnI++)
+                if (mag(row[coli]) > SMALL)
                 {
-                    if (mag(row[columnI]) > small)
-                    {
-                        Pout<< ' ' << columnI << " (coeff:" << row[columnI]
-                            << ")";
-                    }
+                    Pout<< ' ' << coli << " (coeff:" << row[coli] << ')';
                 }
-                Pout<< endl;
-                Pout<< "    connects to lower cells :";
-                for (label columnI = 0; columnI < rowI; columnI++)
-                {
-                    if (mag(row[columnI]) > small)
-                    {
-                        Pout<< ' ' << columnI << " (coeff:" << row[columnI]
-                            << ")";
-                    }
-                }
-                Pout<< endl;
             }
-            Pout<< endl;
+            Pout<< nl;
+            Pout<< "    connects to lower cells :";
+            for (label coli = 0; coli < rowi; ++coli)
+            {
+                if (mag(row[coli]) > SMALL)
+                {
+                    Pout<< ' ' << coli << " (coeff:" << row[coli] << ')';
+                }
+            }
+            Pout<< nl;
         }
+        Pout<< endl;
+    }
 
-        pivotIndices_.setSize(m());
+    if (UPstream::master(comm_))
+    {
         LUDecompose(*this, pivotIndices_);
     }
 }
@@ -209,6 +162,10 @@ void Foam::LUscalarMatrix::convert
     const lduInterfaceFieldPtrsList& interfaces
 )
 {
+    // Resize and fill with zero
+    scalarSquareMatrix::resize_nocopy(ldum.lduAddr().size());
+    scalarSquareMatrix::operator=(Foam::zero{});
+
     const label* __restrict__ uPtr = ldum.lduAddr().upperAddr().begin();
     const label* __restrict__ lPtr = ldum.lduAddr().lowerAddr().begin();
 
@@ -245,7 +202,7 @@ void Foam::LUscalarMatrix::convert
 
             const cyclicLduInterface& cycInterface =
                 refCast<const cyclicLduInterface>(interface);
-            label nbrInt = cycInterface.nbrPatchIndex();
+            label nbrInt = cycInterface.neighbPatchID();
             const label* __restrict__ uPtr =
                 interfaces[nbrInt].interface().faceCells().begin();
 
@@ -271,13 +228,25 @@ void Foam::LUscalarMatrix::convert
     const PtrList<procLduMatrix>& lduMatrices
 )
 {
-    procOffsets_.setSize(lduMatrices.size() + 1);
-    procOffsets_[0] = 0;
+    procOffsets_.resize_nocopy(lduMatrices.size() + 1);
 
-    forAll(lduMatrices, ldumi)
     {
-        procOffsets_[ldumi+1] = procOffsets_[ldumi] + lduMatrices[ldumi].size();
+        auto iter = procOffsets_.begin();
+
+        label nCellsTotal = 0;
+        *iter++ = nCellsTotal;
+
+        for (const auto& mat : lduMatrices)
+        {
+            nCellsTotal += mat.size();
+            *iter++ = nCellsTotal;
+        }
+
+        // Resize and fill with zero
+        scalarSquareMatrix::resize_nocopy(nCellsTotal);
+        scalarSquareMatrix::operator=(Foam::zero{});
     }
+
 
     forAll(lduMatrices, ldumi)
     {
@@ -412,17 +381,9 @@ void Foam::LUscalarMatrix::printDiagonalDominance() const
 }
 
 
-void Foam::LUscalarMatrix::decompose()
+void Foam::LUscalarMatrix::decompose(const scalarSquareMatrix& mat)
 {
-    pivotIndices_.setSize(m());
-    LUDecompose(*this, pivotIndices_);
-}
-
-
-void Foam::LUscalarMatrix::decompose(const scalarSquareMatrix& M)
-{
-    scalarSquareMatrix::operator=(M);
-    pivotIndices_.setSize(m());
+    scalarSquareMatrix::operator=(mat);
     LUDecompose(*this, pivotIndices_);
 }
 

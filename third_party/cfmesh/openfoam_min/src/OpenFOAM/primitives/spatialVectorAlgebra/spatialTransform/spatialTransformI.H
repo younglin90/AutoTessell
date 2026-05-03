@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -252,54 +254,33 @@ namespace Foam
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 //- Rotational spatial transformation tensor about the x-axis by omega radians
-//  The rotation is defined in a right-handed coordinate system
-//  i.e. counter-clockwise with respect to the axis from -ve to +ve
-//  (looking along the axis) according to Featherstone, R. (2008).
 inline spatialTransform Xrx(const scalar& omega)
 {
-    return spatialTransform(Rx(-omega), Zero);
+    return spatialTransform(Rx(omega), Zero);
 }
 
-//- Rotational spatial transformation tensor about the x-axis by omega radians
-//  The rotation is defined in a right-handed coordinate system
-//  i.e. counter-clockwise with respect to the axis from -ve to +ve
-//  (looking along the axis) according to Featherstone, R. (2008).
+//- Rotational spatial transformation tensor about the y-axis by omega radians
 inline spatialTransform Xry(const scalar& omega)
 {
-    return spatialTransform(Ry(-omega), Zero);
+    return spatialTransform(Ry(omega), Zero);
 }
 
 //- Rotational spatial transformation tensor about the z-axis by omega radians
-//  The rotation is defined in a right-handed coordinate system
-//  i.e. counter-clockwise with respect to the axis from -ve to +ve
-//  (looking along the axis) according to Featherstone, R. (2008).
 inline spatialTransform Xrz(const scalar& omega)
 {
-    return spatialTransform(Rz(-omega), Zero);
+    return spatialTransform(Rz(omega), Zero);
 }
 
 //- Rotational spatial transformation tensor about axis a by omega radians
-//  The rotation is defined in a right-handed coordinate system
-//  i.e. counter-clockwise with respect to the axis from -ve to +ve
-//  (looking along the axis) according to Featherstone, R. (2008).
 inline spatialTransform Xr(const vector& a, const scalar omega)
 {
-    return spatialTransform(Ra(a, -omega), Zero);
+    return spatialTransform(Ra(a, omega), Zero);
 }
 
 //- Translational spatial transformation tensor for translation r
 inline spatialTransform Xt(const vector& r)
 {
     return spatialTransform(tensor::I, r);
-}
-
-
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-//- Write the spatial transformation as an entry
-inline void writeEntry(Ostream& os, const spatialTransform& st)
-{
-    os << st;
 }
 
 

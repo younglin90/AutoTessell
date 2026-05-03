@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,15 +28,17 @@ Class
     Foam::coupledFvsPatchField
 
 Description
-    Foam::coupledFvsPatchField
+    Abstract base class for coupled patches.
+
+    The "value" entry is usually MUST_READ and always WRITE.
 
 SourceFiles
     coupledFvsPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef coupledFvsPatchField_H
-#define coupledFvsPatchField_H
+#ifndef Foam_coupledFvsPatchField_H
+#define Foam_coupledFvsPatchField_H
 
 #include "fvsPatchField.H"
 #include "coupledFvPatch.H"
@@ -44,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class coupledFvsPatch Declaration
+                    Class coupledFvsPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,7 +57,6 @@ class coupledFvsPatchField
 :
     public fvsPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -81,7 +85,8 @@ public:
         (
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const dictionary&
+            const dictionary&,
+            IOobjectOption::readOption requireValue = IOobjectOption::MUST_READ
         );
 
         //- Construct by mapping the given coupledFvsPatchField onto a new patch
@@ -90,18 +95,24 @@ public:
             const coupledFvsPatchField<Type>&,
             const fvPatch&,
             const DimensionedField<Type, surfaceMesh>&,
-            const fieldMapper&
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        coupledFvsPatchField(const coupledFvsPatchField<Type>&) = delete;
+        //- Construct as copy
+        coupledFvsPatchField
+        (
+            const coupledFvsPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         coupledFvsPatchField
         (
             const coupledFvsPatchField<Type>&,
             const DimensionedField<Type, surfaceMesh>&
         );
+
+        //- Return clone
+        virtual tmp<fvsPatchField<Type>> clone() const = 0;
 
         //- Construct and return a clone
         virtual tmp<fvsPatchField<Type>> clone
@@ -112,23 +123,14 @@ public:
 
     // Member Functions
 
-        // Access
+        //- True: this patch field is derived from coupledFvsPatchField
+        virtual bool coupled() const
+        {
+            return true;
+        }
 
-            //- Return true if this patch field is derived from
-            //  coupledFvsPatchField<Type>.
-            virtual bool coupled() const
-            {
-                return true;
-            }
-
-        //- Write
+        //- Write includes "value" entry
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fvsPatchField<Type>::operator=;
 };
 
 

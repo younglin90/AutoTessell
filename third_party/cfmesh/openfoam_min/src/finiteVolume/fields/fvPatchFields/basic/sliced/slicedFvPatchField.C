@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,20 +28,29 @@ License
 
 #include "slicedFvPatchField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::slicedFvPatchField<Type>::slicedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const Field<Type>& completeField
+    const DimensionedField<Type, volMesh>& iF,
+    const Field<Type>& completeOrBoundaryField,
+    const bool isBoundaryOnly
 )
 :
     fvPatchField<Type>(p, iF, Field<Type>())
 {
-    // Set the fvPatchField to a slice of the given complete field
-    UList<Type>::shallowCopy(p.patchSlice(completeField));
+    if (isBoundaryOnly)
+    {
+        // Set to a slice of the boundary field
+        UList<Type>::shallowCopy(p.boundarySlice(completeOrBoundaryField));
+    }
+    else
+    {
+        // Set to a slice of the complete field
+        UList<Type>::shallowCopy(p.patchSlice(completeOrBoundaryField));
+    }
 }
 
 
@@ -46,14 +58,27 @@ template<class Type>
 Foam::slicedFvPatchField<Type>::slicedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fvPatchField<Type>& pf
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(p, iF, Field<Type>())
+{}
+
+
+template<class Type>
+Foam::slicedFvPatchField<Type>::slicedFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fvPatchField<Type>(p, iF)  // bypass dictionary constructor
 {
-    // Set the fvPatchField values to the given fvPatchField
-    UList<Type>::shallowCopy(pf);
+    fvPatchFieldBase::readDict(dict);
+    // Read "value" if present...
+
+    NotImplemented;
 }
 
 
@@ -61,7 +86,22 @@ template<class Type>
 Foam::slicedFvPatchField<Type>::slicedFvPatchField
 (
     const slicedFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    fvPatchField<Type>(ptf, p, iF, mapper)
+{
+    NotImplemented;
+}
+
+
+template<class Type>
+Foam::slicedFvPatchField<Type>::slicedFvPatchField
+(
+    const slicedFvPatchField<Type>& ptf,
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fvPatchField<Type>(ptf.patch(), iF, Field<Type>())
@@ -71,14 +111,23 @@ Foam::slicedFvPatchField<Type>::slicedFvPatchField
 }
 
 
+template<class Type>
+Foam::slicedFvPatchField<Type>::slicedFvPatchField
+(
+    const slicedFvPatchField<Type>& ptf
+)
+:
+    slicedFvPatchField<Type>(ptf, ptf.internalField())
+{}
+
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::slicedFvPatchField<Type>::~slicedFvPatchField()
 {
-    // Set the fvPatchField storage pointer to nullptr before its destruction
-    // to protect the field it a slice of.
-    UList<Type>::shallowCopy(UList<Type>(nullptr, 0));
+    // Set to nullptr to avoid deletion of underlying field
+    UList<Type>::shallowCopy(nullptr);
 }
 
 
@@ -88,15 +137,44 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::slicedFvPatchField<Type>::snGrad() const
 {
     NotImplemented;
-
-    return Field<Type>::null();
+    return nullptr;
 }
 
 
 template<class Type>
-void Foam::slicedFvPatchField<Type>::updateCoeffs()
+Foam::tmp<Foam::Field<Type>>
+Foam::slicedFvPatchField<Type>::patchInternalField() const
 {
     NotImplemented;
+    return nullptr;
+}
+
+
+template<class Type>
+void Foam::slicedFvPatchField<Type>::patchInternalField(Field<Type>&) const
+{
+    NotImplemented;
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>>
+Foam::slicedFvPatchField<Type>::patchNeighbourField
+(
+    const Field<Type>& iField
+) const
+{
+    NotImplemented;
+    return nullptr;
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>>
+Foam::slicedFvPatchField<Type>::patchNeighbourField() const
+{
+    NotImplemented;
+    return nullptr;
 }
 
 
@@ -108,8 +186,7 @@ Foam::slicedFvPatchField<Type>::valueInternalCoeffs
 ) const
 {
     NotImplemented;
-
-    return Field<Type>::null();
+    return nullptr;
 }
 
 
@@ -121,8 +198,7 @@ Foam::slicedFvPatchField<Type>::valueBoundaryCoeffs
 ) const
 {
     NotImplemented;
-
-    return Field<Type>::null();
+    return nullptr;
 }
 
 
@@ -131,8 +207,7 @@ Foam::tmp<Foam::Field<Type>>
 Foam::slicedFvPatchField<Type>::gradientInternalCoeffs() const
 {
     NotImplemented;
-
-    return Field<Type>::null();
+    return nullptr;
 }
 
 
@@ -141,8 +216,7 @@ Foam::tmp<Foam::Field<Type>>
 Foam::slicedFvPatchField<Type>::gradientBoundaryCoeffs() const
 {
     NotImplemented;
-
-    return Field<Type>::null();
+    return nullptr;
 }
 
 
@@ -150,7 +224,7 @@ template<class Type>
 void Foam::slicedFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

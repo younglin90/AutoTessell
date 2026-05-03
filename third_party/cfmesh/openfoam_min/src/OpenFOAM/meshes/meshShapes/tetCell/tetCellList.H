@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,16 +23,10 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::tetCellList
-
-Description
-    list of tetCells
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef tetCellList_H
-#define tetCellList_H
+#ifndef Foam_tetCellList_H
+#define Foam_tetCellList_H
 
 #include "tetCell.H"
 #include "List.H"
@@ -39,7 +35,7 @@ Description
 
 namespace Foam
 {
-    typedef List<tetCell> tetCellList;
+    typedef List<tetCell> tetCellList;      //!< List of tetCell
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,7 +51,7 @@ namespace Foam
 class extendedUpwindCellToFaceStencil;
 
 /*---------------------------------------------------------------------------*\
-                        Class UpwindFitData Declaration
+                    Class UpwindFitData Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Polynomial>
@@ -61,7 +64,7 @@ class UpwindFitData
         Polynomial
     >
 {
-    // Private Data
+    // Private data
 
         //- For each face of the mesh store the coefficients to multiply the
         //  stencil cell values by if the flow is from the owner
@@ -98,11 +101,10 @@ public:
 
 
     //- Destructor
-    virtual ~UpwindFitData()
-    {}
+    virtual ~UpwindFitData() = default;
 
 
-    // Member Functions
+    // Member functions
 
         //- Return reference to owner fit coefficients
         const List<scalarList>& owncoeffs() const

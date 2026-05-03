@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,7 +36,7 @@ Description
 
     where
     \vartable
-        d        | Darcy coefficient [1/m^2]
+        d        | Darcy coefficient [1/m2]
         f        | Forchheimer coefficient [1/m]
     \endvartable
 
@@ -41,7 +44,7 @@ Description
     to specify a multiplier (of the max component).
 
     The orientation of the porous region is defined with the same notation as
-    a co-ordinate system, but only a Cartesian co-ordinate system is valid.
+    a coordinate system, but only a Cartesian coordinate system is valid.
 
 SourceFiles
     DarcyForchheimer.C
@@ -49,8 +52,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DarcyForchheimer_H
-#define DarcyForchheimer_H
+#ifndef Foam_porosityModels_DarcyForchheimer_H
+#define Foam_porosityModels_DarcyForchheimer_H
 
 #include "porosityModel.H"
 #include "dimensionedTensor.H"
@@ -72,17 +75,17 @@ class DarcyForchheimer
 {
     // Private Data
 
-        //- Darcy coefficient XYZ components (user-supplied) [1/m^2]
+        //- Darcy coefficient XYZ components (user-supplied) [1/m2]
         dimensionedVector dXYZ_;
 
         //- Forchheimer coefficient XYZ components (user-supplied) [1/m]
         dimensionedVector fXYZ_;
 
-        //- Darcy coefficient - converted from dXYZ [1/m^2]
-        tensorField D_;
+        //- Darcy coefficient - converted from dXYZ [1/m2]
+        List<tensorField> D_;
 
         //- Forchheimer coefficient - converted from fXYZ [1/m]
-        tensorField F_;
+        List<tensorField> F_;
 
         //- Name of density field
         word rhoName_;
@@ -118,29 +121,30 @@ class DarcyForchheimer
             const vectorField& U
         ) const;
 
+        //- No copy construct
+        DarcyForchheimer(const DarcyForchheimer&) = delete;
+
+        //- No copy assignment
+        void operator=(const DarcyForchheimer&) = delete;
+
 
 public:
 
     //- Runtime type information
     TypeName("DarcyForchheimer");
 
-    // Constructors
-
-        DarcyForchheimer
-        (
-            const word& name,
-            const fvMesh& mesh,
-            const dictionary& dict,
-            const dictionary& coeffDict,
-            const word& cellZoneName
-        );
-
-        //- Disallow default bitwise copy construction
-        DarcyForchheimer(const DarcyForchheimer&) = delete;
-
+    //- Constructor
+    DarcyForchheimer
+    (
+        const word& name,
+        const word& modelType,
+        const fvMesh& mesh,
+        const dictionary& dict,
+        const wordRe& cellZoneName
+    );
 
     //- Destructor
-    virtual ~DarcyForchheimer();
+    virtual ~DarcyForchheimer() = default;
 
 
     // Member Functions
@@ -163,17 +167,24 @@ public:
         //- Add resistance
         virtual void correct
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        ) const;
+
+        //- Add resistance
+        virtual void correct
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU
         ) const;
 
 
-    // Member Operators
+    // I-O
 
-        //- Disallow default bitwise assignment
-        void operator=(const DarcyForchheimer&) = delete;
+        //- Write
+        bool writeData(Ostream& os) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

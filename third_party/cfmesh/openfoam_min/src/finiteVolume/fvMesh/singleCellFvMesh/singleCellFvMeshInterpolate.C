@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,66 +27,45 @@ License
 
 #include "singleCellFvMesh.H"
 #include "calculatedFvPatchFields.H"
-#include "identityFieldMapper.H"
+#include "directFvPatchFieldMapper.H"
 #include "Time.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>> singleCellFvMesh::interpolate
+Foam::tmp<Foam::GeometricField<Type, Foam::fvPatchField, Foam::volMesh>>
+Foam::singleCellFvMesh::interpolate
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 ) const
 {
     // 1. Create the complete field with dummy patch fields
-    PtrList<fvPatchField<Type>> patchFields(vf.boundaryField().size());
 
-    forAll(patchFields, patchi)
-    {
-        patchFields.set
-        (
-            patchi,
-            fvPatchField<Type>::New
-            (
-                calculatedFvPatchField<Type>::typeName,
-                boundary()[patchi],
-                DimensionedField<Type, fvMesh>::null()
-            )
-        );
-    }
-
-    // Create the complete field from the pieces
-    tmp<VolField<Type>> tresF
+    tmp<GeometricField<Type, fvPatchField, volMesh>> tresult
     (
-        new VolField<Type>
+        new GeometricField<Type, fvPatchField, volMesh>
         (
             IOobject
             (
                 vf.name(),
-                time().name(),
+                time().timeName(),
                 *this,
                 IOobject::NO_READ,
                 IOobject::NO_WRITE
             ),
             *this,
+            Type(gAverage(vf.primitiveField())),
             vf.dimensions(),
-            Field<Type>(1, gAverage(vf)),
-            patchFields
+            fvPatchFieldBase::calculatedType()
         )
     );
-    VolField<Type>& resF = tresF.ref();
+    auto& result = tresult.ref();
 
 
     // 2. Change the fvPatchFields to the correct type using a mapper
     //  constructor (with reference to the now correct internal field)
 
-    typename VolField<Type>::
-        Boundary& bf = resF.boundaryFieldRef();
+    auto& bf = result.boundaryFieldRef();
 
     if (agglomerate())
     {
@@ -115,7 +96,7 @@ tmp<VolField<Type>> singleCellFvMesh::interpolate
                 (
                     vf.boundaryField()[patchi],
                     boundary()[patchi],
-                    resF(),
+                    result.internalField(),
                     agglomPatchFieldMapper(coarseToFine, coarseWeights)
                 )
             );
@@ -125,6 +106,8 @@ tmp<VolField<Type>> singleCellFvMesh::interpolate
     {
         forAll(vf.boundaryField(), patchi)
         {
+            labelList map(identity(vf.boundaryField()[patchi].size()));
+
             bf.set
             (
                 patchi,
@@ -132,19 +115,15 @@ tmp<VolField<Type>> singleCellFvMesh::interpolate
                 (
                     vf.boundaryField()[patchi],
                     boundary()[patchi],
-                    resF(),
-                    identityFieldMapper()
+                    result.internalField(),
+                    directFvPatchFieldMapper(map)
                 )
             );
         }
     }
 
-    return tresF;
+    return tresult;
 }
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
 
 // ************************************************************************* //

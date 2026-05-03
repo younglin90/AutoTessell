@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,7 @@ InClass
     Foam::vectorFieldField
 
 Description
-    Specialisation of FieldField<Field, T> for vector.
+    Specialisation of FieldField\<T\> for vector.
 
 SourceFiles
     vectorFieldField.C
@@ -35,21 +37,35 @@ SourceFiles
 #ifndef vectorFieldField_H
 #define vectorFieldField_H
 
-#include "FieldField.H"
-#include "vector.H"
-
-#define TEMPLATE template<template<class> class Field>
-#include "FieldFieldFunctionsM.H"
+#include "scalarFieldField.H"
+#include "vectorField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Global Functions * * * * * * * * * * * * * * //
 
-UNARY_FUNCTION(vector, vector, normalised)
-UNARY_FUNCTION(vector, vector, perpendicular)
+//- Compose a vector field field from components
+template<template<class> class Field, class Cmpt>
+void zip
+(
+    FieldField<Field, Vector<Cmpt>>& result,
+    const FieldField<Field, Cmpt>& x,
+    const FieldField<Field, Cmpt>& y,
+    const FieldField<Field, Cmpt>& z
+);
+
+//- Unzip vector field field into components
+template<template<class> class Field, class Cmpt>
+void unzip
+(
+    const FieldField<Field, Vector<Cmpt>>& input,
+    FieldField<Field, Cmpt>& x,
+    FieldField<Field, Cmpt>& y,
+    FieldField<Field, Cmpt>& z
+);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -57,8 +73,6 @@ UNARY_FUNCTION(vector, vector, perpendicular)
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "undefFieldFunctionsM.H"
 
 #ifdef NoRepository
     #include "vectorFieldField.C"

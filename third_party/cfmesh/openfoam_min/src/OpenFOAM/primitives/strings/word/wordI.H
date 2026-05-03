@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,14 +26,124 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include <cctype>
+#include <iostream>  // For std::cerr
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+template<class PrimitiveType>
+inline Foam::word Foam::word::printf
+(
+    const char* fmt,
+    const PrimitiveType& val
+)
+{
+    word output;
+    string_printf(output, fmt, val);
+    return output;
+}
+
+
+template<class PrimitiveType>
+inline Foam::word Foam::word::printf
+(
+    const std::string& fmt,
+    const PrimitiveType& val
+)
+{
+    word output;
+    string_printf(output, fmt, val);
+    return output;
+}
+
+
+inline bool Foam::word::valid(char c)
+{
+    return
+    (
+        !isspace(c)
+     && c != '"'   // string quote
+     && c != '\''  // string quote
+     && c != '/'   // path separator
+     && c != ';'   // end statement
+     && c != '{'   // beg block (eg, subdict)
+     && c != '}'   // end block (eg, subdict)
+    );
+}
+
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+inline Foam::word::word(const string& s, bool doStrip)
+:
+    string(s)
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+inline Foam::word::word(string&& s, bool doStrip)
+:
+    string(std::move(s))
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+inline Foam::word::word(std::string&& s, bool doStrip)
+:
+    string(std::move(s))
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+inline Foam::word::word(const std::string& s, bool doStrip)
+:
+    string(s)
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+inline Foam::word::word(const char* s, bool doStrip)
+:
+    string(s)
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+inline Foam::word::word(const char* s, size_type len, bool doStrip)
+:
+    string(s, len)
+{
+    if (doStrip)
+    {
+        stripInvalid();
+    }
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 inline void Foam::word::stripInvalid()
 {
-    // skip stripping unless debug is active to avoid
-    // costly operations
+    // Only strip when debug is active (potentially costly operation)
     if (debug && string::stripInvalid<word>(*this))
     {
         std::cerr
@@ -42,144 +155,121 @@ inline void Foam::word::stripInvalid()
             std::cerr
                 << "    For debug level (= " << debug
                 << ") > 1 this is considered fatal" << std::endl;
-            std::abort();
+            std::exit(1);
         }
     }
 }
 
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// FUTURE?
+// inline Foam::word Foam::word::stem() const
+// {
+//     const auto i = find_ext();  // Or just rfind('.')
+//
+//     if (i == std::string::npos)
+//     {
+//         return *this;
+//     }
+//
+//     return substr(0, i);
+// }
 
-inline Foam::word::word(const word& w)
-:
-    string(w)
-{}
 
-
-inline Foam::word::word()
-:
-    string()
-{}
-
-
-inline Foam::word::word(const string& s, const bool doStripInvalid)
-:
-    string(s)
+inline Foam::word Foam::word::ext() const
 {
-    if (doStripInvalid)
+    return string::ext();
+}
+
+
+inline Foam::word& Foam::word::ext(const word& ending)
+{
+    string::ext(ending);
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::replace_ext(const word& ending)
+{
+    string::remove_ext();
+    string::ext(ending);
+    return *this;
+}
+
+
+inline Foam::word Foam::word::lessExt() const
+{
+    const auto i = find_ext();  // Or just rfind('.')
+
+    if (i == std::string::npos)
     {
-        stripInvalid();
+        return *this;
     }
-}
 
-
-inline Foam::word::word(const std::string& s, const bool doStripInvalid)
-:
-    string(s)
-{
-    if (doStripInvalid)
-    {
-        stripInvalid();
-    }
-}
-
-
-inline Foam::word::word(const char* s, const bool doStripInvalid)
-:
-    string(s)
-{
-    if (doStripInvalid)
-    {
-        stripInvalid();
-    }
-}
-
-inline Foam::word::word
-(
-    const char* s,
-    const size_type n,
-    const bool doStripInvalid
-)
-:
-    string(s, n)
-{
-    if (doStripInvalid)
-    {
-        stripInvalid();
-    }
-}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-inline bool Foam::word::valid(char c)
-{
-    return
-    (
-        !isspace(c)
-     && c != '"'   // string quote
-     && c != '\''  // string quote
-     && c != '/'   // path separator
-     && c != '$'   // variable indicator
-     && c != ';'   // end statement
-     && c != '{'   // beg subdict
-     && c != '}'   // end subdict
-    );
-}
-
-
-inline Foam::word Foam::word::capitalise() const
-{
-    word w(*this);
-    w[0] = toupper(w[0]);
-    return w;
+    return substr(0, i);
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline void Foam::word::operator=(const word& q)
+inline Foam::word& Foam::word::operator=(const word& s)
 {
-    string::operator=(q);
-}
-
-
-inline void Foam::word::operator=(const string& q)
-{
-    string::operator=(q);
-    stripInvalid();
-}
-
-
-inline void Foam::word::operator=(const std::string& q)
-{
-    string::operator=(q);
-    stripInvalid();
-}
-
-
-inline void Foam::word::operator=(const char* q)
-{
-    string::operator=(q);
-    stripInvalid();
-}
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-inline Foam::word Foam::operator&(const word& a, const word& b)
-{
-    if (b.size())
+    // Self-assignment is a no-op
+    if (this != &s)
     {
-        string ub = b;
-        ub.string::operator[](0) = char(toupper(ub.string::operator[](0)));
+        assign(s);
+    }
+    return *this;
+}
 
-        return a + ub;
-    }
-    else
+
+inline Foam::word& Foam::word::operator=(word&& s)
+{
+    // Self-assignment is a no-op
+    if (this != &s)
     {
-        return a;
+        assign(std::move(s));
     }
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::operator=(const string& s)
+{
+    assign(s);
+    stripInvalid();
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::operator=(string&& s)
+{
+    assign(std::move(s));
+    stripInvalid();
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::operator=(const std::string& s)
+{
+    assign(s);
+    stripInvalid();
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::operator=(std::string&& s)
+{
+    assign(std::move(s));
+    stripInvalid();
+    return *this;
+}
+
+
+inline Foam::word& Foam::word::operator=(const char* s)
+{
+    assign(s);
+    stripInvalid();
+    return *this;
 }
 
 

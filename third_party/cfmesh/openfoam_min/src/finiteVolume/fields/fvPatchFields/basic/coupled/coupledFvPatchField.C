@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +28,13 @@ License
 
 #include "coupledFvPatchField.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::coupledFvPatchField<Type>::coupledFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     LduInterfaceField<Type>(refCast<const lduInterface>(p)),
@@ -43,7 +46,7 @@ template<class Type>
 Foam::coupledFvPatchField<Type>::coupledFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
     const Field<Type>& f
 )
 :
@@ -55,14 +58,39 @@ Foam::coupledFvPatchField<Type>::coupledFvPatchField
 template<class Type>
 Foam::coupledFvPatchField<Type>::coupledFvPatchField
 (
+    const coupledFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict,
-    const bool valueRequired
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     LduInterfaceField<Type>(refCast<const lduInterface>(p)),
-    fvPatchField<Type>(p, iF, dict, valueRequired)
+    fvPatchField<Type>(ptf, p, iF, mapper)
+{}
+
+
+template<class Type>
+Foam::coupledFvPatchField<Type>::coupledFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict,
+    IOobjectOption::readOption requireValue
+)
+:
+    LduInterfaceField<Type>(refCast<const lduInterface>(p, dict)),
+    fvPatchField<Type>(p, iF, dict, requireValue)
+{}
+
+
+template<class Type>
+Foam::coupledFvPatchField<Type>::coupledFvPatchField
+(
+    const coupledFvPatchField<Type>& ptf
+)
+:
+    LduInterfaceField<Type>(refCast<const lduInterface>(ptf.patch())),
+    fvPatchField<Type>(ptf)
 {}
 
 
@@ -70,23 +98,7 @@ template<class Type>
 Foam::coupledFvPatchField<Type>::coupledFvPatchField
 (
     const coupledFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    LduInterfaceField<Type>(refCast<const lduInterface>(p)),
-    fvPatchField<Type>(ptf, p, iF, mapper, false)
-{
-    mapper(*this, ptf, pTraits<Type>::nan);
-}
-
-
-template<class Type>
-Foam::coupledFvPatchField<Type>::coupledFvPatchField
-(
-    const coupledFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     LduInterfaceField<Type>(refCast<const lduInterface>(ptf.patch())),
@@ -95,17 +107,6 @@ Foam::coupledFvPatchField<Type>::coupledFvPatchField
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-void Foam::coupledFvPatchField<Type>::map
-(
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
-)
-{
-    mapper(*this, ptf, pTraits<Type>::nan);
-}
-
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>> Foam::coupledFvPatchField<Type>::snGrad
@@ -130,17 +131,6 @@ void Foam::coupledFvPatchField<Type>::initEvaluate(const Pstream::commsTypes)
 
 
 template<class Type>
-void Foam::coupledFvPatchField<Type>::evaluateNoUpdateCoeffs()
-{
-    Field<Type>::operator=
-    (
-        this->patch().weights()*this->patchInternalField()
-      + (1.0 - this->patch().weights())*this->patchNeighbourField()
-    );
-}
-
-
-template<class Type>
 void Foam::coupledFvPatchField<Type>::evaluate(const Pstream::commsTypes)
 {
     if (!this->updated())
@@ -148,7 +138,15 @@ void Foam::coupledFvPatchField<Type>::evaluate(const Pstream::commsTypes)
         this->updateCoeffs();
     }
 
-    evaluateNoUpdateCoeffs();
+    Field<Type>::operator=
+    (
+        lerp
+        (
+            this->patchNeighbourField(),
+            this->patchInternalField(),
+            this->patch().weights()
+        )
+    );
 
     fvPatchField<Type>::evaluate();
 }
@@ -220,7 +218,7 @@ template<class Type>
 void Foam::coupledFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

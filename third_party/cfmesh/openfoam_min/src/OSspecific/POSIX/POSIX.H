@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef POSIX_H
-#define POSIX_H
+#ifndef Foam_POSIX_H
+#define Foam_POSIX_H
 
 #include "className.H"
 
@@ -46,11 +48,11 @@ namespace Foam
 
 namespace POSIX
 {
-    //- Declare name of the class and its debug switch
+    //- Declare namespace and its debug switch
     NamespaceName("POSIX");
 
-    const label pathLengthChunk = 256;
-    const label pathLengthMax = 4096;
+    constexpr label pathLengthChunk = 256;
+    constexpr label pathLengthMax = 4096;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

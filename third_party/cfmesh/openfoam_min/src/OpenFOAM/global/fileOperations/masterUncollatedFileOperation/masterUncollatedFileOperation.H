@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2019-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,14 +25,15 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::fileOperations::masterUncollatedFileOperationInitialise
+    Foam::fileOperations::masterUncollatedFileOperation
 
 Description
     fileOperations that performs all file operations on the master processor.
     Requires the calls to be parallel synchronised!
 
-    Limitations: - no /processor in filename
-                 - no /uniform/ in the filename
+    Limitations
+    - no /processor in filename
+    - no /uniform/ in the filename
 
     The main logic is in ::filePath which returns a
     - same path on all processors. This can either be a global file
@@ -55,45 +59,54 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef masterUncollatedFileOperation_fileOperation_H
-#define masterUncollatedFileOperation_fileOperation_H
+#ifndef Foam_fileOperations_masterUncollatedFileOperation_H
+#define Foam_fileOperations_masterUncollatedFileOperation_H
 
 #include "fileOperation.H"
-#include "HashPtrTable.H"
-#include "unthreadedInitialise.H"
-#include "boolList.H"
 #include "OSspecific.H"
+#include "HashPtrTable.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
+// Forward Declarations
 class PstreamBuffers;
 
 namespace fileOperations
 {
 
 /*---------------------------------------------------------------------------*\
-                Class masterUncollatedFileOperation Declaration
+                     Class masterUncollatedFileOperation Declaration
 \*---------------------------------------------------------------------------*/
 
 class masterUncollatedFileOperation
 :
     public fileOperation
 {
+    // Private Data
+
+        //- Communicator allocated/managed by us
+        mutable label managedComm_;
+
+
+    // Private Member Functions
+
+        //- Any initialisation steps after constructing
+        void init(bool verbose);
+
+
 protected:
 
-    // Protected data
-
-        //- Any communicator allocated by me
-        const label myComm_;
+    // Protected Data
 
         //- Cached times for a given directory
-        mutable HashPtrTable<instantList> times_;
+        mutable HashPtrTable<DynamicList<instant>> times_;
 
 
-    // Protected classes
+    // Protected Operation Functors
 
         class mkDirOp
         {
@@ -104,9 +117,9 @@ protected:
                 mode_(mode)
             {}
 
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::mkDir(fName, mode_);
+                return Foam::mkDir(f, mode_);
             }
         };
 
@@ -119,60 +132,57 @@ protected:
                 mode_(mode)
             {}
 
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::chMod(fName, mode_);
+                return Foam::chMod(f, mode_);
             }
         };
 
         class modeOp
         {
-            const bool checkVariants_;
             const bool followLink_;
         public:
-            modeOp(const bool checkVariants, const bool followLink)
+            modeOp(const bool followLink)
             :
-                checkVariants_(checkVariants),
                 followLink_(followLink)
             {}
 
-            mode_t operator()(const fileName& fName) const
+            mode_t operator()(const fileName& f) const
             {
-                return Foam::mode(fName, checkVariants_, followLink_);
+                return Foam::mode(f, followLink_);
             }
         };
 
         class typeOp
         {
-            const bool checkVariants_;
             const bool followLink_;
         public:
-            typeOp(const bool checkVariants, const bool followLink)
+            typeOp(const bool followLink)
             :
-                checkVariants_(checkVariants),
                 followLink_(followLink)
             {}
 
-            label operator()(const fileName& fName) const
+            // Returns int (for reductions) instead of fileName::Type
+            int operator()(const fileName& f) const
             {
-                return label(Foam::type(fName, checkVariants_, followLink_));
+                return Foam::type(f, followLink_);
             }
         };
 
         class existsOp
         {
-            const bool checkVariants_;
+            const bool checkGzip_;
             const bool followLink_;
         public:
-            existsOp(const bool checkVariants, const bool followLink)
+            existsOp(const bool checkGzip, const bool followLink)
             :
-                checkVariants_(checkVariants),
+                checkGzip_(checkGzip),
                 followLink_(followLink)
             {}
 
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::exists(fName, checkVariants_, followLink_);
+                return Foam::exists(f, checkGzip_, followLink_);
             }
         };
 
@@ -185,91 +195,71 @@ protected:
                 followLink_(followLink)
             {}
 
-        public:
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::isDir(fName, followLink_);
+                return Foam::isDir(f, followLink_);
             }
         };
 
         class isFileOp
         {
-            const bool checkVariants_;
+            const bool checkGzip_;
             const bool followLink_;
         public:
-            isFileOp(const bool checkVariants, const bool followLink)
+            isFileOp(const bool checkGzip, const bool followLink)
             :
-                checkVariants_(checkVariants),
+                checkGzip_(checkGzip),
                 followLink_(followLink)
             {}
-        public:
-            bool operator()(const fileName& fName) const
+
+            bool operator()(const fileName& f) const
             {
-                return Foam::isFile(fName, checkVariants_, followLink_);
+                return Foam::isFile(f, checkGzip_, followLink_);
             }
         };
 
         class fileSizeOp
         {
-            const bool checkVariants_;
             const bool followLink_;
         public:
-            fileSizeOp(const bool checkVariants, const bool followLink)
+            fileSizeOp(const bool followLink)
             :
-                checkVariants_(checkVariants),
                 followLink_(followLink)
             {}
 
-        public:
-            off_t operator()(const fileName& fName) const
+            off_t operator()(const fileName& f) const
             {
-                return Foam::fileSize(fName, checkVariants_, followLink_);
+                return Foam::fileSize(f, followLink_);
             }
         };
 
         class lastModifiedOp
         {
-            const bool checkVariants_;
             const bool followLink_;
         public:
-            lastModifiedOp(const bool checkVariants, const bool followLink)
+            lastModifiedOp(const bool followLink)
             :
-                checkVariants_(checkVariants),
                 followLink_(followLink)
             {}
 
-        public:
-            time_t operator()(const fileName& fName) const
+            time_t operator()(const fileName& f) const
             {
-                return Foam::lastModified(fName, checkVariants_, followLink_);
+                return Foam::lastModified(f, followLink_);
             }
         };
 
-        class lastModifiedHROp
+        class highResLastModifiedOp
         {
-            const bool checkVariants_;
             const bool followLink_;
         public:
-            lastModifiedHROp
-            (
-                const bool checkVariants,
-                const bool followLink
-            )
+            highResLastModifiedOp(const bool followLink)
             :
-                checkVariants_(checkVariants),
                 followLink_(followLink)
             {}
 
-        public:
-            double operator()(const fileName& fName) const
+            double operator()(const fileName& f) const
             {
-                return
-                    Foam::highResLastModified
-                    (
-                        fName,
-                        checkVariants_,
-                        followLink_
-                    );
+                return Foam::highResLastModified(f, followLink_);
             }
         };
 
@@ -282,27 +272,35 @@ protected:
                 ext_(ext)
             {}
 
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::mvBak(fName, ext_);
+                return Foam::mvBak(f, ext_);
             }
         };
 
         class rmOp
         {
         public:
-            bool operator()(const fileName& fName) const
+            bool operator()(const fileName& f) const
             {
-                return Foam::rm(fName);
+                return Foam::rm(f);
             }
         };
 
         class rmDirOp
         {
+            bool silent_;
+            bool emptyOnly_;
         public:
-            bool operator()(const fileName& fName) const
+            rmDirOp(bool silent=false, bool emptyOnly=false)
+            :
+                silent_(silent),
+                emptyOnly_(emptyOnly)
+            {}
+
+            bool operator()(const fileName& f) const
             {
-                return Foam::rmDir(fName);
+                return Foam::rmDir(f, silent_, emptyOnly_);
             }
         };
 
@@ -315,7 +313,6 @@ protected:
                 followLink_(followLink)
             {}
 
-        public:
             bool operator()(const fileName& src, const fileName& dest) const
             {
                 return Foam::cp(src, dest, followLink_);
@@ -340,7 +337,6 @@ protected:
                 followLink_(followLink)
             {}
 
-        public:
             bool operator()(const fileName& src, const fileName& dest) const
             {
                 return Foam::mv(src, dest, followLink_);
@@ -356,104 +352,84 @@ protected:
                 isFile_(isFile)
             {}
 
-            fileName operator()(const fileName& fName) const
+            const fileName& operator()(const fileName& f) const
             {
                 return
                 (
-                    (isFile_ && Foam::isFile(fName))
-                 || (!isFile_ && Foam::isDir(fName))
-                  ? fName
-                  : fileName::null
+                    (isFile_ ? Foam::isFile(f) : Foam::isDir(f))
+                  ? f
+                  : fileName::null  // const reference, not temporary
                 );
             }
         };
 
         class readDirOp
         {
-            const fileType type_;
-            const bool filterVariants_;
+            const fileName::Type type_;
+            const bool filtergz_;
             const bool followLink_;
-
         public:
-
             readDirOp
             (
-                const fileType type,
-                const bool filterVariants,
+                const fileName::Type type,
+                const bool filtergz,
                 const bool followLink
             )
             :
                 type_(type),
-                filterVariants_(filterVariants),
+                filtergz_(filtergz),
                 followLink_(followLink)
             {}
 
-            fileNameList operator()(const fileName& fName) const
+            fileNameList operator()(const fileName& f) const
             {
-                return Foam::readDir
-                (
-                    fName,
-                    type_,
-                    filterVariants_,
-                    followLink_
-                );
+                return Foam::readDir(f, type_, filtergz_, followLink_);
             }
         };
 
 
     // Private Member Functions
 
-        //- Get the list of processors that are part of this communicator
-        static labelList subRanks(const label n);
-
-        template<class Type>
-        Type scatterList(const UList<Type>&, const int, const label comm) const;
-
-        template<class Type, class fileOp>
+        template<class Type, class FileOp>
         Type masterOp
         (
-            const fileName&,
-            const fileOp& fop,
+            const fileName& fName,
+            const FileOp& fop,
             const int tag,
             const label comm
         ) const;
 
-        template<class Type, class fileOp>
+        template<class Type, class FileOp>
         Type masterOp
         (
-            const fileName&,
-            const fileName&,
-            const fileOp& fop,
+            const fileName& src,
+            const fileName& dest,
+            const FileOp& fop,
             const int tag,
             const label comm
         ) const;
-
-        //- Equivalent of Time::findInstance
-        static word findInstancePath
-        (
-            const instantList& timeDirs,
-            const instant& t
-        );
 
         //- Search (locally!) for object; return info on how it was found.
         //  Does not do any parallel communication.
-        //    globalFile : also check undecomposed case
+        //    checkGlobal : also check undecomposed case
         //    isFile      : true:check for file  false:check for directory
         // searchType    : how was found
         // processorsDir : name of processor directory
         // instance      : instance
         virtual fileName filePathInfo
         (
-            const bool globalFile,
+            const bool checkGlobal,
             const bool isFile,
-            const IOobject&,
+            const IOobject& io,
+            const dirIndexList& pDirs,
+            const bool search,
             pathType& searchType,
             word& processorsDir,
             word& instance
         ) const;
 
         //- Construct filePath
-        fileName relativeObjectPath
+        fileName localObjectPath
         (
             const IOobject&,
             const pathType& searchType,
@@ -461,12 +437,12 @@ protected:
             const word& instancePath
         ) const;
 
-        //- Detect file (possibly compressed), read file contents and send
-        //  to processors
+        //- Read file contents and send to processors.
+        //  Handles compressed or uncompressed files
         static void readAndSend
         (
-            const fileName& fName,
-            const labelUList& procs,
+            const fileName& filePath,
+            const labelUList& recvProcs,
             PstreamBuffers& pBufs
         );
 
@@ -476,12 +452,12 @@ protected:
             IOobject& io,
             const label comm,
             const bool uniform,             // on comms master only
-            const fileNameList& filePaths,  // on comms master only
-            const boolList& read            // on comms master only
+            const fileNameList& filePaths,  // on comms master and sub-ranks
+            const boolUList& readOnProcs    // on comms master and sub-ranks
         );
 
         //- Helper: check IO for local existence. Like filePathInfo but
-        //  without parent searching and instance searching
+        //  without parent searchign and instance searching
         bool exists(const dirIndexList&, IOobject& io) const;
 
 
@@ -491,7 +467,7 @@ public:
         TypeName("masterUncollated");
 
 
-    // Static data
+    // Static Data
 
         //- Max size of parallel communications. Switches from non-blocking
         //  to scheduled when reading/writing files. Read as float to enable
@@ -501,11 +477,16 @@ public:
 
     // Constructors
 
-        //- Construct null
-        masterUncollatedFileOperation(const bool verbose);
+        //- Default construct
+        explicit masterUncollatedFileOperation(bool verbose = false);
 
-        //- Construct from communicator
-        masterUncollatedFileOperation(const label comm, const bool verbose);
+        //- Construct from communicator with specified io-ranks
+        explicit masterUncollatedFileOperation
+        (
+            const Tuple2<label, labelList>& commAndIORanks,
+            const bool distributedRoots,
+            bool verbose = false
+        );
 
 
     //- Destructor
@@ -513,6 +494,11 @@ public:
 
 
     // Member Functions
+
+        //- Transfer ownership of communicator to this fileOperation.
+        //- Use with caution
+        virtual void storeComm() const;
+
 
         // OSSpecific equivalents
 
@@ -526,40 +512,38 @@ public:
             virtual mode_t mode
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
-            //- Return the file type: directory, file or link
-            virtual fileType type
+            //- Return the file type: DIRECTORY, FILE or SYMLINK
+            virtual fileName::Type type
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
-            //- Does the name exist (as directory or file) in the file system?
+            //- Does the name exist (as DIRECTORY or FILE) in the file system?
             //  Optionally enable/disable check for gzip file.
             virtual bool exists
             (
                 const fileName&,
-                const bool checkVariants = true,
+                const bool checkGzip=true,
                 const bool followLink = true
             ) const;
 
-            //- Does the name exist as a directory in the file system?
+            //- Does the name exist as a DIRECTORY in the file system?
             virtual bool isDir
             (
                 const fileName&,
                 const bool followLink = true
             ) const;
 
-            //- Does the name exist as a file in the file system?
+            //- Does the name exist as a FILE in the file system?
             //  Optionally enable/disable check for gzip file.
             virtual bool isFile
             (
                 const fileName&,
-                const bool checkVariants = true,
+                const bool checkGzip=true,
                 const bool followLink = true
             ) const;
 
@@ -567,7 +551,6 @@ public:
             virtual off_t fileSize
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -575,7 +558,6 @@ public:
             virtual time_t lastModified
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -583,7 +565,6 @@ public:
             virtual double highResLastModified
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -591,8 +572,8 @@ public:
             virtual fileNameList readDir
             (
                 const fileName&,
-                const fileType = fileType::file,
-                const bool filterVariants = true,
+                const fileName::Type=fileName::FILE,
+                const bool filtergz=true,
                 const bool followLink = true
             ) const;
 
@@ -629,32 +610,35 @@ public:
             virtual bool rm(const fileName&) const;
 
             //- Remove a directory and its contents
-            virtual bool rmDir(const fileName&) const;
-
-//            //- Open a shared library. Return handle to library. Print error
-//            //  message if library cannot be loaded (check = true)
-//            virtual void* dlOpen
-//            (
-//                const fileName& lib,
-//                const bool check = true
-//            ) const;
-
-
-        // (reg)IOobject functionality
-
-            //- Search for an object. globalFile : also check undecomposed case
-            virtual fileName filePath
+            //  \param dir the directory to remove
+            //  \param silent do not report missing directory
+            //  \param emptyOnly only remove empty directories (recursive)
+            virtual bool rmDir
             (
-                const bool globalFile,
-                const IOobject&
+                const fileName& dir,
+                const bool silent = false,
+                const bool emptyOnly = false
             ) const;
 
-            //- Search for a directory. globalFile : also check undecomposed
+
+        // (reg)IOobject functinality
+
+            //- Search for an object. checkGlobal : also check undecomposed case
+            virtual fileName filePath
+            (
+                const bool checkGlobal,
+                const IOobject& io,
+                const word& typeName,
+                const bool search
+            ) const;
+
+            //- Search for a directory. checkGlobal : also check undecomposed
             //  case
             virtual fileName dirPath
             (
-                const bool globalFile,
-                const IOobject&
+                const bool checkGlobal,
+                const IOobject& io,
+                const bool search
             ) const;
 
             //- Search directory for objects. Used in IOobjectList.
@@ -675,22 +659,21 @@ public:
             ) const;
 
             //- Reads header for regIOobject and returns an ISstream
-            //  to read the contents.
+            //- to read the contents.
             virtual autoPtr<ISstream> readStream
             (
                 regIOobject&,
                 const fileName&,
                 const word& typeName,
-                const bool read = true
+                const bool readOnProc = true
             ) const;
 
             //- Top-level read
-            //  Format set to ASCII if defaultFormat and file format are ASCII
             virtual bool read
             (
                 regIOobject&,
                 const bool masterOnly,
-                const IOstream::streamFormat defaultFormat,
+                const IOstreamOption::streamFormat format,
                 const word& typeName
             ) const;
 
@@ -698,29 +681,29 @@ public:
             //  Returns success state.
             virtual bool writeObject
             (
-                const regIOobject&,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion,
-                IOstream::compressionType compression=IOstream::UNCOMPRESSED,
-                const bool write = true
+                const regIOobject& io,
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
 
             //- Generate an ISstream that reads a file
-            virtual autoPtr<ISstream> NewIFstream
+            virtual autoPtr<ISstream> NewIFstream(const fileName&) const;
+
+            //- Generate an OSstream that writes a file
+            virtual autoPtr<OSstream> NewOFstream
             (
-                const fileName& filePath,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion
+                const fileName& pathname,
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
 
-            //- Generate an Ostream that writes a file
-            virtual autoPtr<Ostream> NewOFstream
+            //- Generate an OSstream that writes a file
+            virtual autoPtr<OSstream> NewOFstream
             (
-                const fileName& filePath,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion,
-                IOstream::compressionType compression=IOstream::UNCOMPRESSED,
-                const bool write = true
+                IOstreamOption::atomicType atomic,
+                const fileName& pathname,
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
 
 
@@ -761,25 +744,27 @@ public:
 
         // Other
 
-            //- Same file?
-            static bool uniformFile(const fileNameList&);
-
             //- Get sorted list of times
-            virtual instantList findTimes
-            (
-                const Time&,
-                const fileName&,
-                const word&
-            ) const;
+            virtual instantList findTimes(const fileName&, const word&) const;
 
-            //- Find instance where IOobject is. Fails if cannot be found
-            //  and readOpt() is MUST_READ/MUST_READ_IF_MODIFIED. Otherwise
-            //  returns stopInstance.
+            //- Find time instance where IOobject is located.
+            //- The name of the IOobject can be empty, in which case only the
+            //- IOobject::local() is checked.
+            //- Does not search beyond \c stopInstance (if set) or \c constant.
+            //  If the instance cannot be found:
+            //  - FatalError when readOpt is (MUST_READ or READ_MODIFIED)
+            //  - returns the \c stopInstance (if set and reached)
+            //  - return \c constant if constant_fallback is true.
+            //  - return an empty word if constant_fallback is false.
+            //  .
             virtual IOobject findInstance
             (
                 const IOobject& io,
                 const scalar startValue,
-                const word& stopInstance
+                //! The search stop instance
+                const word& stopInstance,
+                //! Return \c "constant" instead of \c "" if the search failed
+                const bool constant_fallback = true
             ) const;
 
             //- Callback for time change
@@ -788,33 +773,14 @@ public:
             //- Forcibly wait until all output done. Flush any cached data
             virtual void flush() const;
 
+            //- Forcibly parallel sync
+            virtual void sync();
+
             //- Return cached times
-            const HashPtrTable<instantList>& times() const
+            const HashPtrTable<DynamicList<instant>>& times() const noexcept
             {
                 return times_;
             }
-};
-
-
-/*---------------------------------------------------------------------------*\
-           Class masterUncollatedFileOperationInitialise Declaration
-\*---------------------------------------------------------------------------*/
-
-class masterUncollatedFileOperationInitialise
-:
-    public unthreadedInitialise
-{
-public:
-
-    // Constructors
-
-        //- Construct from components
-        masterUncollatedFileOperationInitialise(int& argc, char**& argv);
-
-
-    //- Destructor
-    virtual ~masterUncollatedFileOperationInitialise()
-    {}
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +27,25 @@ License
 Class
     Foam::fv::orthogonalSnGrad
 
+Group
+    grpFvSnGradSchemes
+
 Description
-    Simple central-difference snGrad scheme using the cell-centre to cell-centre
-    delta-coefficients.
+    Surface gradient scheme with no non-orthogonal correction.
+
+Usage
+    Minimal example by using \c system/fvSchemes:
+    \verbatim
+    snGradSchemes
+    {
+        snGrad(<term>)       orthogonal;
+    }
+    \endverbatim
+
+Note
+  - Interpolation weighting factors (i.e. delta coefficients) are based
+    on the \c deltaCoeffs function rather than the \c nonOrthDeltaCoeffs
+    function, which is used by the \c uncorrected scheme.
 
 SourceFiles
     orthogonalSnGrad.C
@@ -49,7 +68,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class orthogonalSnGrad Declaration
+                        Class orthogonalSnGrad Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -57,6 +76,11 @@ class orthogonalSnGrad
 :
     public snGradScheme<Type>
 {
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const orthogonalSnGrad&) = delete;
+
 
 public:
 
@@ -72,7 +96,6 @@ public:
             snGradScheme<Type>(mesh)
         {}
 
-
         //- Construct from mesh and data stream
         orthogonalSnGrad(const fvMesh& mesh, Istream&)
         :
@@ -81,7 +104,7 @@ public:
 
 
     //- Destructor
-    virtual ~orthogonalSnGrad();
+    virtual ~orthogonalSnGrad() = default;
 
 
     // Member Functions
@@ -89,28 +112,22 @@ public:
         //- Return the interpolation weighting factors for the given field
         virtual tmp<surfaceScalarField> deltaCoeffs
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return this->mesh().deltaCoeffs();
         }
 
         //- Return true if this scheme uses an explicit correction
-        virtual bool corrected() const
+        virtual bool corrected() const noexcept
         {
             return false;
         }
 
         //- Return the explicit correction to the orthogonalSnGrad
-        //  for the given field
-        virtual tmp<SurfaceField<Type>>
-        correction(const VolField<Type>&) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const orthogonalSnGrad&) = delete;
+        //- for the given field
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
+        correction(const GeometricField<Type, fvPatchField, volMesh>&) const;
 };
 
 

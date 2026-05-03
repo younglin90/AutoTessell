@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +28,16 @@ Class
     Foam::fileFormats::STARCDsurfaceFormat
 
 Description
-    Read/write the surface shells from pro-STAR vrt/cel files.
+    Read/write the surface shells from PROSTAR vrt/cel files.
 
-    Note:
-        Uses the extension \a .inp (input) to denote the format.
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
+
+Note
+    Uses the extension \a .inp (input) to denote the format.
 
 See also
     Foam::meshReaders::STARCD
@@ -38,8 +47,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef STARCDsurfaceFormat_H
-#define STARCDsurfaceFormat_H
+#ifndef Foam_STARCDsurfaceFormat_H
+#define Foam_STARCDsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -54,7 +63,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class STARCDsurfaceFormat Declaration
+              Class fileFormats::STARCDsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -63,23 +72,14 @@ class STARCDsurfaceFormat
     public MeshedSurface<Face>,
     public STARCDsurfaceFormatCore
 {
-    // Private Data
-
-        //- STAR-CD identifier for shell shapes (2d elements)
-        static const int starcdShellShape_ = 3;
-
-        //- STAR-CD identifier for shell type (shells vs. baffles)
-        static const int starcdShellType_  = 4;
-
-
     // Private Member Functions
 
         static inline void writeShell
         (
-            Ostream&,
-            const Face&,
-            const label cellId,
-            const label cellTableId
+            Ostream& os,
+            const Face& f,
+            const label cellId,         //!< 0-based element Id
+            const label cellTableId     //!< 0-based table id
         );
 
 
@@ -88,48 +88,52 @@ public:
     // Constructors
 
         //- Construct from file name
-        STARCDsurfaceFormat(const fileName&);
-
-        //- Disallow default bitwise copy construction
-        STARCDsurfaceFormat(const STARCDsurfaceFormat<Face>&) = delete;
-
-
-    // Selectors
-
-        //- Read file and return surface
-        static autoPtr<MeshedSurface<Face>> New(const fileName& name)
-        {
-            return autoPtr<MeshedSurface<Face>>
-            (
-                new STARCDsurfaceFormat<Face>(name)
-            );
-        }
+        explicit STARCDsurfaceFormat(const fileName& filename);
 
 
     //- Destructor
-    virtual ~STARCDsurfaceFormat()
-    {}
+    virtual ~STARCDsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components by proxy
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
         //- Read from file
-        virtual bool read(const fileName&);
+        virtual bool read(const fileName& filename) override;
 
-        //- Write object
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const STARCDsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -51,15 +54,27 @@ namespace Foam
 class cyclicGAMGInterfaceField
 :
     public GAMGInterfaceField,
-    public cyclicLduInterfaceField
+    virtual public cyclicLduInterfaceField
 {
-    // Private Data
+    // Private data
 
         //- Local reference cast into the cyclic interface
         const cyclicGAMGInterface& cyclicInterface_;
 
+        //- Is the transform required
+        bool doTransform_;
+
         //- Rank of component for transformation
         int rank_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        cyclicGAMGInterfaceField(const cyclicGAMGInterfaceField&) = delete;
+
+        //- No copy assignment
+        void operator=(const cyclicGAMGInterfaceField&) = delete;
 
 
 public:
@@ -81,15 +96,46 @@ public:
         cyclicGAMGInterfaceField
         (
             const GAMGInterface& GAMGCp,
+            const bool doTransform,
             const int rank
         );
 
-        //- Disallow default bitwise copy construction
-        cyclicGAMGInterfaceField(const cyclicGAMGInterfaceField&) = delete;
+        //- Construct from GAMG interface and Istream
+        cyclicGAMGInterfaceField
+        (
+            const GAMGInterface& GAMGCp,
+            Istream& is
+        );
+
+        //- Construct from GAMG interface and local and remote fields
+        cyclicGAMGInterfaceField
+        (
+            const GAMGInterface& GAMGCp,
+            const lduInterfaceField& local, // local
+            const UPtrList<lduInterfaceField>& other // other
+        );
+
+        //- Construct by assembling and return a clone.
+        virtual autoPtr<GAMGInterfaceField> clone
+        (
+            const GAMGInterface& GAMGCp,
+            const UPtrList<lduInterfaceField>& other // other
+        ) const
+        {
+            return autoPtr<GAMGInterfaceField>
+            (
+                new cyclicGAMGInterfaceField
+                (
+                    GAMGCp,
+                    *this,      // local field
+                    other       // other fields
+                )
+            );
+        }
 
 
     //- Destructor
-    virtual ~cyclicGAMGInterfaceField();
+    virtual ~cyclicGAMGInterfaceField() = default;
 
 
     // Member Functions
@@ -105,10 +151,22 @@ public:
 
         //- Cyclic interface functions
 
-            //- Return the transformation
-            virtual const transformer& transform() const
+            //- Does the interface field perform the transformation
+            virtual bool doTransform() const
             {
-                return cyclicInterface_.transform();
+                return doTransform_;
+            }
+
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
+            {
+                return cyclicInterface_.forwardT();
+            }
+
+            //- Return neighbour-cell transformation tensor
+            virtual const tensorField& reverseT() const
+            {
+                return cyclicInterface_.reverseT();
             }
 
             //- Return rank of component for transform
@@ -123,18 +181,21 @@ public:
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
             ) const;
 
 
-    // Member Operators
+        // I/O
 
-        //- Disallow default bitwise assignment
-        void operator=(const cyclicGAMGInterfaceField&) = delete;
+            //- Write to stream
+            virtual void write(Ostream&) const;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,57 +28,46 @@ Class
     Foam::OFstream
 
 Description
-    Output to file stream.
+    Output to file stream as an OSstream, normally using \c std::ofstream
+    for the actual output.
+
+Note
+    The atomic output works by creating an intermediate temporary file,
+    which is renamed as an atomic operation when closing. It is not
+    possible, or particularly desirable, to have an atomic in combination
+    with append behaviour. If both are specified, append has priority.
+
+Note
+    An output file can be opened in two different \c append modes, both of
+    which preserve existing files:
+    -# A common append mode is APPEND_APP, which corresponds to the
+       \c std::ios_base::app flag.
+       A seek-to-end is performed at \em every write.
+       It is thus not possible to use any manual seeks to overwrite parts
+       of the file.
+    -# The other append mode is APPEND_ATE, which roughly corresponds to the
+       \c std::ios_base::ate flag behaviour.
+       A seek-to-end is performed immediately after opening,
+       but not subsequently.
+       Manual seeks can be used to overwrite parts of the file.
+    .
 
 SourceFiles
     OFstream.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef OFstream_H
-#define OFstream_H
+#ifndef Foam_OFstream_H
+#define Foam_OFstream_H
 
 #include "OSstream.H"
-#include "fileName.H"
 #include "className.H"
-
-#include <fstream>
-using std::ofstream;
+#include "fstreamPointer.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-
-class OFstream;
-
-/*---------------------------------------------------------------------------*\
-                      Class OFstreamAllocator Declaration
-\*---------------------------------------------------------------------------*/
-
-//- A std::ostream with ability to handle compressed files
-class OFstreamAllocator
-{
-    friend class OFstream;
-
-    ostream* ofPtr_;
-
-    // Constructors
-
-        //- Construct from filePath
-        OFstreamAllocator
-        (
-            const fileName& filePath,
-            const IOstream::compressionType compression
-                = IOstream::UNCOMPRESSED,
-            const bool append = false
-        );
-
-    //- Destructor
-    ~OFstreamAllocator();
-
-};
-
 
 /*---------------------------------------------------------------------------*\
                           Class OFstream Declaration
@@ -83,67 +75,135 @@ class OFstreamAllocator
 
 class OFstream
 :
-    private OFstreamAllocator,
+    private Foam::ofstreamPointer,
     public OSstream
 {
-    // Private Data
-
-        fileName filePath_;
-
-
 public:
 
-    // Declare name of the class and its debug switch
+    //- Declare type-name (with debug switch)
     ClassName("OFstream");
 
 
     // Constructors
 
-        //- Construct from filePath
+        //- Construct a null output file stream that behaves like \c /dev/null
+        explicit OFstream(std::nullptr_t);
+
+        //- Construct with specified atomic behaviour
+        //- from pathname, stream option, optional append (see note).
         OFstream
         (
-            const fileName& filePath,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const compressionType compression = UNCOMPRESSED,
-            const bool append = false
+            IOstreamOption::atomicType atomic,
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND
         );
 
+        //- Construct from pathname and other specifications.
+        //  See note on append mode.
+        explicit OFstream
+        (
+            const fileName& pathname,
+            IOstreamOption streamOpt = IOstreamOption(),
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND
+        )
+        :
+            OFstream(IOstreamOption::NON_ATOMIC, pathname, streamOpt, append)
+        {}
 
-    //- Destructor
+        //- Construct from pathname, format (uncompressed),
+        //- optional append (see note),
+        //- atomic behaviour as per system default
+        OFstream
+        (
+            const fileName& pathname,
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::compressionType cmp = IOstreamOption::UNCOMPRESSED,
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND
+        )
+        :
+            OFstream(pathname, IOstreamOption(fmt, cmp), append)
+        {}
+
+        //- Construct with specified atomic behaviour
+        //- from pathname, format (uncompressed),
+        //- optional append (see note).
+        OFstream
+        (
+            IOstreamOption::atomicType atomic,
+            const fileName& pathname,
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::compressionType cmp = IOstreamOption::UNCOMPRESSED,
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND
+        )
+        :
+            OFstream(atomic, pathname, IOstreamOption(fmt, cmp), append)
+        {}
+
+
+    //- Destructor. Possibly invokes an atomic rename
+    //- (preference defined during construction)
     ~OFstream();
 
 
     // Member Functions
 
-        // Access
-
-            //- Return the name of the stream
-            const fileName& name() const
-            {
-                return filePath_;
-            }
-
-            //- Return non-const access to the name of the stream
-            fileName& name()
-            {
-                return filePath_;
-            }
+        //- Read/write access to the name of the stream
+        using OSstream::name;
 
 
-        // STL stream
+    // STL stream
 
-            //- Access to underlying std::ostream
-            virtual ostream& stdStream();
+        //- Const access to underlying std::ostream
+        virtual const std::ostream& stdStream() const override;
 
-            //- Const access to underlying std::ostream
-            virtual const ostream& stdStream() const;
+        //- Access to underlying std::ostream
+        virtual std::ostream& stdStream() override;
+
+        //- Rewind the stream so that it may be written again.
+        //- Reopens the file (truncation)
+        virtual void rewind();
 
 
-        // Print
+    // Output stream modes
 
-            //- Print description of IOstream to Ostream
-            void print(Ostream&) const;
+        //- True if opened in append mode \em and file already existed
+        bool is_appending() const noexcept
+        {
+            return ofstreamPointer::is_appending();
+        }
+
+        //- True if file creation behaves as atomic
+        bool is_atomic() const noexcept
+        {
+            return ofstreamPointer::is_atomic();
+        }
+
+
+    // Print
+
+        //- Print stream description
+        void print(Ostream& os) const override;
+
+
+    // Additional constructors and methods
+    #ifdef Foam_IOstream_extras
+
+        //- Construct from pathname, format (version, compression)
+        FOAM_DEPRECATED_FOR(2022-09, "Construct without specifying version")
+        OFstream
+        (
+            const fileName& pathname,
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::versionNumber ver,
+            IOstreamOption::compressionType cmp = IOstreamOption::UNCOMPRESSED,
+            IOstreamOption::appendType append = IOstreamOption::NO_APPEND
+        )
+        :
+            OFstream(pathname, IOstreamOption(fmt, ver, cmp), append)
+        {}
+
+    #endif /* Foam_IOstream_extras */
 };
 
 

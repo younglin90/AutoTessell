@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,7 +29,7 @@ License
 #include "localPointRegion.H"
 #include "syncTools.H"
 #include "polyMesh.H"
-#include "polyTopoChangeMap.H"
+#include "mapPolyMesh.H"
 #include "globalIndex.H"
 #include "indirectPrimitivePatch.H"
 #include "dummyTransform.H"
@@ -70,7 +73,12 @@ bool Foam::localPointRegion::isDuplicate
     const bool forward
 )
 {
-    label fp1 = findIndex(f1, f0[0]);
+    if (f0.size() != f1.size())
+    {
+        return false;
+    }
+
+    label fp1 = f1.find(f0[0]);
 
     if (fp1 == -1)
     {
@@ -117,9 +125,9 @@ void Foam::localPointRegion::countPointRegions
     // From faces with any duplicated point on it to local face
     meshFaceMap_.resize(meshPointMap_.size());
 
-    forAllConstIter(Map<label>, candidateFace, iter)
+    forAllConstIters(candidateFace, iter)
     {
-        label facei = iter.key();
+        const label facei = iter.key();
 
         if (!mesh.isInternalFace(facei))
         {
@@ -135,14 +143,14 @@ void Foam::localPointRegion::countPointRegions
 
             forAll(f, fp)
             {
-                label pointi = f[fp];
+                const label pointi = f[fp];
 
                 // Even points which were not candidates for splitting might
                 // be on multiple baffles that are being split so check.
 
                 if (candidatePoint[pointi])
                 {
-                    label region = minRegion[facei][fp];
+                    const label region = minRegion[facei][fp];
 
                     if (minPointRegion[pointi] == -1)
                     {
@@ -151,11 +159,11 @@ void Foam::localPointRegion::countPointRegions
                     else if (minPointRegion[pointi] != region)
                     {
                         // Multiple regions for this point. Add.
-                        Map<label>::iterator iter = meshPointMap_.find(pointi);
-                        if (iter != meshPointMap_.end())
+                        const auto iter = meshPointMap_.cfind(pointi);
+                        if (iter.good())
                         {
-                            labelList& regions = pointRegions[iter()];
-                            if (findIndex(regions, region) == -1)
+                            labelList& regions = pointRegions[iter.val()];
+                            if (!regions.found(region))
                             {
                                 label sz = regions.size();
                                 regions.setSize(sz+1);
@@ -164,7 +172,7 @@ void Foam::localPointRegion::countPointRegions
                         }
                         else
                         {
-                            label localPointi = meshPointMap_.size();
+                            const label localPointi = meshPointMap_.size();
                             meshPointMap_.insert(pointi, localPointi);
                             labelList regions(2);
                             regions[0] = minPointRegion[pointi];
@@ -172,7 +180,7 @@ void Foam::localPointRegion::countPointRegions
                             pointRegions.append(regions);
                         }
 
-                        label meshFaceMapI = meshFaceMap_.size();
+                        const label meshFaceMapI = meshFaceMap_.size();
                         meshFaceMap_.insert(facei, meshFaceMapI);
                     }
                 }
@@ -183,9 +191,9 @@ void Foam::localPointRegion::countPointRegions
 
     // Add internal faces that use any duplicated point. Can only have one
     // region!
-    forAllConstIter(Map<label>, candidateFace, iter)
+    forAllConstIters(candidateFace, iter)
     {
-        label facei = iter.key();
+        const label facei = iter.key();
 
         if (mesh.isInternalFace(facei))
         {
@@ -197,7 +205,7 @@ void Foam::localPointRegion::countPointRegions
                 // speeds up rejection.
                 if (candidatePoint[f[fp]] && meshPointMap_.found(f[fp]))
                 {
-                    label meshFaceMapI = meshFaceMap_.size();
+                    const label meshFaceMapI = meshFaceMap_.size();
                     meshFaceMap_.insert(facei, meshFaceMapI);
                 }
             }
@@ -215,7 +223,7 @@ void Foam::localPointRegion::countPointRegions
 
     // Compact minRegion
     faceRegions_.setSize(meshFaceMap_.size());
-    forAllConstIter(Map<label>, meshFaceMap_, iter)
+    forAllConstIters(meshFaceMap_, iter)
     {
         faceRegions_[iter()].labelList::transfer(minRegion[iter.key()]);
 
@@ -242,10 +250,11 @@ void Foam::localPointRegion::countPointRegions
 void Foam::localPointRegion::calcPointRegions
 (
     const polyMesh& mesh,
+    const labelPairList& baffles,
     boolList& candidatePoint
 )
 {
-    label nBnd = mesh.nFaces()-mesh.nInternalFaces();
+    const label nBnd = mesh.nBoundaryFaces();
     const labelList& faceOwner = mesh.faceOwner();
     const labelList& faceNeighbour = mesh.faceNeighbour();
 
@@ -313,7 +322,7 @@ void Foam::localPointRegion::calcPointRegions
     // only ones using a
     // candidate point so the only ones that can be affected)
     faceList minRegion(mesh.nFaces());
-    forAllConstIter(Map<label>, candidateFace, iter)
+    forAllConstIters(candidateFace, iter)
     {
         label facei = iter.key();
         const face& f = mesh.faces()[facei];
@@ -331,7 +340,7 @@ void Foam::localPointRegion::calcPointRegions
         }
     }
 
-    // Now minimise over all faces that are connected through internal
+    // Now minimize over all faces that are connected through internal
     // faces or through cells. This loop iterates over the max number of
     // cells connected to a point (=8 for hex mesh)
 
@@ -340,9 +349,9 @@ void Foam::localPointRegion::calcPointRegions
         // Transport minimum from face across cell
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        Map<label> minPointValue(100);
+        Map<label> minPointValue(128);
         label nChanged = 0;
-        forAllConstIter(Map<label>, candidateCell, iter)
+        forAllConstIters(candidateCell, iter)
         {
             minPointValue.clear();
 
@@ -360,10 +369,10 @@ void Foam::localPointRegion::calcPointRegions
 
                     forAll(f, fp)
                     {
-                        label pointi = f[fp];
-                        Map<label>::iterator iter = minPointValue.find(pointi);
+                        const label pointi = f[fp];
+                        auto iter = minPointValue.find(pointi);
 
-                        if (iter == minPointValue.end())
+                        if (!iter.good())
                         {
                             minPointValue.insert(pointi, minRegion[facei][fp]);
                         }
@@ -399,9 +408,9 @@ void Foam::localPointRegion::calcPointRegions
             }
         }
 
-        // Pout<< "nChanged:" << nChanged << endl;
+        //Pout<< "nChanged:" << nChanged << endl;
 
-        if (returnReduce(nChanged, sumOp<label>()) == 0)
+        if (!returnReduceOr(nChanged))
         {
             break;
         }
@@ -413,7 +422,7 @@ void Foam::localPointRegion::calcPointRegions
         SubList<face> l
         (
             minRegion,
-            mesh.nFaces()-mesh.nInternalFaces(),
+            mesh.nBoundaryFaces(),
             mesh.nInternalFaces()
         );
         syncTools::syncBoundaryFaceList
@@ -423,6 +432,13 @@ void Foam::localPointRegion::calcPointRegions
             minEqOpFace(),
             Foam::dummyTransform()  // dummy transformation
         );
+        forAll(baffles, i)
+        {
+            label f0 = baffles[i].first();
+            label f1 = baffles[i].second();
+            minEqOpFace()(minRegion[f0], minRegion[f1]);
+            minRegion[f1] = minRegion[f0];
+        }
     }
 
 
@@ -432,11 +448,11 @@ void Foam::localPointRegion::calcPointRegions
 
 
     //// Print points with multiple regions. These points need to be duplicated.
-    // forAllConstIter(Map<label>, meshPointMap_, iter)
+    //forAllConstIters(meshPointMap_, iter)
     //{
     //    Pout<< "point:" << iter.key()
     //        << " coord:" << mesh.points()[iter.key()]
-    //        << " regions:" << pointRegions_[iter()] << endl;
+    //        << " regions:" << pointRegions_[iter.val()] << endl;
     //}
 }
 
@@ -445,13 +461,13 @@ void Foam::localPointRegion::calcPointRegions
 
 Foam::localPointRegion::localPointRegion(const polyMesh& mesh)
 :
-    // nRegions_(0),
+    //nRegions_(0),
     meshPointMap_(0),
     pointRegions_(0),
     meshFaceMap_(0),
     faceRegions_(0)
 {
-    const polyBoundaryMesh& patches = mesh.boundary();
+    const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
     // Get any point on the outside which is on a non-coupled boundary
     boolList candidatePoint(mesh.nPoints(), false);
@@ -469,7 +485,7 @@ Foam::localPointRegion::localPointRegion(const polyMesh& mesh)
         }
     }
 
-    calcPointRegions(mesh, candidatePoint);
+    calcPointRegions(mesh, labelPairList(0), candidatePoint);
 }
 
 
@@ -479,7 +495,7 @@ Foam::localPointRegion::localPointRegion
     const labelList& candidatePoints
 )
 :
-    // nRegions_(0),
+    //nRegions_(0),
     meshPointMap_(0),
     pointRegions_(0),
     meshFaceMap_(0),
@@ -492,7 +508,31 @@ Foam::localPointRegion::localPointRegion
         candidatePoint[candidatePoints[i]] = true;
     }
 
-    calcPointRegions(mesh, candidatePoint);
+    calcPointRegions(mesh, labelPairList(0), candidatePoint);
+}
+
+
+Foam::localPointRegion::localPointRegion
+(
+    const polyMesh& mesh,
+    const labelPairList& baffles,
+    const labelList& candidatePoints
+)
+:
+    //nRegions_(0),
+    meshPointMap_(0),
+    pointRegions_(0),
+    meshFaceMap_(0),
+    faceRegions_(0)
+{
+    boolList candidatePoint(mesh.nPoints(), false);
+
+    forAll(candidatePoints, i)
+    {
+        candidatePoint[candidatePoints[i]] = true;
+    }
+
+    calcPointRegions(mesh, baffles, candidatePoint);
 }
 
 
@@ -514,6 +554,7 @@ Foam::labelList Foam::localPointRegion::findDuplicateFaces
     );
 
     labelList duplicateFace(allPatch.size(), -1);
+    // label nDuplicateFaces = 0;
 
     // Find all duplicate faces.
     forAll(allPatch, bFacei)
@@ -536,7 +577,8 @@ Foam::labelList Foam::localPointRegion::findDuplicateFaces
                 {
                     FatalErrorInFunction
                         << "Face:" << bFacei + mesh.nInternalFaces()
-                        << " has local points:" << f
+                        << " has local points:" << f << " at:"
+                        << UIndirectList<point>(allPatch.localPoints(), f)
                         << " which are in same order as face:"
                         << otherFacei + mesh.nInternalFaces()
                         << " with local points:" << otherF
@@ -559,7 +601,8 @@ Foam::labelList Foam::localPointRegion::findDuplicateFaces
                             << "This means that three or more faces share"
                             << " the same points and this is illegal." << nl
                             << "Face:" << meshFace0
-                            << " with local points:" << f
+                            << " with local points:" << f << " at:"
+                            << UIndirectList<point>(allPatch.localPoints(), f)
                             << " which are in same order as face:"
                             << meshFace1
                             << " with local points:" << otherF
@@ -568,6 +611,7 @@ Foam::labelList Foam::localPointRegion::findDuplicateFaces
 
                     duplicateFace[bFacei] = otherFacei;
                     duplicateFace[otherFacei] = bFacei;
+                    // ++nDuplicateFaces;
                 }
             }
         }
@@ -582,16 +626,12 @@ Foam::List<Foam::labelPair> Foam::localPointRegion::findDuplicateFacePairs
     const polyMesh& mesh
 )
 {
-    const polyBoundaryMesh& patches = mesh.boundary();
+    const polyBoundaryMesh& patches = mesh.boundaryMesh();
 
     // Faces to test: all boundary faces
     labelList testFaces
     (
-        identityMap
-        (
-            mesh.nInternalFaces(),
-            mesh.nFaces() - mesh.nInternalFaces()
-        )
+        identity(mesh.nBoundaryFaces(), mesh.nInternalFaces())
     );
 
     // Find corresponding baffle face (or -1)
@@ -623,46 +663,50 @@ Foam::List<Foam::labelPair> Foam::localPointRegion::findDuplicateFacePairs
                     << " processorPolyPatch."
                     << "This is not allowed." << nl
                     << "Face:" << meshFace0
+                    << " fc:" << mesh.faceCentres()[meshFace0]
                     << " is on patch:" << patches[patch0].name()
                     << nl
                     << "Face:" << meshFace1
+                    << " fc:" << mesh.faceCentres()[meshFace1]
                     << " is on patch:" << patches[patch1].name()
                     << abort(FatalError);
             }
-
-            baffles.append(labelPair(meshFace0, meshFace1));
+            else
+            {
+                baffles.append(labelPair(meshFace0, meshFace1));
+            }
         }
     }
     return baffles.shrink();
 }
 
 
-void Foam::localPointRegion::topoChange(const polyTopoChangeMap& map)
+void Foam::localPointRegion::updateMesh(const mapPolyMesh& map)
 {
     {
-        Map<label> newMap(meshFaceMap_.size());
+        Map<label> newMap(2*meshFaceMap_.size());
 
-        forAllConstIter(Map<label>, meshFaceMap_, iter)
+        forAllConstIters(meshFaceMap_, iter)
         {
-            label newFacei = map.reverseFaceMap()[iter.key()];
+            const label newFacei = map.reverseFaceMap()[iter.key()];
 
             if (newFacei >= 0)
             {
-                newMap.insert(newFacei, iter());
+                newMap.insert(newFacei, iter.val());
             }
         }
         meshFaceMap_.transfer(newMap);
     }
     {
-        Map<label> newMap(meshPointMap_.size());
+        Map<label> newMap(2*meshPointMap_.size());
 
-        forAllConstIter(Map<label>, meshPointMap_, iter)
+        forAllConstIters(meshPointMap_, iter)
         {
-            label newPointi = map.reversePointMap()[iter.key()];
+            const label newPointi = map.reversePointMap()[iter.key()];
 
             if (newPointi >= 0)
             {
-                newMap.insert(newPointi, iter());
+                newMap.insert(newPointi, iter.val());
             }
         }
 

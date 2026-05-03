@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,6 +31,7 @@ License
 #include "surfaceFields.H"
 #include "IOmanip.H"
 #include "interpolation.H"
+#include "SpanStream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -35,13 +39,11 @@ namespace Foam
 {
 
 template<class T>
-class isNotEqOp
+struct isNotEqOp
 {
-public:
-
     void operator()(T& x, const T& y) const
     {
-        const T unsetVal(-vGreat*pTraits<T>::one);
+        const T unsetVal(-VGREAT*pTraits<T>::one);
 
         if (x != unsetVal)
         {
@@ -58,137 +60,156 @@ public:
     }
 };
 
+} // End namespace Foam
+
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+template<class GeoField>
+Foam::tmp<GeoField>
+Foam::probes::getOrLoadField(const word& fieldName) const
+{
+    tmp<GeoField> tfield;
+
+    if (loadFromFiles_)
+    {
+        tfield.emplace
+        (
+            IOobject
+            (
+                fieldName,
+                mesh_.time().timeName(),
+                mesh_.thisDb(),
+                IOobjectOption::MUST_READ,
+                IOobjectOption::NO_WRITE,
+                IOobjectOption::NO_REGISTER
+            ),
+            mesh_
+        );
+    }
+    else
+    {
+        tfield.cref(mesh_.cfindObject<GeoField>(fieldName));
+    }
+
+    return tfield;
+}
+
+
+template<class Type>
+void Foam::probes::storeResults
+(
+    const word& fieldName,
+    const Field<Type>& values
+)
+{
+    const MinMax<Type> limits(values);
+    const Type avgVal = average(values);
+
+    this->setResult("average(" + fieldName + ")", avgVal);
+    this->setResult("min(" + fieldName + ")", limits.min());
+    this->setResult("max(" + fieldName + ")", limits.max());
+    this->setResult("size(" + fieldName + ")", values.size());
+
+    if (verbose_)
+    {
+        Info<< name() << " : " << fieldName << nl
+            << "    avg: " << avgVal << nl
+            << "    min: " << limits.min() << nl
+            << "    max: " << limits.max() << nl << nl;
+    }
 }
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-void Foam::probes::sampleAndWrite(const VolField<Type>& vField)
+void Foam::probes::writeValues
+(
+    const word& fieldName,
+    const Field<Type>& values,
+    const scalar timeValue
+)
 {
-    Field<Type> values(sample(vField));
-
     if (Pstream::master())
     {
-        const unsigned int w = IOstream::defaultPrecision() + 7;
-        OFstream& os = probeFilePtrs_[vField.name()];
+        const unsigned int width(IOstream::defaultPrecision() + 7);
+        OFstream& os = *probeFilePtrs_[fieldName];
 
-        os  << setw(w) << vField.time().userTimeValue();
+        os  << setw(width) << timeValue;
+
+        OCharStream buf;
 
         forAll(values, probei)
         {
-            OStringStream buf;
-            buf << values[probei];
-            os  << ' ' << setw(w) << buf.str().c_str();
+            if (includeOutOfBounds_ || processor_[probei] != -1)
+            {
+                buf.rewind();
+                buf << values[probei];
+                os  << ' ' << setw(width) << buf.str().data();
+            }
         }
         os  << endl;
     }
 }
 
 
-template<class Type>
-void Foam::probes::sampleAndWrite(const SurfaceField<Type>& sField)
+template<class GeoField>
+void Foam::probes::performAction
+(
+    const fieldGroup<GeoField>& fieldNames,
+    unsigned request
+)
 {
-    Field<Type> values(sample(sField));
-
-    if (Pstream::master())
+    for (const word& fieldName : fieldNames)
     {
-        const unsigned int w = IOstream::defaultPrecision() + 7;
-        OFstream& os = probeFilePtrs_[sField.name()];
+        tmp<GeoField> tfield = getOrLoadField<GeoField>(fieldName);
 
-        os  << sField.time().userTimeValue();
-
-        forAll(values, probei)
+        if (tfield)
         {
-            OStringStream buf;
-            buf << values[probei];
-            os  << ' ' << setw(w) << buf.str().c_str();
-        }
-        os  << endl;
-    }
-}
+            const auto& field = tfield();
+            const scalar timeValue = field.time().timeOutputValue();
 
+            Field<typename GeoField::value_type> values(sample(field));
 
-template<class Type>
-void Foam::probes::sampleAndWrite(const fieldGroup<Type>& fields)
-{
-    forAll(fields, fieldi)
-    {
-        objectRegistry::const_iterator iter = mesh_.find(fields[fieldi]);
-
-        if
-        (
-            iter != objectRegistry::end()
-         && iter()->type() == VolField<Type>::typeName
-        )
-        {
-            sampleAndWrite
-            (
-                mesh_.lookupObject<VolField<Type>>
-                (
-                    fields[fieldi]
-                )
-            );
+            this->storeResults(fieldName, values);
+            if (request & ACTION_WRITE)
+            {
+                this->writeValues(fieldName, values, timeValue);
+            }
         }
     }
 }
 
 
-template<class Type>
-void Foam::probes::sampleAndWriteSurfaceFields(const fieldGroup<Type>& fields)
-{
-    forAll(fields, fieldi)
-    {
-        objectRegistry::const_iterator iter = mesh_.find(fields[fieldi]);
-
-        if
-        (
-            iter != objectRegistry::end()
-         && iter()->type() == SurfaceField<Type>::typeName
-        )
-        {
-            sampleAndWrite
-            (
-                mesh_.lookupObject<SurfaceField<Type>>
-                (
-                    fields[fieldi]
-                )
-            );
-        }
-    }
-}
-
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
-Foam::probes::sample(const VolField<Type>& vField) const
+Foam::probes::sample(const VolumeField<Type>& vField) const
 {
-    const Type unsetVal(-vGreat*pTraits<Type>::one);
+    const Type unsetVal(-VGREAT*pTraits<Type>::one);
 
-    tmp<Field<Type>> tValues
-    (
-        new Field<Type>(locations_.size(), unsetVal)
-    );
-
-    Field<Type>& values = tValues.ref();
+    auto tvalues = tmp<Field<Type>>::New(Field<Type>(this->size(), unsetVal));
+    auto& values = tvalues.ref();
 
     if (fixedLocations_)
     {
-        autoPtr<interpolation<Type>> interpolator
+        autoPtr<interpolation<Type>> interpPtr
         (
-            interpolation<Type>::New(interpolationScheme_, vField)
+            interpolation<Type>::New(samplePointScheme_, vField)
         );
 
-        forAll(locations_, probei)
+        forAll(*this, probei)
         {
-            if (cellList_[probei] >= 0)
+            if (elementList_[probei] >= 0)
             {
-                const vector& position = locations_[probei];
+                const vector& position = operator[](probei);
 
-                values[probei] = interpolator().interpolate
+                values[probei] = interpPtr().interpolate
                 (
                     position,
-                    cellList_[probei],
+                    elementList_[probei],
                     -1
                 );
             }
@@ -196,19 +217,18 @@ Foam::probes::sample(const VolField<Type>& vField) const
     }
     else
     {
-        forAll(locations_, probei)
+        forAll(*this, probei)
         {
-            if (cellList_[probei] >= 0)
+            if (elementList_[probei] >= 0)
             {
-                values[probei] = vField[cellList_[probei]];
+                values[probei] = vField[elementList_[probei]];
             }
         }
     }
 
-    Pstream::listCombineGather(values, isNotEqOp<Type>());
-    Pstream::listCombineScatter(values);
+    Pstream::listCombineReduce(values, isNotEqOp<Type>());
 
-    return tValues;
+    return tvalues;
 }
 
 
@@ -216,16 +236,12 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::probes::sample(const SurfaceField<Type>& sField) const
 {
-    const Type unsetVal(-vGreat*pTraits<Type>::one);
+    const Type unsetVal(-VGREAT*pTraits<Type>::one);
 
-    tmp<Field<Type>> tValues
-    (
-        new Field<Type>(locations_.size(), unsetVal)
-    );
+    auto tvalues = tmp<Field<Type>>::New(Field<Type>(this->size(), unsetVal));
+    auto& values = tvalues.ref();
 
-    Field<Type>& values = tValues.ref();
-
-    forAll(locations_, probei)
+    forAll(*this, probei)
     {
         if (faceList_[probei] >= 0)
         {
@@ -233,10 +249,9 @@ Foam::probes::sample(const SurfaceField<Type>& sField) const
         }
     }
 
-    Pstream::listCombineGather(values, isNotEqOp<Type>());
-    Pstream::listCombineScatter(values);
+    Pstream::listCombineReduce(values, isNotEqOp<Type>());
 
-    return tValues;
+    return tvalues;
 }
 
 
@@ -244,27 +259,15 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::probes::sample(const word& fieldName) const
 {
-    return sample
-    (
-        mesh_.lookupObject<VolField<Type>>
-        (
-            fieldName
-        )
-    );
+    return sample(mesh_.lookupObject<VolumeField<Type>>(fieldName));
 }
 
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
-Foam::probes::sampleSurfaceFields(const word& fieldName) const
+Foam::probes::sampleSurfaceField(const word& fieldName) const
 {
-    return sample
-    (
-        mesh_.lookupObject<SurfaceField<Type>>
-        (
-            fieldName
-        )
-    );
+    return sample(mesh_.lookupObject<SurfaceField<Type>>(fieldName));
 }
 
 

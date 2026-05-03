@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,52 +24,90 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Description
-    write function for regIOobjects
-
 \*---------------------------------------------------------------------------*/
 
 #include "regIOobject.H"
 #include "Time.H"
-#include "OSspecific.H"
 #include "OFstream.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 bool Foam::regIOobject::writeObject
 (
-    IOstream::streamFormat fmt,
-    IOstream::versionNumber ver,
-    IOstream::compressionType cmp,
-    const bool write
+    IOstreamOption streamOpt,
+    const bool writeOnProc
 ) const
 {
     if (!good())
     {
         SeriousErrorInFunction
-            << "bad object " << name()
-            << endl;
+            << "bad object " << name() << endl;
 
         return false;
     }
 
-    // If the instance is a time directory update to the current time
-    updateInstance();
+    if (instance().empty())
+    {
+        SeriousErrorInFunction
+            << "instance undefined for object " << name() << endl;
 
-    // Write global objects on master only
-    // Everyone check or just master
-    bool masterOnly =
-        globalFile()
+        return false;
+    }
+
+
+    //- uncomment this if you want to write global objects on master only
+    //bool isGlobal = global();
+    bool isGlobal = false;
+
+    if (instance() == time().timeName())
+    {
+        // Mark as written to local directory
+        isGlobal = false;
+    }
+    else if
+    (
+        instance() != time().system()
+     && instance() != time().caseSystem()
+     && instance() != time().constant()
+     && instance() != time().caseConstant()
+    )
+    {
+        // Update instance
+        const_cast<regIOobject&>(*this).instance() = time().timeName();
+
+        // Mark as written to local directory
+        isGlobal = false;
+    }
+
+    if (OFstream::debug)
+    {
+        if (isGlobal)
+        {
+            Pout<< "regIOobject::write() : "
+                << "writing (global) file " << objectPath();
+        }
+        else
+        {
+            Pout<< "regIOobject::write() : "
+                << "writing (local) file " << objectPath();
+        }
+    }
+
+
+    // Everyone or just master
+    const bool masterOnly
+    (
+        isGlobal
      && (
-            regIOobject::fileModificationChecking == timeStampMaster
-         || regIOobject::fileModificationChecking == inotifyMaster
-        );
+            IOobject::fileModificationChecking == IOobject::timeStampMaster
+         || IOobject::fileModificationChecking == IOobject::inotifyMaster
+        )
+    );
 
     bool osGood = false;
-
-    if (Pstream::master() || !masterOnly)
+    if (!masterOnly || UPstream::master())
     {
-        osGood = fileHandler().writeObject(*this, fmt, ver, cmp, write);
+        osGood = fileHandler().writeObject(*this, streamOpt, writeOnProc);
     }
     else
     {
@@ -81,23 +122,21 @@ bool Foam::regIOobject::writeObject
 
     // Only update the lastModified_ time if this object is re-readable,
     // i.e. lastModified_ is already set
-    if (watchIndices_.size())
+    if (!watchIndices_.empty())
     {
-        fileHandler().setUnmodified(watchIndices_.last());
+        fileHandler().setUnmodified(watchIndices_.back());
     }
 
     return osGood;
 }
 
 
-bool Foam::regIOobject::write(const bool write) const
+bool Foam::regIOobject::write(const bool writeOnProc) const
 {
     return writeObject
     (
-        time().writeFormat(),
-        IOstream::currentVersion,
-        time().writeCompression(),
-        write
+        IOstreamOption(time().writeFormat(), time().writeCompression()),
+        writeOnProc
     );
 }
 

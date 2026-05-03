@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,6 @@ License
 
 #include "cellShape.H"
 #include "token.H"
-#include "cellModeller.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -53,14 +54,14 @@ Foam::Istream& Foam::operator>>(Istream& is, cellShape& s)
         }
     }
 
-    // it is allowed to have either a word or a number describing the model
+    // Model can be described by index or name
     if (t.isLabel())
     {
-        s.m = cellModeller::lookup(int(t.labelToken()));
+        s.m = cellModel::ptr(t.labelToken());
     }
     else if (t.isWord())
     {
-        s.m = cellModeller::lookup(t.wordToken());
+        s.m = cellModel::ptr(t.wordToken());
     }
     else
     {
@@ -71,7 +72,7 @@ Foam::Istream& Foam::operator>>(Istream& is, cellShape& s)
     }
 
     // Check that a model was found
-    if (!s.m)
+    if (s.m == nullptr)
     {
         FatalIOErrorInFunction(is)
             << "CellShape has unknown model " << t.info()
@@ -92,19 +93,19 @@ Foam::Istream& Foam::operator>>(Istream& is, cellShape& s)
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const cellShape & s)
+Foam::Ostream& Foam::operator<<(Ostream& os, const cellShape& s)
 {
     // Write beginning of record
     os << token::BEGIN_LIST;
 
     // Write the list label for the symbol (ONE OR THE OTHER !!!)
-    os << (s.m)->index() << token::SPACE;
+    os << (s.m)->index();
 
     // Write the model name instead of the label (ONE OR THE OTHER !!!)
-    // os << (s.m)->name() << token::SPACE;
+    // os << (s.m)->name();
 
     // Write the geometry
-    os << static_cast<const labelList&>(s);
+    os << token::SPACE << static_cast<const labelList&>(s);
 
     // End of record
     os << token::END_LIST;
@@ -114,9 +115,13 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const cellShape & s)
 
 
 template<>
-Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<cellShape>& ip)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const InfoProxy<cellShape>& iproxy
+)
 {
-    const cellShape& cs = ip.t_;
+    const auto& cs = *iproxy;
 
     if (isNull(cs.model()))
     {
@@ -124,7 +129,7 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<cellShape>& ip)
     }
     else
     {
-        os  << cs.model().info() << endl;
+        os  << cs.model().info() << nl;
     }
 
     os  << "\tGeom:\tpoint\tlabel\txyz\n";

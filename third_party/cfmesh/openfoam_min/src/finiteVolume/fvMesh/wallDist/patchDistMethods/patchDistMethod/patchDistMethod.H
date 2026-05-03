@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,7 +41,7 @@ SourceFiles
 #include "dictionary.H"
 #include "HashSet.H"
 #include "volFieldsFwd.H"
-#include "polyTopoChangeMap.H"
+#include "mapPolyMesh.H"
 #include "fixedValueFvPatchFields.H"
 #include "zeroGradientFvPatchFields.H"
 #include "runTimeSelectionTables.H"
@@ -51,22 +54,29 @@ namespace Foam
 class fvMesh;
 
 /*---------------------------------------------------------------------------*\
-                       Class patchDistMethod Declaration
+                          Class patchDistMethod Declaration
 \*---------------------------------------------------------------------------*/
 
 class patchDistMethod
 {
-
 protected:
 
-    // Protected Data
+    // Protected Member Data
 
         //- Reference to the mesh
         const fvMesh& mesh_;
 
         //- Set of patch IDs
-        const labelHashSet patchIndices_;
+        const labelHashSet patchIDs_;
 
+
+    // Protected Member Functions
+
+        //- No copy construct
+        patchDistMethod(const patchDistMethod&) = delete;
+
+        //- No copy assignment
+        void operator=(const patchDistMethod&) = delete;
 
 public:
 
@@ -99,17 +109,16 @@ public:
             const labelHashSet& patchIDs
         );
 
-        //- Disallow default bitwise copy construction
-        patchDistMethod(const patchDistMethod&) = delete;
-
 
     // Selectors
 
+        // Use "method" from dictionary, or defaultPatchDistMethod
         static autoPtr<patchDistMethod> New
         (
             const dictionary& dict,
             const fvMesh& mesh,
-            const labelHashSet& patchIDs
+            const labelHashSet& patchIDs,
+            const word& defaultPatchDistMethod = word::null
         );
 
 
@@ -132,9 +141,9 @@ public:
     // Member Functions
 
         //- Return the patchIDs
-        const labelHashSet& patchIndices() const
+        const labelHashSet& patchIDs() const
         {
-            return patchIndices_;
+            return patchIDs_;
         }
 
         //- Update cached geometry when the mesh moves
@@ -144,15 +153,7 @@ public:
         }
 
         //- Update cached topology and geometry when the mesh changes
-        virtual void topoChange(const polyTopoChangeMap&)
-        {}
-
-        //- Update from another mesh using the given map
-        virtual void mapMesh(const polyMeshMap&)
-        {}
-
-        //- Redistribute or update using the given distribution map
-        virtual void distribute(const polyDistributionMap&)
+        virtual void updateMesh(const mapPolyMesh&)
         {}
 
         //- Correct the given distance-to-patch field
@@ -160,12 +161,6 @@ public:
 
         //- Correct the given distance-to-patch and normal-to-patch fields
         virtual bool correct(volScalarField& y, volVectorField& n) = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const patchDistMethod&) = delete;
 };
 
 

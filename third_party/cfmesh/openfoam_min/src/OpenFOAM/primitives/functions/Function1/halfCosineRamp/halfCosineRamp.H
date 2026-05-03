@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,30 +25,30 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::Function1s::halfCosineRamp
+    Foam::Function1Types::halfCosineRamp
 
 Description
     Half-cosine ramp function starting from 0 and increasing to 1 from \c start
     over the \c duration and remaining at 1 thereafter.
 
 See also
-    Foam::Function1s::Ramp
+    Foam::Function1Types::ramp
 
 SourceFiles
     halfCosineRamp.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef halfCosineRamp_H
-#define halfCosineRamp_H
+#ifndef Function1Types_halfCosineRamp_H
+#define Function1Types_halfCosineRamp_H
 
-#include "Ramp.H"
+#include "ramp.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
 
 /*---------------------------------------------------------------------------*\
@@ -54,53 +57,39 @@ namespace Function1s
 
 class halfCosineRamp
 :
-    public Ramp<halfCosineRamp>
+    public ramp
 {
-
 public:
 
-    // Runtime type information
+    //- Runtime type information
     TypeName("halfCosineRamp");
 
 
     // Constructors
 
-        //- Construct from name and dictionary
+        //- Construct from entry name, dictionary and optional registry
         halfCosineRamp
         (
-            const word& name,
-            const unitSets& units,
-            const dictionary& dict
+            const word& entryName,
+            const dictionary& dict,
+            const objectRegistry* obrPtr = nullptr
         );
 
 
     //- Destructor
-    virtual ~halfCosineRamp();
+    virtual ~halfCosineRamp() = default;
 
 
     // Member Functions
 
         //- Return value for time t
         virtual inline scalar value(const scalar t) const;
-
-        //- Return the integral between times t1 and t2
-        virtual inline scalar integral
-        (
-            const scalar t1,
-            const scalar t2
-        ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const halfCosineRamp&) = delete;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Function1s
+} // End namespace Function1Types
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

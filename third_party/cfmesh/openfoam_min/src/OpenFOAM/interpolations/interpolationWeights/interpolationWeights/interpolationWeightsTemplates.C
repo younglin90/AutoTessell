@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,15 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "interpolationWeights.H"
-#include "ListOps.H"
-#include "IOobject.H"
-#include "HashSet.H"
-#include "objectRegistry.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
+#include "products.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -54,24 +49,19 @@ Foam::interpolationWeights::weightedSum
         typename ListType2::value_type
     >::type returnType;
 
-    if (f1.size())
+    const label len = f1.size();
+    if (len)
     {
         returnType SumProd = f1[0]*f2[0];
-        for (label i = 1; i < f1.size(); ++i)
+        for (label i = 1; i < len; ++i)
         {
             SumProd += f1[i]*f2[i];
         }
         return SumProd;
     }
-    else
-    {
-        return Zero;
-    }
+
+    return Zero;
 }
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
 
 // ************************************************************************* //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016, 2020 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,36 +27,30 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "polyMesh.H"
-#include "primitiveMesh.H"
 #include "Time.H"
+#include "primitiveMesh.H"
 #include "DynamicList.H"
+#include "indexedOctree.H"
+#include "treeDataCell.H"
 #include "globalMeshData.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 Foam::labelListList Foam::polyMesh::cellShapePointCells
 (
-    const cellShapeList& c
+    const cellShapeList& shapes
 ) const
 {
-    List<DynamicList<label, primitiveMesh::cellsPerPoint_>>
-        pc(points().size());
+    List<DynamicList<label>> pc(points().size());
 
     // For each cell
-    forAll(c, i)
+    forAll(shapes, celli)
     {
-        // For each vertex
-        const labelList& labels = c[i];
-
-        forAll(labels, j)
+        // For each cell vertex
+        for (const label pointi : shapes[celli])
         {
-            // Set working point label
-            label curPoint = labels[j];
-            DynamicList<label, primitiveMesh::cellsPerPoint_>& curPointCells =
-                pc[curPoint];
-
             // Enter the cell label in the point's cell list
-            curPointCells.append(i);
+            pc[pointi].push_back(celli);
         }
     }
 
@@ -115,6 +112,7 @@ Foam::labelList Foam::polyMesh::facePatchFaceCells
         {
             FatalErrorInFunction
                 << "face " << fI << " in patch " << patchID
+                << " vertices " << UIndirectList<point>(points(), curFace)
                 << " does not have neighbour cell"
                 << " face: " << patchFaces[fI]
                 << abort(FatalError);
@@ -203,7 +201,7 @@ void Foam::polyMesh::setTopology
             // For all points
             forAll(curPoints, pointi)
             {
-                // dGget the list of cells sharing this point
+                // Get the list of cells sharing this point
                 const labelList& curNeighbours =
                     PointCells[curPoints[pointi]];
 
@@ -282,6 +280,7 @@ void Foam::polyMesh::setTopology
     }
 
     // Do boundary faces
+    const label nInternalFaces = nFaces;
 
     patchSizes.setSize(boundaryFaces.size(), -1);
     patchStarts.setSize(boundaryFaces.size(), -1);
@@ -302,6 +301,9 @@ void Foam::polyMesh::setTopology
         // Grab the start label
         label curPatchStart = nFaces;
 
+        // Suppress multiple warnings per patch
+        bool patchWarned = false;
+
         forAll(patchFaces, facei)
         {
             const face& curFace = patchFaces[facei];
@@ -317,25 +319,75 @@ void Foam::polyMesh::setTopology
             {
                 if (face::sameVertices(facesOfCellInside[cellFacei], curFace))
                 {
-                    if (cells[cellInside][cellFacei] >= 0)
-                    {
-                        FatalErrorInFunction
-                            << "Trying to specify a boundary face " << curFace
-                            << " on the face on cell " << cellInside
-                            << " which is either an internal face or already "
-                            << "belongs to some other patch.  This is face "
-                            << facei << " of patch "
-                            << patchi << " named "
-                            << boundaryPatchNames[patchi] << "."
-                            << abort(FatalError);
-                    }
-
                     found = true;
 
-                    // Set the patch face to corresponding cell-face
-                    faces_[nFaces] = facesOfCellInside[cellFacei];
+                    const label meshFacei = cells[cellInside][cellFacei];
 
-                    cells[cellInside][cellFacei] = nFaces;
+                    if (meshFacei >= 0)
+                    {
+                        // Already have mesh face for this side of the
+                        // cellshape. This can happen for duplicate faces.
+                        // It might be
+                        // an error or explicitly desired (e.g. duplicate
+                        // baffles or acmi). We could have a special 7-faced
+                        // hex shape instead so we can have additional patches
+                        // but that would be unworkable.
+                        // So now either
+                        // - exit with error
+                        // - or warn and append face to addressing
+                        // Note that duplicate baffles
+                        // - cannot be on an internal faces
+                        // - cannot be on the same patch (for now?)
+
+                        if
+                        (
+                            meshFacei < nInternalFaces
+                         || meshFacei >= curPatchStart
+                        )
+                        {
+                            FatalErrorInFunction
+                                << "Trying to specify a boundary face "
+                                << curFace
+                                << " on the face on cell " << cellInside
+                                << " which is either an internal face"
+                                << " or already belongs to the same patch."
+                                << " This is face " << facei << " of patch "
+                                << patchi << " named "
+                                << boundaryPatchNames[patchi] << "."
+                                << exit(FatalError);
+                        }
+
+
+                        if (!patchWarned)
+                        {
+                            WarningInFunction
+                                << "Trying to specify a boundary face "
+                                << curFace
+                                << " on the face on cell " << cellInside
+                                << " which is either an internal face"
+                                << " or already belongs to some other patch."
+                                << " This is face " << facei << " of patch "
+                                << patchi << " named "
+                                << boundaryPatchNames[patchi] << "."
+                                //<< abort(FatalError);
+                                << endl;
+                            patchWarned = true;
+                        }
+
+                        faces_.setSize(faces_.size()+1);
+
+                        // Set the patch face to corresponding cell-face
+                        faces_[nFaces] = facesOfCellInside[cellFacei];
+
+                        cells[cellInside].append(nFaces);
+                    }
+                    else
+                    {
+                        // Set the patch face to corresponding cell-face
+                        faces_[nFaces] = facesOfCellInside[cellFacei];
+
+                        cells[cellInside][cellFacei] = nFaces;
+                    }
 
                     break;
                 }
@@ -398,8 +450,9 @@ Foam::polyMesh::polyMesh
     const bool syncPar
 )
 :
-    objectRegistry(io, regionDir(io)),
+    objectRegistry(io),
     primitiveMesh(),
+    data_(static_cast<const objectRegistry&>(*this)),
     points_
     (
         IOobject
@@ -411,7 +464,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        move(points)
+        std::move(points)
     ),
     faces_
     (
@@ -424,7 +477,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     owner_
     (
@@ -437,7 +490,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     neighbour_
     (
@@ -450,7 +503,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     clearedPrimitives_(false),
     boundary_
@@ -472,6 +525,7 @@ Foam::polyMesh::polyMesh
     geometricD_(Zero),
     solutionD_(Zero),
     tetBasePtIsPtr_(nullptr),
+    cellTreePtr_(nullptr),
     pointZones_
     (
         IOobject
@@ -483,7 +537,8 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     faceZones_
     (
@@ -496,7 +551,8 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     cellZones_
     (
@@ -509,20 +565,19 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     globalMeshDataPtr_(nullptr),
-    curMotionTimeIndex_(-1),
-    oldPointsPtr_(nullptr),
-    oldCellCentresPtr_(nullptr),
-    storeOldCellCentres_(false),
     moving_(false),
-    topoChanged_(false)
+    topoChanging_(false),
+    storeOldCellCentres_(false),
+    curMotionTimeIndex_(time().timeIndex()),
+    oldPointsPtr_(nullptr),
+    oldCellCentresPtr_(nullptr)
 {
-    DebugInFunction << "Constructing polyMesh from shapes" << endl;
-
-    // Remove all of the old mesh files if they exist
-    removeFiles(instance());
+    DebugInfo
+        << "Constructing polyMesh from cell and boundary shapes." << endl;
 
     // Calculate faces and cells
     labelList patchSizes;
@@ -574,7 +629,6 @@ Foam::polyMesh::polyMesh
 
     label nAllPatches = boundaryFaces.size();
 
-
     label nDefaultFaces = nFaces - defaultPatchStart;
     if (syncPar)
     {
@@ -583,16 +637,14 @@ Foam::polyMesh::polyMesh
 
     if (nDefaultFaces > 0)
     {
-        if (debug)
-        {
-            WarningInFunction
-                << "Found " << nDefaultFaces
-                << " undefined faces in mesh; adding to default patch." << endl;
-        }
+        WarningInFunction
+            << "Found " << nDefaultFaces
+            << " undefined faces in mesh; adding to default patch "
+            << defaultBoundaryPatchName << endl;
 
         // Check if there already exists a defaultFaces patch as last patch
         // and reuse it.
-        label patchi = findIndex(boundaryPatchNames, defaultBoundaryPatchName);
+        label patchi = boundaryPatchNames.find(defaultBoundaryPatchName);
 
         if (patchi != -1)
         {
@@ -651,10 +703,18 @@ Foam::polyMesh::polyMesh
     if (syncPar)
     {
         // Calculate topology for the patches (processor-processor comms etc.)
-        boundary_.topoChange();
+        boundary_.updateMesh();
 
         // Calculate the geometry for the patches (transformation tensors etc.)
         boundary_.calcGeometry();
+    }
+
+    if (debug)
+    {
+        if (checkMesh())
+        {
+            Info<< "Mesh OK" << endl;
+        }
     }
 }
 
@@ -672,8 +732,9 @@ Foam::polyMesh::polyMesh
     const bool syncPar
 )
 :
-    objectRegistry(io, regionDir(io)),
+    objectRegistry(io),
     primitiveMesh(),
+    data_(static_cast<const objectRegistry&>(*this)),
     points_
     (
         IOobject
@@ -685,7 +746,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        move(points)
+        std::move(points)
     ),
     faces_
     (
@@ -698,7 +759,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     owner_
     (
@@ -711,7 +772,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     neighbour_
     (
@@ -724,7 +785,7 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
         ),
-        label(0)
+        Foam::zero{}
     ),
     clearedPrimitives_(false),
     boundary_
@@ -746,6 +807,7 @@ Foam::polyMesh::polyMesh
     geometricD_(Zero),
     solutionD_(Zero),
     tetBasePtIsPtr_(nullptr),
+    cellTreePtr_(nullptr),
     pointZones_
     (
         IOobject
@@ -757,7 +819,8 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     faceZones_
     (
@@ -770,7 +833,8 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     cellZones_
     (
@@ -783,19 +847,19 @@ Foam::polyMesh::polyMesh
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        *this
+        *this,
+        Foam::zero{}
     ),
     globalMeshDataPtr_(nullptr),
-    curMotionTimeIndex_(-1),
-    oldPointsPtr_(nullptr),
-    oldCellCentresPtr_(nullptr),
+    moving_(false),
+    topoChanging_(false),
     storeOldCellCentres_(false),
-    moving_(false)
+    curMotionTimeIndex_(time().timeIndex()),
+    oldPointsPtr_(nullptr),
+    oldCellCentresPtr_(nullptr)
 {
-    DebugInFunction << "Constructing polyMesh from shapes" << endl;
-
-    // Remove all of the old mesh files if they exist
-    removeFiles(instance());
+    DebugInfo
+        << "Constructing polyMesh from cell and boundary shapes." << endl;
 
     // Calculate faces and cells
     labelList patchSizes;
@@ -848,16 +912,14 @@ Foam::polyMesh::polyMesh
 
     if (nDefaultFaces > 0)
     {
-        if (debug)
-        {
-            WarningInFunction
-                << "Found " << nDefaultFaces
-                << " undefined faces in mesh; adding to default patch." << endl;
-        }
+        WarningInFunction
+            << "Found " << nDefaultFaces
+            << " undefined faces in mesh; adding to default patch "
+            << defaultBoundaryPatchName << endl;
 
         // Check if there already exists a defaultFaces patch as last patch
         // and reuse it.
-        label patchi = findIndex(boundaryPatchNames, defaultBoundaryPatchName);
+        label patchi = boundaryPatchNames.find(defaultBoundaryPatchName);
 
         if (patchi != -1)
         {
@@ -916,10 +978,18 @@ Foam::polyMesh::polyMesh
     if (syncPar)
     {
         // Calculate topology for the patches (processor-processor comms etc.)
-        boundary_.topoChange();
+        boundary_.updateMesh();
 
         // Calculate the geometry for the patches (transformation tensors etc.)
         boundary_.calcGeometry();
+    }
+
+    if (debug)
+    {
+        if (checkMesh())
+        {
+            Info<< "Mesh OK" << endl;
+        }
     }
 }
 

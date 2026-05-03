@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +27,7 @@ InNamespace
     Foam::fvc
 
 Description
-    Calculate the magnitude of the square of the gradient of the gradient of
+    Calculate the magnitiude of the square of the gradient of the gradient of
     the given volField.
 
 SourceFiles
@@ -45,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Namespace fvc functions Declaration
+                     Namespace fvc functions Declaration
 \*---------------------------------------------------------------------------*/
 
 namespace fvc
@@ -53,13 +55,13 @@ namespace fvc
     template<class Type>
     tmp<volScalarField> magSqrGradGrad
     (
-        const VolField<Type>&
+        const GeometricField<Type, fvPatchField, volMesh>&
     );
 
     template<class Type>
     tmp<volScalarField> magSqrGradGrad
     (
-        const tmp<VolField<Type>>&
+        const tmp<GeometricField<Type, fvPatchField, volMesh>>&
     );
 }
 

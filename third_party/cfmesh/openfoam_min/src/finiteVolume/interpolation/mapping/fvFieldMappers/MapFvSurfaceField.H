@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -30,7 +32,8 @@ Description
 #ifndef MapFvSurfaceField_H
 #define MapFvSurfaceField_H
 
-#include "MapGeometricFields.H"
+#include "Field.H"
+#include "surfaceMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -68,11 +71,14 @@ void MapInternalField<Type, MeshMapper, surfaceMesh>::operator()
            << abort(FatalError);
     }
 
-    mapper.surfaceMap()(field, field);
+    // Passing in oriented flag so that oriented fields (e.g. phi) are negated
+    // if flipped.  Un-oriented fields, e.g U interpolated to faces (Uf) are not
+    // touched
+    field.autoMap(mapper.surfaceMap(), field.is_oriented());
 
-    // Flip the flux
-    if (isFlux(field))
+    if (field.is_oriented())
     {
+        // Flip the flux
         const labelList flipFaces = mapper.surfaceMap().flipFaceFlux().toc();
 
         forAll(flipFaces, i)

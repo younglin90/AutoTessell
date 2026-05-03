@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,36 +32,57 @@ License
 #include "symmTransform.H"
 #include "diagTensor.H"
 
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::wedgeFvPatchField<Type>::wedgeFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    transformFvPatchField<Type>(p, iF)
+    parent_bctype(p, iF)
 {}
 
 
 template<class Type>
 Foam::wedgeFvPatchField<Type>::wedgeFvPatchField
 (
+    const wedgeFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    parent_bctype(ptf, p, iF, mapper)
+{
+    if (!isType<wedgeFvPatch>(this->patch()))
+    {
+        FatalErrorInFunction
+            << "\n    patch type '" << p.type()
+            << "' not constraint type '" << typeName << "'"
+            << "\n    for patch " << p.name()
+            << " of field " << this->internalField().name()
+            << " in file " << this->internalField().objectPath()
+            << exit(FatalError);
+    }
+}
+
+
+template<class Type>
+Foam::wedgeFvPatchField<Type>::wedgeFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    transformFvPatchField<Type>(p, iF, dict)
+    parent_bctype(p, iF, dict)  // "value" is NO_READ
 {
     if (!isType<wedgeFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "\n    patch type '" << p.type()
+        FatalIOErrorInFunction(dict)
+            << "\n    patch type '" << p.type()
             << "' not constraint type '" << typeName << "'"
             << "\n    for patch " << p.name()
             << " of field " << this->internalField().name()
@@ -74,33 +98,20 @@ template<class Type>
 Foam::wedgeFvPatchField<Type>::wedgeFvPatchField
 (
     const wedgeFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    transformFvPatchField<Type>(ptf, p, iF, mapper)
-{
-    if (!isType<wedgeFvPatch>(this->patch()))
-    {
-        FatalErrorInFunction
-            << "' not constraint type '" << typeName << "'"
-            << "\n    for patch " << p.name()
-            << " of field " << this->internalField().name()
-            << " in file " << this->internalField().objectPath()
-            << exit(FatalIOError);
-    }
-}
+    parent_bctype(ptf, iF)
+{}
 
 
 template<class Type>
 Foam::wedgeFvPatchField<Type>::wedgeFvPatchField
 (
-    const wedgeFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const wedgeFvPatchField<Type>& ptf
 )
 :
-    transformFvPatchField<Type>(ptf, iF)
+    wedgeFvPatchField<Type>(ptf, ptf.internalField())
 {}
 
 
@@ -141,24 +152,23 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::wedgeFvPatchField<Type>::snGradTransformDiag() const
 {
-    const vector diagV
-    (
-        0.5*diag(I - refCast<const wedgeFvPatch>(this->patch()).cellT())
-    );
+    const diagTensor diagT =
+        0.5*diag(I - refCast<const wedgeFvPatch>(this->patch()).cellT());
 
-    return tmp<Field<Type>>
+    const vector diagV(diagT.xx(), diagT.yy(), diagT.zz());
+
+    return tmp<Field<Type>>::New
     (
-        new Field<Type>
+        this->size(),
+        transformMask<Type>
         (
-            this->size(),
-            transformMask<Type>
+            pow
             (
-                pow
-                (
-                    diagV,
-                    pTraits<typename powProduct<vector, pTraits<Type>::rank>
-                    ::type>::zero
-                )
+                diagV,
+                pTraits
+                <
+                    typename powProduct<vector, pTraits<Type>::rank>::type
+                >::zero
             )
         )
     );

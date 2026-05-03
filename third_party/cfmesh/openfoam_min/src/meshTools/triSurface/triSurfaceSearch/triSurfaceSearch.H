@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -55,7 +58,7 @@ class triSurface;
 
 class triSurfaceSearch
 {
-    // Private Data
+    // Private data
 
         //- Reference to surface to work on
         const triSurface& surface_;
@@ -80,9 +83,15 @@ class triSurfaceSearch
         bool checkUniqueHit
         (
             const pointIndexHit& currHit,
-            const DynamicList<pointIndexHit, 1, 1>& hits,
+            const UList<pointIndexHit>& hits,
             const vector& lineVec
         ) const;
+
+        //- No copy construct
+        triSurfaceSearch(const triSurfaceSearch&) = delete;
+
+        //- No copy assignment
+        void operator=(const triSurfaceSearch&) = delete;
 
 
 public:
@@ -90,31 +99,29 @@ public:
     // Constructors
 
         //- Construct from surface. Holds reference to surface!
-        explicit triSurfaceSearch(const triSurface&);
+        explicit triSurfaceSearch(const triSurface& surface);
 
         //- Construct from surface and dictionary.
-        triSurfaceSearch(const triSurface&, const dictionary& dict);
+        triSurfaceSearch(const triSurface& surface, const dictionary& dict);
 
-        //- Construct from components
+        //- Construct from components.
+        //  A invalid (negative) tolerance uses the default tolerance.
         triSurfaceSearch
         (
             const triSurface& surface,
             const scalar tolerance,
-            const label maxTreeDepth
+            const label maxTreeDepth = 10
         );
-
-        //- Disallow default bitwise copy construction
-        triSurfaceSearch(const triSurfaceSearch&) = delete;
 
 
     //- Destructor
     ~triSurfaceSearch();
 
-
-    // Member Functions
-
         //- Clear storage
         void clearOut();
+
+
+    // Member Functions
 
         //- Demand driven construction of the octree
         const indexedOctree<treeDataTriSurface>& tree() const;
@@ -150,9 +157,9 @@ public:
         //- Calculate nearest point on surface for single searchPoint. Returns
         //  in pointIndexHit:
         //  - hit()      : whether nearest point found within bounding box
-        //  - hitPoint() : coordinate of nearest point
+        //  - point()    : coordinate of nearest point
         //  - index()    : surface triangle label
-        pointIndexHit nearest(const point&, const vector& span) const;
+        pointIndexHit nearest(const point& pt, const vector& span) const;
 
         void findLine
         (
@@ -175,12 +182,6 @@ public:
             const pointField& end,
             List<List<pointIndexHit>>& info
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const triSurfaceSearch&) = delete;
 };
 
 

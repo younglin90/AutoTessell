@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +37,6 @@ SourceFiles
 #define constrainHbyA_H
 
 #include "volFieldsFwd.H"
-#include "surfaceFieldsFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -44,37 +45,10 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-void constrainHbyA
-(
-    volVectorField& HbyA,
-    const volVectorField& U,
-    const volScalarField& p
-);
-
-void constrainPhiHbyA
-(
-    surfaceScalarField& phiHbyA,
-    const volVectorField& U,
-    const volScalarField& p
-);
-
 tmp<volVectorField> constrainHbyA
 (
     const tmp<volVectorField>& tHbyA,
     const volVectorField& U,
-    const volScalarField& p
-);
-
-tmp<surfaceScalarField> constrainPhiHbyA
-(
-    const tmp<surfaceScalarField>& tphiHbyA,
-    const volVectorField& U,
-    const volScalarField& p
-);
-
-tmp<surfaceScalarField> constrainPhid
-(
-    const tmp<surfaceScalarField>& tphiHbyA,
     const volScalarField& p
 );
 

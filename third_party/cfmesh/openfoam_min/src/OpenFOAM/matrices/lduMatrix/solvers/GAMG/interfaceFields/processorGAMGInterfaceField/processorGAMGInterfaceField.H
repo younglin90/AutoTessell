@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorGAMGInterfaceField_H
-#define processorGAMGInterfaceField_H
+#ifndef Foam_processorGAMGInterfaceField_H
+#define Foam_processorGAMGInterfaceField_H
 
 #include "GAMGInterfaceField.H"
 #include "processorGAMGInterface.H"
@@ -45,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class processorGAMGInterfaceField Declaration
+                  Class processorGAMGInterfaceField Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorGAMGInterfaceField
@@ -53,10 +56,13 @@ class processorGAMGInterfaceField
     public GAMGInterfaceField,
     public processorLduInterfaceField
 {
-    // Private Data
+    // Private data
 
         //- Local reference cast into the processor interface
         const processorGAMGInterface& procInterface_;
+
+        //- Is the transform required
+        bool doTransform_;
 
         //- Rank of component for transformation
         int rank_;
@@ -64,17 +70,30 @@ class processorGAMGInterfaceField
 
         // Sending and receiving
 
-            //- Outstanding request
-            mutable label outstandingSendRequest_;
+            //- Current (non-blocking) send request
+            mutable label sendRequest_;
 
-            //- Outstanding request
-            mutable label outstandingRecvRequest_;
+            //- Current (non-blocking) recv request
+            mutable label recvRequest_;
 
             //- Scalar send buffer
-            mutable Field<scalar> scalarSendBuf_;
+            mutable solveScalarField scalarSendBuf_;
 
-            //- Scalar receive buffer
-            mutable Field<scalar> scalarReceiveBuf_;
+            //- Scalar recv buffer
+            mutable solveScalarField scalarRecvBuf_;
+
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        processorGAMGInterfaceField
+        (
+            const processorGAMGInterfaceField&
+        ) = delete;
+
+        //- No copy assignment
+        void operator=(const processorGAMGInterfaceField&) = delete;
 
 
 public:
@@ -96,18 +115,38 @@ public:
         processorGAMGInterfaceField
         (
             const GAMGInterface& GAMGCp,
+            const bool doTransform,
             const int rank
         );
 
-        //- Disallow default bitwise copy construction
+        //- Construct from GAMG interface and Istream
         processorGAMGInterfaceField
         (
-            const processorGAMGInterfaceField&
-        ) = delete;
+            const GAMGInterface& GAMGCp,
+            Istream& is
+        );
+
+        //- Construct by assembling and return a clone.
+        virtual autoPtr<GAMGInterfaceField> clone
+        (
+            const GAMGInterface& patch,
+            const UPtrList<lduInterfaceField>& other
+        ) const
+        {
+            return autoPtr<GAMGInterfaceField>
+            (
+                new processorGAMGInterfaceField
+                (
+                    patch,
+                    doTransform_,
+                    rank_
+                )
+            );
+        }
 
 
     //- Destructor
-    virtual ~processorGAMGInterfaceField();
+    virtual ~processorGAMGInterfaceField() = default;
 
 
     // Member Functions
@@ -123,11 +162,17 @@ public:
 
         // Interface matrix update
 
+            //- Are all (receive) data available?
+            virtual bool ready() const;
+
             //- Initialise neighbour matrix update
             virtual void initInterfaceMatrixUpdate
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
@@ -136,8 +181,11 @@ public:
             //- Update result field based on interface functionality
             virtual void updateInterfaceMatrix
             (
-                scalarField& result,
-                const scalarField& psiInternal,
+                solveScalarField& result,
+                const bool add,
+                const lduAddressing& lduAddr,
+                const label patchId,
+                const solveScalarField& psiInternal,
                 const scalarField& coeffs,
                 const direction cmpt,
                 const Pstream::commsTypes commsType
@@ -164,10 +212,16 @@ public:
                 return procInterface_.neighbProcNo();
             }
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
+            //- Does the interface field perform the transformation
+            virtual bool doTransform() const
             {
-                return procInterface_.transform();
+                return doTransform_;
+            }
+
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
+            {
+                return procInterface_.forwardT();
             }
 
             //- Return rank of component for transform
@@ -177,10 +231,10 @@ public:
             }
 
 
-    // Member Operators
+        // I/O
 
-        //- Disallow default bitwise assignment
-        void operator=(const processorGAMGInterfaceField&) = delete;
+            //- Write to stream
+            virtual void write(Ostream&) const;
 };
 
 

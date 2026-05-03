@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,6 +33,7 @@ Description
 #define MapFvVolField_H
 
 #include "Field.H"
+#include "volMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -38,7 +41,7 @@ namespace Foam
 {
 
 template<class Type, class MeshMapper>
-class MapInternalField<Type, MeshMapper, fvMesh>
+class MapInternalField<Type, MeshMapper, volMesh>
 {
 public:
 
@@ -47,16 +50,16 @@ public:
 
     void operator()
     (
-        DimensionedField<Type, fvMesh>& field,
+        DimensionedField<Type, volMesh>& field,
         const MeshMapper& mapper
     ) const;
 };
 
 
 template<class Type, class MeshMapper>
-void MapInternalField<Type, MeshMapper, fvMesh>::operator()
+void MapInternalField<Type, MeshMapper, volMesh>::operator()
 (
-    DimensionedField<Type, fvMesh>& field,
+    DimensionedField<Type, volMesh>& field,
     const MeshMapper& mapper
 ) const
 {
@@ -68,7 +71,7 @@ void MapInternalField<Type, MeshMapper, fvMesh>::operator()
            << abort(FatalError);
     }
 
-    mapper.volMap()(field, field);
+    field.autoMap(mapper.volMap());
 }
 
 

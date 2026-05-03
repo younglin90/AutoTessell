@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,18 @@ Foam::movingWallVelocityFvPatchVectorField::
 movingWallVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchVectorField(p, iF)
+{}
+
+
+Foam::movingWallVelocityFvPatchVectorField::
+movingWallVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
@@ -48,8 +62,8 @@ movingWallVelocityFvPatchVectorField
 (
     const movingWallVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchVectorField(ptf, p, iF, mapper)
@@ -59,8 +73,18 @@ movingWallVelocityFvPatchVectorField
 Foam::movingWallVelocityFvPatchVectorField::
 movingWallVelocityFvPatchVectorField
 (
+    const movingWallVelocityFvPatchVectorField& mwvpvf
+)
+:
+    fixedValueFvPatchVectorField(mwvpvf)
+{}
+
+
+Foam::movingWallVelocityFvPatchVectorField::
+movingWallVelocityFvPatchVectorField
+(
     const movingWallVelocityFvPatchVectorField& mwvpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchVectorField(mwvpvf, iF)
@@ -69,6 +93,41 @@ movingWallVelocityFvPatchVectorField
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+Foam::tmp<Foam::vectorField>
+Foam::movingWallVelocityFvPatchVectorField::Uwall() const
+{
+    const fvMesh& mesh = internalField().mesh();
+    const fvPatch& p = patch();
+    const polyPatch& pp = p.patch();
+    const pointField& oldPoints = mesh.oldPoints();
+
+    vectorField oldFc(pp.size());
+
+    forAll(oldFc, i)
+    {
+        oldFc[i] = pp[i].centre(oldPoints);
+    }
+
+    const scalar deltaT = mesh.time().deltaTValue();
+
+    const vectorField Up((pp.faceCentres() - oldFc)/deltaT);
+
+    const volVectorField& U =
+        static_cast<const volVectorField&>(internalField());
+
+    scalarField phip
+    (
+        p.patchField<surfaceScalarField>(fvc::meshPhi(U))
+    );
+
+    const vectorField n(p.nf());
+    const scalarField& magSf = p.magSf();
+    tmp<scalarField> Un = phip/(magSf + VSMALL);
+
+    return (Up + n*(Un - (n & Up)));
+}
+
+
 void Foam::movingWallVelocityFvPatchVectorField::updateCoeffs()
 {
     if (updated())
@@ -76,35 +135,12 @@ void Foam::movingWallVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const fvMesh& mesh = patch().mesh();
+    const fvMesh& mesh = internalField().mesh();
 
     if (mesh.moving())
     {
-        const fvPatch& p = patch();
-
-        const volVectorField& U =
-            static_cast<const volVectorField&>(internalField());
-
-        const vectorField n(p.nf());
-        tmp<scalarField> Un = fvc::meshPhi(U, p.index())/(p.magSf() + vSmall);
-
-        const pointField& oldPoints = mesh.oldPoints();
-
-        const polyPatch& pp = p.poly();
-
-        vectorField oldFc(pp.size());
-
-        forAll(oldFc, i)
-        {
-            oldFc[i] = pp[i].centre(oldPoints);
-        }
-
-        const vectorField Up
-        (
-            (pp.faceCentres() - oldFc)/mesh.time().deltaTValue()
-        );
-
-        vectorField::operator=(Up + n*(Un - (n & Up)));
+        const vectorField uwall(Uwall());
+        vectorField::operator=(uwall);
     }
 
     fixedValueFvPatchVectorField::updateCoeffs();
@@ -113,8 +149,8 @@ void Foam::movingWallVelocityFvPatchVectorField::updateCoeffs()
 
 void Foam::movingWallVelocityFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

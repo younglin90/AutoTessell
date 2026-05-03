@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,31 +28,17 @@ Class
     Foam::simpleControl
 
 Description
-    Simple control class. Provides time-loop control methods which exit the
-    simulation once convergence criteria have been reached. Example usage:
-
-    \verbatim
-    simpleControl simple(mesh);
-
-    while (simple.loop(runTime))
-    {
-        Info<< "Time = " << runTime.userTimeName() << nl << endl;
-
-        // solve ...
-    }
-    \endverbatim
-
-SourceFiles
-    simpleControl.C
+    SIMPLE control class to supply convergence information/checks for
+    the SIMPLE loop.
 
 \*---------------------------------------------------------------------------*/
 
 #ifndef simpleControl_H
 #define simpleControl_H
 
-#include "fluidSolutionControl.H"
-#include "singleRegionConvergenceControl.H"
+#include "solutionControl.H"
 
+//- Declare that pimpleControl will be used
 #define SIMPLE_CONTROL
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -58,20 +47,40 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class simpleControl Declaration
+                         Class simpleControl Declaration
 \*---------------------------------------------------------------------------*/
 
 class simpleControl
 :
-    public fluidSolutionControl,
-    public singleRegionConvergenceControl
+    public solutionControl
 {
+
 protected:
+
+    // Protected Data
+
+        //- Initialised flag
+        bool initialised_;
+
 
     // Protected Member Functions
 
-        //- Read controls
-        virtual bool read();
+        //- Read controls from fvSolution dictionary
+        bool read();
+
+        //- Return true if all convergence checks are satisfied
+        bool criteriaSatisfied();
+
+
+private:
+
+    // Private member functions
+
+        //- No copy construct
+        simpleControl(const simpleControl&) = delete;
+
+        //- No copy assignment
+        void operator=(const simpleControl&) = delete;
 
 
 public:
@@ -84,23 +93,25 @@ public:
 
     // Constructors
 
-        //- Construct from a mesh and the name of the algorithm
-        simpleControl(fvMesh& mesh, const word& algorithmName="SIMPLE");
+        //- Construct from mesh and the name of control sub-dictionary
+        simpleControl
+        (
+            fvMesh& mesh,
+            const word& dictName = "SIMPLE",
+            const bool verbose = true
+        );
 
 
     //- Destructor
-    virtual ~simpleControl();
+    virtual ~simpleControl() = default;
 
 
     // Member Functions
 
-        // Evolution
+        // Solution control
 
-            //- Time run loop
-            bool run(Time& time);
-
-            //- Time loop loop
-            bool loop(Time& time);
+            //- SIMPLE loop
+            virtual bool loop();
 };
 
 

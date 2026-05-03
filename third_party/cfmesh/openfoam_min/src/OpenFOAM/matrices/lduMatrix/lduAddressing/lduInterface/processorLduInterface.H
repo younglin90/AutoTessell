@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,11 +36,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef processorLduInterface_H
-#define processorLduInterface_H
+#ifndef Foam_processorLduInterface_H
+#define Foam_processorLduInterface_H
 
 #include "lduInterface.H"
-#include "transformer.H"
 #include "primitiveFieldsFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -46,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class processorLduInterface Declaration
+                  Class processorLduInterface Declaration
 \*---------------------------------------------------------------------------*/
 
 class processorLduInterface
@@ -55,30 +57,40 @@ class processorLduInterface
 
         //- Send buffer.
         //  Only sized and used when compressed or non-blocking comms used.
-        mutable List<char> sendBuf_;
+        mutable List<char> byteSendBuf_;
 
         //- Receive buffer.
         //  Only sized and used when compressed or non-blocking comms used.
-        mutable List<char> receiveBuf_;
+        mutable List<char> byteRecvBuf_;
 
-        //- Resize the buffer if required
-        void resizeBuf(List<char>& buf, const label size) const;
+
+    // Private Member Functions
+
+        //- Increase buffer size if required
+        //  Uses the nocopy variant since it will be overwritten
+        static void resizeBuf(List<char>& buf, const label len)
+        {
+            if (buf.size() < len)
+            {
+                buf.resize_nocopy(len);
+            }
+        }
 
 
 public:
 
     //- Runtime type information
-    TypeName("processorLduInterface");
+    TypeNameNoDebug("processorLduInterface");
 
 
     // Constructors
 
-        //- Construct null
-        processorLduInterface();
+        //- Default construct
+        processorLduInterface() noexcept = default;
 
 
     //- Destructor
-    virtual ~processorLduInterface();
+    virtual ~processorLduInterface() = default;
 
 
     // Member Functions
@@ -94,61 +106,61 @@ public:
             //- Return neighbour processor number (rank in communicator)
             virtual int neighbProcNo() const = 0;
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const = 0;
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const = 0;
 
             //- Return message tag used for sending
             virtual int tag() const = 0;
 
 
-        // Transfer functions
+        // Transfer Functions
 
             //- Raw send function
             template<class Type>
             void send
             (
-                const Pstream::commsTypes commsType,
-                const UList<Type>&
+                const UPstream::commsTypes commsType,
+                const UList<Type>& f
             ) const;
 
-            //- Raw field receive function
+            //- Raw receive function
             template<class Type>
             void receive
             (
-                const Pstream::commsTypes commsType,
-                UList<Type>&
+                const UPstream::commsTypes commsType,
+                UList<Type>& f
             ) const;
 
-            //- Raw field receive function returning field
+            //- Raw receive function returning field
             template<class Type>
             tmp<Field<Type>> receive
             (
-                const Pstream::commsTypes commsType,
+                const UPstream::commsTypes commsType,
                 const label size
             ) const;
 
 
-            //- Raw field send function with data compression
+            //- Raw send function with data compression
             template<class Type>
             void compressedSend
             (
-                const Pstream::commsTypes commsType,
-                const UList<Type>&
+                const UPstream::commsTypes commsType,
+                const UList<Type>& f
             ) const;
 
-            //- Raw field receive function with data compression
+            //- Raw receive function with data compression
             template<class Type>
             void compressedReceive
             (
-                const Pstream::commsTypes commsType,
-                UList<Type>&
+                const UPstream::commsTypes commsType,
+                UList<Type>& f
             ) const;
 
-            //- Raw field receive function with data compression returning field
+            //- Raw receive function with data compression returning field
             template<class Type>
             tmp<Field<Type>> compressedReceive
             (
-                const Pstream::commsTypes commsType,
+                const UPstream::commsTypes commsType,
                 const label size
             ) const;
 };

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,8 +30,8 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvsPatchFields_H
-#define fvsPatchFields_H
+#ifndef Foam_fvsPatchFields_H
+#define Foam_fvsPatchFields_H
 
 #include "fvsPatchField.H"
 #include "fvsPatchFieldsFwd.H"

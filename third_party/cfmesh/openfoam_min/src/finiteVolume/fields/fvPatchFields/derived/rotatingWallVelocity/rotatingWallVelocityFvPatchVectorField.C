@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,23 +37,30 @@ Foam::rotatingWallVelocityFvPatchVectorField::
 rotatingWallVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    origin_(),
+    axis_(Zero),
+    omega_(nullptr)
+{}
+
+
+Foam::rotatingWallVelocityFvPatchVectorField::
+rotatingWallVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    origin_(dict.lookup<vector>("origin")),
-    axis_(dict.lookup<vector>("axis")),
-    omega_(time(), dict)
+    fixedValueFvPatchField<vector>(p, iF, dict, IOobjectOption::NO_READ),
+    origin_(dict.lookup("origin")),
+    axis_(dict.lookup("axis")),
+    omega_(Function1<scalar>::New("omega", dict, &db()))
 {
-    if (dict.found("value"))
-    {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
+    if (!this->readValueEntry(dict))
     {
         // Evaluate the wall velocity
         updateCoeffs();
@@ -61,30 +71,43 @@ rotatingWallVelocityFvPatchVectorField
 Foam::rotatingWallVelocityFvPatchVectorField::
 rotatingWallVelocityFvPatchVectorField
 (
-    const rotatingWallVelocityFvPatchVectorField& pvf,
+    const rotatingWallVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    fixedValueFvPatchField<vector>(pvf, p, iF, mapper),
-    origin_(pvf.origin_),
-    axis_(pvf.axis_),
-    omega_(pvf.omega_)
+    fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
+    origin_(ptf.origin_),
+    axis_(ptf.axis_),
+    omega_(ptf.omega_.clone())
 {}
 
 
 Foam::rotatingWallVelocityFvPatchVectorField::
 rotatingWallVelocityFvPatchVectorField
 (
-    const rotatingWallVelocityFvPatchVectorField& pvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const rotatingWallVelocityFvPatchVectorField& rwvpvf
 )
 :
-    fixedValueFvPatchField<vector>(pvf, iF),
-    origin_(pvf.origin_),
-    axis_(pvf.axis_),
-    omega_(pvf.omega_)
+    fixedValueFvPatchField<vector>(rwvpvf),
+    origin_(rwvpvf.origin_),
+    axis_(rwvpvf.axis_),
+    omega_(rwvpvf.omega_.clone())
+{}
+
+
+Foam::rotatingWallVelocityFvPatchVectorField::
+rotatingWallVelocityFvPatchVectorField
+(
+    const rotatingWallVelocityFvPatchVectorField& rwvpvf,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(rwvpvf, iF),
+    origin_(rwvpvf.origin_),
+    axis_(rwvpvf.axis_),
+    omega_(rwvpvf.omega_.clone())
 {}
 
 
@@ -97,12 +120,13 @@ void Foam::rotatingWallVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const scalar omega = omega_.value(time().value());
+    const scalar t = this->db().time().timeOutputValue();
+    scalar om = omega_->value(t);
 
     // Calculate the rotating wall velocity from the specification of the motion
     const vectorField Up
     (
-        (-omega)*((patch().Cf() - origin_) ^ (axis_/mag(axis_)))
+        (-om)*((patch().Cf() - origin_) ^ (axis_/mag(axis_)))
     );
 
     // Remove the component of Up normal to the wall
@@ -116,11 +140,11 @@ void Foam::rotatingWallVelocityFvPatchVectorField::updateCoeffs()
 
 void Foam::rotatingWallVelocityFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntry(os, "origin", origin_);
-    writeEntry(os, "axis", axis_);
-    writeEntry(os, omega_);
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    os.writeEntry("origin", origin_);
+    os.writeEntry("axis", axis_);
+    omega_->writeData(os);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

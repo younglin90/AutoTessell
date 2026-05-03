@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -56,14 +58,14 @@ namespace Foam
 
 
 /*---------------------------------------------------------------------------*\
-                     Class ParSortableListName Declaration
+                        Class ParSortableListName Declaration
 \*---------------------------------------------------------------------------*/
 
 TemplateName(ParSortableList);
 
 
 /*---------------------------------------------------------------------------*\
-                       Class ParSortableList Declaration
+                           Class ParSortableList Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -72,7 +74,7 @@ class ParSortableList
     public ParSortableListName,
     public List<Type>
 {
-    // Private Data
+    // Private data
 
         //- Original indices
         labelList indices_;
@@ -86,7 +88,7 @@ class ParSortableList
         //- Private class for sorting. Sorts on value_.
         class taggedValue
         {
-            // Private Data
+            // Private data
 
                 //- Value
                 Type value_;
@@ -95,7 +97,7 @@ class ParSortableList
                 label index_;
 
                 //- Proc
-                label procIndex_;
+                label procID_;
 
 
         public:
@@ -127,14 +129,14 @@ class ParSortableList
                     return index_;
                 }
 
-                label procIndex() const
+                label procID() const
                 {
-                    return procIndex_;
+                    return procID_;
                 }
 
-                label& procIndex()
+                label& procID()
                 {
-                    return procIndex_;
+                    return procID_;
                 }
         };
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,13 +28,16 @@ Primitive
     direction
 
 Description
-    Direction is an 8-bit unsigned integer type used to represent the Cartesian
-    directions etc.
+    Direction is an 8-bit unsigned integer type used to represent
+    Cartesian directions, components etc.
+
+Note
+    If a different typedef is used, "uint8.H" must be modified accordingly.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef direction_H
-#define direction_H
+#ifndef Foam_primitives_direction_H
+#define Foam_primitives_direction_H
 
 #include <cstdint>
 #include <iostream>
@@ -41,21 +47,31 @@ Description
 namespace Foam
 {
 
+// Forward Declarations
 class Istream;
 class Ostream;
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
+// Typedefs
 typedef uint8_t direction;
 
-direction readDirection(Istream&);
-Istream& operator>>(Istream&, direction&);
-Ostream& operator<<(Ostream&, const direction);
-std::ostream& operator<<(std::ostream&, const direction);
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+//- Read direction (uint8_t) from stream.
+direction readDirection(Istream& is);
+
+Istream& operator>>(Istream& is, direction& val);
+Ostream& operator<<(Ostream& os, const direction val);
+
+std::ostream& operator<<(std::ostream& os, const direction val);
+
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "pTraits.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,7 +26,6 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "PrimitivePatch.H"
 #include "Map.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -32,7 +34,7 @@ template<class FaceList, class PointField>
 Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
 (
     const FaceList& faces,
-    const Field<PointType>& points
+    const PointField& points
 )
 :
     FaceList(faces),
@@ -53,6 +55,7 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
     localPointOrderPtr_(nullptr),
     faceCentresPtr_(nullptr),
     faceAreasPtr_(nullptr),
+    magFaceAreasPtr_(nullptr),
     faceNormalsPtr_(nullptr),
     pointNormalsPtr_(nullptr)
 {}
@@ -62,11 +65,11 @@ template<class FaceList, class PointField>
 Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
 (
     FaceList&& faces,
-    Field<PointType>&& points
+    const PointField& points
 )
 :
-    FaceList(move(faces)),
-    points_(move(points)),
+    FaceList(std::move(faces)),
+    points_(points),
     edgesPtr_(nullptr),
     nInternalEdges_(-1),
     boundaryPointsPtr_(nullptr),
@@ -83,6 +86,7 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
     localPointOrderPtr_(nullptr),
     faceCentresPtr_(nullptr),
     faceAreasPtr_(nullptr),
+    magFaceAreasPtr_(nullptr),
     faceNormalsPtr_(nullptr),
     pointNormalsPtr_(nullptr)
 {}
@@ -92,7 +96,7 @@ template<class FaceList, class PointField>
 Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
 (
     FaceList& faces,
-    Field<PointType>& points,
+    PointField& points,
     const bool reuse
 )
 :
@@ -114,6 +118,7 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
     localPointOrderPtr_(nullptr),
     faceCentresPtr_(nullptr),
     faceAreasPtr_(nullptr),
+    magFaceAreasPtr_(nullptr),
     faceNormalsPtr_(nullptr),
     pointNormalsPtr_(nullptr)
 {}
@@ -125,7 +130,6 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
     const PrimitivePatch<FaceList, PointField>& pp
 )
 :
-    PrimitivePatchName(),
     FaceList(pp),
     points_(pp.points_),
     edgesPtr_(nullptr),
@@ -144,36 +148,7 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
     localPointOrderPtr_(nullptr),
     faceCentresPtr_(nullptr),
     faceAreasPtr_(nullptr),
-    faceNormalsPtr_(nullptr),
-    pointNormalsPtr_(nullptr)
-{}
-
-
-template<class FaceList, class PointField>
-Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
-(
-    PrimitivePatch<FaceList, PointField>&& pp
-)
-:
-    PrimitivePatchName(),
-    FaceList(move(pp)),
-    points_(move(pp.points_)),
-    edgesPtr_(nullptr),
-    nInternalEdges_(-1),
-    boundaryPointsPtr_(nullptr),
-    faceFacesPtr_(nullptr),
-    edgeFacesPtr_(nullptr),
-    faceEdgesPtr_(nullptr),
-    pointEdgesPtr_(nullptr),
-    pointFacesPtr_(nullptr),
-    localFacesPtr_(nullptr),
-    meshPointsPtr_(nullptr),
-    meshPointMapPtr_(nullptr),
-    edgeLoopsPtr_(nullptr),
-    localPointsPtr_(nullptr),
-    localPointOrderPtr_(nullptr),
-    faceCentresPtr_(nullptr),
-    faceAreasPtr_(nullptr),
+    magFaceAreasPtr_(nullptr),
     faceNormalsPtr_(nullptr),
     pointNormalsPtr_(nullptr)
 {}
@@ -182,7 +157,7 @@ Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-Foam::PrimitivePatch<FaceList, PointField>::~PrimitivePatch()
+Foam::PrimitivePatch<FaceList, PointField>::PrimitivePatch::~PrimitivePatch()
 {
     clearOut();
 }
@@ -191,7 +166,21 @@ Foam::PrimitivePatch<FaceList, PointField>::~PrimitivePatch()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-const Foam::edgeList& Foam::PrimitivePatch<FaceList, PointField>::edges() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::movePoints
+(
+    const Field<point_type>&
+)
+{
+    DebugInFunction << "Recalculating geometry following mesh motion" << endl;
+
+    clearGeom();
+}
+
+
+template<class FaceList, class PointField>
+const Foam::edgeList&
+Foam::PrimitivePatch<FaceList, PointField>::edges() const
 {
     if (!edgesPtr_)
     {
@@ -203,7 +192,26 @@ const Foam::edgeList& Foam::PrimitivePatch<FaceList, PointField>::edges() const
 
 
 template<class FaceList, class PointField>
-Foam::label Foam::PrimitivePatch<FaceList, PointField>::nInternalEdges() const
+const Foam::edgeList::subList
+Foam::PrimitivePatch<FaceList, PointField>::internalEdges() const
+{
+    const edgeList& allEdges = this->edges();  // Force demand-driven
+    return edgeList::subList(allEdges, nInternalEdges());
+}
+
+
+template<class FaceList, class PointField>
+const Foam::edgeList::subList
+Foam::PrimitivePatch<FaceList, PointField>::boundaryEdges() const
+{
+    const edgeList& allEdges = this->edges();  // Force demand-driven
+    return edgeList::subList(allEdges, nBoundaryEdges(), nInternalEdges());
+}
+
+
+template<class FaceList, class PointField>
+Foam::label
+Foam::PrimitivePatch<FaceList, PointField>::nInternalEdges() const
 {
     if (!edgesPtr_)
     {
@@ -211,6 +219,15 @@ Foam::label Foam::PrimitivePatch<FaceList, PointField>::nInternalEdges() const
     }
 
     return nInternalEdges_;
+}
+
+
+template<class FaceList, class PointField>
+Foam::label
+Foam::PrimitivePatch<FaceList, PointField>::nBoundaryEdges() const
+{
+    const edgeList& allEdges = this->edges();  // Force demand-driven
+    return (allEdges.size() - this->nInternalEdges());
 }
 
 
@@ -229,8 +246,7 @@ Foam::PrimitivePatch<FaceList, PointField>::boundaryPoints() const
 
 template<class FaceList, class PointField>
 const Foam::labelListList&
-Foam::PrimitivePatch<FaceList, PointField>::
-faceFaces() const
+Foam::PrimitivePatch<FaceList, PointField>::faceFaces() const
 {
     if (!faceFacesPtr_)
     {
@@ -296,7 +312,7 @@ Foam::PrimitivePatch<FaceList, PointField>::pointFaces() const
 template<class FaceList, class PointField>
 const Foam::List
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::FaceType
+    typename Foam::PrimitivePatch<FaceList, PointField>::face_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::localFaces() const
 {
@@ -338,7 +354,7 @@ Foam::PrimitivePatch<FaceList, PointField>::meshPointMap() const
 template<class FaceList, class PointField>
 const Foam::Field
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::PointType
+    typename Foam::PrimitivePatch<FaceList, PointField>::point_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::localPoints() const
 {
@@ -365,29 +381,21 @@ Foam::PrimitivePatch<FaceList, PointField>::localPointOrder() const
 
 
 template<class FaceList, class PointField>
-Foam::label Foam::PrimitivePatch<FaceList, PointField>::whichPoint
+Foam::label
+Foam::PrimitivePatch<FaceList, PointField>::whichPoint
 (
     const label gp
 ) const
 {
-    Map<label>::const_iterator fnd = meshPointMap().find(gp);
-
-    if (fnd != meshPointMap().end())
-    {
-        return fnd();
-    }
-    else
-    {
-        // Not found
-        return -1;
-    }
+    // The point found, or -1 if not found
+    return meshPointMap().lookup(gp, -1);
 }
 
 
 template<class FaceList, class PointField>
 const Foam::Field
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::PointType
+    typename Foam::PrimitivePatch<FaceList, PointField>::point_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::faceCentres() const
 {
@@ -403,7 +411,7 @@ Foam::PrimitivePatch<FaceList, PointField>::faceCentres() const
 template<class FaceList, class PointField>
 const Foam::Field
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::PointType
+    typename Foam::PrimitivePatch<FaceList, PointField>::point_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::faceAreas() const
 {
@@ -417,9 +425,22 @@ Foam::PrimitivePatch<FaceList, PointField>::faceAreas() const
 
 
 template<class FaceList, class PointField>
+const Foam::Field<Foam::scalar>&
+Foam::PrimitivePatch<FaceList, PointField>::magFaceAreas() const
+{
+    if (!magFaceAreasPtr_)
+    {
+        calcMagFaceAreas();
+    }
+
+    return *magFaceAreasPtr_;
+}
+
+
+template<class FaceList, class PointField>
 const Foam::Field
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::PointType
+    typename Foam::PrimitivePatch<FaceList, PointField>::point_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::faceNormals() const
 {
@@ -435,7 +456,7 @@ Foam::PrimitivePatch<FaceList, PointField>::faceNormals() const
 template<class FaceList, class PointField>
 const Foam::Field
 <
-    typename Foam::PrimitivePatch<FaceList, PointField>::PointType
+    typename Foam::PrimitivePatch<FaceList, PointField>::point_type
 >&
 Foam::PrimitivePatch<FaceList, PointField>::pointNormals() const
 {
@@ -451,29 +472,42 @@ Foam::PrimitivePatch<FaceList, PointField>::pointNormals() const
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::operator=
+void
+Foam::PrimitivePatch<FaceList, PointField>::operator=
 (
-    const PrimitivePatch<FaceList, PointField>& pp
+    const PrimitivePatch<FaceList, PointField>& rhs
 )
 {
+    if (&rhs == this)
+    {
+        return;
+    }
+
     clearOut();
 
-    FaceList::shallowCopy(pp);
+    FaceList::shallowCopy(rhs);
+
+    // Cannot copy assign points (could be const reference)
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::operator=
+void
+Foam::PrimitivePatch<FaceList, PointField>::operator=
 (
-    PrimitivePatch<FaceList, PointField>&& pp
+    PrimitivePatch<FaceList, PointField>&& rhs
 )
 {
+    if (&rhs == this)
+    {
+        return;
+    }
+
     clearOut();
 
-    FaceList::operator=(move(pp));
+    FaceList::operator=(std::move(rhs));
 
-    // This is only valid if PointField is not a reference
-    // points_ = move(pp.points_);
+    // Cannot move assign points (could be const reference)
 }
 
 
@@ -482,6 +516,7 @@ void Foam::PrimitivePatch<FaceList, PointField>::operator=
 #include "PrimitivePatchAddressing.C"
 #include "PrimitivePatchEdgeLoops.C"
 #include "PrimitivePatchClear.C"
+#include "PrimitivePatchBdryFaces.C"
 #include "PrimitivePatchBdryPoints.C"
 #include "PrimitivePatchLocalPointOrder.C"
 #include "PrimitivePatchMeshData.C"

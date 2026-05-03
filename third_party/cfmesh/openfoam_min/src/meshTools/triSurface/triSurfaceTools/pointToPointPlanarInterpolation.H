@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,12 +36,13 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef pointToPointPlanarInterpolation_H
-#define pointToPointPlanarInterpolation_H
+#ifndef Foam_pointToPointPlanarInterpolation_H
+#define Foam_pointToPointPlanarInterpolation_H
 
 #include "FixedList.H"
-#include "coordinateSystem.H"
 #include "instantList.H"
+#include "Pair.H"
+#include "cartesianCS.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -54,29 +58,28 @@ class pointToPointPlanarInterpolation
     // Private Data
 
         //- Perturbation factor
-        const scalar perturb_;
+        scalar perturb_;
 
-        //- Whether to use nearest point only (avoids triangulation, projection)
-        const bool nearestOnly_;
+        //- Use nearest point only (avoids triangulation, projection)
+        bool nearestOnly_;
 
-        //- Coordinate system
-        coordinateSystem referenceCS_;
+        //- Cartesian reference coordinate system
+        coordSystem::cartesian referenceCS_;
 
         //- Number of source points (for checking)
         label nPoints_;
 
-        //- Current interpolation addressing to face centres of underlying
-        //  patch
+        //- Interpolation addressing to face centres of underlying patch
         List<FixedList<label, 3>> nearestVertex_;
 
-        //- Current interpolation factors to face centres of underlying
-        //  patch
+        //- Interpolation factors to face centres of underlying patch
         List<FixedList<scalar, 3>> nearestVertexWeight_;
+
 
     // Private Member Functions
 
         //- Calculate a local coordinate system from set of points
-        coordinateSystem calcCoordinateSystem(const pointField&) const;
+        static coordSystem::cartesian calcCoordinateSystem(const pointField&);
 
         //- Calculate addressing and weights
         void calcWeights
@@ -85,15 +88,32 @@ class pointToPointPlanarInterpolation
             const pointField& destPoints
         );
 
+
 public:
 
     // Declare name of the class and its debug switch
     ClassName("pointToPointPlanarInterpolation");
 
 
+    // Generated Methods
+
+        //- Copy construct
+        pointToPointPlanarInterpolation
+        (
+            const pointToPointPlanarInterpolation&
+        ) = default;
+
+        //- Copy assignment
+        pointToPointPlanarInterpolation& operator=
+        (
+            const pointToPointPlanarInterpolation&
+        ) = default;
+
+
     // Constructors
 
-        //- Construct from 3D locations. Determines local coordinate system
+        //- Construct from 3D locations.
+        //  Determines local coordinate system
         //  from sourcePoints and maps onto that. If nearestOnly skips any
         //  local coordinate system and triangulation and uses nearest vertex
         //  only
@@ -114,51 +134,78 @@ public:
             const scalar perturb
         );
 
+        //- Construct from components
+        pointToPointPlanarInterpolation
+        (
+            const scalar perturb,
+            const bool nearestOnly,
+            const coordinateSystem& referenceCS,
+            const label sourceSize,
+            List<FixedList<label, 3>>&& nearestVertex,
+            List<FixedList<scalar, 3>>&& nearestVertexWeight
+        );
+
+        //- Construct and return a clone
+        autoPtr<pointToPointPlanarInterpolation> clone() const
+        {
+            return autoPtr<pointToPointPlanarInterpolation>::New(*this);
+        }
+
 
     // Member Functions
 
-        //- Return the coordinateSystem
-        const coordinateSystem& referenceCS() const
+        //- Perturbation factor (for triangulation)
+        scalar perturb() const noexcept
+        {
+            return perturb_;
+        }
+
+        //- Whether to use nearest point only (avoids triangulation, projection)
+        bool nearestOnly() const noexcept
+        {
+            return nearestOnly_;
+        }
+
+        //- Return the Cartesian reference coordinate system
+        const coordSystem::cartesian& referenceCS() const noexcept
         {
             return referenceCS_;
         }
 
         //- Number of source points
-        label sourceSize() const
+        label sourceSize() const noexcept
         {
             return nPoints_;
         }
 
-        //  patch
-        const List<FixedList<label, 3>>& nearestVertex() const
+        //- Number of target points
+        label targetSize() const noexcept
+        {
+            return nearestVertex_.size();
+        }
+
+        //- Interpolation addressing to face centres of underlying patch
+        const List<FixedList<label, 3>>& nearestVertex() const noexcept
         {
             return nearestVertex_;
         }
 
-        //- Current interpolation factors to face centres of underlying
-        //  patch
-        const List<FixedList<scalar, 3>>& nearestVertexWeight() const
+        //- Interpolation factors to face centres of underlying patch
+        const List<FixedList<scalar, 3>>& nearestVertexWeight() const noexcept
         {
             return nearestVertexWeight_;
         }
 
         //- Helper: extract words of times
-        static wordList timeNames(const instantList&);
-
-        //- Helper: find time. Return true if successful.
-        static bool findTime
-        (
-            const instantList& times,
-            const label startSampleTime,
-            const scalar timeVal,
-            label& lo,
-            label& hi
-        );
+        static wordList timeNames(const instantList& times);
 
         //- Interpolate from field on source points to dest points
         template<class Type>
         tmp<Field<Type>> interpolate(const Field<Type>& sourceFld) const;
 
+        //- Interpolate from field on source points to dest points
+        template<class Type>
+        tmp<Field<Type>> interpolate(const tmp<Field<Type>>& tsource) const;
 };
 
 

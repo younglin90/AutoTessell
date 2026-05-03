@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,23 +28,11 @@ Class
     Foam::functionEntries::includeEtcEntry
 
 Description
+    A dictionary directive for including a file found using the
+    Foam::findEtcFile() mechanism.
+
     Specify an etc file to include when reading dictionaries, expects a
     single string to follow.
-
-    Searches for files from user/group/shipped directories.
-    The search scheme allows for version-specific and
-    version-independent files using the following hierarchy:
-    - \b user settings:
-      - ~/.OpenFOAM/\<VERSION\>
-      - ~/.OpenFOAM/
-    - \b group (site) settings (when $WM_PROJECT_SITE is set):
-      - $WM_PROJECT_SITE/\<VERSION\>/etc/
-      - $WM_PROJECT_SITE/etc/
-    - \b group (site) settings (when $WM_PROJECT_SITE is not set):
-      - $WM_PROJECT_INST_DIR/site/\<VERSION\>/etc/
-      - $WM_PROJECT_INST_DIR/site/etc/
-    - \b other (shipped) settings:
-      - $WM_PROJECT_DIR/etc/
 
     An example of the \c \#includeEtc directive:
     \verbatim
@@ -59,10 +50,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef includeEtcEntry_H
-#define includeEtcEntry_H
+#ifndef functionEntries_includeEtcEntry_H
+#define functionEntries_includeEtcEntry_H
 
-#include "includeEntry.H"
+#include "functionEntry.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -72,70 +63,90 @@ namespace functionEntries
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class includeEtcEntry Declaration
+                        Class includeEtcEntry Declaration
 \*---------------------------------------------------------------------------*/
 
 class includeEtcEntry
 :
-    public includeEntry
+    public functionEntry
 {
 protected:
 
     // Protected Member Functions
 
-        //- Expand include fileName and return
-        virtual fileName includeFileName
+        //- Expand include fileName and search etc directories for the file
+        static fileName resolveEtcFile
         (
-            const fileName& dir,
-            const fileName&,
-            const dictionary&
-        ) const;
+            const fileName& f,
+            const dictionary& dict
+        );
 
-
-public:
-
-    //- Runtime type information
-    FunctionTypeName("#includeEtc");
-
-
-    // Constructors
-
-        //- Construct from line number, dictionary and Istream
-        includeEtcEntry
+        //- Include file in a sub-dict context
+        static bool execute
         (
-            const label lineNumber,
-            const dictionary& parentDict,
+            const bool mandatory,
+            dictionary& parentDict,
             Istream& is
         );
 
-        //- Copy construct
-        includeEtcEntry(const includeEtcEntry&) = default;
+        //- Include file in a primitiveEntry context
+        static bool execute
+        (
+            const bool mandatory,
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
+        );
 
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new includeEtcEntry(*this));
-        }
+public:
+
+    // Static Data Members
+
+        //- Report to stdout which file is included
+        static bool log;
 
 
     // Member Functions
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream&);
+        //- Include etc file in a sub-dict context
+        static bool execute(dictionary& parentDict, Istream& is);
 
-        //- Expand the functionEntry into the contextEntry
+        //- Include etc file in a primitiveEntry context
         static bool execute
         (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
         );
+};
 
 
-    // Member Operators
+/*---------------------------------------------------------------------------*\
+                        Class sincludeEtcEntry Declaration
+\*---------------------------------------------------------------------------*/
 
-        //- Disallow default bitwise assignment
-        void operator=(const includeEtcEntry&) = delete;
+//- A dictionary directive for conditionally including an etc file,
+//- expects a single string to follow.
+//
+//  The \c \#sincludeEtc directive is identically to the
+//  \c \#includeEtc directive, but does not generate an error
+//  if the file does not exist.
+class sincludeEtcEntry
+:
+    public includeEtcEntry
+{
+public:
+
+    //- Include etc file (if it exists) in a sub-dict context
+    static bool execute(dictionary& parentDict, Istream& is);
+
+    //- Include etc file (if it exists) in a primitiveEntry context
+    static bool execute
+    (
+        const dictionary& parentDict,
+        primitiveEntry& entry,
+        Istream& is
+    );
 };
 
 

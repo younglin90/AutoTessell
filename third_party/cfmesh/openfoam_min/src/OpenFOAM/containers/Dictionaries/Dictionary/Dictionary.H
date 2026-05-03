@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +28,16 @@ Class
     Foam::Dictionary
 
 Description
-    General purpose template dictionary class which manages the storage
+    General purpose template dictionary class that manages the storage
     associated with it.
 
     It is derived from DictionaryBase instantiated on a memory managed form
     of intrusive doubly-linked list of \<T\>.
 
-SourceFiles
-    Dictionary.C
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef Dictionary_H
-#define Dictionary_H
+#ifndef Foam_Dictionary_H
+#define Foam_Dictionary_H
 
 #include "DictionaryBase.H"
 #include "IDLList.H"
@@ -56,38 +56,42 @@ class Dictionary
 :
     public DictionaryBase<IDLList<T>, T>
 {
-
 public:
+
+    //- The template instance used for the dictionary content
+    typedef DictionaryBase<IDLList<T>, T> dict_type;
+
 
     // Constructors
 
-        //- Construct given initial table size
-        Dictionary(const label size = 128);
+        //- Default construct, or with initial table capacity
+        explicit Dictionary(const label initialCapacity = 128)
+        :
+            dict_type(initialCapacity)
+        {}
 
-        //- Copy constructor
-        Dictionary(const Dictionary&);
-
-        //- Move constructor
-        Dictionary(Dictionary&&);
+        //- Copy construct
+        Dictionary(const Dictionary& dict)
+        :
+            dict_type(dict)
+        {}
 
 
     // Member Functions
 
         //- Remove an entry specified by keyword and delete the pointer.
-        //  Returns true if the keyword was found
-        bool erase(const word& keyword);
+        //  \return true if the keyword was found
+        bool erase(const word& keyword)
+        {
+            T* ptr = this->remove(keyword);
+            delete ptr;
+            return bool(ptr);
+        }
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "Dictionary.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

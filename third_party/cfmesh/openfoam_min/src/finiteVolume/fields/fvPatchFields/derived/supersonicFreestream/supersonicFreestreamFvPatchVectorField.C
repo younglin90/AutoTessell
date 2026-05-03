@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "supersonicFreestreamFvPatchVectorField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -34,41 +37,56 @@ Foam::supersonicFreestreamFvPatchVectorField::
 supersonicFreestreamFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    mixedFvPatchVectorField(p, iF),
+    TName_("T"),
+    pName_("p"),
+    psiName_("thermo:psi"),
+    UInf_(Zero),
+    pInf_(0),
+    TInf_(0),
+    gamma_(0)
+{
+    refValue() = patchInternalField();
+    refGrad() = Zero;
+    valueFraction() = 1;
+}
+
+
+Foam::supersonicFreestreamFvPatchVectorField::
+supersonicFreestreamFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    mixedFvPatchVectorField(p, iF, dict, false),
-    TName_(dict.lookupOrDefault<word>("T", "T")),
-    pName_(dict.lookupOrDefault<word>("p", "p")),
-    psiName_(dict.lookupOrDefault<word>("psi", "psi")),
-    UInf_(dict.lookup<vector>("UInf", dimVelocity)),
-    pInf_(dict.lookup<scalar>("pInf", dimPressure)),
-    TInf_(dict.lookup<scalar>("TInf", dimTemperature)),
-    gamma_(dict.lookup<scalar>("gamma"))
+    mixedFvPatchVectorField(p, iF),
+    TName_(dict.getOrDefault<word>("T", "T")),
+    pName_(dict.getOrDefault<word>("p", "p")),
+    psiName_(dict.getOrDefault<word>("psi", "thermo:psi")),
+    UInf_(dict.lookup("UInf")),
+    pInf_(dict.get<scalar>("pInf")),
+    TInf_(dict.get<scalar>("TInf")),
+    gamma_(dict.get<scalar>("gamma"))
 {
-    if (dict.found("value"))
+    fvPatchFieldBase::readDict(dict);
+
+    if (!this->readValueEntry(dict))
     {
-        fvPatchField<vector>::operator=
-        (
-            vectorField("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        fvPatchField<vector>::operator=(patchInternalField());
+        this->extrapolateInternal();
     }
 
     refValue() = *this;
     refGrad() = Zero;
     valueFraction() = 1;
 
-    if (pInf_ < small)
+    if (pInf_ < SMALL)
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "    unphysical pInf specified (pInf <= 0.0)"
+        FatalIOErrorInFunction(dict)
+            << "    unphysical pInf specified (pInf <= 0.0)"
             << "\n    on patch " << this->patch().name()
             << " of field " << this->internalField().name()
             << " in file " << this->internalField().objectPath()
@@ -82,8 +100,8 @@ supersonicFreestreamFvPatchVectorField
 (
     const supersonicFreestreamFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     mixedFvPatchVectorField(ptf, p, iF, mapper),
@@ -100,8 +118,25 @@ supersonicFreestreamFvPatchVectorField
 Foam::supersonicFreestreamFvPatchVectorField::
 supersonicFreestreamFvPatchVectorField
 (
+    const supersonicFreestreamFvPatchVectorField& sfspvf
+)
+:
+    mixedFvPatchVectorField(sfspvf),
+    TName_(sfspvf.TName_),
+    pName_(sfspvf.pName_),
+    psiName_(sfspvf.psiName_),
+    UInf_(sfspvf.UInf_),
+    pInf_(sfspvf.pInf_),
+    TInf_(sfspvf.TInf_),
+    gamma_(sfspvf.gamma_)
+{}
+
+
+Foam::supersonicFreestreamFvPatchVectorField::
+supersonicFreestreamFvPatchVectorField
+(
     const supersonicFreestreamFvPatchVectorField& sfspvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     mixedFvPatchVectorField(sfspvf, iF),
@@ -124,14 +159,11 @@ void Foam::supersonicFreestreamFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const fvPatchField<scalar>& pT =
-        patch().lookupPatchField<volScalarField, scalar>(TName_);
+    const auto& pT = patch().lookupPatchField<volScalarField>(TName_);
 
-    const fvPatchField<scalar>& pp =
-        patch().lookupPatchField<volScalarField, scalar>(pName_);
+    const auto& pp = patch().lookupPatchField<volScalarField>(pName_);
 
-    const fvPatchField<scalar>& ppsi =
-        patch().lookupPatchField<volScalarField, scalar>(psiName_);
+    const auto& ppsi = patch().lookupPatchField<volScalarField>(psiName_);
 
     // Need R of the free-stream flow.  Assume R is independent of location
     // along patch so use face 0
@@ -255,15 +287,15 @@ void Foam::supersonicFreestreamFvPatchVectorField::updateCoeffs()
 
 void Foam::supersonicFreestreamFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntryIfDifferent<word>(os, "T", "T", TName_);
-    writeEntryIfDifferent<word>(os, "p", "p", pName_);
-    writeEntryIfDifferent<word>(os, "psi", "psi", psiName_);
-    writeEntry(os, "UInf", UInf_);
-    writeEntry(os, "pInf", pInf_);
-    writeEntry(os, "TInf", TInf_);
-    writeEntry(os, "gamma", gamma_);
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    os.writeEntryIfDifferent<word>("T", "T", TName_);
+    os.writeEntryIfDifferent<word>("p", "p", pName_);
+    os.writeEntryIfDifferent<word>("psi", "thermo:psi", psiName_);
+    os.writeEntry("UInf", UInf_);
+    os.writeEntry("pInf", pInf_);
+    os.writeEntry("TInf", TInf_);
+    os.writeEntry("gamma", gamma_);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

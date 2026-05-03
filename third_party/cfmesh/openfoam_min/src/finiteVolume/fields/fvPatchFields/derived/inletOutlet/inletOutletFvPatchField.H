@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::inletOutletFvPatchField
 
+Group
+    grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a generic outflow condition, with
     specified inflow for the case of return flow.
@@ -33,6 +38,7 @@ Usage
         Property     | Description             | Required    | Default value
         phi          | Flux field name         | no          | phi
         inletValue   | Inlet value for reverse flow | yes    |
+        value        | initial field value          | optional |
     \endtable
 
     Example of the boundary condition specification:
@@ -42,16 +48,17 @@ Usage
         type            inletOutlet;
         phi             phi;
         inletValue      uniform 0;
+        value           uniform 0;
     }
     \endverbatim
 
     The mode of operation is determined by the sign of the flux across the
     patch faces.
 
-    Note:
-        Sign conventions:
-      - Positive flux (out of domain): apply zero-gradient condition
-      - Negative flux (into of domain): apply the "inletValue" fixed-value
+Note
+    Sign conventions:
+    - Positive flux (out of domain): apply zero-gradient condition
+    - Negative flux (into domain): apply the "inletValue" fixed-value
 
 See also
     Foam::mixedFvPatchField
@@ -63,8 +70,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef inletOutletFvPatchField_H
-#define inletOutletFvPatchField_H
+#ifndef Foam_inletOutletFvPatchField_H
+#define Foam_inletOutletFvPatchField_H
 
 #include "mixedFvPatchField.H"
 
@@ -82,10 +89,9 @@ class inletOutletFvPatchField
 :
     public mixedFvPatchField<Type>
 {
-
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- Name of flux field
         word phiName_;
@@ -103,16 +109,15 @@ public:
         inletOutletFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         inletOutletFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const dictionary&,
-            const bool valuesRequired=true
+            const DimensionedField<Type, volMesh>&,
+            const dictionary&
         );
 
         //- Construct by mapping given inletOutletFvPatchField onto a new patch
@@ -120,54 +125,43 @@ public:
         (
             const inletOutletFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        inletOutletFvPatchField(const inletOutletFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        inletOutletFvPatchField
+        (
+            const inletOutletFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         inletOutletFvPatchField
         (
             const inletOutletFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new inletOutletFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
-        // Attributes
-
-            //- Return true: this patch field is altered by assignment
-            virtual bool assignable() const
-            {
-                return true;
-            }
-
-            //- Return the flux-field name
-            const word& phiName() const
-            {
-                return phiName_;
-            }
-
-            //- Return access to the flux-field name
-            word& phiName()
-            {
-                return phiName_;
-            }
+        //- True: this patch field is altered by assignment.
+        virtual bool assignable() const { return true; }
 
 
         //- Update the coefficients associated with the patch field
@@ -177,12 +171,9 @@ public:
         virtual void write(Ostream&) const;
 
 
-    // Member Operators
+    // Member operators
 
         virtual void operator=(const fvPatchField<Type>& pvf);
-
-        //- Inherit assignment
-        using mixedFvPatchField<Type>::operator=;
 };
 
 

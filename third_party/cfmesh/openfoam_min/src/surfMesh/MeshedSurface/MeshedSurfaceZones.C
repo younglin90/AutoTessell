@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,38 +27,60 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "MeshedSurface.H"
+#include "ListOps.H"
 
 // * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
 template<class Face>
-void Foam::MeshedSurface<Face>::checkZones()
+void Foam::MeshedSurface<Face>::checkZones(const bool verbose)
 {
-    // extra safety, ensure we have at some zones
-    // and they cover all the faces - fix start silently
-    surfZoneList& zones = this->storedZones();
-    if (zones.size())
+    auto& zones = this->storedZones();
+
+    // Check that zones (if any) they cover the faces
+    // - fix the start silently
+
+    bool zonesTooBig(false);
+
+    const label maxCount = this->size();
+
+    label start = 0;
+    for (surfZone& zn : zones)
     {
-        label count = 0;
-        forAll(zones, zoneI)
+        zn.start() = start;
+        start += zn.size();
+        if (start > maxCount)
         {
-            zones[zoneI].start() = count;
-            count += zones[zoneI].size();
+            zonesTooBig = true;  // Zones exceed what is required
+            zn.size() = (maxCount - zn.start());
+            start = (zn.start() + zn.size());
         }
+    }
 
-        if (count < this->size())
+    if (!zones.empty())
+    {
+        surfZone& zn = zones.back();
+
+        if ((zn.start() + zn.size()) < maxCount)
         {
-            WarningInFunction
-                << "more faces " << this->size() << " than zones " << count
-                << " ... extending final zone"
-                << endl;
+            // Zones address less than expected - extend final zone
+            zn.size() += maxCount - zn.start();
 
-            zones.last().size() += count - this->size();
+            if (verbose)
+            {
+                WarningInFunction
+                    << "Surface has more faces " << maxCount
+                    << " than zone addressing ... extending final zone" << nl;
+            }
         }
-        else if (count > this->size())
+        else if (zonesTooBig)
         {
-            FatalErrorInFunction
-                << "more zones " << count << " than faces " << this->size()
-                << exit(FatalError);
+            if (verbose)
+            {
+                WarningInFunction
+                    << "Surface has more zone addressing than faces "
+                    << maxCount
+                    << " ... trucated/resized accordingly" << nl;
+            }
         }
     }
 }
@@ -64,37 +89,59 @@ void Foam::MeshedSurface<Face>::checkZones()
 template<class Face>
 void Foam::MeshedSurface<Face>::sortFacesAndStore
 (
-    List<Face>&& unsortedFaces,
-    List<label>&& zoneIds,
-    const bool sorted
+    DynamicList<Face>& unsortedFaces,
+    DynamicList<label>& zoneIds,
+    DynamicList<label>& elemIds,
+    bool sorted
 )
 {
-    List<Face>  oldFaces(unsortedFaces);
-    List<label> zones(zoneIds);
+    // Basic sanity check
+    const label nInputFaces = unsortedFaces.size();
+
+    if (sorted || zoneIds.size() != nInputFaces)
+    {
+        // Sorting not required or not possible
+        zoneIds.clear();
+        sorted = true;
+    }
+
+    if (elemIds.size() != nInputFaces)
+    {
+        elemIds.clear();
+    }
 
     if (sorted)
     {
-        // already sorted - simply transfer faces
-        this->storedFaces().transfer(oldFaces);
+        // No additional sorting required
+        this->storedFaces().transfer(unsortedFaces);
+        this->storedFaceIds().transfer(elemIds);
+        return;
     }
-    else
-    {
-        // unsorted - determine the sorted order:
-        // avoid SortableList since we discard the main list anyhow
-        List<label> faceMap;
-        sortedOrder(zones, faceMap);
-        zones.clear();
 
-        // sorted faces
-        List<Face> newFaces(faceMap.size());
-        forAll(faceMap, facei)
-        {
-            // use transfer to recover memory where possible
-            newFaces[facei].transfer(oldFaces[faceMap[facei]]);
-        }
-        this->storedFaces().transfer(newFaces);
+    // The sorted order, based on zone-ids
+
+    labelList faceMap;
+    Foam::sortedOrder(zoneIds, faceMap);
+    zoneIds.clear();
+
+    auto& newFaces = this->storedFaces();
+    newFaces.resize(nInputFaces);
+
+    // Faces in sorted order
+    forAll(newFaces, facei)
+    {
+        // Can use transfer, faceMap is unique
+        newFaces[facei].transfer(unsortedFaces[faceMap[facei]]);
     }
-    zones.clear();
+
+    auto& newFaceIds = this->storedFaceIds();
+    newFaceIds.resize(elemIds.size());
+
+    // Element ids in sorted order
+    forAll(newFaceIds, facei)
+    {
+        newFaceIds[facei] = elemIds[faceMap[facei]];
+    }
 }
 
 
@@ -107,19 +154,21 @@ void Foam::MeshedSurface<Face>::addZones
     const bool cullEmpty
 )
 {
+    auto& zones = this->storedZones();
+    zones.resize(zones.size());
+
     label nZone = 0;
 
-    surfZoneList& zones = this->storedZones();
-    zones.setSize(zones.size());
-    forAll(zones, zoneI)
+    forAll(zones, zonei)
     {
-        if (srfZones[zoneI].size() || !cullEmpty)
+        if (srfZones[zonei].size() || !cullEmpty)
         {
-            zones[nZone] = surfZone(srfZones[zoneI], nZone);
-            nZone++;
+            zones[nZone] = surfZone(srfZones[zonei], nZone);
+            ++nZone;
         }
     }
-    zones.setSize(nZone);
+
+    zones.resize(nZone);
 }
 
 
@@ -131,27 +180,29 @@ void Foam::MeshedSurface<Face>::addZones
     const bool cullEmpty
 )
 {
-    label start   = 0;
+    auto& zones = this->storedZones();
+    zones.resize(sizes.size());
+
+    label start = 0;
     label nZone = 0;
 
-    surfZoneList& zones = this->storedZones();
-    zones.setSize(sizes.size());
-    forAll(zones, zoneI)
+    forAll(zones, zonei)
     {
-        if (sizes[zoneI] || !cullEmpty)
+        if (sizes[zonei] || !cullEmpty)
         {
             zones[nZone] = surfZone
             (
-                names[zoneI],
-                sizes[zoneI],
+                names[zonei],
+                sizes[zonei],
                 start,
                 nZone
             );
-            start += sizes[zoneI];
-            nZone++;
+            start += sizes[zonei];
+            ++nZone;
         }
     }
-    zones.setSize(nZone);
+
+    zones.resize(nZone);
 }
 
 
@@ -162,27 +213,37 @@ void Foam::MeshedSurface<Face>::addZones
     const bool cullEmpty
 )
 {
-    label start   = 0;
+    auto& zones = this->storedZones();
+    zones.resize(sizes.size());
+
+    label start = 0;
     label nZone = 0;
 
-    surfZoneList& zones = this->storedZones();
-    zones.setSize(sizes.size());
-    forAll(zones, zoneI)
+    forAll(zones, zonei)
     {
-        if (sizes[zoneI] || !cullEmpty)
+        if (sizes[zonei] || !cullEmpty)
         {
             zones[nZone] = surfZone
             (
-                word("zone") + ::Foam::name(nZone),
-                sizes[zoneI],
+                surfZone::defaultName(nZone),
+                sizes[zonei],
                 start,
                 nZone
             );
-            start += sizes[zoneI];
-            nZone++;
+            start += sizes[zonei];
+            ++nZone;
         }
     }
-    zones.setSize(nZone);
+
+    zones.resize(nZone);
+}
+
+
+template<class Face>
+bool Foam::MeshedSurface<Face>::addZonesToFaces()
+{
+    // Normally a no-op, only the specializations are used.
+    return false;
 }
 
 

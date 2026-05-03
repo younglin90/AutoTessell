@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,7 +36,7 @@ License
 bool Foam::triSurfaceSearch::checkUniqueHit
 (
     const pointIndexHit& currHit,
-    const DynamicList<pointIndexHit, 1, 1>& hits,
+    const UList<pointIndexHit>& hits,
     const vector& lineVec
 ) const
 {
@@ -66,9 +69,9 @@ bool Foam::triSurfaceSearch::checkUniqueHit
 
             if (pointFacei != currHit.index())
             {
-                forAll(hits, hi)
+                forAll(hits, hI)
                 {
-                    const pointIndexHit& hit = hits[hi];
+                    const pointIndexHit& hit = hits[hI];
 
                     if (hit.index() == pointFacei)
                     {
@@ -89,15 +92,15 @@ bool Foam::triSurfaceSearch::checkUniqueHit
 
         const labelList& edgeFaces = surface().edgeFaces()[edgeI];
 
-        forAll(edgeFaces, fi)
+        forAll(edgeFaces, fI)
         {
-            const label edgeFacei = edgeFaces[fi];
+            const label edgeFacei = edgeFaces[fI];
 
             if (edgeFacei != currHit.index())
             {
-                forAll(hits, hi)
+                forAll(hits, hI)
                 {
-                    const pointIndexHit& hit = hits[hi];
+                    const pointIndexHit& hit = hits[hI];
 
                     if (hit.index() == edgeFacei)
                     {
@@ -175,7 +178,12 @@ Foam::triSurfaceSearch::triSurfaceSearch
     tolerance_(tolerance),
     maxTreeDepth_(maxTreeDepth),
     treePtr_(nullptr)
-{}
+{
+    if (tolerance_ < 0)
+    {
+        tolerance_ = indexedOctree<treeDataTriSurface>::perturbTol();
+    }
+}
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -197,10 +205,10 @@ void Foam::triSurfaceSearch::clearOut()
 const Foam::indexedOctree<Foam::treeDataTriSurface>&
 Foam::triSurfaceSearch::tree() const
 {
-    if (treePtr_.empty())
+    if (!treePtr_)
     {
         // Calculate bb without constructing local point numbering.
-        treeBoundBox bb(Zero, Zero);
+        treeBoundBox bb(point::zero);
 
         if (surface().size())
         {
@@ -217,19 +225,22 @@ Foam::triSurfaceSearch::tree() const
                     << endl;
             }
 
+            // Random number generator. Bit dodgy since not exactly random ;-)
+            Random rndGen(65431);
+
             // Slightly extended bb. Slightly off-centred just so on symmetric
             // geometry there are less face/edge aligned items.
-            bb = bb.extend(1e-4);
+            bb.inflate(rndGen, 1e-4, ROOTVSMALL);
         }
 
-        scalar oldTol = indexedOctree<treeDataTriSurface>::perturbTol();
-        indexedOctree<treeDataTriSurface>::perturbTol() = tolerance_;
+        const scalar oldTol =
+            indexedOctree<treeDataTriSurface>::perturbTol(tolerance_);
 
         treePtr_.reset
         (
             new indexedOctree<treeDataTriSurface>
             (
-                treeDataTriSurface(true, surface_, tolerance_),
+                treeDataTriSurface(surface_, tolerance_),
                 bb,
                 maxTreeDepth_,  // maxLevel
                 10,             // leafsize
@@ -237,10 +248,10 @@ Foam::triSurfaceSearch::tree() const
             )
         );
 
-        indexedOctree<treeDataTriSurface>::perturbTol() = oldTol;
+        indexedOctree<treeDataTriSurface>::perturbTol(oldTol);
     }
 
-    return treePtr_();
+    return *treePtr_;
 }
 
 
@@ -260,7 +271,7 @@ Foam::boolList Foam::triSurfaceSearch::calcInside
         {
             inside[sampleI] = false;
         }
-        else if (tree().getVolumeType(sample) == volumeType::inside)
+        else if (tree().getVolumeType(sample) == volumeType::INSIDE)
         {
             inside[sampleI] = true;
         }
@@ -280,10 +291,12 @@ void Foam::triSurfaceSearch::findNearest
     List<pointIndexHit>& info
 ) const
 {
-    scalar oldTol = indexedOctree<treeDataTriSurface>::perturbTol();
-    indexedOctree<treeDataTriSurface>::perturbTol() = tolerance();
+    const scalar oldTol =
+        indexedOctree<treeDataTriSurface>::perturbTol(tolerance());
 
     const indexedOctree<treeDataTriSurface>& octree = tree();
+
+    const treeDataTriSurface::findNearestOp fOp(octree);
 
     info.setSize(samples.size());
 
@@ -293,11 +306,11 @@ void Foam::triSurfaceSearch::findNearest
         (
             samples[i],
             nearestDistSqr[i],
-            treeDataTriSurface::findNearestOp(octree)
+            fOp
         );
     }
 
-    indexedOctree<treeDataTriSurface>::perturbTol() = oldTol;
+    indexedOctree<treeDataTriSurface>::perturbTol(oldTol);
 }
 
 
@@ -325,19 +338,15 @@ void Foam::triSurfaceSearch::findLine
 
     info.setSize(start.size());
 
-    scalar oldTol = indexedOctree<treeDataTriSurface>::perturbTol();
-    indexedOctree<treeDataTriSurface>::perturbTol() = tolerance();
+    const scalar oldTol =
+        indexedOctree<treeDataTriSurface>::perturbTol(tolerance());
 
     forAll(start, i)
     {
-        info[i] = octree.findLine
-        (
-            start[i],
-            end[i]
-        );
+        info[i] = octree.findLine(start[i], end[i]);
     }
 
-    indexedOctree<treeDataTriSurface>::perturbTol() = oldTol;
+    indexedOctree<treeDataTriSurface>::perturbTol(oldTol);
 }
 
 
@@ -352,19 +361,15 @@ void Foam::triSurfaceSearch::findLineAny
 
     info.setSize(start.size());
 
-    scalar oldTol = indexedOctree<treeDataTriSurface>::perturbTol();
-    indexedOctree<treeDataTriSurface>::perturbTol() = tolerance();
+    const scalar oldTol =
+        indexedOctree<treeDataTriSurface>::perturbTol(tolerance());
 
     forAll(start, i)
     {
-        info[i] = octree.findLineAny
-        (
-            start[i],
-            end[i]
-        );
+        info[i] = octree.findLineAny(start[i], end[i]);
     }
 
-    indexedOctree<treeDataTriSurface>::perturbTol() = oldTol;
+    indexedOctree<treeDataTriSurface>::perturbTol(oldTol);
 }
 
 
@@ -379,17 +384,17 @@ void Foam::triSurfaceSearch::findLineAll
 
     info.setSize(start.size());
 
-    scalar oldTol = indexedOctree<treeDataTriSurface>::perturbTol();
-    indexedOctree<treeDataTriSurface>::perturbTol() = tolerance();
+    const scalar oldTol =
+        indexedOctree<treeDataTriSurface>::perturbTol(tolerance());
 
     // Work array
-    DynamicList<pointIndexHit, 1, 1> hits;
+    DynamicList<pointIndexHit> hits;
 
     DynamicList<label> shapeMask;
 
     treeDataTriSurface::findAllIntersectOp allIntersectOp(octree, shapeMask);
 
-    forAll(start, i)
+    forAll(start, pointi)
     {
         hits.clear();
         shapeMask.clear();
@@ -399,17 +404,24 @@ void Foam::triSurfaceSearch::findLineAll
             // See if any intersection between pt and end
             pointIndexHit inter = octree.findLine
             (
-                start[i],
-                end[i],
+                start[pointi],
+                end[pointi],
                 allIntersectOp
             );
 
             if (inter.hit())
             {
-                vector lineVec = end[i] - start[i];
-                lineVec /= mag(lineVec) + vSmall;
+                const vector lineVec = normalised(end[pointi] - start[pointi]);
 
-                if (checkUniqueHit(inter, hits, lineVec))
+                if
+                (
+                    checkUniqueHit
+                    (
+                        inter,
+                        hits,
+                        lineVec
+                    )
+                )
                 {
                     hits.append(inter);
                 }
@@ -422,10 +434,10 @@ void Foam::triSurfaceSearch::findLineAll
             }
         }
 
-        info[i].transfer(hits);
+        info[pointi].transfer(hits);
     }
 
-    indexedOctree<treeDataTriSurface>::perturbTol() = oldTol;
+    indexedOctree<treeDataTriSurface>::perturbTol(oldTol);
 }
 
 

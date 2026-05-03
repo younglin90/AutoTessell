@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2016 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,6 +40,10 @@ Description
             // Optional entry enabling the calculation
             // of the normal-to-wall field
             nRequired false;
+
+            // Optional entry delaying wall distance update to every n steps
+            // Default is 1 (update every step)
+            updateInterval 5;
         }
     \endverbatim
 
@@ -50,10 +57,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef wallDist_H
-#define wallDist_H
+#ifndef Foam_wallDist_H
+#define Foam_wallDist_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "patchDistMethod.H"
 #include "volFields.H"
 
@@ -68,15 +75,28 @@ namespace Foam
 
 class wallDist
 :
-    public DemandDrivenMeshObject<fvMesh, DeletableMeshObject, wallDist>
+    public MeshObject<fvMesh, UpdateableMeshObject, wallDist>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            fvMesh,
+            UpdateableMeshObject,
+            wallDist
+        > MeshObject_type;
+
+
     // Private Data
 
         //- Set of patch IDs
-        const labelHashSet patchIndices_;
+        const labelHashSet patchIDs_;
 
         //- Name for the patch set, e.g. "wall"
         const word patchTypeName_;
+
+        //- Construction dictionary
+        const dictionary dict_;
 
         //- Run-time selected method to generate the distance-to-wall field
         mutable autoPtr<patchDistMethod> pdm_;
@@ -84,11 +104,17 @@ class wallDist
         //- Distance-to-wall field
         mutable volScalarField y_;
 
+        //- Normal-to-wall field
+        mutable tmp<volVectorField> n_;
+
+        //- Update wall distance every updateInterval_ steps
+        const label updateInterval_;
+
         //- Flag to indicate if the distance-to-wall field is required
         mutable bool nRequired_;
 
-        //- Normal-to-wall field
-        mutable autoPtr<volVectorField> n_;
+        //- Flag to indicate whether the wall distance requires updating
+        bool requireUpdate_;
 
 
     // Private Member Functions
@@ -96,32 +122,11 @@ class wallDist
         //- Construct the normal-to-wall field as required
         void constructn() const;
 
+        //- No copy construct
+        wallDist(const wallDist&) = delete;
 
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        DeletableMeshObject,
-        wallDist
-    >;
-
-    // Protected Constructors
-
-        //- Construct from mesh and optional patch type name
-        wallDist
-        (
-            const fvMesh& mesh,
-            const word& patchTypeName = "wall"
-        );
-
-        //- Construct from mesh, patch IDs and optional patch type name
-        wallDist
-        (
-            const fvMesh& mesh,
-            const labelHashSet& patchIDs,
-            const word& patchTypeName = "patch"
-        );
+        //- No copy assignment
+        void operator=(const wallDist&) = delete;
 
 
 public:
@@ -132,24 +137,53 @@ public:
 
     // Constructors
 
-        //- Disallow default bitwise copy construction
-        wallDist(const wallDist&) = delete;
+        //- Construct from mesh, patch IDs and optional patch type name
+        wallDist
+        (
+            const fvMesh& mesh,
+            const labelHashSet& patchIDs,
+            const word& patchTypeName = "patch"
+        );
+
+        //- Construct from mesh, patch IDs, default patch distance method
+        //  and optional patch type name
+        wallDist
+        (
+            const fvMesh& mesh,
+            const word& defaultPatchDistMethod,
+            const labelHashSet& patchIDs,
+            const word& patchTypeName = "patch"
+        );
+
+        //- Construct from mesh and optional patch type name
+        wallDist
+        (
+            const fvMesh& mesh,
+            const word& patchTypeName = "wall"
+        );
 
 
     //- Destructor
     virtual ~wallDist();
 
 
+    // Static Member Functions
+
+        //- Trigger update of y-field for the "wallDist" MeshObject on the
+        //- given mesh. A no-op if the wallDist is not found.
+        static bool try_movePoints(const fvMesh& mesh);
+
+
     // Member Functions
 
         //- Return the patchIDs
-        const labelHashSet& patchIndices() const
+        const labelHashSet& patchIDs() const noexcept
         {
-            return patchIndices_;
+            return patchIDs_;
         }
 
         //- Return reference to cached distance-to-wall field
-        const volScalarField& y() const
+        const volScalarField& y() const noexcept
         {
             return y_;
         }
@@ -157,11 +191,11 @@ public:
         //- Return reference to cached normal-to-wall field
         const volVectorField& n() const;
 
+        //- Update the y-field when the mesh moves
+        virtual bool movePoints();
 
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const wallDist&) = delete;
+        //- Update the y-field when the mesh changes
+        virtual void updateMesh(const mapPolyMesh&);
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,7 +39,7 @@ Description
     Algorithm:
     -# find edge-surface intersection. Class 'surfaceIntersection'.
     -# combine intersection with both surfaces. Class 'intersectedSurface'.
-    -# subset surfaces up to intersection. The 'side' of the surface to
+    -# subset surfaces upto intersection. The 'side' of the surface to
        include is based on the faces that can be reached from a
        user-supplied face index.
     -# merge surfaces. Only the points on the intersection are shared.
@@ -63,7 +66,7 @@ class triSurfaceSearch;
 class intersectedSurface;
 
 /*---------------------------------------------------------------------------*\
-                       Class booleanSurface Declaration
+                           Class booleanSurface Declaration
 \*---------------------------------------------------------------------------*/
 
 class booleanSurface
@@ -82,7 +85,7 @@ class booleanSurface
         };
 
 
-    // Private Data
+    // Private data
 
         //- From new to old face + surface:
         //     >0 : to face on surface1
@@ -169,6 +172,11 @@ public:
             ALL           // Special: does not subset combined
                           // surface. (Produces multiply connected surface)
         };
+
+    // Static data
+
+        static const Enum<booleanOpType> booleanOpTypeNames;
+
 
 
     // Constructors

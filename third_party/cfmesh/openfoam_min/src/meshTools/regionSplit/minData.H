@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2014-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2014-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,19 +46,13 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyPatch;
 class polyMesh;
-class transformer;
-
-
-// Forward declaration of friend functions and operators
-
 class minData;
 
 Istream& operator>>(Istream&, minData&);
 Ostream& operator<<(Ostream&, const minData&);
-
 
 /*---------------------------------------------------------------------------*\
                            Class minData Declaration
@@ -73,10 +70,10 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline minData();
 
-        //- Construct from count
+        //- Construct from min value
         inline minData(const label data);
 
 
@@ -84,7 +81,7 @@ public:
 
         // Access
 
-            inline label data() const
+            label data() const
             {
                 return data_;
             }
@@ -92,12 +89,11 @@ public:
 
         // Needed by FaceCellWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value.
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
-            //- Check for identical geometrical data. Used for cyclics checking.
+            //- Check for identical geometrical data (eg, cyclics checking)
             template<class TrackingData>
             inline bool sameGeometry
             (
@@ -107,13 +103,35 @@ public:
                 TrackingData& td
             ) const;
 
-            //- Transform across an interface
+            //- Convert any absolute coordinates into relative to (patch)face
+            //  centre
+            template<class TrackingData>
+            inline void leaveDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Reverse of leaveDomain
+            template<class TrackingData>
+            inline void enterDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Apply rotation matrix to any coordinates
             template<class TrackingData>
             inline void transform
             (
-                const polyPatch& patch,
-                const label patchFacei,
-                const transformer& transform,
+                const polyMesh&,
+                const tensor&,
                 TrackingData& td
             );
 
@@ -152,31 +170,34 @@ public:
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const minData&, TrackingData& td) const;
 
+
     // Member Operators
 
-        // Needed for List IO
+        //- Test for equality
         inline bool operator==(const minData&) const;
 
+        //- Test for inequality
         inline bool operator!=(const minData&) const;
 
 
     // IOstream Operators
 
-        inline friend Ostream& operator<<(Ostream&, const minData&);
-        inline friend Istream& operator>>(Istream&, minData&);
+        friend inline Ostream& operator<<(Ostream&, const minData&);
+        friend inline Istream& operator>>(Istream&, minData&);
 };
 
 
-//- Data associated with minData type are contiguous
-template<>
-inline bool contiguous<minData>()
-{
-    return true;
-}
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for minData
+template<> struct is_contiguous<minData> : std::true_type {};
+
+//- Contiguous label data for minData
+template<> struct is_contiguous_label<minData> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

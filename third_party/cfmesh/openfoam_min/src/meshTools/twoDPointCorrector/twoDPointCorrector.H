@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,7 +44,7 @@ SourceFiles
 #ifndef twoDPointCorrector_H
 #define twoDPointCorrector_H
 
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 #include "pointField.H"
 #include "labelList.H"
 #include "vector.H"
@@ -52,7 +54,7 @@ SourceFiles
 namespace Foam
 {
 
-// Forward class declarations
+// Forward Declarations
 class polyMesh;
 
 /*---------------------------------------------------------------------------*\
@@ -61,13 +63,18 @@ class polyMesh;
 
 class twoDPointCorrector
 :
-    public DemandDrivenMeshObject
-    <
-        polyMesh,
-        TopoChangeableMeshObject,
-        twoDPointCorrector
-    >
+    public MeshObject<polyMesh, UpdateableMeshObject, twoDPointCorrector>
 {
+    // Private Typedefs
+
+        typedef MeshObject
+        <
+            polyMesh,
+            UpdateableMeshObject,
+            twoDPointCorrector
+        > MeshObject_type;
+
+
     // Private Data
 
         //- Is 2D correction required, i.e. is the mesh
@@ -91,6 +98,13 @@ class twoDPointCorrector
 
     // Private Member Functions
 
+        //- No copy construct
+        twoDPointCorrector(const twoDPointCorrector&) = delete;
+
+        //- No copy assignment
+        void operator=(const twoDPointCorrector&) = delete;
+
+
         //- Calculate addressing
         void calcAddressing() const;
 
@@ -101,25 +115,10 @@ class twoDPointCorrector
         void snapToWedge(const vector& n, const point& A, point& p) const;
 
 
-    // Static Data Members
+    // Static data members
 
         //- Edge orthogonality tolerance
         static const scalar edgeOrthogonalityTol;
-
-
-protected:
-
-    friend class DemandDrivenMeshObject
-    <
-        polyMesh,
-        TopoChangeableMeshObject,
-        twoDPointCorrector
-    >;
-
-    // Protected Constructors
-
-        //- Construct from mesh
-        explicit twoDPointCorrector(const polyMesh& mesh);
 
 
 public:
@@ -130,8 +129,8 @@ public:
 
     // Constructors
 
-        //- Disallow default bitwise copy construction
-        twoDPointCorrector(const twoDPointCorrector&) = delete;
+        //- Construct from components
+        twoDPointCorrector(const polyMesh& mesh);
 
 
     //- Destructor
@@ -162,22 +161,10 @@ public:
         void correctDisplacement(const pointField& p, vectorField& disp) const;
 
         //- Update topology
-        virtual void topoChange(const polyTopoChangeMap&);
-
-        //- Update from another mesh using the given map
-        virtual void mapMesh(const polyMeshMap&);
-
-        //- Redistribute or update using the given distribution map
-        virtual void distribute(const polyDistributionMap&);
+        void updateMesh(const mapPolyMesh&);
 
         //- Correct weighting factors for moving mesh.
-        virtual bool movePoints();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const twoDPointCorrector&) = delete;
+        bool movePoints();
 };
 
 

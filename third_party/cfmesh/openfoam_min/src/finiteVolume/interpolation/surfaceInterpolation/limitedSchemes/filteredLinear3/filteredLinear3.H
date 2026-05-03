@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::filteredLinear3Limiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class to generate weighting factors for the filteredLinear
-    interpolation scheme.
+    differencing scheme.
 
     The aim is to remove high-frequency modes with "staggering"
     characteristics by comparing the face gradient with both neighbouring
@@ -51,7 +56,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class filteredLinear3Limiter Declaration
+                     Class filteredLinear3Limiter Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -59,7 +64,7 @@ class filteredLinear3Limiter
 :
     public LimiterFunc
 {
-    // Private Data
+    // Private data
 
         // Scaling coefficient for the gradient ratio,
         // 0 = linear
@@ -100,10 +105,10 @@ public:
         scalar dN = 2*(d & gradcN);
 
         // Calculate the limiter
-        scalar limiter = 1 - k_*(dN - df)*(dP - df)/max(sqr(dN + dP), small);
+        scalar limiter = 1 - k_*(dN - df)*(dP - df)/max(sqr(dN + dP), SMALL);
 
         // Limit the limiter between linear and upwind
-        return max(min(limiter, 1), 0);
+        return clamp(limiter, zero_one{});
     }
 };
 

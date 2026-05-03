@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::flowRateOutletVelocityFvPatchVectorField
 
+Group
+    grpOutletBoundaryConditions
+
 Description
     Velocity outlet boundary condition which corrects the extrapolated velocity
     to match the specified flow rate.
@@ -41,10 +46,10 @@ Description
 Usage
     \table
         Property     | Description             | Required    | Default value
-        massFlowRate | Mass flow rate [kg/s]   | no          |
-        volumetricFlowRate | Volumetric flow rate [m^3/s] | no |
-        rho          | Density field name      | no          | rho
-        rhoOutlet    | Outlet density          | no          |
+        massFlowRate | mass flow rate [kg/s]   | no          |
+        volumetricFlowRate | volumetric flow rate [m^3/s]| no |
+        rho          | density field name      | no          | rho
+        rhoOutlet    | outlet density          | no          |
     \endtable
 
     Example of the boundary condition specification for a volumetric flow rate:
@@ -68,19 +73,18 @@ Usage
     }
     \endverbatim
 
-    The c volumetricFlowRate or \c massFlowRate entry is a \c Function1 of
-    time, see Foam::Function1s.
+    The \c flowRate entry is a \c Function1 of time, see Foam::Function1Types.
 
-    Note:
-      - \c rhoOutlet is required for the case of a mass flow rate, where the
-        density field is not available at start-up
-      - The value is positive out of the domain (as an outlet)
-      - May not work correctly for transonic outlets
-      - Strange behaviour with potentialFoam since the U equation is not solved
+Note
+    - \c rhoOutlet is required for the case of a mass flow rate, where the
+      density field is not available at start-up
+    - The value is positive out of the domain (as an outlet)
+    - May not work correctly for transonic outlets
+    - Strange behaviour with potentialFoam since the U equation is not solved
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
     Foam::flowRateInletVelocityFvPatchVectorField
 
 SourceFiles
@@ -100,7 +104,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-          Class flowRateOutletVelocityFvPatchVectorField Declaration
+           Class flowRateOutletVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class flowRateOutletVelocityFvPatchVectorField
@@ -112,14 +116,14 @@ class flowRateOutletVelocityFvPatchVectorField
         //- Outlet integral flow rate
         autoPtr<Function1<scalar>> flowRate_;
 
-        //- Is the flow-rate volumetric?
-        bool volumetric_;
-
-        //- Name of the density field used to normalise the mass flux
+        //- Name of the density field used to normalize the mass flux
         word rhoName_;
 
         //- Rho initialisation value (for start; if value not supplied)
         scalar rhoOutlet_;
+
+        //- Is volumetric?
+        bool volumetric_;
 
 
     // Private Member Functions
@@ -137,11 +141,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        flowRateOutletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         flowRateOutletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -152,49 +163,46 @@ public:
         (
             const flowRateOutletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         flowRateOutletVelocityFvPatchVectorField
         (
             const flowRateOutletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         flowRateOutletVelocityFvPatchVectorField
         (
             const flowRateOutletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new flowRateOutletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

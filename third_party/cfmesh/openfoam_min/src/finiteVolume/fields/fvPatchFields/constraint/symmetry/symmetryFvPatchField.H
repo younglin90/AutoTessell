@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::symmetryFvPatchField
+
+Group
+    grpConstraintBoundaryConditions
 
 Description
     This boundary condition enforces a symmetry constraint
@@ -56,7 +61,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class symmetryFvPatchField Declaration
+                         Class symmetryFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -64,7 +69,6 @@ class symmetryFvPatchField
 :
     public basicSymmetryFvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -77,14 +81,14 @@ public:
         symmetryFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
         symmetryFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -93,37 +97,37 @@ public:
         (
             const symmetryFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        symmetryFvPatchField(const symmetryFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        symmetryFvPatchField
+        (
+            const symmetryFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         symmetryFvPatchField
         (
             const symmetryFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchField<Type>> clone
-        (
-            const DimensionedField<Type, fvMesh>& iF
-        ) const
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new symmetryFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this);
         }
 
-
-    // Member Operators
-
-        //- Inherit assignment
-        using basicSymmetryFvPatchField<Type>::operator=;
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<Type>> clone
+        (
+            const DimensionedField<Type, volMesh>& iF
+        ) const
+        {
+            return fvPatchField<Type>::Clone(*this, iF);
+        }
 };
 
 

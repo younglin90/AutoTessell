@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,35 +27,48 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "syringePressureFvPatchScalarField.H"
-#include "fieldMapper.H"
-#include "surfaceFields.H"
+#include "volMesh.H"
 #include "addToRunTimeSelectionTable.H"
+#include "fvPatchFieldMapper.H"
+#include "surfaceFields.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
+    const DimensionedField<scalar, volMesh>& iF
+)
+:
+    fixedValueFvPatchScalarField(p, iF),
+    phiName_("phi"),
+    curTimeIndex_(-1)
+{}
+
+
+Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
+(
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchScalarField(p, iF, dict, false),
-    Ap_(dict.lookup<scalar>("Ap")),
-    Sp_(dict.lookup<scalar>("Sp")),
-    VsI_(dict.lookup<scalar>("VsI")),
-    tas_(dict.lookup<scalar>("tas")),
-    tae_(dict.lookup<scalar>("tae")),
-    tds_(dict.lookup<scalar>("tds")),
-    tde_(dict.lookup<scalar>("tde")),
-    psI_(dict.lookup<scalar>("psI")),
-    psi_(dict.lookup<scalar>("psi")),
-    ams_(dict.lookup<scalar>("ams")),
+    fixedValueFvPatchScalarField(p, iF, dict, IOobjectOption::NO_READ),
+    Ap_(dict.get<scalar>("Ap")),
+    Sp_(dict.get<scalar>("Sp")),
+    VsI_(dict.get<scalar>("VsI")),
+    tas_(dict.get<scalar>("tas")),
+    tae_(dict.get<scalar>("tae")),
+    tds_(dict.get<scalar>("tds")),
+    tde_(dict.get<scalar>("tde")),
+    psI_(dict.get<scalar>("psI")),
+    psi_(dict.get<scalar>("psi")),
+    ams_(dict.get<scalar>("ams")),
     ams0_(ams_),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
     curTimeIndex_(-1)
 {
-    scalar ps = (psI_*VsI_ + ams_/psi_)/Vs(time().value());
+    scalar ps = (psI_*VsI_ + ams_/psi_)/Vs(db().time().value());
     fvPatchField<scalar>::operator=(ps);
 }
 
@@ -61,8 +77,8 @@ Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
 (
     const syringePressureFvPatchScalarField& sppsf,
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchScalarField(sppsf, p, iF, mapper),
@@ -85,10 +101,32 @@ Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
 Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
 (
     const syringePressureFvPatchScalarField& sppsf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedValueFvPatchScalarField(sppsf, iF),
+    Ap_(sppsf.Ap_),
+    Sp_(sppsf.Sp_),
+    VsI_(sppsf.VsI_),
+    tas_(sppsf.tas_),
+    tae_(sppsf.tae_),
+    tds_(sppsf.tds_),
+    tde_(sppsf.tde_),
+    psI_(sppsf.psI_),
+    psi_(sppsf.psi_),
+    ams_(sppsf.ams_),
+    ams0_(sppsf.ams0_),
+    phiName_(sppsf.phiName_),
+    curTimeIndex_(-1)
+{}
+
+
+Foam::syringePressureFvPatchScalarField::syringePressureFvPatchScalarField
+(
+    const syringePressureFvPatchScalarField& sppsf
+)
+:
+    fixedValueFvPatchScalarField(sppsf),
     Ap_(sppsf.Ap_),
     Sp_(sppsf.Sp_),
     VsI_(sppsf.VsI_),
@@ -153,26 +191,22 @@ void Foam::syringePressureFvPatchScalarField::updateCoeffs()
         return;
     }
 
-    if (curTimeIndex_ != time().timeIndex())
+    if (curTimeIndex_ != db().time().timeIndex())
     {
         ams0_ = ams_;
-        curTimeIndex_ = time().timeIndex();
+        curTimeIndex_ = db().time().timeIndex();
     }
 
-    scalar t = time().value();
-    scalar deltaT = time().deltaTValue();
+    scalar t = db().time().value();
+    scalar deltaT = db().time().deltaTValue();
 
-    const surfaceScalarField& phi =
-        db().lookupObject<surfaceScalarField>(phiName_);
+    const auto& phip = patch().lookupPatchField<surfaceScalarField>(phiName_);
 
-    const fvsPatchField<scalar>& phip =
-        patch().patchField<surfaceScalarField, scalar>(phi);
-
-    if (phi.dimensions() == dimVolumetricFlux)
+    if (phip.internalField().dimensions() == dimVolume/dimTime)
     {
         ams_ = ams0_ + deltaT*sum((*this*psi_)*phip);
     }
-    else if (phi.dimensions() == dimMassFlux)
+    else if (phip.internalField().dimensions() == dimMass/dimTime)
     {
         ams_ = ams0_ + deltaT*sum(phip);
     }
@@ -196,21 +230,21 @@ void Foam::syringePressureFvPatchScalarField::updateCoeffs()
 
 void Foam::syringePressureFvPatchScalarField::write(Ostream& os) const
 {
-    fvPatchScalarField::write(os);
+    fvPatchField<scalar>::write(os);
 
-    writeEntry(os, "Ap", Ap_);
-    writeEntry(os, "Sp", Sp_);
-    writeEntry(os, "VsI", VsI_);
-    writeEntry(os, "tas", tas_);
-    writeEntry(os, "tae", tae_);
-    writeEntry(os, "tds", tds_);
-    writeEntry(os, "tde", tde_);
-    writeEntry(os, "psI", psI_);
-    writeEntry(os, "psi", psi_);
-    writeEntry(os, "ams", ams_);
-    writeEntryIfDifferent<word>(os, "phi", "phi", phiName_);
+    os.writeEntry("Ap", Ap_);
+    os.writeEntry("Sp", Sp_);
+    os.writeEntry("VsI", VsI_);
+    os.writeEntry("tas", tas_);
+    os.writeEntry("tae", tae_);
+    os.writeEntry("tds", tds_);
+    os.writeEntry("tde", tde_);
+    os.writeEntry("psI", psI_);
+    os.writeEntry("psi", psi_);
+    os.writeEntry("ams", ams_);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
 
-    writeEntry(os, "value", *this);
+    fvPatchField<scalar>::writeValueEntry(os);
 }
 
 

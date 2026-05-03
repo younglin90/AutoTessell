@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,25 +27,33 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "dictionaryListEntry.H"
-#include "keyType.H"
-#include "IOobject.H"
+#include "IOstreams.H"
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
-Foam::label Foam::dictionaryListEntry::realSize(const dictionary& dict)
+// File-scope: The dictionary size without the "FoamFile" entry
+static inline Foam::label realSize(const Foam::dictionary& dict)
 {
-    if (dict.size() < 1 || dict.first()->keyword() != IOobject::foamFile)
-    {
-        return dict.size();
-    }
-    else
-    {
-        return dict.size() - 1;
-    }
+    return
+    (
+        (dict.empty() || (dict.front()->keyword() != "FoamFile"))
+      ? dict.size()
+      : dict.size() - 1
+    );
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+
+Foam::dictionaryListEntry::dictionaryListEntry
+(
+    const dictionary& parentDict,
+    const dictionaryListEntry& dictEnt
+)
+:
+    dictionaryEntry(parentDict, dictEnt)
+{}
+
 
 Foam::dictionaryListEntry::dictionaryListEntry
 (
@@ -57,56 +68,43 @@ Foam::dictionaryListEntry::dictionaryListEntry
         dictionary::null
     )
 {
-    token firstToken(is);
-    if (firstToken.isLabel())
+    token tok(is);
+    if (tok.isLabel())
     {
-        label s = firstToken.labelToken();
+        const label len = tok.labelToken();
 
         is.readBeginList("List");
 
-        for (label i=0; i<s; i++)
+        for (label i=0; i<len; ++i)
         {
-            if (!entry::New(*this, is))
-            {
-                FatalIOErrorInFunction(is)
-                    << "Failed to read dictionary entry in list"
-                    << exit(FatalIOError);
-            }
+            entry::New(*this, is);
         }
         is.readEndList("List");
     }
-    else if
-    (
-        firstToken.isPunctuation()
-     && firstToken.pToken() == token::BEGIN_LIST
-    )
+    else if (tok.isPunctuation(token::BEGIN_LIST))
     {
         while (true)
         {
-            token nextToken(is);
-            if
-            (
-                nextToken.isPunctuation()
-             && nextToken.pToken() == token::END_LIST
-            )
+            is >> tok;
+            if (tok.error())
+            {
+                FatalIOErrorInFunction(is)
+                    << "parsing error " << tok.info() << nl
+                    << exit(FatalIOError);
+            }
+            else if (tok.isPunctuation(token::END_LIST))
             {
                 break;
             }
-            is.putBack(nextToken);
-
-            if (!entry::New(*this, is))
-            {
-                FatalIOErrorInFunction(is)
-                    << "Failed to read dictionary entry in list"
-                    << exit(FatalIOError);
-            }
+            is.putBack(tok);
+            entry::New(*this, is);
         }
     }
     else
     {
         FatalIOErrorInFunction(is)
             << "incorrect first token, expected <int> or '(', found "
-            << firstToken.info()
+            << tok.info() << nl
             << exit(FatalIOError);
     }
 }
@@ -126,16 +124,19 @@ void Foam::dictionaryListEntry::write(Ostream& os) const
     // Write end delimiter
     os << decrIndent << indent << token::END_LIST << nl;
 
-    // Check state of IOstream
-    os.check("Ostream& operator<<(Ostream&, const dictionaryListEntry&)");
+    os.check(FUNCTION_NAME);
 }
 
 
 // * * * * * * * * * * * * * * Ostream operator  * * * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const dictionaryListEntry& de)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const dictionaryListEntry& e
+)
 {
-    de.write(os);
+    e.write(os);
     return os;
 }
 
@@ -144,10 +145,10 @@ template<>
 Foam::Ostream& Foam::operator<<
 (
     Ostream& os,
-    const InfoProxy<dictionaryListEntry>& ip
+    const InfoProxy<dictionaryListEntry>& iproxy
 )
 {
-    const dictionaryListEntry& e = ip.t_;
+    const auto& e = *iproxy;
 
     os  << "    dictionaryListEntry '" << e.keyword() << "'" << endl;
 

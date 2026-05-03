@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,18 +29,33 @@ License
 #include "fixedNormalSlipFvPatchField.H"
 #include "symmTransformField.H"
 
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    transformFvPatchField<Type>(p, iF),
-    fixedValue_(p.size(), Zero)
+    parent_bctype(p, iF),
+    fixedValue_(p.size(), Foam::zero{}),
+    writeValue_(false)
+{}
+
+
+template<class Type>
+Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
+(
+    const fixedNormalSlipFvPatchField<Type>& ptf,
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
+)
+:
+    parent_bctype(ptf, p, iF, mapper),
+    fixedValue_(ptf.fixedValue_, mapper),
+    writeValue_(ptf.writeValue_)
 {}
 
 
@@ -45,13 +63,16 @@ template<class Type>
 Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    transformFvPatchField<Type>(p, iF),
-    fixedValue_("fixedValue", iF.dimensions(), dict, p.size())
+    parent_bctype(p, iF),
+    fixedValue_("fixedValue", dict, p.size()),
+    writeValue_(dict.getOrDefault("writeValue", false))
 {
+    fvPatchFieldBase::readDict(dict);
+
     evaluate();
 }
 
@@ -59,14 +80,12 @@ Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
 template<class Type>
 Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
 (
-    const fixedNormalSlipFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const fixedNormalSlipFvPatchField<Type>& ptf
 )
 :
-    transformFvPatchField<Type>(ptf, p, iF, mapper),
-    fixedValue_(mapper(ptf.fixedValue_))
+    parent_bctype(ptf),
+    fixedValue_(ptf.fixedValue_),
+    writeValue_(ptf.writeValue_)
 {}
 
 
@@ -74,44 +93,41 @@ template<class Type>
 Foam::fixedNormalSlipFvPatchField<Type>::fixedNormalSlipFvPatchField
 (
     const fixedNormalSlipFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    transformFvPatchField<Type>(ptf, iF),
-    fixedValue_(ptf.fixedValue_)
+    parent_bctype(ptf, iF),
+    fixedValue_(ptf.fixedValue_),
+    writeValue_(ptf.writeValue_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::fixedNormalSlipFvPatchField<Type>::map
+void Foam::fixedNormalSlipFvPatchField<Type>::autoMap
 (
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& m
 )
 {
-    transformFvPatchField<Type>::map(ptf, mapper);
-
-    const fixedNormalSlipFvPatchField<Type>& dmptf =
-        refCast<const fixedNormalSlipFvPatchField<Type>>(ptf);
-
-    mapper(fixedValue_, dmptf.fixedValue_);
+    parent_bctype::autoMap(m);
+    fixedValue_.autoMap(m);
 }
 
 
 template<class Type>
-void Foam::fixedNormalSlipFvPatchField<Type>::reset
+void Foam::fixedNormalSlipFvPatchField<Type>::rmap
 (
-    const fvPatchField<Type>& ptf
+    const fvPatchField<Type>& ptf,
+    const labelList& addr
 )
 {
-    transformFvPatchField<Type>::reset(ptf);
+    parent_bctype::rmap(ptf, addr);
 
-    const fixedNormalSlipFvPatchField<Type>& dmptf =
+    const auto& dmptf =
         refCast<const fixedNormalSlipFvPatchField<Type>>(ptf);
 
-    fixedValue_.reset(dmptf.fixedValue_);
+    fixedValue_.rmap(dmptf.fixedValue_, addr);
 }
 
 
@@ -148,7 +164,7 @@ void Foam::fixedNormalSlipFvPatchField<Type>::evaluate
       + transform(I - sqr(nHat), this->patchInternalField())
     );
 
-    transformFvPatchField<Type>::evaluate();
+    this->parent_bctype::evaluate();
 }
 
 
@@ -156,12 +172,7 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::fixedNormalSlipFvPatchField<Type>::snGradTransformDiag() const
 {
-    const vectorField nHat(this->patch().nf());
-    vectorField diag(nHat.size());
-
-    diag.replace(vector::X, mag(nHat.component(vector::X)));
-    diag.replace(vector::Y, mag(nHat.component(vector::Y)));
-    diag.replace(vector::Z, mag(nHat.component(vector::Z)));
+    tmp<vectorField> diag(cmptMag(this->patch().nf()));
 
     return transformFieldMask<Type>(pow<vector, pTraits<Type>::rank>(diag));
 }
@@ -170,8 +181,16 @@ Foam::fixedNormalSlipFvPatchField<Type>::snGradTransformDiag() const
 template<class Type>
 void Foam::fixedNormalSlipFvPatchField<Type>::write(Ostream& os) const
 {
-    transformFvPatchField<Type>::write(os);
-    writeEntry(os, "fixedValue", fixedValue_);
+    this->parent_bctype::write(os);
+    if (writeValue_)
+    {
+        os.writeEntry("writeValue", "true");
+    }
+    fixedValue_.writeEntry("fixedValue", os);
+    if (writeValue_)
+    {
+        fvPatchField<Type>::writeValueEntry(os);
+    }
 }
 
 

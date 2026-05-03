@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,11 +30,69 @@ License
 #include "primitiveMesh.H"
 #include "ListOps.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
 
-const Foam::label Foam::hexMatcher::vertPerCell = 8;
-const Foam::label Foam::hexMatcher::facePerCell = 6;
-const Foam::label Foam::hexMatcher::maxVertPerFace = 4;
+namespace Foam
+{
+
+// Check (6 quad)
+static inline bool checkFaceSizeMatch(const UList<face>& faces)
+{
+    if (faces.size() != 6)  // facePerCell
+    {
+        return false;
+    }
+
+    for (const face& f : faces)
+    {
+        if (f.size() != 4)  // quad
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+// Check (6 quad)
+static inline bool checkFaceSizeMatch
+(
+    const UList<face>& meshFaces,
+    const labelUList& cellFaces
+)
+{
+    if (cellFaces.size() != 6)  // facePerCell
+    {
+        return false;
+    }
+
+    for (const label facei : cellFaces)
+    {
+        if (meshFaces[facei].size() != 4)  // quad
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+} // End namespace Foam
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+bool Foam::hexMatcher::test(const UList<face>& faces)
+{
+    return checkFaceSizeMatch(faces);
+}
+
+bool Foam::hexMatcher::test(const primitiveMesh& mesh, const label celli)
+{
+    return checkFaceSizeMatch(mesh.faces(), mesh.cells()[celli]);
+}
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -43,14 +104,8 @@ Foam::hexMatcher::hexMatcher()
         vertPerCell,
         facePerCell,
         maxVertPerFace,
-        "hex"
+        "hex" // == cellModel::modelNames[cellModel::HEX]
     )
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::hexMatcher::~hexMatcher()
 {}
 
 
@@ -252,53 +307,11 @@ Foam::label Foam::hexMatcher::faceHashValue() const
 
 bool Foam::hexMatcher::faceSizeMatch
 (
-    const faceList& faces,
-    const labelList& myFaces
+    const faceList& meshFaces,
+    const labelList& cellFaces
 ) const
 {
-    if (myFaces.size() != facePerCell)
-    {
-        return false;
-    }
-
-    forAll(myFaces, myFacei)
-    {
-        label size = faces[myFaces[myFacei]].size();
-
-        if (size != 4)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-
-bool Foam::hexMatcher::isA(const primitiveMesh& mesh, const label celli)
-{
-    return matchShape
-    (
-        true,
-        mesh.faces(),
-        mesh.faceOwner(),
-        celli,
-        mesh.cells()[celli]
-    );
-}
-
-
-bool Foam::hexMatcher::isA(const faceList& faces)
-{
-    // Do as if mesh with one cell only
-    return matchShape
-    (
-        true,
-        faces,                      // all faces in mesh
-        labelList(faces.size(), 0), // cell 0 is owner of all faces
-        0,                          // cell label
-        identityMap(faces.size())      // faces of cell 0
-    );
+    return checkFaceSizeMatch(meshFaces, cellFaces);
 }
 
 
@@ -321,14 +334,11 @@ bool Foam::hexMatcher::matches
         )
     )
     {
-        shape = cellShape(model(), vertLabels());
-
+        shape.reset(model(), vertLabels());
         return true;
     }
-    else
-    {
-        return false;
-    }
+
+    return false;
 }
 
 

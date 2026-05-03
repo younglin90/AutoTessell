@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class RowVector Declaration
+                           Class RowVector Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -66,10 +68,10 @@ public:
 
     // Constructors
 
-        //- Construct null
-        inline RowVector();
+        //- Default construct
+        RowVector() = default;
 
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline RowVector(const Foam::zero);
 
         //- Construct given VectorSpace of the same rank
@@ -80,20 +82,20 @@ public:
         inline RowVector(const Cmpt& rvx, const Cmpt& rvy, const Cmpt& rvz);
 
         //- Construct from Istream
-        inline RowVector(Istream&);
+        inline explicit RowVector(Istream&);
 
 
     // Member Functions
 
-        // Access
+    // Component Access
 
-            inline const Cmpt& x() const;
-            inline const Cmpt& y() const;
-            inline const Cmpt& z() const;
+        const Cmpt& x() const noexcept { return this->v_[X]; }
+        const Cmpt& y() const noexcept { return this->v_[Y]; }
+        const Cmpt& z() const noexcept { return this->v_[Z]; }
 
-            inline Cmpt& x();
-            inline Cmpt& y();
-            inline Cmpt& z();
+        Cmpt& x() noexcept { return this->v_[X]; }
+        Cmpt& y() noexcept { return this->v_[Y]; }
+        Cmpt& z() noexcept { return this->v_[Z]; }
 };
 
 

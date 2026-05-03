@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,9 +39,14 @@ namespace thermodynamic
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-    const scalar& RR = physicoChemical::RR.value();
-    const scalar& pStd = standard::pStd.value();
-    const scalar& Tstd = standard::Tstd.value();
+    // Note: the 1e3 converts from /mol to /kmol for consistency with the
+    // SI choice of kg rather than g for mass.
+    // This is not appropriate for USCS and will be changed to an entry in
+    // the DimensionedConstants dictionary in etc/controlDict
+    const scalar RR = 1e3*physicoChemical::R.value();
+
+    const scalar Pstd = standard::Pstd.value();
+    const scalar Tstd = standard::Tstd.value();
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

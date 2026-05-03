@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef coupledFvPatch_H
-#define coupledFvPatch_H
+#ifndef Foam_coupledFvPatch_H
+#define Foam_coupledFvPatch_H
 
 #include "fvPatch.H"
 #include "lduInterface.H"
@@ -46,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class coupledFvPatch Declaration
+                         Class coupledFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class coupledFvPatch
@@ -56,27 +58,24 @@ class coupledFvPatch
 {
     // Private Data
 
-        //- Reference to the coupled polyPatch
-        const coupledPolyPatch& coupledPoly_;
+        const coupledPolyPatch& coupledPolyPatch_;
 
 
 protected:
 
-    // Protected Member functions
+    // Protected Member Functions
 
         //- Make patch weighting factors
-        void makeWeights
-        (
-            scalarField& w,
-            const vectorField& nbrSf,
-            const vectorField& nbrDelta
-        ) const;
+        virtual void makeWeights(scalarField&) const = 0;
 
 
 public:
 
+    friend class surfaceInterpolation;
+
+
     //- Runtime type information
-    TypeName(coupledPolyPatch::typeName_());
+    TypeNameNoDebug(coupledPolyPatch::typeName_());
 
 
     // Constructors
@@ -85,12 +84,12 @@ public:
         coupledFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
         :
             fvPatch(patch, bm),
-            coupledPoly_(refCast<const coupledPolyPatch>(patch))
+            coupledPolyPatch_(refCast<const coupledPolyPatch>(patch))
         {}
 
 
     //- Destructor
-    virtual ~coupledFvPatch();
+    virtual ~coupledFvPatch() = default;
 
 
     // Member Functions
@@ -100,32 +99,23 @@ public:
             //- Return true because this patch is coupled
             virtual bool coupled() const
             {
-                return coupledPoly_.coupled();
+                return coupledPolyPatch_.coupled();
             }
 
-            //- Does this side own the patch ?
-            virtual bool owner() const
-            {
-                return coupledPoly_.owner();
-            }
+            //- Are the cyclic planes parallel.
+            virtual bool parallel() const = 0;
 
-            //- Does the coupled side own the patch ?
-            virtual bool neighbour() const
-            {
-                return !owner();
-            }
+            //- Return face transformation tensor.
+            virtual const tensorField& forwardT() const = 0;
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const = 0;
+            //- Return neighbour-cell transformation tensor.
+            virtual const tensorField& reverseT() const = 0;
 
             //- Return faceCell addressing
             virtual const labelUList& faceCells() const
             {
                 return fvPatch::faceCells();
             }
-
-            //- Make patch weighting factors
-            virtual void makeWeights(scalarField& w) const = 0;
 
             //- Return delta (P to N) vectors across coupled patch
             virtual tmp<vectorField> delta() const = 0;
@@ -134,10 +124,19 @@ public:
         // Interface transfer functions
 
             //- Return the values of the given internal data adjacent to
-            //  the interface as a field
+            //- the interface as a field
             virtual tmp<labelField> interfaceInternalField
             (
                 const labelUList& internalData
+            ) const = 0;
+
+
+            //- Return the values of the given internal data adjacent to
+            //- the interface as a field using a mapping faceCell
+            virtual tmp<labelField> interfaceInternalField
+            (
+                const labelUList& internalData,
+                const labelUList& faceCell
             ) const = 0;
 
             //- Inherit initInternalFieldTransfer from lduInterface
@@ -148,6 +147,15 @@ public:
             (
                 const Pstream::commsTypes commsType,
                 labelUList& iF
+            ) const
+            {}
+
+            //- Initialise neighbour field transfer using faceCells map
+            virtual void initInternalFieldTransfer
+            (
+                const Pstream::commsTypes commsType,
+                labelUList& iF,
+                const labelUList& faceCell
             ) const
             {}
 

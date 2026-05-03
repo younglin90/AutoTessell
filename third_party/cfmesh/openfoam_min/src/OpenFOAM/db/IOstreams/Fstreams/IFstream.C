@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "IFstream.H"
-#include "OSspecific.H"
-#include "gzstream.h"
+#include "OSspecific.H"  // For isFile(), fileSize()
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -35,55 +37,116 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-Foam::IFstreamAllocator::IFstreamAllocator(const fileName& filePath)
-:
-    ifPtr_(nullptr),
-    compression_(IOstream::UNCOMPRESSED)
+Foam::DynamicList<char>
+Foam::IFstream::readContents(IFstream& ifs)
 {
-    if (filePath.empty())
+    DynamicList<char> buffer;
+
+    const auto inputSize = ifs.fileSize();
+
+    if (inputSize <= 0)
     {
-        if (IFstream::debug)
+        // Nothing to read
+    }
+    else if (IOstreamOption::COMPRESSED == ifs.compression())
+    {
+        auto& iss = ifs.stdStream();
+
+        // For compressed files, no idea how large the result will be.
+        // So read chunk-wise.
+        // Using the compressed size for the chunk size:
+        // 50% compression = 2 iterations
+        // 66% compression = 3 iterations
+        // ...
+
+        const uint64_t chunkSize =
+        (
+            (inputSize <= 1024)
+          ? uint64_t(4096)
+          : uint64_t(2*inputSize)
+        );
+
+        uint64_t beg = 0;
+
+        for (int iter = 1; iter < 100000; ++iter)
         {
-            InfoInFunction << "Cannot open null file " << endl;
+            // Manual resizing to use incremental vs doubling
+            buffer.setCapacity(label(iter * chunkSize));
+            buffer.resize(buffer.capacity());
+
+            ifs.readRaw(buffer.data() + beg, chunkSize);
+            const std::streamsize nread = iss.gcount();
+
+            if
+            (
+                nread < 0
+             || nread == std::numeric_limits<std::streamsize>::max()
+            )
+            {
+                // Failed, but treat as normal 'done'
+                buffer.resize(label(beg));
+                break;
+            }
+            else
+            {
+                beg += uint64_t(nread);
+                if (nread >= 0 && uint64_t(nread) < chunkSize)
+                {
+                    // normalExit = true;
+                    buffer.resize(label(beg));
+                    break;
+                }
+            }
+        }
+    }
+    else
+    {
+        // UNCOMPRESSED
+        {
+            auto& iss = ifs.stdStream();
+
+            buffer.setCapacity(label(inputSize));
+            buffer.resize(buffer.capacity());
+
+            ifs.readRaw(buffer.data(), buffer.size_bytes());
+            const std::streamsize nread = iss.gcount();
+
+            if
+            (
+                nread < 0
+             || nread == std::numeric_limits<std::streamsize>::max()
+            )
+            {
+                // Failed, but treat as normal 'done'
+                buffer.clear();
+            }
+            else
+            {
+                buffer.resize(label(nread));  // Safety
+            }
         }
     }
 
-    ifPtr_ = new ifstream(filePath.c_str());
-
-    // If the file is compressed, decompress it before reading.
-    if (!ifPtr_->good())
-    {
-        if (isFile(filePath + ".gz", false, true))
-        {
-            delete ifPtr_;
-
-            if (IFstream::debug)
-            {
-                InfoInFunction << "Decompressing " << filePath + ".gz" << endl;
-            }
-
-            ifPtr_ = new igzstream((filePath + ".gz").c_str());
-
-            if (ifPtr_->good())
-            {
-                compression_ = IOstream::COMPRESSED;
-            }
-        }
-        else if (isFile(filePath + ".orig", false, true))
-        {
-            delete ifPtr_;
-
-            ifPtr_ = new ifstream((filePath + ".orig").c_str());
-        }
-    }
+    return buffer;
 }
 
 
-Foam::IFstreamAllocator::~IFstreamAllocator()
+Foam::DynamicList<char>
+Foam::IFstream::readContents(const fileName& pathname)
 {
-    delete ifPtr_;
+    if (!pathname.empty())
+    {
+        IFstream ifs(pathname, IOstreamOption::BINARY);
+
+        if (ifs.good())
+        {
+            return readContents(ifs);
+        }
+    }
+
+    return DynamicList<char>();
 }
 
 
@@ -91,78 +154,142 @@ Foam::IFstreamAllocator::~IFstreamAllocator()
 
 Foam::IFstream::IFstream
 (
-    const fileName& filePath,
-    const streamFormat format,
-    const versionNumber version
+    const fileName& pathname,
+    IOstreamOption streamOpt
 )
 :
-    IFstreamAllocator(filePath),
-    ISstream
-    (
-        *ifPtr_,
-        "IFstream.sourceFile_",
-        format,
-        version,
-        IFstreamAllocator::compression_
-    ),
-    filePath_(filePath)
+    Foam::ifstreamPointer(pathname, streamOpt),
+    ISstream(*(ifstreamPointer::get()), pathname, streamOpt)
 {
+    IOstreamOption::compression(ifstreamPointer::whichCompression());
+
     setClosed();
 
-    setState(ifPtr_->rdstate());
+    setState(ifstreamPointer::get()->rdstate());
 
-    if (!good())
-    {
-        if (debug)
-        {
-            InfoInFunction
-                << "Could not open file for input" << endl << info() << endl;
-        }
-
-        setBad();
-    }
-    else
+    if (good())
     {
         setOpened();
     }
+    else
+    {
+        setBad();
+    }
 
     lineNumber_ = 1;
+
+    if (debug)
+    {
+        if (pathname.empty())
+        {
+            InfoInFunction
+                << "Cannot open empty file name"
+                << Foam::endl;
+        }
+        else if (IOstreamOption::COMPRESSED == IOstreamOption::compression())
+        {
+            InfoInFunction
+                << "Decompressing " << (this->name() + ".gz") << Foam::endl;
+        }
+
+        if (!opened())
+        {
+            InfoInFunction
+                << "Could not open file " << pathname
+                << " for input\n" << info() << Foam::endl;
+        }
+    }
 }
-
-
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::IFstream::~IFstream()
-{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+std::streamsize Foam::IFstream::fileSize() const
+{
+    const std::istream* ptr = ifstreamPointer::get();
+
+    if (!ptr || this->name().empty())
+    {
+        return std::streamsize(-1);
+    }
+
+    off_t fileLen = -1;
+
+    if (IOstreamOption::COMPRESSED == ifstreamPointer::whichCompression())
+    {
+        fileLen = Foam::fileSize(this->name() + ".gz");
+    }
+    else
+    {
+        // TBD: special handing for wrapped icharstream
+        // if
+        // (
+        //     const Foam::icharstream* charstr
+        //   = dynamic_cast<const Foam::icharstream*>(ptr)>(ptr)
+        // )
+        // {
+        //     return charstr->capacity();
+        // }
+
+        fileLen = Foam::fileSize(this->name());
+    }
+
+    if (fileLen >= 0)
+    {
+        return std::streamsize(fileLen);
+    }
+
+    return std::streamsize(-1);
+}
+
+
 std::istream& Foam::IFstream::stdStream()
 {
-    if (!ifPtr_)
+    std::istream* ptr = ifstreamPointer::get();
+
+    if (!ptr)
     {
         FatalErrorInFunction
-            << "No stream allocated" << abort(FatalError);
+            << "No stream allocated\n"
+            << abort(FatalError);
     }
-    return *ifPtr_;
+
+    return *ptr;
 }
 
 
 const std::istream& Foam::IFstream::stdStream() const
 {
-    if (!ifPtr_)
+    const std::istream* ptr = ifstreamPointer::get();
+
+    if (!ptr)
     {
         FatalErrorInFunction
-            << "No stream allocated" << abort(FatalError);
+            << "No stream allocated\n"
+            << abort(FatalError);
     }
-    return *ifPtr_;
+
+    return *ptr;
+}
+
+
+void Foam::IFstream::rewind()
+{
+    if (IOstreamOption::COMPRESSED == ifstreamPointer::whichCompression())
+    {
+        lineNumber_ = 1;  // Reset line number
+        ifstreamPointer::reopen_gz(this->name());
+        setState(ifstreamPointer::get()->rdstate());
+    }
+    else
+    {
+        ISstream::rewind();
+    }
 }
 
 
 void Foam::IFstream::print(Ostream& os) const
 {
-    // Print File data
     os  << "IFstream: ";
     ISstream::print(os);
 }
@@ -174,16 +301,16 @@ Foam::IFstream& Foam::IFstream::operator()() const
 {
     if (!good())
     {
-        // also checks variants
-        if (isFile(filePath_, true, true))
+        // Also checks .gz file
+        if (Foam::isFile(this->name(), true))
         {
-            check("IFstream::operator()");
+            check(FUNCTION_NAME);
             FatalIOError.exit();
         }
         else
         {
             FatalIOErrorInFunction(*this)
-                << "file " << filePath_ << " does not exist"
+                << "File " << this->name() << " does not exist"
                 << exit(FatalIOError);
         }
     }

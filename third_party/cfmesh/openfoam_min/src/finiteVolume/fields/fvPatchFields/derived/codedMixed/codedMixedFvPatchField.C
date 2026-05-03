@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,38 +28,100 @@ License
 
 #include "codedMixedFvPatchField.H"
 #include "addToRunTimeSelectionTable.H"
+#include "fvPatchFieldMapper.H"
+#include "volFields.H"
+#include "dynamicCode.H"
+#include "dictionaryContent.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-template<class Type>
-const Foam::wordList Foam::codedMixedFvPatchField<Type>::codeKeys
-(
-    {"code", "codeInclude", "localCode"}
-);
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-const Foam::wordList Foam::codedMixedFvPatchField<Type>::codeDictVars
-(
-    {word::null, word::null, word::null}
-);
-
-template<class Type>
-const Foam::word Foam::codedMixedFvPatchField<Type>::codeOptions
-(
-    "codedMixedFvPatchFieldOptions"
-);
-
-template<class Type>
-const Foam::wordList Foam::codedMixedFvPatchField<Type>::compileFiles
+Foam::dlLibraryTable& Foam::codedMixedFvPatchField<Type>::libs() const
 {
-    "codedMixedFvPatchFieldTemplate.C"
-};
+    return this->db().time().libs();
+}
+
 
 template<class Type>
-const Foam::wordList Foam::codedMixedFvPatchField<Type>::copyFiles
+Foam::string Foam::codedMixedFvPatchField<Type>::description() const
 {
-    "codedMixedFvPatchFieldTemplate.H"
-};
+    return
+        "patch "
+      + this->patch().name()
+      + " on field "
+      + this->internalField().name();
+}
+
+
+template<class Type>
+void Foam::codedMixedFvPatchField<Type>::clearRedirect() const
+{
+    redirectPatchFieldPtr_.reset(nullptr);
+}
+
+
+template<class Type>
+const Foam::dictionary&
+Foam::codedMixedFvPatchField<Type>::codeContext() const
+{
+    const dictionary* ptr = dict_.findDict("codeContext", keyType::LITERAL);
+    return (ptr ? *ptr : dictionary::null);
+}
+
+
+template<class Type>
+const Foam::dictionary&
+Foam::codedMixedFvPatchField<Type>::codeDict() const
+{
+    // Inline "code" or from system/codeDict
+    return
+    (
+        dict_.found("code")
+      ? dict_
+      : codedBase::codeDict(this->db()).subDict(name_)
+    );
+}
+
+
+template<class Type>
+void Foam::codedMixedFvPatchField<Type>::prepare
+(
+    dynamicCode& dynCode,
+    const dynamicCodeContext& context
+) const
+{
+    // Take no chances - typeName must be identical to name_
+    dynCode.setFilterVariable("typeName", name_);
+
+    // Set TemplateType and FieldType filter variables
+    dynCode.setFieldTemplates<Type>();
+
+    // Compile filtered C template
+    dynCode.addCompileFile(codeTemplateC);
+
+    // Copy filtered H template
+    dynCode.addCopyFile(codeTemplateH);
+
+    #ifdef FULLDEBUG
+    dynCode.setFilterVariable("verbose", "true");
+    DetailInfo
+        <<"compile " << name_ << " sha1: " << context.sha1() << endl;
+    #endif
+
+    // Define Make/options
+    dynCode.setMakeOptions
+    (
+        "EXE_INC = -g \\\n"
+        "-I$(LIB_SRC)/finiteVolume/lnInclude \\\n"
+        "-I$(LIB_SRC)/meshTools/lnInclude \\\n"
+      + context.options()
+      + "\n\nLIB_LIBS = \\\n"
+        "    -lOpenFOAM \\\n"
+        "    -lfiniteVolume \\\n"
+        "    -lmeshTools \\\n"
+      + context.libs()
+    );
+}
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -65,71 +130,89 @@ template<class Type>
 Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<Type, volMesh>& iF
 )
 :
-    mixedFvPatchField<Type>(p, iF, dict),
-    codedBase
-    (
-        dict.lookupOrDefault<word>
-        (
-            "name",
-            (
-                iF.mesh().name() == polyMesh::defaultRegion
-              ? word::null
-              : word(iF.mesh().name() + '_')
-            )
-          + iF.name() + '_' + p.name()
-        ),
-        dict,
-        codeKeys,
-        codeDictVars,
-        codeOptions,
-        compileFiles,
-        copyFiles
-    )
-{
-    const word fieldType(pTraits<Type>::typeName);
-
-    // Set variable substitutions
-    varSubstitutions().set
-    (
-        {
-            {"TemplateType", fieldType},
-            {"FieldType", fieldType.capitalise() + "Field"},
-            {"verbose", Foam::name(bool(debug))}
-        }
-    );
-
-    // Compile the library containing user-defined fvPatchField
-    updateLibrary(dict);
-}
-
-
-template<class Type>
-Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
-(
-    const codedMixedFvPatchField<Type>& ptf,
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
-)
-:
-    mixedFvPatchField<Type>(ptf, p, iF, mapper),
-    codedBase(ptf)
+    parent_bctype(p, iF),
+    codedBase(),
+    redirectPatchFieldPtr_(nullptr)
 {}
 
 
 template<class Type>
 Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
 (
-    const codedMixedFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const codedMixedFvPatchField<Type>& rhs,
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
-    mixedFvPatchField<Type>(ptf, iF),
-    codedBase(ptf)
+    parent_bctype(rhs, p, iF, mapper),
+    codedBase(),
+    dict_(rhs.dict_),  // Deep copy
+    name_(rhs.name_),
+    redirectPatchFieldPtr_(nullptr)
+{}
+
+
+template<class Type>
+Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    parent_bctype(p, iF, dict),
+    codedBase(),
+    dict_
+    (
+        // Copy dictionary, but without "heavy" data chunks
+        dictionaryContent::copyDict
+        (
+            dict,
+            wordList(),  // allow
+            wordList     // deny
+            ({
+                "type",  // redundant
+                "value", "refValue", "refGradient", "valueFraction"
+            })
+        )
+    ),
+    name_(dict.getCompat<word>("name", {{"redirectType", 1706}})),
+    redirectPatchFieldPtr_(nullptr)
+{
+    updateLibrary(name_);
+}
+
+
+template<class Type>
+Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
+(
+    const codedMixedFvPatchField<Type>& rhs
+)
+:
+    parent_bctype(rhs),
+    codedBase(),
+    dict_(rhs.dict_),  // Deep copy
+    name_(rhs.name_),
+    redirectPatchFieldPtr_(nullptr)
+{}
+
+
+template<class Type>
+Foam::codedMixedFvPatchField<Type>::codedMixedFvPatchField
+(
+    const codedMixedFvPatchField<Type>& rhs,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    parent_bctype(rhs, iF),
+    codedBase(),
+    dict_(rhs.dict_),  // Deep copy
+    name_(rhs.name_),
+    redirectPatchFieldPtr_(nullptr)
 {}
 
 
@@ -139,32 +222,49 @@ template<class Type>
 const Foam::mixedFvPatchField<Type>&
 Foam::codedMixedFvPatchField<Type>::redirectPatchField() const
 {
-    if (!redirectPatchFieldPtr_.valid())
+    if (!redirectPatchFieldPtr_)
     {
-        OStringStream os;
-        mixedFvPatchField<Type>::write(os);
-        IStringStream is(os.str());
-        dictionary dict(is);
+        // Construct a patch
+        // Make sure to construct the patchfield with up-to-date value
 
-        // Override the type to enforce the fvPatchField::New constructor
-        // to choose our type
-        dict.set("type", codeName());
+        // Write the data from the mixed b.c.
+        OCharStream os;
+        this->parent_bctype::write(os);
+        ISpanStream is(os.view());
+        dictionary constructDict(is);
 
-        redirectPatchFieldPtr_.set
+        // Override type
+        constructDict.set("type", name_);
+
+        redirectPatchFieldPtr_.reset
         (
-            dynamic_cast<mixedFvPatchField<Type>*>
+            dynamic_cast<parent_bctype*>
             (
                 fvPatchField<Type>::New
                 (
                     this->patch(),
                     this->internalField(),
-                    dict
+                    constructDict
                 ).ptr()
             )
         );
-    }
 
-    return redirectPatchFieldPtr_();
+        // Forward copy of dictionary content to the code template
+        auto* contentPtr =
+            dynamic_cast<dictionaryContent*>(redirectPatchFieldPtr_.get());
+
+        if (contentPtr)
+        {
+            contentPtr->dict(this->codeContext());
+        }
+        else
+        {
+            WarningInFunction
+                << name_ << " Did not derive from dictionaryContent"
+                << nl << nl;
+        }
+    }
+    return *redirectPatchFieldPtr_;
 }
 
 
@@ -176,16 +276,18 @@ void Foam::codedMixedFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    const mixedFvPatchField<Type>& fvp = redirectPatchField();
+    // Make sure library containing user-defined fvPatchField is up-to-date
+    updateLibrary(name_);
 
-    const_cast<mixedFvPatchField<Type>&>(fvp).updateCoeffs();
+    const parent_bctype& fvp = redirectPatchField();
+    const_cast<parent_bctype&>(fvp).updateCoeffs();
 
     // Copy through coefficients
     this->refValue() = fvp.refValue();
     this->refGrad() = fvp.refGrad();
     this->valueFraction() = fvp.valueFraction();
 
-    mixedFvPatchField<Type>::updateCoeffs();
+    this->parent_bctype::updateCoeffs();
 }
 
 
@@ -195,22 +297,27 @@ void Foam::codedMixedFvPatchField<Type>::evaluate
     const Pstream::commsTypes commsType
 )
 {
-    const mixedFvPatchField<Type>& fvp = redirectPatchField();
+    // Make sure library containing user-defined fvPatchField is up-to-date
+    updateLibrary(name_);
+
+    const parent_bctype& fvp = redirectPatchField();
 
     // - updates the value of fvp (though not used)
     // - resets the updated() flag
-    const_cast<mixedFvPatchField<Type>&>(fvp).evaluate(commsType);
+    const_cast<parent_bctype&>(fvp).evaluate(commsType);
 
     // Update the value (using the coefficients) locally
-    mixedFvPatchField<Type>::evaluate(commsType);
+    parent_bctype::evaluate(commsType);
 }
 
 
 template<class Type>
 void Foam::codedMixedFvPatchField<Type>::write(Ostream& os) const
 {
-    mixedFvPatchField<Type>::write(os);
-    codedBase::write(os);
+    this->parent_bctype::write(os);
+    os.writeEntry("name", name_);
+
+    codedBase::writeCodeDict(os, dict_);
 }
 
 

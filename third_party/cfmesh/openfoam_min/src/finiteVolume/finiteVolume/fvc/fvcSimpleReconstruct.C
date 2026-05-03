@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,15 +42,21 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<typename outerProduct<vector, Type>::type>>
+tmp
+<
+    GeometricField
+    <
+        typename outerProduct<vector,Type>::type, fvPatchField, volMesh
+    >
+>
 reconstruct
 (
-    const SurfaceField<Type>& ssf
+    const GeometricField<Type, fvsPatchField, surfaceMesh>& ssf
 )
 {
     typedef typename outerProduct<vector, Type>::type GradType;
 
-    const fvMesh& mesh = ssf.mesh()();
+    const fvMesh& mesh = ssf.mesh();
 
     const labelUList& owner = mesh.owner();
     const labelUList& neighbour = mesh.neighbour();
@@ -56,19 +64,21 @@ reconstruct
     const volVectorField& C = mesh.C();
     const surfaceVectorField& Cf = mesh.Cf();
 
-    tmp<VolField<GradType>> treconField
+    tmp<GeometricField<GradType, fvPatchField, volMesh>> treconField
     (
-        VolField<GradType>::New
+        new GeometricField<GradType, fvPatchField, volMesh>
         (
-            "reconstruct("+ssf.name()+')',
-            mesh,
-            dimensioned<GradType>
+            IOobject
             (
-                "0",
-                ssf.dimensions()/dimArea,
-                Zero
+                "reconstruct("+ssf.name()+')',
+                ssf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
             ),
-            extrapolatedCalculatedFvPatchField<GradType>::typeName
+            mesh,
+            dimensioned<GradType>(ssf.dimensions()/dimArea, Zero),
+            fvPatchFieldBase::extrapolatedCalculatedType()
         )
     );
 
@@ -83,7 +93,7 @@ reconstruct
         rf[nei] -= (Cf[facei] - C[nei])*ssf[facei];
     }
 
-    const typename SurfaceField<Type>::
+    const typename GeometricField<Type, fvsPatchField, surfaceMesh>::
     Boundary& bsf = ssf.boundaryField();
 
     forAll(bsf, patchi)
@@ -109,14 +119,20 @@ reconstruct
 
 
 template<class Type>
-tmp<VolField<typename outerProduct<vector, Type>::type>>
+tmp
+<
+    GeometricField
+    <
+        typename outerProduct<vector, Type>::type, fvPatchField, volMesh
+    >
+>
 reconstruct
 (
-    const tmp<SurfaceField<Type>>& tssf
+    const tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>& tssf
 )
 {
     typedef typename outerProduct<vector, Type>::type GradType;
-    tmp<VolField<GradType>> tvf
+    tmp<GeometricField<GradType, fvPatchField, volMesh>> tvf
     (
         fvc::reconstruct(tssf())
     );

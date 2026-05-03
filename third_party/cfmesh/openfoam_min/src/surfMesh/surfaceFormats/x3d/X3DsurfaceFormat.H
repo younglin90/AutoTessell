@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,13 +30,19 @@ Class
 Description
     Provide a means of writing x3d format.
 
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
+
 SourceFiles
     X3DsurfaceFormat.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef X3DsurfaceFormat_H
-#define X3DsurfaceFormat_H
+#ifndef Foam_X3DsurfaceFormat_H
+#define Foam_X3DsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -48,7 +57,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class X3DsurfaceFormat Declaration
+                Class fileFormats::X3DsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -61,34 +70,50 @@ public:
 
     // Constructors
 
-        //- Construct null
-        X3DsurfaceFormat();
-
-        //- Disallow default bitwise copy construction
-        X3DsurfaceFormat(const X3DsurfaceFormat<Face>&) = delete;
+        //- Default construct
+        X3DsurfaceFormat() = default;
 
 
     //- Destructor
-    virtual ~X3DsurfaceFormat()
-    {}
+    virtual ~X3DsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components (by proxy) in X3D format
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
-        //- Write object file
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const X3DsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

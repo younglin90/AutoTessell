@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                            Class PCICG Declaration
+                           Class PCICG Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -52,6 +55,14 @@ class PCICG
 :
     public LduMatrix<Type, DType, LUType>::solver
 {
+    // Private Member Functions
+
+        //- No copy construct
+        PCICG(const PCICG&) = delete;
+
+        //- No copy assignment
+        void operator=(const PCICG&) = delete;
+
 
 public:
 
@@ -69,26 +80,16 @@ public:
             const dictionary& solverDict
         );
 
-        //- Disallow default bitwise copy construction
-        PCICG(const PCICG&) = delete;
-
 
     // Destructor
 
-        virtual ~PCICG()
-        {}
+        virtual ~PCICG() = default;
 
 
     // Member Functions
 
         //- Solve the matrix with this solver
         virtual SolverPerformance<Type> solve(Field<Type>& psi) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PCICG&) = delete;
 };
 
 

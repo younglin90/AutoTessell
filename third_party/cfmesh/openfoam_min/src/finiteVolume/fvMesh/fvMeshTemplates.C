@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,104 +41,6 @@ typename Foam::pTraits<Type>::labelType Foam::fvMesh::validComponents() const
             pTraits<Type>::rank>::type
         >::zero
     );
-}
-
-
-template<class GeoField>
-Foam::UPtrList<GeoField> Foam::fvMesh::fields
-(
-    const bool strict,
-    const HashSet<word>& geometryFields
-) const
-{
-    HashTable<GeoField*> fields
-    (
-        const_cast<fvMesh&>(*this).lookupClass<GeoField>(strict)
-    );
-    UPtrList<GeoField> curFields(fields.size());
-
-    label i = 0;
-    forAllIter(typename HashTable<GeoField*>, fields, iter)
-    {
-        if (!geometryFields.found(iter()->name()))
-        {
-            curFields.set(i++, iter());
-        }
-    }
-    curFields.setSize(i);
-
-    return curFields;
-}
-
-
-template<class GeoField>
-Foam::UPtrList<GeoField> Foam::fvMesh::curFields
-(
-    const bool strict,
-    const HashSet<word>& geometryFields
-) const
-{
-    HashTable<GeoField*> fields
-    (
-        const_cast<fvMesh&>(*this).lookupClass<GeoField>(strict)
-    );
-    UPtrList<GeoField> curFields(fields.size());
-
-    label i = 0;
-    forAllIter(typename HashTable<GeoField*>, fields, iter)
-    {
-        if (!geometryFields.found(iter()->name()) && !iter()->isOldTime())
-        {
-            curFields.set(i++, iter());
-        }
-    }
-    curFields.setSize(i);
-
-    return curFields;
-}
-
-
-template<class Type, template<class> class GeoField>
-void Foam::fvMesh::storeOldTimeFields()
-{
-    UPtrList<GeoField<Type>> curFields(this->curFields<GeoField<Type>>());
-
-    forAll(curFields, i)
-    {
-        curFields[i].storeOldTimes();
-    }
-}
-
-
-template<template<class> class GeoField>
-void Foam::fvMesh::storeOldTimeFields()
-{
-    #define StoreOldTimeFields(Type, nullArg) \
-        storeOldTimeFields<Type, GeoField>();
-    FOR_ALL_FIELD_TYPES(StoreOldTimeFields);
-    #undef StoreOldTimeFields
-}
-
-
-template<class Type, template<class> class GeoField>
-void Foam::fvMesh::nullOldestTimeFields()
-{
-    UPtrList<GeoField<Type>> curFields(this->curFields<GeoField<Type>>());
-
-    forAll(curFields, i)
-    {
-        curFields[i].nullOldestTime();
-    }
-}
-
-
-template<template<class> class GeoField>
-void Foam::fvMesh::nullOldestTimeFields()
-{
-    #define nullOldestTimeFields(Type, nullArg) \
-        nullOldestTimeFields<Type, GeoField>();
-    FOR_ALL_FIELD_TYPES(nullOldestTimeFields);
-    #undef nullOldestTimeFields
 }
 
 

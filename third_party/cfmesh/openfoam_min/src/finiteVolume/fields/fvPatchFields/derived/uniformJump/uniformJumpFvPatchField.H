@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,20 +26,22 @@ License
 Class
     Foam::uniformJumpFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition provides a jump condition, using the \c cyclic
-    condition as a base. The jump is specified as the difference between the
-    neighbour patch and the owner patch value (i.e., neighbour minus owner).
-    The jump value is uniform across the patches, and can vary in time.
+    condition as a base.  The jump is specified as a time-varying uniform
+    value across the patch.
 
 Usage
     \table
-        Property     | Description             | Required    | Default value
-        patchType    | underlying patch type (should be \c cyclic) | yes |
-        jumpTable    | jump value              | yes         |
+        Property    | Description                           | Required | Default
+        patchType   | underlying patch type should be \c cyclic | yes |
+        jumpTable   | jump value                            | yes |
     \endtable
 
-    Example of the boundary condition specification with a constant jump:
+    Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
@@ -47,29 +51,18 @@ Usage
     }
     \endverbatim
 
-    Example of the boundary condition specification with a time-varying jump:
-    \verbatim
-    <patchName>
-    {
-        type            uniformJump;
-        patchType       cyclic;
-        jumpTable
-        {
-            type            table;
-            values
-            (
-                (0 0)
-                (0.1 10)
-                (0.9 10)
-                (1 0)
-            );
-        }
-    }
-    \endverbatim
+    The above example shows the use of a fixed jump of '10'.
+
+Note
+    The uniformValue entry is a Function1 type, able to describe time
+    varying functions.  The example above gives the usage for supplying a
+    constant value.
+
+    The underlying \c patchType should be set to \c cyclic
 
 See also
     Foam::fixedJumpFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     uniformJumpFvPatchField.C
@@ -96,6 +89,7 @@ class uniformJumpFvPatchField
 :
     public fixedJumpFvPatchField<Type>
 {
+
 protected:
 
     // Protected data
@@ -109,15 +103,22 @@ public:
     //- Runtime type information
     TypeName("uniformJump");
 
-
     // Constructors
+
+        //- Construct from patch and internal field
+        uniformJumpFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
 
         //- Construct from patch, internal field and dictionary
         uniformJumpFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const dictionary&
+            const DimensionedField<Type, volMesh>&,
+            const dictionary&,
+            const bool needValue = true
         );
 
         //- Construct by mapping given uniformJumpFvPatchField onto a
@@ -126,46 +127,46 @@ public:
         (
             const uniformJumpFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        uniformJumpFvPatchField(const uniformJumpFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        uniformJumpFvPatchField
+        (
+            const uniformJumpFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         uniformJumpFvPatchField
         (
             const uniformJumpFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new uniformJumpFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients
         virtual void updateCoeffs();
 
         //- Write
-        virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedJumpFvPatchField<Type>::operator=;
+        virtual void write(Ostream& os) const;
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,44 +40,82 @@ Foam::porosityModelList::porosityModelList
     mesh_(mesh)
 {
     reset(dict);
+    active(true);
 }
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::porosityModelList::~porosityModelList()
-{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+bool Foam::porosityModelList::active(const bool warn) const
+{
+    bool anyOk = false;
+    forAll(*this, i)
+    {
+        anyOk = anyOk || this->operator[](i).active();
+    }
+
+    if (warn && this->size() && !anyOk)
+    {
+        Info<< "No porosity models active" << endl;
+    }
+
+    return anyOk;
+}
+
+
 void Foam::porosityModelList::reset(const dictionary& dict)
 {
     label count = 0;
-    forAllConstIter(dictionary, dict, iter)
+    for (const entry& dEntry : dict)
     {
-        if (iter().isDict())
+        if (dEntry.isDict())
         {
-            count++;
+            ++count;
         }
     }
 
-    this->setSize(count);
-    label i = 0;
-    forAllConstIter(dictionary, dict, iter)
+    this->resize(count);
+
+    count = 0;
+    for (const entry& dEntry : dict)
     {
-        if (iter().isDict())
+        if (dEntry.isDict())
         {
-            const word& name = iter().keyword();
-            const dictionary& modelDict = iter().dict();
+            const word& name = dEntry.keyword();
+            const dictionary& modelDict = dEntry.dict();
 
             this->set
             (
-                i++,
+                count++,
                 porosityModel::New(name, mesh_, modelDict)
             );
         }
     }
+}
+
+
+bool Foam::porosityModelList::read(const dictionary& dict)
+{
+    bool allOk = true;
+    forAll(*this, i)
+    {
+        porosityModel& pm = this->operator[](i);
+        bool ok = pm.read(dict.subDict(pm.name()));
+        allOk = (allOk && ok);
+    }
+    return allOk;
+}
+
+
+bool Foam::porosityModelList::writeData(Ostream& os) const
+{
+    forAll(*this, i)
+    {
+        os  << nl;
+        this->operator[](i).writeData(os);
+    }
+
+    return os.good();
 }
 
 
@@ -87,6 +127,20 @@ void Foam::porosityModelList::addResistance
     forAll(*this, i)
     {
         this->operator[](i).addResistance(UEqn);
+    }
+}
+
+
+void Foam::porosityModelList::addResistance
+(
+    fvVectorMatrix& UEqn,
+    const volScalarField& rho,
+    const volScalarField& mu
+)
+{
+    forAll(*this, i)
+    {
+        this->operator[](i).addResistance(UEqn, rho, mu);
     }
 }
 
@@ -105,57 +159,16 @@ void Foam::porosityModelList::addResistance
 }
 
 
-bool Foam::porosityModelList::movePoints()
-{
-    forAll(*this, i)
-    {
-        this->operator[](i).movePoints();
-    }
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-    return true;
-}
-
-
-void Foam::porosityModelList::topoChange(const polyTopoChangeMap& map)
-{
-    forAll(*this, i)
-    {
-        this->operator[](i).topoChange(map);
-    }
-}
-
-
-void Foam::porosityModelList::mapMesh(const polyMeshMap& map)
-{
-    forAll(*this, i)
-    {
-        this->operator[](i).mapMesh(map);
-    }
-}
-
-
-void Foam::porosityModelList::distribute
+Foam::Ostream& Foam::operator<<
 (
-    const polyDistributionMap& map
+    Ostream& os,
+    const porosityModelList& models
 )
 {
-    forAll(*this, i)
-    {
-        this->operator[](i).distribute(map);
-    }
-}
-
-
-bool Foam::porosityModelList::read(const dictionary& dict)
-{
-    bool allOk = true;
-    forAll(*this, i)
-    {
-        porosityModel& pm = this->operator[](i);
-        bool ok = pm.read(dict.subDict(pm.name()));
-        allOk = (allOk && ok);
-    }
-    return allOk;
+    models.writeData(os);
+    return os;
 }
 
 

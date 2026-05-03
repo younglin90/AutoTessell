@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,30 +42,30 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 snGrad
 (
-    const VolField<Type>& vf,
+    const GeometricField<Type, fvPatchField, volMesh>& vf,
     const word& name
 )
 {
     return fv::snGradScheme<Type>::New
     (
         vf.mesh(),
-        vf.mesh().schemes().snGrad(name)
+        vf.mesh().snGradScheme(name)
     )().snGrad(vf);
 }
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 snGrad
 (
-    const tmp<VolField<Type>>& tvf,
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf,
     const word& name
 )
 {
-    tmp<SurfaceField<Type>> SnGrad
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> SnGrad
     (
         fvc::snGrad(tvf(), name)
     );
@@ -73,10 +75,10 @@ snGrad
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 snGrad
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fvc::snGrad(vf, "snGrad(" + vf.name() + ')');
@@ -84,13 +86,13 @@ snGrad
 
 
 template<class Type>
-tmp<SurfaceField<Type>>
+tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
 snGrad
 (
-    const tmp<VolField<Type>>& tvf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvf
 )
 {
-    tmp<SurfaceField<Type>> SnGrad
+    tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> SnGrad
     (
         fvc::snGrad(tvf())
     );

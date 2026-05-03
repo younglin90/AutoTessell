@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +28,10 @@ License
 
 #include "extendedEdgeMesh.H"
 #include "ListListOps.H"
-#include "PackedBoolList.H"
+#include "unitConversion.H"
+#include "bitSet.H"
 #include "PatchTools.H"
-#include "box_searchableSurface.H"
+#include "searchableBox.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -35,9 +39,9 @@ template<class Patch>
 void Foam::extendedEdgeMesh::sortPointsAndEdges
 (
     const Patch& surf,
-    const labelList& featureEdges,
-    const labelList& regionFeatureEdges,// subset of featureEdges: inter-region
-    const labelList& featurePoints
+    const labelUList& featureEdges,
+    const labelUList& regionFeatureEdges,// subset of featureEdges: inter-region
+    const labelUList& featurePoints
 )
 {
     const pointField& sFeatLocalPts(surf.localPoints());
@@ -97,7 +101,7 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
     // All feature points have been added
     nonFeatureStart_ = tmpPts.size();
 
-    PackedBoolList isRegionFeatureEdge(regionFeatureEdges);
+    bitSet isRegionFeatureEdge(regionFeatureEdges);
 
     forAll(featureEdges, i)
     {
@@ -156,8 +160,8 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
             normalDirections[i][j] =
                 (
                     (
-                        (cross/(mag(cross) + vSmall))
-                      & (fC0tofE0/(mag(fC0tofE0)+ vSmall))
+                        (cross/(mag(cross) + VSMALL))
+                      & (fC0tofE0/(mag(fC0tofE0)+ VSMALL))
                     )
                   > 0.0
                     ? 1
@@ -176,7 +180,7 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
 
         edStatus[i] = classifyEdge(norms, edgeNormals[i], fC0tofC1);
 
-        if (isRegionFeatureEdge[i])
+        if (isRegionFeatureEdge.test(i))
         {
             regionEdges.append(i);
         }
@@ -283,7 +287,7 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
     edgeMesh::operator=(edgeMesh(pts, eds));
 
     // Initialise sorted edge related data
-    edgeDirections_ = edgeDirections/(mag(edgeDirections) + vSmall);
+    edgeDirections_ = edgeDirections/(mag(edgeDirections) + VSMALL);
     edgeNormals_ = edgeNormals;
     normalDirections_ = normalDirections;
     regionEdges_ = regionEdges;
@@ -343,7 +347,7 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
     // Creating the ptMap from the ftPtMap with identity values up to the size
     // of pts to create an oldToNew map for inplaceReorder
 
-    labelList ptMap(identityMap(pts.size()));
+    labelList ptMap(identity(pts.size()));
 
     forAll(ftPtMap, i)
     {
@@ -360,7 +364,10 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
 
     // Reinitialise the edgeMesh with sorted feature points and
     // renumbered edges
-    reset(move(pts), move(eds));
+    {
+        edgeMesh newmesh(std::move(pts), std::move(eds));
+        edgeMesh::transfer(newmesh);
+    }
 
     // Generate the featurePointNormals
 
@@ -378,7 +385,7 @@ void Foam::extendedEdgeMesh::sortPointsAndEdges
 
             forAll(ptEdNorms, k)
             {
-                if (findIndex(tmpFtPtNorms, ptEdNorms[k]) == -1)
+                if (!tmpFtPtNorms.found(ptEdNorms[k]))
                 {
                     bool addNormal = true;
 

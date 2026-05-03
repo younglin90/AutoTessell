@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,31 +55,25 @@ const Foam::symmTensor2D Foam::symmTensor2D::vsType::one
 template<>
 const Foam::symmTensor2D Foam::symmTensor2D::vsType::max
 (
-    symmTensor2D::uniform(vGreat)
+    symmTensor2D::uniform(VGREAT)
 );
 
 template<>
 const Foam::symmTensor2D Foam::symmTensor2D::vsType::min
 (
-    symmTensor2D::uniform(-vGreat)
+    symmTensor2D::uniform(-VGREAT)
 );
 
 template<>
 const Foam::symmTensor2D Foam::symmTensor2D::vsType::rootMax
 (
-    symmTensor2D::uniform(rootVGreat)
+    symmTensor2D::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::symmTensor2D Foam::symmTensor2D::vsType::rootMin
 (
-    symmTensor2D::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::symmTensor2D Foam::symmTensor2D::vsType::nan
-(
-    symmTensor2D::uniform(NaN)
+    symmTensor2D::uniform(-ROOTVGREAT)
 );
 
 template<>
@@ -85,6 +82,109 @@ const Foam::symmTensor2D Foam::symmTensor2D::I
     1, 0,
        1
 );
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+Foam::vector2D Foam::eigenValues(const symmTensor2D& T)
+{
+    // Return diagonal if T is effectively diagonal tensor
+    if (sqr(T.xy()) < ROOTSMALL)
+    {
+        return vector2D(T.diag());
+    }
+
+    //(K:Eqs. 3.2-3.3)
+    const scalar skewTrace = T.xx() - T.yy();
+    const scalar trace = tr(T);
+    const scalar gap = sign(skewTrace)*hypot(skewTrace, 2*T.xy());
+
+    return vector2D(0.5*(trace + gap), 0.5*(trace - gap));
+}
+
+
+Foam::vector2D Foam::eigenVector
+(
+    const symmTensor2D& T,
+    const scalar eVal,
+    const vector2D& standardBasis
+)
+{
+    // Construct the characteristic equation system for this eigenvalue
+    const tensor2D A(T - eVal*tensor2D::I);
+
+    // Evaluate the eigenvector using the largest divisor
+    if (mag(A.yy()) > mag(A.xx()) && mag(A.yy()) > SMALL)
+    {
+        const vector2D eVec(1, -A.yx()/A.yy());
+
+        #ifdef FULLDEBUG
+        if (mag(eVec) < SMALL)
+        {
+            FatalErrorInFunction
+                << "Eigenvector magnitude should be non-zero:"
+                << "mag(eigenvector) = " << mag(eVec)
+                << abort(FatalError);
+        }
+        #endif
+
+        return eVec/mag(eVec);
+    }
+    else if (mag(A.xx()) > SMALL)
+    {
+        const vector2D eVec(-A.xy()/A.xx(), 1);
+
+        #ifdef FULLDEBUG
+        if (mag(eVec) < SMALL)
+        {
+            FatalErrorInFunction
+                << "Eigenvector magnitude should be non-zero:"
+                << "mag(eigenvector) = " << mag(eVec)
+                << abort(FatalError);
+        }
+        #endif
+
+        return eVec/mag(eVec);
+    }
+
+    // Repeated eigenvalue
+    return vector2D(-standardBasis.y(), standardBasis.x());
+}
+
+
+Foam::tensor2D Foam::eigenVectors
+(
+    const symmTensor2D& T,
+    const vector2D& eVals
+)
+{
+    // (K:Eq. 3.5)
+    const scalar skewTrace = T.xx() - T.yy();
+
+    if (mag(skewTrace) > SMALL)
+    {
+        const scalar phi = 0.5*atan(2*T.xy()/skewTrace);
+        const scalar cphi = cos(phi);
+        const scalar sphi = sin(phi);
+        return tensor2D(cphi, sphi, -sphi, cphi);
+    }
+    else if (mag(T.xy()) > SMALL)
+    {
+        const scalar a = 0.70710678;    // phi ~ 45deg
+        return tensor2D(a, sign(T.xy())*a, -1*sign(T.xy())*a, a);
+    }
+
+    // (K:p. 3)
+    return tensor2D(1, 0, 0, 1);
+}
+
+
+Foam::tensor2D Foam::eigenVectors(const symmTensor2D& T)
+{
+    const vector2D eVals(eigenValues(T));
+
+    return eigenVectors(T, eVals);
+}
 
 
 // ************************************************************************* //

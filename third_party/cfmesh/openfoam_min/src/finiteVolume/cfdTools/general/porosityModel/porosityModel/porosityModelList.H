@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,6 +47,10 @@ SourceFiles
 namespace Foam
 {
 
+// Forward declarations
+class porosityModelList;
+Ostream& operator<<(Ostream& os, const porosityModelList& models);
+
 /*---------------------------------------------------------------------------*\
                       Class porosityModelList Declaration
 \*---------------------------------------------------------------------------*/
@@ -53,6 +59,17 @@ class porosityModelList
 :
     public PtrList<porosityModel>
 {
+private:
+
+    // Private Member Functions
+
+        //- No copy construct
+        porosityModelList(const porosityModelList&) = delete;
+
+        //- No copy assignment
+        void operator=(const porosityModelList&) = delete;
+
+
 protected:
 
     // Protected data
@@ -63,19 +80,17 @@ protected:
 
 public:
 
-    // Constructors
-
-        porosityModelList(const fvMesh& mesh, const dictionary& dict);
-
-        //- Disallow default bitwise copy construction
-        porosityModelList(const porosityModelList&) = delete;
-
+    //- Constructor
+    porosityModelList(const fvMesh& mesh, const dictionary& dict);
 
     //- Destructor
-    ~porosityModelList();
+    ~porosityModelList() = default;
 
 
     // Member Functions
+
+        //- Return active status
+        bool active(const bool warn = false) const;
 
         //- Reset the source list
         void reset(const dictionary& dict);
@@ -86,25 +101,18 @@ public:
         //- Add resistance
         void addResistance
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        );
+
+        //- Add resistance
+        void addResistance
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU,
             bool correctAUprocBC = true
         );
-
-
-        // Mesh changes
-
-            //- Update for mesh motion
-            bool movePoints();
-
-            //- Update topology using the given map
-            void topoChange(const polyTopoChangeMap&);
-
-            //- Update from another mesh using the given map
-            void mapMesh(const polyMeshMap&);
-
-            //- Redistribute or update using the given distribution map
-            void distribute(const polyDistributionMap&);
 
 
         // I-O
@@ -112,13 +120,16 @@ public:
             //- Read dictionary
             bool read(const dictionary& dict);
 
+            //- Write data to Ostream
+            bool writeData(Ostream& os) const;
 
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const porosityModelList&) = delete;
+            //- Ostream operator
+            friend Ostream& operator<<
+            (
+                Ostream& os,
+                const porosityModelList& models
+            );
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

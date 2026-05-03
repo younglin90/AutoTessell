@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -60,7 +63,7 @@ void Foam::primitiveMesh::calcCellEdges() const
     else
     {
         // Set up temporary storage
-        List<DynamicList<label, edgesPerCell_>> ce(nCells());
+        List<DynamicList<label>> ce(nCells());
 
 
         // Get reference to faceCells and faceEdges
@@ -71,32 +74,32 @@ void Foam::primitiveMesh::calcCellEdges() const
         // loop through the list again and add edges; checking for duplicates
         forAll(own, facei)
         {
-            DynamicList<label, edgesPerCell_>& curCellEdges = ce[own[facei]];
+            DynamicList<label>& curCellEdges = ce[own[facei]];
 
             const labelList& curEdges = fe[facei];
 
-            forAll(curEdges, edgeI)
+            for (const label edgei : curEdges)
             {
-                if (findIndex(curCellEdges, curEdges[edgeI]) == -1)
+                // Add the edge
+                if (!curCellEdges.contains(edgei))
                 {
-                    // Add the edge
-                    curCellEdges.append(curEdges[edgeI]);
+                    curCellEdges.push_back(edgei);
                 }
             }
         }
 
         forAll(nei, facei)
         {
-            DynamicList<label, edgesPerCell_>& curCellEdges = ce[nei[facei]];
+            DynamicList<label>& curCellEdges = ce[nei[facei]];
 
             const labelList& curEdges = fe[facei];
 
-            forAll(curEdges, edgeI)
+            for (const label edgei : curEdges)
             {
-                if (findIndex(curCellEdges, curEdges[edgeI]) == -1)
+                // Add the edge
+                if (!curCellEdges.contains(edgei))
                 {
-                    // add the edge
-                    curCellEdges.append(curEdges[edgeI]);
+                    curCellEdges.push_back(edgei);
                 }
             }
         }

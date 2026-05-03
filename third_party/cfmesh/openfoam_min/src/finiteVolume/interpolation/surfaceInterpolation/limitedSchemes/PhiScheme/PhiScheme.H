@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +26,17 @@ License
 Class
     Foam::PhiScheme
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class to create the weighting-factors based on the face-flux.
 
-    The particular interpolation scheme class is supplied as a template
+    The particular differencing scheme class is supplied as a template
     argument, the weight function of which is called by the weight function
     of this class for the internal faces as well as faces of coupled
     patches (e.g. processor-processor patches). The weight function is
-    supplied with the centred interpolation weighting factor, the face-flux,
+    supplied with the central-differencing weighting factor, the face-flux,
     the face neighbour cell values and the face area.
 
     This code organisation is both neat and efficient, allowing for
@@ -53,7 +58,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class PhiScheme Declaration
+                           Class PhiScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class PhiLimiter>
@@ -62,6 +67,14 @@ class PhiScheme
     public limitedSurfaceInterpolationScheme<Type>,
     public PhiLimiter
 {
+    // Private Member Functions
+
+        //- No copy construct
+        PhiScheme(const PhiScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const PhiScheme&) = delete;
+
 
 public:
 
@@ -108,23 +121,14 @@ public:
             PhiLimiter(is)
         {}
 
-        //- Disallow default bitwise copy construction
-        PhiScheme(const PhiScheme&) = delete;
-
 
     // Member Functions
 
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> limiter
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PhiScheme&) = delete;
 };
 
 

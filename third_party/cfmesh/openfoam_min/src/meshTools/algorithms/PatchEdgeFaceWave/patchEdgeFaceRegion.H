@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,10 +29,12 @@ Class
 
 Description
     Transport of region for use in PatchEdgeFaceWave.
+
     Set element to -2 to denote blocked.
 
 SourceFiles
     patchEdgeFaceRegionI.H
+    patchEdgeFaceRegion.C
 
 \*---------------------------------------------------------------------------*/
 
@@ -47,13 +52,9 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyPatch;
 class polyMesh;
-
-
-// Forward declaration of friend functions and operators
-
 class patchEdgeFaceRegion;
 
 Istream& operator>>(Istream&, patchEdgeFaceRegion&);
@@ -61,20 +62,21 @@ Ostream& operator<<(Ostream&, const patchEdgeFaceRegion&);
 
 
 /*---------------------------------------------------------------------------*\
-                     Class patchEdgeFaceRegion Declaration
+                           Class patchEdgeFaceRegion Declaration
 \*---------------------------------------------------------------------------*/
 
 class patchEdgeFaceRegion
 {
     // Private Data
 
-        //- region
+        //- The region
         label region_;
+
 
     // Private Member Functions
 
-        //- Combine current with w2. Update region_ if w2 has smaller
-        //  quantities and returns true.
+        //- Combine current with w2.
+        //  Update region_ if w2 has smaller quantities and return true.
         template<class TrackingData>
         inline bool update
         (
@@ -88,24 +90,26 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline patchEdgeFaceRegion();
 
-        //- Construct from origin, distance
-        inline patchEdgeFaceRegion(const label);
+        //- Construct from region
+        inline patchEdgeFaceRegion(const label regioni);
 
 
     // Member Functions
 
         // Access
 
-            inline label region() const;
+            label region() const
+            {
+                return region_;
+            }
 
 
-        // Needed by meshWave
+        // Needed by MeshWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value.
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
@@ -126,7 +130,7 @@ public:
             (
                 const polyMesh& mesh,
                 const indirectPrimitivePatch& patch,
-                const label edgei,
+                const label edgeI,
                 const label facei,
                 const patchEdgeFaceRegion& faceInfo,
                 const scalar tol,
@@ -152,37 +156,40 @@ public:
                 const polyMesh& mesh,
                 const indirectPrimitivePatch& patch,
                 const label facei,
-                const label edgei,
+                const label edgeI,
                 const patchEdgeFaceRegion& edgeInfo,
                 const scalar tol,
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const patchEdgeFaceRegion&, TrackingData&) const;
 
 
     // Member Operators
 
-        // Needed for List IO
+        //- Test for equality
         inline bool operator==(const patchEdgeFaceRegion&) const;
+
+        //- Test for inequality
         inline bool operator!=(const patchEdgeFaceRegion&) const;
 
 
     // IOstream Operators
 
-        inline friend Ostream& operator<<(Ostream&, const patchEdgeFaceRegion&);
-        inline friend Istream& operator>>(Istream&, patchEdgeFaceRegion&);
+        friend Ostream& operator<<(Ostream&, const patchEdgeFaceRegion&);
+        friend Istream& operator>>(Istream&, patchEdgeFaceRegion&);
 };
 
 
-//- Data associated with patchEdgeFaceRegion type are contiguous
-template<>
-inline bool contiguous<patchEdgeFaceRegion>()
-{
-    return true;
-}
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for patchEdgeFaceRegion
+template<> struct is_contiguous<patchEdgeFaceRegion> : std::true_type {};
+
+//- Contiguous label data for patchEdgeFaceRegion
+template<> struct is_contiguous_label<patchEdgeFaceRegion> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

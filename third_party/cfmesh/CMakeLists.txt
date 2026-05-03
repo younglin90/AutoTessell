@@ -84,7 +84,7 @@ of_make_ln_include(${CFMESH_SRC}           ${CFMESH_SRC}/lnInclude)
 # multiple-definition errors occur. We detect this by scanning .H for #include
 # lines that reference a sibling .C basename and exclude those.
 function(of_collect_sources OUT_VAR ROOT)
-    file(GLOB_RECURSE _src ${ROOT}/*.C ${ROOT}/*.cpp ${ROOT}/*.cxx)
+    file(GLOB_RECURSE _src ${ROOT}/*.C ${ROOT}/*.cpp ${ROOT}/*.cxx ${ROOT}/*.cc)
     list(FILTER _src EXCLUDE REGEX "/lnInclude/")
     list(FILTER _src EXCLUDE REGEX "/Test|/test/")
     list(FILTER _src EXCLUDE REGEX "/dummyThirdParty/")
@@ -94,8 +94,9 @@ function(of_collect_sources OUT_VAR ROOT)
     list(FILTER _src EXCLUDE REGEX "/meshTools/graph/")
     # fvc 의 reconstruction 류 — header 만 필요, 본체는 cfMesh 무관.
     list(FILTER _src EXCLUDE REGEX "fvcSimpleReconstruct\\.C$")
-    # OpenFOAM expression parser — Ragel/Flex 빌드 필요. cfMesh 무사용.
-    list(FILTER _src EXCLUDE REGEX "/OpenFOAM/expressions/")
+    # OpenFOAM expression parser — Ragel/Flex 빌드 필요. cfMesh 무사용이지만
+    # caller (stringOpsEvaluate 등) 가 expression 심볼 참조 → expressions/ 본체는
+    # 컴파일하고 Ragel/Flex 생성 부분만 stub 처리. 따라서 exclude 하지 않음.
     # cfMesh 내부 orphan (deleted header 참조). 단일 함수, 사용 안 됨.
     list(FILTER _src EXCLUDE REGEX "meshSurfaceEdgeCreateBoundaryFaces\\.C$")
 

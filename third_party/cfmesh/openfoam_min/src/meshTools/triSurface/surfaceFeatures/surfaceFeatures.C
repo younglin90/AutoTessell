@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,11 +32,9 @@ License
 #include "treeDataEdge.H"
 #include "treeDataPoint.H"
 #include "meshTools.H"
-#include "linePointRef.H"
-#include "OFstream.H"
-#include "IFstream.H"
-#include "units.H"
-#include "EdgeMap.H"
+#include "Fstream.H"
+#include "unitConversion.H"
+#include "edgeHashes.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -42,19 +43,41 @@ namespace Foam
     defineTypeNameAndDebug(surfaceFeatures, 0);
 
     const scalar surfaceFeatures::parallelTolerance = sin(degToRad(1.0));
+
+
+//! \cond fileScope
+//  Check if the point is on the line
+static bool onLine(const Foam::point& p, const linePointRef& line)
+{
+    const point& a = line.start();
+    const point& b = line.end();
+
+    if
+    (
+        (p.x() < min(a.x(), b.x()) || p.x() > max(a.x(), b.x()))
+     || (p.y() < min(a.y(), b.y()) || p.y() > max(a.y(), b.y()))
+     || (p.z() < min(a.z(), b.z()) || p.z() > max(a.z(), b.z()))
+    )
+    {
+        return false;
+    }
+
+    return true;
 }
+//! \endcond
+
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 Foam::pointIndexHit Foam::surfaceFeatures::edgeNearest
 (
-    const point& start,
-    const point& end,
+    const linePointRef& line,
     const point& sample
 )
 {
-    pointHit eHit = linePointRef(start, end).nearestDist(sample);
+    pointHit eHit = line.nearestDist(sample);
 
     // Classification of position on edge.
     label endPoint;
@@ -72,8 +95,8 @@ Foam::pointIndexHit Foam::surfaceFeatures::edgeNearest
         // which one.
         if
         (
-            mag(eHit.rawPoint() - start)
-          < mag(eHit.rawPoint() - end)
+            eHit.point().distSqr(line.start())
+          < eHit.point().distSqr(line.end())
         )
         {
             endPoint = 0;
@@ -84,7 +107,7 @@ Foam::pointIndexHit Foam::surfaceFeatures::edgeNearest
         }
     }
 
-    return pointIndexHit(eHit.hit(), eHit.rawPoint(), endPoint);
+    return pointIndexHit(eHit, endPoint);
 }
 
 
@@ -173,7 +196,7 @@ void Foam::surfaceFeatures::setFromStatus
         }
     }
 
-    const scalar minCos = Foam::cos(degToRad(180) - includedAngle);
+    const scalar minCos = Foam::cos(degToRad(180.0 - includedAngle));
 
     calcFeatPoints(edgeStat, minCos);
 }
@@ -221,12 +244,16 @@ void Foam::surfaceFeatures::calcFeatPoints
 
                 if (edgeStat[edgeI] != NONE)
                 {
-                    edgeVecs.append(edges[edgeI].vec(localPoints));
-                    edgeVecs.last() /= mag(edgeVecs.last());
+                    vector vec = edges[edgeI].vec(localPoints);
+                    scalar magVec = mag(vec);
+                    if (magVec > SMALL)
+                    {
+                        edgeVecs.append(vec/magVec);
+                    }
                 }
             }
 
-            if (mag(edgeVecs[0] & edgeVecs[1]) < minCos)
+            if (edgeVecs.size() == 2 && mag(edgeVecs[0] & edgeVecs[1]) < minCos)
             {
                 featurePoints.append(pointi);
             }
@@ -249,7 +276,7 @@ void Foam::surfaceFeatures::classifyFeatureAngles
     const pointField& points = surf_.points();
 
     // Special case: minCos=1
-    bool selectAll = (mag(minCos-1.0) < small);
+    bool selectAll = (mag(minCos-1.0) < SMALL);
 
     forAll(edgeFaces, edgeI)
     {
@@ -366,7 +393,7 @@ Foam::surfaceFeatures::labelScalar Foam::surfaceFeatures::walkSegment
 
     label nVisited = 0;
 
-    if (findIndex(featurePoints_, startPointi) >= 0)
+    if (featurePoints_.found(startPointi))
     {
         // Do not walk across feature points
 
@@ -433,12 +460,187 @@ Foam::surfaceFeatures::labelScalar Foam::surfaceFeatures::walkSegment
                 << " vertex:" << startPointi << nl
                 << "Returning with large length" << endl;
 
-            return labelScalar(nVisited, great);
+            return labelScalar(nVisited, GREAT);
         }
     }
     while (true);
 
     return labelScalar(nVisited, visitedLength);
+}
+
+
+//- Divide into multiple normal bins
+//  - return REGION if != 2 normals
+//  - return REGION if 2 normals that make feature angle
+//  - otherwise return NONE and set normals,bins
+//
+// This has been relocated from surfaceFeatureExtract and could be cleaned
+// up some more.
+//
+Foam::surfaceFeatures::edgeStatus
+Foam::surfaceFeatures::surfaceFeatures::checkFlatRegionEdge
+(
+    const scalar tol,
+    const scalar includedAngle,
+    const label edgeI
+) const
+{
+    const triSurface& surf = surf_;
+
+    const edge& e = surf.edges()[edgeI];
+    const labelList& eFaces = surf.edgeFaces()[edgeI];
+
+    // Bin according to normal
+
+    DynamicList<vector> normals(2);
+    DynamicList<labelList> bins(2);
+
+    forAll(eFaces, eFacei)
+    {
+        const vector& n = surf.faceNormals()[eFaces[eFacei]];
+
+        // Find the normal in normals
+        label index = -1;
+        forAll(normals, normalI)
+        {
+            if (mag(n & normals[normalI]) > (1-tol))
+            {
+                index = normalI;
+                break;
+            }
+        }
+
+        if (index != -1)
+        {
+            bins[index].append(eFacei);
+        }
+        else if (normals.size() >= 2)
+        {
+            // Would be third normal. Mark as feature.
+            //Pout<< "** at edge:" << surf.localPoints()[e[0]]
+            //    << surf.localPoints()[e[1]]
+            //    << " have normals:" << normals
+            //    << " and " << n << endl;
+            return surfaceFeatures::REGION;
+        }
+        else
+        {
+            normals.append(n);
+            bins.append(labelList(1, eFacei));
+        }
+    }
+
+
+    // Check resulting number of bins
+    if (bins.size() == 1)
+    {
+        // Note: should check here whether they are two sets of faces
+        // that are planar or indeed 4 faces al coming together at an edge.
+        //Pout<< "** at edge:"
+        //    << surf.localPoints()[e[0]]
+        //    << surf.localPoints()[e[1]]
+        //    << " have single normal:" << normals[0]
+        //    << endl;
+        return surfaceFeatures::NONE;
+    }
+    else
+    {
+        // Two bins. Check if normals make an angle
+
+        //Pout<< "** at edge:"
+        //    << surf.localPoints()[e[0]]
+        //    << surf.localPoints()[e[1]] << nl
+        //    << "    normals:" << normals << nl
+        //    << "    bins   :" << bins << nl
+        //    << endl;
+
+        if (includedAngle >= 0)
+        {
+            scalar minCos = Foam::cos(degToRad(180.0 - includedAngle));
+
+            forAll(eFaces, i)
+            {
+                const vector& ni = surf.faceNormals()[eFaces[i]];
+                for (label j=i+1; j<eFaces.size(); j++)
+                {
+                    const vector& nj = surf.faceNormals()[eFaces[j]];
+                    if (mag(ni & nj) < minCos)
+                    {
+                        //Pout<< "have sharp feature between normal:" << ni
+                        //    << " and " << nj << endl;
+
+                        // Is feature. Keep as region or convert to
+                        // feature angle? For now keep as region.
+                        return surfaceFeatures::REGION;
+                    }
+                }
+            }
+        }
+
+        // So now we have two normals bins but need to make sure both
+        // bins have the same regions in it.
+
+        // 1. store + or - region number depending
+        //    on orientation of triangle in bins[0]
+        const labelList& bin0 = bins[0];
+        labelList regionAndNormal(bin0.size());
+        forAll(bin0, i)
+        {
+            const labelledTri& t = surf.localFaces()[eFaces[bin0[i]]];
+            const auto dir = t.edgeDirection(e);
+
+            if (dir > 0)
+            {
+                regionAndNormal[i] = t.region()+1;
+            }
+            else if (dir == 0)
+            {
+                FatalErrorInFunction
+                    << exit(FatalError);
+            }
+            else
+            {
+                regionAndNormal[i] = -(t.region()+1);
+            }
+        }
+
+        // 2. check against bin1
+        const labelList& bin1 = bins[1];
+        labelList regionAndNormal1(bin1.size());
+        forAll(bin1, i)
+        {
+            const labelledTri& t = surf.localFaces()[eFaces[bin1[i]]];
+            const auto dir = t.edgeDirection(e);
+
+            label myRegionAndNormal;
+            if (dir > 0)
+            {
+                myRegionAndNormal = t.region()+1;
+            }
+            else
+            {
+                myRegionAndNormal = -(t.region()+1);
+            }
+
+            regionAndNormal1[i] = myRegionAndNormal;
+
+            label index = regionAndNormal.find(-myRegionAndNormal);
+            if (index == -1)
+            {
+                // Not found.
+                //Pout<< "cannot find region " << myRegionAndNormal
+                //    << " in regions " << regionAndNormal << endl;
+
+                return surfaceFeatures::REGION;
+            }
+        }
+
+        // Passed all checks, two normal bins with the same contents.
+        //Pout<< "regionAndNormal:" << regionAndNormal << endl;
+        //Pout<< "myRegionAndNormal:" << regionAndNormal1 << endl;
+    }
+
+    return surfaceFeatures::NONE;
 }
 
 
@@ -506,8 +708,8 @@ Foam::surfaceFeatures::surfaceFeatures
     surf_(surf),
     featurePoints_(featInfoDict.lookup("featurePoints")),
     featureEdges_(featInfoDict.lookup("featureEdges")),
-    externalStart_(featInfoDict.lookup<label>("externalStart")),
-    internalStart_(featInfoDict.lookup<label>("internalStart"))
+    externalStart_(featInfoDict.get<label>("externalStart")),
+    internalStart_(featInfoDict.get<label>("internalStart"))
 {}
 
 
@@ -527,10 +729,10 @@ Foam::surfaceFeatures::surfaceFeatures
 
     dictionary featInfoDict(str);
 
-    featureEdges_ = labelList(featInfoDict.lookup("featureEdges"));
-    featurePoints_ = labelList(featInfoDict.lookup("featurePoints"));
-    externalStart_ = featInfoDict.lookup<label>("externalStart");
-    internalStart_ = featInfoDict.lookup<label>("internalStart");
+    featInfoDict.readEntry("featureEdges", featureEdges_);
+    featInfoDict.readEntry("featurePoints", featurePoints_);
+    featInfoDict.readEntry("externalStart", externalStart_);
+    featInfoDict.readEntry("internalStart", internalStart_);
 }
 
 
@@ -590,7 +792,7 @@ Foam::surfaceFeatures::surfaceFeatures
     (
         dynFeatureEdgeFaces,
         edgeStat,
-        great,
+        GREAT,
         geometricTestOnly
     );
 
@@ -600,18 +802,18 @@ Foam::surfaceFeatures::surfaceFeatures
 
     forAll(allEdgeStat, eI)
     {
-        EdgeMap<label>::const_iterator iter = dynFeatEdges.find(surfEdges[eI]);
+        const auto iter = dynFeatEdges.cfind(surfEdges[eI]);
 
-        if (iter != dynFeatEdges.end())
+        if (iter.good())
         {
-            allEdgeStat[eI] = edgeStat[iter()];
+            allEdgeStat[eI] = edgeStat[iter.val()];
         }
     }
 
     edgeStat.clear();
     dynFeatEdges.clear();
 
-    setFromStatus(allEdgeStat, great);
+    setFromStatus(allEdgeStat, GREAT);
 }
 
 
@@ -676,7 +878,7 @@ void Foam::surfaceFeatures::findFeatures
     const bool geometricTestOnly
 )
 {
-    scalar minCos = Foam::cos(degToRad(180) - includedAngle);
+    scalar minCos = Foam::cos(degToRad(180.0 - includedAngle));
 
     // Per edge whether is feature edge.
     List<edgeStatus> edgeStat(surf_.nEdges(), NONE);
@@ -779,7 +981,7 @@ Foam::labelList Foam::surfaceFeatures::trimFeatures
          || (leftPath.n_ + rightPath.n_ + 1 < minElems)
         )
         {
-            // Rewalk same route (recognisable by featLines == featI)
+            // Rewalk same route (recognizable by featLines == featI)
             // to reset featLines.
 
             featLines[startEdgeI] = -2;
@@ -829,7 +1031,126 @@ Foam::labelList Foam::surfaceFeatures::trimFeatures
 }
 
 
-void Foam::surfaceFeatures::writeDict(Ostream& writeFile) const
+void Foam::surfaceFeatures::excludeBox
+(
+    List<edgeStatus>& edgeStat,
+    const treeBoundBox& bb
+) const
+{
+    deleteBox(edgeStat, bb, true);
+}
+
+
+void Foam::surfaceFeatures::subsetBox
+(
+    List<edgeStatus>& edgeStat,
+    const treeBoundBox& bb
+) const
+{
+    deleteBox(edgeStat, bb, false);
+}
+
+
+void Foam::surfaceFeatures::deleteBox
+(
+    List<edgeStatus>& edgeStat,
+    const treeBoundBox& bb,
+    const bool removeInside
+) const
+{
+    const edgeList& surfEdges = surf_.edges();
+    const pointField& surfLocalPoints = surf_.localPoints();
+
+    forAll(edgeStat, edgei)
+    {
+        const point eMid = surfEdges[edgei].centre(surfLocalPoints);
+
+        if (removeInside ? bb.contains(eMid) : !bb.contains(eMid))
+        {
+            edgeStat[edgei] = surfaceFeatures::NONE;
+        }
+    }
+}
+
+
+void Foam::surfaceFeatures::subsetPlane
+(
+    List<edgeStatus>& edgeStat,
+    const plane& cutPlane
+) const
+{
+    const edgeList& surfEdges = surf_.edges();
+    const pointField& pts = surf_.points();
+    const labelList& meshPoints = surf_.meshPoints();
+
+    forAll(edgeStat, edgei)
+    {
+        const edge& e = surfEdges[edgei];
+
+        const point& p0 = pts[meshPoints[e.start()]];
+        const point& p1 = pts[meshPoints[e.end()]];
+        const linePointRef line(p0, p1);
+
+        // If edge does not intersect the plane, delete.
+        scalar intersect = cutPlane.lineIntersect(line);
+
+        point featPoint = intersect * (p1 - p0) + p0;
+
+        if (!onLine(featPoint, line))
+        {
+            edgeStat[edgei] = surfaceFeatures::NONE;
+        }
+    }
+}
+
+
+void Foam::surfaceFeatures::excludeOpen
+(
+    List<edgeStatus>& edgeStat
+) const
+{
+    forAll(edgeStat, edgei)
+    {
+        if (surf_.edgeFaces()[edgei].size() == 1)
+        {
+            edgeStat[edgei] = surfaceFeatures::NONE;
+        }
+    }
+}
+
+
+//- Divide into multiple normal bins
+//  - return REGION if != 2 normals
+//  - return REGION if 2 normals that make feature angle
+//  - otherwise return NONE and set normals,bins
+void Foam::surfaceFeatures::checkFlatRegionEdge
+(
+    List<edgeStatus>& edgeStat,
+    const scalar tol,
+    const scalar includedAngle
+) const
+{
+    forAll(edgeStat, edgei)
+    {
+        if (edgeStat[edgei] == surfaceFeatures::REGION)
+        {
+            const labelList& eFaces = surf_.edgeFaces()[edgei];
+
+            if (eFaces.size() > 2 && (eFaces.size() % 2) == 0)
+            {
+                edgeStat[edgei] = checkFlatRegionEdge
+                (
+                    tol,
+                    includedAngle,
+                    edgei
+                );
+            }
+        }
+    }
+}
+
+
+void Foam::surfaceFeatures::writeDict(Ostream& os) const
 {
     dictionary featInfoDict;
     featInfoDict.add("externalStart", externalStart_);
@@ -837,15 +1158,14 @@ void Foam::surfaceFeatures::writeDict(Ostream& writeFile) const
     featInfoDict.add("featureEdges", featureEdges_);
     featInfoDict.add("featurePoints", featurePoints_);
 
-    featInfoDict.write(writeFile);
+    featInfoDict.write(os);
 }
 
 
 void Foam::surfaceFeatures::write(const fileName& fName) const
 {
-    OFstream str(fName);
-
-    writeDict(str);
+    OFstream os(fName);
+    writeDict(os);
 }
 
 
@@ -894,12 +1214,22 @@ void Foam::surfaceFeatures::writeObj(const fileName& prefix) const
     OFstream pointStr(prefix + "_points.obj");
     Pout<< "Writing feature points to " << pointStr.name() << endl;
 
-    forAll(featurePoints_, i)
+    for (const label pointi : featurePoints_)
     {
-        label pointi = featurePoints_[i];
-
         meshTools::writeOBJ(pointStr, surf_.localPoints()[pointi]);
     }
+}
+
+
+void Foam::surfaceFeatures::writeStats(Ostream& os) const
+{
+    os  << "Feature set:" << nl
+        << "    points : " << this->featurePoints().size() << nl
+        << "    edges  : " << this->featureEdges().size() << nl
+        << "    of which" << nl
+        << "        region edges   : " << this->nRegionEdges() << nl
+        << "        external edges : " << this->nExternalEdges() << nl
+        << "        internal edges : " << this->nInternalEdges() << endl;
 }
 
 
@@ -913,17 +1243,18 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
 {
     // Build tree out of all samples.
 
-    // Note: cannot be done one the fly - gcc4.4 compiler bug.
-    treeBoundBox bb(samples);
+    // Define bound box here (gcc-4.8.5)
+    const treeBoundBox overallBb(samples);
 
     indexedOctree<treeDataPoint> ppTree
     (
-        treeDataPoint(samples),   // all information needed to do checks
-        bb,                       // overall search domain
+        treeDataPoint(samples),
+        overallBb,
         8,      // maxLevel
         10,     // leafsize
         3.0     // duplicity
     );
+    const auto& treeData = ppTree.shapes();
 
     // From patch point to surface point
     Map<label> nearest(2*pointLabels.size());
@@ -932,7 +1263,7 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
 
     forAll(pointLabels, i)
     {
-        label surfPointi = pointLabels[i];
+        const label surfPointi = pointLabels[i];
 
         const point& surfPt = surfPoints[surfPointi];
 
@@ -952,7 +1283,7 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
 
         label sampleI = info.index();
 
-        if (magSqr(samples[sampleI] - surfPt) < maxDistSqr[sampleI])
+        if (treeData.centre(sampleI).distSqr(surfPt) < maxDistSqr[sampleI])
         {
             nearest.insert(sampleI, surfPointi);
         }
@@ -965,19 +1296,16 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
         // Dump to obj file
         //
 
-        Pout<< endl
-            << "Dumping nearest surface feature points to nearestSamples.obj"
-            << endl
-            << "View this Lightwave-OBJ file with e.g. javaview" << endl
+        Pout<< "Dumping nearest surface feature points to nearestSamples.obj"
             << endl;
 
         OFstream objStream("nearestSamples.obj");
 
         label vertI = 0;
-        forAllConstIter(Map<label>, nearest, iter)
+        forAllConstIters(nearest, iter)
         {
             meshTools::writeOBJ(objStream, samples[iter.key()]); vertI++;
-            meshTools::writeOBJ(objStream, surfPoints[iter()]); vertI++;
+            meshTools::writeOBJ(objStream, surfPoints[iter.val()]); vertI++;
             objStream<< "l " << vertI-1 << ' ' << vertI << endl;
         }
     }
@@ -1002,13 +1330,13 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
 
     scalar maxSearchSqr = max(maxDistSqr);
 
-    // Note: cannot be done one the fly - gcc4.4 compiler bug.
-    treeBoundBox bb(samples);
+    // Define bound box here (gcc-4.8.5)
+    const treeBoundBox overallBb(samples);
 
     indexedOctree<treeDataPoint> ppTree
     (
-        treeDataPoint(samples),   // all information needed to do checks
-        bb,                         // overall search domain
+        treeDataPoint(samples),
+        overallBb,
         8,      // maxLevel
         10,     // leafsize
         3.0     // duplicity
@@ -1030,7 +1358,7 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
                 << ' ' << surfPoints[e[1]] << endl;
         }
 
-        // Normalised edge vector
+        // Normalized edge vector
         vector eVec = e.vec(surfPoints);
         scalar eMag = mag(eVec);
         eVec /= eMag;
@@ -1063,7 +1391,7 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
 
             label sampleI = info.index();
 
-            if (magSqr(info.hitPoint() - edgePoint) < maxDistSqr[sampleI])
+            if (info.point().distSqr(edgePoint) < maxDistSqr[sampleI])
             {
                 nearest.insert(sampleI, surfEdgeI);
             }
@@ -1092,22 +1420,22 @@ Foam::Map<Foam::label> Foam::surfaceFeatures::nearestSamples
     {
         // Dump to obj file
 
-        Pout<< "Dumping nearest surface edges to nearestEdges.obj\n"
-            << "View this Lightwave-OBJ file with e.g. javaview\n" << endl;
+        Pout<< "Dumping nearest surface edges to nearestEdges.obj"
+            << endl;
 
         OFstream objStream("nearestEdges.obj");
 
         label vertI = 0;
-        forAllConstIter(Map<label>, nearest, iter)
+        forAllConstIters(nearest, iter)
         {
             const label sampleI = iter.key();
 
+            const edge& e = surfEdges[iter.val()];
+
             meshTools::writeOBJ(objStream, samples[sampleI]); vertI++;
 
-            const edge& e = surfEdges[iter()];
-
             point nearPt =
-                e.line(surfPoints).nearestDist(samples[sampleI]).rawPoint();
+                e.line(surfPoints).nearestDist(samples[sampleI]).point();
 
             meshTools::writeOBJ(objStream, nearPt); vertI++;
 
@@ -1140,11 +1468,10 @@ Foam::Map<Foam::pointIndexHit> Foam::surfaceFeatures::nearestEdges
     (
         treeDataEdge
         (
-            false,
             sampleEdges,
             samplePoints,
             selectedSampleEdges
-        ),                          // geometric info container for edges
+        ),
         treeBoundBox(samplePoints), // overall search domain
         8,      // maxLevel
         10,     // leafsize
@@ -1176,7 +1503,7 @@ Foam::Map<Foam::pointIndexHit> Foam::surfaceFeatures::nearestEdges
                 << ' ' << surfPoints[e[1]] << endl;
         }
 
-        // Normalised edge vector
+        // Normalized edge vector
         vector eVec = e.vec(surfPoints);
         scalar eMag = mag(eVec);
         eVec /= eMag;
@@ -1209,11 +1536,11 @@ Foam::Map<Foam::pointIndexHit> Foam::surfaceFeatures::nearestEdges
 
             label index = info.index();
 
-            label sampleEdgeI = ppTree.shapes().edgeLabels()[index];
+            label sampleEdgeI = ppTree.shapes().objectIndex(index);
 
             const edge& e = sampleEdges[sampleEdgeI];
 
-            if (magSqr(info.hitPoint() - edgePoint) < maxDistSqr[e.start()])
+            if (info.point().distSqr(edgePoint) < maxDistSqr[e.start()])
             {
                 nearest.insert
                 (
@@ -1246,13 +1573,13 @@ Foam::Map<Foam::pointIndexHit> Foam::surfaceFeatures::nearestEdges
     {
         // Dump to obj file
 
-        Pout<< "Dumping nearest surface feature edges to nearestEdges.obj\n"
-            << "View this Lightwave-OBJ file with e.g. javaview\n" << endl;
+        Pout<< "Dumping nearest surface feature edges to nearestEdges.obj"
+            << endl;
 
         OFstream objStream("nearestEdges.obj");
 
         label vertI = 0;
-        forAllConstIter(Map<pointIndexHit>, nearest, iter)
+        forAllConstIters(nearest, iter)
         {
             const label sampleEdgeI = iter.key();
 
@@ -1262,7 +1589,7 @@ Foam::Map<Foam::pointIndexHit> Foam::surfaceFeatures::nearestEdges
             meshTools::writeOBJ(objStream, sampleEdge.centre(samplePoints));
             vertI++;
 
-            meshTools::writeOBJ(objStream, iter().rawPoint());
+            meshTools::writeOBJ(objStream, iter.val().point());
             vertI++;
 
             objStream<< "l " << vertI-1 << ' ' << vertI << endl;
@@ -1298,16 +1625,16 @@ void Foam::surfaceFeatures::nearestSurfEdge
     (
         treeDataEdge
         (
-            false,
             surf_.edges(),
             localPoints,
             selectedEdges
-        ),          // all information needed to do geometric checks
+        ),
         searchDomain,  // overall search domain
         8,      // maxLevel
         10,     // leafsize
         3.0     // duplicity
     );
+    const auto& treeData = ppTree.shapes();
 
     forAll(samples, i)
     {
@@ -1325,19 +1652,15 @@ void Foam::surfaceFeatures::nearestSurfEdge
         }
         else
         {
-            edgeLabel[i] = selectedEdges[info.index()];
-
             // Need to recalculate to classify edgeEndPoint
-            const edge& e = surf_.edges()[edgeLabel[i]];
-
             pointIndexHit pHit = edgeNearest
             (
-                localPoints[e.start()],
-                localPoints[e.end()],
+                treeData.line(info.index()),
                 sample
             );
 
-            edgePoint[i] = pHit.rawPoint();
+            edgeLabel[i] = treeData.objectIndex(info.index());
+            edgePoint[i] = pHit.point();
             edgeEndPoint[i] = pHit.index();
         }
     }
@@ -1369,16 +1692,16 @@ void Foam::surfaceFeatures::nearestSurfEdge
     (
         treeDataEdge
         (
-            false,
             surf_.edges(),
             surf_.localPoints(),
             selectedEdges
-        ),              // all information needed to do geometric checks
+        ),
         searchDomain,   // overall search domain
         8,              // maxLevel
         10,             // leafsize
         3.0             // duplicity
     );
+    const auto& treeData = ppTree.shapes();
 
     forAll(selectedSampleEdges, i)
     {
@@ -1403,9 +1726,8 @@ void Foam::surfaceFeatures::nearestSurfEdge
         }
         else
         {
-            edgeLabel[i] = selectedEdges[info.index()];
-
-            pointOnFeature[i] = info.hitPoint();
+            edgeLabel[i] = treeData.objectIndex(info.index());
+            pointOnFeature[i] = info.point();
         }
     }
 }
@@ -1426,18 +1748,14 @@ void Foam::surfaceFeatures::nearestFeatEdge
 
     indexedOctree<treeDataEdge> ppTree
     (
-        treeDataEdge
-        (
-            false,
-            edges,
-            points,
-            identityMap(edges.size())
-        ),          // all information needed to do geometric checks
+        treeDataEdge(edges, points),  // All edges
+
         searchDomain,  // overall search domain
         8,      // maxLevel
         10,     // leafsize
         3.0     // duplicity
     );
+    const auto& treeData = ppTree.shapes();
 
     const edgeList& surfEdges = surf_.edges();
     const pointField& surfLocalPoints = surf_.localPoints();
@@ -1459,8 +1777,7 @@ void Foam::surfaceFeatures::nearestFeatEdge
         {
             const vector surfEdgeDir = midPoint - startPoint;
 
-            const edge& featEdge = edges[infoMid.index()];
-            const vector featEdgeDir = featEdge.vec(points);
+            const vector featEdgeDir = treeData.line(infoMid.index()).vec();
 
             // Check that the edges are nearly parallel
             if (mag(surfEdgeDir ^ featEdgeDir) < parallelTolerance)
@@ -1476,12 +1793,9 @@ void Foam::surfaceFeatures::nearestFeatEdge
 
 void Foam::surfaceFeatures::operator=(const surfaceFeatures& rhs)
 {
-    // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorInFunction
-            << "Attempted assignment to self"
-            << abort(FatalError);
+        return;  // Self-assignment is a no-op
     }
 
     if (&surf_ != &rhs.surface())
@@ -1495,247 +1809,6 @@ void Foam::surfaceFeatures::operator=(const surfaceFeatures& rhs)
     featureEdges_ = rhs.featureEdges();
     externalStart_ = rhs.externalStart();
     internalStart_ = rhs.internalStart();
-}
-
-
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
-
-void Foam::selectBox
-(
-    const triSurface& surf,
-    const boundBox& bb,
-    const bool inside,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-)
-{
-    forAll(edgeStat, edgei)
-    {
-        const point eMid = surf.edges()[edgei].centre(surf.localPoints());
-
-        if (!inside ? bb.contains(eMid) : !bb.contains(eMid))
-        {
-            edgeStat[edgei] = surfaceFeatures::NONE;
-        }
-    }
-}
-
-
-void Foam::selectCutEdges
-(
-    const triSurface& surf,
-    const plane& cutPlane,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-)
-{
-    const pointField& points = surf.points();
-    const labelList& meshPoints = surf.meshPoints();
-
-    forAll(edgeStat, edgei)
-    {
-        const edge& e = surf.edges()[edgei];
-        const point& p0 = points[meshPoints[e.start()]];
-        const point& p1 = points[meshPoints[e.end()]];
-        const linePointRef line(p0, p1);
-
-        // If edge does not intersect the plane, delete.
-        const scalar intersect = cutPlane.lineIntersect(line);
-        if (intersect < 0 || intersect > 1)
-        {
-            edgeStat[edgei] = surfaceFeatures::NONE;
-        }
-    }
-}
-
-
-Foam::surfaceFeatures::edgeStatus Foam::checkNonManifoldEdge
-(
-    const triSurface& surf,
-    const scalar tol,
-    const scalar includedAngle,
-    const label edgei
-)
-{
-    const edge& e = surf.edges()[edgei];
-    const labelList& eFaces = surf.edgeFaces()[edgei];
-
-    // Bin according to normal
-
-    DynamicList<Foam::vector> normals(2);
-    DynamicList<labelList> bins(2);
-
-    forAll(eFaces, eFacei)
-    {
-        const Foam::vector& n = surf.faceNormals()[eFaces[eFacei]];
-
-        // Find the normal in normals
-        label index = -1;
-        forAll(normals, normalI)
-        {
-            if (mag(n&normals[normalI]) > (1-tol))
-            {
-                index = normalI;
-                break;
-            }
-        }
-
-        if (index != -1)
-        {
-            bins[index].append(eFacei);
-        }
-        else if (normals.size() >= 2)
-        {
-            // Would be third normal. Mark as feature.
-            // Pout<< "** at edge:" << surf.localPoints()[e[0]]
-            //    << surf.localPoints()[e[1]]
-            //    << " have normals:" << normals
-            //    << " and " << n << endl;
-            return surfaceFeatures::REGION;
-        }
-        else
-        {
-            normals.append(n);
-            bins.append(labelList(1, eFacei));
-        }
-    }
-
-    // Check resulting number of bins
-    if (bins.size() == 1)
-    {
-        // Note: should check here whether they are two sets of faces
-        // that are planar or indeed 4 faces al coming together at an edge.
-        // Pout<< "** at edge:"
-        //    << surf.localPoints()[e[0]]
-        //    << surf.localPoints()[e[1]]
-        //    << " have single normal:" << normals[0]
-        //    << endl;
-        return surfaceFeatures::NONE;
-    }
-    else
-    {
-        // Two bins. Check if normals make an angle
-
-        // Pout<< "** at edge:"
-        //    << surf.localPoints()[e[0]]
-        //    << surf.localPoints()[e[1]] << nl
-        //    << "    normals:" << normals << nl
-        //    << "    bins   :" << bins << nl
-        //    << endl;
-
-        if (includedAngle >= 0)
-        {
-            scalar minCos = Foam::cos(degToRad(180) - includedAngle);
-
-            forAll(eFaces, i)
-            {
-                const Foam::vector& ni = surf.faceNormals()[eFaces[i]];
-                for (label j=i+1; j<eFaces.size(); j++)
-                {
-                    const Foam::vector& nj = surf.faceNormals()[eFaces[j]];
-                    if (mag(ni & nj) < minCos)
-                    {
-                        // Pout<< "have sharp feature between normal:" << ni
-                        //    << " and " << nj << endl;
-
-                        // Is feature. Keep as region or convert to
-                        // feature angle? For now keep as region.
-                        return surfaceFeatures::REGION;
-                    }
-                }
-            }
-        }
-
-
-        // So now we have two normals bins but need to make sure both
-        // bins have the same regions in it.
-
-         // 1. store + or - region number depending
-        //    on orientation of triangle in bins[0]
-        const labelList& bin0 = bins[0];
-        labelList regionAndNormal(bin0.size());
-        forAll(bin0, i)
-        {
-            const labelledTri& t = surf.localFaces()[eFaces[bin0[i]]];
-            int dir = t.edgeDirection(e);
-
-            if (dir > 0)
-            {
-                regionAndNormal[i] = t.region()+1;
-            }
-            else if (dir == 0)
-            {
-                FatalErrorInFunction
-                    << exit(FatalError);
-            }
-            else
-            {
-                regionAndNormal[i] = -(t.region()+1);
-            }
-        }
-
-        // 2. check against bin1
-        const labelList& bin1 = bins[1];
-        labelList regionAndNormal1(bin1.size());
-        forAll(bin1, i)
-        {
-            const labelledTri& t = surf.localFaces()[eFaces[bin1[i]]];
-            int dir = t.edgeDirection(e);
-
-            label myRegionAndNormal;
-            if (dir > 0)
-            {
-                myRegionAndNormal = t.region()+1;
-            }
-            else
-            {
-                myRegionAndNormal = -(t.region()+1);
-            }
-
-            regionAndNormal1[i] = myRegionAndNormal;
-
-            label index = findIndex(regionAndNormal, -myRegionAndNormal);
-            if (index == -1)
-            {
-                // Not found.
-                // Pout<< "cannot find region " << myRegionAndNormal
-                //    << " in regions " << regionAndNormal << endl;
-
-                return surfaceFeatures::REGION;
-            }
-        }
-
-        return surfaceFeatures::NONE;
-    }
-}
-
-
-void Foam::selectManifoldEdges
-(
-    const triSurface& surf,
-    const scalar tol,
-    const scalar includedAngle,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-)
-{
-    forAll(edgeStat, edgei)
-    {
-        const labelList& eFaces = surf.edgeFaces()[edgei];
-
-        if
-        (
-            eFaces.size() > 2
-            && edgeStat[edgei] == surfaceFeatures::REGION
-            && (eFaces.size() % 2) == 0
-        )
-        {
-            edgeStat[edgei] = checkNonManifoldEdge
-            (
-                surf,
-                tol,
-                includedAngle,
-                edgei
-            );
-        }
-    }
 }
 
 

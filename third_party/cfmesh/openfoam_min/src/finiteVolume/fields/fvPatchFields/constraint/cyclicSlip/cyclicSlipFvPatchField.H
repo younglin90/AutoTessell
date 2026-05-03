@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,14 @@ License
 Class
     Foam::cyclicSlipFvPatchField
 
+Group
+    grpCoupledBoundaryConditions
+
 Description
     This boundary condition is a light wrapper around the cyclicFvPatchField
     condition, providing no new functionality.
+
+    The "value" entry is NO_READ.
 
 Usage
     Example of the boundary condition specification:
@@ -45,8 +52,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cyclicSlipFvPatchField_H
-#define cyclicSlipFvPatchField_H
+#ifndef Foam_cyclicSlipFvPatchField_H
+#define Foam_cyclicSlipFvPatchField_H
 
 #include "cyclicFvPatchField.H"
 #include "cyclicSlipFvPatch.H"
@@ -65,7 +72,6 @@ class cyclicSlipFvPatchField
 :
     public cyclicFvPatchField<Type>
 {
-
 public:
 
     //- Runtime type information
@@ -78,14 +84,15 @@ public:
         cyclicSlipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
         cyclicSlipFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -94,37 +101,37 @@ public:
         (
             const cyclicSlipFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        cyclicSlipFvPatchField(const cyclicSlipFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        cyclicSlipFvPatchField
+        (
+            const cyclicSlipFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         cyclicSlipFvPatchField
         (
             const cyclicSlipFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchField<Type>> clone
-        (
-            const DimensionedField<Type, fvMesh>& iF
-        ) const
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new cyclicSlipFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this);
         }
 
-
-    // Member Operators
-
-        //- Inherit assignment
-        using cyclicFvPatchField<Type>::operator=;
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<Type>> clone
+        (
+            const DimensionedField<Type, volMesh>& iF
+        ) const
+        {
+            return fvPatchField<Type>::Clone(*this, iF);
+        }
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,21 +36,24 @@ Foam::translatingWallVelocityFvPatchVectorField::
 translatingWallVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
+    const DimensionedField<vector, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<vector>(p, iF),
+    U_(nullptr)
+{}
+
+
+Foam::translatingWallVelocityFvPatchVectorField::
+translatingWallVelocityFvPatchVectorField
+(
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<vector>(p, iF, dict, false),
-    U_
-    (
-        Function1<vector>::New
-        (
-            "U",
-            time().userUnits(),
-            dimVelocity,
-            dict
-        )
-    )
+    fixedValueFvPatchField<vector>(p, iF, dict, IOobjectOption::NO_READ),
+    U_(Function1<vector>::New("U", dict, &db()))
 {
     // Evaluate the wall velocity
     updateCoeffs();
@@ -59,12 +65,23 @@ translatingWallVelocityFvPatchVectorField
 (
     const translatingWallVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<vector>(ptf, p, iF, mapper),
-    U_(ptf.U_, false)
+    U_(ptf.U_.clone())
+{}
+
+
+Foam::translatingWallVelocityFvPatchVectorField::
+translatingWallVelocityFvPatchVectorField
+(
+    const translatingWallVelocityFvPatchVectorField& twvpvf
+)
+:
+    fixedValueFvPatchField<vector>(twvpvf),
+    U_(twvpvf.U_.clone())
 {}
 
 
@@ -72,11 +89,11 @@ Foam::translatingWallVelocityFvPatchVectorField::
 translatingWallVelocityFvPatchVectorField
 (
     const translatingWallVelocityFvPatchVectorField& twvpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchField<vector>(twvpvf, iF),
-    U_(twvpvf.U_, false)
+    U_(twvpvf.U_.clone())
 {}
 
 
@@ -89,7 +106,8 @@ void Foam::translatingWallVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const vector U = U_->value(time().value());
+    const scalar t = this->db().time().timeOutputValue();
+    const vector U = U_->value(t);
 
     // Remove the component of U normal to the wall in case the wall is not flat
     const vectorField n(patch().nf());
@@ -101,9 +119,9 @@ void Foam::translatingWallVelocityFvPatchVectorField::updateCoeffs()
 
 void Foam::translatingWallVelocityFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntry(os, time().userUnits(), dimVelocity, U_());
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    U_->writeData(os);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

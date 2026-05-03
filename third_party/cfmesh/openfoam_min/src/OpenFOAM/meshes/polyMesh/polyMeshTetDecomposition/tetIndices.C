@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,65 +28,29 @@ License
 
 #include "tetIndices.H"
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-Foam::tetIndices::tetIndices()
-:
-    celli_(-1),
-    facei_(-1),
-    tetPti_(-1)
-{}
-
-
-Foam::tetIndices::tetIndices
-(
-    label celli,
-    label facei,
-    label tetPtI
-)
-:
-    celli_(celli),
-    facei_(facei),
-    tetPti_(tetPtI)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::tetIndices::~tetIndices()
-{}
+int Foam::tetIndices::nWarnings_ = 0;
 
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Istream& Foam::operator>>(Istream& is, tetIndices& tI)
+Foam::Istream& Foam::operator>>(Istream& is, tetIndices& rhs)
 {
-    is  >> tI.cell() >> tI.face() >> tI.tetPt();
+    is  >> rhs.cell() >> rhs.face() >> rhs.tetPt();
 
-    // Check state of Istream
-    is.check
-    (
-        "Foam::Istream& Foam::operator>>(Foam::Istream&, Foam::tetIndices&)"
-    );
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const tetIndices& tI)
+Foam::Ostream& Foam::operator<<(Ostream& os, const tetIndices& rhs)
 {
-    os  << tI.cell() << token::SPACE
-        << tI.face() << token::SPACE
-        << tI.tetPt() << token::SPACE
-        << endl;
+    os  << rhs.cell() << token::SPACE
+        << rhs.face() << token::SPACE
+        << rhs.tetPt() << nl;
 
-    // Check state of Ostream
-    os.check
-    (
-        "Foam::Ostream& Foam::operator<<(Foam::Ostream&, "
-        "const Foam::tetIndices&)"
-    );
-
+    os.check(FUNCTION_NAME);
     return os;
 }
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,102 +27,60 @@ Class
     Foam::surfaceMesh
 
 Description
-    Mesh data for surface fields
+    Mesh data needed to do the Finite Volume discretisation.
 
 \*---------------------------------------------------------------------------*/
 
 #ifndef surfaceMesh_H
 #define surfaceMesh_H
 
-#include "fvBoundaryMesh.H"
-#include "GeometricFieldSources.H"
-#include "fvsPatchFieldsFwd.H"
+#include "GeoMesh.H"
+#include "fvMesh.H"
+#include "primitiveMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class fvMesh;
-    // class fvBoundaryMesh;
-class faceZone;
-
 /*---------------------------------------------------------------------------*\
-                         Class surfaceMesh Declaration
+                           Class surfaceMesh Declaration
 \*---------------------------------------------------------------------------*/
 
 class surfaceMesh
+:
+    public GeoMesh<fvMesh>
 {
-    // Private Data
-
-        //- Reference to fvMesh
-        const fvMesh& mesh_;
-
-
-protected:
+public:
 
     // Constructors
 
-        //- Construct from fvMesh
+        //- Construct surface mesh from fvMesh reference
         explicit surfaceMesh(const fvMesh& mesh)
         :
-            mesh_(mesh)
+            GeoMesh<fvMesh>(mesh)
         {}
-
-
-public:
-
-    // Destructor
-    virtual ~surfaceMesh()
-    {}
-
-
-    // Public typedefs
-
-        //- Mesh type
-        typedef fvMesh Mesh;
-
-        //- Boundary mesh type
-        typedef fvBoundaryMesh BoundaryMesh;
-
-        //- Zone type
-        typedef faceZone Zone;
-
-        //- Patch field type
-        template<class Type>
-        using PatchField = fvsPatchField<Type>;
-
-        //- Field source type
-        template<class Type>
-        using FieldSource = NoFieldSource<Type>;
 
 
     // Member Functions
 
-        //- Return reference to polyMesh
-        const polyMesh& poly() const;
+        //- Return size. Number of internal faces
+        static label size(const Mesh& mesh)
+        {
+            return mesh.nInternalFaces();
+        }
 
-        //- Return size (number of internal faces)
-        inline label size() const;
+        //- Return size. Number of internal faces
+        label size() const
+        {
+            return size(mesh_);
+        }
 
-        //- Return fvMesh database
-        inline const objectRegistry& db() const;
-
-        //- Return time
-        inline const Time& time() const;
-
-        //- Return reference to fvBoundaryMesh
-        inline const fvBoundaryMesh& boundary() const;
-
-
-    // Member Operators
-
-        //- Return reference to fvMesh
-        inline const fvMesh& operator()() const;
-
-        bool operator!=(const surfaceMesh&) const;
-
-        bool operator==(const surfaceMesh&) const;
+        //- Field of face centres
+        const surfaceVectorField& C() const
+        {
+            return mesh_.Cf();
+        }
 };
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,22 +46,6 @@ namespace Foam
         processorCyclicGAMGInterface,
         Istream
     );
-
-    // Add under name nonConformalProcessorCyclic
-    addNamedToRunTimeSelectionTable
-    (
-        GAMGInterface,
-        processorCyclicGAMGInterface,
-        lduInterface,
-        nonConformalProcessorCyclic
-    );
-    addNamedToRunTimeSelectionTable
-    (
-        GAMGInterface,
-        processorCyclicGAMGInterface,
-        Istream,
-        nonConformalProcessorCyclic
-    );
 }
 
 
@@ -97,12 +83,6 @@ Foam::processorCyclicGAMGInterface::processorCyclicGAMGInterface
 )
 :
     processorGAMGInterface(index, coarseInterfaces, is)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::processorCyclicGAMGInterface::~processorCyclicGAMGInterface()
 {}
 
 

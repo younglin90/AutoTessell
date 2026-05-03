@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,79 +28,81 @@ License
 
 #include "boundBox.H"
 #include "PstreamReduceOps.H"
-#include "tmp.H"
+#include "plane.H"
+#include "hexCell.H"
+#include "triangle.H"
+#include "MinMax.H"
+#include "Random.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 const Foam::boundBox Foam::boundBox::greatBox
 (
-    vector::rootMin/2,
-    vector::rootMax/2
+    point::uniform(-ROOTVGREAT),
+    point::uniform(ROOTVGREAT)
 );
-
 
 const Foam::boundBox Foam::boundBox::invertedBox
 (
-    vector::rootMax/2,
-    vector::rootMin/2
+    point::uniform(ROOTVGREAT),
+    point::uniform(-ROOTVGREAT)
 );
 
+const Foam::FixedList<Foam::vector, 6> Foam::boundBox::faceNormals
+({
+    vector(-1,  0,  0), // 0: x-min, left
+    vector( 1,  0,  0), // 1: x-max, right
+    vector( 0, -1,  0), // 2: y-min, bottom
+    vector( 0,  1,  0), // 3: y-max, top
+    vector( 0,  0, -1), // 4: z-min, back
+    vector( 0,  0,  1)  // 5: z-max, front
+});
 
-// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-void Foam::boundBox::calculate(const UList<point>& points, const bool doReduce)
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+const Foam::faceList& Foam::boundBox::hexFaces()
 {
-    if (points.empty())
-    {
-        min_ = Zero;
-        max_ = Zero;
-
-        if (doReduce && Pstream::parRun())
-        {
-            // Use values that get overwritten by reduce minOp, maxOp below
-            min_ = vector::rootMax/2;
-            max_ = vector::rootMin/2;
-        }
-    }
-    else
-    {
-        min_ = points[0];
-        max_ = points[0];
-
-        for (label i = 1; i < points.size(); i++)
-        {
-            min_ = ::Foam::min(min_, points[i]);
-            max_ = ::Foam::max(max_, points[i]);
-        }
-    }
-
-    // Reduce parallel information
-    if (doReduce)
-    {
-        reduce(min_, minOp<point>());
-        reduce(max_, maxOp<point>());
-    }
+    return hexCell::modelFaces();
 }
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::boundBox::boundBox(const UList<point>& points, const bool doReduce)
+Foam::boundBox::boundBox(const boundBox& bb, const bool doReduce)
 :
-    min_(Zero),
-    max_(Zero)
+    boundBox(bb)
 {
-    calculate(points, doReduce);
+    if (doReduce)
+    {
+        reduce();
+    }
 }
 
 
-Foam::boundBox::boundBox(const tmp<pointField>& points, const bool doReduce)
+Foam::boundBox::boundBox(const UList<point>& points, bool doReduce)
 :
-    min_(Zero),
-    max_(Zero)
+    boundBox()
 {
-    calculate(points(), doReduce);
-    points.clear();
+    add(points);
+
+    if (doReduce)
+    {
+        reduce();
+    }
+}
+
+
+Foam::boundBox::boundBox(const tmp<pointField>& tpoints, bool doReduce)
+:
+    boundBox()
+{
+    add(tpoints);
+
+    if (doReduce)
+    {
+        reduce();
+    }
 }
 
 
@@ -105,111 +110,263 @@ Foam::boundBox::boundBox
 (
     const UList<point>& points,
     const labelUList& indices,
-    const bool doReduce
+    bool doReduce
 )
 :
-    min_(Zero),
-    max_(Zero)
+    boundBox()
 {
-    if (points.empty() || indices.empty())
-    {
-        if (doReduce && Pstream::parRun())
-        {
-            // Use values that get overwritten by reduce minOp, maxOp below
-            min_ = vector::rootMax/2;
-            max_ = vector::rootMin/2;
-        }
-    }
-    else
-    {
-        min_ = points[indices[0]];
-        max_ = points[indices[0]];
+    add(points, indices);
 
-        for (label i=1; i < indices.size(); ++i)
-        {
-            min_ = ::Foam::min(min_, points[indices[i]]);
-            max_ = ::Foam::max(max_, points[indices[i]]);
-        }
-    }
-
-    // Reduce parallel information
     if (doReduce)
     {
-        reduce(min_, minOp<point>());
-        reduce(max_, maxOp<point>());
+        reduce();
     }
 }
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-Foam::tmp<Foam::pointField> Foam::boundBox::points() const
+Foam::tmp<Foam::pointField> Foam::boundBox::hexCorners() const
 {
-    tmp<pointField> tPts = tmp<pointField>(new pointField(8));
-    pointField& pt = tPts.ref();
+    auto tpts = tmp<pointField>::New(boundBox::nPoints());
+    auto& pts = tpts.ref();
 
-    pt[0] = min_;                                   // min-x, min-y, min-z
-    pt[1] = point(max_.x(), min_.y(), min_.z());    // max-x, min-y, min-z
-    pt[2] = point(max_.x(), max_.y(), min_.z());    // max-x, max-y, min-z
-    pt[3] = point(min_.x(), max_.y(), min_.z());    // min-x, max-y, min-z
-    pt[4] = point(min_.x(), min_.y(), max_.z());    // min-x, min-y, max-z
-    pt[5] = point(max_.x(), min_.y(), max_.z());    // max-x, min-y, max-z
-    pt[6] = max_;                                   // max-x, max-y, max-z
-    pt[7] = point(min_.x(), max_.y(), max_.z());    // min-x, max-y, max-z
+    pts[0] = hexCorner<0>();
+    pts[1] = hexCorner<1>();
+    pts[2] = hexCorner<2>();
+    pts[3] = hexCorner<3>();
+    pts[4] = hexCorner<4>();
+    pts[5] = hexCorner<5>();
+    pts[6] = hexCorner<6>();
+    pts[7] = hexCorner<7>();
 
-    return tPts;
+    return tpts;
 }
 
 
-Foam::faceList Foam::boundBox::faces()
+Foam::tmp<Foam::pointField> Foam::boundBox::faceCentres() const
 {
-    faceList faces(6);
+    auto tpts = tmp<pointField>::New(boundBox::nFaces());
+    auto& pts = tpts.ref();
 
-    forAll(faces, fI)
+    for (direction facei = 0; facei < boundBox::nFaces(); ++facei)
     {
-        faces[fI].setSize(4);
+        pts[facei] = faceCentre(facei);
     }
 
-    faces[0][0] = 0;
-    faces[0][1] = 1;
-    faces[0][2] = 2;
-    faces[0][3] = 3;
-
-    faces[1][0] = 2;
-    faces[1][1] = 6;
-    faces[1][2] = 7;
-    faces[1][3] = 3;
-
-    faces[2][0] = 0;
-    faces[2][1] = 4;
-    faces[2][2] = 5;
-    faces[2][3] = 1;
-
-    faces[3][0] = 4;
-    faces[3][1] = 7;
-    faces[3][2] = 6;
-    faces[3][3] = 5;
-
-    faces[4][0] = 3;
-    faces[4][1] = 7;
-    faces[4][2] = 4;
-    faces[4][3] = 0;
-
-    faces[5][0] = 1;
-    faces[5][1] = 5;
-    faces[5][2] = 6;
-    faces[5][3] = 2;
-
-    return faces;
+    return tpts;
 }
 
 
-void Foam::boundBox::inflate(const scalar s)
+Foam::point Foam::boundBox::faceCentre(const direction facei) const
 {
-    vector ext = vector::one*s*mag();
+    point pt = boundBox::centre();
 
-    min_ -= ext;
-    max_ += ext;
+    switch (facei)
+    {
+        case 0: pt.x() = min().x(); break;  // 0: x-min, left
+        case 1: pt.x() = max().x(); break;  // 1: x-max, right
+        case 2: pt.y() = min().y(); break;  // 2: y-min, bottom
+        case 3: pt.y() = max().y(); break;  // 3: y-max, top
+        case 4: pt.z() = min().z(); break;  // 4: z-min, back
+        case 5: pt.z() = max().z(); break;  // 5: z-max, front
+        default:
+        {
+            FatalErrorInFunction
+                << "Face:" << int(facei) << " should be [0..5]"
+                << abort(FatalError);
+        }
+    }
+
+    return pt;
+}
+
+
+void Foam::boundBox::reduce()
+{
+    Foam::reduce(min_, minOp<point>());
+    Foam::reduce(max_, maxOp<point>());
+}
+
+
+Foam::boundBox Foam::boundBox::returnReduce(const boundBox& bb)
+{
+    boundBox work(bb);
+    work.reduce();
+    return work;
+}
+
+
+bool Foam::boundBox::intersects(const plane& pln) const
+{
+    // Require a full 3D box
+    if (nDim() != 3)
+    {
+        return false;
+    }
+
+    // Check as below(1) or above(2) - stop when it cuts both
+    int side = 0;
+
+    #undef  doLocalCode
+    #define doLocalCode(Idx)                                                  \
+    {                                                                         \
+        side |= (pln.whichSide(hexCorner<Idx>()) == plane::BACK ? 1 : 2);     \
+        if (side == 3) return true;  /* Both below and above: done */         \
+    }
+
+    // Each box corner
+    doLocalCode(0);
+    doLocalCode(1);
+    doLocalCode(2);
+    doLocalCode(3);
+    doLocalCode(4);
+    doLocalCode(5);
+    doLocalCode(6);
+    doLocalCode(7);
+
+    #undef doLocalCode
+
+    return false;
+}
+
+
+bool Foam::boundBox::intersects(const triPointRef& tri) const
+{
+    // Require a full 3D box
+    if (nDim() != 3)
+    {
+        return false;
+    }
+
+    // Simplest check - if any points are inside
+    if (contains(tri.a()) || contains(tri.b()) || contains(tri.c()))
+    {
+        return true;
+    }
+
+
+    // Extent of box points projected onto axis
+    const auto project_box = []
+    (
+        const boundBox& bb,
+        const vector& axis,
+        scalarMinMax& extent
+    ) -> void
+    {
+        extent.reset(axis & bb.hexCorner<0>());
+        extent.add(axis & bb.hexCorner<1>());
+        extent.add(axis & bb.hexCorner<2>());
+        extent.add(axis & bb.hexCorner<3>());
+        extent.add(axis & bb.hexCorner<4>());
+        extent.add(axis & bb.hexCorner<5>());
+        extent.add(axis & bb.hexCorner<6>());
+        extent.add(axis & bb.hexCorner<7>());
+    };
+
+
+    // Use separating axis theorem to determine if triangle and
+    // (axis-aligned) bounding box intersect.
+
+    scalarMinMax tri_extent(0);
+    scalarMinMax box_extent(0);
+    const boundBox& bb = *this;
+
+    // 1.
+    // Test separating axis defined by the box normals
+    // (project triangle points)
+    // - do first (largely corresponds to normal bound box rejection test)
+    //
+    // No intersection if extent of projected triangle points are outside
+    // of the box range
+
+    {
+        // vector::X
+        tri_extent.reset(tri.a().x());
+        tri_extent.add(tri.b().x());
+        tri_extent.add(tri.c().x());
+
+        box_extent.reset(bb.min().x(), bb.max().x());
+
+        if (!tri_extent.overlaps(box_extent))
+        {
+            return false;
+        }
+
+        // vector::Y
+        tri_extent.reset(tri.a().y());
+        tri_extent.add(tri.b().y());
+        tri_extent.add(tri.c().y());
+
+        box_extent.reset(bb.min().y(), bb.max().y());
+
+        if (!tri_extent.overlaps(box_extent))
+        {
+            return false;
+        }
+
+        // vector::Z
+        tri_extent.reset(tri.a().z());
+        tri_extent.add(tri.b().z());
+        tri_extent.add(tri.c().z());
+
+        box_extent.reset(bb.min().z(), bb.max().z());
+
+        if (!tri_extent.overlaps(box_extent))
+        {
+            return false;
+        }
+    }
+
+
+    // 2.
+    // Test separating axis defined by the triangle normal
+    // (project box points)
+    // - can use area or unit normal since any scaling is applied to both
+    //   sides of the comparison.
+    // - by definition all triangle points lie in the plane defined by
+    //   the normal. It doesn't matter which of the points we use to define
+    //   the triangle offset (extent) when projected onto the triangle normal
+
+    vector axis = tri.areaNormal();
+
+    tri_extent.reset(axis & tri.a());
+    project_box(bb, axis, box_extent);
+
+    if (!tri_extent.overlaps(box_extent))
+    {
+        return false;
+    }
+
+
+    // 3.
+    // Test separating axes defined by the triangle edges, which are the
+    // cross product of the edge vectors and the box face normals
+
+    for (const vector& edgeVec : { tri.vecA(), tri.vecB(), tri.vecC() })
+    {
+        for (direction faceDir = 0; faceDir < vector::nComponents; ++faceDir)
+        {
+            axis = Zero;
+            axis[faceDir] = 1;
+
+            axis = (edgeVec ^ axis);
+
+            // project tri
+            tri_extent.reset(axis & tri.a());
+            tri_extent.add(axis & tri.b());
+            tri_extent.add(axis & tri.c());
+
+            project_box(bb, axis, box_extent);
+
+            if (!tri_extent.overlaps(box_extent))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 
@@ -220,32 +377,9 @@ bool Foam::boundBox::contains(const UList<point>& points) const
         return true;
     }
 
-    forAll(points, i)
+    for (const point& p : points)
     {
-        if (!contains(points[i]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-
-bool Foam::boundBox::contains
-(
-    const UList<point>& points,
-    const labelUList& indices
-) const
-{
-    if (points.empty() || indices.empty())
-    {
-        return true;
-    }
-
-    forAll(indices, i)
-    {
-        if (!contains(points[indices[i]]))
+        if (!contains(p))
         {
             return false;
         }
@@ -262,9 +396,9 @@ bool Foam::boundBox::containsAny(const UList<point>& points) const
         return true;
     }
 
-    forAll(points, i)
+    for (const point& p : points)
     {
-        if (contains(points[i]))
+        if (contains(p))
         {
             return true;
         }
@@ -274,37 +408,53 @@ bool Foam::boundBox::containsAny(const UList<point>& points) const
 }
 
 
-bool Foam::boundBox::containsAny
-(
-    const UList<point>& points,
-    const labelUList& indices
-) const
-{
-    if (points.empty() || indices.empty())
-    {
-        return true;
-    }
-
-    forAll(indices, i)
-    {
-        if (contains(points[indices[i]]))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
-Foam::point Foam::boundBox::nearest(const point& pt) const
+Foam::point Foam::boundBox::nearest(const point& p) const
 {
     // Clip the point to the range of the bounding box
-    const scalar surfPtx = Foam::max(Foam::min(pt.x(), max_.x()), min_.x());
-    const scalar surfPty = Foam::max(Foam::min(pt.y(), max_.y()), min_.y());
-    const scalar surfPtz = Foam::max(Foam::min(pt.z(), max_.z()), min_.z());
+    return point
+    (
+        Foam::min(Foam::max(p.x(), min_.x()), max_.x()),
+        Foam::min(Foam::max(p.y(), min_.y()), max_.y()),
+        Foam::min(Foam::max(p.z(), min_.z()), max_.z())
+    );
+}
 
-    return point(surfPtx, surfPty, surfPtz);
+
+void Foam::boundBox::inflate(Random& rndGen, const scalar factor)
+{
+    vector newSpan(span());
+
+    // Make 3D
+    const scalar minSpan = factor * Foam::mag(newSpan);
+
+    for (direction dir = 0; dir < vector::nComponents; ++dir)
+    {
+        newSpan[dir] = Foam::max(newSpan[dir], minSpan);
+    }
+
+    min_ -= cmptMultiply(factor*rndGen.sample01<vector>(), newSpan);
+    max_ += cmptMultiply(factor*rndGen.sample01<vector>(), newSpan);
+}
+
+
+void Foam::boundBox::inflate
+(
+    Random& rndGen,
+    const scalar factor,
+    const scalar delta
+)
+{
+    inflate(rndGen, factor);
+    grow(delta);
+}
+
+
+// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
+void Foam::boundBox::operator&=(const boundBox& bb)
+{
+    min_ = ::Foam::max(min_, bb.min_);
+    max_ = ::Foam::min(max_, bb.max_);
 }
 
 
@@ -312,11 +462,7 @@ Foam::point Foam::boundBox::nearest(const point& pt) const
 
 Foam::Ostream& Foam::operator<<(Ostream& os, const boundBox& bb)
 {
-    if (os.format() == IOstream::ASCII)
-    {
-        os << bb.min_ << token::SPACE << bb.max_;
-    }
-    else
+    if (os.format() == IOstreamOption::BINARY)
     {
         os.write
         (
@@ -324,30 +470,33 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const boundBox& bb)
             sizeof(boundBox)
         );
     }
+    else
+    {
+        os << bb.min_ << token::SPACE << bb.max_;
+    }
 
-    // Check state of Ostream
-    os.check("Ostream& operator<<(Ostream&, const boundBox&)");
+    os.check(FUNCTION_NAME);
     return os;
 }
 
 
 Foam::Istream& Foam::operator>>(Istream& is, boundBox& bb)
 {
-    if (is.format() == IOstream::ASCII)
+    if (is.format() == IOstreamOption::BINARY)
     {
-        is >> bb.min_ >> bb.max_;
-    }
-    else
-    {
-        is.read
+        Detail::readContiguous<boundBox>
         (
+            is,
             reinterpret_cast<char*>(&bb.min_),
             sizeof(boundBox)
         );
     }
+    else
+    {
+        is >> bb.min_ >> bb.max_;
+    }
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, boundBox&)");
+    is.check(FUNCTION_NAME);
     return is;
 }
 

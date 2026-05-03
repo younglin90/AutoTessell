@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -37,12 +40,12 @@ Foam::wordList Foam::patchDistMethod::patchTypes
     wordList yTypes
     (
         mesh.boundary().size(),
-        zeroGradientFvPatchField<Type>::typeName
+        fvPatchFieldBase::zeroGradientType()
     );
 
-    forAllConstIter(labelHashSet, patchIDs, iter)
+    for (const label patchi : patchIDs)
     {
-        yTypes[iter.key()] = fixedValueFvPatchField<Type>::typeName;
+        yTypes[patchi] = fixedValueFvPatchField<Type>::typeName;
     }
 
     return yTypes;

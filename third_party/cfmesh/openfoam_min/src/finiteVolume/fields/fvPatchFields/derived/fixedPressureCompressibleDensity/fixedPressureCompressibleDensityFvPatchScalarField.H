@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::fixedPressureCompressibleDensityFvPatchScalarField
 
+Group
+    grpInletBoundaryConditions
+
 Description
     This boundary condition calculates a (liquid) compressible density as a
     function of pressure and fluid properties:
@@ -35,8 +40,8 @@ Description
     where
 
     \vartable
-        \rho    | density [kg/m^3]
-        \rho_{l,sat} | saturation liquid density [kg/m^3]
+        \rho    | density [kg/m3]
+        \rho_{l,sat} | saturation liquid density [kg/m3]
         \psi_l  | liquid compressibility
         p       | pressure [Pa]
         p_{sat} | saturation pressure [Pa]
@@ -80,14 +85,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-     Class fixedPressureCompressibleDensityFvPatchScalarField Declaration
+      Class fixedPressureCompressibleDensityFvPatchScalarField Declaration
 \*---------------------------------------------------------------------------*/
 
 class fixedPressureCompressibleDensityFvPatchScalarField
 :
     public fixedValueFvPatchScalarField
 {
-    // Private Data
+    // Private data
 
         //- Name of static pressure field
         word pName_;
@@ -101,11 +106,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedPressureCompressibleDensityFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedPressureCompressibleDensityFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -116,53 +128,46 @@ public:
         (
             const fixedPressureCompressibleDensityFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedPressureCompressibleDensityFvPatchScalarField
         (
             const fixedPressureCompressibleDensityFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedPressureCompressibleDensityFvPatchScalarField
         (
             const fixedPressureCompressibleDensityFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
+        {
+            return fvPatchField<scalar>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
         (
-            const DimensionedField<scalar, fvMesh>& iF
+            const DimensionedField<scalar, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new fixedPressureCompressibleDensityFvPatchScalarField
-                (
-                    *this,
-                    iF
-                )
-            );
+            return fvPatchField<scalar>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchScalarField::operator=;
 };
 
 

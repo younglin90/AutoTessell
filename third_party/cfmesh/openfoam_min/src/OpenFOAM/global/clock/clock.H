@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,66 +39,70 @@ SourceFiles
 #define clock_H
 
 #include <ctime>
+#include <string>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-class string;
-
 /*---------------------------------------------------------------------------*\
-                            Class clock Declaration
+                           Class clock Declaration
 \*---------------------------------------------------------------------------*/
 
 class clock
 {
     // Private Data
 
-        //- Start time in seconds
-        time_t startTime_;
+        //- Time point at start (in seconds)
+        time_t start_;
 
-        //- Time when clockTimeIncrement() was last called
-        mutable time_t lastTime_;
-
-        //- Latest time from either elapsedClockTime() or clockTimeIncrement()
-        mutable time_t newTime_;
-
-        //- Names of the months
-        static const char *monthNames[];
+        //- Last time when elapsedClockTime or clockTimeIncrement was called
+        mutable time_t last_;
 
 
 public:
 
     // Constructors
 
-        //- Null constructor which stores the start time
+        //- Construct with the current clock time for the start point
         clock();
 
 
-    // Member Functions
+    // Low-level Member Functions
 
         //- Get the current clock time in seconds
         static time_t getTime();
 
-        //- Return the current wall-clock date as a raw struct
+        //- The current wall-clock date as a raw struct
+        //  \deprecated(2020-05) may be removed in future versions
         static const struct tm rawDate();
 
-        //- Return the current wall-clock date/time as a string
-        //  format according to ISO-8601 (yyyy-mm-ddThh:mm:ss)
-        static string dateTime();
 
-        //- Return the current wall-clock date as a string
-        static string date();
+    // Static Member Functions
 
-        //- Return the current wall-clock time as a string
-        static string clockTime();
+        //- The current wall-clock date/time (in local time) as a string
+        //- in ISO-8601 format (yyyy-mm-ddThh:mm:ss).
+        //  Without time-zone information.
+        static std::string dateTime();
 
-        //- Returns wall-clock time from clock instantiation
-        time_t elapsedClockTime() const;
+        //- The current wall-clock date as a string formatted as
+        //- (MON dd yyyy), where MON is Jan, Feb, etc.
+        static std::string date();
 
-        //- Returns wall-clock time from last call of clockTimeIncrement()
-        time_t clockTimeIncrement() const;
+        //- The current wall-clock (in local time) as a string formatted as
+        //- as (hh:mm:ss).
+        //  Without time-zone information.
+        static std::string clockTime();
+
+
+    // Member Functions
+
+        //- Returns wall-clock time since clock instantiation
+        double elapsedClockTime() const;
+
+        //- Returns wall-clock time since last clockTimeIncrement() call
+        double clockTimeIncrement() const;
 };
 
 

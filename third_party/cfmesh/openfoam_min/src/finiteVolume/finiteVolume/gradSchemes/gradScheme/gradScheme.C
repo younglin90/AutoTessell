@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,10 +46,8 @@ Foam::tmp<Foam::fv::gradScheme<Type>> Foam::fv::gradScheme<Type>::New
 
     if (schemeData.eof())
     {
-        FatalIOErrorInFunction
-        (
-            schemeData
-        )   << "Grad scheme not specified" << endl << endl
+        FatalIOErrorInFunction(schemeData)
+            << "Grad scheme not specified" << endl << endl
             << "Valid grad schemes are :" << endl
             << IstreamConstructorTablePtr_->sortedToc()
             << exit(FatalIOError);
@@ -54,127 +55,101 @@ Foam::tmp<Foam::fv::gradScheme<Type>> Foam::fv::gradScheme<Type>::New
 
     const word schemeName(schemeData);
 
-    typename IstreamConstructorTable::iterator cstrIter =
-        IstreamConstructorTablePtr_->find(schemeName);
+    auto* ctorPtr = IstreamConstructorTable(schemeName);
 
-    if (cstrIter == IstreamConstructorTablePtr_->end())
+    if (!ctorPtr)
     {
-        FatalIOErrorInFunction
+        FatalIOErrorInLookup
         (
-            schemeData
-        )   << "Unknown grad scheme " << schemeName << nl << nl
-            << "Valid grad schemes are :" << endl
-            << IstreamConstructorTablePtr_->sortedToc()
-            << exit(FatalIOError);
+            schemeData,
+            "grad",
+            schemeName,
+            *IstreamConstructorTablePtr_
+        ) << exit(FatalIOError);
     }
 
-    return cstrIter()(mesh, schemeData);
+    return ctorPtr(mesh, schemeData);
 }
 
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::fv::gradScheme<Type>::~gradScheme()
-{}
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::gradScheme<Type>::grad
 (
-    const VolField<Type>& vsf,
+    const GeometricField<Type, fvPatchField, volMesh>& vsf,
     const word& name
 ) const
 {
     typedef typename outerProduct<vector, Type>::type GradType;
+    typedef GeometricField<GradType, fvPatchField, volMesh> GradFieldType;
 
-    if (!this->mesh().changing() && this->mesh().solution().cache(name))
+    GradFieldType* pgGrad =
+        mesh().objectRegistry::template getObjectPtr<GradFieldType>(name);
+
+    if (!this->mesh().cache(name) || this->mesh().changing())
     {
-        if
-        (
-            !mesh().objectRegistry::template
-            foundObject<VolField<GradType>>(name)
-        )
-        {
-            solution::cachePrintMessage("Calculating and caching", name, vsf);
-            tmp<VolField<GradType>> tgGrad = calcGrad(vsf, name);
-            regIOobject::store(tgGrad.ptr());
-        }
-
-        solution::cachePrintMessage("Retrieving", name, vsf);
-        VolField<GradType>& gGrad =
-            mesh().objectRegistry::template lookupObjectRef<VolField<GradType>>
-            (
-                name
-            );
-
-        if (gGrad.upToDate(vsf))
-        {
-            return gGrad;
-        }
-        else
+        // Delete any old occurrences to avoid double registration
+        if (pgGrad && pgGrad->ownedByRegistry())
         {
             solution::cachePrintMessage("Deleting", name, vsf);
-            gGrad.release();
-            delete &gGrad;
-
-            solution::cachePrintMessage("Recalculating", name, vsf);
-            tmp<VolField<GradType>> tgGrad = calcGrad(vsf, name);
-
-            solution::cachePrintMessage("Storing", name, vsf);
-            regIOobject::store(tgGrad.ptr());
-            VolField<GradType>& gGrad =
-                mesh().objectRegistry::template
-                lookupObjectRef<VolField<GradType>>
-                (
-                    name
-                );
-
-            return gGrad;
-        }
-    }
-    else
-    {
-        if
-        (
-            mesh().objectRegistry::template
-            foundObject<VolField<GradType>>(name)
-        )
-        {
-            VolField<GradType>& gGrad =
-                mesh().objectRegistry::template
-                lookupObjectRef<VolField<GradType>>
-                (
-                    name
-                );
-
-            if (gGrad.ownedByRegistry())
-            {
-                solution::cachePrintMessage("Deleting", name, vsf);
-                gGrad.release();
-                delete &gGrad;
-            }
+            delete pgGrad;
         }
 
         solution::cachePrintMessage("Calculating", name, vsf);
         return calcGrad(vsf, name);
     }
+
+
+    if (!pgGrad)
+    {
+        solution::cachePrintMessage("Calculating and caching", name, vsf);
+
+        pgGrad = calcGrad(vsf, name).ptr();
+        regIOobject::store(pgGrad);
+    }
+    else
+    {
+        if (pgGrad->upToDate(vsf))
+        {
+            solution::cachePrintMessage("Reusing", name, vsf);
+        }
+        else
+        {
+            solution::cachePrintMessage("Updating", name, vsf);
+            delete pgGrad;
+
+            pgGrad = calcGrad(vsf, name).ptr();
+            regIOobject::store(pgGrad);
+        }
+    }
+
+    return *pgGrad;
 }
 
 
 template<class Type>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::gradScheme<Type>::grad
 (
-    const VolField<Type>& vsf
+    const GeometricField<Type, fvPatchField, volMesh>& vsf
 ) const
 {
     return grad(vsf, "grad(" + vsf.name() + ')');
@@ -184,16 +159,22 @@ Foam::fv::gradScheme<Type>::grad
 template<class Type>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::gradScheme<Type>::grad
 (
-    const tmp<VolField<Type>>& tvsf
+    const tmp<GeometricField<Type, fvPatchField, volMesh>>& tvsf
 ) const
 {
     typedef typename outerProduct<vector, Type>::type GradType;
+    typedef GeometricField<GradType, fvPatchField, volMesh> GradFieldType;
 
-    tmp<VolField<GradType>> tgrad = grad(tvsf());
+    tmp<GradFieldType> tgrad = grad(tvsf());
     tvsf.clear();
     return tgrad;
 }

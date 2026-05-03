@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,11 +37,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef coupledPolyPatch_H
-#define coupledPolyPatch_H
+#ifndef Foam_coupledPolyPatch_H
+#define Foam_coupledPolyPatch_H
 
 #include "polyPatch.H"
-#include "transformer.H"
 #include "diagTensorField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -54,74 +56,24 @@ class coupledPolyPatch
 :
     public polyPatch
 {
+public:
+
+    enum transformType
+    {
+        UNKNOWN,            // unspecified; automatic ordering
+        ROTATIONAL,         // rotation along coordinate axis
+        TRANSLATIONAL,      // translation
+        COINCIDENTFULLMATCH,// assume no transforms
+                            // and check the points in faces match
+        NOORDERING          // unspecified, no automatic ordering
+    };
+
+    static const Enum<transformType> transformTypeNames;
+
+
 private:
 
-    // Private Member Functions
-
-        //- Walk the given primitive patch. Starts at the given seed face and
-        //  point within that face. Traverses through the next available
-        //  manifold edge to an as yet unvisited face. Stores the order in
-        //  which faces are visited and the point/edge through which they are
-        //  first walked into. Direction reverses the order in which face-edges
-        //  are considered. For two conformal patches, with the same seed face
-        //  and point, the maps are guaranteed to match. They can therefore be
-        //  used for ordering purposes. This can also be used to identify
-        //  contiguous regions of the patch.
-        bool walk
-        (
-            const primitivePatch& pp,
-            const bool direction,
-            const label seedFacei,
-            const label seedFacePointi,
-            labelList& faceMap,
-            labelList& facePointMap,
-            label& mapFacei,
-            autoPtr<labelListList>& walks
-        ) const;
-
-
-protected:
-
-    // Protected Classes
-
-        //- Data to pass from owner.initOrder to owner.order
-        struct ownToOwnOrderData
-        {
-            labelList seedFaceis;
-        };
-
-        //- Data to pass from owner.initOrder to nbr.order
-        struct ownToNbrOrderData
-        {
-            List<pointField> seedFacePoints;
-
-            inline void transform(const transformer& tr)
-            {
-                forAll(seedFacePoints, regioni)
-                {
-                    tr.transformPosition
-                    (
-                        seedFacePoints[regioni],
-                        seedFacePoints[regioni]
-                    );
-                }
-            }
-        };
-
-        //- Data to pass from owner.initOrder to nbr.order if debugging
-        struct ownToNbrDebugOrderData
-        {
-            label nFaces;
-            label nPoints;
-            label nEdges;
-            label nInternalEdges;
-
-            inline void transform(const transformer& tr)
-            {}
-        };
-
-
-    // Protected Data
+    // Private data
 
         //- Default matching tolerance
         static const scalar defaultMatchTol_;
@@ -129,14 +81,44 @@ protected:
         //- Local matching tolerance
         const scalar matchTolerance_;
 
-        //- Data to pass from owner.initOrder to owner.order
-        mutable autoPtr<ownToOwnOrderData> ownToOwnOrderDataPtr_;
+        //- Type of transformation
+        transformType transform_;
 
+        //- Offset (distance) vector from one side of the couple to the other
+        mutable vectorField separation_;
+
+        //- Face transformation tensor
+        mutable tensorField forwardT_;
+
+        //- Neighbour-cell transformation tensor
+        mutable tensorField reverseT_;
+
+        //- Are faces collocated. Either size 0,1 or length of patch.
+        mutable boolList collocated_;
+
+
+protected:
 
     // Protected Member Functions
 
+        //- Calculate the transformation tensors
+        //  smallDist : matching distance per face
+        //  absTol    : absolute error in normal
+        //  if transformType = unknown it first tries rotational, then
+        //  translational transform
+        void calcTransformTensors
+        (
+            const vectorField& Cf,
+            const vectorField& Cr,
+            const vectorField& nf,
+            const vectorField& nr,
+            const scalarField& smallDist,
+            const scalar absTol,
+            const transformType = UNKNOWN
+        ) const;
+
         //- Initialise the calculation of the patch geometry
-        virtual void initCalcGeometry(PstreamBuffers&) = 0;
+        virtual void initGeometry(PstreamBuffers&) = 0;
 
         //- Calculate the patch geometry
         virtual void calcGeometry(PstreamBuffers&) = 0;
@@ -148,57 +130,52 @@ protected:
         virtual void movePoints(PstreamBuffers&, const pointField&) = 0;
 
         //- Initialise the update of the patch topology
-        virtual void initTopoChange(PstreamBuffers&) = 0;
+        virtual void initUpdateMesh(PstreamBuffers&) = 0;
 
         //- Update of the patch topology
-        virtual void topoChange(PstreamBuffers&) = 0;
+        virtual void updateMesh(PstreamBuffers&) = 0;
 
-        //- Write a patch in OBJ format
+
+        //- Write point in OBJ format
+        static void writeOBJ(Ostream& os, const point& pt);
+
+        //- Write selected points in OBJ format
+        static void writeOBJ(Ostream&, const pointField&, const labelList&);
+
+        //- Write patch
         static void writeOBJ
         (
             const fileName&,
-            const primitivePatch&
-        );
-
-        //- Write lines between two lists of points in OBJ format
-        static void writeOBJ
-        (
-            const fileName&,
-            const pointField&,
+            const UList<face>&,
             const pointField&
         );
 
-        //- Write a set of paths in OBJ format
+        //- Write edge in OBJ format
         static void writeOBJ
         (
-            const fileName&,
-            const pointField&,
-            const labelListList&
+            Ostream& os,
+            const point& p0,
+            const point& p1,
+            label& vertI
         );
 
-        //- Initialise ordering for the given primitivePatch. Fills the
-        //  referenced data structures, but leaves transferring them to the
-        //  opposite patch to the caller.
-        virtual void initOrder
+        //- Get a unique anchor point for all faces
+        static pointField getAnchorPoints
         (
-            ownToNbrOrderData& ownToNbr,
-            autoPtr<ownToNbrDebugOrderData>& ownToNbrDebugPtr,
-            const primitivePatch&
-        ) const;
+            const UList<face>&,
+            const pointField&,
+            const transformType
+        );
 
-        //- Return new ordering for the given primitivePatch.
-        //  Ordering is -faceMap: for every face
-        //  index of the new face -rotation:for every new face the clockwise
-        //  shift of the original face. Return false if nothing changes
-        //  (faceMap is identity, rotation is 0), true otherwise.
-        virtual bool order
+        //- Get the number of vertices face f needs to be rotated such that
+        //  its f[0] point aligns with given anchor (within tol).
+        static label getRotation
         (
-            const ownToNbrOrderData& ownToNbr,
-            const autoPtr<ownToNbrDebugOrderData>& ownToNbrDebugPtr,
-            const primitivePatch&,
-            labelList& faceMap,
-            labelList& rotation
-        ) const;
+            const pointField& points,
+            const face& f,
+            const point& anchor,
+            const scalar tol
+        );
 
 
 public:
@@ -216,7 +193,9 @@ public:
             const label size,
             const label start,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType,
+            const transformType transform
         );
 
         //- Construct from dictionary
@@ -225,20 +204,34 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
-        //- Construct as copy, resetting the boundary mesh
-        coupledPolyPatch(const coupledPolyPatch&, const polyBoundaryMesh&);
+        //- Copy construct, resetting the boundary mesh
+        coupledPolyPatch(const coupledPolyPatch&, const polyBoundaryMesh& bm);
+
+        //- Copy construct, resetting the faceCells
+        coupledPolyPatch(const coupledPolyPatch&, const labelList& faceCells);
 
         //- Construct given the original patch and resetting the
-        //  face list and boundary mesh information
+        //- face list and boundary mesh information
         coupledPolyPatch
         (
             const coupledPolyPatch& pp,
             const polyBoundaryMesh& bm,
             const label index,
             const label newSize,
+            const label newStart
+        );
+
+        //- Construct given the original patch and a map
+        coupledPolyPatch
+        (
+            const coupledPolyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
             const label newStart
         );
 
@@ -266,17 +259,87 @@ public:
                 return !owner();
             }
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const = 0;
+            //- The referring patchID (eg, for cyclics).
+            virtual label referPatchID() const
+            {
+                return -1;
+            }
 
-            //- Return the matching tolerance
+            //- Type of transform
+            virtual transformType transform() const
+            {
+                return transform_;
+            }
+
+            //- Type of transform
+            //  This is currently only for use when collapsing generated
+            //  meshes that can have zero area faces.
+            virtual transformType& transform()
+            {
+                return transform_;
+            }
+
+            //- Transform a patch-based position from other side to this side
+            virtual void transformPosition(pointField&) const = 0;
+
+            //- Transform a patch-based position from other side to this side
+            virtual void transformPosition(point&, const label facei) const = 0;
+
+            //- Are the planes separated.
+            virtual bool separated() const
+            {
+                return separation_.size();
+            }
+
+            //- If the planes are separated the separation vector.
+            virtual const vectorField& separation() const
+            {
+                return separation_;
+            }
+
+            //- Are the cyclic planes parallel.
+            virtual bool parallel() const
+            {
+                return forwardT_.empty();
+            }
+
+            //- Return face transformation tensor.
+            virtual const tensorField& forwardT() const
+            {
+                return forwardT_;
+            }
+
+            //- Return neighbour-cell transformation tensor.
+            virtual const tensorField& reverseT() const
+            {
+                return reverseT_;
+            }
+
+            //- Are faces collocated. Either size 0,1 or length of patch
+            virtual const boolList& collocated() const
+            {
+                return collocated_;
+            }
+
             scalar matchTolerance() const
             {
                 return matchTolerance_;
             }
 
 
-        //- Initialise ordering for primitivePatch. Does not
+        //- Calculate the patch geometry
+        virtual void calcGeometry
+        (
+            const primitivePatch& referPatch,
+            const pointField& thisCtrs,
+            const vectorField& thisAreas,
+            const pointField& thisCc,
+            const pointField& nbrCtrs,
+            const vectorField& nbrAreas,
+            const pointField& nbrCc
+        ) = 0;
+
+        //- Initialize ordering for primitivePatch. Does not
         //  refer to *this (except for name() and type() etc.)
         virtual void initOrder
         (
@@ -307,22 +370,8 @@ public:
         );
 
         //- Write the polyPatch data as a dictionary
-        virtual void write(Ostream&) const;
-
-
-    // IOstream Operators
-
-        friend Istream& operator>>(Istream&, ownToNbrOrderData&);
-        friend Ostream& operator<<(Ostream&, const ownToNbrOrderData&);
-        friend Istream& operator>>(Istream&, ownToNbrDebugOrderData&);
-        friend Ostream& operator<<(Ostream&, const ownToNbrDebugOrderData&);
+        virtual void write(Ostream& os) const;
 };
-
-
-Istream& operator>>(Istream&, coupledPolyPatch::ownToNbrOrderData&);
-Ostream& operator<<(Ostream&, const coupledPolyPatch::ownToNbrOrderData&);
-Istream& operator>>(Istream&, coupledPolyPatch::ownToNbrDebugOrderData&);
-Ostream& operator<<(Ostream&, const coupledPolyPatch::ownToNbrDebugOrderData&);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

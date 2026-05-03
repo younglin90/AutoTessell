@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -54,31 +56,25 @@ const Foam::diagTensor Foam::diagTensor::vsType::one
 template<>
 const Foam::diagTensor Foam::diagTensor::vsType::max
 (
-    diagTensor::uniform(vGreat)
+    diagTensor::uniform(VGREAT)
 );
 
 template<>
 const Foam::diagTensor Foam::diagTensor::vsType::min
 (
-    diagTensor::uniform(-vGreat)
+    diagTensor::uniform(-VGREAT)
 );
 
 template<>
 const Foam::diagTensor Foam::diagTensor::vsType::rootMax
 (
-    diagTensor::uniform(rootVGreat)
+    diagTensor::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::diagTensor Foam::diagTensor::vsType::rootMin
 (
-    diagTensor::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::diagTensor Foam::diagTensor::vsType::nan
-(
-    diagTensor::uniform(NaN)
+    diagTensor::uniform(-ROOTVGREAT)
 );
 
 

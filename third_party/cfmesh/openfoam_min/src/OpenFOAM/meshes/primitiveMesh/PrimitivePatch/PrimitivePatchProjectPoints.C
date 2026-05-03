@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,7 +31,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "boolList.H"
-#include "PointHit.H"
+#include "pointHit.H"
 #include "objectHit.H"
 #include "bandCompression.H"
 
@@ -40,7 +43,10 @@ Foam::List<Foam::objectHit>
 Foam::PrimitivePatch<FaceList, PointField>::projectPoints
 (
     const ToPatch& targetPatch,
-    const Field<PointType>& projectionDirection,
+    const Field
+    <
+        typename Foam::PrimitivePatch<FaceList, PointField>::point_type
+    >& projectionDirection,
     const intersection::algorithm alg,
     const intersection::direction dir
 ) const
@@ -68,10 +74,10 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
 
     const ToPatch& masterFaces = targetPatch;
 
-    const Field<PointType>& masterPoints = targetPatch.points();
+    const Field<point_type>& masterPoints = targetPatch.points();
 
     // Estimate face centre of target side
-    Field<PointType> masterFaceCentres(targetPatch.size());
+    Field<point_type> masterFaceCentres(targetPatch.size());
 
     forAll(masterFaceCentres, facei)
     {
@@ -95,10 +101,10 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
         // Pick up slave point and direction
         const label curLocalPointLabel = slavePointOrder[pointi];
 
-        const PointType& curPoint =
+        const point_type& curPoint =
             points_[slaveMeshPoints[curLocalPointLabel]];
 
-        const PointType& curProjectionDir =
+        const point_type& curProjectionDir =
             projectionDirection[curLocalPointLabel];
 
         bool closer;
@@ -108,7 +114,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
 
         bool foundEligible = false;
 
-        scalar sqrDistance = great;
+        scalar sqrDistance = GREAT;
 
         // Force the full search for the first point to ensure good
         // starting face
@@ -124,7 +130,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
                 doNSquaredSearch = false;
 
                 // Calculate intersection with curFace
-                PointHit<PointType> curHit =
+                PointHit<point_type> curHit =
                     masterFaces[curFace].ray
                     (
                         curPoint,
@@ -160,7 +166,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
                     // face.  This is cooked (illogical!) for fastest
                     // surface walk.
                     //
-                    PointType missPlanePoint =
+                    point_type missPlanePoint =
                         curPoint + curProjectionDir*curHit.distance();
 
                     const labelList& masterNbrs = masterFaceFaces[curFace];
@@ -194,7 +200,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
                     }
                 }
 
-                if (debug) Info<< ".";
+                DebugInfo << '.';
             } while (closer);
         }
 
@@ -205,17 +211,14 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
         {
             nNSquaredSearches++;
 
-            if (debug)
-            {
-                Info<< "p " << curLocalPointLabel << ": ";
-            }
+            DebugInfo << "p " << curLocalPointLabel << ": ";
 
             result[curLocalPointLabel] = objectHit(false, -1);
-            scalar minDistance = great;
+            scalar minDistance = GREAT;
 
             forAll(masterFaces, facei)
             {
-                PointHit<PointType> curHit =
+                PointHit<point_type> curHit =
                     masterFaces[facei].ray
                     (
                         curPoint,
@@ -235,8 +238,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
                 else if (curHit.eligibleMiss())
                 {
                     // Calculate min distance
-                    scalar missDist =
-                        Foam::mag(curHit.missPoint() - curPoint);
+                    scalar missDist = curHit.point().dist(curPoint);
 
                     if (missDist < minDistance)
                     {
@@ -248,23 +250,18 @@ Foam::PrimitivePatch<FaceList, PointField>::projectPoints
                 }
             }
 
-            if (debug)
-            {
-                Info<< result[curLocalPointLabel] << nl;
-            }
+            DebugInfo << result[curLocalPointLabel] << nl;
         }
         else
         {
-            if (debug) Info<< "x";
+            DebugInfo << 'x';
         }
     }
 
-    if (debug)
-    {
-        Info<< nl << "Executed " << nNSquaredSearches
-            << " n-squared searches out of total of "
-            << nPoints() << endl;
-    }
+    DebugInfo
+        << nl << "Executed " << nNSquaredSearches
+        << " n-squared searches out of total of "
+        << nPoints() << endl;
 
     return result;
 }
@@ -276,7 +273,10 @@ Foam::List<Foam::objectHit>
 Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
 (
     const ToPatch& targetPatch,
-    const Field<PointType>& projectionDirection,
+    const Field
+    <
+        typename Foam::PrimitivePatch<FaceList, PointField>::point_type
+    >& projectionDirection,
     const intersection::algorithm alg,
     const intersection::direction dir
 ) const
@@ -292,10 +292,10 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
             << abort(FatalError);
     }
 
-    labelList slaveFaceOrder = bandCompression(faceFaces());
+    labelList slaveFaceOrder = meshTools::bandCompression(faceFaces());
 
     // calculate master face centres
-    Field<PointType> masterFaceCentres(targetPatch.size());
+    Field<point_type> masterFaceCentres(targetPatch.size());
 
     const labelListList& masterFaceFaces = targetPatch.faceFaces();
 
@@ -345,7 +345,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
 
         bool foundEligible = false;
 
-        scalar sqrDistance = great;
+        scalar sqrDistance = GREAT;
 
         // Force the full search for the first point to ensure good
         // starting face
@@ -361,7 +361,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
                 doNSquaredSearch = false;
 
                 // Calculate intersection with curFace
-                PointHit<PointType> curHit =
+                PointHit<point_type> curHit =
                     masterFaces[curFace].ray
                     (
                         curFaceCentre,
@@ -396,7 +396,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
                     // Calculate the miss point.  This is
                     // cooked (illogical!) for fastest surface walk.
                     //
-                    PointType missPlanePoint =
+                    point_type missPlanePoint =
                         curFaceCentre + curProjectionDir*curHit.distance();
 
                     sqrDistance =
@@ -430,7 +430,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
                     }
                 }
 
-                if (debug) Info<< ".";
+                DebugInfo << '.';
             } while (closer);
         }
 
@@ -438,17 +438,14 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
         {
             nNSquaredSearches++;
 
-            if (debug)
-            {
-                Info<< "p " << curLocalFaceLabel << ": ";
-            }
+            DebugInfo << "p " << curLocalFaceLabel << ": ";
 
             result[curLocalFaceLabel] = objectHit(false, -1);
-            scalar minDistance = great;
+            scalar minDistance = GREAT;
 
             forAll(masterFaces, facei)
             {
-                PointHit<PointType> curHit =
+                PointHit<point_type> curHit =
                     masterFaces[facei].ray
                     (
                         curFaceCentre,
@@ -468,8 +465,7 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
                 else if (curHit.eligibleMiss())
                 {
                     // Calculate min distance
-                    scalar missDist =
-                        Foam::mag(curHit.missPoint() - curFaceCentre);
+                    scalar missDist = curHit.point().dist(curFaceCentre);
 
                     if (missDist < minDistance)
                     {
@@ -481,23 +477,19 @@ Foam::PrimitivePatch<FaceList, PointField>::projectFaceCentres
                 }
             }
 
-            if (debug)
-            {
-                Info<< result[curLocalFaceLabel] << nl;
-            }
+            DebugInfo << result[curLocalFaceLabel] << nl;
         }
         else
         {
-            if (debug) Info<< "x";
+            DebugInfo << 'x';
         }
     }
 
-    if (debug)
-    {
-        Info<< nl << "Executed " << nNSquaredSearches
-            << " n-squared searches out of total of "
-            << this->size() << endl;
-    }
+    DebugInfo
+        << nl
+        << "Executed " << nNSquaredSearches
+        << " n-squared searches out of total of "
+        << this->size() << endl;
 
     return result;
 }

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,12 @@ License
 Class
     Foam::filteredLinearLimiter
 
+Group
+    grpFvLimitedSurfaceInterpolationSchemes
+
 Description
     Class to generate weighting factors for the filteredLinear
-    interpolation scheme.
+    differencing scheme.
 
     The aim is to remove high-frequency modes with "staggering"
     characteristics by comparing the face gradient relative to the
@@ -52,7 +57,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class filteredLinearWeight Declaration
+                           Class filteredLinearWeight Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class LimiterFunc>
@@ -85,10 +90,10 @@ public:
         scalar limiter =
             2
           - 0.5*min(mag(df - dcP), mag(df - dcN))
-           /(max(mag(dcP), mag(dcN)) + small);
+           /(max(mag(dcP), mag(dcN)) + SMALL);
 
         // Limit the limiter between linear and 20% upwind
-        return max(min(limiter, 1), 0.8);
+        return clamp(limiter, scalar(0.8), scalar(1));
     }
 };
 

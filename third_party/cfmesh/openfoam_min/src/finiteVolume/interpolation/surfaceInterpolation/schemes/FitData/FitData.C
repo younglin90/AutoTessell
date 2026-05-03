@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,7 +42,7 @@ Foam::FitData<Form, ExtendedStencil, Polynomial>::FitData
     const scalar centralWeight
 )
 :
-    DemandDrivenMeshObject<fvMesh, MoveableMeshObject, Form>(mesh),
+    MeshObject_type(mesh),
     stencil_(stencil),
     linearCorrection_(linearCorrection),
     linearLimitFactor_(linearLimitFactor),
@@ -53,7 +55,7 @@ Foam::FitData<Form, ExtendedStencil, Polynomial>::FitData
     minSize_(Polynomial::nTerms(dim_))
 {
     // Check input
-    if (linearLimitFactor <= small || linearLimitFactor > 3)
+    if (linearLimitFactor <= SMALL || linearLimitFactor > 3)
     {
         FatalErrorInFunction
             << "linearLimitFactor requested = " << linearLimitFactor
@@ -76,8 +78,7 @@ void Foam::FitData<FitDataType, ExtendedStencil, Polynomial>::findFaceDirs
 {
     const fvMesh& mesh = this->mesh();
 
-    idir = mesh.faceAreas()[facei];
-    idir /= mag(idir);
+    idir = normalised(mesh.faceAreas()[facei]);
 
     #ifndef SPHERICAL_GEOMETRY
     if (mesh.nGeometricD() <= 2) // find the normal direction
@@ -112,7 +113,7 @@ void Foam::FitData<FitDataType, ExtendedStencil, Polynomial>::findFaceDirs
 
         scalar magk = mag(kdir);
 
-        if (magk < small)
+        if (magk < SMALL)
         {
             FatalErrorInFunction
                 << exit(FatalError);
@@ -162,7 +163,7 @@ void Foam::FitData<FitDataType, ExtendedStencil, Polynomial>::calcFit
     scalar scale = 1;
 
     // Matrix of the polynomial components
-    scalarRectangularMatrix B(C.size(), minSize_, scalar(0));
+    scalarRectangularMatrix B(C.size(), minSize_, Zero);
 
     forAll(C, ip)
     {
@@ -207,7 +208,7 @@ void Foam::FitData<FitDataType, ExtendedStencil, Polynomial>::calcFit
     bool goodFit = false;
     for (int iIt = 0; iIt < 8 && !goodFit; iIt++)
     {
-        SVD svd(B, small);
+        SVD svd(B, SMALL);
         scalarRectangularMatrix invB(svd.VSinvUt());
 
         scalar maxCoeff = 0;

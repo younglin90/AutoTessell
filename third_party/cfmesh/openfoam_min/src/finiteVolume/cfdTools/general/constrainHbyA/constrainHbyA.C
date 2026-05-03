@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,21 +27,33 @@ License
 
 #include "constrainHbyA.H"
 #include "volFields.H"
-#include "surfaceFields.H"
 #include "fixedFluxExtrapolatedPressureFvPatchScalarField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-void Foam::constrainHbyA
+Foam::tmp<Foam::volVectorField> Foam::constrainHbyA
 (
-    volVectorField& HbyA,
+    const tmp<volVectorField>& tHbyA,
     const volVectorField& U,
     const volScalarField& p
 )
 {
-    volVectorField::Boundary& HbyAbf = HbyA.boundaryFieldRef();
+    tmp<volVectorField> tHbyANew;
 
-    forAll(HbyAbf, patchi)
+    if (tHbyA.movable())
+    {
+        tHbyANew = tHbyA;
+        tHbyANew.ref().rename("HbyA");
+    }
+    else
+    {
+        // Clone and use given name
+        tHbyANew.reset(new volVectorField("HbyA", tHbyA));
+    }
+
+    auto& HbyAbf = tHbyANew.ref().boundaryFieldRef();
+
+    forAll(U.boundaryField(), patchi)
     {
         if
         (
@@ -53,115 +67,8 @@ void Foam::constrainHbyA
             HbyAbf[patchi] = U.boundaryField()[patchi];
         }
     }
-}
-
-
-void Foam::constrainPhiHbyA
-(
-    surfaceScalarField& phiHbyA,
-    const volVectorField& U,
-    const volScalarField& p
-)
-{
-    surfaceScalarField::Boundary& phiHbyAbf = phiHbyA.boundaryFieldRef();
-
-    forAll(phiHbyAbf, patchi)
-    {
-        if
-        (
-           !U.boundaryField()[patchi].assignable()
-        && !isA<fixedFluxExtrapolatedPressureFvPatchScalarField>
-            (
-                p.boundaryField()[patchi]
-            )
-        )
-        {
-            phiHbyAbf[patchi] =
-                U.mesh().Sf().boundaryField()[patchi]
-              & U.boundaryField()[patchi];
-        }
-    }
-}
-
-
-Foam::tmp<Foam::volVectorField> Foam::constrainHbyA
-(
-    const tmp<volVectorField>& tHbyA,
-    const volVectorField& U,
-    const volScalarField& p
-)
-{
-    tmp<volVectorField> tHbyANew;
-
-    if (tHbyA.isTmp())
-    {
-        tHbyANew = tHbyA;
-        tHbyANew.ref().rename(IOobject::groupName("HbyA", U.group()));
-    }
-    else
-    {
-        tHbyANew = volVectorField::New
-        (
-            IOobject::groupName("HbyA", U.group()),
-            tHbyA
-        );
-    }
-
-    constrainHbyA(tHbyANew.ref(), U, p);
 
     return tHbyANew;
-}
-
-
-Foam::tmp<Foam::surfaceScalarField> Foam::constrainPhiHbyA
-(
-    const tmp<surfaceScalarField>& tphiHbyA,
-    const volVectorField& U,
-    const volScalarField& p
-)
-{
-    tmp<surfaceScalarField> tphiHbyANew;
-
-    if (tphiHbyA.isTmp())
-    {
-        tphiHbyANew = tphiHbyA;
-        tphiHbyANew.ref().rename(IOobject::groupName("phiHbyA", U.group()));
-    }
-    else
-    {
-        tphiHbyANew = surfaceScalarField::New
-        (
-            IOobject::groupName("phiHbyA", U.group()),
-            tphiHbyA
-        );
-    }
-
-    constrainPhiHbyA(tphiHbyANew.ref(), U, p);
-
-    return tphiHbyANew;
-}
-
-
-Foam::tmp<Foam::surfaceScalarField> Foam::constrainPhid
-(
-    const tmp<surfaceScalarField>& tphid,
-    const volScalarField& p
-)
-{
-    surfaceScalarField& phid = tphid.ref();
-    surfaceScalarField::Boundary& phidBf = phid.boundaryFieldRef();
-
-    const volScalarField::Boundary& pBf = p.boundaryField();
-
-    forAll(phidBf, patchi)
-    {
-        if (isA<fixedFluxPressureFvPatchScalarField>(pBf[patchi]))
-        {
-            phidBf[patchi] = 0;
-        }
-    }
-
-    return tphid;
 }
 
 

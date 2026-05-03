@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,17 +36,17 @@ Description
 
 void Foam::lduMatrix::Amul
 (
-    scalarField& Apsi,
-    const tmp<scalarField>& tpsi,
+    solveScalarField& Apsi,
+    const tmp<solveScalarField>& tpsi,
     const FieldField<Field, scalar>& interfaceBouCoeffs,
     const lduInterfaceFieldPtrsList& interfaces,
     const direction cmpt
 ) const
 {
-    scalar* __restrict__ ApsiPtr = Apsi.begin();
+    solveScalar* __restrict__ ApsiPtr = Apsi.begin();
 
-    const scalarField& psi = tpsi();
-    const scalar* const __restrict__ psiPtr = psi.begin();
+    const solveScalarField& psi = tpsi();
+    const solveScalar* const __restrict__ psiPtr = psi.begin();
 
     const scalar* const __restrict__ diagPtr = diag().begin();
 
@@ -53,9 +56,12 @@ void Foam::lduMatrix::Amul
     const scalar* const __restrict__ upperPtr = upper().begin();
     const scalar* const __restrict__ lowerPtr = lower().begin();
 
+    const label startRequest = UPstream::nRequests();
+
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
+        true,
         interfaceBouCoeffs,
         interfaces,
         psi,
@@ -81,11 +87,13 @@ void Foam::lduMatrix::Amul
     // Update interface interfaces
     updateMatrixInterfaces
     (
+        true,
         interfaceBouCoeffs,
         interfaces,
         psi,
         Apsi,
-        cmpt
+        cmpt,
+        startRequest
     );
 
     tpsi.clear();
@@ -94,17 +102,17 @@ void Foam::lduMatrix::Amul
 
 void Foam::lduMatrix::Tmul
 (
-    scalarField& Tpsi,
-    const tmp<scalarField>& tpsi,
+    solveScalarField& Tpsi,
+    const tmp<solveScalarField>& tpsi,
     const FieldField<Field, scalar>& interfaceIntCoeffs,
     const lduInterfaceFieldPtrsList& interfaces,
     const direction cmpt
 ) const
 {
-    scalar* __restrict__ TpsiPtr = Tpsi.begin();
+    solveScalar* __restrict__ TpsiPtr = Tpsi.begin();
 
-    const scalarField& psi = tpsi();
-    const scalar* const __restrict__ psiPtr = psi.begin();
+    const solveScalarField& psi = tpsi();
+    const solveScalar* const __restrict__ psiPtr = psi.begin();
 
     const scalar* const __restrict__ diagPtr = diag().begin();
 
@@ -114,9 +122,12 @@ void Foam::lduMatrix::Tmul
     const scalar* const __restrict__ lowerPtr = lower().begin();
     const scalar* const __restrict__ upperPtr = upper().begin();
 
+    const label startRequest = UPstream::nRequests();
+
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
+        true,
         interfaceIntCoeffs,
         interfaces,
         psi,
@@ -140,11 +151,13 @@ void Foam::lduMatrix::Tmul
     // Update interface interfaces
     updateMatrixInterfaces
     (
+        true,
         interfaceIntCoeffs,
         interfaces,
         psi,
         Tpsi,
-        cmpt
+        cmpt,
+        startRequest
     );
 
     tpsi.clear();
@@ -153,12 +166,12 @@ void Foam::lduMatrix::Tmul
 
 void Foam::lduMatrix::sumA
 (
-    scalarField& sumA,
+    solveScalarField& sumA,
     const FieldField<Field, scalar>& interfaceBouCoeffs,
     const lduInterfaceFieldPtrsList& interfaces
 ) const
 {
-    scalar* __restrict__ sumAPtr = sumA.begin();
+    solveScalar* __restrict__ sumAPtr = sumA.begin();
 
     const scalar* __restrict__ diagPtr = diag().begin();
 
@@ -202,17 +215,17 @@ void Foam::lduMatrix::sumA
 
 void Foam::lduMatrix::residual
 (
-    scalarField& rA,
-    const scalarField& psi,
+    solveScalarField& rA,
+    const solveScalarField& psi,
     const scalarField& source,
     const FieldField<Field, scalar>& interfaceBouCoeffs,
     const lduInterfaceFieldPtrsList& interfaces,
     const direction cmpt
 ) const
 {
-    scalar* __restrict__ rAPtr = rA.begin();
+    solveScalar* __restrict__ rAPtr = rA.begin();
 
-    const scalar* const __restrict__ psiPtr = psi.begin();
+    const solveScalar* const __restrict__ psiPtr = psi.begin();
     const scalar* const __restrict__ diagPtr = diag().begin();
     const scalar* const __restrict__ sourcePtr = source.begin();
 
@@ -233,20 +246,13 @@ void Foam::lduMatrix::residual
     // To compensate for this, it is necessary to turn the
     // sign of the contribution.
 
-    FieldField<Field, scalar> mBouCoeffs(interfaceBouCoeffs.size());
-
-    forAll(mBouCoeffs, patchi)
-    {
-        if (interfaces.set(patchi))
-        {
-            mBouCoeffs.set(patchi, -interfaceBouCoeffs[patchi]);
-        }
-    }
+    const label startRequest = UPstream::nRequests();
 
     // Initialise the update of interfaced interfaces
     initMatrixInterfaces
     (
-        mBouCoeffs,
+        false,
+        interfaceBouCoeffs,
         interfaces,
         psi,
         rA,
@@ -271,42 +277,39 @@ void Foam::lduMatrix::residual
     // Update interface interfaces
     updateMatrixInterfaces
     (
-        mBouCoeffs,
+        false,
+        interfaceBouCoeffs,
         interfaces,
         psi,
         rA,
-        cmpt
+        cmpt,
+        startRequest
     );
 }
 
 
-Foam::tmp<Foam::scalarField> Foam::lduMatrix::residual
+Foam::tmp<Foam::Field<Foam::solveScalar>> Foam::lduMatrix::residual
 (
-    const scalarField& psi,
+    const solveScalarField& psi,
     const scalarField& source,
     const FieldField<Field, scalar>& interfaceBouCoeffs,
     const lduInterfaceFieldPtrsList& interfaces,
     const direction cmpt
 ) const
 {
-    tmp<scalarField> trA(new scalarField(psi.size()));
+    auto trA = tmp<solveScalarField>::New(psi.size());
     residual(trA.ref(), psi, source, interfaceBouCoeffs, interfaces, cmpt);
     return trA;
 }
 
 
-Foam::tmp<Foam::scalarField > Foam::lduMatrix::H1() const
+Foam::tmp<Foam::scalarField> Foam::lduMatrix::H1() const
 {
-    tmp<scalarField > tH1
-    (
-        new scalarField(lduAddr().size(), 0.0)
-    );
+    auto tH1 = tmp<scalarField>::New(lduAddr().size(), Zero);
 
     if (lowerPtr_ || upperPtr_)
     {
-        scalarField& H1_ = tH1.ref();
-
-        scalar* __restrict__ H1Ptr = H1_.begin();
+        scalar* __restrict__ H1Ptr = tH1.ref().begin();
 
         const label* __restrict__ uPtr = lduAddr().upperAddr().begin();
         const label* __restrict__ lPtr = lduAddr().lowerAddr().begin();

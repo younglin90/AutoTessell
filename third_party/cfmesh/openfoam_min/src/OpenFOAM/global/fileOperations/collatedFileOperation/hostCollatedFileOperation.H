@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,35 +30,43 @@ Class
 Description
     Version of collatedFileOperation with multiple read/write ranks.
 
-    In parallel it will assume ranks are sorted according to hostname and the
-    lowest rank per hostname will be the IO rank. The output directories will
-    get a unique name processors\<N\>_\<low\>-\<high\> where N is the overall
-    number of processors and low and high is the range of ranks contained in the
-    files. Each of these subsets uses its own communicator.
+    In parallel it will assume ranks are sorted according to hostname
+    and the lowest rank per hostname will be the IO rank. The output directories
+    will get a unique name processors\<N\>_\<low\>-\<high\> where N is the
+    overall number of processors and low and high is the range of ranks
+    contained in the files. Each of these subsets uses its own communicator.
 
     Instead of using the hostnames the IO ranks can be assigned using the
     FOAM_IORANKS environment variable (also when running non-parallel), e.g.
     when decomposing into 4:
 
+    \verbatim
         FOAM_IORANKS='(0 2)' decomposePar -fileHandler hostCollated
+        FOAM_IORANKS='0,2'   decomposePar -fileHandler hostCollated
+        FOAM_IORANKS='0 2'   decomposePar -fileHandler hostCollated
+    \endverbatim
 
     will generate
 
-        processors4_0-1/
-            containing data for processors 0 to 1
-        processors4_2-3/
-            containing data for processors 2 to 3
+    \verbatim
+        processors4_0-1/  : containing data for processors 0 to 1
+        processors4_2-3/  : containing data for processors 2 to 3
+    \endverbatim
+
+Environment
+    - \c FOAM_ENV : list of io-ranks as plain space or comma separated
+      list or as an OpenFOAM formatted list. Eg, '(0 4 8)'
 
 See also
-    collatedFileOperation
+    Foam::collatedFileOperation
 
 SourceFiles
     hostCollatedFileOperation.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef hostCollatedFileOperation_fileOperation_H
-#define hostCollatedFileOperation_fileOperation_H
+#ifndef Foam_fileOperations_hostCollatedFileOperation_H
+#define Foam_fileOperations_hostCollatedFileOperation_H
 
 #include "collatedFileOperation.H"
 
@@ -67,17 +78,23 @@ namespace fileOperations
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class hostCollatedFileOperation Declaration
+                 Class hostCollatedFileOperation Declaration
 \*---------------------------------------------------------------------------*/
 
 class hostCollatedFileOperation
 :
     public collatedFileOperation
 {
-   // Private Member Functions
+    // Private Data
 
-        //- Get the list of processors part of this set
-        static labelList subRanks(const label n);
+        //- Communicator allocated/managed by us
+        mutable label managedComm_;
+
+
+    // Private Member Functions
+
+        //- Any initialisation steps after constructing
+        void init(bool verbose);
 
 
 public:
@@ -88,37 +105,27 @@ public:
 
     // Constructors
 
-        //- Construct null
-        hostCollatedFileOperation(const bool verbose);
+        //- Default construct
+        explicit hostCollatedFileOperation(bool verbose = false);
+
+        //- Construct from communicator with specified io-ranks
+        explicit hostCollatedFileOperation
+        (
+            const Tuple2<label, labelList>& commAndIORanks,
+            const bool distributedRoots,
+            bool verbose = false
+        );
 
 
     //- Destructor
     virtual ~hostCollatedFileOperation();
-};
 
 
-/*---------------------------------------------------------------------------*\
-             Class hostCollatedFileOperationInitialise Declaration
-\*---------------------------------------------------------------------------*/
+    // Member Functions
 
-class hostCollatedFileOperationInitialise
-:
-    public collatedFileOperationInitialise
-{
-public:
-
-    // Constructors
-
-        //- Construct from components
-        hostCollatedFileOperationInitialise(int& argc, char**& argv)
-        :
-            collatedFileOperationInitialise(argc, argv)
-        {}
-
-
-    //- Destructor
-    virtual ~hostCollatedFileOperationInitialise()
-    {}
+        //- Transfer ownership of communicator to this fileOperation.
+        //- Use with caution
+        virtual void storeComm() const;
 };
 
 

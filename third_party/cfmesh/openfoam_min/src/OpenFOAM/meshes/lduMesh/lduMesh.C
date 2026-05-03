@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,25 +33,28 @@ License
 
 namespace Foam
 {
-defineTypeNameAndDebug(lduMesh, 0);
+    defineTypeNameAndDebug(lduMesh, 0);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::objectRegistry& Foam::lduMesh::db() const
+const Foam::objectRegistry& Foam::lduMesh::thisDb() const
 {
     NotImplemented;
-    const objectRegistry* orPtr_ = nullptr;
-    return *orPtr_;
+    return NullObjectRef<objectRegistry>();
 }
 
 
 // * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<lduMesh>& ip)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const InfoProxy<lduMesh>& iproxy
+)
 {
-    const lduMesh& ldum = ip.t_;
+    const auto& ldum = *iproxy;
     const lduAddressing& addr = ldum.lduAddr();
     const lduInterfacePtrsList interfaces = ldum.interfaces();
 
@@ -60,6 +65,7 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<lduMesh>& ip)
         << " interfaces:" << interfaces.size()
         << " comm:" << ldum.comm()
         << endl;
+
     label nCouples = 0;
     forAll(interfaces, i)
     {
@@ -139,7 +145,7 @@ Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<lduMesh>& ip)
         }
     }
 
-    os.check("Ostream& operator<<(Ostream&, const lduMesh&");
+    os.check(FUNCTION_NAME);
 
     return os;
 }

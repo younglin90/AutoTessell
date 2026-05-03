@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fixedMeanFvPatchField
+
+Group
+    grpInletBoundaryConditions
 
 Description
     This boundary condition extrapolates field to the patch using the near-cell
@@ -46,7 +51,7 @@ Usage
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     fixedMeanFvPatchField.C
@@ -65,7 +70,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class fixedMeanFvPatchField Declaration
+                  Class fixedMeanFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -73,7 +78,7 @@ class fixedMeanFvPatchField
 :
     public fixedValueFvPatchField<Type>
 {
-    // Private Data
+    // Private data
 
         //- MeanValue value the field is adjusted to maintain
         autoPtr<Function1<Type>> meanValue_;
@@ -87,11 +92,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedMeanFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedMeanFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -101,46 +113,46 @@ public:
         (
             const fixedMeanFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
-        fixedMeanFvPatchField( const fixedMeanFvPatchField<Type>&) = delete;
+        //- Construct as copy
+        fixedMeanFvPatchField
+        (
+            const fixedMeanFvPatchField<Type>&
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedMeanFvPatchField
         (
             const fixedMeanFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new fixedMeanFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchField<Type>::operator=;
 };
 
 

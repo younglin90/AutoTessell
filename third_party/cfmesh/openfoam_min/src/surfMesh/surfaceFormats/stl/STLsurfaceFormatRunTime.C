@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "STLsurfaceFormat.H"
+#include "labelledTri.H"
 
 #include "addToRunTimeSelectionTable.H"
 #include "addToMemberFunctionSelectionTable.H"
@@ -52,6 +56,14 @@ addNamedTemplatedToRunTimeSelectionTable
     fileExtension,
     stl
 );
+addNamedTemplatedToRunTimeSelectionTable
+(
+    MeshedSurface,
+    STLsurfaceFormat,
+    labelledTri,
+    fileExtension,
+    stl
+);
 
 // read MeshedSurface (binary)
 addNamedTemplatedToRunTimeSelectionTable
@@ -67,6 +79,14 @@ addNamedTemplatedToRunTimeSelectionTable
     MeshedSurface,
     STLsurfaceFormat,
     triFace,
+    fileExtension,
+    stlb
+);
+addNamedTemplatedToRunTimeSelectionTable
+(
+    MeshedSurface,
+    STLsurfaceFormat,
+    labelledTri,
     fileExtension,
     stlb
 );
@@ -91,6 +111,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     fileExtension,
     stl
 );
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    MeshedSurfaceProxy,
+    STLsurfaceFormat,
+    labelledTri,
+    write,
+    fileExtension,
+    stl
+);
 
 // write MeshedSurfaceProxy (binary)
 addNamedTemplatedToMemberFunctionSelectionTable
@@ -107,6 +136,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     MeshedSurfaceProxy,
     STLsurfaceFormat,
     triFace,
+    write,
+    fileExtension,
+    stlb
+);
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    MeshedSurfaceProxy,
+    STLsurfaceFormat,
+    labelledTri,
     write,
     fileExtension,
     stlb
@@ -131,6 +169,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     fileExtension,
     stl
 );
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    UnsortedMeshedSurface,
+    STLsurfaceFormat,
+    labelledTri,
+    write,
+    fileExtension,
+    stl
+);
 
 // write UnsortedMeshedSurface (binary)
 addNamedTemplatedToMemberFunctionSelectionTable
@@ -147,6 +194,15 @@ addNamedTemplatedToMemberFunctionSelectionTable
     UnsortedMeshedSurface,
     STLsurfaceFormat,
     triFace,
+    write,
+    fileExtension,
+    stlb
+);
+addNamedTemplatedToMemberFunctionSelectionTable
+(
+    UnsortedMeshedSurface,
+    STLsurfaceFormat,
+    labelledTri,
     write,
     fileExtension,
     stlb

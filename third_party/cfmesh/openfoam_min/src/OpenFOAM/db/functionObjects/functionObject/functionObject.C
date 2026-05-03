@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,11 +35,28 @@ License
 
 namespace Foam
 {
-    defineTypeNameAndDebug(functionObject, 0);
+    defineDebugSwitchWithName(functionObject, "functionObject", 0);
     defineRunTimeSelectionTable(functionObject, dictionary);
 }
 
 bool Foam::functionObject::postProcess(false);
+
+bool Foam::functionObject::defaultUseNamePrefix(false);
+
+Foam::word Foam::functionObject::outputPrefix("postProcessing");
+
+
+// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
+
+Foam::word Foam::functionObject::scopedName(const word& name) const
+{
+    if (useNamePrefix_)
+    {
+        return IOobject::scopedName(name_, name);
+    }
+
+    return name;
+}
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -44,27 +64,13 @@ bool Foam::functionObject::postProcess(false);
 Foam::functionObject::functionObject
 (
     const word& name,
-    const Time& runTime
+    const bool withNamePrefix
 )
 :
     name_(name),
-    time_(runTime),
-    log(false),
-    executeAtStart_(true)
+    useNamePrefix_(withNamePrefix),
+    log(postProcess)
 {}
-
-
-Foam::functionObject::functionObject
-(
-    const word& name,
-    const Time& runTime,
-    const dictionary& dict
-)
-:
-    functionObject(name, runTime)
-{
-    read(dict);
-}
 
 
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
@@ -76,91 +82,110 @@ Foam::autoPtr<Foam::functionObject> Foam::functionObject::New
     const dictionary& dict
 )
 {
-    const word type(dict.lookup("type"));
+    const word functionType(dict.get<word>("type"));
 
-    Info<< indentOrNl << "Selecting " << type
-        << " with name " << name << endl;
+    DebugInfo
+        << "Selecting function " << functionType << endl;
 
-    if
-    (
-        !dictionaryConstructorTablePtr_
-     || dictionaryConstructorTablePtr_->find(type)
-        == dictionaryConstructorTablePtr_->end()
-    )
+
+    // Load any additional libraries
     {
-        if
-        (
-           !libs.open
+        const auto finder =
+            dict.csearchCompat("libs", {{"functionObjectLibs", 1612}});
+
+        if (finder.good())
+        {
+            runTime.libs().open
             (
                 dict,
-                "libs",
+                finder.ref().keyword(),
                 dictionaryConstructorTablePtr_
-            )
-        )
-        {
-            libs.open("lib" + type.remove(':') + ".so", false);
-        }
-
-        if (!dictionaryConstructorTablePtr_)
-        {
-            FatalErrorInFunction
-                << "Unknown function type "
-                << type << nl << nl
-                << "Table of functionObjects is empty"
-                << exit(FatalError);
+            );
         }
     }
 
-    dictionaryConstructorTable::iterator cstrIter =
-        dictionaryConstructorTablePtr_->find(type);
+    // This is the simplified version without compatibility messages
+    // runTime.libs().open
+    // (
+    //     dict,
+    //     "libs",
+    //     dictionaryConstructorTablePtr_
+    // );
 
-    if (cstrIter == dictionaryConstructorTablePtr_->end())
+    if (!dictionaryConstructorTablePtr_)
     {
         FatalErrorInFunction
-            << "Unknown function type "
-            << type << nl << nl
-            << "Valid functions are : " << nl
-            << dictionaryConstructorTablePtr_->sortedToc()
+            << "Cannot load function type " << functionType << nl << nl
+            << "Table of functionObjects is empty" << endl
             << exit(FatalError);
     }
 
-    printDictionary print(dict);
+    auto* ctorPtr = dictionaryConstructorTable(functionType);
 
-    return autoPtr<functionObject>(cstrIter()(name, runTime, dict));
+    if (!ctorPtr)
+    {
+        // FatalError (not FatalIOError) to ensure it can be caught
+        // as an exception and ignored
+        FatalErrorInLookup
+        (
+            "function",
+            functionType,
+            *dictionaryConstructorTablePtr_
+        ) << exit(FatalError);
+    }
+
+    return autoPtr<functionObject>(ctorPtr(name, runTime, dict));
 }
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::functionObject::~functionObject()
-{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const Foam::word& Foam::functionObject::name() const
+const Foam::word& Foam::functionObject::name() const noexcept
 {
     return name_;
 }
 
 
+bool Foam::functionObject::useNamePrefix() const noexcept
+{
+    return useNamePrefix_;
+}
+
+
+bool Foam::functionObject::useNamePrefix(bool on) noexcept
+{
+    bool old(useNamePrefix_);
+    useNamePrefix_ = on;
+    return old;
+}
+
+
 bool Foam::functionObject::read(const dictionary& dict)
 {
-    log = dict.lookupOrDefault<Switch>("log", postProcess);
+// OR
+// useNamePrefix_ = Switch("useNamePrefix", dict, defaultUseNamePrefix);
+
+    useNamePrefix_ =
+        dict.getOrDefault
+        (
+            "useNamePrefix",
+            defaultUseNamePrefix,
+            keyType::LITERAL
+        );
+
 
     if (!postProcess)
     {
-        executeAtStart_ =
-            dict.lookupOrDefault<Switch>("executeAtStart", executeAtStart_);
+        log = dict.getOrDefault("log", true);
     }
 
     return true;
 }
 
 
-bool Foam::functionObject::executeAtStart() const
+bool Foam::functionObject::execute(const label)
 {
-    return executeAtStart_;
+    return true;
 }
 
 
@@ -170,32 +195,68 @@ bool Foam::functionObject::end()
 }
 
 
-Foam::scalar Foam::functionObject::timeToNextAction()
+bool Foam::functionObject::adjustTimeStep()
 {
-    return vGreat;
+    return false;
 }
 
 
-Foam::scalar Foam::functionObject::maxDeltaT() const
+bool Foam::functionObject::filesModified() const
 {
-    return vGreat;
+    return false;
 }
+
+
+void Foam::functionObject::updateMesh(const mapPolyMesh&)
+{}
 
 
 void Foam::functionObject::movePoints(const polyMesh&)
 {}
 
 
-void Foam::functionObject::topoChange(const polyTopoChangeMap&)
+// * * * * * * * * * * * * unavailableFunctionObject * * * * * * * * * * * * //
+
+Foam::functionObject::unavailableFunctionObject::unavailableFunctionObject
+(
+    const word& name
+)
+:
+    functionObject(name)
 {}
 
 
-void Foam::functionObject::mapMesh(const polyMeshMap&)
-{}
+void Foam::functionObject::unavailableFunctionObject::carp
+(
+    std::string message
+) const
+{
+    FatalError
+        << "####" << nl
+        << "    " << type() << " not available" << nl
+        << "####" << nl;
+
+    if (message.size())
+    {
+        FatalError
+            << message.c_str() << nl;
+    }
+
+    FatalError
+        << exit(FatalError);
+}
 
 
-void Foam::functionObject::distribute(const polyDistributionMap&)
-{}
+bool Foam::functionObject::unavailableFunctionObject::execute()
+{
+    return true;
+}
+
+
+bool Foam::functionObject::unavailableFunctionObject::write()
+{
+    return true;
+}
 
 
 // ************************************************************************* //

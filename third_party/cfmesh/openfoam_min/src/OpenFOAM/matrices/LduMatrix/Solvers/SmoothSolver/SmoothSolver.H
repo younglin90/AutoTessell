@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,8 +37,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SmoothSolver_H
-#define SmoothSolver_H
+#ifndef Foam_SmoothSolver_H
+#define Foam_SmoothSolver_H
 
 #include "lduMatrix.H"
 
@@ -46,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class SmoothSolver Declaration
+                           Class SmoothSolver Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type, class DType, class LUType>
@@ -54,10 +56,9 @@ class SmoothSolver
 :
     public LduMatrix<Type, DType, LUType>::solver
 {
-
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- Number of sweeps before the evaluation of residual
         label nSweeps_;

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "timeVaryingMappedFixedValueFvPatchField.H"
-
+#include "Time.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -33,27 +36,43 @@ Foam::timeVaryingMappedFixedValueFvPatchField<Type>::
 timeVaryingMappedFixedValueFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
+    const DimensionedField<Type, volMesh>& iF
+)
+:
+    fixedValueFvPatchField<Type>(p, iF),
+    uniformValue_()
+{}
+
+
+template<class Type>
+Foam::timeVaryingMappedFixedValueFvPatchField<Type>::
+timeVaryingMappedFixedValueFvPatchField
+(
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
     const dictionary& dict
 )
 :
-    fixedValueFvPatchField<Type>(p, iF, dict, false),
-    fieldMapper_(p, iF, dict)
-{
-    if (dict.found("value"))
-    {
-        fvPatchField<Type>::operator==
+    fixedValueFvPatchField<Type>(p, iF, dict, IOobjectOption::NO_READ),
+    uniformValue_
+    (
+        new PatchFunction1Types::MappedFile<Type>
         (
-            Field<Type>("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
+            p.patch(),
+            "uniformValue",
+            dict,
+            iF.name(),          // field table name
+            true                // face values
+        )
+    )
+{
+    if (!this->readValueEntry(dict))
     {
         // Note: we use evaluate() here to trigger updateCoeffs followed
         //       by re-setting of fvatchfield::updated_ flag. This is
         //       so if first use is in the next time step it retriggers
         //       a new update.
-        this->evaluate(Pstream::commsTypes::blocking);
+        this->evaluate(Pstream::commsTypes::buffered);
     }
 }
 
@@ -64,12 +83,38 @@ timeVaryingMappedFixedValueFvPatchField
 (
     const timeVaryingMappedFixedValueFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<Type>(ptf, p, iF, mapper),
-    fieldMapper_(ptf.fieldMapper_, p, iF, mapper)
+    uniformValue_
+    (
+        new PatchFunction1Types::MappedFile<Type>
+        (
+            ptf.uniformValue_(),
+            p.patch()
+        )
+    )
+{}
+
+
+template<class Type>
+Foam::timeVaryingMappedFixedValueFvPatchField<Type>::
+timeVaryingMappedFixedValueFvPatchField
+(
+    const timeVaryingMappedFixedValueFvPatchField<Type>& ptf
+)
+:
+    fixedValueFvPatchField<Type>(ptf),
+    uniformValue_
+    (
+        new PatchFunction1Types::MappedFile<Type>
+        (
+            ptf.uniformValue_(),
+            this->patch().patch()
+        )
+    )
 {}
 
 
@@ -78,45 +123,47 @@ Foam::timeVaryingMappedFixedValueFvPatchField<Type>::
 timeVaryingMappedFixedValueFvPatchField
 (
     const timeVaryingMappedFixedValueFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     fixedValueFvPatchField<Type>(ptf, iF),
-    fieldMapper_(ptf.fieldMapper_)
+    uniformValue_
+    (
+        new PatchFunction1Types::MappedFile<Type>
+        (
+            ptf.uniformValue_(),
+            this->patch().patch()
+        )
+    )
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::map
+void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::autoMap
 (
-    const fvPatchField<Type>& ptf,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& m
 )
 {
-    fixedValueFvPatchField<Type>::map(ptf, mapper);
-    fieldMapper_.map
-    (
-        refCast<const timeVaryingMappedFixedValueFvPatchField<Type>>(ptf)
-       .fieldMapper_,
-        mapper
-    );
+    fixedValueFvPatchField<Type>::autoMap(m);
+    uniformValue_().autoMap(m);
 }
 
 
 template<class Type>
-void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::reset
+void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::rmap
 (
-    const fvPatchField<Type>& ptf
+    const fvPatchField<Type>& ptf,
+    const labelList& addr
 )
 {
-    fixedValueFvPatchField<Type>::reset(ptf);
-    fieldMapper_.reset
-    (
-        refCast<const timeVaryingMappedFixedValueFvPatchField<Type>>(ptf)
-       .fieldMapper_
-    );
+    fixedValueFvPatchField<Type>::rmap(ptf, addr);
+
+    const timeVaryingMappedFixedValueFvPatchField<Type>& tiptf =
+        refCast<const timeVaryingMappedFixedValueFvPatchField<Type>>(ptf);
+
+    uniformValue_().rmap(tiptf.uniformValue_(), addr);
 }
 
 
@@ -128,7 +175,16 @@ void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::updateCoeffs()
         return;
     }
 
-    this->operator==(fieldMapper_.map());
+
+    const scalar t = this->db().time().timeOutputValue();
+    fvPatchField<Type>::operator==(uniformValue_->value(t));
+
+    if (debug)
+    {
+        Pout<< "updateCoeffs : set fixedValue to min:" << gMin(*this)
+            << " max:" << gMax(*this)
+            << " avg:" << gAverage(*this) << endl;
+    }
 
     fixedValueFvPatchField<Type>::updateCoeffs();
 }
@@ -141,8 +197,8 @@ void Foam::timeVaryingMappedFixedValueFvPatchField<Type>::write
 ) const
 {
     fvPatchField<Type>::write(os);
-    fieldMapper_.write(os);
-    writeEntry(os, "value", *this);
+    uniformValue_->writeData(os);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

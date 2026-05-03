@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +27,10 @@ Class
     Foam::tetWedgeMatcher
 
 Description
-    A cellMatcher for tetWedge cells
+    A cellMatcher for tetWedge cells (cellModel::TETWEDGE).
 
 See also
-    cellMatcher
+    cellMatcher, cellModel
 
 SourceFiles
     tetWedgeMatcher.C
@@ -55,25 +57,31 @@ class tetWedgeMatcher
 {
     // Static Data Members
 
-        //- Constants for this shape
-        static const label vertPerCell;
-        static const label facePerCell;
-        static const label maxVertPerFace;
+        // Constants for this shape
+        static constexpr label vertPerCell = 5;
+        static constexpr label facePerCell = 4;
+        static constexpr label maxVertPerFace = 4;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        tetWedgeMatcher(const tetWedgeMatcher&) = delete;
+
+        //- No copy assignment
+        tetWedgeMatcher& operator=(const tetWedgeMatcher&) = delete;
 
 
 public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct
         tetWedgeMatcher();
-
-        //- Disallow default bitwise copy construction
-        tetWedgeMatcher(const tetWedgeMatcher&) = delete;
 
 
     //- Destructor
-    ~tetWedgeMatcher();
+    ~tetWedgeMatcher() = default;
 
 
     // Member Functions
@@ -116,12 +124,6 @@ public:
             const label celli,
             cellShape& shape
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const tetWedgeMatcher&) = delete;
 };
 
 

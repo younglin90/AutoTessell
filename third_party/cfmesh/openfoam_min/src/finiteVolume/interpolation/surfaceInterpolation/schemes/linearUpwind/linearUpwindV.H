@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,7 +47,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class linearUpwindV Declaration
+                           Class linearUpwindV Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -57,6 +59,15 @@ class linearUpwindV
 
         word gradSchemeName_;
         tmp<fv::gradScheme<Type>> gradScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        linearUpwindV(const linearUpwindV&) = delete;
+
+        //- No copy assignment
+        void operator=(const linearUpwindV&) = delete;
 
 
 public:
@@ -72,7 +83,15 @@ public:
         (
             const fvMesh& mesh,
             const surfaceScalarField& faceFlux
-        );
+        )
+        :
+            upwind<Type>(mesh, faceFlux),
+            gradSchemeName_("grad"),
+            gradScheme_
+            (
+                new fv::gaussGrad<Type>(mesh)
+            )
+        {}
 
         //- Construct from Istream.
         //  The name of the flux field is read from the Istream and looked-up
@@ -81,7 +100,19 @@ public:
         (
             const fvMesh& mesh,
             Istream& schemeData
-        );
+        )
+        :
+            upwind<Type>(mesh, schemeData),
+            gradSchemeName_(schemeData),
+            gradScheme_
+            (
+                fv::gradScheme<Type>::New
+                (
+                    mesh,
+                    mesh.gradScheme(gradSchemeName_)
+                )
+            )
+        {}
 
         //- Construct from faceFlux and Istream
         linearUpwindV
@@ -89,10 +120,19 @@ public:
             const fvMesh& mesh,
             const surfaceScalarField& faceFlux,
             Istream& schemeData
-        );
-
-        //- Disallow default bitwise copy construction
-        linearUpwindV(const linearUpwindV&) = delete;
+        )
+        :
+            upwind<Type>(mesh, faceFlux, schemeData),
+            gradSchemeName_(schemeData),
+            gradScheme_
+            (
+                fv::gradScheme<Type>::New
+                (
+                    mesh,
+                    mesh.gradScheme(gradSchemeName_)
+                )
+            )
+        {}
 
 
     // Member Functions
@@ -104,29 +144,18 @@ public:
         }
 
         //- Return the explicit correction to the face-interpolate
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const linearUpwindV&) = delete;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "linearUpwindVTemplates.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

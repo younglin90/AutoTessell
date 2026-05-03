@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class featureEdgeMesh Declaration
+                           Class featureEdgeMesh Declaration
 \*---------------------------------------------------------------------------*/
 
 class featureEdgeMesh
@@ -55,7 +57,6 @@ class featureEdgeMesh
     public regIOobject,
     public edgeMesh
 {
-
 public:
 
     TypeName("featureEdgeMesh");
@@ -64,18 +65,18 @@ public:
     // Constructors
 
         //- Construct (read) given an IOobject
-        featureEdgeMesh(const IOobject&);
+        explicit featureEdgeMesh(const IOobject&);
 
         //- Construct from featureEdgeMesh data
         featureEdgeMesh
         (
-            const IOobject&,
-            const pointField&,
-            const edgeList&
+            const IOobject& io,
+            const pointField& points,
+            const edgeList& edges
         );
 
-        //- Copy constructor
-        featureEdgeMesh(const IOobject&, const featureEdgeMesh&);
+        //- Construct as copy
+        featureEdgeMesh(const IOobject& io, const edgeMesh& em);
 
 
     // IO
@@ -91,15 +92,21 @@ public:
         {
             return true;
         }
+
+        //- Return complete path + object name if the file exists
+        //  either in the case/processor or case otherwise null
+        virtual fileName filePath() const
+        {
+            return globalFilePath(type());
+        }
 };
 
 
-//- Trait for obtaining global status
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+//- Global file type for featureEdgeMesh
 template<>
-struct typeGlobal<featureEdgeMesh>
-{
-    static const bool global = true;
-};
+struct is_globalIOobject<featureEdgeMesh> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,20 +35,21 @@ Description
 
 SourceFiles
     tetrahedronI.H
+    tetrahedron.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef tetrahedron_H
-#define tetrahedron_H
+#ifndef Foam_tetrahedron_H
+#define Foam_tetrahedron_H
 
 #include "point.H"
-#include "primitiveFieldsFwd.H"
 #include "pointHit.H"
-#include "randomGenerator.H"
+#include "primitiveFieldsFwd.H"
+#include "Random.H"
 #include "FixedList.H"
 #include "UList.H"
-#include "triPointRef.H"
-#include "boundBox.H"
+#include "triangle.H"
+#include "treeBoundBox.H"
 #include "barycentric.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -53,26 +57,111 @@ SourceFiles
 namespace Foam
 {
 
-class Istream;
-class Ostream;
-
-// Forward declaration of friend functions and operators
+// Forward Declarations
+class plane;
 
 template<class Point, class PointRef> class tetrahedron;
 
 template<class Point, class PointRef>
-inline Istream& operator>>
-(
-    Istream&,
-    tetrahedron<Point, PointRef>&
-);
+inline Istream& operator>>(Istream&, tetrahedron<Point, PointRef>&);
 
 template<class Point, class PointRef>
-inline Ostream& operator<<
-(
-    Ostream&,
-    const tetrahedron<Point, PointRef>&
-);
+inline Ostream& operator<<(Ostream&, const tetrahedron<Point, PointRef>&);
+
+
+// Common Typedefs
+
+//- A tetrahedron using referred points
+typedef tetrahedron<point, const point&> tetPointRef;
+
+
+/*---------------------------------------------------------------------------*\
+                         Class tetPoints Declaration
+\*---------------------------------------------------------------------------*/
+
+//- Tet point storage. Default constructable (tetrahedron is not)
+class tetPoints
+:
+    public FixedList<point, 4>
+{
+public:
+
+    // Generated Methods
+
+        //- Default construct
+        tetPoints() = default;
+
+        //- The front() accessor (from FixedList) has no purpose
+        void front() = delete;
+
+        //- The back() accessor (from FixedList) has no purpose
+        void back() = delete;
+
+
+    // Constructors
+
+        //- Construct from four points
+        inline tetPoints
+        (
+            const point& p0,
+            const point& p1,
+            const point& p2,
+            const point& p3
+        );
+
+        //- Construct from point references
+        inline explicit tetPoints(const tetPointRef& pts);
+
+        //- Construct from four points
+        inline tetPoints(const FixedList<point, 4>& pts);
+
+        //- Copy construct from subset of points
+        inline tetPoints
+        (
+            const UList<point>& points,
+            const FixedList<label, 4>& indices
+        );
+
+
+    // Member Functions
+
+        //- The first vertex
+        const point& a() const noexcept { return get<0>(); }
+
+        //- The second vertex
+        const point& b() const noexcept { return get<1>(); }
+
+        //- The third vertex
+        const point& c() const noexcept { return get<2>(); }
+
+        //- The fourth vertex
+        const point& d() const noexcept { return get<3>(); }
+
+        //- The first vertex
+        point& a() noexcept { return get<0>(); }
+
+        //- The second vertex
+        point& b() noexcept { return get<1>(); }
+
+        //- The third vertex
+        point& c() noexcept { return get<2>(); }
+
+        //- The fourth vertex
+        point& d() noexcept { return get<3>(); }
+
+        //- Return as tetrahedron reference
+        inline tetPointRef tet() const;
+
+        //- Invert tetrahedron by swapping third and fourth vertices
+        inline void flip();
+
+        //- The enclosing (bounding) box for the tetrahedron
+        inline Pair<point> box() const;
+
+        //- The bounding box for the tetrahedron
+        inline treeBoundBox bounds() const;
+};
+
 
 /*---------------------------------------------------------------------------*\
                          Class tetrahedron Declaration
@@ -81,14 +170,88 @@ inline Ostream& operator<<
 template<class Point, class PointRef>
 class tetrahedron
 {
+public:
+
+    // Public Typedefs
+
+        //- The point type
+        typedef Point point_type;
+
+        //- Storage type for tets originating from intersecting tets.
+        //  (can possibly be smaller than 200)
+        typedef FixedList<tetPoints, 200> tetIntersectionList;
+
+
+        // Classes for use in sliceWithPlane. What to do with decomposition
+        // of tet.
+
+            //- Dummy
+            class dummyOp
+            {
+            public:
+                inline void operator()(const tetPoints&);
+            };
+
+            //- Sum resulting volumes
+            class sumVolOp
+            {
+            public:
+                scalar vol_;
+
+                inline sumVolOp();
+
+                inline void operator()(const tetPoints&);
+            };
+
+            //- Store resulting tets
+            class storeOp
+            {
+                tetIntersectionList& tets_;
+                label& nTets_;
+
+            public:
+                inline storeOp(tetIntersectionList&, label&);
+
+                inline void operator()(const tetPoints&);
+            };
+
+private:
+
     // Private Data
 
         PointRef a_, b_, c_, d_;
 
 
+    // Private Member Functions
+
+        inline static point planeIntersection
+        (
+            const FixedList<scalar, 4>&,
+            const tetPoints&,
+            const label,
+            const label
+        );
+
+        template<class TetOp>
+        inline static void decomposePrism
+        (
+            const FixedList<point, 6>& points,
+            TetOp& op
+        );
+
+        template<class AboveTetOp, class BelowTetOp>
+        inline static void tetSliceWithPlane
+        (
+            const plane& pl,
+            const tetPoints& tet,
+            AboveTetOp& aboveOp,
+            BelowTetOp& belowOp
+        );
+
+
 public:
 
-    // Member constants
+    // Member Constants
 
         enum
         {
@@ -99,51 +262,73 @@ public:
 
     // Constructors
 
-        //- Construct from points
+        //- Construct from four points
         inline tetrahedron
         (
-            const Point& a,
-            const Point& b,
-            const Point& c,
-            const Point& d
+            const Point& p0,
+            const Point& p1,
+            const Point& p2,
+            const Point& p3
         );
+
+        //- Construct from four points
+        inline tetrahedron(const FixedList<Point, 4>& pts);
 
         //- Construct from four points in the list of points
         inline tetrahedron
         (
-            const UList<Point>&,
+            const UList<Point>& points,
             const FixedList<label, 4>& indices
         );
 
         //- Construct from Istream
-        inline tetrahedron(Istream&);
+        inline explicit tetrahedron(Istream&);
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Return vertices
-            inline const Point& a() const;
+        //- Return vertex a
+        const Point& a() const noexcept { return a_; }
 
-            inline const Point& b() const;
+        //- Return vertex b
+        const Point& b() const noexcept { return b_; }
 
-            inline const Point& c() const;
+        //- Return vertex c
+        const Point& c() const noexcept { return c_; }
 
-            inline const Point& d() const;
+        //- Return vertex d
+        const Point& d() const noexcept { return d_; }
 
-            //- Return i-th face
-            inline triPointRef tri(const label facei) const;
+        //- Return i-th face
+        inline triPointRef tri(const label facei) const;
+
+
+    // Tet properties (static calculations)
+
+        //- The enclosing (bounding) box for four points
+        inline static Pair<Point> box
+        (
+            const Point& p0,
+            const Point& p1,
+            const Point& p2,
+            const Point& p3
+        );
+
 
         // Properties
 
-            //- Return face normal
+            //- Face area normal for side a
             inline vector Sa() const;
 
+            //- Face area normal for side b
             inline vector Sb() const;
 
+            //- Face area normal for side c
             inline vector Sc() const;
 
+            //- Face area normal for side d
             inline vector Sd() const;
 
             //- Return centre (centroid)
@@ -152,20 +337,26 @@ public:
             //- Return volume
             inline scalar mag() const;
 
-            //- Return the circum-centre and radius-squared
-            inline Tuple2<Point, scalar> circumSphereSqr() const;
+            //- The enclosing (bounding) box for the tetrahedron
+            inline Pair<Point> box() const;
 
-            //- Return the circum-centre and radius
-            inline Tuple2<Point, scalar> circumSphere() const;
+            //- The bounding box for the tetrahedron
+            inline treeBoundBox bounds() const;
+
+            //- Return circum-centre
+            inline Point circumCentre() const;
+
+            //- Return circum-radius
+            inline scalar circumRadius() const;
 
             //- Return quality: Ratio of tetrahedron and circum-sphere
-            //  volume, scaled so that a regular tetrahedron has a
-            //  quality of 1
+            //- volume, scaled so that a regular tetrahedron has a
+            //- quality of 1
             inline scalar quality() const;
 
             //- Return a random point in the tetrahedron from a
-            //  uniform distribution
-            inline Point randomPoint(randomGenerator& rndGen) const;
+            //- uniform distribution
+            inline Point randomPoint(Random& rndGen) const;
 
             //- Calculate the point from the given barycentric coordinates.
             inline Point barycentricToPoint(const barycentric& bary) const;
@@ -188,8 +379,45 @@ public:
             //- Return true if point is inside tetrahedron
             inline bool inside(const point& pt) const;
 
-            //- Calculate the bounding box
-            inline boundBox bounds() const;
+            //- Decompose tet into tets above and below plane
+            template<class AboveTetOp, class BelowTetOp>
+            inline void sliceWithPlane
+            (
+                const plane& pl,
+                AboveTetOp& aboveOp,
+                BelowTetOp& belowOp
+            ) const;
+
+            //- Decompose tet into tets inside and outside other tet
+            inline void tetOverlap
+            (
+                const tetrahedron<Point, PointRef>& tetB,
+                tetIntersectionList& insideTets,
+                label& nInside,
+                tetIntersectionList& outsideTets,
+                label& nOutside
+            ) const;
+
+
+            //- Return (min)containment sphere, i.e. the smallest sphere with
+            //  all points inside. Returns pointHit with:
+            //  - hit         : if sphere is equal to circumsphere
+            //                  (biggest sphere)
+            //  - point       : centre of sphere
+            //  - distance    : radius of sphere
+            //  - eligiblemiss: false
+            // Tol (small compared to 1, e.g. 1e-9) is used to determine
+            // whether point is inside: mag(pt - ctr) < (1+tol)*radius.
+            pointHit containmentSphere(const scalar tol) const;
+
+            //- Fill buffer with shape function products
+            void gradNiSquared(scalarField& buffer) const;
+
+            void gradNiDotGradNj(scalarField& buffer) const;
+
+            void gradNiGradNi(tensorField& buffer) const;
+
+            void gradNiGradNj(tensorField& buffer) const;
 
 
     // IOstream Operators
@@ -215,6 +443,12 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #include "tetrahedronI.H"
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#ifdef NoRepository
+    #include "tetrahedron.C"
+#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

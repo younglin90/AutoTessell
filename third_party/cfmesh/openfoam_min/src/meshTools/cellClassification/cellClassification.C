@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,11 +28,12 @@ License
 
 #include "cellClassification.H"
 #include "triSurfaceSearch.H"
-#include "meshSearch.H"
+#include "indexedOctree.H"
 #include "treeDataFace.H"
+#include "meshSearch.H"
 #include "cellInfo.H"
 #include "polyMesh.H"
-#include "FaceCellWave.H"
+#include "MeshWave.H"
 #include "ListOps.H"
 #include "meshTools.H"
 #include "cpuTime.H"
@@ -163,7 +167,7 @@ Foam::boolList Foam::cellClassification::markFaces
 
     indexedOctree<treeDataFace> faceTree
     (
-        treeDataFace(false, mesh_, allFaces),
+        treeDataFace(mesh_, allFaces),
         allBb,      // overall search domain
         8,          // maxLevel
         10,         // leafsize
@@ -192,7 +196,7 @@ Foam::boolList Foam::cellClassification::markFaces
         const scalar edgeMag = mag(edgeNormal);
         const vector smallVec = 1e-9*edgeNormal;
 
-        edgeNormal /= edgeMag+vSmall;
+        edgeNormal /= edgeMag+VSMALL;
 
         // Current start of pierce test
         point pt = start;
@@ -207,7 +211,7 @@ Foam::boolList Foam::cellClassification::markFaces
             }
             else
             {
-                label facei = faceTree.shapes().faceLabels()[pHit.index()];
+                label facei = faceTree.shapes().objectIndex(pHit.index());
 
                 if (!cutFace[facei])
                 {
@@ -217,7 +221,7 @@ Foam::boolList Foam::cellClassification::markFaces
                 }
 
                 // Restart from previous endpoint
-                pt = pHit.hitPoint() + smallVec;
+                pt = pHit.point() + smallVec;
 
                 if (((pt-start) & edgeNormal) >= edgeMag)
                 {
@@ -245,11 +249,13 @@ Foam::boolList Foam::cellClassification::markFaces
 // 'outside'
 void Foam::cellClassification::markCells
 (
+    const meshSearch& queryMesh,
     const boolList& piercedFace,
-    const List<point>& outsidePts
+    const pointField& outsidePts
 )
 {
     // Use meshwave to partition mesh, starting from outsidePt
+
 
     // Construct null; sets type to NOTSET
     List<cellInfo> cellInfoList(mesh_.nCells());
@@ -270,7 +276,6 @@ void Foam::cellClassification::markCells
         }
     }
 
-
     //
     // Mark cells containing outside points as being outside
     //
@@ -281,14 +286,14 @@ void Foam::cellClassification::markCells
     forAll(outsidePts, outsidePtI)
     {
         // Use linear search for points.
-        label celli = meshSearch::findCellNoTree(mesh_, outsidePts[outsidePtI]);
+        label celli = queryMesh.findCell(outsidePts[outsidePtI], -1, false);
 
-        if (returnReduce(celli, maxOp<label>()) == -1)
+        if (returnReduceAnd(celli < 0))
         {
             FatalErrorInFunction
                 << "outsidePoint " << outsidePts[outsidePtI]
-                << " is not inside any cell"
-                << nl << "It might be on a face or outside the geometry"
+                << " is not inside any cell" << nl
+                << "It might be on a face or outside the geometry"
                 << exit(FatalError);
         }
 
@@ -298,10 +303,7 @@ void Foam::cellClassification::markCells
 
             // Mark faces of celli
             const labelList& myFaces = mesh_.cells()[celli];
-            forAll(myFaces, myFacei)
-            {
-                outsideFacesMap.insert(myFaces[myFacei]);
-            }
+            outsideFacesMap.insert(myFaces);
         }
     }
 
@@ -318,20 +320,21 @@ void Foam::cellClassification::markCells
         cellInfo(cellClassification::OUTSIDE)
     );
 
-    List<cellInfo> faceInfoList(mesh().nFaces());
-    FaceCellWave<cellInfo> cellInfoCalc
+    MeshWave<cellInfo> cellInfoCalc
     (
         mesh_,
-        changedFaces,                           // Labels of changed faces
-        changedFacesInfo,                       // Information on changed faces
-        faceInfoList,
-        cellInfoList,                           // Information on all cells
-        mesh_.globalData().nTotalCells() + 1    // max iterations
+        changedFaces,                       // Labels of changed faces
+        changedFacesInfo,                   // Information on changed faces
+        cellInfoList,                       // Information on all cells
+        mesh_.globalData().nTotalCells()+1  // max iterations
     );
 
-    forAll(cellInfoList, celli)
+    // Get information out of cellInfoList
+    const List<cellInfo>& allInfo = cellInfoCalc.allCellInfo();
+
+    forAll(allInfo, celli)
     {
-        label t = cellInfoList[celli].type();
+        label t = allInfo[celli].type();
 
         if (t == cellClassification::NOTSET)
         {
@@ -478,14 +481,20 @@ void Foam::cellClassification::getMeshOutside
 Foam::cellClassification::cellClassification
 (
     const polyMesh& mesh,
+    const meshSearch& meshQuery,
     const triSurfaceSearch& surfQuery,
-    const List<point>& outsidePoints
+    const pointField& outsidePoints
 )
 :
     labelList(mesh.nCells(), cellClassification::NOTSET),
     mesh_(mesh)
 {
-    markCells(markFaces(surfQuery), outsidePoints);
+    markCells
+    (
+        meshQuery,
+        markFaces(surfQuery),
+        outsidePoints
+    );
 }
 
 
@@ -508,7 +517,7 @@ Foam::cellClassification::cellClassification
 }
 
 
-// Copy constructor
+// Construct as copy
 Foam::cellClassification::cellClassification(const cellClassification& cType)
 :
     labelList(cType),
@@ -799,7 +808,7 @@ Foam::label Foam::cellClassification::fillRegionPoints
 {
     label nTotChanged = 0;
 
-    for (label iter = 0; iter < maxIter; iter++)
+    for (label iter = 0; iter < maxIter; ++iter)
     {
         // Get interface between meshType cells and non-meshType cells as a list
         // of faces and for each face the cell which is the meshType.
@@ -820,26 +829,25 @@ Foam::label Foam::cellClassification::fillRegionPoints
 
         label nChanged = 0;
 
-        forAllConstIter(labelHashSet, nonManifoldPoints, iter)
+        for (const label nonManPti : nonManifoldPoints)
         {
             // Find a face on fp using point and remove it.
-            const label patchPointi = meshPointMap[iter.key()];
+            const label patchPointi = meshPointMap[nonManPti];
 
             const labelList& pFaces = fp.pointFaces()[patchPointi];
 
             // Remove any face using conflicting point. Does first face which
             // has not yet been done. Could be more intelligent and decide which
             // one would be best to remove.
-            forAll(pFaces, i)
+            for (const label patchFacei : pFaces)
             {
-                const label patchFacei = pFaces[i];
                 const label ownerCell  = outsideOwner[patchFacei];
 
                 if (operator[](ownerCell) == meshType)
                 {
                     operator[](ownerCell) = fillType;
 
-                    nChanged++;
+                    ++nChanged;
                     break;
                 }
             }

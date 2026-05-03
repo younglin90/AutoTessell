@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,28 +30,32 @@ Class
 Description
     Remove a dictionary entry.
 
-    The \c \#remove directive takes a list or a single wordRe.
+    The \c \#remove directive takes a list or a single keyType.
     For example,
     \verbatim
         #remove entry0
         #remove ( entry1 entry2 entry3 otherEntry )
         #remove "entry[1-3]"
         #remove ( "entry[1-3]" otherEntry )
+        #remove ^dict1.subdict2.entry2
+        #remove "/dict1/subdict2/entry1"
     \endverbatim
 
-    The removal only occurs in the current context.
-    Removing sub-entries or parent entries is not supported.
+Note
+    Unless otherwise scoped, the removal occurs in the current context.
+    To remove from other scopes, a dot-scoped or slash-scoped syntax is
+    required. The slash-scoped syntax must be quoted to ensure that it
+    is properly parsed.
 
 SourceFiles
     removeEntry.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef removeEntry_H
-#define removeEntry_H
+#ifndef functionEntries_removeEntry_H
+#define functionEntries_removeEntry_H
 
 #include "functionEntry.H"
-#include "wordReList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -65,48 +72,10 @@ class removeEntry
 :
     public functionEntry
 {
-    // Private Data
-
-        //- The list of patterns of entries to remove
-        wordReList patterns_;
-
-
 public:
 
-    //- Runtime type information
-    FunctionTypeName("#remove");
-
-
-    // Constructors
-
-        //- Construct from line number, dictionary and Istream
-        removeEntry
-        (
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Copy construct
-        removeEntry(const removeEntry&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new removeEntry(*this));
-        }
-
-
-    // Member Functions
-
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream&);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const removeEntry&) = delete;
+    //- Remove single or multiple entries. Local or scoped entries.
+    static bool execute(dictionary& parentDict, Istream& is);
 };
 
 

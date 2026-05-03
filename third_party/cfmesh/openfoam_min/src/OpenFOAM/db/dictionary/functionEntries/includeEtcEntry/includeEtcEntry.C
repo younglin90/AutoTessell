@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,97 +29,231 @@ License
 #include "includeEtcEntry.H"
 #include "etcFiles.H"
 #include "stringOps.H"
-#include "addToRunTimeSelectionTable.H"
+#include "IFstream.H"
+#include "IOstreams.H"
+#include "UPstream.H"
+#include "fileOperation.H"
+#include "regIOobject.H"
 #include "addToMemberFunctionSelectionTable.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+bool Foam::functionEntries::includeEtcEntry::log(false);
+
 
 namespace Foam
 {
 namespace functionEntries
 {
-    defineFunctionTypeNameAndDebug(includeEtcEntry, 0);
-
-    addToRunTimeSelectionTable
-    (
-        functionEntry,
-        includeEtcEntry,
-        dictionary
-    );
-
-    addToMemberFunctionSelectionTable
+    addNamedToMemberFunctionSelectionTable
     (
         functionEntry,
         includeEtcEntry,
         execute,
-        primitiveEntryIstream
+        dictionaryIstream,
+        includeEtc
     );
-}
-}
+
+    addNamedToMemberFunctionSelectionTable
+    (
+        functionEntry,
+        includeEtcEntry,
+        execute,
+        primitiveEntryIstream,
+        includeEtc
+    );
+
+    addNamedToMemberFunctionSelectionTable
+    (
+        functionEntry,
+        sincludeEtcEntry,
+        execute,
+        dictionaryIstream,
+        sincludeEtc
+    );
+
+    addNamedToMemberFunctionSelectionTable
+    (
+        functionEntry,
+        sincludeEtcEntry,
+        execute,
+        primitiveEntryIstream,
+        sincludeEtc
+    );
+} // End namespace functionEntries
+} // End namespace Foam
 
 
 // * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * * //
 
-Foam::fileName Foam::functionEntries::includeEtcEntry::includeFileName
+Foam::fileName Foam::functionEntries::includeEtcEntry::resolveEtcFile
 (
-    const fileName& dir,
     const fileName& f,
     const dictionary& dict
-) const
+)
 {
     fileName fName(f);
 
     // Substitute dictionary and environment variables.
     // Allow empty substitutions.
-    stringOps::inplaceExpandEntry(fName, dict, true, true);
+    stringOps::inplaceExpand(fName, dict, true, true);
 
     if (fName.empty() || fName.isAbsolute())
     {
         return fName;
     }
-    else
-    {
-        // Search the etc directories for the file
-        return findEtcFile(fName);
-    }
+
+    // Search etc directories for the file
+    return Foam::findEtcFile(fName);
 }
 
 
-// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-Foam::functionEntries::includeEtcEntry::includeEtcEntry
+bool Foam::functionEntries::includeEtcEntry::execute
 (
-    const label lineNumber,
-    const dictionary& parentDict,
+    const bool mandatory,
+    dictionary& parentDict,
     Istream& is
 )
-:
-    includeEntry(typeName, lineNumber, parentDict, is)
-{}
+{
+    const regIOobject* rioPtr = isA<regIOobject>(parentDict.topDict());
+
+    const label oldComm
+    (
+        rioPtr && rioPtr->global()
+      ? fileHandler().comm(UPstream::worldComm)
+      : fileHandler().comm()
+    );
+
+    const fileName rawName(is);
+    const fileName fName(resolveEtcFile(rawName, parentDict));
+
+    autoPtr<ISstream> ifsPtr(fileHandler().NewIFstream(fName));
+    auto& ifs = *ifsPtr;
+
+    if (ifs)
+    {
+        if (Foam::functionEntries::includeEtcEntry::log)
+        {
+            // Report to stdout which file is included
+            Info<< fName << nl;
+        }
+        parentDict.read(ifs);
+
+        fileHandler().comm(oldComm);
+        return true;
+    }
+
+    fileHandler().comm(oldComm);
+
+    if (!mandatory)
+    {
+        return true; // Never fails if optional
+    }
+
+    FatalIOErrorInFunction(is)
+        << "Cannot open etc file "
+        << (ifs.name().size() ? ifs.name() : rawName)
+        << " while reading dictionary " << parentDict.relativeName()
+        << exit(FatalIOError);
+
+    return false;
+}
+
+
+bool Foam::functionEntries::includeEtcEntry::execute
+(
+    const bool mandatory,
+    const dictionary& parentDict,
+    primitiveEntry& entry,
+    Istream& is
+)
+{
+    const regIOobject* rioPtr = isA<regIOobject>(parentDict.topDict());
+
+    const label oldComm
+    (
+        rioPtr && rioPtr->global()
+      ? fileHandler().comm(UPstream::worldComm)
+      : fileHandler().comm()
+    );
+
+    const fileName rawName(is);
+    const fileName fName(resolveEtcFile(rawName, parentDict));
+
+    autoPtr<ISstream> ifsPtr(fileHandler().NewIFstream(fName));
+    auto& ifs = *ifsPtr;
+
+    if (ifs)
+    {
+        if (Foam::functionEntries::includeEtcEntry::log)
+        {
+            // Report to stdout which file is included
+            Info<< fName << nl;
+        }
+        entry.read(parentDict, ifs);
+
+        fileHandler().comm(oldComm);
+        return true;
+    }
+
+    fileHandler().comm(oldComm);
+
+    if (!mandatory)
+    {
+        return true; // Never fails if optional
+    }
+
+    FatalIOErrorInFunction(is)
+        << "Cannot open etc file "
+        << (ifs.name().size() ? ifs.name() : rawName)
+        << " while reading dictionary " << parentDict.relativeName()
+        << exit(FatalIOError);
+
+    return false;
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 bool Foam::functionEntries::includeEtcEntry::execute
 (
-    dictionary& contextDict,
+    dictionary& parentDict,
     Istream& is
 )
 {
-    return includeEntry::execute(contextDict, is);
+    return includeEtcEntry::execute(true, parentDict, is);
 }
 
 
 bool Foam::functionEntries::includeEtcEntry::execute
 (
-    const dictionary& contextDict,
-    primitiveEntry& contextEntry,
+    const dictionary& parentDict,
+    primitiveEntry& entry,
     Istream& is
 )
 {
-    return
-        includeEtcEntry(is.lineNumber(), contextDict, is)
-       .virtualExecute(contextDict, contextEntry, is);
+    return includeEtcEntry::execute(true, parentDict, entry, is);
+}
+
+
+bool Foam::functionEntries::sincludeEtcEntry::execute
+(
+    dictionary& parentDict,
+    Istream& is
+)
+{
+    return includeEtcEntry::execute(false, parentDict, is);
+}
+
+
+bool Foam::functionEntries::sincludeEtcEntry::execute
+(
+    const dictionary& parentDict,
+    primitiveEntry& entry,
+    Istream& is
+)
+{
+    return includeEtcEntry::execute(false, parentDict, entry, is);
 }
 
 

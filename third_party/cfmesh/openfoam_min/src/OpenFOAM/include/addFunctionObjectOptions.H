@@ -2,7 +2,7 @@ Foam::argList::addOption
 (
     "dict",
     "file",
-    "read functions dictionary from specified location"
+    "Read control dictionary from specified location"
 );
 Foam::argList::addOption
 (
@@ -14,8 +14,7 @@ Foam::argList::addOption
 (
     "fields",
     "list",
-    "Specify a list of fields to be processed, e.g. '(U T p)' - "
-    "regular expressions not currently supported"
+    "Specify a list of fields to be processed, e.g. '(U T p)'"
 );
 Foam::argList::addOption
 (

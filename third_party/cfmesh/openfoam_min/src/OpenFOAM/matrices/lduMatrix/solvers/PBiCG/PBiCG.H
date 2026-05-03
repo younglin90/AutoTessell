@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,13 +47,27 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                            Class PBiCG Declaration
+                           Class PBiCG Declaration
 \*---------------------------------------------------------------------------*/
 
 class PBiCG
 :
     public lduMatrix::solver
 {
+    // Private Member Data
+
+        //- Cached preconditioner
+        mutable autoPtr<lduMatrix::preconditioner> preconPtr_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        PBiCG(const PBiCG&) = delete;
+
+        //- No copy assignment
+        void operator=(const PBiCG&) = delete;
+
 
 public:
 
@@ -71,13 +88,9 @@ public:
             const dictionary& solverControls
         );
 
-        //- Disallow default bitwise copy construction
-        PBiCG(const PBiCG&) = delete;
-
 
     //- Destructor
-    virtual ~PBiCG()
-    {}
+    virtual ~PBiCG() = default;
 
 
     // Member Functions
@@ -89,12 +102,6 @@ public:
             const scalarField& source,
             const direction cmpt=0
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PBiCG&) = delete;
 };
 
 

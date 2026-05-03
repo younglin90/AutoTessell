@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,33 +39,34 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef polyPatch_H
-#define polyPatch_H
+#ifndef Foam_polyPatch_H
+#define Foam_polyPatch_H
 
 #include "patchIdentifier.H"
 #include "primitivePatch.H"
 #include "typeInfo.H"
 #include "runTimeSelectionTables.H"
+#include "SubField.H"
+#include "PtrList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-// Forward declaration of friend functions and operators
-
-class polyMesh;
+// Forward Declarations
 class polyBoundaryMesh;
 class polyPatch;
+class polyTopoChange;
 class PstreamBuffers;
+
+//- Store lists of polyPatch as a PtrList
+typedef PtrList<polyPatch> polyPatchList;
 
 Ostream& operator<<(Ostream&, const polyPatch&);
 
-
 /*---------------------------------------------------------------------------*\
-                          Class polyPatch Declaration
+                           Class polyPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class polyPatch
@@ -78,33 +82,33 @@ class polyPatch
         //- Reference to boundary mesh
         const polyBoundaryMesh& boundaryMesh_;
 
+        //- Demand-driven: face-cell addressing
+        mutable std::unique_ptr<labelList::subList> faceCellsPtr_;
 
-        // Demand-driven private data
+        //- Demand-driven: global edge addressing
+        mutable std::unique_ptr<labelList> mePtr_;
 
-            //- face-cell addressing
-            mutable labelList::subList* faceCellsPtr_;
-
-            //- Global edge addressing
-            mutable labelList* mePtr_;
+        //- Cached area fraction
+        std::unique_ptr<scalarField> areaFractionPtr_;
 
 
 protected:
 
     // Protected Member Functions
 
+        //- Inherit movePoints from primitivePatch
+        using primitivePatch::movePoints;
+
         // The polyPatch geometry initialisation is called by polyBoundaryMesh
         friend class polyBoundaryMesh;
 
         //- Initialise the calculation of the patch geometry
-        virtual void initCalcGeometry(PstreamBuffers&)
+        virtual void initGeometry(PstreamBuffers&)
         {}
 
         //- Calculate the patch geometry
         virtual void calcGeometry(PstreamBuffers&)
         {}
-
-        //- Correct patches after moving points
-        virtual void movePoints(const pointField& p);
 
         //- Initialise the patches for moving points
         virtual void initMovePoints(PstreamBuffers&, const pointField&)
@@ -114,20 +118,14 @@ protected:
         virtual void movePoints(PstreamBuffers&, const pointField& p);
 
         //- Initialise the update of the patch topology
-        virtual void initTopoChange(PstreamBuffers&)
+        virtual void initUpdateMesh(PstreamBuffers&)
         {}
 
         //- Update of the patch topology
-        virtual void topoChange(PstreamBuffers&);
+        virtual void updateMesh(PstreamBuffers&);
 
         //- Clear geometry
         virtual void clearGeom();
-
-        //- Reset the patch name
-        virtual void rename(const wordList& newNames);
-
-        //- Reset the patch index
-        virtual void reorder(const labelUList& newToOldIndex);
 
 
 public:
@@ -151,9 +149,10 @@ public:
                 const label size,
                 const label start,
                 const label index,
-                const polyBoundaryMesh& bm
+                const polyBoundaryMesh& bm,
+                const word& patchType
             ),
-            (name, size, start, index, bm)
+            (name, size, start, index, bm, patchType)
         );
 
         declareRunTimeSelectionTable
@@ -165,9 +164,10 @@ public:
                 const word& name,
                 const dictionary& dict,
                 const label index,
-                const polyBoundaryMesh& bm
+                const polyBoundaryMesh& bm,
+                const word& patchType
             ),
-            (name, dict, index, bm)
+            (name, dict, index, bm, patchType)
         );
 
 
@@ -180,7 +180,20 @@ public:
             const label size,
             const label start,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
+        );
+
+        //- Construct from components
+        polyPatch
+        (
+            const word& name,
+            const label size,
+            const label start,
+            const label index,
+            const polyBoundaryMesh& bm,
+            const word& physicalType,
+            const wordList& inGroups
         );
 
         //- Construct from dictionary
@@ -189,14 +202,15 @@ public:
             const word& name,
             const dictionary& dict,
             const label index,
-            const polyBoundaryMesh& bm
+            const polyBoundaryMesh& bm,
+            const word& patchType
         );
 
-        //- Copy constructor, resetting the boundary mesh
+        //- Copy construct, resetting the boundary mesh
         polyPatch(const polyPatch&, const polyBoundaryMesh&);
 
         //- Construct given the original patch and resetting the
-        //  face list and boundary mesh information
+        //- face list and boundary mesh information
         polyPatch
         (
             const polyPatch& pp,
@@ -206,17 +220,38 @@ public:
             const label newStart
         );
 
-        //- Copy constructor
-        polyPatch(const polyPatch&);
+        //- Construct given the original patch and a map
+        polyPatch
+        (
+            const polyPatch& pp,
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        );
+
+        //- Copy construct
+        polyPatch(const polyPatch& p);
+
+        //- Copy construct, setting faceCells
+        //  \note The faceCells are held by the caller
+        polyPatch(const polyPatch& p, const labelList& faceCells);
+
+        //- Construct and return a clone, setting faceCells
+        //  \note The faceCells are held by the caller
+        virtual autoPtr<polyPatch> clone(const labelList& faceCells) const
+        {
+            return autoPtr<polyPatch>::New(*this, faceCells);
+        }
 
         //- Construct and return a clone, resetting the boundary mesh
         virtual autoPtr<polyPatch> clone(const polyBoundaryMesh& bm) const
         {
-            return autoPtr<polyPatch>(new polyPatch(*this, bm));
+            return autoPtr<polyPatch>::New(*this, bm);
         }
 
-        //- Construct and return a clone, resetting the face list
-        //  and boundary mesh
+        //- Construct and return a clone,
+        //- resetting the face list and boundary mesh
         virtual autoPtr<polyPatch> clone
         (
             const polyBoundaryMesh& bm,
@@ -225,17 +260,27 @@ public:
             const label newStart
         ) const
         {
-            return autoPtr<polyPatch>
-            (
-                new polyPatch(*this, bm, index, newSize, newStart)
-            );
+            return autoPtr<polyPatch>::New(*this, bm, index, newSize, newStart);
+        }
+
+        //- Construct and return a clone,
+        //- resetting the face list and boundary mesh
+        virtual autoPtr<polyPatch> clone
+        (
+            const polyBoundaryMesh& bm,
+            const label index,
+            const labelUList& mapAddressing,
+            const label newStart
+        ) const
+        {
+            return autoPtr<polyPatch>::New
+                (*this, bm, index, mapAddressing, newStart);
         }
 
 
     // Selectors
 
-        //- Return a pointer to a new patch created on freestore from
-        //  components
+        //- Return pointer to a new patch created on freestore from components
         static autoPtr<polyPatch> New
         (
             const word& patchType,
@@ -246,8 +291,7 @@ public:
             const polyBoundaryMesh& bm
         );
 
-        //- Return a pointer to a new patch created on freestore from
-        //  dictionary
+        //- Return pointer to a new patch created on freestore from dictionary
         static autoPtr<polyPatch> New
         (
             const word& name,
@@ -256,8 +300,7 @@ public:
             const polyBoundaryMesh& bm
         );
 
-        //- Return a pointer to a new patch created on freestore from
-        //  dictionary
+        //- Return pointer to a new patch created on freestore from dictionary
         static autoPtr<polyPatch> New
         (
             const word& patchType,
@@ -274,23 +317,67 @@ public:
 
     // Member Functions
 
+        // Implicit treatment functions
+
+            //- Return number of new internal of this polyPatch faces
+            virtual void newInternalProcFaces(label&, label&) const
+            {
+                NotImplemented;
+            }
+
+            //- Return nbrCells
+            virtual const labelUList& nbrCells() const
+            {
+                NotImplemented
+                return labelUList::null();
+            }
+
+            //- Return nbr patchID
+            virtual label neighbPolyPatchID() const
+            {
+                NotImplemented;
+                return -1;
+            }
+
+            //- Return mapped collocated faces
+            virtual refPtr<labelListList> mapCollocatedFaces() const
+            {
+                NotImplemented;
+                return nullptr;
+            }
+
+            //- Return implicit master
+            virtual bool masterImplicit() const
+            {
+                NotImplemented;
+                return false;
+            }
+
+            //- Return neighbour region name
+            virtual word neighbRegionID() const
+            {
+                return word("none");
+            }
+
+
+        //- The offset where this patch starts in the boundary face list
+        //  The value is the same as  patch.start() - mesh.nInternalFaces()
+        label offset() const noexcept;
+
         //- Return start label of this patch in the polyMesh face list
-        label start() const
+        label start() const noexcept
         {
             return start_;
         }
 
-        //- Return boundaryMesh reference
-        const polyBoundaryMesh& boundaryMesh() const;
-
-        //- Return mesh reference
-        const polyMesh& mesh() const;
-
-        //- Return false as this patch is not a constraint type
-        virtual bool constraint() const
+        //- Return start/size range of this patch
+        labelRange range() const
         {
-            return false;
+            return labelRange(start_, this->size());
         }
+
+        //- Return boundaryMesh reference
+        const polyBoundaryMesh& boundaryMesh() const noexcept;
 
         //- Return true if this patch is geometrically coupled (i.e. faces and
         //  points correspondence)
@@ -298,6 +385,12 @@ public:
         {
             return false;
         }
+
+        //- Return true if the given type is a constraint type
+        static bool constraintType(const word& patchType);
+
+        //- Return a list of all the constraint patch types
+        static wordList constraintTypes();
 
         //- Extract face cell data
         template<class T>
@@ -309,23 +402,35 @@ public:
             return UIndirectList<T>(internalValues, faceCells());
         }
 
-        //- Slice list to patch
+        //- This patch slice from the complete list, which has size
+        //- mesh::nFaces(), using the number of patch faces.
         template<class T>
-        const typename List<T>::subList patchSlice(const UList<T>& l) const
+        const typename List<T>::subList
+        patchSlice(const UList<T>& values) const
         {
-            return typename List<T>::subList(l, this->size(), start_);
+            return typename List<T>::subList(values, this->size(), start_);
         }
 
-        //- Slice Field to patch
+        //- This patch slice from the list of boundary values, which has size
+        //- mesh::nBoundaryFaces(), using the number of patch faces.
         template<class T>
-        const typename Field<T>::subField patchSlice(const Field<T>& l) const
+        const typename List<T>::subList
+        boundarySlice(const List<T>& values) const
         {
-            return typename Field<T>::subField(l, this->size(), start_);
+            return typename List<T>::subList(values, this->size(), offset());
+        }
+
+        //- Slice Field to patch, using the number of patch faces.
+        template<class T>
+        const typename Field<T>::subField
+        patchSlice(const Field<T>& values) const
+        {
+            return typename Field<T>::subField(values, this->size(), start_);
         }
 
 
         //- Write the polyPatch data as a dictionary
-        virtual void write(Ostream&) const;
+        virtual void write(Ostream& os) const;
 
 
         // Geometric data; point list required
@@ -333,14 +438,25 @@ public:
             //- Return face centres
             const vectorField::subField faceCentres() const;
 
-            //- Return face areas
+            //- Return face normals
             const vectorField::subField faceAreas() const;
-
-            //- Return face area magnitudes
-            const scalarField::subField magFaceAreas() const;
 
             //- Return face cell centres
             tmp<vectorField> faceCellCentres() const;
+
+            //- Calculate the area fraction as the ratio of the stored face
+            //- area and the area given by the face points.
+            tmp<scalarField> areaFraction(const pointField& points) const;
+
+            //- Return the cached area fraction.
+            //- Usually only set for the non-overlap patches on ACMI.
+            tmp<scalarField> areaFraction() const;
+
+            //- Set uniform cached area fraction
+            void areaFraction(const scalar fraction);
+
+            //- Set cached area fraction (non-uniform)
+            void areaFraction(const tmp<scalarField>& fraction);
 
 
         // Addressing into mesh
@@ -358,13 +474,13 @@ public:
         // Other patch operations
 
             //- Return label of face in patch from global face label
-            inline label whichFace(const label l) const
+            label whichFace(const label facei) const noexcept
             {
-                return l - start_;
+                return facei - start_;
             }
 
 
-        //- Initialise ordering for primitivePatch. Does not
+        //- Initialize ordering for primitivePatch. Does not
         //  refer to *this (except for name() and type() etc.)
         virtual void initOrder(PstreamBuffers&, const primitivePatch&) const;
 
@@ -381,19 +497,42 @@ public:
             labelList& rotation
         ) const;
 
-        //- Reset the size and start of the patch
-        void reset(const label size, const label start);
+        //- For dynamic mesh cases - return true if this patch will change the
+        //- topology
+        virtual bool changeTopology() const
+        {
+            return false;
+        }
+
+        //- Collect topology changes in a polyTopoChange object
+        virtual bool setTopology(polyTopoChange&)
+        {
+            return false;
+        }
 
 
     // Member Operators
 
-        //- Assignment
-        void operator=(const polyPatch&);
+        //- Copy assignment
+        void operator=(const polyPatch& p);
 
 
     // Ostream Operator
 
         friend Ostream& operator<<(Ostream&, const polyPatch&);
+};
+
+
+// Global Functions
+
+//- The labelRange of a polyPatch
+template<>
+struct labelRangeOp<polyPatch>
+{
+    labelRange operator()(const polyPatch& pp) const
+    {
+        return pp.range();
+    }
 };
 
 

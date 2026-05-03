@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -39,7 +41,8 @@ Description
       nSurfaceEdges)
     - construct face-edge addressing for above edges
     - for each face do a right-handed walk to reconstruct faces (splitFace)
-    - retriangulate resulting faces
+    - retriangulate resulting faces (might be non-convex so use
+      faceTriangulation which does proper bisection)
 
     The resulting surface will have the points from the surface first
     in the point list (0 .. nSurfacePoints-1)
@@ -75,7 +78,7 @@ class surfaceIntersection;
 class edgeSurface;
 
 /*---------------------------------------------------------------------------*\
-                     Class intersectedSurface Declaration
+                           Class intersectedSurface Declaration
 \*---------------------------------------------------------------------------*/
 
 class intersectedSurface
@@ -91,7 +94,7 @@ public:
 
 private:
 
-    // Private Data
+    // Private data
 
         //- Edges which are part of intersection
         labelList intersectionEdges_;

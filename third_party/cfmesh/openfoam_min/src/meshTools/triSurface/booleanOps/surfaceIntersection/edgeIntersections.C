@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,27 +28,25 @@ License
 
 #include "edgeIntersections.H"
 #include "triSurfaceSearch.H"
-#include "labelPairLookup.H"
 #include "OFstream.H"
-#include "HashSet.H"
 #include "triSurface.H"
 #include "pointIndexHit.H"
 #include "treeDataTriSurface.H"
 #include "indexedOctree.H"
 #include "meshTools.H"
 #include "plane.H"
-#include "randomGenerator.H"
-#include "units.H"
+#include "Random.H"
+#include "unitConversion.H"
 #include "treeBoundBox.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
-defineTypeNameAndDebug(edgeIntersections, 0);
-
-scalar edgeIntersections::alignedCos_ = cos(degToRad(89.0));
+    defineTypeNameAndDebug(edgeIntersections, 0);
 }
+
+Foam::scalar Foam::edgeIntersections::alignedCos_ = Foam::cos(degToRad(89.0));
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -54,11 +55,10 @@ void Foam::edgeIntersections::checkEdges(const triSurface& surf)
 {
     const pointField& localPoints = surf.localPoints();
     const edgeList& edges = surf.edges();
-    const labelListList& edgeFaces = surf.edgeFaces();
 
     treeBoundBox bb(localPoints);
 
-    scalar minSize = small * bb.minDim();
+    scalar minSize = SMALL * bb.minDim();
 
     forAll(edges, edgeI)
     {
@@ -73,17 +73,6 @@ void Foam::edgeIntersections::checkEdges(const triSurface& surf)
                 << " coords:" << localPoints[e[0]] << ' '
                 << localPoints[e[1]] << " is very small compared to bounding"
                 << " box dimensions " << bb << endl
-                << "This might lead to problems in intersection"
-                << endl;
-        }
-
-        if (edgeFaces[edgeI].size() == 1)
-        {
-            WarningInFunction
-                << "Edge " << edgeI << " vertices " << e
-                << " coords:" << localPoints[e[0]] << ' '
-                << localPoints[e[1]] << " has only one face connected to it:"
-                << edgeFaces[edgeI] << endl
                 << "This might lead to problems in intersection"
                 << endl;
         }
@@ -132,8 +121,7 @@ void Foam::edgeIntersections::intersectEdges
         const point& pStart = points1[meshPoints[e.start()]];
         const point& pEnd = points1[meshPoints[e.end()]];
 
-        const vector eVec(pEnd - pStart);
-        const vector n(eVec/(mag(eVec) + vSmall));
+        const vector n = normalised(pEnd - pStart);
 
         // Start tracking somewhat before pStart and up to somewhat after p1.
         // Note that tolerances here are smaller than those used to classify
@@ -179,12 +167,12 @@ void Foam::edgeIntersections::intersectEdges
             const edge& e = surf1.edges()[edgeI];
 
             // Classify point on surface1 edge.
-            if (mag(pHit.hitPoint() - start[i]) < surf1PointTol[e[0]])
+            if (pHit.point().dist(start[i]) < surf1PointTol[e[0]])
             {
                 // Intersection is close to edge start
                 hitType = 0;
             }
-            else if (mag(pHit.hitPoint() - end[i]) < surf1PointTol[e[1]])
+            else if (pHit.point().dist(end[i]) < surf1PointTol[e[1]])
             {
                 // Intersection is close to edge end
                 hitType = 1;
@@ -229,7 +217,7 @@ bool Foam::edgeIntersections::inlinePerturb
     const triSurface& surf1,
     const scalarField& surf1PointTol,   // surf1 tolerance per point
     const label edgeI,
-    randomGenerator& rndGen,
+    Random& rndGen,
     pointField& points1,
     boolList& affectedEdges
 ) const
@@ -266,13 +254,12 @@ bool Foam::edgeIntersections::inlinePerturb
             label v0 = surf1.meshPoints()[e[0]];
             label v1 = surf1.meshPoints()[e[1]];
 
-            vector eVec(points1[v1] - points1[v0]);
-            vector n = eVec/mag(eVec);
+            const vector n = normalised(points1[v1] - points1[v0]);
 
             if (perturbStart)
             {
                 // Perturb with something (hopefully) larger than tolerance.
-                scalar t = 4.0*(rndGen.scalar01() - 0.5);
+                scalar t = 4.0*(rndGen.sample01<scalar>() - 0.5);
                 points1[v0] += t*surf1PointTol[e[0]]*n;
 
                 const labelList& pEdges = surf1.pointEdges()[e[0]];
@@ -285,7 +272,7 @@ bool Foam::edgeIntersections::inlinePerturb
             if (perturbEnd)
             {
                 // Perturb with something larger than tolerance.
-                scalar t = 4.0*(rndGen.scalar01() - 0.5);
+                scalar t = 4.0*(rndGen.sample01<scalar>() - 0.5);
                 points1[v1] += t*surf1PointTol[e[1]]*n;
 
                 const labelList& pEdges = surf1.pointEdges()[e[1]];
@@ -310,7 +297,7 @@ bool Foam::edgeIntersections::rotatePerturb
     const scalarField& surf1PointTol,   // surf1 tolerance per point
     const label edgeI,
 
-    randomGenerator& rndGen,
+    Random& rndGen,
     pointField& points1,
     boolList& affectedEdges
 ) const
@@ -328,21 +315,19 @@ bool Foam::edgeIntersections::rotatePerturb
             const edge& e = surf1.edges()[edgeI];
 
             // Endpoint to modify. Choose either start or end.
-            label pointi = e[rndGen.sampleAB<label>(0, 2)];
-            // label pointi = e[0];
+            label pointi = e[rndGen.bit()];
+            //label pointi = e[0];
 
             // Generate random vector slightly larger than tolerance.
             vector rndVec = rndGen.sample01<vector>() - vector(0.5, 0.5, 0.5);
 
             // Make sure rndVec only perp to edge
             vector n(points1[meshPoints[e[1]]] - points1[meshPoints[e[0]]]);
-            scalar magN = mag(n) + vSmall;
+            scalar magN = mag(n) + VSMALL;
             n /= magN;
 
-            rndVec -= n*(n & rndVec);
-
-            // Normalise
-            rndVec /= mag(rndVec) + vSmall;
+            rndVec.removeCollinear(n);
+            rndVec.normalise();
 
             // Scale to be moved by tolerance.
             rndVec *= 0.01*magN;
@@ -383,7 +368,7 @@ bool Foam::edgeIntersections::offsetPerturb
     const triSurface& surf2,
     const label edgeI,
 
-    randomGenerator& rndGen,
+    Random& rndGen,
     pointField& points1,
     boolList& affectedEdges
 ) const
@@ -398,14 +383,12 @@ bool Foam::edgeIntersections::offsetPerturb
     bool hasPerturbed = false;
 
     // For all hits on edge
-    forAll(hits, i)
+    for (const pointIndexHit& pHit : hits)
     {
-        const pointIndexHit& pHit = hits[i];
-
         // Classify point on face of surface2
-        label surf2Facei = pHit.index();
+        const label surf2Facei = pHit.index();
 
-        const triSurface::FaceType& f2 = surf2.localFaces()[surf2Facei];
+        const triSurface::face_type& f2 = surf2.localFaces()[surf2Facei];
         const pointField& surf2Pts = surf2.localPoints();
 
         const point ctr = f2.centre(surf2Pts);
@@ -417,7 +400,8 @@ bool Foam::edgeIntersections::offsetPerturb
         if (nearType == triPointRef::POINT || nearType == triPointRef::EDGE)
         {
             // Shift edge towards tri centre
-            vector offset = 0.01*rndGen.scalar01()*(ctr - pHit.hitPoint());
+            vector offset =
+                0.01*rndGen.sample01<scalar>()*(ctr - pHit.hitPoint());
 
             // shift e[0]
             points1[meshPoints[e[0]]] += offset;
@@ -454,7 +438,6 @@ bool Foam::edgeIntersections::offsetPerturb
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-// Construct null
 Foam::edgeIntersections::edgeIntersections()
 :
     List<List<pointIndexHit>>(),
@@ -462,7 +445,6 @@ Foam::edgeIntersections::edgeIntersections()
 {}
 
 
-// Construct from surface and tolerance
 Foam::edgeIntersections::edgeIntersections
 (
     const triSurface& surf1,
@@ -474,16 +456,9 @@ Foam::edgeIntersections::edgeIntersections
     classification_(surf1.nEdges())
 {
     checkEdges(surf1);
-    checkEdges(query2.surface());
 
     // Current set of edges to test
-    labelList edgesToTest(surf1.nEdges());
-
-    // Start off with all edges
-    forAll(edgesToTest, i)
-    {
-        edgesToTest[i] = i;
-    }
+    labelList edgesToTest(identity(surf1.nEdges()));
 
     // Determine intersections for edgesToTest
     intersectEdges
@@ -497,7 +472,6 @@ Foam::edgeIntersections::edgeIntersections
 }
 
 
-// Construct from components
 Foam::edgeIntersections::edgeIntersections
 (
     const List<List<pointIndexHit>>& intersections,
@@ -523,7 +497,7 @@ Foam::scalarField Foam::edgeIntersections::minEdgeLength(const triSurface& surf)
     {
         const labelList& pEdges = pointEdges[pointi];
 
-        scalar minDist = great;
+        scalar minDist = GREAT;
 
         forAll(pEdges, i)
         {
@@ -549,7 +523,7 @@ Foam::label Foam::edgeIntersections::removeDegenerates
 {
     const triSurface& surf2 = query2.surface();
 
-    randomGenerator rndGen(356574);
+    Random rndGen(356574);
 
     // Current set of edges to (re)test
     labelList edgesToTest(surf1.nEdges());
@@ -763,8 +737,7 @@ void Foam::edgeIntersections::merge
             {
                 intersections[nNew] = pointIndexHit
                 (
-                    subHit.hit(),
-                    subHit.rawPoint(),
+                    subHit,
                     faceMap[subHit.index()]
                 );
                 intersectionTypes[nNew] = subClass[i];

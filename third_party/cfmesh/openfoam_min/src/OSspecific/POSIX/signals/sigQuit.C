@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,33 +28,27 @@ License
 
 #include "sigQuit.H"
 #include "error.H"
-#include "jobInfo.H"
+#include "JobInfo.H"
 #include "IOstreams.H"
+
+// File-local functions
+#include "signalMacros.C"
+
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-struct sigaction Foam::sigQuit::oldAction_;
+bool Foam::sigQuit::sigActive_ = false;
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 void Foam::sigQuit::sigHandler(int)
 {
-    // Reset old handling
-    if (sigaction(SIGQUIT, &oldAction_, nullptr) < 0)
-    {
-        FatalErrorInFunction
-            << "Cannot reset SIGQUIT trapping"
-            << abort(FatalError);
-    }
+    resetHandler("SIGQUIT", SIGQUIT);
 
-    // Update jobInfo file
-    jobInfo_.signalEnd();
-
+    JobInfo::shutdown();        // From running -> finished
     error::printStack(Perr);
-
-    // Throw signal (to old handler)
-    raise(SIGQUIT);
+    ::raise(SIGQUIT);           // Throw signal (to old handler)
 }
 
 
@@ -59,7 +56,7 @@ void Foam::sigQuit::sigHandler(int)
 
 Foam::sigQuit::sigQuit()
 {
-    oldAction_.sa_handler = nullptr;
+    set(false);
 }
 
 
@@ -67,37 +64,33 @@ Foam::sigQuit::sigQuit()
 
 Foam::sigQuit::~sigQuit()
 {
-    // Reset old handling
-    if (oldAction_.sa_handler && sigaction(SIGQUIT, &oldAction_, nullptr) < 0)
-    {
-        FatalErrorInFunction
-            << "Cannot reset SIGQUIT trapping"
-            << abort(FatalError);
-    }
+    unset(false);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-void Foam::sigQuit::set(const bool verbose)
+void Foam::sigQuit::set(bool)
 {
-    if (oldAction_.sa_handler)
+    if (sigActive_)
     {
-        FatalErrorInFunction
-            << "Cannot call sigQuit::set() more than once"
-            << abort(FatalError);
+        return;
     }
+    sigActive_ = true;
 
-    struct sigaction newAction;
-    newAction.sa_handler = sigHandler;
-    newAction.sa_flags = SA_NODEFER;
-    sigemptyset(&newAction.sa_mask);
-    if (sigaction(SIGQUIT, &newAction, &oldAction_) < 0)
+    setHandler("SIGQUIT", SIGQUIT, sigHandler);
+}
+
+
+void Foam::sigQuit::unset(bool)
+{
+    if (!sigActive_)
     {
-        FatalErrorInFunction
-            << "Cannot set SIGQUIT trapping"
-            << abort(FatalError);
+        return;
     }
+    sigActive_ = false;
+
+    resetHandler("SIGQUIT", SIGQUIT);
 }
 
 

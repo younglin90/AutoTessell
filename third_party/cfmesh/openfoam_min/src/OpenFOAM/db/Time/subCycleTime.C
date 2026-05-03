@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,15 +29,16 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::subCycleTime::subCycleTime(Time& t, const label nSubCycles)
+Foam::subCycleTime::subCycleTime(Time& runTime, const label nCycles)
 :
-    time_(t),
-    nSubCycles_(nSubCycles),
-    subCycleIndex_(0)
+    time_(runTime),
+    index_(0),
+    total_(nCycles)
 {
-    if (nSubCycles_ > 1)
+    // Could avoid 0 or 1 nCycles here on construction
+    if (nCycles > 1)
     {
-        time_.subCycle(nSubCycles_);
+        time_.subCycle(nCycles);
     }
 }
 
@@ -50,18 +53,41 @@ Foam::subCycleTime::~subCycleTime()
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+bool Foam::subCycleTime::status() const
+{
+    return (index_ <= total_);
+}
+
+
 bool Foam::subCycleTime::end() const
 {
-    return subCycleIndex_ > nSubCycles_;
+    return (index_ > total_);  // or !(status())
 }
 
 
 void Foam::subCycleTime::endSubCycle()
 {
-    if (nSubCycles_ > 1)
+    if (total_ > 1)
     {
         time_.endSubCycle();
     }
+
+    // If called manually, ensure status() will return false
+
+    index_ = total_ + 1;
+}
+
+
+bool Foam::subCycleTime::loop()
+{
+    const bool active = status();
+
+    if (active)
+    {
+        operator++();
+    }
+
+    return active;
 }
 
 
@@ -69,12 +95,15 @@ void Foam::subCycleTime::endSubCycle()
 
 Foam::subCycleTime& Foam::subCycleTime::operator++()
 {
-    if (nSubCycles_ > 1)
+    if (total_ > 1)
     {
         time_++;
     }
 
-    subCycleIndex_++;
+    index_++;
+
+    // Register index change with Time, in case someone wants this information
+    time_.subCycleIndex(index_);
 
     return *this;
 }

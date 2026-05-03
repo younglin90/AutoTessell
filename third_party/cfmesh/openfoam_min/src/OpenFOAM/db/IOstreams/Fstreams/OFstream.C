@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2017-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,6 @@ License
 
 #include "OFstream.H"
 #include "OSspecific.H"
-#include "gzstream.h"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
@@ -35,152 +37,140 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-Foam::OFstreamAllocator::OFstreamAllocator
-(
-    const fileName& filePath,
-    const IOstream::compressionType compression,
-    const bool append
-)
-:
-    ofPtr_(nullptr)
-{
-    if (filePath.empty())
-    {
-        if (OFstream::debug)
-        {
-            InfoInFunction << "Cannot open null file " << endl;
-        }
-    }
-    ofstream::openmode mode(ofstream::out);
-    if (append)
-    {
-        mode |= ofstream::app;
-    }
-
-    if (compression == IOstream::COMPRESSED)
-    {
-        // Get identically named uncompressed version out of the way
-        fileType pathType = Foam::type(filePath, false, false);
-        if (pathType == fileType::file || pathType == fileType::link)
-        {
-            rm(filePath);
-        }
-        fileName gzfilePath(filePath + ".gz");
-
-        if (!append && Foam::type(gzfilePath) == fileType::link)
-        {
-            // Disallow writing into softlink to avoid any problems with
-            // e.g. softlinked initial fields
-            rm(gzfilePath);
-        }
-
-        ofPtr_ = new ogzstream(gzfilePath.c_str(), mode);
-    }
-    else
-    {
-        // get identically named compressed version out of the way
-        fileName gzfilePath(filePath + ".gz");
-        fileType gzType = Foam::type(gzfilePath, false, false);
-        if (gzType == fileType::file || gzType == fileType::link)
-        {
-            rm(gzfilePath);
-        }
-        if
-        (
-            !append
-         && Foam::type(filePath, false, false) == fileType::link
-        )
-        {
-            // Disallow writing into softlink to avoid any problems with
-            // e.g. softlinked initial fields
-            rm(filePath);
-        }
-
-        ofPtr_ = new ofstream(filePath.c_str(), mode);
-    }
-}
-
-
-Foam::OFstreamAllocator::~OFstreamAllocator()
-{
-    delete ofPtr_;
-}
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::OFstream::OFstream
 (
-    const fileName& filePath,
-    const streamFormat format,
-    const versionNumber version,
-    const compressionType compression,
-    const bool append
+    std::nullptr_t
 )
 :
-    OFstreamAllocator(filePath, compression, append),
-    OSstream(*ofPtr_, "OFstream.sinkFile_", format, version, compression),
-    filePath_(filePath)
+    Foam::ofstreamPointer(nullptr),
+    OSstream(*(ofstreamPointer::get()), "/dev/null")
+{
+    setState(ofstreamPointer::get()->rdstate());
+    setOpened();
+
+    lineNumber_ = 1;
+}
+
+
+Foam::OFstream::OFstream
+(
+    IOstreamOption::atomicType atomic,
+    const fileName& pathname,
+    IOstreamOption streamOpt,
+    IOstreamOption::appendType append
+)
+:
+    Foam::ofstreamPointer
+    (
+        pathname,
+        streamOpt,
+        append,
+        (IOstreamOption::atomicType::ATOMIC == atomic)
+    ),
+    OSstream(*(ofstreamPointer::get()), pathname, streamOpt)
 {
     setClosed();
-    setState(ofPtr_->rdstate());
+    setState(ofstreamPointer::get()->rdstate());
 
-    if (!good())
-    {
-        if (debug)
-        {
-            InfoInFunction
-                << "Could not open file " << filePath
-                << "for input\n"
-                   "in stream " << info() << Foam::endl;
-        }
-
-        setBad();
-    }
-    else
+    if (good())
     {
         setOpened();
     }
+    else
+    {
+        setBad();
+    }
 
     lineNumber_ = 1;
+
+    if (debug)
+    {
+        if (pathname.empty())
+        {
+            InfoInFunction
+                << "Cannot open empty file name"
+                << Foam::endl;
+        }
+
+        if (!opened())
+        {
+            InfoInFunction
+                << "Could not open file " << pathname
+                << " for output\n" << info() << Foam::endl;
+        }
+    }
 }
 
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 Foam::OFstream::~OFstream()
-{}
+{
+    ofstreamPointer::close(this->name());
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 std::ostream& Foam::OFstream::stdStream()
 {
-    if (!ofPtr_)
+    std::ostream* ptr = ofstreamPointer::get();
+
+    if (!ptr)
     {
         FatalErrorInFunction
-            << "No stream allocated." << abort(FatalError);
+            << "No stream allocated\n"
+            << abort(FatalError);
     }
-    return *ofPtr_;
+
+    return *ptr;
 }
 
 
 const std::ostream& Foam::OFstream::stdStream() const
 {
-    if (!ofPtr_)
+    const std::ostream* ptr = ofstreamPointer::get();
+
+    if (!ptr)
     {
         FatalErrorInFunction
-            << "No stream allocated." << abort(FatalError);
+            << "No stream allocated\n"
+            << abort(FatalError);
     }
-    return *ofPtr_;
+
+    return *ptr;
+}
+
+
+void Foam::OFstream::rewind()
+{
+    // Reopen (truncate) std::ostream
+    ofstreamPointer::reopen(this->name());
+
+    // As per OSstream::rewind()
+
+    lineNumber_ = 1;  // Reset line number
+    setState(ofstreamPointer::get()->rdstate());
+
+    if (good())
+    {
+        setOpened();
+    }
+    else
+    {
+        setClosed();
+        setBad();
+    }
+
+    stdStream().rdbuf()->pubseekpos(0, std::ios_base::out);
 }
 
 
 void Foam::OFstream::print(Ostream& os) const
 {
-    os  << "    OFstream: ";
+    os  << "OFstream: ";
     OSstream::print(os);
 }
 

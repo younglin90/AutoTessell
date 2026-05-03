@@ -1,9 +1,13 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 PCOpt/NTUA
+    Copyright (C) 2020-2023 FOSS GP
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -73,7 +77,7 @@ Description
             // of the normal-to-wall field
             nRequired false;
 
-            advectionDiffusion
+            advectionDiffusionCoeffs
             {
                 method    Poisson;
                 epsilon   0.1;
@@ -119,6 +123,10 @@ Description
         {
             solver          GAMG;
             smoother        GaussSeidel;
+            cacheAgglomeration true;
+            nCellsInCoarsestLevel 10;
+            agglomerator    faceAreaPair;
+            mergeLevels     1;
             tolerance       1e-4;
             relTol          0;
         }
@@ -127,6 +135,10 @@ Description
         {
             solver          GAMG;
             smoother        symGaussSeidel;
+            cacheAgglomeration true;
+            nCellsInCoarsestLevel 10;
+            agglomerator    faceAreaPair;
+            mergeLevels     1;
             tolerance       1e-4;
             relTol          0;
         }
@@ -167,14 +179,14 @@ namespace patchDistMethods
 {
 
 /*---------------------------------------------------------------------------*\
-                     Class advectionDiffusion Declaration
+                          Class advectionDiffusion Declaration
 \*---------------------------------------------------------------------------*/
 
 class advectionDiffusion
 :
     public patchDistMethod
 {
-    // Private Data
+    // Private Member Data
 
         //- Sub-dictionary of coefficients
         dictionary coeffs_;
@@ -196,6 +208,27 @@ class advectionDiffusion
         //- Flag to indicate the predictor step has been executed
         bool predicted_;
 
+        //- Check mesh before computing the distance field and write the mesh
+        //- points if at least one check fails.
+        //  advectionDiffusion is frequently used within optimisation loops
+        //  since it is differentiable. In shape optimisation, the
+        //  re-computation of mesh distances is performed at the very beginning
+        //  of a new optimisation cycle, due to inheriting from MeshObject. If
+        //  the mesh quality is poor enough, the advectionDiffusion PDE might
+        //  diverge and crash the run, before the problematic mesh is written
+        //  to files for inspection. By setting this flag to true, the mesh is
+        //  written to files before the solution of the advectionDiffusion PDE,
+        //  if some mesh check fails.
+        bool checkAndWriteMesh_;
+
+    // Private Member Functions
+
+        //- No copy construct
+        advectionDiffusion(const advectionDiffusion&) = delete;
+
+        //- No copy assignment
+        void operator=(const advectionDiffusion&) = delete;
+
 
 public:
 
@@ -214,9 +247,6 @@ public:
             const labelHashSet& patchIDs
         );
 
-        //- Disallow default bitwise copy construction
-        advectionDiffusion(const advectionDiffusion&) = delete;
-
 
     // Member Functions
 
@@ -225,12 +255,6 @@ public:
 
         //- Correct the given distance-to-patch and normal-to-patch fields
         virtual bool correct(volScalarField& y, volVectorField& n);
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const advectionDiffusion&) = delete;
 };
 
 

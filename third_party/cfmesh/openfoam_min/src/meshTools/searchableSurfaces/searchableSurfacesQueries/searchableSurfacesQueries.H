@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,12 +44,12 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward declarations
 class plane;
 class pointConstraint;
 
 /*---------------------------------------------------------------------------*\
-                  Class searchableSurfacesQueries Declaration
+                           Class searchableSurfacesQueries Declaration
 \*---------------------------------------------------------------------------*/
 
 class searchableSurfacesQueries
@@ -124,22 +126,22 @@ public:
                 List<pointIndexHit>&
             );
 
-            //- Find nearest points to a specific region of the surface
+            //- Find nearest points to a specific regions of the surface
             static void findNearest
             (
                 const PtrList<searchableSurface>& allSurfaces,
                 const labelList& surfacesToTest,
+                const labelListList& regionIndices,
                 const pointField& samples,
                 const scalarField& nearestDistSqr,
-                const labelList& regionIndices,
                 labelList& nearestSurfaces,
                 List<pointIndexHit>& nearestInfo
             );
 
             //- Find nearest points that are on all supplied surfaces
             //  (nearest point if single surface; nearest intersection by
-            //  steepest descent if on multiple surfaces). Returns current
-            //  best guess).
+            //   steepest descent if on multiple surfaces). Returns current
+            //   best guess). Wip.
             static void findNearest
             (
                 const PtrList<searchableSurface>& allSurfaces,
@@ -171,7 +173,7 @@ public:
             static boundBox bounds
             (
                 const PtrList<searchableSurface>& allSurfaces,
-                const labelList& surfacesToTest
+                const labelUList& surfacesToTest
             );
 };
 

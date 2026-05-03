@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,7 +38,7 @@ SourceFiles
 
 #include "extendedCentredCellToFaceStencil.H"
 #include "CPCCellToFaceStencil.H"
-#include "DemandDrivenMeshObject.H"
+#include "MeshObject.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -48,25 +51,29 @@ namespace Foam
 
 class centredCPCCellToFaceStencilObject
 :
-    public DemandDrivenMeshObject
+    public MeshObject
     <
         fvMesh,
-        MoveableMeshObject,
+        TopologicalMeshObject,
         centredCPCCellToFaceStencilObject
     >,
     public extendedCentredCellToFaceStencil
 {
+    // Private Typedefs
 
-protected:
+        typedef MeshObject
+        <
+            fvMesh,
+            TopologicalMeshObject,
+            centredCPCCellToFaceStencilObject
+        > MeshObject_type;
 
-    friend class DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        centredCPCCellToFaceStencilObject
-    >;
+public:
 
-    // Protected Constructors
+    TypeName("centredCPCCellToFaceStencil");
+
+
+    // Constructors
 
         //- Construct from uncompacted face stencil
         explicit centredCPCCellToFaceStencilObject
@@ -74,12 +81,7 @@ protected:
             const fvMesh& mesh
         )
         :
-            DemandDrivenMeshObject
-            <
-                fvMesh,
-                MoveableMeshObject,
-                centredCPCCellToFaceStencilObject
-            >(mesh),
+            MeshObject_type(mesh),
             extendedCentredCellToFaceStencil(CPCCellToFaceStencil(mesh))
         {
             if (extendedCellToFaceStencil::debug)
@@ -91,19 +93,8 @@ protected:
         }
 
 
-public:
-
-    TypeName("centredCPCCellToFaceStencil");
-
     //- Destructor
-    virtual ~centredCPCCellToFaceStencilObject()
-    {}
-
-    //- Update for mesh motion
-    virtual bool movePoints()
-    {
-        return true;
-    }
+    virtual ~centredCPCCellToFaceStencilObject() = default;
 };
 
 

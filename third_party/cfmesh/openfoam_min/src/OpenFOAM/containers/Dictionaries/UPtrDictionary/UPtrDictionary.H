@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,16 +34,13 @@ Description
     It is derived from DictionaryBase instantiated on a non-memory managed
     form of intrusive doubly-linked list of \<T\>.
 
-SourceFiles
-    UPtrDictionary.C
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef UPtrDictionary_H
-#define UPtrDictionary_H
+#ifndef Foam_UPtrDictionary_H
+#define Foam_UPtrDictionary_H
 
 #include "DictionaryBase.H"
-#include "UDLPtrList.H"
+#include "DLList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -54,45 +54,36 @@ namespace Foam
 template<class T>
 class UPtrDictionary
 :
-    public DictionaryBase<UDLPtrList<T>, T>
+    public DictionaryBase<DLList<T*>, T>
 {
-
 public:
+
+    //- The template instance used for the dictionary content
+    typedef DictionaryBase<DLList<T*>, T> dict_type;
+
 
     // Constructors
 
-        //- Construct given initial table size
-        UPtrDictionary(const label size = 128);
+        //- Default construct: empty without allocation (capacity=0).
+        UPtrDictionary() = default;
+
+        //- Construct empty with initial table capacity
+        explicit UPtrDictionary(const label initialCapacity)
+        :
+            dict_type(initialCapacity)
+        {}
 
         //- Copy construct
-        UPtrDictionary(const UPtrDictionary&);
-
-
-    // Member Operators
-
-        //- Find and return entry
-        const T& operator[](const word& key) const
-        {
-            return *DictionaryBase<UDLPtrList<T>, T>::operator[](key);
-        }
-
-        //- Find and return entry
-        T& operator[](const word& key)
-        {
-            return *DictionaryBase<UDLPtrList<T>, T>::operator[](key);
-        }
+        UPtrDictionary(const UPtrDictionary& dict)
+        :
+            dict_type(dict)
+        {}
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "UPtrDictionary.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

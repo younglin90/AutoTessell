@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,16 +47,14 @@ Foam::wallPolyPatch::wallPolyPatch
     const label size,
     const label start,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, size, start, index, bm)
+    polyPatch(name, size, start, index, bm, patchType)
 {
     //  wall is not constraint type so add wall group explicitly
-    if (findIndex(inGroups(), typeName) == -1)
-    {
-        inGroups().append(typeName);
-    }
+    addGroup(typeName);
 }
 
 
@@ -62,16 +63,14 @@ Foam::wallPolyPatch::wallPolyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, dict, index, bm)
+    polyPatch(name, dict, index, bm, patchType)
 {
     //  wall is not constraint type so add wall group explicitly
-    if (findIndex(inGroups(), typeName) == -1)
-    {
-        inGroups().append(typeName);
-    }
+    addGroup(typeName);
 }
 
 
@@ -95,6 +94,19 @@ Foam::wallPolyPatch::wallPolyPatch
 )
 :
     polyPatch(pp, bm, index, newSize, newStart)
+{}
+
+
+Foam::wallPolyPatch::wallPolyPatch
+(
+    const wallPolyPatch& pp,
+    const polyBoundaryMesh& bm,
+    const label index,
+    const labelUList& mapAddressing,
+    const label newStart
+)
+:
+    polyPatch(pp, bm, index, mapAddressing, newStart)
 {}
 
 

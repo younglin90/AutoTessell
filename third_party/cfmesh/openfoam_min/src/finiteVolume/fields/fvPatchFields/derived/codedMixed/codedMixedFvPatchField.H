@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,15 +27,22 @@ License
 Class
     Foam::codedMixedFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
-    Mixed boundary condition evaluated from the code provided
+    Constructs on-the-fly a new boundary condition
+    (derived from mixedFvPatchField) which is then used to evaluate.
 
-    which is compiled, linked and executed automatically at run-time.
-
-    The optional \c name entry specifies the name of the code generated from the
-    template, if not provided the it constructed as
-    \<field name\>_\<patch name\> for single region cases or
-    \<region name\>_\<field name\>_\<patch name\> for multi-region cases.
+    The code entries:
+    \plaintable
+       codeInclude | include files
+       codeOptions | compiler line: added to EXE_INC (Make/options)
+       codeLibs    | linker line: added to LIB_LIBS (Make/options)
+       localCode   | c++; local static functions;
+       code        | c++; patch value assignment
+       codeContext | additional dictionary context for the code
+    \endplaintable
 
 Usage
     Example:
@@ -45,39 +55,60 @@ Usage
         refGradient     uniform (0 0 0);
         valueFraction   uniform 1;
 
-        name            rampedFixedValue;   // Optional name of generated code
+        name    rampedMixed;   // name of generated BC
 
         code
         #{
             this->refValue() =
-                vector(1, 0, 0)*min(10, 0.1*this->time().value());
+                vector(1, 0, 0)
+               *min(10, 0.1*this->db().time().value());
             this->refGrad() = Zero;
             this->valueFraction() = 1.0;
         #};
 
-        // codeInclude
+        //codeInclude
         //#{
-        //    #include ".H"
+        //    #include "fvCFD.H"
         //#};
 
-        // codeOptions
+        //codeOptions
         //#{
         //    -I$(LIB_SRC)/finiteVolume/lnInclude
         //#};
     }
     \endverbatim
 
+    A special form is if the 'code' section is not supplied. In this case
+    the code gets read from a (runTimeModifiable!) dictionary system/codeDict
+    which would have a corresponding entry
+
+    \verbatim
+    <patchName>
+    {
+        code
+        #{
+            this->refValue() = min(10, 0.1*this->db().time().value());
+            this->refGrad() = Zero;
+            this->valueFraction() = 1.0;
+        #};
+    }
+    \endverbatim
+
+Note
+    The code context dictionary can be supplied separately as the
+    \c codeContext entry.
+
 See also
-    Foam::codedBase
     Foam::dynamicCode
+    Foam::functionEntries::codeStream
 
 SourceFiles
     codedMixedFvPatchField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef codedMixedFvPatchField_H
-#define codedMixedFvPatchField_H
+#ifndef Foam_codedMixedFvPatchField_H
+#define Foam_codedMixedFvPatchField_H
 
 #include "mixedFvPatchFields.H"
 #include "codedBase.H"
@@ -97,27 +128,55 @@ class codedMixedFvPatchField
     public mixedFvPatchField<Type>,
     public codedBase
 {
+    //- The parent boundary condition type
+    typedef mixedFvPatchField<Type> parent_bctype;
+
+
     // Private Data
 
-        //- Keywords associated with source code
-        static const wordList codeKeys;
+        //- Dictionary contents for the boundary condition
+        dictionary dict_;
 
-        //- Name of the dictionary variables in the source code
-        static const wordList codeDictVars;
-
-        // Name of the code options template file
-        static const word codeOptions;
-
-        // Names of the source files to compile
-        static const wordList compileFiles;
-
-        // Names of the source files to copy (header files)
-        static const wordList copyFiles;
+        const word name_;
 
         mutable autoPtr<mixedFvPatchField<Type>> redirectPatchFieldPtr_;
 
 
+protected:
+
+    // Protected Member Functions
+
+        //- Mutable access to the loaded dynamic libraries
+        virtual dlLibraryTable& libs() const;
+
+        //- Description (type + name) for the output
+        virtual string description() const;
+
+        //- Clear redirected object(s)
+        virtual void clearRedirect() const;
+
+        //- Additional 'codeContext' dictionary to pass through
+        virtual const dictionary& codeContext() const;
+
+        //- The code dictionary. Inline "code" or from system/codeDict
+        virtual const dictionary& codeDict() const;
+
+        //- Adapt the context for the current object
+        virtual void prepare(dynamicCode&, const dynamicCodeContext&) const;
+
+
 public:
+
+    // Static Data Members
+
+        //- Name of the C code template to be used
+        static constexpr const char* const codeTemplateC
+            = "mixedFvPatchFieldTemplate.C";
+
+        //- Name of the H code template to be used
+        static constexpr const char* const codeTemplateH
+            = "mixedFvPatchFieldTemplate.H";
+
 
     //- Runtime type information
     TypeName("codedMixed");
@@ -125,11 +184,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        codedMixedFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         codedMixedFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
@@ -139,35 +205,40 @@ public:
         (
             const codedMixedFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
+        //- Construct as copy
+        codedMixedFvPatchField
+        (
+            const codedMixedFvPatchField<Type>&
+        );
 
-        //- Disallow copy without setting internal field reference
-        codedMixedFvPatchField(const codedMixedFvPatchField<Type>&) = delete;
-
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         codedMixedFvPatchField
         (
             const codedMixedFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new codedMixedFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Get reference to the underlying patchField
         const mixedFvPatchField<Type>& redirectPatchField() const;
@@ -180,17 +251,11 @@ public:
         //  to false.
         virtual void evaluate
         (
-            const Pstream::commsTypes commsType=Pstream::commsTypes::blocking
+            const Pstream::commsTypes commsType=Pstream::commsTypes::buffered
         );
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchField<Type>::operator=;
 };
 
 

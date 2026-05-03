@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -36,39 +39,34 @@ SourceFiles
 #ifndef sweepData_H
 #define sweepData_H
 
-#include "scalar.H"
-#include "point.H"
-#include "labelPair.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
-class fvPatch;
-class fvMesh;
-class transformer;
+// Forward Declarations
+class sweepData;
+
+Ostream& operator<<(Ostream&, const sweepData&);
+Istream& operator>>(Istream&, sweepData&);
 
 /*---------------------------------------------------------------------------*\
-                          Class sweepData Declaration
+                       Class sweepData Declaration
 \*---------------------------------------------------------------------------*/
 
 class sweepData
 {
     // Private Data
 
-        //-
         scalar value_;
 
-        //-
         point origin_;
 
 
     // Private Member Functions
 
-        //- Update - gets information from neighbouring face/cell and
-        //  uses this to update itself (if necessary) and return true
+        //- Update gets information from neighbouring face/cell and
+        //- uses this to update itself (if necessary) and return true
         template<class TrackingData>
         inline bool update
         (
@@ -81,12 +79,21 @@ class sweepData
 
 public:
 
+    // Generated Methods
+
+        //- Copy construct
+        sweepData(const sweepData&) = default;
+
+        //- Copy assignment
+        sweepData& operator=(const sweepData&) = default;
+
+
     // Constructors
 
-        //- Construct null
+        //- Default construct
         inline sweepData();
 
-        //- Construct from component
+        //- Construct from components
         inline sweepData(const scalar value, const point& origin);
 
 
@@ -100,6 +107,12 @@ public:
                 return value_;
             }
 
+            //- The value
+            scalar& value()
+            {
+                return value_;
+            }
+
             //- Return origin
             const point& origin() const
             {
@@ -107,31 +120,51 @@ public:
             }
 
 
-        // Needed by FvFaceCellWave
+        // Needed by FaceCellWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
-            //- Check for identical geometrical data
-            //  Used for cyclics checking
+            //- Check for identical geometrical data (eg, cyclics checking)
             template<class TrackingData>
             inline bool sameGeometry
             (
-                const fvMesh&,
+                const polyMesh&,
                 const sweepData&,
                 const scalar,
                 TrackingData& td
             ) const;
 
-            //- Transform across an interface
+            //- Convert any absolute coordinates into relative to
+            //  (patch)face centre
+            template<class TrackingData>
+            inline void leaveDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Reverse of leaveDomain
+            template<class TrackingData>
+            inline void enterDomain
+            (
+                const polyMesh&,
+                const polyPatch&,
+                const label patchFacei,
+                const point& faceCentre,
+                TrackingData& td
+            );
+
+            //- Apply rotation matrix to any coordinates
             template<class TrackingData>
             inline void transform
             (
-                const fvPatch& patch,
-                const label patchFacei,
-                const transformer& transform,
+                const polyMesh&,
+                const tensor&,
                 TrackingData& td
             );
 
@@ -139,9 +172,9 @@ public:
             template<class TrackingData>
             inline bool updateCell
             (
-                const fvMesh&,
+                const polyMesh&,
                 const label thisCelli,
-                const labelPair& neighbourPatchAndFacei,
+                const label neighbourFacei,
                 const sweepData& svf,
                 const scalar tol,
                 TrackingData& td
@@ -151,8 +184,8 @@ public:
             template<class TrackingData>
             inline bool updateFace
             (
-                const fvMesh&,
-                const labelPair& thisPatchAndFacei,
+                const polyMesh&,
+                const label thisFacei,
                 const label neighbourCelli,
                 const sweepData& svf,
                 const scalar tol,
@@ -163,47 +196,51 @@ public:
             template<class TrackingData>
             inline bool updateFace
             (
-                const fvMesh&,
-                const labelPair& thisPatchAndFacei,
+                const polyMesh&,
+                const label thisFacei,
                 const sweepData& svf,
                 const scalar tol,
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const sweepData&, TrackingData& td) const;
 
 
-        // Member Operators
+    // Member Operators
 
-            inline void operator=(const scalar value);
+        //- Assign new value
+        void operator=(const scalar value)
+        {
+            value_ = value;
+        }
 
-            inline bool operator==(const sweepData&) const;
+        //- Test for equality
+        inline bool operator==(const sweepData&) const;
 
-            inline bool operator!=(const sweepData&) const;
+        //- Test for inequality
+        inline bool operator!=(const sweepData&) const;
 
 
-        // IOstream Operators
+    // IOstream Operators
 
-            friend Ostream& operator<<(Ostream& os, const sweepData& svf)
-            {
-                return os << svf.value_ << svf.origin_;
-            }
+        friend Ostream& operator<<(Ostream& os, const sweepData& rhs)
+        {
+            return os << rhs.value_ << rhs.origin_;
+        }
 
-            friend Istream& operator>>(Istream& is, sweepData& svf)
-            {
-                return is >> svf.value_ >> svf.origin_;
-            }
+        friend Istream& operator>>(Istream& is, sweepData& rhs)
+        {
+            return is >> rhs.value_ >> rhs.origin_;
+        }
 };
 
 
-//- Data associated with sweepData type are contiguous
-template<>
-inline bool contiguous<sweepData>()
-{
-    return true;
-}
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for sweepData
+template<> struct is_contiguous<sweepData> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

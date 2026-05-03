@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,21 +27,21 @@ License
 
 #include "fvsPatchFields.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+#define makeFvsPatchField(PatchTypeField)                                     \
+    defineTemplateRunTimeSelectionTable(PatchTypeField, patch);               \
+    defineTemplateRunTimeSelectionTable(PatchTypeField, patchMapper);         \
+    defineTemplateRunTimeSelectionTable(PatchTypeField, dictionary);
 
-makeFvsPatchField(fvsPatchLabelField)
-makeFvsPatchField(fvsPatchScalarField)
-makeFvsPatchField(fvsPatchVectorField)
-makeFvsPatchField(fvsPatchSphericalTensorField)
-makeFvsPatchField(fvsPatchSymmTensorField)
-makeFvsPatchField(fvsPatchTensorField)
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+makeFvsPatchField(fvsPatchScalarField);
+makeFvsPatchField(fvsPatchVectorField);
+makeFvsPatchField(fvsPatchSphericalTensorField);
+makeFvsPatchField(fvsPatchSymmTensorField);
+makeFvsPatchField(fvsPatchTensorField);
 
 } // End namespace Foam
 

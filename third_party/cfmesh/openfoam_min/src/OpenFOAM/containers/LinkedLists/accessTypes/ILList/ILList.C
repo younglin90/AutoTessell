@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,14 +35,9 @@ Foam::ILList<LListBase, T>::ILList(const ILList<LListBase, T>& lst)
 :
     UILList<LListBase, T>()
 {
-    for
-    (
-        typename UILList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (const auto& item : lst)
     {
-        this->append(iter().clone().ptr());
+        this->push_back(item.clone().ptr());
     }
 }
 
@@ -49,7 +47,7 @@ Foam::ILList<LListBase, T>::ILList(ILList<LListBase, T>&& lst)
 :
     UILList<LListBase, T>()
 {
-    transfer(lst);
+    LListBase::transfer(lst);
 }
 
 
@@ -63,14 +61,9 @@ Foam::ILList<LListBase, T>::ILList
 :
     UILList<LListBase, T>()
 {
-    for
-    (
-        typename UILList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (const auto& item : lst)
     {
-        this->append(iter().clone(cloneArg).ptr());
+        this->push_back(item.clone(cloneArg).ptr());
     }
 }
 
@@ -87,32 +80,18 @@ Foam::ILList<LListBase, T>::~ILList()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class LListBase, class T>
-bool Foam::ILList<LListBase, T>::eraseHead()
+void Foam::ILList<LListBase, T>::pop_front(label n)
 {
-    T* tPtr;
-    if ((tPtr = this->removeHead()))
+    if (n > this->size())
     {
-        delete tPtr;
-        return true;
+        n = this->size();
     }
-    else
-    {
-        return false;
-    }
-}
 
-template<class LListBase, class T>
-bool Foam::ILList<LListBase, T>::erase(T* p)
-{
-    T* tPtr;
-    if ((tPtr = remove(p)))
+    while (n > 0)
     {
-        delete tPtr;
-        return true;
-    }
-    else
-    {
-        return false;
+        T* p = this->removeHead();
+        delete p;
+        --n;
     }
 }
 
@@ -120,13 +99,17 @@ bool Foam::ILList<LListBase, T>::erase(T* p)
 template<class LListBase, class T>
 void Foam::ILList<LListBase, T>::clear()
 {
-    label oldSize = this->size();
-    for (label i=0; i<oldSize; ++i)
-    {
-        eraseHead();
-    }
-
+    this->pop_front(this->size());
     LListBase::clear();
+}
+
+
+template<class LListBase, class T>
+bool Foam::ILList<LListBase, T>::erase(T* item)
+{
+    T* p = remove(item);
+    delete p;
+    return bool(p);
 }
 
 
@@ -145,14 +128,9 @@ void Foam::ILList<LListBase, T>::operator=(const ILList<LListBase, T>& lst)
 {
     this->clear();
 
-    for
-    (
-        typename UILList<LListBase, T>::const_iterator iter = lst.begin();
-        iter != lst.end();
-        ++iter
-    )
+    for (const auto& item : lst)
     {
-        this->append(iter().clone().ptr());
+        this->push_back(item.clone().ptr());
     }
 }
 
@@ -160,13 +138,9 @@ void Foam::ILList<LListBase, T>::operator=(const ILList<LListBase, T>& lst)
 template<class LListBase, class T>
 void Foam::ILList<LListBase, T>::operator=(ILList<LListBase, T>&& lst)
 {
-    transfer(lst);
+    clear();
+    LListBase::transfer(lst);
 }
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-#include "ILListIO.C"
 
 
 // ************************************************************************* //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,8 +26,6 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "smoothData.H"
-
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class TrackingData>
@@ -36,7 +37,7 @@ inline bool Foam::smoothData::update
     TrackingData& td
 )
 {
-    if (!valid(td) || (value_ < vSmall))
+    if (!valid(td) || (value_ < VSMALL))
     {
         // My value not set - take over neighbour
         value_ = svf.value()/scale;
@@ -46,7 +47,7 @@ inline bool Foam::smoothData::update
     }
     else if (svf.value() > (1 + tol)*scale*value_)
     {
-        // Neighbour is too big for me - up my value
+        // Neighbour is too big for me - Up my value
         value_ = svf.value()/scale;
 
         // Something changed - let caller know
@@ -55,8 +56,6 @@ inline bool Foam::smoothData::update
     else
     {
         // Neighbour is not too big for me or change is too small
-        // ...
-
         // Nothing changed
         return false;
     }
@@ -67,7 +66,7 @@ inline bool Foam::smoothData::update
 
 inline Foam::smoothData::smoothData()
 :
-    value_(-great)
+    value_(-GREAT)
 {}
 
 
@@ -82,14 +81,14 @@ inline Foam::smoothData::smoothData(const scalar value)
 template<class TrackingData>
 inline bool Foam::smoothData::valid(TrackingData& td) const
 {
-    return value_ > -small;
+    return value_ > -SMALL;
 }
 
 
 template<class TrackingData>
 inline bool Foam::smoothData::sameGeometry
 (
-    const fvMesh&,
+    const polyMesh&,
     const smoothData&,
     const scalar,
     TrackingData& td
@@ -100,11 +99,34 @@ inline bool Foam::smoothData::sameGeometry
 
 
 template<class TrackingData>
+inline void Foam::smoothData::leaveDomain
+(
+    const polyMesh&,
+    const polyPatch&,
+    const label,
+    const point&,
+    TrackingData& td
+)
+{}
+
+
+template<class TrackingData>
 inline void Foam::smoothData::transform
 (
-    const fvPatch& patch,
-    const label patchFacei,
-    const transformer& transform,
+    const polyMesh&,
+    const tensor&,
+    TrackingData& td
+)
+{}
+
+
+template<class TrackingData>
+inline void Foam::smoothData::enterDomain
+(
+    const polyMesh&,
+    const polyPatch&,
+    const label,
+    const point&,
     TrackingData& td
 )
 {}
@@ -113,9 +135,9 @@ inline void Foam::smoothData::transform
 template<class TrackingData>
 inline bool Foam::smoothData::updateCell
 (
-    const fvMesh&,
+    const polyMesh&,
     const label,
-    const labelPair&,
+    const label,
     const smoothData& svf,
     const scalar tol,
     TrackingData& td
@@ -129,8 +151,8 @@ inline bool Foam::smoothData::updateCell
 template<class TrackingData>
 inline bool Foam::smoothData::updateFace
 (
-    const fvMesh&,
-    const labelPair&,
+    const polyMesh&,
+    const label,
     const label,
     const smoothData& svf,
     const scalar tol,
@@ -146,8 +168,8 @@ inline bool Foam::smoothData::updateFace
 template<class TrackingData>
 inline bool Foam::smoothData::updateFace
 (
-    const fvMesh&,
-    const labelPair&,
+    const polyMesh&,
+    const label,
     const smoothData& svf,
     const scalar tol,
     TrackingData& td
@@ -171,19 +193,19 @@ inline bool Foam::smoothData::equal
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline void Foam::smoothData::operator=(const scalar value)
+inline bool Foam::smoothData::operator==
+(
+    const smoothData& rhs
+) const
 {
-    value_ = value;
+    return value_ == rhs.value_;
 }
 
 
-inline bool Foam::smoothData::operator==(const smoothData& rhs) const
-{
-    return value_ == rhs.value();
-}
-
-
-inline bool Foam::smoothData::operator!=(const smoothData& rhs) const
+inline bool Foam::smoothData::operator!=
+(
+    const smoothData& rhs
+) const
 {
     return !(*this == rhs);
 }

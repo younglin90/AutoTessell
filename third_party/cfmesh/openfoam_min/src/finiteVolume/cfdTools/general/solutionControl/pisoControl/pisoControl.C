@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,32 +36,13 @@ namespace Foam
 }
 
 
-// * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
-
-bool Foam::pisoControl::read()
-{
-    if (!fluidSolutionControl::read())
-    {
-        return false;
-    }
-
-    const dictionary& solutionDict = dict();
-
-    nCorrPiso_ = solutionDict.lookupOrDefault<label>("nCorrectors", 1);
-
-    return true;
-}
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::pisoControl::pisoControl(fvMesh& mesh, const word& algorithmName)
+Foam::pisoControl::pisoControl(fvMesh& mesh, const word& dictName)
 :
-    fluidSolutionControl(mesh, algorithmName),
-    nCorrPiso_(-1),
-    corrPiso_(0)
+    pimpleControl(mesh, dictName)
 {
-    read();
+    // mesh_.data().setFinalIteration(true);
 }
 
 
@@ -68,51 +52,11 @@ Foam::pisoControl::~pisoControl()
 {}
 
 
-// * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-bool Foam::pisoControl::isFinal(const bool finalIter) const
+bool Foam::pisoControl::read()
 {
-    return (finalIter && !anyPisoIter()) || finalPisoIter();
-}
-
-
-bool Foam::pisoControl::correct(const bool finalIter)
-{
-    if (finalPisoIter())
-    {
-        corrPiso_ = 0;
-
-        updateFinal(isFinal(finalIter));
-
-        return false;
-    }
-
-    corrPiso_++;
-
-    updateFinal(isFinal(finalIter));
-
-    return true;
-}
-
-
-bool Foam::pisoControl::correctNonOrthogonal(const bool finalIter)
-{
-    return nonOrthogonalSolutionControl::correctNonOrthogonal
-    (
-        isFinal(finalIter)
-    );
-}
-
-
-bool Foam::pisoControl::run(Time& time)
-{
-    return time.run();
-}
-
-
-bool Foam::pisoControl::loop(Time& time)
-{
-    return time.loop();
+    return pimpleControl::read();
 }
 
 

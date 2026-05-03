@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2021-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,13 +27,14 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "levelSet.H"
-#include "cutTriTet.H"
+#include "cut.H"
 #include "polyMeshTetDecomposition.H"
 #include "tetIndices.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-Foam::tmp<Foam::scalarField> Foam::levelSetFraction
+Foam::tmp<Foam::DimensionedField<Foam::scalar, Foam::volMesh>>
+Foam::levelSetFraction
 (
     const fvMesh& mesh,
     const scalarField& levelC,
@@ -38,11 +42,14 @@ Foam::tmp<Foam::scalarField> Foam::levelSetFraction
     const bool above
 )
 {
-    typedef cutTriTet::noOp noOp;
-    typedef cutTriTet::volumeOp volumeOp;
-
-    tmp<scalarField> tResult(new scalarField(mesh.nCells(), Zero));
-    scalarField& result = tResult.ref();
+    auto tResult = DimensionedField<scalar, volMesh>::New
+    (
+        "levelSetFraction",
+        IOobject::NO_REGISTER,
+        mesh,
+        dimensionedScalar(dimless, Zero)
+    );
+    auto& result = tResult.ref();
 
     forAll(result, cI)
     {
@@ -72,15 +79,15 @@ Foam::tmp<Foam::scalarField> Foam::levelSetFraction
                     levelP[triIs[2]]
                 };
 
-            v += volumeOp()(tet);
+            v += cut::volumeOp()(tet);
 
             if (above)
             {
-                r += tetCut(tet, level, volumeOp(), noOp());
+                r += tetCut(tet, level, cut::volumeOp(), cut::noOp());
             }
             else
             {
-                r += tetCut(tet, level, noOp(), volumeOp());
+                r += tetCut(tet, level, cut::noOp(), cut::volumeOp());
             }
         }
 
@@ -99,28 +106,26 @@ Foam::tmp<Foam::scalarField> Foam::levelSetFraction
     const bool above
 )
 {
-    typedef cutTriTet::noOp noOp;
-    typedef cutTriTet::areaMagOp areaMagOp;
-
-    tmp<scalarField> tResult(new scalarField(patch.size(), 0));
-    scalarField& result = tResult.ref();
+    auto tResult = tmp<scalarField>::New(patch.size(), Zero);
+    auto& result = tResult.ref();
 
     forAll(result, fI)
     {
-        const face& f = patch.poly().localFaces()[fI];
+        const face& f = patch.patch().localFaces()[fI];
 
-        scalar a = 0, r = 0;
+        vector a(Zero);
+        vector r(Zero);
 
-        for(label eI = 0; eI < f.size(); ++ eI)
+        for (label edgei = 0; edgei < f.nEdges(); ++edgei)
         {
-            const edge e = f.faceEdge(eI);
+            const edge e = f.edge(edgei);
 
             const FixedList<point, 3>
                 tri =
                 {
-                    patch.poly().faceCentres()[fI],
-                    patch.poly().localPoints()[e[0]],
-                    patch.poly().localPoints()[e[1]]
+                    patch.patch().faceCentres()[fI],
+                    patch.patch().localPoints()[e[0]],
+                    patch.patch().localPoints()[e[1]]
                 };
             const FixedList<scalar, 3>
                 level =
@@ -130,68 +135,22 @@ Foam::tmp<Foam::scalarField> Foam::levelSetFraction
                     levelP[e[1]]
                 };
 
-            a += areaMagOp()(tri);
+            a += cut::areaOp()(tri);
 
             if (above)
             {
-                r += triCut(tri, level, areaMagOp(), noOp());
+                r += triCut(tri, level, cut::areaOp(), cut::noOp());
             }
             else
             {
-                r += triCut(tri, level, noOp(), areaMagOp());
+                r += triCut(tri, level, cut::noOp(), cut::areaOp());
             }
         }
 
-        result[fI] = r/a;
+        result[fI] = a/magSqr(a) & r;
     }
 
     return tResult;
 }
-
-
-Foam::tmp<Foam::volScalarField> Foam::levelSetFraction
-(
-    const volScalarField& levelC,
-    const pointScalarField& levelP,
-    const bool above
-)
-{
-    const fvMesh& mesh = levelC.mesh();
-
-    tmp<volScalarField> tResult
-    (
-        volScalarField::New
-        (
-            "levelSetFraction",
-            mesh,
-            dimensionedScalar(dimless, 0)
-        )
-    );
-    volScalarField& result = tResult.ref();
-
-    result.primitiveFieldRef() =
-        levelSetFraction
-        (
-            mesh,
-            levelC.primitiveField(),
-            levelP.primitiveField(),
-            above
-        );
-
-    forAll(mesh.boundary(), patchi)
-    {
-        result.boundaryFieldRef()[patchi] =
-            levelSetFraction
-            (
-                mesh.boundary()[patchi],
-                levelC.boundaryField()[patchi],
-                levelP.boundaryField()[patchi].patchInternalField()(),
-                above
-            );
-    }
-
-    return tResult;
-}
-
 
 // ************************************************************************* //

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,14 +31,15 @@ License
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-bool Foam::PatchTools::checkOrientation
+bool
+Foam::PatchTools::checkOrientation
 (
     const PrimitivePatch<FaceList, PointField>& p,
     const bool report,
     labelHashSet* setPtr
 )
 {
-    typedef typename PrimitivePatch<FaceList, PointField>::FaceType FaceType;
+    typedef typename PrimitivePatch<FaceList, PointField>::face_type FaceType;
 
     bool foundError = false;
 

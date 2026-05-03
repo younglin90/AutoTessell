@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,33 +38,26 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef pointEdgePoint_H
-#define pointEdgePoint_H
+#ifndef Foam_pointEdgePoint_H
+#define Foam_pointEdgePoint_H
 
-#include "point.H"
 #include "label.H"
 #include "scalar.H"
+#include "point.H"
 #include "tensor.H"
-#include "pTraits.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class polyPatch;
 class polyMesh;
-class transformer;
-
-
-// Forward declaration of friend functions and operators
-
 class pointEdgePoint;
 
 Istream& operator>>(Istream&, pointEdgePoint&);
 Ostream& operator<<(Ostream&, const pointEdgePoint&);
-
 
 /*---------------------------------------------------------------------------*\
                        Class pointEdgePoint Declaration
@@ -80,13 +76,23 @@ class pointEdgePoint
 
     // Private Member Functions
 
-        //- Evaluate distance to point. Update distSqr, origin from whomever
-        //  is nearer pt. Return true if w2 is closer to point,
-        //  false otherwise.
+        //- Evaluate distance to point.
+        //  Update distSqr, origin from whomever is nearer pt.
+        //  \return true if w2 is closer to point, false otherwise.
         template<class TrackingData>
         inline bool update
         (
             const point&,
+            const pointEdgePoint& w2,
+            const scalar tol,
+            TrackingData& td
+        );
+
+        //- Combine current with w2. Update distSqr, origin if w2 has smaller
+        //  quantities and returns true.
+        template<class TrackingData>
+        inline bool update
+        (
             const pointEdgePoint& w2,
             const scalar tol,
             TrackingData& td
@@ -97,36 +103,84 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct. Max point
         inline pointEdgePoint();
 
         //- Construct from origin, distance
-        inline pointEdgePoint(const point&, const scalar);
+        inline pointEdgePoint(const point& origin, const scalar distSqr);
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            inline const point& origin() const;
+        const point& origin() const noexcept { return origin_; }
 
-            inline scalar distSqr() const;
+        point& origin() noexcept { return origin_; }
 
+        scalar distSqr() const noexcept { return distSqr_; }
+
+        scalar& distSqr() noexcept { return distSqr_; }
+
+
+    // Member Operators
+
+        //- Test for equality
+        inline bool operator==(const pointEdgePoint&) const;
+
+        //- Test for inequality
+        inline bool operator!=(const pointEdgePoint&) const;
+
+
+    // IOstream Operators
+
+        friend Ostream& operator<<(Ostream&, const pointEdgePoint&);
+        friend Istream& operator>>(Istream&, pointEdgePoint&);
+
+
+    // Wave Methods
 
         // Needed by PointEdgeWave
 
-            //- Check whether origin has been changed at all or
-            //  still contains original (invalid) value.
+            //- Changed or contains original (invalid) value
             template<class TrackingData>
             inline bool valid(TrackingData& td) const;
 
-            //- Transform across an interface
+            //- Check for identical geometrical data (eg, cyclics checking)
+            template<class TrackingData>
+            inline bool sameGeometry
+            (
+                const pointEdgePoint&,
+                const scalar tol,
+                TrackingData& td
+            ) const;
+
+            //- Convert origin to relative vector to leaving point
+            //  (= point coordinate)
+            template<class TrackingData>
+            inline void leaveDomain
+            (
+                const polyPatch& patch,
+                const label patchPointi,
+                const point& pos,
+                TrackingData& td
+            );
+
+            //- Convert relative origin to absolute by adding entering point
+            template<class TrackingData>
+            inline void enterDomain
+            (
+                const polyPatch& patch,
+                const label patchPointi,
+                const point& pos,
+                TrackingData& td
+            );
+
+            //- Apply rotation matrix to origin
             template<class TrackingData>
             inline void transform
             (
-                const polyPatch& patch,
-                const label patchFacei,
-                const transformer& transform,
+                const tensor& rotTensor,
                 TrackingData& td
             );
 
@@ -154,6 +208,16 @@ public:
                 TrackingData& td
             );
 
+            //- Influence of different value on same point.
+            //  No information about current position whatsoever.
+            template<class TrackingData>
+            inline bool updatePoint
+            (
+                const pointEdgePoint& newPointInfo,
+                const scalar tol,
+                TrackingData& td
+            );
+
             //- Influence of point on edge.
             template<class TrackingData>
             inline bool updateEdge
@@ -166,31 +230,19 @@ public:
                 TrackingData& td
             );
 
-            //- Same (like operator==)
+            //- Test for equality, with TrackingData
             template<class TrackingData>
             inline bool equal(const pointEdgePoint&, TrackingData& td) const;
-
-
-    // Member Operators
-
-        // Needed for List IO
-        inline bool operator==(const pointEdgePoint&) const;
-        inline bool operator!=(const pointEdgePoint&) const;
-
-
-    // IOstream Operators
-
-        inline friend Ostream& operator<<(Ostream&, const pointEdgePoint&);
-        inline friend Istream& operator>>(Istream&, pointEdgePoint&);
 };
 
 
-//- Data associated with pointEdgePoint type are contiguous
-template<>
-inline bool contiguous<pointEdgePoint>()
-{
-    return true;
-}
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for pointEdgePoint
+template<> struct is_contiguous<pointEdgePoint> : std::true_type {};
+
+//- Contiguous scalar data for pointEdgePoint
+template<> struct is_contiguous_scalar<pointEdgePoint> : std::true_type {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

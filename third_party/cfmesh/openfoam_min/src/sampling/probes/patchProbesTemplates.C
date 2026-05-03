@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2021-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,125 +28,78 @@ License
 
 #include "patchProbes.H"
 #include "volFields.H"
+#include "surfaceFields.H"
 #include "IOmanip.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-void Foam::patchProbes::sampleAndWrite(const VolField<Type>& vField)
-{
-    Field<Type> values(sample(vField));
-
-    if (Pstream::master())
-    {
-        unsigned int w = IOstream::defaultPrecision() + 7;
-        OFstream& probeStream = probeFilePtrs_[vField.name()];
-
-        probeStream
-            << setw(w)
-            << vField.time().userTimeValue();
-
-        forAll(values, probei)
-        {
-            probeStream << ' ' << setw(w) << values[probei];
-        }
-        probeStream << endl;
-    }
-}
-
-
-template<class Type>
-void Foam::patchProbes::sampleAndWrite(const SurfaceField<Type>& sField)
-{
-    Field<Type> values(sample(sField));
-
-    if (Pstream::master())
-    {
-        unsigned int w = IOstream::defaultPrecision() + 7;
-        OFstream& probeStream = probeFilePtrs_[sField.name()];
-
-        probeStream
-            << setw(w)
-            << sField.time().userTimeValue();
-
-        forAll(values, probei)
-        {
-            probeStream << ' ' << setw(w) << values[probei];
-        }
-        probeStream << endl;
-    }
-}
-
-
-template<class Type>
-void Foam::patchProbes::sampleAndWrite(const fieldGroup<Type>& fields)
-{
-    forAll(fields, fieldi)
-    {
-        objectRegistry::const_iterator iter = mesh_.find(fields[fieldi]);
-
-        if
-        (
-            iter != objectRegistry::end()
-         && iter()->type() == VolField<Type>::typeName
-        )
-        {
-            sampleAndWrite
-            (
-                mesh_.lookupObject<VolField<Type>>
-                (
-                    fields[fieldi]
-                )
-            );
-        }
-    }
-}
-
-
-template<class Type>
-void Foam::patchProbes::sampleAndWriteSurfaceFields
+void Foam::patchProbes::writeValues
 (
-    const fieldGroup<Type>& fields
+    const word& fieldName,
+    const Field<Type>& values,
+    const scalar timeValue
 )
 {
-    forAll(fields, fieldi)
+    if (Pstream::master())
     {
-        objectRegistry::const_iterator iter = mesh_.find(fields[fieldi]);
+        const unsigned int w = IOstream::defaultPrecision() + 7;
+        OFstream& os = *probeFilePtrs_[fieldName];
 
-        if
-        (
-            iter != objectRegistry::end()
-         && iter()->type() == SurfaceField<Type>::typeName
-        )
+        os  << setw(w) << timeValue;
+
+        for (const auto& v : values)
         {
-            sampleAndWrite
-            (
-                mesh_.lookupObject<SurfaceField<Type>>
-                (
-                    fields[fieldi]
-                )
-            );
+            os  << ' ' << setw(w) << v;
+        }
+        os  << endl;
+    }
+}
+
+
+template<class GeoField>
+void Foam::patchProbes::performAction
+(
+    const fieldGroup<GeoField>& fieldNames,
+    unsigned request
+)
+{
+    for (const word& fieldName : fieldNames)
+    {
+        tmp<GeoField> tfield = getOrLoadField<GeoField>(fieldName);
+
+        if (tfield)
+        {
+            const auto& field = tfield();
+            const scalar timeValue = field.time().timeOutputValue();
+
+            Field<typename GeoField::value_type> values(sample(field));
+
+            this->storeResults(fieldName, values);
+            if (request & ACTION_WRITE)
+            {
+                this->writeValues(fieldName, values, timeValue);
+            }
         }
     }
 }
 
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
 Foam::tmp<Foam::Field<Type>>
-Foam::patchProbes::sample(const VolField<Type>& vField) const
+Foam::patchProbes::sample(const VolumeField<Type>& vField) const
 {
-    const Type unsetVal(-vGreat*pTraits<Type>::one);
+    const Type unsetVal(-VGREAT*pTraits<Type>::one);
 
-    tmp<Field<Type>> tValues
-    (
-        new Field<Type>(locations_.size(), unsetVal)
-    );
+    auto tvalues = tmp<Field<Type>>::New(Field<Type>(this->size(), unsetVal));
+    auto& values = tvalues.ref();
 
-    Field<Type>& values = tValues.ref();
+    const polyBoundaryMesh& patches = mesh_.boundaryMesh();
+    const auto& bField = vField.boundaryField();
 
-    const polyBoundaryMesh& patches = mesh_.poly().boundary();
-
-    forAll(locations_, probei)
+    forAll(*this, probei)
     {
         label facei = faceList_[probei];
 
@@ -151,14 +107,13 @@ Foam::patchProbes::sample(const VolField<Type>& vField) const
         {
             label patchi = patches.whichPatch(facei);
             label localFacei = patches[patchi].whichFace(facei);
-            values[probei] = vField.boundaryField()[patchi][localFacei];
+            values[probei] = bField[patchi][localFacei];
         }
     }
 
-    Pstream::listCombineGather(values, isNotEqOp<Type>());
-    Pstream::listCombineScatter(values);
+    Pstream::listCombineReduce(values, isNotEqOp<Type>());
 
-    return tValues;
+    return tvalues;
 }
 
 
@@ -166,18 +121,15 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::patchProbes::sample(const SurfaceField<Type>& sField) const
 {
-    const Type unsetVal(-vGreat*pTraits<Type>::one);
+    const Type unsetVal(-VGREAT*pTraits<Type>::one);
 
-    tmp<Field<Type>> tValues
-    (
-        new Field<Type>(locations_.size(), unsetVal)
-    );
+    auto tvalues = tmp<Field<Type>>::New(Field<Type>(this->size(), unsetVal));
+    auto& values = tvalues.ref();
 
-    Field<Type>& values = tValues.ref();
+    const polyBoundaryMesh& patches = mesh_.boundaryMesh();
+    const auto& bField = sField.boundaryField();
 
-    const polyBoundaryMesh& patches = mesh_.poly().boundary();
-
-    forAll(locations_, probei)
+    forAll(*this, probei)
     {
         label facei = faceList_[probei];
 
@@ -185,14 +137,13 @@ Foam::patchProbes::sample(const SurfaceField<Type>& sField) const
         {
             label patchi = patches.whichPatch(facei);
             label localFacei = patches[patchi].whichFace(facei);
-            values[probei] = sField.boundaryField()[patchi][localFacei];
+            values[probei] = bField[patchi][localFacei];
         }
     }
 
-    Pstream::listCombineGather(values, isNotEqOp<Type>());
-    Pstream::listCombineScatter(values);
+    Pstream::listCombineReduce(values, isNotEqOp<Type>());
 
-    return tValues;
+    return tvalues;
 }
 
 
@@ -200,13 +151,15 @@ template<class Type>
 Foam::tmp<Foam::Field<Type>>
 Foam::patchProbes::sample(const word& fieldName) const
 {
-    return sample
-    (
-        mesh_.lookupObject<VolField<Type>>
-        (
-            fieldName
-        )
-    );
+    return sample(mesh_.lookupObject<VolumeField<Type>>(fieldName));
+}
+
+
+template<class Type>
+Foam::tmp<Foam::Field<Type>>
+Foam::patchProbes::sampleSurfaceField(const word& fieldName) const
+{
+    return sample(mesh_.lookupObject<SurfaceField<Type>>(fieldName));
 }
 
 

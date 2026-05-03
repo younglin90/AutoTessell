@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2018 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,18 +35,38 @@ License
 Foam::threadedCollatedOFstream::threadedCollatedOFstream
 (
     OFstreamCollator& writer,
-    const fileName& filePath,
-    const streamFormat format,
-    const versionNumber version,
-    const compressionType compression,
+    IOstreamOption::atomicType atomic,
+    const fileName& pathName,
+    IOstreamOption streamOpt,
     const bool useThread
 )
 :
-    OStringStream(format, version),
+    OStringStream(streamOpt),
     writer_(writer),
-    filePath_(filePath),
-    compression_(compression),
-    useThread_(useThread)
+    pathName_(pathName),
+    atomic_(atomic),
+    compression_(streamOpt.compression()),
+    useThread_(useThread),
+    headerEntries_()
+{}
+
+
+Foam::threadedCollatedOFstream::threadedCollatedOFstream
+(
+    OFstreamCollator& writer,
+    const fileName& pathName,
+    IOstreamOption streamOpt,
+    const bool useThread
+)
+:
+    threadedCollatedOFstream
+    (
+        writer,
+        IOstreamOption::NON_ATOMIC,
+        pathName,
+        streamOpt,
+        useThread
+    )
 {}
 
 
@@ -54,14 +77,22 @@ Foam::threadedCollatedOFstream::~threadedCollatedOFstream()
     writer_.write
     (
         decomposedBlockData::typeName,
-        filePath_,
+        pathName_,
         str(),
-        IOstream::BINARY,
-        version(),
-        compression_,
-        false,                  // append
-        useThread_
+        IOstreamOption(IOstreamOption::BINARY, version(), compression_),
+        atomic_,
+        IOstreamOption::NO_APPEND,
+        useThread_,
+        headerEntries_
     );
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+void Foam::threadedCollatedOFstream::setHeaderEntries(const dictionary& dict)
+{
+    headerEntries_ = dict;
 }
 
 

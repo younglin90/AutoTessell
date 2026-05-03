@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,10 +54,18 @@ class IOporosityModelList
     public IOdictionary,
     public porosityModelList
 {
+private:
+
     // Private Member Functions
 
         //- Create IO object if dictionary is present
         IOobject createIOobject(const fvMesh& mesh) const;
+
+        //- No copy construct
+        IOporosityModelList(const IOporosityModelList&) = delete;
+
+        //- No copy assignment
+        void operator=(const IOporosityModelList&) = delete;
 
 
 public:
@@ -63,28 +73,18 @@ public:
     // Constructors
 
         //- Construct from mesh
-        IOporosityModelList(const fvMesh& mesh);
+        explicit IOporosityModelList(const fvMesh& mesh);
 
-        //- Disallow default bitwise copy construction
-        IOporosityModelList(const IOporosityModelList&) = delete;
 
         //- Destructor
-        virtual ~IOporosityModelList()
-        {}
+        virtual ~IOporosityModelList() = default;
 
 
     // Member Functions
 
         //- Read dictionary
         virtual bool read();
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const IOporosityModelList&) = delete;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

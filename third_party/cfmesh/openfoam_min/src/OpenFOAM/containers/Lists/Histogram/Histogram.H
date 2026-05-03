@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -50,7 +52,7 @@ namespace Foam
 template<class List>
 class Histogram
 {
-    // Private Data
+    // Private data
 
         //- Counts per bin
         labelList counts_;
@@ -65,6 +67,12 @@ class Histogram
     // Private Member Functions
 
         void count(const List& bins, const List& l);
+
+        //- No copy construct
+        Histogram(const Histogram&) = delete;
+
+        //- No copy assignment
+        void operator=(const Histogram&) = delete;
 
 
 public:
@@ -83,11 +91,8 @@ public:
             const List& l
         );
 
-        //- Disallow default bitwise copy construction
-        Histogram(const Histogram&) = delete;
 
-
-    // Member Functions
+        // Access
 
             //- Return the counts per bin
             inline const labelList& counts() const
@@ -108,12 +113,6 @@ public:
             {
                 return nHigh_;
             }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const Histogram&) = delete;
 };
 
 

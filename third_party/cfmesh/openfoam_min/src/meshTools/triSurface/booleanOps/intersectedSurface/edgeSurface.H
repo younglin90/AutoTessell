@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -41,9 +43,9 @@ Description
 
     Used to easily insert cuts and split faces.
 
-    Note:
-      - points with surface (local)points first, intersection points last
-      - edges with (split) surface edges first, intersection edges last.
+Note
+    - points with surface (local)points first, intersection points last
+    - edges with (split) surface edges first, intersection edges last.
 
 SourceFiles
     edgeSurface.C
@@ -68,12 +70,14 @@ class triSurface;
 class surfaceIntersection;
 
 /*---------------------------------------------------------------------------*\
-                         Class edgeSurface Declaration
+                           Class edgeSurface Declaration
 \*---------------------------------------------------------------------------*/
 
 class edgeSurface
 {
-    // Private Data
+private:
+
+    // Private data
 
         //- All points (0 .. nSurfacePoints_-1 are points from surface)
         pointField points_;
@@ -91,24 +95,11 @@ class edgeSurface
         //- From face to our edges_
         labelListList faceEdges_;
 
-
         //- Constructed from above: pointEdges
         labelListList pointEdges_;
 
 
     // Private Member Functions
-
-        //- Dump edges in obj format
-        static void writeOBJ(const pointField&, const edgeList&, Ostream&);
-
-        //- Dump selected edges in obj format
-        static void writeOBJ
-        (
-            const pointField&,
-            const edgeList&,
-            const labelList&,
-            Ostream&
-        );
 
         //- Calculate pointEdges
         void calcPointEdges();

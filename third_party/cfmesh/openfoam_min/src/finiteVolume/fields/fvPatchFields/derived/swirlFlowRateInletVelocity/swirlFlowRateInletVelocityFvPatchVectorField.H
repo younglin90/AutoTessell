@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,34 +26,28 @@ License
 Class
     Foam::swirlFlowRateInletVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions
+
 Description
-    Velocity inlet boundary condition creating a normal velocity field to match
-    the specified mass or volumetric flow rate, and radial and tangential
-    velocity fields specified by functions of time and radius or by a given
-    angular speed.
+    This boundary condition provides a volumetric- OR mass-flow normal vector
+    boundary condition by its magnitude as an integral over its area with a
+    swirl component determined by the angular speed, given in revolutions per
+    minute (RPM)
 
-    For a mass-based flux:
-    - the flow rate should be provided in kg/s
-    - if \c rho is "none" the flow rate is in m3/s
-    - otherwise \c rho should correspond to the name of the density field
-    - if the density field cannot be found in the database, the user must
-      specify the inlet density using the \c rhoInlet entry
-
-    For a volumetric-based flux:
-    - the flow rate is in m3/s
+    The basis of the patch (volumetric or mass) is determined by the
+    dimensions of the flux, phi. The current density is used to correct the
+    velocity when applying the mass basis.
 
 Usage
     \table
         Property     | Description             | Required    | Default value
-        origin       | Origin of rotation      | no          | patch centre
-        axis         | Axis of rotation        | no          | patch normal
-        massFlowRate | Mass flow rate [kg/s]   | no          |
-        volumetricFlowRate | Volumetric flow rate [m^3/s] | no |
-        rho          | Density field name      | no          | rho
-        rhoInlet     | Inlet density           | no          |
-        radialVelocity | Radial velocity [m/s] | yes         |
-        omega        | Angular velocity of the frame | no |
-        tangentialVelocity | Tangential velocity [m/s] | no  |
+        phi          | flux field name         | no          | phi
+        rho          | density field name      | no          | rho
+        origin       | origin of rotation      | no          | patch centre
+        axis         | axis of rotation        | no          | -(patch normal)
+        flowRate     | flow rate profile       | yes         |
+        rpm          | rotational speed profile | yes        |
     \endtable
 
     Example of the boundary condition specification:
@@ -59,30 +55,20 @@ Usage
     <patchName>
     {
         type            swirlFlowRateInletVelocity;
-        origin          (0 0 0);
-        axis            (0 0 1);
-        volumetricFlowRate constant 0.2;
-        radialVelocity  constant 10;
-        omega           constant 100 [rpm];
+        flowRate        constant 0.2;
+        rpm             constant 100;
     }
     \endverbatim
 
-    The \c volumetricFlowRate or \c massFlowRate and the \c omega entries are
-    \c Function1 of time, see Foam::Function1s. The \c radialVelocity and
-    \c tangentialVelocity entries are \c Function2 of time and radius,
-    see Foam::Function2s.
-
-    Note:
-      - \c rhoInlet is required for the case of a mass flow rate, where the
-        density field is not available at start-up
-      - The value is positive into the domain (as an inlet)
-      - May not work correctly for transonic inlets
-      - Strange behaviour with potentialFoam since the U equation is not solved
+Note
+    - the \c flowRate and \c rpm entries are Function1 types, able to describe
+      time varying functions.  The example above gives the usage for supplying
+      constant values.
+    - the value is positive into the domain
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
-    Foam::Function2s
+    Foam::Function1Types
 
 SourceFiles
     swirlFlowRateInletVelocityFvPatchVectorField.C
@@ -93,8 +79,7 @@ SourceFiles
 #define swirlFlowRateInletVelocityFvPatchVectorField_H
 
 #include "fixedValueFvPatchFields.H"
-#include "Function2.H"
-#include "omega1.H"
+#include "Function1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -108,7 +93,13 @@ class swirlFlowRateInletVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
+
+        //- Name of the flux transporting the field
+        const word phiName_;
+
+        //- Name of the density field used to normalize the mass flux
+        const word rhoName_;
 
         //- Origin of the rotation
         const vector origin_;
@@ -119,30 +110,8 @@ class swirlFlowRateInletVelocityFvPatchVectorField
         //- Inlet integral flow rate
         autoPtr<Function1<scalar>> flowRate_;
 
-        //- Is the flow-rate volumetric?
-        bool volumetric_;
-
-        //- Name of the density field used to normalise the mass flux
-        word rhoName_;
-
-        //- Rho initialisation value (for start; if value not supplied)
-        const scalar rhoInlet_;
-
-        //- Radial velocity
-        autoPtr<Function2<scalar>> radialVelocity_;
-
-        //- Angular velocity of the frame
-        autoPtr<Function1s::omega> omega_;
-
-        //- Tangential velocity
-        autoPtr<Function2<scalar>> tangentialVelocity_;
-
-
-    // Private Member Functions
-
-        //- Update the patch values given the appropriate density type and value
-        template<class RhoType>
-        void updateValues(const RhoType& rho);
+        //- Angular speed in revolutions per minute (RPM)
+        autoPtr<Function1<scalar>> rpm_;
 
 
 public:
@@ -153,11 +122,18 @@ public:
 
    // Constructors
 
+        //- Construct from patch and internal field
+        swirlFlowRateInletVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         swirlFlowRateInletVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -168,49 +144,48 @@ public:
         (
             const swirlFlowRateInletVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         swirlFlowRateInletVelocityFvPatchVectorField
         (
             const swirlFlowRateInletVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         swirlFlowRateInletVelocityFvPatchVectorField
         (
             const swirlFlowRateInletVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new swirlFlowRateInletVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
-        //- Update the coefficients associated with the patch field
-        virtual void updateCoeffs();
+        // Access
 
-        //- Write
-        virtual void write(Ostream&) const;
+            //- Update the coefficients associated with the patch field
+            virtual void updateCoeffs();
 
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
+            //- Write
+            virtual void write(Ostream&) const;
 };
 
 

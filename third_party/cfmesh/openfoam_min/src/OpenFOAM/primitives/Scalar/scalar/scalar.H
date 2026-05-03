@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,8 @@ Typedef
     Foam::scalar
 
 Description
-    Single floating point number identical to float or double depending on
-    whether WM_SP, WM_DP or WM_LP is defined.
+    A floating-point number identical to float or double depending on
+    whether WM_SP, WM_SPDP or WM_DP is defined.
 
 SourceFiles
     scalar.C
@@ -38,168 +41,196 @@ SourceFiles
 
 #include "floatScalar.H"
 #include "doubleScalar.H"
-#include "longDoubleScalar.H"
-#include "scaleable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#if defined(WM_SP)
+// Typedefs (floatScalar, doubleScalar, scalar, solveScalar) in scalarFwd.H
 
-// Define scalar as a float
+#if defined(WM_SP) || defined(WM_SPDP)
+
+// With scalar == (float), solveScalar == (float | double)
 
 namespace Foam
 {
-    typedef floatScalar scalar;
+    constexpr scalar GREAT = floatScalarGREAT;
+    constexpr scalar ROOTGREAT = floatScalarROOTGREAT;
+    constexpr scalar VGREAT = floatScalarVGREAT;
+    constexpr scalar ROOTVGREAT = floatScalarROOTVGREAT;
+    constexpr scalar SMALL = floatScalarSMALL;
+    constexpr scalar ROOTSMALL = floatScalarROOTSMALL;
+    constexpr scalar VSMALL = floatScalarVSMALL;
+    constexpr scalar ROOTVSMALL = floatScalarROOTVSMALL;
 
-    static const scalar great = floatScalarGreat;
-    static const scalar rootGreat = floatScalarRootGreat;
-    static const scalar vGreat = floatScalarVGreat;
-    static const scalar rootVGreat = floatScalarRootVGreat;
-    static const scalar small = floatScalarSmall;
-    static const scalar rootSmall = floatScalarRootSmall;
-    static const scalar vSmall = floatScalarVSmall;
-    static const scalar rootVSmall = floatScalarRootVSmall;
-    static const scalar NaN = floatScalarNaN;
+    #ifdef COMPAT_OPENFOAM_ORG
+    //! \cond compat_openfoam_org
+    //  Accommodate name changes from 2018-01
+    constexpr scalar great = floatScalarGREAT;
+    constexpr scalar rootGreat = floatScalarROOTGREAT;
+    constexpr scalar vGreat = floatScalarVGREAT;
+    constexpr scalar rootVGreat = floatScalarROOTVGREAT;
+    constexpr scalar small = floatScalarSMALL;
+    constexpr scalar rootSmall = floatScalarROOTSMALL;
+    constexpr scalar vSmall = floatScalarVSMALL;
+    constexpr scalar rootVSmall = floatScalarROOTVSMALL;
+    //! \endcond
+    #endif
+
+
+    //- Read scalar from c-string and return value
+    inline scalar readScalar(const char* buf)
+    {
+        return readFloat(buf);
+    }
+
+    //- Read scalar from c-string into argument. Return true on success.
+    inline bool readScalar(const char* buf, scalar& val)
+    {
+        return readFloat(buf, val);
+    }
+
+    //- Read scalar from string and return value
+    inline scalar readScalar(const std::string& str)
+    {
+        return readFloat(str);
+    }
+
+    //- Read scalar from string into argument. Return true on success.
+    inline bool readScalar(const std::string& str, scalar& val)
+    {
+        return readFloat(str, val);
+    }
+
+    //- Read scalar from stream.
+    scalar readScalar(Istream& is);
+
+    //- Read scalar from stream if present or return default value
+    scalar readScalarOrDefault(Istream& is, const scalar defaultValue);
+
+    //- Read raw scalar from binary stream.
+    //  \note No internal check for binary vs ascii,
+    //        the caller knows what they are doing
+    scalar readRawScalar(Istream& is);
+
+    //- Read raw scalar(s) from binary stream.
+    //  \note No internal check for binary vs ascii,
+    //        the caller knows what they are doing
+    void readRawScalar(Istream& is, scalar* data, size_t nElem = 1);
 }
 
 #elif defined(WM_DP)
 
-// Define scalar as a double
+// With scalar == (double), solveScalar == (double)
 
 namespace Foam
 {
-    typedef doubleScalar scalar;
+    constexpr scalar GREAT = doubleScalarGREAT;
+    constexpr scalar ROOTGREAT = doubleScalarROOTGREAT;
+    constexpr scalar VGREAT = doubleScalarVGREAT;
+    constexpr scalar ROOTVGREAT = doubleScalarROOTVGREAT;
+    constexpr scalar SMALL = doubleScalarSMALL;
+    constexpr scalar ROOTSMALL = doubleScalarROOTSMALL;
+    constexpr scalar VSMALL = doubleScalarVSMALL;
+    constexpr scalar ROOTVSMALL = doubleScalarROOTVSMALL;
 
-    static const scalar great = doubleScalarGreat;
-    static const scalar rootGreat = doubleScalarRootGreat;
-    static const scalar vGreat = doubleScalarVGreat;
-    static const scalar rootVGreat = doubleScalarRootVGreat;
-    static const scalar small = doubleScalarSmall;
-    static const scalar rootSmall = doubleScalarRootSmall;
-    static const scalar vSmall = doubleScalarVSmall;
-    static const scalar rootVSmall = doubleScalarRootVSmall;
-    static const scalar NaN = doubleScalarNaN;
-}
+    #ifdef COMPAT_OPENFOAM_ORG
+    //! \cond compat_openfoam_org
+    //  Accommodate name changes from 2018-01
+    constexpr scalar great = doubleScalarGREAT;
+    constexpr scalar rootGreat = doubleScalarROOTGREAT;
+    constexpr scalar vGreat = doubleScalarVGREAT;
+    constexpr scalar rootVGreat = doubleScalarROOTVGREAT;
+    constexpr scalar small = doubleScalarSMALL;
+    constexpr scalar rootSmall = doubleScalarROOTSMALL;
+    constexpr scalar vSmall = doubleScalarVSMALL;
+    constexpr scalar rootVSmall = doubleScalarROOTVSMALL;
+    //! \endcond
+    #endif
 
-#elif defined(WM_LP)
 
-// Define scalar as a long double
+    //- Read scalar from c-string and return value
+    inline scalar readScalar(const char* buf)
+    {
+        return readDouble(buf);
+    }
 
-namespace Foam
-{
-    typedef longDoubleScalar scalar;
+    //- Read scalar from c-string into argument. Return true on success.
+    inline bool readScalar(const char* buf, scalar& val)
+    {
+        return readDouble(buf, val);
+    }
 
-    static const scalar great = longDoubleScalarGreat;
-    static const scalar rootGreat = longDoubleScalarRootGreat;
-    static const scalar vGreat = longDoubleScalarVGreat;
-    static const scalar rootVGreat = longDoubleScalarRootVGreat;
-    static const scalar small = longDoubleScalarSmall;
-    static const scalar rootSmall = longDoubleScalarRootSmall;
-    static const scalar vSmall = longDoubleScalarVSmall;
-    static const scalar rootVSmall = longDoubleScalarRootVSmall;
-    static const scalar NaN = longDoubleScalarNaN;
+    //- Read scalar from string and return value
+    inline scalar readScalar(const std::string& str)
+    {
+        return readDouble(str);
+    }
+
+    //- Read scalar from string into argument. Return true on success.
+    inline bool readScalar(const std::string& str, scalar& val)
+    {
+        return readDouble(str, val);
+    }
+
+
+    //- Read scalar from stream.
+    scalar readScalar(Istream& is);
+
+    //- Read scalar from stream if present or return default value
+    scalar readScalarOrDefault(Istream& is, const scalar defaultValue);
+
+    //- Read raw scalar from binary stream.
+    //  \note No internal check for binary vs ascii,
+    //        the caller knows what they are doing
+    scalar readRawScalar(Istream& is);
+
+    //- Read raw scalar(s) from binary stream.
+    //  \note No internal check for binary vs ascii,
+    //        the caller knows what they are doing
+    void readRawScalar(Istream& is, scalar* data, size_t nElem = 1);
 }
 
 #else
-
-    #error "Precision not set, please set either WM_SP, WM_DP or WM_LP"
-
+//    #error "PRECISION must be set to WM_SP, WM_SPDP or WM_DP"
 #endif
 
-//- Deprecated limit constant for backward-compatibility
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Type conversions (narrowing)
+
 namespace Foam
 {
-    static const scalar GREAT = great;
-    static const scalar ROOTGREAT = rootGreat;
-    static const scalar VGREAT = vGreat;
-    static const scalar ROOTVGREAT = rootVGreat;
-    static const scalar SMALL = small;
-    static const scalar ROOTSMALL = rootSmall;
-    static const scalar VSMALL = vSmall;
-    static const scalar ROOTVSMALL = rootVSmall;
+
+//- Type narrowing from double to float
+//  Overflow: silently fix, or raise error?
+inline float narrowFloat(const double val)
+{
+    // Single statement - future constexpr?
+    return
+    (
+        (val <= -floatScalarVGREAT) ? -floatScalarVGREAT
+      : (val >=  floatScalarVGREAT) ?  floatScalarVGREAT
+      : (val > -floatScalarVSMALL && val < floatScalarVSMALL) // underflow
+      ? 0
+      : static_cast<float>(val)
+    );
 }
+
+} // End namespace Foam
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-// Additional global and transcendental functions
 
 namespace Foam
 {
-    //- Read a single scalar from an input stream
-    scalar readScalar(Istream& is);
-
-    //- Normalised upper incomplete gamma function
-    scalar incGammaRatio_Q(const scalar a, const scalar x);
-
-    //- Normalised lower incomplete gamma function
-    scalar incGammaRatio_P(const scalar a, const scalar x);
-
-    //- Upper incomplete gamma function
-    scalar incGamma_Q(const scalar a, const scalar x);
-
-    //- Lower incomplete gamma function
-    scalar incGamma_P(const scalar a, const scalar x);
-
-    //- Inverse normalised lower incomplete gamma function
-    scalar invIncGammaRatio_P(const scalar a, const scalar P);
-
-    //- Compute the power of the number x to the integer e
-    inline scalar integerPow(const scalar x, const label e);
-
-    //- Compute the power of the number x to the reciprocal integer 1/e
-    inline scalar integerRoot(const scalar x, const label e);
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-// Rank type
-
-namespace Foam
-{
-    template<direction Ncmpts>
-    struct typeOfNcmpts;
-
-    //- Rank type
+    //- Type to use for extended precision
     template<>
-    struct typeOfNcmpts<1>
+    class typeOfSolve<scalar>
     {
-        using type = scalar;
+    public:
+
+        typedef solveScalar type;
     };
 }
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-// Define a scalar to be scaleable
-
-namespace Foam
-{
-    template<>
-    struct scaleable<scalar> : public std::true_type {};
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-// Enable conditional instantiation for types with a scalar component type
-
-namespace Foam
-{
-    template<class Type, class Void = void>
-    using enableIfScalarCmptType =
-        std::enable_if_t
-        <
-            std::is_same
-            <
-                scalar,
-                typename pTraits<Type>::cmptType
-            >::value,
-            Void
-        >;
-}
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "scalarI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

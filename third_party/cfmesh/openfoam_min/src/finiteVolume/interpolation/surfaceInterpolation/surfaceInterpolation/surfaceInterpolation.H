@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +35,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef surfaceInterpolation_H
-#define surfaceInterpolation_H
+#ifndef Foam_surfaceInterpolation_H
+#define Foam_surfaceInterpolation_H
 
 #include "tmp.H"
 #include "scalar.H"
@@ -46,6 +49,11 @@ SourceFiles
 namespace Foam
 {
 
+// Forward Declarations
+class fvMesh;
+class fvGeometryScheme;
+class mapPolyMesh;
+
 /*---------------------------------------------------------------------------*\
                     Class surfaceInterpolation Declaration
 \*---------------------------------------------------------------------------*/
@@ -57,34 +65,23 @@ class surfaceInterpolation
         // Reference to fvMesh
         const fvMesh& mesh_;
 
+
         // Demand-driven data
 
+            //- Geometry calculation
+            mutable tmp<fvGeometryScheme> geometryPtr_;
+
             //- Linear difference weighting factors
-            mutable surfaceScalarField* weights_;
+            mutable autoPtr<surfaceScalarField> weights_;
 
             //- Cell-centre difference coefficients
-            mutable surfaceScalarField* deltaCoeffs_;
+            mutable autoPtr<surfaceScalarField> deltaCoeffs_;
 
             //- Non-orthogonal cell-centre difference coefficients
-            mutable surfaceScalarField* nonOrthDeltaCoeffs_;
+            mutable autoPtr<surfaceScalarField> nonOrthDeltaCoeffs_;
 
             //- Non-orthogonality correction vectors
-            mutable surfaceVectorField* nonOrthCorrectionVectors_;
-
-
-    // Private Member Functions
-
-        //- Construct centred interpolation weighting factors
-        void makeWeights() const;
-
-        //- Construct face-gradient difference factors
-        void makeDeltaCoeffs() const;
-
-        //- Construct face-gradient difference factors
-        void makeNonOrthDeltaCoeffs() const;
-
-        //- Construct non-orthogonality correction vectors
-        void makeNonOrthCorrectionVectors() const;
+            mutable autoPtr<surfaceVectorField> nonOrthCorrectionVectors_;
 
 
 protected:
@@ -110,29 +107,44 @@ public:
 
 
     //- Destructor
-    ~surfaceInterpolation();
+    virtual ~surfaceInterpolation();
 
 
     // Member Functions
 
+        //- Return reference to geometry calculation scheme
+        virtual const fvGeometryScheme& geometry() const;
+
+        //- Set geometry calculation scheme
+        void geometry(tmp<fvGeometryScheme>&);
+
         //- Return reference to linear difference weighting factors
-        const surfaceScalarField& weights() const;
+        virtual const surfaceScalarField& weights() const;
 
         //- Return reference to cell-centre difference coefficients
-        const surfaceScalarField& deltaCoeffs() const;
+        virtual const surfaceScalarField& deltaCoeffs() const;
 
         //- Return reference to non-orthogonal cell-centre difference
         //  coefficients
-        const surfaceScalarField& nonOrthDeltaCoeffs() const;
+        virtual const surfaceScalarField& nonOrthDeltaCoeffs() const;
 
         //- Return reference to non-orthogonality correction vectors
-        const surfaceVectorField& nonOrthCorrectionVectors() const;
+        virtual const surfaceVectorField& nonOrthCorrectionVectors() const;
 
         //- Do what is necessary if the mesh has moved
-        bool movePoints();
+        virtual bool movePoints();
 
-        //- Print a list of all the currently allocated data
-        void printAllocated() const;
+        //- Update all geometric data
+        virtual void updateGeom();
+
+
+    // Storage Management
+
+        //- Has weights
+        bool hasWeights() const noexcept { return bool(weights_); }
+
+        //- Update mesh for topology changes
+        virtual void updateMesh(const mapPolyMesh& mpm);
 };
 
 

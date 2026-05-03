@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -42,9 +45,11 @@ Description
         Michalak, K., & Ollivier-Gooch, C. (2008).
         Limiters for unstructured higher-order accurate solutions
         of the Euler equations.
-        In 46th AIAA Aerospace Sciences Meeting and Exhibit (p. 776).
+        In 46th AIAA Aerospace Sciences Meeting and Exhibition.
+        DOI:10.2514/6.2008-776
     \endverbatim
 
+Usage
     Example:
     \verbatim
     gradSchemes
@@ -55,8 +60,8 @@ Description
     \endverbatim
 
 See also
-    Foam::fv::cellLimitedGrad
-    Foam::fv::gradientLimiters::Venkatakrishnan
+  - Foam::fv::cellLimitedGrad
+  - Foam::fv::gradientLimiters::Venkatakrishnan
 
 \*---------------------------------------------------------------------------*/
 
@@ -69,8 +74,10 @@ See also
 
 namespace Foam
 {
+
 namespace fv
 {
+
 namespace gradientLimiters
 {
 
@@ -98,15 +105,13 @@ public:
         cubic(Istream& schemeData)
         :
             rt_(readScalar(schemeData)),
-            a_(1/sqr(rt_) - 2/pow3(rt_)),
-            b_(-(3.0/2.0)*a_*rt_ - (1.0/2.0)/rt_)
+            a_((rt_ - 2)/pow3(rt_)),
+            b_(-(3*a_*sqr(rt_) + 1)/(2*rt_))
         {
             if (rt_ < 1)
             {
-                FatalIOErrorInFunction
-                (
-                    schemeData
-                )   << "coefficient = " << rt_
+                FatalIOErrorInFunction(schemeData)
+                    << "coefficient = " << rt_
                     << " should be > 1"
                     << exit(FatalIOError);
             }
@@ -121,10 +126,8 @@ public:
             {
                 return ((a_*r + b_)*r + 1)*r;
             }
-            else
-            {
-                return 1;
-            }
+
+            return 1;
         }
 };
 
@@ -132,7 +135,9 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace gradientLimiters
+
 } // End namespace fv
+
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

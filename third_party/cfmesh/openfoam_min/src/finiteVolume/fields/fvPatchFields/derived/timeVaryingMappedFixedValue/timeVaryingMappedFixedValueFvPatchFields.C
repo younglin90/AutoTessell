@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,20 +25,16 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "timeVaryingMappedFixedValueFvPatchFields.H"
+#include "timeVaryingMappedFixedValueFvPatchField.H"
 #include "addToRunTimeSelectionTable.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
+#include "volFields.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-makePatchFields(timeVaryingMappedFixedValue);
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
+namespace Foam
+{
+    makePatchTypeFieldTypedefs(timeVaryingMappedFixedValue);
+    makePatchFields(timeVaryingMappedFixedValue);
+}
 
 // ************************************************************************* //

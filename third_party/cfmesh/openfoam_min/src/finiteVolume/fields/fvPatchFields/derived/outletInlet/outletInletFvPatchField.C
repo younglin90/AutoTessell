@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,7 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "outletInletFvPatchField.H"
-#include "surfaceFields.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -32,7 +34,7 @@ template<class Type>
 Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
 (
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     mixedFvPatchField<Type>(p, iF),
@@ -40,38 +42,7 @@ Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
 {
     this->refValue() = *this;
     this->refGrad() = Zero;
-    this->valueFraction() = 0.0;
-}
-
-
-template<class Type>
-Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
-(
-    const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const dictionary& dict
-)
-:
-    mixedFvPatchField<Type>(p, iF, dict, false),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi"))
-{
-    this->refValue() =
-        Field<Type>("outletValue", iF.dimensions(), dict, p.size());
-
-    if (dict.found("value"))
-    {
-        fvPatchField<Type>::operator=
-        (
-            Field<Type>("value", iF.dimensions(), dict, p.size())
-        );
-    }
-    else
-    {
-        fvPatchField<Type>::operator=(this->refValue());
-    }
-
-    this->refGrad() = Zero;
-    this->valueFraction() = 0.0;
+    this->valueFraction() = 0;
 }
 
 
@@ -80,8 +51,8 @@ Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
 (
     const outletInletFvPatchField<Type>& ptf,
     const fvPatch& p,
-    const DimensionedField<Type, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<Type, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     mixedFvPatchField<Type>(ptf, p, iF, mapper),
@@ -92,8 +63,44 @@ Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
 template<class Type>
 Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
 (
+    const fvPatch& p,
+    const DimensionedField<Type, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    mixedFvPatchField<Type>(p, iF),
+    phiName_(dict.getOrDefault<word>("phi", "phi"))
+{
+    fvPatchFieldBase::readDict(dict);
+
+    // Require outletValue (MUST_READ)
+    this->refValue().assign("outletValue", dict, p.size());
+    this->refGrad() = Zero;
+    this->valueFraction() = 0;
+
+    if (!this->readValueEntry(dict))
+    {
+        fvPatchField<Type>::extrapolateInternal();
+    }
+}
+
+
+template<class Type>
+Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
+(
+    const outletInletFvPatchField<Type>& ptf
+)
+:
+    mixedFvPatchField<Type>(ptf),
+    phiName_(ptf.phiName_)
+{}
+
+
+template<class Type>
+Foam::outletInletFvPatchField<Type>::outletInletFvPatchField
+(
     const outletInletFvPatchField<Type>& ptf,
-    const DimensionedField<Type, fvMesh>& iF
+    const DimensionedField<Type, volMesh>& iF
 )
 :
     mixedFvPatchField<Type>(ptf, iF),
@@ -112,10 +119,7 @@ void Foam::outletInletFvPatchField<Type>::updateCoeffs()
     }
 
     const Field<scalar>& phip =
-        this->patch().template lookupPatchField<surfaceScalarField, scalar>
-        (
-            phiName_
-        );
+        this->patch().template lookupPatchField<surfaceScalarField>(phiName_);
 
     this->valueFraction() = pos0(phip);
 
@@ -127,12 +131,9 @@ template<class Type>
 void Foam::outletInletFvPatchField<Type>::write(Ostream& os) const
 {
     fvPatchField<Type>::write(os);
-    if (phiName_ != "phi")
-    {
-        writeEntry(os, "phi", phiName_);
-    }
-    writeEntry(os, "outletValue", this->refValue());
-    writeEntry(os, "value", *this);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    this->refValue().writeEntry("outletValue", os);
+    fvPatchField<Type>::writeValueEntry(os);
 }
 
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,16 +23,10 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::pointIndexHitIOList
-
-Description
-    IOList of pointIndexHits
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef pointIndexHitIOList_H
-#define pointIndexHitIOList_H
+#ifndef Foam_pointIndexHitIOList_H
+#define Foam_pointIndexHitIOList_H
 
 #include "pointIndexHit.H"
 #include "IOList.H"
@@ -39,6 +35,7 @@ Description
 
 namespace Foam
 {
+    //! IO for a List of pointIndexHit
     typedef IOList<pointIndexHit> pointIndexHitIOList;
 }
 

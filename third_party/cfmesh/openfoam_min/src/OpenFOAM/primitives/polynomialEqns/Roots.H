@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,8 +48,11 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+namespace roots
+{
+
 //- Types of root
-enum class rootType
+enum type
 {
     real = 0,
     complex,
@@ -56,9 +61,10 @@ enum class rootType
     nan
 };
 
+}
 
 /*---------------------------------------------------------------------------*\
-                            Class Roots Declaration
+                         Class Roots Declaration
 \*---------------------------------------------------------------------------*/
 
 template<direction N>
@@ -66,7 +72,7 @@ class Roots
 :
     public VectorSpace<Roots<N>, scalar, N>
 {
-    // Private Data
+    // Private data
 
         //- Root types, encoded into a single integer
         label types_;
@@ -75,16 +81,16 @@ public:
 
     // Constructors
 
-        //- Construct null
+        //- Default construct as 'nan'
         inline Roots();
 
         //- Construct with a uniform value
-        inline Roots(const rootType t, const scalar x);
+        inline Roots(const roots::type t, const scalar x);
 
         //- Construct by concatenation
         inline Roots
         (
-            const rootType t,
+            const roots::type t,
             const scalar x,
             const Roots<N - 1>& xs
         );
@@ -93,7 +99,7 @@ public:
         inline Roots
         (
             const Roots<N - 1>& xs,
-            const rootType t,
+            const roots::type t,
             const scalar x
         );
 
@@ -105,10 +111,10 @@ public:
     // Member Functions
 
         //- Set the type of the i-th root
-        inline void type(const direction i, const rootType t);
+        inline void type(const direction i, const roots::type t);
 
         //- Return the type of the i-th root
-        inline rootType type(const direction i) const;
+        inline roots::type type(const direction i) const;
 };
 
 

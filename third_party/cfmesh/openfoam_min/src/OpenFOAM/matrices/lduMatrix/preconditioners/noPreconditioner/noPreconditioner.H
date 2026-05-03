@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +27,9 @@ License
 Class
     Foam::noPreconditioner
 
+Group
+    grpLduMatrixPreconditioners
+
 Description
     Null preconditioner for both symmetric and asymmetric matrices.
 
@@ -43,13 +49,21 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class noPreconditioner Declaration
+                           Class noPreconditioner Declaration
 \*---------------------------------------------------------------------------*/
 
 class noPreconditioner
 :
     public lduMatrix::preconditioner
 {
+    // Private Member Functions
+
+        //- No copy construct
+        noPreconditioner(const noPreconditioner&) = delete;
+
+        //- No copy assignment
+        void operator=(const noPreconditioner&) = delete;
+
 
 public:
 
@@ -66,13 +80,9 @@ public:
             const dictionary& solverControlsUnused
         );
 
-        //- Disallow default bitwise copy construction
-        noPreconditioner(const noPreconditioner&) = delete;
-
 
     //- Destructor
-    virtual ~noPreconditioner()
-    {}
+    virtual ~noPreconditioner() = default;
 
 
     // Member Functions
@@ -80,27 +90,21 @@ public:
         //- Return wA the preconditioned form of residual rA
         virtual void precondition
         (
-            scalarField& wA,
-            const scalarField& rA,
+            solveScalarField& wA,
+            const solveScalarField& rA,
             const direction cmpt=0
         ) const;
 
         //- Return wT the transpose-matrix preconditioned form of residual rT.
         virtual void preconditionT
         (
-            scalarField& wT,
-            const scalarField& rT,
+            solveScalarField& wT,
+            const solveScalarField& rT,
             const direction cmpt=0
         ) const
         {
             return precondition(wT, rT, cmpt);
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const noPreconditioner&) = delete;
 };
 
 

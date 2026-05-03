@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,36 +45,40 @@ namespace fvc
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<typename outerProduct<vector, Type>::type>>
+tmp
+<
+    GeometricField
+    <
+        typename outerProduct<vector,Type>::type, fvPatchField, volMesh
+    >
+>
 reconstruct
 (
-    const SurfaceField<Type>& ssf
+    const GeometricField<Type, fvsPatchField, surfaceMesh>& ssf
 )
 {
     typedef typename outerProduct<vector, Type>::type GradType;
 
-    const fvMesh& mesh = ssf.mesh()();
+    const fvMesh& mesh = ssf.mesh();
 
     surfaceVectorField SfHat(mesh.Sf()/mesh.magSf());
 
-    tmp<VolField<GradType>> treconField
+    tmp<GeometricField<GradType, fvPatchField, volMesh>> treconField
     (
-        VolField<GradType>::New
+        new GeometricField<GradType, fvPatchField, volMesh>
         (
-            "volIntegrate("+ssf.name()+')',
-            mesh,
-            dimensioned<GradType>("0", ssf.dimensions()/dimArea, Zero),
-            extrapolatedCalculatedFvPatchField<GradType>::typeName
+            IOobject
+            (
+                "volIntegrate("+ssf.name()+')',
+                ssf.instance(),
+                mesh,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            inv(surfaceSum(SfHat*mesh.Sf()))&surfaceSum(SfHat*ssf),
+            fvPatchFieldBase::extrapolatedCalculatedType()
         )
     );
-
-    if (!mesh.nGeometricD())
-    {
-        return treconField;
-    }
-
-    treconField.ref().internalFieldRef() =
-        inv(surfaceSum(SfHat*mesh.Sf()))&surfaceSum(SfHat*ssf),
 
     treconField.ref().correctBoundaryConditions();
 
@@ -81,14 +87,20 @@ reconstruct
 
 
 template<class Type>
-tmp<VolField<typename outerProduct<vector, Type>::type>>
+tmp
+<
+    GeometricField
+    <
+        typename outerProduct<vector, Type>::type, fvPatchField, volMesh
+    >
+>
 reconstruct
 (
-    const tmp<SurfaceField<Type>>& tssf
+    const tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>& tssf
 )
 {
     typedef typename outerProduct<vector, Type>::type GradType;
-    tmp<VolField<GradType>> tvf
+    tmp<GeometricField<GradType, fvPatchField, volMesh>> tvf
     (
         fvc::reconstruct(tssf())
     );

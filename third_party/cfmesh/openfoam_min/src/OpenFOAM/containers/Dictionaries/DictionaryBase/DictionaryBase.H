@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,10 +34,10 @@ Description
     The double templating allows for the instantiation of forms with or
     without storage management.
 
-    Note:
-        The IDLListType parameter should itself be a template but this confused
-        gcc 2.95.2 so it has to be instantiated for T when an instantiation of
-        DictionaryBase is requested
+Note
+    The IDLListType parameter should itself be a template but this confused
+    gcc 2.95.2 so it has to be instantiated for T when an instantiation of
+    DictionaryBase is requested
 
 See also
     Dictionary and UDictionary
@@ -45,8 +48,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DictionaryBase_H
-#define DictionaryBase_H
+#ifndef Foam_DictionaryBase_H
+#define Foam_DictionaryBase_H
 
 #include "HashTable.H"
 #include "wordList.H"
@@ -56,7 +59,7 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
+// Forward Declarations
 
 template<class IDLListType, class T>
 class DictionaryBase;
@@ -66,7 +69,7 @@ Ostream& operator<<(Ostream&, const DictionaryBase<IDLListType, T>&);
 
 
 /*---------------------------------------------------------------------------*\
-                       Class DictionaryBase Declaration
+                      Class DictionaryBase Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class IDLListType, class T>
@@ -76,15 +79,21 @@ class DictionaryBase
 {
 protected:
 
-    // Protected data
+    // Protected Data
 
         //- HashTable of the entries held on the IDLListType for quick lookup
         HashTable<T*> hashedTs_;
 
 
-    // Protected Member functions
+    // Protected Member Functions
 
-        // Add the IDLListType entries into the HashTable
+        //- Add an entry to the HashTable
+        bool addHashEntry(const word& key, T* ptr)
+        {
+            return hashedTs_.insert(key, ptr);
+        }
+
+        //- Add the IDLListType entries into the HashTable
         void addEntries();
 
 
@@ -92,71 +101,88 @@ public:
 
     // Constructors
 
-        //- Construct given initial table size
-        DictionaryBase(const label size = 128);
+        //- Default construct: empty without allocation (capacity=0).
+        DictionaryBase() = default;
 
-        //- Copy constructor
-        DictionaryBase(const DictionaryBase&);
+        //- Construct empty with initial table capacity
+        explicit DictionaryBase(const label initialCapacity)
+        :
+            hashedTs_(initialCapacity)
+        {}
 
-        //- Move constructor
-        DictionaryBase(DictionaryBase&&);
+        //- Copy construct
+        DictionaryBase(const DictionaryBase& dict);
 
         //- Construct from Istream using given Istream constructor class
         template<class INew>
-        DictionaryBase(Istream&, const INew&);
+        DictionaryBase(Istream& is, const INew& inew);
 
         //- Construct from Istream using default Istream constructor class
-        DictionaryBase(Istream&);
+        DictionaryBase(Istream& is);
 
 
     // Member Functions
 
         // Search and lookup
 
-            //- Search DictionaryBase for given keyword
-            bool found(const word&) const;
+            //- Search for given keyword
+            bool contains(const word& keyword) const;
 
-            //- Find and return an entry if present, otherwise return nullptr
-            const T* lookupPtr(const word&) const;
+            //- Find and return an entry, nullptr on failure.
+            const T* cfind(const word& keyword) const;
 
-            //- Find and return an entry if present, otherwise return nullptr
-            T* lookupPtr(const word&);
+            //- Find and return an entry, nullptr on failure.
+            T* find(const word& keyword);
 
-            //- Find and return entry
-            const T* lookup(const word&) const;
+            //- Find and return entry, FatalError on failure.
+            const T* lookup(const word& keyword) const;
 
-            //- Find and return entry
-            T* lookup(const word&);
+            //- Find and return entry, FatalError on failure.
+            T* lookup(const word& keyword);
 
-            //- Return the table of contents
-            wordList toc() const;
+            //- The table of contents (as a sorted list)
+            wordList toc() const
+            {
+                return hashedTs_.sortedToc();
+            }
 
-            //- Return the table of contents as a sorted list
-            wordList sortedToc() const;
+            //- The table of contents as a sorted list
+            wordList sortedToc() const
+            {
+                return hashedTs_.sortedToc();
+            }
+
+            //- The table of contents sorted using the specified comparator
+            template<class Compare>
+            wordList sortedToc(const Compare& comp) const
+            {
+                return hashedTs_.sortedToc(comp);
+            }
 
 
         // Editing
 
-            //- Add at head of dictionary
-            void insert(const word&, T*);
+            //- Add to front of dictionary
+            void push_front(const word& keyword, T* ptr);
 
-            //- Add at tail of dictionary
-            void append(const word&, T*);
+            //- Add to back of dictionary
+            void push_back(const word& keyword, T* ptr);
 
             //- Remove and return entry specified by keyword.
             //  Return nullptr if the keyword was not found.
-            T* remove(const word&);
+            T* remove(const word& keyword);
 
             //- Clear the dictionary
             void clear();
 
             //- Transfer the contents of the argument into this DictionaryBase
             //  and annul the argument.
-            void transfer(DictionaryBase<IDLListType, T>&);
+            void transfer(DictionaryBase<IDLListType, T>& dict);
 
 
     // Member Operators
 
+        //- Copy assignment
         void operator=(const DictionaryBase&);
 
         //- Find and return entry
@@ -172,13 +198,41 @@ public:
         }
 
 
-    // Ostream operator
+    // Ostream Operator
 
         friend Ostream& operator<< <IDLListType, T>
         (
             Ostream&,
             const DictionaryBase<IDLListType, T>&
         );
+
+
+    // Housekeeping
+
+        //- Same as contains()
+        bool found(const word& key) const { return this->contains(key); }
+
+        //- Deprecated(2020-03) use cfind()
+        //  \deprecated(2020-03) - use cfind() method
+        FOAM_DEPRECATED_FOR(2020-03, "cfind() method")
+        const T* lookupPtr(const word& k) const { return this->cfind(k); }
+
+        //- Deprecated(2020-03) use find()
+        //  \deprecated(2020-03) - use find() method
+        FOAM_DEPRECATED_FOR(2020-03, "find() method")
+        T* lookupPtr(const word& k) { return this->find(k); }
+
+        //- Add to front of dictionary
+        //FOAM_DEPRECATED_FOR(2022-10, "push_front()")
+        void insert(const word& k, T* ptr) { this->push_front(k, ptr); }
+
+        //- Add to front of dictionary
+        //FOAM_DEPRECATED_FOR(2022-10, "push_front()")
+        void prepend(const word& k, T* ptr) { this->push_front(k, ptr); }
+
+        //- Add to back of dictionary
+        //FOAM_DEPRECATED_FOR(2022-10, "push_back()")
+        void append(const word& k, T* ptr) { this->push_back(k, ptr); }
 };
 
 
@@ -190,6 +244,7 @@ public:
 
 #ifdef NoRepository
     #include "DictionaryBase.C"
+    #include "DictionaryBaseIO.C"
 #endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

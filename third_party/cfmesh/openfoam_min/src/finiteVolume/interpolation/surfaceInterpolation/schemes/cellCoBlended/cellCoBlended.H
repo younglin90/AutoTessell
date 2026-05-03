@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,11 @@ License
 Class
     Foam::cellCoBlended
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Two-scheme cell-based Courant number based blending interpolation scheme.
+    Two-scheme cell-based Courant number based blending differencing scheme.
 
     This scheme is equivalent to the CoBlended scheme except that the Courant
     number is evaluated for cells using the same approach as use in the
@@ -91,7 +96,7 @@ class cellCoBlended
     public surfaceInterpolationScheme<Type>,
     public blendedSchemeBase<Type>
 {
-    // Private Data
+    // Private data
 
         //- Courant number below which scheme1 is used
         const scalar Co1_;
@@ -107,6 +112,15 @@ class cellCoBlended
 
         //- The face-flux used to compute the face Courant number
         const surfaceScalarField& faceFlux_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        cellCoBlended(const cellCoBlended&) = delete;
+
+        //- No copy assignment
+        void operator=(const cellCoBlended&) = delete;
 
 
 public:
@@ -182,22 +196,19 @@ public:
             }
         }
 
-        //- Disallow default bitwise copy construction
-        cellCoBlended(const cellCoBlended&) = delete;
-
 
     // Member Functions
 
         //- Return the face-based blending factor
         virtual tmp<surfaceScalarField> blendingFactor
         (
-             const VolField<Type>& vf
+             const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
             tmp<surfaceScalarField> tUflux = faceFlux_;
 
-            if (faceFlux_.dimensions() == dimMassFlux)
+            if (faceFlux_.dimensions() == dimMass/dimTime)
             {
                 // Currently assume that the density field
                 // corresponding to the mass-flux is named "rho"
@@ -207,7 +218,7 @@ public:
 
                 tUflux = faceFlux_/fvc::interpolate(rho);
             }
-            else if (faceFlux_.dimensions() != dimVolumetricFlux)
+            else if (faceFlux_.dimensions() != dimVolume/dimTime)
             {
                 FatalErrorInFunction
                     << "dimensions of faceFlux are not correct"
@@ -219,12 +230,12 @@ public:
                 IOobject
                 (
                     "Co",
-                    mesh.time().name(),
+                    mesh.time().timeName(),
                     mesh
                 ),
                 mesh,
-                dimensionedScalar(dimless, 0),
-                extrapolatedCalculatedFvPatchScalarField::typeName
+                dimensionedScalar(dimless, Zero),
+                fvPatchFieldBase::extrapolatedCalculatedType()
             );
 
             scalarField sumPhi
@@ -233,23 +244,20 @@ public:
             );
 
             Co.primitiveFieldRef() =
-                (sumPhi/mesh.V().primitiveField())
-               *(0.5*mesh.time().deltaTValue());
-
+                (sumPhi/mesh.V().field())*(0.5*mesh.time().deltaTValue());
             Co.correctBoundaryConditions();
 
-            return surfaceScalarField::New
+            return tmp<surfaceScalarField>
             (
-                vf.name() + "BlendingFactor",
-                scalar(1)
-              - max
+                new surfaceScalarField
                 (
-                    min
+                    vf.name() + "BlendingFactor",
+                    scalar(1)
+                  - clamp
                     (
                         (fvc::interpolate(Co) - Co1_)/(Co2_ - Co1_),
-                        scalar(1)
-                    ),
-                    scalar(0)
+                        zero_one{}
+                    )
                 )
             );
         }
@@ -259,7 +267,7 @@ public:
         tmp<surfaceScalarField>
         weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -272,10 +280,10 @@ public:
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction
-        tmp<SurfaceField<Type>>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -295,10 +303,10 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  for the given field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -334,18 +342,9 @@ public:
             }
             else
             {
-                return tmp<SurfaceField<Type>>
-                (
-                    nullptr
-                );
+                return nullptr;
             }
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const cellCoBlended&) = delete;
 };
 
 

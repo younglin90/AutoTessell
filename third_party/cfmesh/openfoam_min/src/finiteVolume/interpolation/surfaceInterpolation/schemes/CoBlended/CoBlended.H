@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +26,17 @@ License
 Class
     Foam::CoBlended
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Two-scheme Courant number based blending interpolation scheme.
+    Two-scheme Courant number based blending differencing scheme.
 
     Similar to localBlended but uses a blending factor computed from the
     face-based Courant number and the lower and upper Courant number limits
     supplied:
     \f[
-        weight = 1 - max(min((Co - Co1)/(Co2 - Co1), 1), 0)
+        weight = 1 - clamp((Co - Co1)/(Co2 - Co1), zero_one{})
     \f]
     where
     \vartable
@@ -41,6 +46,7 @@ Description
 
     The weight applies to the first scheme and 1-weight to the second scheme.
 
+Usage
     Example of the CoBlended scheme specification using LUST for Courant numbers
     less than 1 and linearUpwind for Courant numbers greater than 10:
     \verbatim
@@ -72,7 +78,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class CoBlended Declaration
+                        Class CoBlended Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -81,7 +87,7 @@ class CoBlended
     public surfaceInterpolationScheme<Type>,
     public blendedSchemeBase<Type>
 {
-    // Private Data
+    // Private data
 
         //- Courant number below which scheme1 is used
         const scalar Co1_;
@@ -97,6 +103,15 @@ class CoBlended
 
         //- The face-flux used to compute the face Courant number
         const surfaceScalarField& faceFlux_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        CoBlended(const CoBlended&) = delete;
+
+        //- No copy assignment
+        void operator=(const CoBlended&) = delete;
 
 
 public:
@@ -172,22 +187,19 @@ public:
             }
         }
 
-        //- Disallow default bitwise copy construction
-        CoBlended(const CoBlended&) = delete;
-
 
     // Member Functions
 
         //- Return the face-based blending factor
         virtual tmp<surfaceScalarField> blendingFactor
         (
-             const VolField<Type>& vf
+             const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = this->mesh();
             tmp<surfaceScalarField> tUflux = faceFlux_;
 
-            if (faceFlux_.dimensions() == dimMassFlux)
+            if (faceFlux_.dimensions() == dimMass/dimTime)
             {
                 // Currently assume that the density field
                 // corresponding to the mass-flux is named "rho"
@@ -197,29 +209,28 @@ public:
 
                 tUflux = faceFlux_/fvc::interpolate(rho);
             }
-            else if (faceFlux_.dimensions() != dimVolumetricFlux)
+            else if (faceFlux_.dimensions() != dimVolume/dimTime)
             {
                 FatalErrorInFunction
                     << "dimensions of faceFlux are not correct"
                     << exit(FatalError);
             }
 
-            return surfaceScalarField::New
+            return tmp<surfaceScalarField>
             (
-                vf.name() + "BlendingFactor",
-                scalar(1)
-              - max
+                new surfaceScalarField
                 (
-                    min
+                    vf.name() + "BlendingFactor",
+                    scalar(1)
+                  - clamp
                     (
                         (
                             mesh.time().deltaT()*mesh.deltaCoeffs()
-                           *mag(tUflux)/mesh.magSf()
+                            *mag(tUflux)/mesh.magSf()
                           - Co1_
                         )/(Co2_ - Co1_),
-                        scalar(1)
-                    ),
-                    scalar(0)
+                        zero_one{}
+                    )
                 )
             );
         }
@@ -229,7 +240,7 @@ public:
         tmp<surfaceScalarField>
         weights
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -242,10 +253,10 @@ public:
 
         //- Return the face-interpolate of the given cell field
         //  with explicit correction
-        tmp<SurfaceField<Type>>
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -265,10 +276,10 @@ public:
 
         //- Return the explicit correction to the face-interpolate
         //  for the given field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         correction
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             surfaceScalarField bf(blendingFactor(vf));
@@ -304,18 +315,9 @@ public:
             }
             else
             {
-                return tmp<SurfaceField<Type>>
-                (
-                    nullptr
-                );
+                return nullptr;
             }
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const CoBlended&) = delete;
 };
 
 

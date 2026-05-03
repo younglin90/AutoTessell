@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -61,14 +63,12 @@ Foam::processorFvsPatchField<Type>::processorFvsPatchField
 )
 :
     coupledFvsPatchField<Type>(p, iF, dict),
-    procPatch_(refCast<const processorFvPatch>(p))
+    procPatch_(refCast<const processorFvPatch>(p, dict))
 {
-    if (!isA<processorFvPatch>(p))
+    if (!isType<processorFvPatch>(p))
     {
-        FatalIOErrorInFunction
-        (
-            dict
-        )   << "patch " << this->patch().index() << " not processor type. "
+        FatalIOErrorInFunction(dict)
+            << "patch " << this->patch().index() << " not processor type. "
             << "Patch type = " << p.type()
             << exit(FatalIOError);
     }
@@ -81,13 +81,13 @@ Foam::processorFvsPatchField<Type>::processorFvsPatchField
     const processorFvsPatchField<Type>& ptf,
     const fvPatch& p,
     const DimensionedField<Type, surfaceMesh>& iF,
-    const fieldMapper& mapper
+    const fvPatchFieldMapper& mapper
 )
 :
     coupledFvsPatchField<Type>(ptf, p, iF, mapper),
     procPatch_(refCast<const processorFvPatch>(p))
 {
-    if (!isA<processorFvPatch>(this->patch()))
+    if (!isType<processorFvPatch>(this->patch()))
     {
         FatalErrorInFunction
             << "Field type does not correspond to patch type for patch "
@@ -102,6 +102,17 @@ Foam::processorFvsPatchField<Type>::processorFvsPatchField
 template<class Type>
 Foam::processorFvsPatchField<Type>::processorFvsPatchField
 (
+    const processorFvsPatchField<Type>& ptf
+)
+:
+    coupledFvsPatchField<Type>(ptf),
+    procPatch_(refCast<const processorFvPatch>(ptf.patch()))
+{}
+
+
+template<class Type>
+Foam::processorFvsPatchField<Type>::processorFvsPatchField
+(
     const processorFvsPatchField<Type>& ptf,
     const DimensionedField<Type, surfaceMesh>& iF
 )
@@ -109,86 +120,6 @@ Foam::processorFvsPatchField<Type>::processorFvsPatchField
     coupledFvsPatchField<Type>(ptf, iF),
     procPatch_(refCast<const processorFvPatch>(ptf.patch()))
 {}
-
-
-// * * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::processorFvsPatchField<Type>::~processorFvsPatchField()
-{}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Type>
-void Foam::processorFvsPatchField<Type>::initPatchNeighbourField
-(
-    const Pstream::commsTypes commsType
-) const
-{
-    if (Pstream::parRun())
-    {
-        if (commsType == Pstream::commsTypes::nonBlocking)
-        {
-            receiveBuf_.setSize(this->size());
-
-            IPstream::read
-            (
-                commsType,
-                procPatch_.neighbProcNo(),
-                reinterpret_cast<char*>(receiveBuf_.begin()),
-                receiveBuf_.byteSize(),
-                procPatch_.tag(),
-                procPatch_.comm()
-            );
-        }
-
-        OPstream::write
-        (
-            commsType,
-            procPatch_.neighbProcNo(),
-            reinterpret_cast<const char*>(this->begin()),
-            this->byteSize(),
-            procPatch_.tag(),
-            procPatch_.comm()
-        );
-    }
-}
-
-
-template<class Type>
-Foam::tmp<Foam::Field<Type>>
-Foam::processorFvsPatchField<Type>::patchNeighbourField
-(
-    const Pstream::commsTypes commsType
-) const
-{
-    if (Pstream::parRun())
-    {
-        if (commsType != Pstream::commsTypes::nonBlocking)
-        {
-            receiveBuf_.setSize(this->size());
-
-            IPstream::read
-            (
-                commsType,
-                procPatch_.neighbProcNo(),
-                reinterpret_cast<char*>(receiveBuf_.begin()),
-                receiveBuf_.byteSize(),
-                procPatch_.tag(),
-                procPatch_.comm()
-            );
-        }
-
-        procPatch_.transform().transform(receiveBuf_, receiveBuf_);
-
-        return receiveBuf_;
-    }
-    else
-    {
-        return tmp<Field<Type>>(new Field<Type>());
-    }
-}
 
 
 // ************************************************************************* //

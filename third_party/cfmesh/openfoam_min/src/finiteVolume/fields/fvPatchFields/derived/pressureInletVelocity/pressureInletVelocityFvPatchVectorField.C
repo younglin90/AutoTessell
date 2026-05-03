@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,13 +37,12 @@ Foam::pressureInletVelocityFvPatchVectorField::
 pressureInletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<vector, volMesh>& iF
 )
 :
-    fixedValueFvPatchVectorField(p, iF, dict),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
-    rhoName_(dict.lookupOrDefault<word>("rho", "rho"))
+    fixedValueFvPatchVectorField(p, iF),
+    phiName_("phi"),
+    rhoName_("rho")
 {}
 
 
@@ -49,8 +51,8 @@ pressureInletVelocityFvPatchVectorField
 (
     const pressureInletVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchVectorField(ptf, p, iF, mapper),
@@ -62,8 +64,34 @@ pressureInletVelocityFvPatchVectorField
 Foam::pressureInletVelocityFvPatchVectorField::
 pressureInletVelocityFvPatchVectorField
 (
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchVectorField(p, iF, dict),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
+    rhoName_(dict.getOrDefault<word>("rho", "rho"))
+{}
+
+
+Foam::pressureInletVelocityFvPatchVectorField::
+pressureInletVelocityFvPatchVectorField
+(
+    const pressureInletVelocityFvPatchVectorField& pivpvf
+)
+:
+    fixedValueFvPatchVectorField(pivpvf),
+    phiName_(pivpvf.phiName_),
+    rhoName_(pivpvf.rhoName_)
+{}
+
+
+Foam::pressureInletVelocityFvPatchVectorField::
+pressureInletVelocityFvPatchVectorField
+(
     const pressureInletVelocityFvPatchVectorField& pivpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     fixedValueFvPatchVectorField(pivpvf, iF),
@@ -81,23 +109,18 @@ void Foam::pressureInletVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const surfaceScalarField& phi =
-        db().lookupObject<surfaceScalarField>(phiName_);
-
-    const fvsPatchField<scalar>& phip =
-        patch().patchField<surfaceScalarField, scalar>(phi);
+    const auto& phip = patch().lookupPatchField<surfaceScalarField>(phiName_);
 
     tmp<vectorField> n = patch().nf();
     const Field<scalar>& magS = patch().magSf();
 
-    if (phi.dimensions() == dimVolumetricFlux)
+    if (phip.internalField().dimensions() == dimVolume/dimTime)
     {
         operator==(n*phip/magS);
     }
-    else if (phi.dimensions() == dimMassFlux)
+    else if (phip.internalField().dimensions() == dimMass/dimTime)
     {
-        const fvPatchField<scalar>& rhop =
-            patch().lookupPatchField<volScalarField, scalar>(rhoName_);
+        const auto& rhop = patch().lookupPatchField<volScalarField>(rhoName_);
 
         operator==(n*phip/(rhop*magS));
     }
@@ -117,10 +140,10 @@ void Foam::pressureInletVelocityFvPatchVectorField::updateCoeffs()
 
 void Foam::pressureInletVelocityFvPatchVectorField::write(Ostream& os) const
 {
-    fvPatchVectorField::write(os);
-    writeEntryIfDifferent<word>(os, "phi", "phi", phiName_);
-    writeEntryIfDifferent<word>(os, "rho", "rho", rhoName_);
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    os.writeEntryIfDifferent<word>("phi", "phi", phiName_);
+    os.writeEntryIfDifferent<word>("rho", "rho", rhoName_);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 

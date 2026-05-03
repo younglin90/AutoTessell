@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,20 +34,20 @@ License
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
+Foam::tmp<Foam::pointField>
+Foam::PatchTools::pointNormals
 (
     const polyMesh& mesh,
-    const PrimitivePatch<FaceList, PointField>& p
+    const PrimitivePatch<FaceList, PointField>& p,
+    const bitSet& pFlip
 )
 {
     const globalMeshData& globalData = mesh.globalData();
     const indirectPrimitivePatch& coupledPatch = globalData.coupledPatch();
     const Map<label>& coupledPatchMP = coupledPatch.meshPointMap();
-    const distributionMap& map = globalData.globalPointSlavesMap();
+    const mapDistribute& map = globalData.globalPointSlavesMap();
     const globalIndexAndTransform& transforms =
         globalData.globalTransforms();
-
-
 
 
     // Combine normals. Note: do on all master points. Cannot just use
@@ -58,18 +61,21 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
         List<List<point>> pointFaceNormals(map.constructSize());
         forAll(p.meshPoints(), patchPointi)
         {
-            label meshPointi = p.meshPoints()[patchPointi];
-            Map<label>::const_iterator fnd = coupledPatchMP.find(meshPointi);
-            if (fnd != coupledPatchMP.end())
+            const label meshPointi = p.meshPoints()[patchPointi];
+
+            const auto fnd = coupledPatchMP.cfind(meshPointi);
+            if (fnd.good())
             {
-                label coupledPointi = fnd();
+                const label coupledPointi = fnd.val();
 
                 List<point>& pNormals = pointFaceNormals[coupledPointi];
                 const labelList& pFaces = p.pointFaces()[patchPointi];
                 pNormals.setSize(pFaces.size());
                 forAll(pFaces, i)
                 {
-                    pNormals[i] = p.faceNormals()[pFaces[i]];
+                    const label facei = pFaces[i];
+                    const vector& n = p.faceNormals()[facei];
+                    pNormals[i] = ((pFlip.empty() || !pFlip[facei]) ? n : -n);
                 }
             }
         }
@@ -80,7 +86,7 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
         (
             transforms,
             pointFaceNormals,
-            distributionMap::transform()
+            mapDistribute::transform()
         );
 
 
@@ -121,7 +127,7 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
 
             if (nFaces >= 1)
             {
-                n /= mag(n)+vSmall;
+                n /= mag(n)+VSMALL;
             }
 
             // Put back into slave slots
@@ -142,7 +148,7 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
             transforms,
             coupledPointNormals.size(),
             coupledPointNormals,
-            distributionMap::transform()
+            mapDistribute::transform()
         );
     }
 
@@ -150,8 +156,8 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
     // 1. Start off with local normals (note:without calculating pointNormals
     //    to avoid them being stored)
 
-    tmp<pointField> textrudeN(new pointField(p.nPoints(), Zero));
-    pointField& extrudeN = textrudeN.ref();
+    auto textrudeN = tmp<pointField>::New(p.nPoints(), Zero);
+    auto& extrudeN = textrudeN.ref();
     {
         const faceList& localFaces = p.localFaces();
         const vectorField& faceNormals = p.faceNormals();
@@ -162,21 +168,22 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
             const vector& n = faceNormals[facei];
             forAll(f, fp)
             {
-                extrudeN[f[fp]] += n;
+                extrudeN[f[fp]] += ((pFlip.empty() || !pFlip[facei]) ? n : -n);
             }
         }
-        extrudeN /= mag(extrudeN)+vSmall;
+        extrudeN /= mag(extrudeN)+VSMALL;
     }
 
 
     // 2. Override patch normals on coupled points
     forAll(p.meshPoints(), patchPointi)
     {
-        label meshPointi = p.meshPoints()[patchPointi];
-        Map<label>::const_iterator fnd = coupledPatchMP.find(meshPointi);
-        if (fnd != coupledPatchMP.end())
+        const label meshPointi = p.meshPoints()[patchPointi];
+
+        const auto fnd = coupledPatchMP.cfind(meshPointi);
+        if (fnd.good())
         {
-            label coupledPointi = fnd();
+            const label coupledPointi = fnd.val();
             extrudeN[patchPointi] = coupledPointNormals[coupledPointi];
         }
     }
@@ -186,37 +193,46 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::pointNormals
 
 
 template<class FaceList, class PointField>
-Foam::tmp<Foam::pointField> Foam::PatchTools::edgeNormals
+Foam::tmp<Foam::pointField>
+Foam::PatchTools::edgeNormals
 (
     const polyMesh& mesh,
     const PrimitivePatch<FaceList, PointField>& p,
     const labelList& patchEdges,
-    const labelList& coupledEdges
+    const labelList& coupledEdges,
+    const bitSet& pFlip
 )
 {
     // 1. Start off with local normals
 
-    tmp<pointField> tedgeNormals(new pointField(p.nEdges(), Zero));
-    pointField& edgeNormals = tedgeNormals.ref();
+    auto tedgeNormals = tmp<pointField>::New(p.nEdges(), Zero);
+    auto& edgeNormals = tedgeNormals.ref();
+
     {
         const labelListList& edgeFaces = p.edgeFaces();
         const vectorField& faceNormals = p.faceNormals();
 
-        forAll(edgeFaces, edgeI)
+        forAll(edgeFaces, edgei)
         {
-            const labelList& eFaces = edgeFaces[edgeI];
-            forAll(eFaces, i)
+            const labelList& eFaces = edgeFaces[edgei];
+            for (const label facei : eFaces)
             {
-                edgeNormals[edgeI] += faceNormals[eFaces[i]];
+                const vector& n = faceNormals[facei];
+                edgeNormals[edgei] +=
+                (
+                    (pFlip.empty() || !pFlip[facei])
+                  ? n
+                  : -n
+                );
             }
         }
-        edgeNormals /= mag(edgeNormals)+vSmall;
+        edgeNormals /= mag(edgeNormals)+VSMALL;
     }
 
 
 
     const globalMeshData& globalData = mesh.globalData();
-    const distributionMap& map = globalData.globalEdgeSlavesMap();
+    const mapDistribute& map = globalData.globalEdgeSlavesMap();
 
 
     // Convert patch-edge data into cpp-edge data
@@ -244,9 +260,9 @@ Foam::tmp<Foam::pointField> Foam::PatchTools::edgeNormals
         map,
         globalData.globalTransforms(),
         plusEqOp<point>(),              // add since normalised later on
-        distributionMap::transform()
+        mapDistribute::transform()
     );
-    cppEdgeData /= mag(cppEdgeData)+vSmall;
+    cppEdgeData /= mag(cppEdgeData)+VSMALL;
 
 
     // Back from cpp-edge to patch-edge data

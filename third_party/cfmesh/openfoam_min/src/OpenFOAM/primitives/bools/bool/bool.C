@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,24 +27,49 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "bool.H"
+#include "Switch.H"
+#include "error.H"
+#include "IOstreams.H"
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 const char* const Foam::pTraits<bool>::typeName = "bool";
+const char* const Foam::pTraits<bool>::componentNames[] = { "" };
+
 const bool Foam::pTraits<bool>::zero = false;
 const bool Foam::pTraits<bool>::one = true;
 
-const char* const Foam::pTraits<bool>::componentNames[] = { "" };
 
-Foam::pTraits<bool>::pTraits(const bool& p)
-:
-    p_(p)
-{}
-
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::pTraits<bool>::pTraits(Istream& is)
 {
     is >> p_;
 }
+
+
+// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
+
+Foam::Istream& Foam::operator>>(Istream& is, bool& b)
+{
+    b = static_cast<bool>(Switch(is));
+    return is;
+}
+
+
+Foam::Ostream& Foam::operator<<(Ostream& os, const bool b)
+{
+    // Emit as label (not byte etc) for proper send/receive in parallel
+    os.write(static_cast<label>(b));
+    os.check(FUNCTION_NAME);
+    return os;
+}
+
+
+bool Foam::readBool(Istream& is)
+{
+    return static_cast<bool>(Switch(is));
+}
+
 
 // ************************************************************************* //

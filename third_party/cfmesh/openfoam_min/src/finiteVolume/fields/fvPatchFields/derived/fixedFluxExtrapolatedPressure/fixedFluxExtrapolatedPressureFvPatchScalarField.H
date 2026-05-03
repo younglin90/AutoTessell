@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fixedFluxExtrapolatedPressureFvPatchScalarField
+
+Group
+    grpInletBoundaryConditions grpWallBoundaryConditions
 
 Description
     This boundary condition sets the pressure gradient to the provided value
@@ -56,7 +61,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-       Class fixedFluxExtrapolatedPressureFvPatchScalarField Declaration
+             Class fixedFluxExtrapolatedPressureFvPatchScalarField Declaration
 \*---------------------------------------------------------------------------*/
 
 class fixedFluxExtrapolatedPressureFvPatchScalarField
@@ -72,11 +77,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        fixedFluxExtrapolatedPressureFvPatchScalarField
+        (
+            const fvPatch&,
+            const DimensionedField<scalar, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         fixedFluxExtrapolatedPressureFvPatchScalarField
         (
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
+            const DimensionedField<scalar, volMesh>&,
             const dictionary&
         );
 
@@ -86,40 +98,37 @@ public:
         (
             const fixedFluxExtrapolatedPressureFvPatchScalarField&,
             const fvPatch&,
-            const DimensionedField<scalar, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<scalar, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         fixedFluxExtrapolatedPressureFvPatchScalarField
         (
             const fixedFluxExtrapolatedPressureFvPatchScalarField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         fixedFluxExtrapolatedPressureFvPatchScalarField
         (
             const fixedFluxExtrapolatedPressureFvPatchScalarField&,
-            const DimensionedField<scalar, fvMesh>&
+            const DimensionedField<scalar, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchScalarField> clone
-        (
-            const DimensionedField<scalar, fvMesh>& iF
-        ) const
+        //- Return a clone
+        virtual tmp<fvPatchField<scalar>> clone() const
         {
-            return tmp<fvPatchScalarField>
-            (
-                new fixedFluxExtrapolatedPressureFvPatchScalarField(*this, iF)
-            );
+            return fvPatchField<scalar>::Clone(*this);
         }
 
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedFluxPressureFvPatchScalarField::operator=;
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<scalar>> clone
+        (
+            const DimensionedField<scalar, volMesh>& iF
+        ) const
+        {
+            return fvPatchField<scalar>::Clone(*this, iF);
+        }
 };
 
 

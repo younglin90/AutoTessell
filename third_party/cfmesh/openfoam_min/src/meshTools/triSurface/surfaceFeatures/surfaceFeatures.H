@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,10 +35,12 @@ Description
         externalStart_ .. internalStart_-1  : external edges
         internalStart_ .. size-1            : internal edges
 
-    NOTE: angle is included angle, not feature angle. The included angle is the
-    smallest angle between two planes. For coplanar faces it is 180 degrees,
-    for straight angles it is 90 degrees. To pick up straight edges only use
-    included angle of 91 degrees.
+
+    NOTE: angle is included angle, not feature angle and is in degrees.
+    The included angle is the smallest angle between two planes. For coplanar
+    faces it is 180, for straight angles it is 90. To pick up straight edges
+    only use included angle of 91 degrees
+
 
 SourceFiles
     surfaceFeatures.C
@@ -51,8 +56,6 @@ SourceFiles
 #include "pointIndexHit.H"
 #include "edgeList.H"
 #include "typeInfo.H"
-#include "boundBox.H"
-#include "plane.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -60,22 +63,25 @@ namespace Foam
 {
 
 // Forward declaration of classes
+class plane;
 class triSurface;
+class treeBoundBox;
 
 /*---------------------------------------------------------------------------*\
-                       Class surfaceFeatures Declaration
+                           Class surfaceFeatures Declaration
 \*---------------------------------------------------------------------------*/
 
 class surfaceFeatures
 {
 public:
 
+        //- Edge status
         enum edgeStatus
         {
-            NONE,
-            REGION,
-            EXTERNAL,
-            INTERNAL
+            NONE,       //!< Not a classified feature edge
+            REGION,     //
+            EXTERNAL,   //!< "Convex" edge
+            INTERNAL    //!< "Concave" edge
         };
 
 
@@ -101,7 +107,7 @@ private:
         static const scalar parallelTolerance;
 
 
-    // Private Data
+    // Private data
 
         //- Reference to surface
         const triSurface& surf_;
@@ -126,8 +132,7 @@ private:
         //  index=1: nearest on edge.end().
         static pointIndexHit edgeNearest
         (
-            const point& start,
-            const point& end,
+            const linePointRef& line,
             const point& sample
         );
 
@@ -169,6 +174,17 @@ private:
             labelList& featVisited
         );
 
+        //- Divide into multiple normal bins
+        //  - set REGION if != 2 normals
+        //  - set REGION if 2 normals that make feature angle
+        //  - otherwise set NONE and set normals,bins
+        edgeStatus checkFlatRegionEdge
+        (
+            const scalar tol,
+            const scalar includedAngle,
+            const label edgeI
+        ) const;
+
 public:
 
     ClassName("surfaceFeatures");
@@ -176,12 +192,12 @@ public:
     // Constructors
 
         //- Construct from surface
-        surfaceFeatures(const triSurface&);
+        surfaceFeatures(const triSurface& surf);
 
         //- Construct from components
         surfaceFeatures
         (
-            const triSurface&,
+            const triSurface& surf,
             const labelList& featurePoints,
             const labelList& featureEdges,
             const label externalStart,
@@ -194,7 +210,7 @@ public:
         //  geometric criteria
         surfaceFeatures
         (
-            const triSurface&,
+            const triSurface& surf,
             const scalar includedAngle,
             const scalar minLen = 0,
             const label minElems = 0,
@@ -202,23 +218,23 @@ public:
         );
 
         //- Construct from dictionary
-        surfaceFeatures(const triSurface&, const dictionary& dict);
+        surfaceFeatures(const triSurface& surf, const dictionary& dict);
 
         //- Construct from file
-        surfaceFeatures(const triSurface&, const fileName& fName);
+        surfaceFeatures(const triSurface& surf, const fileName& fName);
 
         //- Construct from pointField and edgeList (edgeMesh)
         surfaceFeatures
         (
-            const triSurface&,
+            const triSurface& surf,
             const pointField& points,
             const edgeList& edges,
             const scalar mergeTol = 1e-6,
             const bool geometricTestOnly = false
         );
 
-        //- Copy constructor
-        surfaceFeatures(const surfaceFeatures&);
+        //- Construct as copy
+        surfaceFeatures(const surfaceFeatures& sf);
 
 
     // Member Functions
@@ -298,6 +314,50 @@ public:
                 const label minElems,
                 const scalar includedAngle
             );
+
+            //- Mark edge status inside box as 'NONE'
+            void excludeBox
+            (
+                List<edgeStatus>& edgeStat,
+                const treeBoundBox& bb
+            ) const;
+
+            //- Mark edge status outside box as 'NONE'
+            void subsetBox
+            (
+                List<edgeStatus>& edgeStat,
+                const treeBoundBox& bb
+            ) const;
+
+            //- Mark edge status as 'NONE' for edges inside/outside box.
+            void deleteBox
+            (
+                List<edgeStatus>& edgeStat,
+                const treeBoundBox& bb,
+                const bool removeInside
+            ) const;
+
+            //- If edge does not intersect the plane, mark as 'NONE'
+            void subsetPlane
+            (
+                List<edgeStatus>& edgeStat,
+                const plane& cutPlane
+            ) const;
+
+            //- Mark edges with a single connected face as 'NONE'
+            void excludeOpen(List<edgeStatus>& edgeStat) const;
+
+            //- Divide into multiple normal bins
+            //  - set REGION if != 2 normals
+            //  - set REGION if 2 normals that make feature angle
+            //  - otherwise set NONE and set normals,bins
+            void checkFlatRegionEdge
+            (
+                List<edgeStatus>& edgeStat,
+                const scalar tol,
+                const scalar includedAngle
+            ) const;
+
 
             //- From member feature edges to status per edge.
             List<edgeStatus> toStatus() const;
@@ -404,60 +464,26 @@ public:
         // Write
 
             //- Write as dictionary
-            void writeDict(Ostream&) const;
+            void writeDict(Ostream& os) const;
 
             //- Write as dictionary to file
             void write(const fileName& fName) const;
 
             //- Write to separate OBJ files (region, external, internal edges,
-            //  feature points) for visualisation
+            //  feature points) for visualization
             void writeObj(const fileName& prefix) const;
+
+            //- Write some information
+            void writeStats(Ostream& os) const;
 
 
 
     // Member Operators
 
-        void operator=(const surfaceFeatures&);
+        void operator=(const surfaceFeatures& rhs);
+
+
 };
-
-
-//- Select edges inside or outside bounding box
-void selectBox
-(
-    const triSurface& surf,
-    const boundBox& bb,
-    const bool removeInside,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-);
-
-//- Select edges that are intersected by the given plane
-void selectCutEdges
-(
-    const triSurface& surf,
-    const plane& cutPlane,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-);
-
-//- Divide into multiple normal bins
-//  - return REGION if != 2 normals
-//  - return REGION if 2 normals that make feature angle
-//  - otherwise return NONE and set normals,bins
-surfaceFeatures::edgeStatus checkNonManifoldEdge
-(
-    const triSurface& surf,
-    const scalar tol,
-    const scalar includedAngle,
-    const label edgei
-);
-
-//- Select manifold edges
-void selectManifoldEdges
-(
-    const triSurface& surf,
-    const scalar tol,
-    const scalar includedAngle,
-    List<surfaceFeatures::edgeStatus>& edgeStat
-);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

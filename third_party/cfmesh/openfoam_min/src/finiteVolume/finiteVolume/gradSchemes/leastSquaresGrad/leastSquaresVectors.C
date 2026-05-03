@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -38,24 +41,19 @@ namespace Foam
 
 Foam::leastSquaresVectors::leastSquaresVectors(const fvMesh& mesh)
 :
-    DemandDrivenMeshObject
-    <
-        fvMesh,
-        MoveableMeshObject,
-        leastSquaresVectors
-    >(mesh),
+    MeshObject_type(mesh),
     pVectors_
     (
         IOobject
         (
             "LeastSquaresP",
-            mesh.pointsInstance(),
-            mesh,
+            mesh_.pointsInstance(),
+            mesh_,
             IOobject::NO_READ,
             IOobject::NO_WRITE,
-            false
+            IOobject::NO_REGISTER
         ),
-        mesh,
+        mesh_,
         dimensionedVector(dimless/dimLength, Zero)
     ),
     nVectors_
@@ -63,13 +61,13 @@ Foam::leastSquaresVectors::leastSquaresVectors(const fvMesh& mesh)
         IOobject
         (
             "LeastSquaresN",
-            mesh.pointsInstance(),
-            mesh,
+            mesh_.pointsInstance(),
+            mesh_,
             IOobject::NO_READ,
             IOobject::NO_WRITE,
-            false
+            IOobject::NO_REGISTER
         ),
-        mesh,
+        mesh_,
         dimensionedVector(dimless/dimLength, Zero)
     )
 {
@@ -87,16 +85,13 @@ Foam::leastSquaresVectors::~leastSquaresVectors()
 
 void Foam::leastSquaresVectors::calcLeastSquaresVectors()
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating least square gradient vectors" << endl;
-    }
+    DebugInFunction << "Calculating least square gradient vectors" << nl;
 
-    const fvMesh& mesh = this->mesh();
+    const fvMesh& mesh = mesh_;
 
     // Set local references to mesh data
-    const labelUList& owner = mesh.owner();
-    const labelUList& neighbour = mesh.neighbour();
+    const labelUList& owner = mesh_.owner();
+    const labelUList& neighbour = mesh_.neighbour();
 
     const volVectorField& C = mesh.C();
     const surfaceScalarField& w = mesh.weights();
@@ -104,17 +99,17 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
 
 
     // Set up temporary storage for the dd tensor (before inversion)
-    symmTensorField dd(mesh().nCells(), Zero);
+    symmTensorField dd(mesh_.nCells(), Zero);
 
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
-        vector d = C[nei] - C[own];
-        symmTensor wdd = (magSf[facei]/magSqr(d))*sqr(d);
+        const vector d(C[nei] - C[own]);
+        const symmTensor wdd((magSf[facei]/magSqr(d))*sqr(d));
 
-        dd[own] += (1 - w[facei])*wdd;
+        dd[own] += (1.0 - w[facei])*wdd;
         dd[nei] += w[facei]*wdd;
     }
 
@@ -128,10 +123,10 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
         const fvsPatchScalarField& pMagSf = magSf.boundaryField()[patchi];
 
         const fvPatch& p = pw.patch();
-        const labelUList& faceCells = p.faceCells();
+        const labelUList& faceCells = p.patch().faceCells();
 
         // Build the d-vectors
-        vectorField pd(p.delta());
+        const vectorField pd(p.delta());
 
         if (pw.coupled())
         {
@@ -156,20 +151,20 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
     }
 
 
-    // Invert the dd tensor
+    // Invert the dd tensors - including failsafe checks
     const symmTensorField invDd(inv(dd));
 
 
     // Revisit all faces and calculate the pVectors_ and nVectors_ vectors
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
-        vector d = C[nei] - C[own];
-        scalar magSfByMagSqrd = magSf[facei]/magSqr(d);
+        const vector d(C[nei] - C[own]);
+        const scalar magSfByMagSqrd = magSf[facei]/magSqr(d);
 
-        pVectors_[facei] = (1 - w[facei])*magSfByMagSqrd*(invDd[own] & d);
+        pVectors_[facei] = (1.0 - w[facei])*magSfByMagSqrd*(invDd[own] & d);
         nVectors_[facei] = -w[facei]*magSfByMagSqrd*(invDd[nei] & d);
     }
 
@@ -184,7 +179,7 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
         const labelUList& faceCells = p.faceCells();
 
         // Build the d-vectors
-        vectorField pd(p.delta());
+        const vectorField pd(p.delta());
 
         if (pw.coupled())
         {
@@ -193,7 +188,7 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
                 const vector& d = pd[patchFacei];
 
                 patchLsP[patchFacei] =
-                    ((1 - pw[patchFacei])*pMagSf[patchFacei]/magSqr(d))
+                    ((1.0 - pw[patchFacei])*pMagSf[patchFacei]/magSqr(d))
                    *(invDd[faceCells[patchFacei]] & d);
             }
         }
@@ -210,11 +205,7 @@ void Foam::leastSquaresVectors::calcLeastSquaresVectors()
         }
     }
 
-    if (debug)
-    {
-        InfoInFunction
-            << "Finished calculating least square gradient vectors" << endl;
-    }
+    DebugInfo << "Finished calculating least square gradient vectors" << nl;
 }
 
 

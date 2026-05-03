@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,27 +23,20 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::cellShapeList
-
-Description
-    List of cellShapes and PtrList of List of cellShape.
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef cellShapeList_H
-#define cellShapeList_H
+#ifndef Foam_cellShapeList_H
+#define Foam_cellShapeList_H
 
 #include "cellShape.H"
 #include "List.H"
-#include "PtrList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
+    //! List of cellShape
     typedef List<cellShape> cellShapeList;
-    typedef PtrList<cellShapeList> cellShapeListList;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

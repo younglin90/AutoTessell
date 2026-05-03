@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,10 +27,10 @@ Class
     Foam::prismMatcher
 
 Description
-    A cellMatcher for prism cells
+    A cellMatcher for prism cells (cellModel::PRISM)
 
 See also
-    cellMatcher
+    cellMatcher, cellModel
 
 SourceFiles
     prismMatcher.C
@@ -46,7 +48,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class prismMatcher Declaration
+                           Class prismMatcher Declaration
 \*---------------------------------------------------------------------------*/
 
 class prismMatcher
@@ -55,25 +57,31 @@ class prismMatcher
 {
     // Static Data Members
 
-        //- Constants for this shape
-        static const label vertPerCell;
-        static const label facePerCell;
-        static const label maxVertPerFace;
+        // Constants for this shape
+        static constexpr label vertPerCell = 6;
+        static constexpr label facePerCell = 5;
+        static constexpr label maxVertPerFace = 4;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        prismMatcher(const prismMatcher&) = delete;
+
+        //- No copy assignment
+        prismMatcher& operator=(const prismMatcher&) = delete;
 
 
 public:
 
     // Constructors
 
-        //- Construct
+        //- Default construct
         prismMatcher();
-
-        //- Disallow default bitwise copy construction
-        prismMatcher(const prismMatcher&) = delete;
 
 
     //- Destructor
-    ~prismMatcher();
+    ~prismMatcher() = default;
 
 
     // Member Functions
@@ -116,12 +124,6 @@ public:
             const label celli,
             cellShape& shape
         );
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const prismMatcher&) = delete;
 };
 
 

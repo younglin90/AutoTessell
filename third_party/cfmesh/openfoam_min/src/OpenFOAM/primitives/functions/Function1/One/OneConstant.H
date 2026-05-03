@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,14 +25,14 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::Function1s::OneConstant
+    Foam::Function1Types::OneConstant
 
 Description
     Templated function that returns the corresponding 1 (one).
 
-Usage
+    Usage:
     \verbatim
-        <name> one;
+        <entryName> one;
     \endverbatim
 
 SourceFiles
@@ -37,8 +40,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef OneConstant_H
-#define OneConstant_H
+#ifndef Foam_Function1Types_OneConstant_H
+#define Foam_Function1Types_OneConstant_H
 
 #include "Function1.H"
 
@@ -46,70 +49,99 @@ SourceFiles
 
 namespace Foam
 {
-namespace Function1s
+namespace Function1Types
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class OneConstant Declaration
+                           Class OneConstant Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class OneConstant
 :
-    public FieldFunction1<Type, OneConstant<Type>>
+    public Function1<Type>
 {
-
 public:
 
-    // Runtime type information
+    //- Runtime type information
     TypeName("one");
+
+
+    // Generated Methods
+
+        //- Default copy construct
+        OneConstant(const OneConstant<Type>&) = default;
+
+        //- No copy assignment
+        void operator=(const OneConstant<Type>&) = delete;
 
 
     // Constructors
 
-        //- Construct from name
-        OneConstant(const word& name);
+        //- Construct from entry name and optional registry
+        explicit OneConstant
+        (
+            const word& entryName,
+            const objectRegistry* obrPtr = nullptr
+        );
 
-        //- Construct from name and dictionary
+        //- Construct from entry name, dictionary and optional registry
         OneConstant
         (
-            const word& name,
-            const unitSets& units,
-            const dictionary& dict
+            const word& entryName,
+            const dictionary& dict,
+            const objectRegistry* obrPtr = nullptr
         );
+
+        //- Return a clone
+        virtual tmp<Function1<Type>> clone() const
+        {
+            return Function1<Type>::Clone(*this);
+        }
 
 
     //- Destructor
-    virtual ~OneConstant();
+    virtual ~OneConstant() = default;
 
 
     // Member Functions
 
+        //- Value is independent of x
+        virtual inline bool constant() const { return true; }
+
         //- Return constant value
-        virtual inline Type value(const scalar) const;
+        virtual inline Type value(const scalar) const
+        {
+            return pTraits<Type>::one;
+        }
 
         //- Integrate between two values
-        virtual inline Type integral(const scalar x1, const scalar x2) const;
+        virtual inline Type integrate(const scalar x1, const scalar x2) const
+        {
+            return (x2 - x1)*pTraits<Type>::one;
+        }
 
-        //- Write in dictionary format
-        virtual void write(Ostream& os, const unitSets& units) const;
+        //- Return value as a function of (scalar) independent variable
+        virtual tmp<Field<Type>> value(const scalarField& x) const;
 
+        //- Integrate between two (scalar) values
+        virtual tmp<Field<Type>> integrate
+        (
+            const scalarField& x1,
+            const scalarField& x2
+        ) const;
 
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const OneConstant<Type>&) = delete;
+        //- Write as primitive (inline) format
+        virtual void writeData(Ostream& os) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace Function1s
+} // End namespace Function1Types
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#include "OneConstantI.H"
 
 #ifdef NoRepository
     #include "OneConstant.C"

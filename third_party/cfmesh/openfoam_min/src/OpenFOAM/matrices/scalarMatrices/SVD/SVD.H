@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -46,12 +48,12 @@ namespace Foam
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 /*---------------------------------------------------------------------------*\
-                             Class SVD Declaration
+                      Class SVD Declaration
 \*---------------------------------------------------------------------------*/
 
 class SVD
 {
-    // Private Data
+    // Private data
 
         //- Rectangular matrix with the same dimensions as the input
         scalarRectangularMatrix U_;
@@ -71,6 +73,12 @@ class SVD
 
     // Private Member Functions
 
+        //- No copy construct
+        SVD(const SVD&) = delete;
+
+        //- No copy assignment
+        void operator=(const SVD&) = delete;
+
         template<class T>
         inline const T sign(const T& a, const T& b);
 
@@ -81,9 +89,6 @@ public:
 
         //- Construct from a rectangular Matrix
         SVD(const scalarRectangularMatrix& A, const scalar minCondition = 0);
-
-        //- Disallow default bitwise copy construction
-        SVD(const SVD&) = delete;
 
 
     // Access functions
@@ -108,12 +113,6 @@ public:
 
         //- Return the matrix product V S^(-1) U^T (the pseudo inverse)
         scalarRectangularMatrix VSinvUt() const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const SVD&) = delete;
 };
 
 

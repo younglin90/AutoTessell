@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,10 @@ Typedef
     Foam::diagTensor
 
 Description
-    A scalar version of the templated DiagTensor
+    DiagTensor of scalars, i.e. DiagTensor<scalar>.
+
+See also
+    Test-DiagTensor.C
 
 SourceFiles
     diagTensor.C
@@ -36,7 +42,6 @@ SourceFiles
 #define diagTensor_H
 
 #include "DiagTensor.H"
-#include "contiguous.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,12 +51,6 @@ namespace Foam
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 typedef DiagTensor<scalar> diagTensor;
-
-
-//- Data associated with diagTensor type are contiguous
-template<>
-inline bool contiguous<diagTensor>() {return true;}
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,10 +27,11 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "polyMesh.H"
-#include "transformer.H"
+#include "transform.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+// Update this with w2 if w2 nearer to pt.
 template<class TrackingData>
 inline bool Foam::pointEdgePoint::update
 (
@@ -37,7 +41,7 @@ inline bool Foam::pointEdgePoint::update
     TrackingData& td
 )
 {
-    scalar dist2 = magSqr(pt - w2.origin());
+    const scalar dist2 = magSqr(pt - w2.origin());
 
     if (!valid(td))
     {
@@ -48,7 +52,7 @@ inline bool Foam::pointEdgePoint::update
         return true;
     }
 
-    scalar diff = distSqr_ - dist2;
+    const scalar diff = distSqr_ - dist2;
 
     if (diff < 0)
     {
@@ -56,7 +60,7 @@ inline bool Foam::pointEdgePoint::update
         return false;
     }
 
-    if ((diff < small) || ((distSqr_ > small) && (diff/distSqr_ < tol)))
+    if ((diff < SMALL) || ((distSqr_ > SMALL) && (diff/distSqr_ < tol)))
     {
         // don't propagate small changes
         return false;
@@ -72,12 +76,54 @@ inline bool Foam::pointEdgePoint::update
 }
 
 
+// Update this with w2 (information on same point)
+template<class TrackingData>
+inline bool Foam::pointEdgePoint::update
+(
+    const pointEdgePoint& w2,
+    const scalar tol,
+    TrackingData& td
+)
+{
+    if (!valid(td))
+    {
+        // current not yet set so use any value
+        distSqr_ = w2.distSqr();
+        origin_ = w2.origin();
+
+        return true;
+    }
+
+    const scalar diff = distSqr_ - w2.distSqr();
+
+    if (diff < 0)
+    {
+        // already nearer to pt
+        return false;
+    }
+
+    if ((diff < SMALL) || ((distSqr_ > SMALL) && (diff/distSqr_ < tol)))
+    {
+        // don't propagate small changes
+        return false;
+    }
+    else
+    {
+        // update with new values
+        distSqr_ =  w2.distSqr();
+        origin_ = w2.origin();
+
+        return true;
+    }
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 inline Foam::pointEdgePoint::pointEdgePoint()
 :
     origin_(point::max),
-    distSqr_(great)
+    distSqr_(GREAT)
 {}
 
 
@@ -94,18 +140,6 @@ inline Foam::pointEdgePoint::pointEdgePoint
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline const Foam::point& Foam::pointEdgePoint::origin() const
-{
-    return origin_;
-}
-
-
-inline Foam::scalar Foam::pointEdgePoint::distSqr() const
-{
-    return distSqr_;
-}
-
-
 template<class TrackingData>
 inline bool Foam::pointEdgePoint::valid(TrackingData& td) const
 {
@@ -113,17 +147,72 @@ inline bool Foam::pointEdgePoint::valid(TrackingData& td) const
 }
 
 
+// Checks for cyclic points
 template<class TrackingData>
-inline void Foam::pointEdgePoint::transform
+inline bool Foam::pointEdgePoint::sameGeometry
+(
+    const pointEdgePoint& w2,
+    const scalar tol,
+    TrackingData& td
+) const
+{
+    const scalar diff = Foam::mag(distSqr() - w2.distSqr());
+
+    if (diff < SMALL)
+    {
+        return true;
+    }
+    else
+    {
+        if ((distSqr() > SMALL) && ((diff/distSqr()) < tol))
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
+
+
+template<class TrackingData>
+inline void Foam::pointEdgePoint::leaveDomain
 (
     const polyPatch& patch,
-    const label patchFacei,
-    const transformer& transform,
+    const label patchPointi,
+    const point& coord,
     TrackingData& td
 )
 {
-    // Note that distSqr_ is not affected by crossing an interface
-    origin_ = transform.transformPosition(origin_);
+    origin_ -= coord;
+}
+
+
+template<class TrackingData>
+inline void Foam::pointEdgePoint::transform
+(
+    const tensor& rotTensor,
+    TrackingData& td
+)
+{
+    origin_ = Foam::transform(rotTensor, origin_);
+}
+
+
+// Update absolute geometric quantities. Note that distance (distSqr_)
+// is not affected by leaving/entering domain.
+template<class TrackingData>
+inline void Foam::pointEdgePoint::enterDomain
+(
+    const polyPatch& patch,
+    const label patchPointi,
+    const point& coord,
+    TrackingData& td
+)
+{
+    // back to absolute form
+    origin_ += coord;
 }
 
 
@@ -158,6 +247,19 @@ inline bool Foam::pointEdgePoint::updatePoint
 }
 
 
+// Update this with new information on same point. No extra information.
+template<class TrackingData>
+inline bool Foam::pointEdgePoint::updatePoint
+(
+    const pointEdgePoint& newPointInfo,
+    const scalar tol,
+    TrackingData& td
+)
+{
+    return update(newPointInfo, tol, td);
+}
+
+
 // Update this with information from connected point
 template<class TrackingData>
 inline bool Foam::pointEdgePoint::updateEdge
@@ -188,39 +290,21 @@ inline bool Foam::pointEdgePoint::equal
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-inline bool Foam::pointEdgePoint::operator==(const Foam::pointEdgePoint& rhs)
-const
+inline bool Foam::pointEdgePoint::operator==
+(
+    const pointEdgePoint& rhs
+) const
 {
-    return (origin() == rhs.origin()) && (distSqr() == rhs.distSqr());
+    return distSqr_ == rhs.distSqr_ && origin_ == rhs.origin_;
 }
 
 
-inline bool Foam::pointEdgePoint::operator!=(const Foam::pointEdgePoint& rhs)
-const
+inline bool Foam::pointEdgePoint::operator!=
+(
+    const pointEdgePoint& rhs
+) const
 {
     return !(*this == rhs);
-}
-
-
-// * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
-
-inline Foam::Ostream& Foam::operator<<
-(
-    Foam::Ostream& os,
-    const Foam::pointEdgePoint& wDist
-)
-{
-    return os << wDist.origin() << token::SPACE << wDist.distSqr();
-}
-
-
-inline Foam::Istream& Foam::operator>>
-(
-    Foam::Istream& is,
-    Foam::pointEdgePoint& wDist
-)
-{
-    return is >> wDist.origin_ >> wDist.distSqr_;
 }
 
 

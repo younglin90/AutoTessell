@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,8 +36,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef lduInterface_H
-#define lduInterface_H
+#ifndef Foam_lduInterface_H
+#define Foam_lduInterface_H
 
 #include "labelField.H"
 #include "typeInfo.H"
@@ -45,7 +48,8 @@ SourceFiles
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// Forward Declarations
+class lduInterface;
 
 /*---------------------------------------------------------------------------*\
                         Class lduInterface Declaration
@@ -53,25 +57,20 @@ namespace Foam
 
 class lduInterface
 {
-
 public:
 
     //- Runtime type information
-    TypeName("lduInterface");
+    TypeNameNoDebug("lduInterface");
 
 
     // Constructors
 
-        //- Construct null
-        lduInterface()
-        {}
-
-        //- Disallow default bitwise copy construction
-        lduInterface(const lduInterface&) = delete;
+        //- Default construct
+        lduInterface() noexcept = default;
 
 
     //- Destructor
-    virtual ~lduInterface();
+    virtual ~lduInterface() = default;
 
 
     // Member Functions
@@ -91,11 +90,29 @@ public:
                 const labelUList& internalData
             ) const = 0;
 
+            //- Return the values of the given internal data adjacent to
+            //- the interface as a field using faceCell mapping
+            virtual tmp<labelField> interfaceInternalField
+            (
+                const labelUList& internalData,
+                const labelUList& faceCells
+            ) const = 0;
+
             //- Initialise transfer of internal field adjacent to the interface
             virtual void initInternalFieldTransfer
             (
                 const Pstream::commsTypes commsType,
                 const labelUList& iF
+            ) const
+            {}
+
+            //- Initialise transfer of internal field adjacent to the interface
+            //- using faceCells mapping
+            virtual void initInternalFieldTransfer
+            (
+                const Pstream::commsTypes commsType,
+                const labelUList& iF,
+                const labelUList& faceCells
             ) const
             {}
 
@@ -105,12 +122,6 @@ public:
                 const Pstream::commsTypes commsType,
                 const labelUList& iF
             ) const = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const lduInterface&) = delete;
 };
 
 

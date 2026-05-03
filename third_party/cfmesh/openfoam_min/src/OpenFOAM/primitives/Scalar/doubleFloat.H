@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,8 +26,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef doubleFloat_H
-#define doubleFloat_H
+#ifndef Foam_doubleFloat_H
+#define Foam_doubleFloat_H
 
 #include "label.H"
 #include "products.H"
@@ -38,31 +41,37 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-template<class Cmpt>
-class typeOfRank<Cmpt, 0>
-{
-public:
-
-    typedef Cmpt type;
-};
-
-
-template<class Cmpt>
-class symmTypeOfRank<Cmpt, 0>
-{
-public:
-
-    typedef Cmpt type;
-};
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-template<class T>
-inline bool equal(const T& s1, const T& s2)
-{
-    return s1 == s2;
+#define MAXMINPOW(RetType, Type1, Type2)                \
+                                                        \
+MAXMIN(RetType, Type1, Type2)                           \
+                                                        \
+/*! \brief Raise base to the power expon */             \
+inline double pow(const Type1 base, const Type2 expon)  \
+{                                                       \
+    return ::pow(double(base), double(expon));          \
 }
+
+
+MAXMINPOW(double, double, double)
+MAXMINPOW(double, double, float)
+MAXMINPOW(double, float, double)
+MAXMINPOW(double, double, int)
+MAXMINPOW(double, int, double)
+MAXMINPOW(double, double, long)
+MAXMINPOW(double, long, double)
+MAXMINPOW(float, float, float)
+MAXMINPOW(float, float, int)
+MAXMINPOW(float, int, float)
+MAXMINPOW(float, float, long)
+MAXMINPOW(float, long, float)
+#if defined(__APPLE__) && WM_LABEL_SIZE == 64
+MAXMINPOW(double, double, int64_t)
+MAXMINPOW(double, int64_t, double)
+MAXMINPOW(float, float, int64_t)
+MAXMINPOW(float, int64_t, float)
+#endif
+
+#undef MAXMINPOW
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

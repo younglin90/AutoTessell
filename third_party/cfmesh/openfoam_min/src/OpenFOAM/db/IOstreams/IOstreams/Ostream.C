@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,124 +26,104 @@ License
 
 \*---------------------------------------------------------------------------*/
 
+#include "word.H"
 #include "Ostream.H"
 #include "token.H"
+#include "keyType.H"
+#include "IOstreams.H"
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void Foam::Ostream::decrIndent()
 {
-    if (indentLevel_ == 0)
+    if (!indentLevel_)
     {
-        cerr<< "Ostream::decrIndent() : attempt to decrement 0 indent level"
-            << std::endl;
+        std::cerr
+            << "Ostream::decrIndent() : attempt to decrement 0 indent level\n";
     }
     else
     {
-        indentLevel_--;
+        --indentLevel_;
     }
+}
+
+
+Foam::Ostream& Foam::Ostream::writeQuoted
+(
+    const std::string& str,
+    const bool quoted
+)
+{
+    return writeQuoted(str.data(), str.size(), quoted);
+}
+
+
+Foam::Ostream& Foam::Ostream::write(const keyType& kw)
+{
+    return writeQuoted(kw.data(), kw.size(), kw.isPattern());
 }
 
 
 Foam::Ostream& Foam::Ostream::writeKeyword(const keyType& kw)
 {
-    return Foam::writeKeyword(*this, kw);
-}
+    indent();
+    writeQuoted(kw.data(), kw.size(), kw.isPattern());
 
-
-Foam::Ostream& Foam::Ostream::write(const token& t)
-{
-    switch (t.type())
+    if (indentSize_ <= 1)
     {
-        case token::UNDEFINED:
-            write("UNDEFINED");
-            WarningInFunction << "Undefined token" << Foam::endl;
-        break;
-
-        case token::PUNCTUATION:
-            // Cast to char required to work around a bug in gcc versions < 10
-            write(static_cast<char>(t.pToken()));
-            // write(t.pToken());
-        break;
-
-        case token::WORD:
-            write(t.wordToken());
-        break;
-
-        case token::FUNCTIONNAME:
-            write(t.functionNameToken());
-        break;
-
-        case token::VARIABLE:
-            write(t.variableToken());
-        break;
-
-        case token::STRING:
-            write(t.stringToken());
-        break;
-
-        case token::VERBATIMSTRING:
-            write(t.verbatimStringToken());
-        break;
-
-        case token::INTEGER_32:
-            write(t.integer32Token());
-        break;
-
-        case token::INTEGER_64:
-            write(t.integer64Token());
-        break;
-
-        case token::UNSIGNED_INTEGER_32:
-            write(t.unsignedInteger32Token());
-        break;
-
-        case token::UNSIGNED_INTEGER_64:
-            write(t.unsignedInteger64Token());
-        break;
-
-        case token::FLOAT_SCALAR:
-            write(t.floatScalarToken());
-        break;
-
-        case token::DOUBLE_SCALAR:
-            write(t.doubleScalarToken());
-        break;
-
-        case token::LONG_DOUBLE_SCALAR:
-            write(t.longDoubleScalarToken());
-        break;
-
-        case token::COMPOUND:
-            *this << t.compoundToken();
-        break;
-
-        case token::ERROR:
-            write("ERROR");
-            WarningInFunction << "Error token" << Foam::endl;
-        break;
-
-        default:
-            write("UNKNOWN");
-            SeriousErrorInFunction << "Unknown token" << Foam::endl;
+        write(char(token::SPACE));
+        return *this;
     }
 
-    // Check state of stream
-    check("Ostream& Ostream::write(const token&)");
+    label padding = (entryIndentation_ - label(kw.size()));
+
+    // Account for quotes surrounding pattern
+    if (kw.isPattern())
+    {
+        padding -= 2;
+    }
+
+    // Write padding spaces (always at least one)
+    do
+    {
+        write(char(token::SPACE));
+    }
+    while (--padding > 0);
 
     return *this;
 }
 
 
-Foam::Ostream& Foam::Ostream::writeCompoundTag(const word& typeName)
+Foam::Ostream& Foam::Ostream::beginBlock(const keyType& kw)
 {
-    if (token::compound::isCompound(typeName))
-    {
-        write(typeName);
-        // Cast to char required to work around a bug in gcc versions < 10
-        write(static_cast<char>(token::SPACE));
-        // write(token::SPACE);
-    }
+    indent(); writeQuoted(kw.data(), kw.size(), kw.isPattern()); write('\n');
+    beginBlock();
+
+    return *this;
+}
+
+
+Foam::Ostream& Foam::Ostream::beginBlock()
+{
+    indent(); write(char(token::BEGIN_BLOCK)); write('\n');
+    incrIndent();
+
+    return *this;
+}
+
+
+Foam::Ostream& Foam::Ostream::endBlock()
+{
+    decrIndent();
+    indent(); write(char(token::END_BLOCK)); write('\n');
+
+    return *this;
+}
+
+
+Foam::Ostream& Foam::Ostream::endEntry()
+{
+    write(char(token::END_STATEMENT)); write('\n');
 
     return *this;
 }

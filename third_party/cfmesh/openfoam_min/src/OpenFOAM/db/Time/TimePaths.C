@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,14 +27,39 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "TimePaths.H"
+#include "argList.H"
+#include "fileOperation.H"
 #include "IOstreams.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-namespace Foam
+bool Foam::TimePaths::detectProcessorCase()
 {
-    const word TimePaths::systemName = "system";
-    const word TimePaths::constantName = "constant";
+    if (processorCase_)
+    {
+        return processorCase_;
+    }
+
+    // Look for "processor", but should really check for following digits too
+    const auto sep = globalCaseName_.rfind('/');
+    const auto pos = globalCaseName_.find
+    (
+        "processor",
+        (sep == string::npos ? 0 : sep)
+    );
+
+    if (pos == 0)
+    {
+        globalCaseName_ = ".";
+        processorCase_  = true;
+    }
+    else if (pos != string::npos && sep != string::npos && sep == pos-1)
+    {
+        globalCaseName_.resize(sep);
+        processorCase_  = true;
+    }
+
+    return processorCase_;
 }
 
 
@@ -39,100 +67,186 @@ namespace Foam
 
 Foam::TimePaths::TimePaths
 (
+    const bool processorCase,
     const fileName& rootPath,
-    const fileName& caseName
+    const bool distributed,
+    const fileName& globalCaseName,
+    const fileName& caseName,
+    const word& systemDirName,
+    const word& constantDirName
 )
 :
-    processorCase_(false),
+    processorCase_(processorCase),
+    distributed_(distributed),
     rootPath_(rootPath),
-    case_(caseName)
+    globalCaseName_(globalCaseName),
+    case_(caseName),
+    system_(systemDirName),
+    constant_(constantDirName)
 {
-    // Find out from case name whether a processor directory
-    std::string::size_type pos = caseName.find("processor");
-    if (pos != string::npos)
-    {
-        processorCase_ = true;
-
-        if (pos == 0)
-        {
-            globalCaseName_ = ".";
-        }
-        else
-        {
-            globalCaseName_ = caseName(pos-1);
-        }
-    }
-    else
-    {
-        globalCaseName_ = caseName;
-    }
+    // Find out from case name whether it is a processor directory
+    // and set processorCase flag so file searching goes up one level.
+    detectProcessorCase();
 }
 
 
 Foam::TimePaths::TimePaths
 (
-    const bool processorCase,
-    const fileName& rootPath,
-    const fileName& globalCaseName,
-    const fileName& caseName
+    const argList& args,
+    const word& systemDirName,
+    const word& constantDirName
 )
 :
-    processorCase_(processorCase),
-    rootPath_(rootPath),
-    globalCaseName_(globalCaseName),
-    case_(caseName)
-{
-    if (!processorCase)
-    {
-        // For convenience: find out from case name whether it is a
-        // processor directory and set processorCase flag so file searching
-        // goes up one level.
-        std::string::size_type pos = caseName.find("processor");
-
-        if (pos != string::npos)
-        {
-            processorCase_ = true;
-
-            if (pos == 0)
-            {
-                globalCaseName_ = ".";
-            }
-            else
-            {
-                globalCaseName_ = caseName(pos-1);
-            }
-        }
-    }
-}
+    TimePaths
+    (
+        args.runControl().parRun(),  // processorCase
+        args.rootPath(),
+        args.runControl().distributed(),
+        args.globalCaseName(),
+        args.caseName(),
+        systemDirName,
+        constantDirName
+    )
+{}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-Foam::fileName Foam::TimePaths::caseSystem() const
+Foam::instantList Foam::TimePaths::findTimes
+(
+    const fileName& directory,
+    const word& constantDirName
+)
 {
-    if (processorCase_)
-    {
-        return ".."/system();
-    }
-    else
-    {
-        return system();
-    }
+    return fileHandler().findTimes(directory, constantDirName);
 }
 
 
-Foam::fileName Foam::TimePaths::caseConstant() const
+Foam::instantList Foam::TimePaths::times() const
 {
-    if (processorCase_)
-    {
-        return ".."/constant();
-    }
-    else
-    {
-        return constant();
-    }
+    return findTimes(path(), constant());
 }
 
+
+Foam::word Foam::TimePaths::findInstancePath
+(
+    const UList<instant>& timeDirs,
+    const instant& t
+)
+{
+    // Note:
+    // - timeDirs will include constant (with value 0) as first element.
+    //   For backwards compatibility make sure to find 0 in preference
+    //   to constant.
+    // - list is sorted so could use binary search
+
+    forAllReverse(timeDirs, i)
+    {
+        if (t.equal(timeDirs[i].value()))
+        {
+            return timeDirs[i].name();
+        }
+    }
+
+    return word();
+}
+
+
+// Foam::word Foam::Time::findInstancePath
+// (
+//     const fileName& directory,
+//     const instant& t
+// ) const
+// {
+//     // Simplified version: use findTimes (readDir + sort).
+//     // The expensive bit is the readDir, not the sorting.
+//     // TBD: avoid calling findInstancePath from filePath.
+//
+//     instantList timeDirs = findTimes(directory, constant());
+//
+//     return findInstancePath(timeDirs, i);
+// }
+
+
+Foam::word Foam::TimePaths::findInstancePath(const instant& t) const
+{
+    // Simplified version: use findTimes (readDir + sort).
+    // The expensive bit is the readDir, not the sorting.
+    // TBD: avoid calling findInstancePath from filePath.
+
+    instantList timeDirs = findTimes(path(), constant());
+    return findInstancePath(timeDirs, t);
+}
+
+
+Foam::label Foam::TimePaths::findClosestTimeIndex
+(
+    const UList<instant>& timeDirs,
+    const scalar t,
+    const word& constantDirName
+)
+{
+    const label nTimes = timeDirs.size();
+
+    label nearestIndex = -1;
+    scalar deltaT = GREAT;
+
+    for (label timei=0; timei < nTimes; ++timei)
+    {
+        if (timeDirs[timei].name() == constantDirName) continue;
+
+        const scalar diff = mag(timeDirs[timei].value() - t);
+        if (diff < deltaT)
+        {
+            deltaT = diff;
+            nearestIndex = timei;
+        }
+    }
+
+    return nearestIndex;
+}
+
+
+Foam::instant Foam::TimePaths::findClosestTime(const scalar t) const
+{
+    instantList timeDirs = findTimes(path(), constant());
+
+    const label nTimes = timeDirs.size();
+
+    if (nTimes == 0)
+    {
+        // Cannot really fail at this point, but for some safety...
+        return instant(0, constant());
+    }
+    else if (nTimes == 1)
+    {
+        // Only one time (likely "constant") so return it
+        return timeDirs.front();
+    }
+    else if (t < timeDirs[1].value())
+    {
+        return timeDirs[1];
+    }
+    else if (t > timeDirs.back().value())
+    {
+        return timeDirs.back();
+    }
+
+    label nearestIndex = 0;  // Failsafe value
+    scalar deltaT = GREAT;
+
+    for (label timei=1; timei < nTimes; ++timei)
+    {
+        const scalar diff = mag(timeDirs[timei].value() - t);
+        if (diff < deltaT)
+        {
+            deltaT = diff;
+            nearestIndex = timei;
+        }
+    }
+
+    return timeDirs[nearestIndex];
+}
 
 
 // ************************************************************************* //

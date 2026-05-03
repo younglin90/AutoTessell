@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,13 +27,17 @@ License
 Class
     Foam::uniformFixedGradientFvPatchField
 
+Group
+    grpGenericBoundaryConditions
+
 Description
     This boundary condition provides a uniform fixed gradient condition.
 
 Usage
     \table
-        Property     | Description             | Required    | Default value
-        uniformGradient | uniform gradient     | yes         |
+        Property     | Description                  | Required | Default
+        uniformGradient | uniform gradient          | yes |
+        value        | initial field value          | optional |
     \endtable
 
     Example of the boundary condition specification:
@@ -42,13 +49,18 @@ Usage
     }
     \endverbatim
 
-    Note:
-        The uniformGradient entry is a Function1 type, able to describe time
-        varying functions.  The example above gives the usage for supplying a
-        constant value.
+Note
+    The uniformGradient entry is a PatchFunction1 type,
+    able to describe time and spatial varying functions.
+    The example above gives the usage for supplying a constant value.
+
+    The \c value entry (optional) is used for the initial values.
+    Otherwise the \c uniformGradient is used for the evaluation.
+    In some cases (eg, coded or expression entries with references to other
+    fields) this can be problematic and the \c value entry will be needed.
 
 See also
-    Foam::Function1s
+    Foam::Function1Types
     Foam::fixedGradientFvPatchField
 
 SourceFiles
@@ -56,11 +68,11 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef uniformFixedGradientFvPatchField_H
-#define uniformFixedGradientFvPatchField_H
+#ifndef Foam_uniformFixedGradientFvPatchField_H
+#define Foam_uniformFixedGradientFvPatchField_H
 
 #include "fixedGradientFvPatchFields.H"
-#include "Function1.H"
+#include "PatchFunction1.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -78,8 +90,8 @@ class uniformFixedGradientFvPatchField
 {
     // Private Data
 
-        //- Gradient
-        autoPtr<Function1<Type>> uniformGradient_;
+        //- Function providing the gradient
+        autoPtr<PatchFunction1<Type>> refGradFunc_;
 
 
 public:
@@ -90,63 +102,74 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        uniformFixedGradientFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&
+        );
+
+        //- Construct from patch and internal field and patch field
+        uniformFixedGradientFvPatchField
+        (
+            const fvPatch&,
+            const DimensionedField<Type, volMesh>&,
+            const Field<Type>& fld
+        );
+
         //- Construct from patch, internal field and dictionary
         uniformFixedGradientFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given uniformFixedGradientFvPatchField
-        //  onto a new patch
+        //- Construct by mapping onto a new patch
         uniformFixedGradientFvPatchField
         (
             const uniformFixedGradientFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         uniformFixedGradientFvPatchField
         (
             const uniformFixedGradientFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         uniformFixedGradientFvPatchField
         (
             const uniformFixedGradientFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new uniformFixedGradientFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
-        virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedGradientFvPatchField<Type>::operator=;
+        virtual void write(Ostream& os) const;
 };
 
 

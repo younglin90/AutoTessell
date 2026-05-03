@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,21 +28,22 @@ Class
     Foam::DiagTensor
 
 Description
-    Templated 3D DiagTensor derived from VectorSpace.
+    A templated (3 x 3) diagonal tensor of objects of \<T\>, effectively
+    containing 3 elements, derived from VectorSpace.
 
-    Adding construction from 3 components, element access using xx(), yy()
-    and zz() member functions and the inner-product (dot-product) and
-    outer-product operators.
+See also
+    Test-DiagTensor.C
 
 SourceFiles
     DiagTensorI.H
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef DiagTensor_H
-#define DiagTensor_H
+#ifndef Foam_DiagTensor_H
+#define Foam_DiagTensor_H
 
 #include "Tensor.H"
+#include "SphericalTensor.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                         Class DiagTensor Declaration
+                           Class DiagTensor Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -55,60 +59,88 @@ class DiagTensor
 :
     public VectorSpace<DiagTensor<Cmpt>, Cmpt, 3>
 {
-
 public:
 
-    //- Equivalent type of labels used for valid component indexing
-    typedef DiagTensor<label> labelType;
+    // Typedefs
+
+        //- Equivalent type of labels used for valid component indexing
+        typedef DiagTensor<label> labelType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Rank of DiagTensor is 2
-        static const direction rank = 2;
+        static constexpr direction rank = 2;
 
 
     //- Component labeling enumeration
     enum components { XX, YY, ZZ };
 
 
+    // Generated Methods
+
+        //- Default construct
+        DiagTensor() = default;
+
+        //- Copy construct
+        DiagTensor(const DiagTensor&) = default;
+
+        //- Copy assignment
+        DiagTensor& operator=(const DiagTensor&) = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline DiagTensor();
-
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline DiagTensor(const Foam::zero);
 
         //- Construct given VectorSpace
         template<class Cmpt2>
         inline DiagTensor(const VectorSpace<DiagTensor<Cmpt2>, Cmpt2, 3>&);
 
+        //- Construct given SphericalTensor
+        inline DiagTensor(const SphericalTensor<Cmpt>&);
+
         //- Construct given three components
         inline DiagTensor(const Cmpt& txx, const Cmpt& tyy, const Cmpt& tzz);
 
-        //- Construct from Vector
-        inline explicit DiagTensor(const Vector<Cmpt>& v);
-
         //- Construct from Istream
-        inline DiagTensor(Istream&);
+        inline explicit DiagTensor(Istream& is);
 
 
     // Member Functions
 
-        // Access
+    // Component Access
 
-            inline const Cmpt& xx() const;
-            inline const Cmpt& yy() const;
-            inline const Cmpt& zz() const;
+        const Cmpt& xx() const noexcept { return this->v_[XX]; }
+        const Cmpt& yy() const noexcept { return this->v_[YY]; }
+        const Cmpt& zz() const noexcept { return this->v_[ZZ]; }
 
-            inline Cmpt& xx();
-            inline Cmpt& yy();
-            inline Cmpt& zz();
+        Cmpt& xx() noexcept { return this->v_[XX]; }
+        Cmpt& yy() noexcept { return this->v_[YY]; }
+        Cmpt& zz() noexcept { return this->v_[ZZ]; }
 
-         //- Explicit conversion to Vector
-         explicit inline operator Vector<Cmpt>() const;
+
+    // Diagonal access and manipulation
+
+        //- The L2-norm squared of the diagonal
+        inline scalar diagSqr() const;
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Data are contiguous if component type is contiguous
+template<class Cmpt>
+struct is_contiguous<DiagTensor<Cmpt>> : is_contiguous<Cmpt> {};
+
+//- Data are contiguous label if component type is label
+template<class Cmpt>
+struct is_contiguous_label<DiagTensor<Cmpt>> : is_contiguous_label<Cmpt> {};
+
+//- Data are contiguous scalar if component type is scalar
+template<class Cmpt>
+struct is_contiguous_scalar<DiagTensor<Cmpt>> : is_contiguous_scalar<Cmpt> {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -117,7 +149,6 @@ public:
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-// Include inline implementations
 #include "DiagTensorI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

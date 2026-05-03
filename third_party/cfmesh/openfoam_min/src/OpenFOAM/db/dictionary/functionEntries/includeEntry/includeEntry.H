@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,40 +28,33 @@ Class
     Foam::functionEntries::includeEntry
 
 Description
-    Specify an include file when reading dictionaries.
+    A dictionary directive for including a file, expects a single string
+    to follow.
 
-    The file name is provided as a string in order to support the '/' directory
-    separator and unusual characters as well as the usual expansion of
-    environment variables and other constructs
-    (eg, the \c ~OpenFOAM/ expansion).
-
-    e.g. to include the file \c includeFile from the \c include directory:
+    An example of the \c \#include directive to include a file:
     \verbatim
-        #include "include/includeFile"
+        #include "includeFileMustExist"
     \endverbatim
 
-    Additionally optional arguments may be specified which are available for
-    substitution in the included file e.g.
+    An example of the \c \#sinclude directive to conditionally include a file
+    when it exists.
     \verbatim
-        #include "regionFunctions"(region = heatedWall)
+        #sinclude "includeFileCanBeMissing"
     \endverbatim
 
-    will substitute \c heatedWall for \c $region in the \c regionFunctions file
-
-    \verbatim
-        #includeFunc sample(region = $region)
-    \endverbatim
+    The usual expansion of environment variables and other expansions
+    (eg, a leading "<case>/", "<system>/", "<etc>/", ...) are retained.
 
 See also
-    fileName
+    fileName, string::expand(), functionEntries::sincludeEntry
 
 SourceFiles
     includeEntry.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef includeEntry_H
-#define includeEntry_H
+#ifndef functionEntries_includeEntry_H
+#define functionEntries_includeEntry_H
 
 #include "functionEntry.H"
 
@@ -77,75 +73,33 @@ class includeEntry
 :
     public functionEntry
 {
-    // Private Member Functions
-
-        //- Return the optional named arguments
-        //  temporarily inserted into contextDict
-        List<Tuple3<word, string, label>> insertNamedArgs
-        (
-            dictionary& contextDict,
-            const Tuple2<string, label>& args
-        ) const;
-
-        //- Remove named argument entries from contextDict
-        //  renaming any existing entries which had the same name
-        void removeInsertNamedArgs
-        (
-            dictionary& contextDict,
-            const List<Tuple3<word, string, label>>& namedArgs
-        ) const;
-
-
-
 protected:
 
     // Protected Member Functions
 
-        //- Return the file name
-        const string& fName() const
-        {
-            return operator[](0).stringToken();
-        }
-
-        //- Return the arguments string for processing by insertNamedArgs
-        Tuple2<string, label> args() const
-        {
-            if (size() > 1)
-            {
-                return Tuple2<string, label>
-                (
-                    char(operator[](1).pToken())
-                  + operator[](2).stringToken()
-                  + char(operator[](3).pToken()),
-                    operator[](1).lineNumber()
-                );
-            }
-            else
-            {
-                return Tuple2<string, label>(string::null, 0);
-            }
-        }
-
-        //- Return true if file presence is optional
-        virtual bool includeIfPresent() const
-        {
-            return false;
-        }
-
         //- Expand include fileName and return
-        virtual fileName includeFileName
+        static fileName resolveFile
         (
             const fileName& dir,
-            const fileName&,
-            const dictionary&
-        ) const;
+            const fileName& f,
+            const dictionary& dict
+        );
 
-        //- Expand the functionEntry into the contextEntry
-        virtual bool virtualExecute
+        //- Include file in a sub-dict context
+        static bool execute
         (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
+            const bool mandatory,
+            dictionary& parentDict,
+            Istream& is
+        );
+
+        //- Include file in a primitiveEntry context
+        static bool execute
+        (
+            const bool mandatory,
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
         );
 
 
@@ -153,60 +107,51 @@ public:
 
     // Static Data Members
 
-        //- Report which file is included to stdout
+        //- Report to stdout which file is included
         static bool log;
-
-        //- Runtime type information
-        FunctionTypeName("#include");
-
-
-    // Constructors
-
-        //- Construct from functionType, dictionary and Istream
-        includeEntry
-        (
-            const functionName& functionType,
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Construct from line number, dictionary and Istream
-        includeEntry
-        (
-            const label lineNumber,
-            const dictionary& parentDict,
-            Istream& is
-        );
-
-        //- Copy construct
-        includeEntry(const includeEntry&) = default;
-
-        //- Clone
-        virtual autoPtr<entry> clone(const dictionary&) const
-        {
-            return autoPtr<entry>(new includeEntry(*this));
-        }
 
 
     // Member Functions
 
-        //- Expand the functionEntry into the contextDict
-        virtual bool execute(dictionary& contextDict, Istream&);
+        //- Include file in a sub-dict context
+        static bool execute(dictionary& parentDict, Istream& is);
 
-        //- Expand the functionEntry into the contextEntry
+        //- Include file in a primitiveEntry context
         static bool execute
         (
-            const dictionary& contextDict,
-            primitiveEntry& contextEntry,
-            Istream&
+            const dictionary& parentDict,
+            primitiveEntry& entry,
+            Istream& is
         );
+};
 
 
-    // Member Operators
+/*---------------------------------------------------------------------------*\
+                        Class sincludeEntry Declaration
+\*---------------------------------------------------------------------------*/
 
-        //- Disallow default bitwise assignment
-        void operator=(const includeEntry&) = delete;
+//- A dictionary directive for conditionally including a file,
+//- expects a single string to follow.
+//
+//  The \c \#sinclude directive behaves identically to the
+//  \c \#include directive, but does not generate an error
+//  if the file does not exist.
+class sincludeEntry
+:
+    public includeEntry
+{
+public:
+
+    //- Include file (if it exists) in a sub-dict context
+    static bool execute(dictionary& parentDict, Istream& is);
+
+    //- Include file (if it exists) in a primitiveEntry context
+    static bool execute
+    (
+        const dictionary& parentDict,
+        primitiveEntry& entry,
+        Istream& is
+    );
 };
 
 

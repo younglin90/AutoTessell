@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,9 +28,10 @@ License
 
 #include "pressureNormalInletOutletVelocityFvPatchVectorField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "volFields.H"
 #include "surfaceFields.H"
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -35,18 +39,13 @@ Foam::pressureNormalInletOutletVelocityFvPatchVectorField::
 pressureNormalInletOutletVelocityFvPatchVectorField
 (
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<vector, volMesh>& iF
 )
 :
-    mixedFvPatchVectorField(p, iF, dict, false),
-    phiName_(dict.lookupOrDefault<word>("phi", "phi")),
-    rhoName_(dict.lookupOrDefault<word>("rho", "rho"))
+    mixedFvPatchVectorField(p, iF),
+    phiName_("phi"),
+    rhoName_("rho")
 {
-    fvPatchVectorField::operator=
-    (
-        vectorField("value", iF.dimensions(), dict, p.size())
-    );
     refValue() = *this;
     refGrad() = Zero;
     valueFraction() = 0.0;
@@ -58,8 +57,8 @@ pressureNormalInletOutletVelocityFvPatchVectorField
 (
     const pressureNormalInletOutletVelocityFvPatchVectorField& ptf,
     const fvPatch& p,
-    const DimensionedField<vector, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<vector, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     mixedFvPatchVectorField(ptf, p, iF, mapper),
@@ -71,8 +70,40 @@ pressureNormalInletOutletVelocityFvPatchVectorField
 Foam::pressureNormalInletOutletVelocityFvPatchVectorField::
 pressureNormalInletOutletVelocityFvPatchVectorField
 (
+    const fvPatch& p,
+    const DimensionedField<vector, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    mixedFvPatchVectorField(p, iF),
+    phiName_(dict.getOrDefault<word>("phi", "phi")),
+    rhoName_(dict.getOrDefault<word>("rho", "rho"))
+{
+    fvPatchFieldBase::readDict(dict);
+    this->readValueEntry(dict, IOobjectOption::MUST_READ);
+    refValue() = *this;
+    refGrad() = Zero;
+    valueFraction() = 0.0;
+}
+
+
+Foam::pressureNormalInletOutletVelocityFvPatchVectorField::
+pressureNormalInletOutletVelocityFvPatchVectorField
+(
+    const pressureNormalInletOutletVelocityFvPatchVectorField& pivpvf
+)
+:
+    mixedFvPatchVectorField(pivpvf),
+    phiName_(pivpvf.phiName_),
+    rhoName_(pivpvf.rhoName_)
+{}
+
+
+Foam::pressureNormalInletOutletVelocityFvPatchVectorField::
+pressureNormalInletOutletVelocityFvPatchVectorField
+(
     const pressureNormalInletOutletVelocityFvPatchVectorField& pivpvf,
-    const DimensionedField<vector, fvMesh>& iF
+    const DimensionedField<vector, volMesh>& iF
 )
 :
     mixedFvPatchVectorField(pivpvf, iF),
@@ -90,23 +121,18 @@ void Foam::pressureNormalInletOutletVelocityFvPatchVectorField::updateCoeffs()
         return;
     }
 
-    const surfaceScalarField& phi =
-        db().lookupObject<surfaceScalarField>(phiName_);
-
-    const fvsPatchField<scalar>& phip =
-        patch().patchField<surfaceScalarField, scalar>(phi);
+    const auto& phip = patch().lookupPatchField<surfaceScalarField>(phiName_);
 
     tmp<vectorField> n = patch().nf();
     const Field<scalar>& magS = patch().magSf();
 
-    if (phi.dimensions() == dimVolumetricFlux)
+    if (phip.internalField().dimensions() == dimVolume/dimTime)
     {
         refValue() = n*phip/magS;
     }
-    else if (phi.dimensions() == dimMassFlux)
+    else if (phip.internalField().dimensions() == dimMass/dimTime)
     {
-        const fvPatchField<scalar>& rhop =
-            patch().lookupPatchField<volScalarField, scalar>(rhoName_);
+        const auto& rhop = patch().lookupPatchField<volScalarField>(rhoName_);
 
         refValue() = n*phip/(rhop*magS);
     }
@@ -131,10 +157,10 @@ void Foam::pressureNormalInletOutletVelocityFvPatchVectorField::write
     Ostream& os
 ) const
 {
-    fvPatchVectorField::write(os);
-    writeEntry(os, "phi", phiName_);
-    writeEntry(os, "rho", rhoName_);
-    writeEntry(os, "value", *this);
+    fvPatchField<vector>::write(os);
+    os.writeEntry("phi", phiName_);
+    os.writeEntry("rho", rhoName_);
+    fvPatchField<vector>::writeValueEntry(os);
 }
 
 
@@ -145,10 +171,11 @@ void Foam::pressureNormalInletOutletVelocityFvPatchVectorField::operator=
     const fvPatchField<vector>& pvf
 )
 {
+    tmp<vectorField> n = patch().nf();
+
     fvPatchField<vector>::operator=
     (
-        valueFraction()*(patch().nf()*(patch().nf() & pvf))
-      + (1 - valueFraction())*pvf
+        lerp(pvf, n()*(n() & pvf), valueFraction())
     );
 }
 

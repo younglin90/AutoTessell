@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::freestreamVelocityFvPatchVectorField
 
+Group
+    grpInletBoundaryConditions grpOutletBoundaryConditions
+
 Description
     This boundary condition provides a free-stream condition for velocity.
 
@@ -31,16 +36,13 @@ Description
     continuously blend between fixed value for normal inlet and zero gradient
     for normal outlet flow.
 
-    The \c freestreamValue can be specified as a uniform value, a field or a
-    function.
-
 Usage
     \table
         Property        | Description             | Required    | Default value
         freestreamValue | freestream velocity     | yes         |
     \endtable
 
-    Example of the boundary condition specification with uniform freestream:
+    Example of the boundary condition specification:
     \verbatim
     <patchName>
     {
@@ -49,27 +51,10 @@ Usage
     }
     \endverbatim
 
-    Example of the boundary condition specification for an
-    atmospheric boundary layer:
-    \verbatim
-    <patchName>
-    {
-        type            freestreamVelocity;
-        freestreamValue
-        {
-            type            atmosphericBoundaryLayerVelocity;
-            libs            ("libatmosphericModels.so");
-        }
-    }
-    \endverbatim
-
-    Note:
-        This condition is designed to operate with the freestreamPressure
-        condition
+Note
+    This condition is designed to operate with the freestreamPressure condition
 
 See also
-    Foam::DimensionedFieldFunction
-    Foam::UFunctionalDimensionedField
     Foam::mixedFvPatchField
     Foam::freestreamFvPatchField
 
@@ -81,8 +66,8 @@ SourceFiles
 #ifndef freestreamVelocityFvPatchVectorField_H
 #define freestreamVelocityFvPatchVectorField_H
 
+#include "fvPatchFields.H"
 #include "mixedFvPatchFields.H"
-#include "UFunctionalDimensionedField.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -90,19 +75,13 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-            Class freestreamVelocityFvPatchVectorField Declaration
+             Class freestreamVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class freestreamVelocityFvPatchVectorField
 :
     public mixedFvPatchVectorField
 {
-    // Private Data
-
-        //- DimensionedField and function for the freestream value
-        UFunctionalDimensionedField<vector, fvPatch>
-            dimensionedFreestreamValue_;
-
 
 public:
 
@@ -112,11 +91,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        freestreamVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         freestreamVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -126,73 +112,53 @@ public:
         (
             const freestreamVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         freestreamVelocityFvPatchVectorField
         (
             const freestreamVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         freestreamVelocityFvPatchVectorField
         (
             const freestreamVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new freestreamVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
     // Member Functions
 
-            const vectorField& freestreamValue() const
-            {
-                return refValue();
-            }
+        //- Same as refValue()
+        const vectorField& freestreamValue() const { return refValue(); }
 
-            vectorField& freestreamValue()
-            {
-                return refValue();
-            }
+        //- Same as refValue()
+        vectorField& freestreamValue() { return refValue(); }
 
 
-        // Mapping functions
-
-            //- Map the given fvPatchField onto this fvPatchField
-            virtual void map(const fvPatchVectorField&, const fieldMapper&);
-
-            //- Reset the fvPatchField to the given fvPatchField
-            //  Used for mesh to mesh mapping
-            virtual void reset(const fvPatchVectorField&);
-
-
-        // Evaluation functions
-
-            //- Update the coefficients associated with the patch field
-            virtual void updateCoeffs();
-
+        //- Update the coefficients associated with the patch field
+        virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using mixedFvPatchVectorField::operator=;
 };
 
 

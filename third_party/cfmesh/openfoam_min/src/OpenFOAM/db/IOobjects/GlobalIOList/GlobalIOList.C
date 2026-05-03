@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,203 +30,126 @@ License
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
-(
-    const IOobject& io
-)
+template<class Type>
+Foam::GlobalIOList<Type>::GlobalIOList(const IOobject& io)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    warnNoRereading<IOContainer<Type>>();
+    warnNoRereading<GlobalIOList<Type>>();
 
-    readHeaderOk(IOstream::BINARY, IOContainer<Type>::typeName);
+    readHeaderOk(IOstreamOption::BINARY, typeName);
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
-(
-    const IOobject& io,
-    const label size
-)
+template<class Type>
+Foam::GlobalIOList<Type>::GlobalIOList(const IOobject& io, Foam::zero)
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    warnNoRereading<IOContainer<Type>>();
+    warnNoRereading<GlobalIOList<Type>>();
 
-    if (!readHeaderOk(IOstream::BINARY, IOContainer<Type>::typeName))
+    readHeaderOk(IOstreamOption::BINARY, typeName);
+}
+
+
+template<class Type>
+Foam::GlobalIOList<Type>::GlobalIOList(const IOobject& io, const label len)
+:
+    regIOobject(io)
+{
+    // Check for MUST_READ_IF_MODIFIED
+    warnNoRereading<GlobalIOList<Type>>();
+
+    if (!readHeaderOk(IOstreamOption::BINARY, typeName))
     {
-        Container<Type>::setSize(size);
+        List<Type>::resize(len);
     }
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
+template<class Type>
+Foam::GlobalIOList<Type>::GlobalIOList
 (
     const IOobject& io,
-    const Container<Type>& f
+    const UList<Type>& content
 )
 :
     regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    warnNoRereading<IOContainer<Type>>();
+    warnNoRereading<GlobalIOList<Type>>();
 
-    if (!readHeaderOk(IOstream::BINARY, IOContainer<Type>::typeName))
+    if (!readHeaderOk(IOstreamOption::BINARY, typeName))
     {
-        Container<Type>::operator=(f);
+        List<Type>::operator=(content);
     }
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
+template<class Type>
+Foam::GlobalIOList<Type>::GlobalIOList
 (
     const IOobject& io,
-    Container<Type>&& f
+    List<Type>&& content
 )
 :
-    regIOobject(io),
-    Container<Type>(move(f))
-
+    regIOobject(io)
 {
     // Check for MUST_READ_IF_MODIFIED
-    warnNoRereading<IOContainer<Type>>();
+    warnNoRereading<GlobalIOList<Type>>();
 
-    readHeaderOk(IOstream::BINARY, IOContainer<Type>::typeName);
+    List<Type>::transfer(content);
+
+    readHeaderOk(IOstreamOption::BINARY, typeName);
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
-(
-    const GlobalIOListBase<Container, IOContainer, Type>& field
-)
-:
-    regIOobject(field),
-    Container<Type>(field)
-{}
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
+template<class Type>
+Foam::List<Type> Foam::GlobalIOList<Type>::readContents(const IOobject& io)
+{
+    IOobject rio(io, IOobjectOption::NO_REGISTER);
+    if (rio.readOpt() == IOobjectOption::READ_MODIFIED)
+    {
+        rio.readOpt(IOobjectOption::MUST_READ);
+    }
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::GlobalIOListBase
-(
-    GlobalIOListBase<Container, IOContainer, Type>&& field
-)
-:
-    regIOobject(move(field)),
-    Container<Type>(move(field))
-{}
+    // The object is global
+    rio.globalObject(true);
 
+    GlobalIOList<Type> reader(rio);
 
-// * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * * //
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-Foam::GlobalIOListBase<Container, IOContainer, Type>::~GlobalIOListBase()
-{}
+    return List<Type>(std::move(static_cast<List<Type>&>(reader)));
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-bool Foam::GlobalIOListBase<Container, IOContainer, Type>::readData
-(
-    Istream& is
-)
+template<class Type>
+bool Foam::GlobalIOList<Type>::readData(Istream& is)
 {
     is >> *this;
     return is.good();
 }
 
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-bool Foam::GlobalIOListBase<Container, IOContainer, Type>::writeData
-(
-    Ostream& os
-) const
+template<class Type>
+bool Foam::GlobalIOList<Type>::writeData(Ostream& os) const
 {
-    return (os << *this).good();
+    os << static_cast<const List<Type>&>(*this);
+    return os.good();
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-void Foam::GlobalIOListBase<Container, IOContainer, Type>::operator=
-(
-    const GlobalIOListBase<Container, IOContainer, Type>& rhs
-)
+template<class Type>
+void Foam::GlobalIOList<Type>::operator=(const GlobalIOList<Type>& rhs)
 {
-    Container<Type>::operator=(rhs);
-}
-
-
-template
-<
-    template<class> class Container,
-    template<class> class IOContainer,
-    class Type
->
-void Foam::GlobalIOListBase<Container, IOContainer, Type>::operator=
-(
-    GlobalIOListBase<Container, IOContainer, Type>&& rhs
-)
-{
-    Container<Type>::operator=(move(rhs));
+    List<Type>::operator=(rhs);
 }
 
 

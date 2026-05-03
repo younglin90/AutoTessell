@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2024 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -40,41 +42,52 @@ namespace fv
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateD2dt2Scheme<Type>::fvcD2dt2
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>
     (
-        "d2dt2("+vf.name()+')',
-        mesh(),
-        dimensioned<Type>
+        new GeometricField<Type, fvPatchField, volMesh>
         (
-            "0",
-            vf.dimensions()/dimTime/dimTime,
-            Zero
+            IOobject
+            (
+                "d2dt2("+vf.name()+')',
+                mesh().time().timeName(),
+                mesh().thisDb(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE
+            ),
+            mesh(),
+            dimensioned<Type>(vf.dimensions()/dimTime/dimTime, Zero)
         )
     );
 }
 
 
 template<class Type>
-tmp<VolField<Type>>
+tmp<GeometricField<Type, fvPatchField, volMesh>>
 steadyStateD2dt2Scheme<Type>::fvcD2dt2
 (
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    return VolField<Type>::New
+    return tmp<GeometricField<Type, fvPatchField, volMesh>>::New
     (
-        "d2dt2("+rho.name()+','+vf.name()+')',
+        IOobject
+        (
+            "d2dt2("+rho.name()+','+vf.name()+')',
+            mesh().time().timeName(),
+            mesh().thisDb(),
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
         mesh(),
         dimensioned<Type>
         (
-            "0",
             rho.dimensions()*vf.dimensions()/dimTime/dimTime,
             Zero
         )
@@ -86,7 +99,7 @@ template<class Type>
 tmp<fvMatrix<Type>>
 steadyStateD2dt2Scheme<Type>::fvmD2dt2
 (
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     tmp<fvMatrix<Type>> tfvm
@@ -94,7 +107,7 @@ steadyStateD2dt2Scheme<Type>::fvmD2dt2
         new fvMatrix<Type>
         (
             vf,
-            vf.dimensions()*dimVolume/dimTime/dimTime
+            vf.dimensions()*dimVol/dimTime/dimTime
         )
     );
 
@@ -107,7 +120,7 @@ tmp<fvMatrix<Type>>
 steadyStateD2dt2Scheme<Type>::fvmD2dt2
 (
     const dimensionedScalar& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     tmp<fvMatrix<Type>> tfvm
@@ -115,7 +128,7 @@ steadyStateD2dt2Scheme<Type>::fvmD2dt2
         new fvMatrix<Type>
         (
             vf,
-            rho.dimensions()*vf.dimensions()*dimVolume/dimTime/dimTime
+            rho.dimensions()*vf.dimensions()*dimVol/dimTime/dimTime
         )
     );
 
@@ -128,7 +141,7 @@ tmp<fvMatrix<Type>>
 steadyStateD2dt2Scheme<Type>::fvmD2dt2
 (
     const volScalarField& rho,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     tmp<fvMatrix<Type>> tfvm
@@ -136,7 +149,7 @@ steadyStateD2dt2Scheme<Type>::fvmD2dt2
         new fvMatrix<Type>
         (
             vf,
-            rho.dimensions()*vf.dimensions()*dimVolume/dimTime/dimTime
+            rho.dimensions()*vf.dimensions()*dimVol/dimTime/dimTime
         )
     );
 

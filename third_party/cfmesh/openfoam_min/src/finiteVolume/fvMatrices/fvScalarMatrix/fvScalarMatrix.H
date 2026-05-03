@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2013 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,8 +34,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef fvScalarMatrix_H
-#define fvScalarMatrix_H
+#ifndef Foam_fvScalarMatrix_H
+#define Foam_fvScalarMatrix_H
 
 #include "fvMatrix.H"
 #include "fvMatricesFwd.H"
@@ -57,22 +59,13 @@ void fvMatrix<scalar>::setComponentReference
 );
 
 template<>
-autoPtr<fvMatrix<scalar>::fvSolver> fvMatrix<scalar>::solver
-(
-    const dictionary&
-);
+autoPtr<fvMatrix<scalar>::fvSolver> fvMatrix<scalar>::solver(const dictionary&);
 
 template<>
-solverPerformance fvMatrix<scalar>::fvSolver::solve
-(
-    const dictionary&
-);
+solverPerformance fvMatrix<scalar>::fvSolver::solve(const dictionary&);
 
 template<>
-solverPerformance fvMatrix<scalar>::solveSegregated
-(
-    const dictionary&
-);
+solverPerformance fvMatrix<scalar>::solveSegregated(const dictionary&);
 
 template<>
 tmp<scalarField> fvMatrix<scalar>::residual() const;

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -105,7 +108,7 @@ const Foam::labelList& Foam::primitiveMesh::pointPoints
     DynamicList<label>& storage
 ) const
 {
-    if (ppPtr_)
+    if (hasPointPoints())
     {
         return pointPoints()[pointi];
     }
@@ -116,14 +119,14 @@ const Foam::labelList& Foam::primitiveMesh::pointPoints
 
         storage.clear();
 
-        if (pEdges.size() > storage.capacity())
+        if (storage.capacity() < pEdges.size())
         {
             storage.setCapacity(pEdges.size());
         }
 
-        forAll(pEdges, i)
+        for (const label edgei : pEdges)
         {
-            storage.append(edges[pEdges[i]].otherVertex(pointi));
+            storage.push_back(edges[edgei].otherVertex(pointi));
         }
 
         return storage;
@@ -139,7 +142,5 @@ const Foam::labelList& Foam::primitiveMesh::pointPoints
     return pointPoints(pointi, labels_);
 }
 
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 // ************************************************************************* //

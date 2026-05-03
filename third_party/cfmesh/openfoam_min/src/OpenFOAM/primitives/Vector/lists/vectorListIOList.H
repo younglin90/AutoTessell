@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,16 +23,10 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Typedef
-    Foam::vectorListIOList
-
-Description
-    Lists of vectors container class
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef vectorListIOList_H
-#define vectorListIOList_H
+#ifndef Foam_vectorListIOList_H
+#define Foam_vectorListIOList_H
 
 #include "vectorList.H"
 #include "CompactIOList.H"
@@ -39,8 +35,11 @@ Description
 
 namespace Foam
 {
+    //! IO for a List of vectorList
     typedef IOList<vectorList> vectorListIOList;
-    typedef CompactIOList<vectorList> vectorListCompactIOList;
+
+    //! Compact IO for a List of vectorList
+    typedef CompactIOList<vectorList, vector> vectorListCompactIOList;
 }
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

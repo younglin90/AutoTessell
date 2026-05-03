@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2018-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ License
 
 #include "fixedPressureCompressibleDensityFvPatchScalarField.H"
 #include "addToRunTimeSelectionTable.H"
-#include "fieldMapper.H"
+#include "fvPatchFieldMapper.H"
 #include "surfaceFields.H"
 #include "volFields.H"
 
@@ -35,12 +38,11 @@ Foam::fixedPressureCompressibleDensityFvPatchScalarField::
 fixedPressureCompressibleDensityFvPatchScalarField
 (
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const dictionary& dict
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
-    fixedValueFvPatchField<scalar>(p, iF, dict),
-    pName_(dict.lookupOrDefault<word>("p", "p"))
+    fixedValueFvPatchField<scalar>(p, iF),
+    pName_("p")
 {}
 
 
@@ -49,8 +51,8 @@ fixedPressureCompressibleDensityFvPatchScalarField
 (
     const fixedPressureCompressibleDensityFvPatchScalarField& ptf,
     const fvPatch& p,
-    const DimensionedField<scalar, fvMesh>& iF,
-    const fieldMapper& mapper
+    const DimensionedField<scalar, volMesh>& iF,
+    const fvPatchFieldMapper& mapper
 )
 :
     fixedValueFvPatchField<scalar>(ptf, p, iF, mapper),
@@ -61,8 +63,32 @@ fixedPressureCompressibleDensityFvPatchScalarField
 Foam::fixedPressureCompressibleDensityFvPatchScalarField::
 fixedPressureCompressibleDensityFvPatchScalarField
 (
+    const fvPatch& p,
+    const DimensionedField<scalar, volMesh>& iF,
+    const dictionary& dict
+)
+:
+    fixedValueFvPatchField<scalar>(p, iF, dict),
+    pName_(dict.getOrDefault<word>("p", "p"))
+{}
+
+
+Foam::fixedPressureCompressibleDensityFvPatchScalarField::
+fixedPressureCompressibleDensityFvPatchScalarField
+(
+    const fixedPressureCompressibleDensityFvPatchScalarField& ptf
+)
+:
+    fixedValueFvPatchField<scalar>(ptf),
+    pName_(ptf.pName_)
+{}
+
+
+Foam::fixedPressureCompressibleDensityFvPatchScalarField::
+fixedPressureCompressibleDensityFvPatchScalarField
+(
     const fixedPressureCompressibleDensityFvPatchScalarField& ptf,
-    const DimensionedField<scalar, fvMesh>& iF
+    const DimensionedField<scalar, volMesh>& iF
 )
 :
     fixedValueFvPatchField<scalar>(ptf, iF),
@@ -79,19 +105,16 @@ void Foam::fixedPressureCompressibleDensityFvPatchScalarField::updateCoeffs()
         return;
     }
 
-    const fvPatchField<scalar>& pp =
-        patch().lookupPatchField<volScalarField, scalar>(pName_);
+    const auto& pp = patch().lookupPatchField<volScalarField>(pName_);
 
     const dictionary& thermoProps =
         db().lookupObject<IOdictionary>("thermodynamicProperties");
 
-    const scalar rholSat =
-        dimensionedScalar(thermoProps.lookup("rholSat")).value();
+    const scalar rholSat = dimensionedScalar("rholSat", thermoProps).value();
 
-    const scalar pSat =
-        dimensionedScalar(thermoProps.lookup("pSat")).value();
+    const scalar pSat = dimensionedScalar("pSat", thermoProps).value();
 
-    const scalar psil = dimensionedScalar(thermoProps.lookup("psil")).value();
+    const scalar psil = dimensionedScalar("psil", thermoProps).value();
 
     operator==(rholSat + psil*(pp - pSat));
 
@@ -105,8 +128,8 @@ void Foam::fixedPressureCompressibleDensityFvPatchScalarField::write
 ) const
 {
     fvPatchField<scalar>::write(os);
-    writeEntryIfDifferent<word>(os, "p", "p", pName_);
-    writeEntry(os, "value", *this);
+    os.writeEntryIfDifferent<word>("p", "p", pName_);
+    fvPatchField<scalar>::writeValueEntry(os);
 }
 
 

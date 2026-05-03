@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,45 +28,87 @@ License
 
 #include "MeshedSurface.H"
 #include "UnsortedMeshedSurface.H"
+#include "ListOps.H"
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
 template<class Face>
 Foam::autoPtr<Foam::MeshedSurface<Face>>
-Foam::MeshedSurface<Face>::New(const fileName& name, const word& ext)
+Foam::MeshedSurface<Face>::New
+(
+    const fileName& name,
+    const word& fileType,
+    bool mandatory
+)
 {
-    if (debug)
-    {
-        InfoInFunction << "Constructing MeshedSurface" << endl;
-    }
+    const word ext(name.ext());
 
-    typename fileExtensionConstructorTable::iterator cstrIter =
-        fileExtensionConstructorTablePtr_->find(ext);
-
-    if (cstrIter == fileExtensionConstructorTablePtr_->end())
+    if (fileType.empty())
     {
-        // no direct reader, delegate if possible
-        wordHashSet supported = FriendType::readTypes();
-        if (supported.found(ext))
+        // Handle empty/missing type
+
+        if (ext.empty())
         {
-            // create indirectly
-            autoPtr<MeshedSurface<Face>> surf(new MeshedSurface<Face>);
-            surf().transfer(FriendType::New(name, ext)());
-
-            return surf;
+            FatalErrorInFunction
+                << "Cannot determine format from filename" << nl
+                << "    " << name << nl
+                << exit(FatalError);
         }
 
-        // nothing left to try, issue error
-        supported += readTypes();
+        return New(name, ext, mandatory);
+    }
+    else if (fileType == "gz")
+    {
+        // Degenerate call
+        return New(name.lessExt(), name.stem().ext(), mandatory);
+    }
+    else if (ext == "gz")
+    {
+        // Handle trailing "gz" on file name
+        return New(name.lessExt(), fileType, mandatory);
+    }
 
+    // if (check && !exists(name))
+    // {
+    //     FatalErrorInFunction
+    //         << "No such file " << name << nl
+    //         << exit(FatalError);
+    // }
+
+
+    DebugInFunction
+        << "Construct MeshedSurface (" << fileType << ")\n";
+
+    auto* ctorPtr = fileExtensionConstructorTable(fileType);
+
+    if (ctorPtr)
+    {
+        return autoPtr<MeshedSurface<Face>>(ctorPtr(name));
+    }
+
+
+    // Delegate to friend if possible
+    const wordHashSet delegate(FriendType::readTypes());
+
+    if (delegate.found(fileType))
+    {
+        // OK, can create indirectly
+        auto surf = autoPtr<MeshedSurface<Face>>::New();
+        surf->transfer(*FriendType::New(name, fileType));
+
+        return surf;
+    }
+    else if (mandatory)
+    {
         FatalErrorInFunction
-            << "Unknown file extension " << ext << nl << nl
-            << "Valid types are :" << nl
-            << supported
+            << "Unknown surface format " << fileType << nl << nl
+            << "Valid types:" << nl
+            << flatOutput((delegate | readTypes()).sortedToc()) << nl
             << exit(FatalError);
     }
 
-    return autoPtr<MeshedSurface<Face>>(cstrIter()(name));
+    // Failed, but was optional
+    return nullptr;
 }
 
 
@@ -71,12 +116,13 @@ template<class Face>
 Foam::autoPtr<Foam::MeshedSurface<Face>>
 Foam::MeshedSurface<Face>::New(const fileName& name)
 {
-    word ext = name.ext();
-    if (ext == "gz")
+    if (name.has_ext("gz"))
     {
-        ext = name.lessExt().ext();
+        // Handle trailing "gz" on file name
+        return New(name.lessExt(), name.stem().ext());
     }
-    return New(name, ext);
+
+    return New(name, name.ext());
 }
 
 

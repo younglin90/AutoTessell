@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ Class
     Foam::GAMGInterface
 
 Description
-     Abstract base class for GAMG agglomerated interfaces.
+    Abstract base class for GAMG agglomerated interfaces.
 
 SourceFiles
     GAMGInterface.C
@@ -46,14 +49,13 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class GAMGInterface Declaration
+                      Class GAMGInterface Declaration
 \*---------------------------------------------------------------------------*/
 
 class GAMGInterface
 :
     public lduInterface
 {
-
 protected:
 
     // Protected data
@@ -69,6 +71,15 @@ protected:
 
         //- Face restrict addressing
         labelList faceRestrictAddressing_;
+
+
+    // Protected Member Functions
+
+        //- No copy construct
+        GAMGInterface(const GAMGInterface&) = delete;
+
+        //- No copy assignment
+        void operator=(const GAMGInterface&) = delete;
 
 
 public:
@@ -186,8 +197,25 @@ public:
             Istream& is
         );
 
-        //- Disallow default bitwise copy construction
-        GAMGInterface(const GAMGInterface&) = delete;
+        //- Construct by assembling and return a clone.
+        virtual autoPtr<GAMGInterface> clone
+        (
+            const label index,
+            const lduInterfacePtrsList& coarseInterfaces,
+            const labelList& interfaceMap,  // current to fine interface
+            const labelUList& faceCells,
+            const labelUList& faceRestrictAddresssing,
+            const labelUList& faceOffsets,
+            const lduInterfacePtrsList& allInterfaces,
+            const label coarseComm,
+            const label myProcNo,
+            const labelList& procAgglomMap
+        ) const
+        {
+            NotImplemented;
+            return nullptr;
+        }
+
 
 
     // Member Functions
@@ -235,6 +263,15 @@ public:
                 const UList<Type>& internalData
             ) const;
 
+            //- Return the interface internal field of the given field
+            //- using faceCell mapping
+            template<class Type>
+            tmp<Field<Type>> interfaceInternalField
+            (
+                const UList<Type>& internalData,
+                const labelUList& faceCells
+            ) const;
+
             //- Get the interface internal field of the given field
             template<class Type>
             void interfaceInternalField
@@ -248,6 +285,14 @@ public:
             virtual tmp<labelField> interfaceInternalField
             (
                 const labelUList& internalData
+            ) const;
+
+            //- Return the values of the given internal data adjacent to
+            //- the interface as a field using faceCell mapping
+            virtual tmp<labelField> interfaceInternalField
+            (
+                const labelUList& internalData,
+                const labelUList& faceCells
             ) const;
 
 
@@ -269,12 +314,6 @@ public:
 
             //- Write to stream
             virtual void write(Ostream&) const = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const GAMGInterface&) = delete;
 };
 
 

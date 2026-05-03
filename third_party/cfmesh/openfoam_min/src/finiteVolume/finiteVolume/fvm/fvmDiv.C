@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -27,8 +29,6 @@ License
 #include "fvMesh.H"
 #include "fvMatrix.H"
 #include "convectionScheme.H"
-#include "fvmSup.H"
-#include "fvcDiv.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -47,7 +47,7 @@ tmp<fvMatrix<Type>>
 div
 (
     const surfaceScalarField& flux,
-    const VolField<Type>& vf,
+    const GeometricField<Type, fvPatchField, volMesh>& vf,
     const word& name
 )
 {
@@ -55,7 +55,7 @@ div
     (
         vf.mesh(),
         flux,
-        vf.mesh().schemes().div(name)
+        vf.mesh().divScheme(name)
     )().fvmDiv(flux, vf);
 }
 
@@ -64,13 +64,13 @@ tmp<fvMatrix<Type>>
 div
 (
     const tmp<surfaceScalarField>& tflux,
-    const VolField<Type>& vf,
+    const GeometricField<Type, fvPatchField, volMesh>& vf,
     const word& name
 )
 {
-    tmp<fvMatrix<Type>> tdiv(fvm::div(tflux(), vf, name));
+    tmp<fvMatrix<Type>> Div(fvm::div(tflux(), vf, name));
     tflux.clear();
-    return tdiv;
+    return Div;
 }
 
 
@@ -79,7 +79,7 @@ tmp<fvMatrix<Type>>
 div
 (
     const surfaceScalarField& flux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
     return fvm::div(flux, vf, "div("+flux.name()+','+vf.name()+')');
@@ -90,35 +90,12 @@ tmp<fvMatrix<Type>>
 div
 (
     const tmp<surfaceScalarField>& tflux,
-    const VolField<Type>& vf
+    const GeometricField<Type, fvPatchField, volMesh>& vf
 )
 {
-    tmp<fvMatrix<Type>> tdiv(fvm::div(tflux(), vf));
+    tmp<fvMatrix<Type>> Div(fvm::div(tflux(), vf));
     tflux.clear();
-    return tdiv;
-}
-
-
-template<class Type>
-tmp<fvMatrix<Type>>
-divc
-(
-    const tmp<SurfaceField<Type>>& tflux,
-    const VolField<Type>& vf
-)
-{
-    tmp<fvMatrix<Type>> tdivc(fvm::Su(fvc::div(tflux()), vf));
-
-    if (vf.mesh().schemes().fluxRequired(vf.name()))
-    {
-        tdivc.ref().faceFluxCorrectionPtr() = tflux.ptr();
-    }
-    else
-    {
-        tflux.clear();
-    }
-
-    return tdivc;
+    return Div;
 }
 
 

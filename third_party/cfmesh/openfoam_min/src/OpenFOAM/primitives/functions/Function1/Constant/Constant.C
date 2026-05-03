@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2015-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,74 +27,99 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Constant.H"
-#include "unitSet.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 template<class Type>
-Foam::Function1s::Constant<Type>::Constant
+Foam::Function1Types::Constant<Type>::Constant
 (
-    const word& name,
-    const Type& val
+    const word& entryName,
+    const Type& value,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, Constant<Type>>(name),
-    value_(val)
+    Function1<Type>(entryName, obrPtr),
+    value_(value)
 {}
 
 
 template<class Type>
-Foam::Function1s::Constant<Type>::Constant
+Foam::Function1Types::Constant<Type>::Constant
 (
-    const word& name,
-    const unitSets& units,
-    const dictionary& dict
+    const word& entryName,
+    const dictionary& dict,
+    const objectRegistry* obrPtr
 )
 :
-    FieldFunction1<Type, Constant<Type>>(name),
-    value_(dict.lookup<Type>("value", typeUnits<Type>(units.value)))
-{}
+    Function1<Type>(entryName, dict, obrPtr),
+    value_(Zero)
+{
+    const entry* eptr = dict.findEntry(entryName, keyType::LITERAL);
+
+    if (eptr && eptr->isStream())
+    {
+        // Primitive (inline) format. Eg,
+        // - key constant 1.2;
+        // - key 1.2;
+
+        ITstream& is = eptr->stream();
+        if (is.peek().isWord())
+        {
+            is.skip();  // Discard leading 'constant'
+        }
+        is >> value_;
+        dict.checkITstream(is, entryName);
+    }
+    else
+    {
+        // Dictionary format. Eg,
+        // key { type constant; value 1.2; }
+
+        dict.readEntry("value", value_);
+    }
+}
 
 
 template<class Type>
-Foam::Function1s::Constant<Type>::Constant
+Foam::Function1Types::Constant<Type>::Constant
 (
-    const word& name,
-    const unitSets& units,
+    const word& entryName,
     Istream& is
 )
 :
-    FieldFunction1<Type, Constant<Type>>(name),
-    value_(readAndConvert<Type>(is, typeUnits<Type>(units.value)))
+    Function1<Type>(entryName),
+    value_(pTraits<Type>(is))
 {}
 
 
 template<class Type>
-Foam::Function1s::Constant<Type>::Constant(const Constant<Type>& cnst)
+Foam::Function1Types::Constant<Type>::Constant(const Constant<Type>& rhs)
 :
-    FieldFunction1<Type, Constant<Type>>(cnst),
-    value_(cnst.value_)
-{}
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-template<class Type>
-Foam::Function1s::Constant<Type>::~Constant()
+    Function1<Type>(rhs),
+    value_(rhs.value_)
 {}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Type>
-void Foam::Function1s::Constant<Type>::write
+Foam::tmp<Foam::Field<Type>> Foam::Function1Types::Constant<Type>::value
 (
-    Ostream& os,
-    const unitSets& units
+    const scalarField& x
 ) const
 {
-    writeEntry(os, "value", typeUnits<Type>(units.value), value_);
+    return tmp<Field<Type>>::New(x.size(), value_);
 }
 
 
-// ************************************************************************* i/
+template<class Type>
+void Foam::Function1Types::Constant<Type>::writeData(Ostream& os) const
+{
+    Function1<Type>::writeData(os);
+
+    os  << token::SPACE << value_;
+    os.endEntry();
+}
+
+
+// ************************************************************************* //

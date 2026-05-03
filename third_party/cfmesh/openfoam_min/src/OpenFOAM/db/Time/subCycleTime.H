@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2014 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -48,26 +50,46 @@ namespace Foam
 
 class subCycleTime
 {
-    // Private Data
+    // Private data
 
+        //- Reference to the underlying time
         Time& time_;
 
-        label nSubCycles_;
-        label subCycleIndex_;
+        //- Current index in the sub-cycle
+        label index_;
+
+        //- Total number of cycles in the sub-cycle
+        label total_;
+
 
 public:
 
     // Constructors
 
-        //- Construct from original time and number of sub-cycles
-        subCycleTime(Time&, const label nSubCycles);
+        //- Construct referencing the original time and number of sub-cycles
+        subCycleTime(Time& runTime, const label nCycle);
 
 
     //- Destructor
     ~subCycleTime();
 
 
-    // Member Functions
+    // Member functions
+
+        //- Return the current sub-cycle index
+        inline label index() const
+        {
+            return index_;
+        }
+
+        //- Return the total number of sub-cycles
+        inline label nSubCycles() const
+        {
+            return total_;
+        }
+
+        //- True if the sub-cycle is active.
+        bool status() const;
 
         //- Return true if the number of sub-cycles has been reached
         bool end() const;
@@ -75,25 +97,23 @@ public:
         //- End the sub-cycling and reset the time-state
         void endSubCycle();
 
-        //- Return the total number of sub-cycles
-        label nSubCycles() const
-        {
-            return nSubCycles_;
-        }
-
-        //- Return the current sub-cycle index
-        label index() const
-        {
-            return subCycleIndex_;
-        }
+        //- True if looping is active, increments the index.
+        //  Example usage,
+        //  \code
+        //      while (subcycle.loop())
+        //      {
+        //          solve;
+        //      }
+        //  \endcode
+        bool loop();
 
 
-    // Member Operators
+    // Member operators
 
         //- Prefix increment
         subCycleTime& operator++();
 
-        //- Postfix increment
+        //- Postfix increment, this is identical to the prefix increment
         subCycleTime& operator++(int);
 };
 

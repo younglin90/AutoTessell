@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2018-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2018 OpenFOAM Foundation
+    Copyright (C) 2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -61,25 +64,38 @@ void Foam::fv::cellLimitedGrad<Type, Limiter>::limitGradient
 template<class Type, class Limiter>
 Foam::tmp
 <
-    Foam::VolField<typename Foam::outerProduct<Foam::vector, Type>::type>
+    Foam::GeometricField
+    <
+        typename Foam::outerProduct<Foam::vector, Type>::type,
+        Foam::fvPatchField,
+        Foam::volMesh
+    >
 >
 Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
 (
-    const VolField<Type>& vsf,
+    const GeometricField<Type, fvPatchField, volMesh>& vsf,
     const word& name
 ) const
 {
     const fvMesh& mesh = vsf.mesh();
 
-    tmp<VolField<typename outerProduct<vector, Type>::type>>
-        tGrad = basicGradScheme_().calcGrad(vsf, name);
+    tmp
+    <
+        GeometricField
+        <typename outerProduct<vector, Type>::type, fvPatchField, volMesh>
+    > tGrad = basicGradScheme_().calcGrad(vsf, name);
 
-    if (k_ < small)
+    if (k_ < SMALL)
     {
         return tGrad;
     }
 
-    VolField<typename outerProduct<vector, Type>::type>& g = tGrad.ref();
+    GeometricField
+    <
+        typename outerProduct<vector, Type>::type,
+        fvPatchField,
+        volMesh
+    >& g = tGrad.ref();
 
     const labelUList& owner = mesh.owner();
     const labelUList& neighbour = mesh.neighbour();
@@ -92,8 +108,8 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
 
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
         const Type& vsfOwn = vsf[own];
         const Type& vsfNei = vsf[nei];
@@ -106,8 +122,7 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
     }
 
 
-    const typename VolField<Type>::Boundary& bsf =
-        vsf.boundaryField();
+    const auto& bsf = vsf.boundaryField();
 
     forAll(bsf, patchi)
     {
@@ -120,7 +135,7 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
 
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
                 const Type& vsfNei = psfNei[pFacei];
 
                 maxVsf[own] = max(maxVsf[own], vsfNei);
@@ -131,7 +146,7 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
         {
             forAll(pOwner, pFacei)
             {
-                label own = pOwner[pFacei];
+                const label own = pOwner[pFacei];
                 const Type& vsfNei = psf[pFacei];
 
                 maxVsf[own] = max(maxVsf[own], vsfNei);
@@ -151,14 +166,14 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
     }
 
 
-    // Create limiter initialised to 1
+    // Create limiter initialized to 1
     // Note: the limiter is not permitted to be > 1
     Field<Type> limiter(vsf.primitiveField().size(), pTraits<Type>::one);
 
     forAll(owner, facei)
     {
-        label own = owner[facei];
-        label nei = neighbour[facei];
+        const label own = owner[facei];
+        const label nei = neighbour[facei];
 
         // owner side
         limitFace
@@ -186,7 +201,7 @@ Foam::fv::cellLimitedGrad<Type, Limiter>::calcGrad
 
         forAll(pOwner, pFacei)
         {
-            label own = pOwner[pFacei];
+            const label own = pOwner[pFacei];
 
             limitFace
             (

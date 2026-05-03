@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -52,6 +55,14 @@ class PBiCICG
 :
     public LduMatrix<Type, DType, LUType>::solver
 {
+    // Private Member Functions
+
+        //- No copy construct
+        PBiCICG(const PBiCICG&) = delete;
+
+        //- No copy assignment
+        void operator=(const PBiCICG&) = delete;
+
 
 public:
 
@@ -69,26 +80,16 @@ public:
             const dictionary& solverDict
         );
 
-        //- Disallow default bitwise copy construction
-        PBiCICG(const PBiCICG&) = delete;
-
 
     // Destructor
 
-        virtual ~PBiCICG()
-        {}
+        virtual ~PBiCICG() = default;
 
 
     // Member Functions
 
         //- Solve the matrix with this solver
         virtual SolverPerformance<Type> solve(Field<Type>& psi) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const PBiCICG&) = delete;
 };
 
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,11 @@ Class
     Foam::SymmetricSquareMatrix
 
 Description
-    A templated 2D square symmetric matrix of objects of \<T\>, where the
-    n x n matrix dimension is known and used for subscript bounds checking, etc.
+    A templated (N x N) square matrix of objects of \<Type\>,
+    containing N*N elements, derived from Matrix.
+
+See also
+    Test-SymmetricSquareMatrix.C
 
 SourceFiles
     SymmetricSquareMatrixI.H
@@ -34,11 +40,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SymmetricSquareMatrix_H
-#define SymmetricSquareMatrix_H
+#ifndef Foam_SymmetricSquareMatrix_H
+#define Foam_SymmetricSquareMatrix_H
 
 #include "SquareMatrix.H"
-#include "Identity.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -46,7 +51,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class SymmetricSquareMatrix Declaration
+                   Class SymmetricSquareMatrix Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -54,77 +59,63 @@ class SymmetricSquareMatrix
 :
     public Matrix<SymmetricSquareMatrix<Type>, Type>
 {
-
 public:
+
+    // Generated Methods
+
+        //- Default construct
+        SymmetricSquareMatrix() = default;
+
+        //- Copy construct
+        SymmetricSquareMatrix(const SymmetricSquareMatrix&) = default;
+
+        //- Copy assignment
+        SymmetricSquareMatrix&
+        operator=(const SymmetricSquareMatrix&) = default;
+
 
     // Constructors
 
-        //- Null constructor.
-        inline SymmetricSquareMatrix();
+        //- Construct for given size (rows == cols), uninitialised content
+        inline explicit SymmetricSquareMatrix(const label n);
 
-        //- Construct given number of rows/columns.
-        inline SymmetricSquareMatrix(const label n);
+        //- Construct for given size (rows == cols)
+        //- initializing all elements to zero
+        inline SymmetricSquareMatrix(const label n, const Foam::zero);
 
-        //- Construct given number of rows/columns, initialising to zero
-        inline SymmetricSquareMatrix(const label n, const zero);
+        //- Construct for given size (rows == cols)
+        //- initializing all elements to the given value
+        inline SymmetricSquareMatrix(const label n, const Type& val);
 
-        //- Construct given number of rows/columns,
-        inline SymmetricSquareMatrix(const label n, const Identity<Type>);
+        //- Construct for given size (rows == cols)
+        //- initializing to the identity matrix
+        template<class AnyType>
+        inline SymmetricSquareMatrix(const label n, const Identity<AnyType>);
 
-        //- Construct with given number of rows/columns
-        //  initialising all elements to the given value
-        inline SymmetricSquareMatrix(const label n, const Type&);
-
-        //- Construct with given number of rows/columns
-        //  and start and end iterators
-        template<class InputIterator>
-        inline SymmetricSquareMatrix
-        (
-            const label n,
-            InputIterator first,
-            InputIterator last
-        );
-
-        //- Construct with given number of rows/columns and initialiser list
-        inline SymmetricSquareMatrix
-        (
-            const label n,
-            std::initializer_list<Type>
-        );
-
-        //- Construct from an initialiser list
-        inline SymmetricSquareMatrix(std::initializer_list<Type>);
-
-        //- Construct from initialiser list list
-        inline SymmetricSquareMatrix
-        (
-            std::initializer_list<std::initializer_list<Type>>
-        );
-
-        //- Construct from Istream.
-        inline SymmetricSquareMatrix(Istream&);
+        //- Construct from Istream
+        inline explicit SymmetricSquareMatrix(Istream& is);
 
         //- Clone
         inline autoPtr<SymmetricSquareMatrix<Type>> clone() const;
 
 
-    // Member Functions
-
-        //- Return the instantiated type name
-        static word typeName()
-        {
-            return
-                word("SymmetricSquareMatrix<") + pTraits<Type>::typeName + '>';
-        }
-
-
     // Member Operators
 
-        using Matrix<SymmetricSquareMatrix<Type>, Type>::operator=;
+        //- Assign all elements to zero
+        inline void operator=(const Foam::zero);
+
+        //- Assign all elements to value
+        inline void operator=(const Type& val);
+
+        //- Set to identity matrix
+        template<class AnyType>
+        void operator=(const Identity<AnyType>);
 };
 
 
-// Global functions
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Global Functions
 
 //- Return the LU decomposed SymmetricSquareMatrix inverse
 template<class Type>

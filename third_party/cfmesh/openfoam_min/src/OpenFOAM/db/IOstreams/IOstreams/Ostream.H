@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,20 +36,23 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Ostream_H
-#define Ostream_H
+#ifndef Foam_Ostream_H
+#define Foam_Ostream_H
 
 #include "IOstream.H"
-#include "verbatimString.H"
 #include "keyType.H"
+#include "stdFoam.H"  // For span etc.
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class token;
+
+constexpr char tab = '\t';  //!< The tab \c '\\t' character(0x09)
+constexpr char nl = '\n';   //!< The newline \c '\\n' character (0x0a)
 
 /*---------------------------------------------------------------------------*\
                            Class Ostream Declaration
@@ -56,135 +62,213 @@ class Ostream
 :
     public IOstream
 {
-
 protected:
 
-    // Protected data
+    // Protected Data
+
+        //- Indentation of the entry from the start of the keyword
+        static constexpr const unsigned short entryIndentation_ = 16;
 
         //- Number of spaces per indent level
-        static const unsigned short indentSize_ = 4;
+        unsigned short indentSize_ = 4;
 
         //- Current indent level
-        unsigned short indentLevel_;
+        unsigned short indentLevel_ = 0;
 
 
 public:
 
+    // Generated Methods
+
+        //- Copy construct
+        Ostream(const Ostream&) = default;
+
+        //- Destructor
+        virtual ~Ostream() = default;
+
+
     // Constructors
 
-        //- Set stream status
-        Ostream
-        (
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const compressionType compression = UNCOMPRESSED,
-            const bool global = false
-        )
+        //- Default construct (ASCII, uncompressed),
+        //- construct with specified stream option
+        explicit Ostream(IOstreamOption streamOpt = IOstreamOption())
         :
-            IOstream(format, version, compression, global),
-            indentLevel_(0)
+            IOstream(streamOpt)
         {}
 
 
-    //- Destructor
-    virtual ~Ostream()
-    {}
+        //- Construct with format (uncompressed)
+        explicit Ostream
+        (
+            IOstreamOption::streamFormat fmt,
+            IOstreamOption::compressionType cmp = IOstreamOption::UNCOMPRESSED
+        )
+        :
+            Ostream(IOstreamOption(fmt, cmp))
+        {}
 
 
     // Member Functions
 
-        // Write functions
+        // Write Functions
 
-            //- Write token
-            virtual Ostream& write(const token&);
-
-            //- Write the compound token tag if the name is a compound token
-            virtual Ostream& writeCompoundTag(const word& typeName);
+            //- Write token to stream or otherwise handle it.
+            //  \return false if the token type was not handled by this method
+            virtual bool write(const token& tok) = 0;
 
             //- Write character
-            virtual Ostream& write(const char) = 0;
+            virtual Ostream& write(const char c) = 0;
 
-            //- Write character string
-            virtual Ostream& write(const char*) = 0;
-
-            //- Write word
-            virtual Ostream& write(const word&) = 0;
-
-            //- Write string
-            virtual Ostream& write(const string&) = 0;
-
-            //- Write keyType
-            virtual Ostream& write(const keyType&) = 0;
-
-            //- Write verbatimString
-            virtual Ostream& write(const verbatimString&) = 0;
-
-            //- Write std::string surrounded by quotes.
-            //  Optional write without quotes.
+            //- Write character/string content, with/without surrounding quotes
             virtual Ostream& writeQuoted
             (
-                const std::string&,
+                const char* str,
+                std::streamsize len,
                 const bool quoted=true
             ) = 0;
 
+            //- Write string content, with/without surrounding quotes
+            virtual Ostream& writeQuoted
+            (
+                const std::string& str,
+                const bool quoted=true
+            );
+
+            //- Write character string
+            virtual Ostream& write(const char* str) = 0;
+
+            //- Write word (unquoted)
+            virtual Ostream& write(const word& str) = 0;
+
+            //- Write string content (usually quoted)
+            virtual Ostream& write(const std::string& str) = 0;
+
+            //- Write keyType
+            //  A plain word is written unquoted.
+            //  A regular expression is written as a quoted string.
+            virtual Ostream& write(const keyType& kw);
+
             //- Write int32_t
-            virtual Ostream& write(const int32_t) = 0;
+            virtual Ostream& write(const int32_t val) = 0;
 
             //- Write int64_t
-            virtual Ostream& write(const int64_t) = 0;
+            virtual Ostream& write(const int64_t val) = 0;
 
-            //- Write uint32_t
-            virtual Ostream& write(const uint32_t) = 0;
+            //- Write float
+            virtual Ostream& write(const float val) = 0;
 
-            //- Write uint64_t
-            virtual Ostream& write(const uint64_t) = 0;
+            //- Write double
+            virtual Ostream& write(const double val) = 0;
 
-            //- Write floatScalar
-            virtual Ostream& write(const floatScalar) = 0;
+            //- Write binary block.
+            virtual Ostream& write(const char* data, std::streamsize count) = 0;
 
-            //- Write doubleScalar
-            virtual Ostream& write(const doubleScalar) = 0;
+            //- Low-level raw binary output.
+            virtual Ostream& writeRaw
+            (
+                const char* data,
+                std::streamsize count
+            ) = 0;
 
-            //- Write longDoubleScalar
-            virtual Ostream& write(const longDoubleScalar) = 0;
+            //- Emit begin marker for low-level raw binary output.
+            //  The count indicates the number of bytes for subsequent
+            //  writeRaw calls.
+            virtual bool beginRawWrite(std::streamsize count) = 0;
 
-            //- Write binary block
-            virtual Ostream& write(const char*, std::streamsize) = 0;
+            //- Emit end marker for low-level raw binary output.
+            virtual bool endRawWrite() = 0;
 
             //- Add indentation characters
             virtual void indent() = 0;
 
-            //- Return indent level
-            unsigned short indentLevel() const
+            //- Return indent size (spaces per level)
+            unsigned short indentSize() const noexcept
+            {
+                return indentSize_;
+            }
+
+            //- Change indent size (spaces per level), return old value
+            unsigned short indentSize(unsigned short val) noexcept
+            {
+                auto old(indentSize_);
+                indentSize_ = val;
+                return old;
+            }
+
+            //- Return the indent level
+            unsigned short indentLevel() const noexcept
             {
                 return indentLevel_;
             }
 
-            //- Access to indent level
-            unsigned short& indentLevel()
+            //- Change the indent level, return old value
+            unsigned short indentLevel(unsigned short val) noexcept
             {
-                return indentLevel_;
+                auto old(indentLevel_);
+                indentLevel_ = val;
+                return old;
             }
 
-            //- Return the number of characters in an indent
-            unsigned short indentSize() const
+            //- Increment the indent level
+            void incrIndent() noexcept
             {
-                return indentLevel_*indentSize_;
+                ++indentLevel_;
             }
 
-            //- Incrememt the indent level
-            void incrIndent()
-            {
-                indentLevel_++;
-            }
-
-            //- Decrememt the indent level
+            //- Decrement the indent level
             void decrIndent();
 
-            //- Write the keyword followed by an appropriate indentation.
-            //  Here for backward compatibility, replaced by
-            //  writeKeyword(Foam::Ostream& os, const keyType& kw);
-            Ostream& writeKeyword(const keyType&);
+            //- Write the keyword followed by an appropriate indentation
+            virtual Ostream& writeKeyword(const keyType& kw);
+
+            //- Write begin block group with the given name
+            //  Increments indentation, adds newline.
+            virtual Ostream& beginBlock(const keyType& kw);
+
+            //- Write begin block group without a name
+            //  Increments indentation, adds newline.
+            virtual Ostream& beginBlock();
+
+            //- Write end block group
+            //  Decrements indentation, adds newline.
+            virtual Ostream& endBlock();
+
+            //- Write end entry (';') followed by newline.
+            virtual Ostream& endEntry();
+
+            //- Write a keyword/value entry.
+            //  The following two are functionally equivalent:
+            // \code
+            // os.writeEntry(key, value);
+            //
+            // os.writeKeyword(key) << value << endEntry;
+            // \endcode
+            template<class T>
+            Ostream& writeEntry(const keyType& key, const T& value)
+            {
+                writeKeyword(key) << value;
+                return endEntry();
+            }
+
+            //- Write a keyword/value entry only when the two values differ.
+            //  \param key the name of the entry
+            //  \param value1 the reference value
+            //  \param value2 the value to write if it differs from value1
+            template<class T>
+            Ostream& writeEntryIfDifferent
+            (
+                const word& key,
+                const T& value1,
+                const T& value2
+            )
+            {
+                if (value1 != value2)
+                {
+                    writeEntry(key, value2);
+                }
+
+                return *this;
+            }
 
 
         // Stream state functions
@@ -194,6 +278,12 @@ public:
 
             //- Add newline and flush stream
             virtual void endl() = 0;
+
+            //- Get padding character
+            virtual char fill() const = 0;
+
+            //- Set padding character for formatted field up to field width
+            virtual char fill(const char fillch) = 0;
 
             //- Get width of output field
             virtual int width() const = 0;
@@ -217,13 +307,58 @@ public:
         {
             return const_cast<Ostream&>(*this);
         }
+
+
+    // Housekeeping
+
+        //- Access to indent level
+        unsigned short& indentLevel() noexcept
+        {
+            return indentLevel_;
+        }
+
+        //- Access to indent size
+        unsigned short& indentSize() noexcept
+        {
+            return indentSize_;
+        }
 };
 
 
-// --------------------------------------------------------------------
-// ------ Manipulators (not taking arguments)
-// --------------------------------------------------------------------
+// * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
 
+#if __cplusplus >= 201703L
+//- Write operator for std::string_view
+inline Ostream& operator<<(Ostream& os, std::string_view s)
+{
+    os.writeQuoted(s.data(), s.size(), true);  // quoted
+    os.check("Foam::operator<<(Ostream&, std::string_view)");
+    return os;
+}
+#endif
+
+//- Write operator for character span. Output like string data
+inline Ostream& operator<<(Ostream& os, stdFoam::span<char> s)
+{
+    os.writeQuoted(s.data(), s.size(), true);  // quoted
+    os.check("Foam::operator<<(Ostream&, stdFoam::span<char>)");
+    return os;
+}
+
+//- Write operator for const character span. Output like string data
+inline Ostream& operator<<(Ostream& os, stdFoam::span<const char> s)
+{
+    os.writeQuoted(s.data(), s.size(), true);  // quoted
+    os.check("Foam::operator<<(Ostream&, stdFoam::span<const char>)");
+    return os;
+}
+
+
+/*---------------------------------------------------------------------------*\
+                       Manipulators (without arguments)
+\*---------------------------------------------------------------------------*/
+
+//- An Ostream manipulator
 typedef Ostream& (*OstreamManip)(Ostream&);
 
 //- operator<< handling for manipulators without arguments
@@ -244,21 +379,6 @@ inline Ostream& operator<<(Ostream& os, IOstreamManip f)
 inline Ostream& indent(Ostream& os)
 {
     os.indent();
-    return os;
-}
-
-//- Indent stream or add newline if indent level == 0
-inline Ostream& indentOrNl(Ostream& os)
-{
-    if (os.indentLevel() == 0)
-    {
-        os.endl();
-    }
-    else
-    {
-        os.indent();
-    }
-
     return os;
 }
 
@@ -293,10 +413,30 @@ inline Ostream& endl(Ostream& os)
 }
 
 
-// Useful aliases for tab and newline characters
-static const char tab = '\t';
-static const char nl = '\n';
+//- Write begin block group without a name
+//  Increments indentation, adds newline.
+inline Ostream& beginBlock(Ostream& os)
+{
+    os.beginBlock();
+    return os;
+}
 
+
+//- Write end block group
+//  Decrements indentation, adds newline.
+inline Ostream& endBlock(Ostream& os)
+{
+    os.endBlock();
+    return os;
+}
+
+
+//- Write end entry (';') followed by newline.
+inline Ostream& endEntry(Ostream& os)
+{
+    os.endEntry();
+    return os;
+}
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2020-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,10 +32,11 @@ Description
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef uncollatedFileOperation_fileOperation_H
-#define uncollatedFileOperation_fileOperation_H
+#ifndef Foam_fileOperations_uncollatedFileOperation_H
+#define Foam_fileOperations_uncollatedFileOperation_H
 
 #include "fileOperation.H"
+#include "OSspecific.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -42,36 +46,67 @@ namespace fileOperations
 {
 
 /*---------------------------------------------------------------------------*\
-                   Class uncollatedFileOperation Declaration
+                     Class uncollatedFileOperation Declaration
 \*---------------------------------------------------------------------------*/
 
 class uncollatedFileOperation
 :
     public fileOperation
 {
+    // Private Data
+
+        //- Communicator allocated/managed by us
+        mutable label managedComm_;
+
+
     // Private Member Functions
 
+        //- Any initialisation steps after constructing
+        void init(bool verbose);
+
+
+protected:
+
+    // Protected Member Functions
+
         //- Search for an object.
-        //    globalFile : also check undecomposed case
+        //    checkGlobal : also check undecomposed case
         //    isFile      : true:check for file  false:check for directory
         fileName filePathInfo
         (
-            const bool globalFile,
+            const bool checkGlobal,
             const bool isFile,
-            const IOobject&
+            const IOobject& io,
+            const bool search
+        ) const;
+
+        //- Lookup name of processorsDDD using cache.
+        //  \note Do not use any parallel synchronisation
+        //  \return empty fileName if not found.
+        virtual refPtr<dirIndexList> lookupProcessorsPath
+        (
+            const fileName& objectPath
         ) const;
 
 
 public:
 
-        //- Runtime type information
-        TypeName("uncollated");
+    //- Runtime type information
+    TypeName("uncollated");
 
 
     // Constructors
 
-        //- Construct null
-        uncollatedFileOperation(const bool verbose);
+        //- Default construct
+        explicit uncollatedFileOperation(bool verbose = false);
+
+        //- Construct from communicator with specified io-ranks
+        explicit uncollatedFileOperation
+        (
+            const Tuple2<label, labelList>& commAndIORanks,
+            const bool distributedRoots,
+            bool verbose = false
+        );
 
 
     //- Destructor
@@ -79,6 +114,11 @@ public:
 
 
     // Member Functions
+
+        //- Transfer ownership of communicator to this fileOperation.
+        //- Use with caution
+        virtual void storeComm() const;
+
 
         // OSSpecific equivalents
 
@@ -92,28 +132,26 @@ public:
             virtual mode_t mode
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
-            //- Return the file type: directory, file or link
-            virtual fileType type
+            //- Return the file type: DIRECTORY, FILE or SYMLINK
+            virtual fileName::Type type
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
-            //- Does the name exist (as directory or file) in the file system?
+            //- Does the name exist (as DIRECTORY or FILE) in the file system?
             //  Optionally enable/disable check for gzip file.
             virtual bool exists
             (
                 const fileName&,
-                const bool checkVariants = true,
+                const bool checkGzip=true,
                 const bool followLink = true
             ) const;
 
-            //- Does the name exist as a directory in the file system?
+            //- Does the name exist as a DIRECTORY in the file system?
             virtual bool isDir
             (
                 const fileName&,
@@ -125,7 +163,7 @@ public:
             virtual bool isFile
             (
                 const fileName&,
-                const bool checkVariants = true,
+                const bool checkGzip=true,
                 const bool followLink = true
             ) const;
 
@@ -133,7 +171,6 @@ public:
             virtual off_t fileSize
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -141,7 +178,6 @@ public:
             virtual time_t lastModified
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -149,7 +185,6 @@ public:
             virtual double highResLastModified
             (
                 const fileName&,
-                const bool checkVariants = true,
                 const bool followLink = true
             ) const;
 
@@ -157,7 +192,7 @@ public:
             virtual fileNameList readDir
             (
                 const fileName&,
-                const fileType = fileType::file,
+                const fileName::Type=fileName::FILE,
                 const bool filtergz=true,
                 const bool followLink = true
             ) const;
@@ -195,24 +230,35 @@ public:
             virtual bool rm(const fileName&) const;
 
             //- Remove a directory and its contents
-            virtual bool rmDir(const fileName&) const;
+            //  \param dir the directory to remove
+            //  \param silent do not report missing directory
+            //  \param emptyOnly only remove empty directories (recursive)
+            virtual bool rmDir
+            (
+                const fileName& dir,
+                const bool silent = false,
+                const bool emptyOnly = false
+            ) const;
 
 
         // (reg)IOobject functionality
 
-            //- Search for an object. globalFile : also check undecomposed case
+            //- Search for an object. checkGlobal : also check undecomposed case
             virtual fileName filePath
             (
-                const bool globalFile,
-                const IOobject&
+                const bool checkGlobal,
+                const IOobject& io,
+                const word& typeName,
+                const bool search
             ) const;
 
-            //- Search for a directory. globalFile : also check undecomposed
+            //- Search for a directory. checkGlobal : also check undecomposed
             //  case
             virtual fileName dirPath
             (
-                const bool globalFile,
-                const IOobject&
+                const bool checkGlobal,
+                const IOobject& io,
+                const bool search
             ) const;
 
             //- Search directory for objects. Used in IOobjectList.
@@ -239,35 +285,36 @@ public:
                 regIOobject&,
                 const fileName&,
                 const word& typeName,
-                const bool read = true
+                const bool readOnProc = true
             ) const;
 
             //- Top-level read
-            //  Format set to ASCII if defaultFormat and file format are ASCII
             virtual bool read
             (
                 regIOobject&,
                 const bool masterOnly,
-                const IOstream::streamFormat defaultFormat,
+                const IOstreamOption::streamFormat format,
                 const word& typeName
             ) const;
 
             //- Generate an ISstream that reads a file
-            virtual autoPtr<ISstream> NewIFstream
+            virtual autoPtr<ISstream> NewIFstream(const fileName&) const;
+
+            //- Generate an OSstream that writes a file
+            virtual autoPtr<OSstream> NewOFstream
             (
-                const fileName& filePath,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion
+                const fileName& pathname,
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
 
-            //- Generate an Ostream that writes a file
-            virtual autoPtr<Ostream> NewOFstream
+            //- Generate an OSstream that writes a file
+            virtual autoPtr<OSstream> NewOFstream
             (
-                const fileName& filePath,
-                IOstream::streamFormat format=IOstream::ASCII,
-                IOstream::versionNumber version=IOstream::currentVersion,
-                IOstream::compressionType compression=IOstream::UNCOMPRESSED,
-                const bool write = true
+                IOstreamOption::atomicType,
+                const fileName& pathname,
+                IOstreamOption streamOpt = IOstreamOption(),
+                const bool writeOnProc = true
             ) const;
 };
 

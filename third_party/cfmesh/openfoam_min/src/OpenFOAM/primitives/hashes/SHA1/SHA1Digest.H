@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -35,9 +38,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef SHA1Digest_H
-#define SHA1Digest_H
+#ifndef Foam_SHA1Digest_H
+#define Foam_SHA1Digest_H
 
+#include <array>
 #include <string>
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -45,16 +49,10 @@ SourceFiles
 namespace Foam
 {
 
-// Forward declaration of classes
+// Forward Declarations
 class Istream;
 class Ostream;
-
-// Forward declaration of friend functions and operators
 class SHA1;
-class SHA1Digest;
-Ostream& operator<<(Ostream&, const SHA1Digest&);
-Istream& operator>>(Istream&, SHA1Digest&);
-
 
 /*---------------------------------------------------------------------------*\
                          Class SHA1Digest Declaration
@@ -62,41 +60,46 @@ Istream& operator>>(Istream&, SHA1Digest&);
 
 class SHA1Digest
 {
+    // Private Data
+
+        //- The digest contents, which has 20 (uncoded) bytes
+        std::array<unsigned char, 20> dig_;
+
+
+    // Private Member Functions
+
+        // Permit SHA1 to calculate the digest
+        friend class SHA1;
+
+        //- Raw digest data (20 bytes). Non-const access for SHA1
+        unsigned char* data() noexcept { return dig_.data(); }
+
 
 public:
 
     // Static Data Members
 
-        //- The length of the (uncoded) digest contents
-        static const unsigned length = 20;
-
         //- A null digest (ie, all zero)
         static const SHA1Digest null;
 
 
-private:
-
-    // Private Data
-
-        //- The digest contents
-        unsigned char v_[length];
-
-        //- Read hexadecimal value, ignoring leading or intermediate '_'
-        static unsigned char readHexDigit(Istream&);
-
-
-public:
-
-    friend class SHA1;
-
-
     // Constructors
 
-        //- Construct a zero digest
+        //- Default construct a zero digest
         SHA1Digest();
 
-        //- Construct read a digest
-        SHA1Digest(Istream&);
+        //- Read construct a digest from stringified content
+        explicit SHA1Digest(Istream& is);
+
+        //- Construct digest from raw or stringified content.
+        //- The length is 20 for raw digest content and 40 (or 41) for
+        //- stringified versions.
+        SHA1Digest(const char* content, std::size_t len);
+
+        //- Construct digest from raw or stringified content.
+        //- The length is 20 for raw digest content and 40 (or 41) for
+        //- stringified versions.
+        SHA1Digest(const unsigned char* content, std::size_t len);
 
 
     // Member Functions
@@ -110,14 +113,47 @@ public:
         //- Return (40-byte) text representation, optionally with '_' prefix
         std::string str(const bool prefixed=false) const;
 
+        //- Read (40-byte) text representation.
+        //  Since leading and intermediate underscores are skipped, a '_' can
+        //  be prefixed to the text representation to use an unquoted
+        //  SHA1Digest without parsing ambiguities as a number.
+        Istream& read(Istream& is);
+
         //- Write (40-byte) text representation, optionally with '_' prefix
-        Ostream& write(Ostream&, const bool prefixed=false) const;
+        Ostream& write(Ostream& os, const bool prefixed=false) const;
+
+
+    // Low-level access
+
+        //- Raw digest data (20 bytes) - const access
+        const unsigned char* cdata() const noexcept { return dig_.data(); }
+
+        //- Raw digest char data (20 bytes) - const access.
+        //- For consistency with other objects, these are \em not unsigned.
+        const char* cdata_bytes() const noexcept
+        {
+            return reinterpret_cast<const char*>(dig_.data());
+        }
+
+        //- Raw digest char data (20 bytes) - non-const access.
+        //- For consistency with other objects, these are \em not unsigned.
+        //- Use with caution - generally for broadcasting only.
+        char* data_bytes() noexcept
+        {
+            return reinterpret_cast<char*>(dig_.data());
+        }
+
+        //- The number of bytes in digest (20)
+        static constexpr unsigned size_bytes() noexcept { return 20; }
+
+        //- The dimensioned size of the digest is always 20 bytes
+        static constexpr unsigned max_size() noexcept { return 20; }
 
 
     // Member Operators
 
         //- Equality operator
-        bool operator==(const SHA1Digest&) const;
+        bool operator==(const SHA1Digest& rhs) const;
 
         //- Compare to (40-byte) text representation (eg, from sha1sum)
         //  An %empty string is equivalent to
@@ -133,28 +169,23 @@ public:
 
 
         //- Inequality operator
-        bool operator!=(const SHA1Digest&) const;
+        bool operator!=(const SHA1Digest& rhs) const;
 
         //- Inequality operator
         bool operator!=(const std::string& hexdigits) const;
 
         //- Inequality operator
         bool operator!=(const char* hexdigits) const;
-
-
-
-
-    // IOstream Operators
-
-        //- Read (40-byte) text representation
-        //  Since leading and intermediate underscores are skipped, a '_' can
-        //  be prefixed to the text representation to use an unquoted
-        //  SHA1Digest without parsing ambiguities as a number.
-        friend Istream& operator>>(Istream&, SHA1Digest&);
-
-        //- Write (40-byte) text representation, unquoted and without prefix
-        friend Ostream& operator<<(Ostream&, const SHA1Digest&);
 };
+
+
+// IOstream Operators
+
+//- Read (40-byte) text representation (ignoring leading '_' prefix)
+Istream& operator>>(Istream& is, SHA1Digest& dig);
+
+//- Write (40-byte) text representation, unquoted and without prefix
+Ostream& operator<<(Ostream& os, const SHA1Digest& dig);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

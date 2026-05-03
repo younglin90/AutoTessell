@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -26,155 +29,238 @@ License
 #include "sampledSurfaces.H"
 #include "volFields.H"
 #include "surfaceFields.H"
-#include "ListListOps.H"
-#include "stringListOps.H"
+#include "polySurfaceFields.H"
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class Type>
-Foam::PtrList<Foam::Field<Type>>
-Foam::functionObjects::sampledSurfaces::sampleLocalType
+void Foam::sampledSurfaces::writeSurface
 (
-    const label surfi,
-    const wordList& fieldNames,
-    HashPtrTable<interpolation<Type>>& interpolations
+    surfaceWriter& writer,
+    const Field<Type>& values,
+    const word& fieldName
 )
 {
-    PtrList<Field<Type>> fieldTypeValues(fieldNames.size());
+    fileName outputName = writer.write(fieldName, values);
 
-    const sampledSurface& s = operator[](surfi);
+    // Case-local file name with "<case>" to make relocatable
 
-    forAll(fieldNames, fieldi)
-    {
-        const word& name = fieldNames[fieldi];
+    dictionary propsDict;
+    propsDict.add
+    (
+        "file",
+        time_.relativePath(outputName, true)
+    );
+    setProperty(fieldName, propsDict);
+}
 
-        if (mesh_.foundObject<VolField<Type>>(name))
-        {
-            const VolField<Type>& vf =
-                mesh_.lookupObject<VolField<Type>>(name);
 
-            if (s.interpolate())
-            {
-                if (!interpolations.found(name))
-                {
-                    interpolations.insert
-                    (
-                        name,
-                        interpolation<Type>::New
-                        (
-                            interpolationScheme_,
-                            vf
-                        ).ptr()
-                    );
-                }
-
-                fieldTypeValues.set
-                (
-                    fieldi,
-                    s.interpolate(interpolations[name]).ptr()
-                );
-            }
-            else
-            {
-                fieldTypeValues.set(fieldi, s.sample(vf).ptr());
-            }
-        }
-        else if (mesh_.foundObject<SurfaceField<Type>>(name))
-        {
-            const SurfaceField<Type>& sf =
-                mesh_.lookupObject<SurfaceField<Type>>(name);
-
-            fieldTypeValues.set(fieldi, s.sample(sf).ptr());
-        }
-    }
-
-    return fieldTypeValues;
+template<class Type, class GeoMeshType>
+void Foam::sampledSurfaces::storeRegistryField
+(
+    const sampledSurface& s,
+    const word& fieldName,
+    const dimensionSet& dims,
+    Field<Type>&& values
+)
+{
+    s.storeRegistryField<Type, GeoMeshType>
+    (
+        storedObjects(),
+        fieldName,
+        dims,
+        std::move(values),
+        IOobject::groupName(name(), s.name())  // surfaceName
+    );
 }
 
 
 template<class Type>
-Foam::PtrList<Foam::Field<Type>>
-Foam::functionObjects::sampledSurfaces::sampleType
+void Foam::sampledSurfaces::performAction
 (
-    const label surfi,
-    const wordList& fieldNames,
-    HashPtrTable<interpolation<Type>>& interpolations
+    const VolumeField<Type>& fld,
+    unsigned request
 )
 {
-    // Generate local samples
-    PtrList<Field<Type>> fieldTypeValues =
-        sampleLocalType<Type>(surfi, fieldNames, interpolations);
+    // The sampler for this field
+    autoPtr<interpolation<Type>> samplePtr;
 
-    if (Pstream::parRun())
+    // The interpolator for this field
+    autoPtr<interpolation<Type>> interpPtr;
+
+    const word& fieldName = fld.name();
+
+    const dimensionSet& dims = fld.dimensions();
+
+    forAll(*this, surfi)
     {
-        // Collect values from all processors
-        PtrList<List<Field<Type>>> gatheredTypeValues(fieldNames.size());
-        forAll(fieldNames, fieldi)
+        // Skip empty surfaces (eg, failed cut-plane)
+        if (!hasFaces_[surfi]) continue;
+
+        const sampledSurface& s = operator[](surfi);
+
+        Field<Type> values;
+
+        if (s.isPointData())
         {
-            if (fieldTypeValues.set(fieldi))
+            if (!interpPtr)
             {
-                gatheredTypeValues.set
+                interpPtr = interpolation<Type>::New
                 (
-                    fieldi,
-                    new List<Field<Type>>(Pstream::nProcs())
+                    sampleNodeScheme_,
+                    fld
                 );
-                gatheredTypeValues[fieldi][Pstream::myProcNo()] =
-                    fieldTypeValues[fieldi];
-                Pstream::gatherList(gatheredTypeValues[fieldi]);
             }
+
+            values = s.interpolate(*interpPtr);
+        }
+        else
+        {
+            if (!samplePtr)
+            {
+                samplePtr = interpolation<Type>::New
+                (
+                    sampleFaceScheme_,
+                    fld
+                );
+            }
+
+            values = s.sample(*samplePtr);
         }
 
-        // Clear the local field values
-        fieldTypeValues.clear();
-        fieldTypeValues.resize(fieldNames.size());
-
-        // Combine on the master
-        if (Pstream::master())
+        if ((request & actions_[surfi]) & ACTION_WRITE)
         {
-            // Combine values into single field
-            forAll(fieldNames, fieldi)
+            writeSurface<Type>(writers_[surfi], values, fieldName);
+        }
+
+        if ((request & actions_[surfi]) & ACTION_STORE)
+        {
+            if (s.isPointData())
             {
-                if (gatheredTypeValues.set(fieldi))
-                {
-                    fieldTypeValues.set
-                    (
-                        fieldi,
-                        new Field<Type>
-                        (
-                            ListListOps::combine<Field<Type>>
-                            (
-                                gatheredTypeValues[fieldi],
-                                accessOp<Field<Type>>()
-                            )
-                        )
-                    );
-                }
+                storeRegistryField<Type, polySurfacePointGeoMesh>
+                (
+                    s, fieldName, dims, std::move(values)
+                );
             }
-
-            // Renumber point data to correspond to merged points
-            forAll(fieldNames, fieldi)
+            else
             {
-                if (fieldTypeValues.set(fieldi))
-                {
-                    if
-                    (
-                        mergeList_[surfi].pointsMap.size()
-                     == fieldTypeValues[fieldi].size()
-                    )
-                    {
-                        Field<Type> f(fieldTypeValues[fieldi]);
-
-                        inplaceReorder(mergeList_[surfi].pointsMap, f);
-                        f.setSize(mergeList_[surfi].points.size());
-
-                        fieldTypeValues.set(fieldi, new Field<Type>(f, true));
-                    }
-                }
+                storeRegistryField<Type, polySurfaceGeoMesh>
+                (
+                    s, fieldName, dims, std::move(values)
+                );
             }
         }
     }
+}
 
-    return fieldTypeValues;
+
+template<class Type>
+void Foam::sampledSurfaces::performAction
+(
+    const SurfaceField<Type>& fld,
+    unsigned request
+)
+{
+    const word& fieldName = fld.name();
+
+    const dimensionSet& dims = fld.dimensions();
+
+    forAll(*this, surfi)
+    {
+        // Skip empty surfaces (eg, failed cut-plane)
+        if (!hasFaces_[surfi]) continue;
+
+        const sampledSurface& s = (*this)[surfi];
+
+        Field<Type> values(s.sample(fld));
+
+        if ((request & actions_[surfi]) & ACTION_WRITE)
+        {
+            writeSurface<Type>(writers_[surfi], values, fieldName);
+        }
+
+        if ((request & actions_[surfi]) & ACTION_STORE)
+        {
+            storeRegistryField<Type, polySurfaceGeoMesh>
+            (
+                s, fieldName, dims, std::move(values)
+            );
+        }
+    }
+}
+
+
+template<class GeoField>
+void Foam::sampledSurfaces::performAction
+(
+    const IOobjectList& objects,
+    unsigned request
+)
+{
+    wordList fieldNames;
+    if (loadFromFiles_)
+    {
+        fieldNames = objects.sortedNames<GeoField>(fieldSelection_);
+    }
+    else
+    {
+        fieldNames = mesh_.thisDb().sortedNames<GeoField>(fieldSelection_);
+    }
+
+    for (const word& fieldName : fieldNames)
+    {
+        if (verbose_)
+        {
+            Info<< "sampleWrite: " << fieldName << endl;
+        }
+
+        refPtr<GeoField> tfield;
+
+        if (loadFromFiles_)
+        {
+            tfield.emplace
+            (
+                IOobject
+                (
+                    fieldName,
+                    time_.timeName(),
+                    mesh_.thisDb(),
+                    IOobjectOption::MUST_READ,
+                    IOobjectOption::NO_WRITE,
+                    IOobjectOption::NO_REGISTER
+                ),
+                mesh_
+            );
+        }
+        else
+        {
+            tfield.cref(mesh_.thisDb().cfindObject<GeoField>(fieldName));
+        }
+
+        if (tfield)
+        {
+            performAction(tfield(), request);
+        }
+    }
+}
+
+
+template<class Container, class Predicate>
+bool Foam::sampledSurfaces::testAny
+(
+    const Container& items,
+    const Predicate& pred
+)
+{
+    for (const auto& item : items)
+    {
+        if (pred(item))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 

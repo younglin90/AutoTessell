@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -32,12 +35,12 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cyclicFvPatch_H
-#define cyclicFvPatch_H
+#ifndef Foam_cyclicFvPatch_H
+#define Foam_cyclicFvPatch_H
 
+#include "cyclicPolyPatch.H"
 #include "coupledFvPatch.H"
 #include "cyclicLduInterface.H"
-#include "cyclicPolyPatch.H"
 #include "fvBoundaryMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -46,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                        Class cyclicFvPatch Declaration
+                           Class cyclicFvPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class cyclicFvPatch
@@ -56,8 +59,7 @@ class cyclicFvPatch
 {
     // Private Data
 
-        //- Reference to the corresponding cyclicPolyPatch
-        const cyclicPolyPatch& cyclicPoly_;
+        const cyclicPolyPatch& cyclicPolyPatch_;
 
 
 protected:
@@ -80,45 +82,63 @@ public:
         cyclicFvPatch(const polyPatch& patch, const fvBoundaryMesh& bm)
         :
             coupledFvPatch(patch, bm),
-            cyclicPoly_(refCast<const cyclicPolyPatch>(patch))
+            cyclicPolyPatch_(refCast<const cyclicPolyPatch>(patch))
         {}
 
 
-    // Member Functions
+    // Member functions
 
         // Access
 
-            //- Return neighbour
-            virtual label nbrPatchIndex() const
+            //- Return local reference cast into the cyclic patch
+            const cyclicPolyPatch& cyclicPatch() const
             {
-                return cyclicPoly_.nbrPatchIndex();
+                return cyclicPolyPatch_;
+            }
+
+            //- Return neighbour
+            virtual label neighbPatchID() const
+            {
+                return cyclicPolyPatch_.neighbPatchID();
             }
 
             virtual bool owner() const
             {
-                return cyclicPoly_.owner();
+                return cyclicPolyPatch_.owner();
             }
 
             //- Return processor number
-            virtual const cyclicFvPatch& nbrPatch() const
+            virtual const cyclicFvPatch& neighbPatch() const
             {
                 return refCast<const cyclicFvPatch>
                 (
-                    this->boundaryMesh()[cyclicPoly_.nbrPatchIndex()]
+                    this->boundaryMesh()[cyclicPolyPatch_.neighbPatchID()]
                 );
             }
 
-            //- Return transformation between the coupled patches
-            virtual const transformer& transform() const
+            //- Are the cyclic planes parallel
+            virtual bool parallel() const
             {
-                return cyclicPoly_.transform();
+                return cyclicPolyPatch_.parallel();
+            }
+
+            //- Return face transformation tensor
+            virtual const tensorField& forwardT() const
+            {
+                return cyclicPolyPatch_.forwardT();
+            }
+
+            //- Return neighbour-cell transformation tensor
+            virtual const tensorField& reverseT() const
+            {
+                return cyclicPolyPatch_.reverseT();
             }
 
             const cyclicFvPatch& neighbFvPatch() const
             {
                 return refCast<const cyclicFvPatch>
                 (
-                    this->boundaryMesh()[cyclicPoly_.nbrPatchIndex()]
+                    this->boundaryMesh()[cyclicPolyPatch_.neighbPatchID()]
                 );
             }
 
@@ -130,11 +150,21 @@ public:
         // Interface transfer functions
 
             //- Return the values of the given internal data adjacent to
-            //  the interface as a field
+            //- the interface as a field
             virtual tmp<labelField> interfaceInternalField
             (
                 const labelUList& internalData
             ) const;
+
+
+            //- Return the values of the given internal data adjacent to
+            //- the interface as a field using a mapping faceCell
+            virtual tmp<labelField> interfaceInternalField
+            (
+                const labelUList& internalData,
+                const labelUList& faceCell
+            ) const;
+
 
             //- Return neighbour field
             virtual tmp<labelField> internalFieldTransfer

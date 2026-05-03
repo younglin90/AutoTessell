@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2012-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2012-2015 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -43,7 +46,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                 Class splineInterpolationWeights Declaration
+                  Class splineInterpolationWeights Declaration
 \*---------------------------------------------------------------------------*/
 
 class splineInterpolationWeights
@@ -66,7 +69,7 @@ public:
 
         //- Construct from components. By default make sure samples are
         //  equidistant.
-        splineInterpolationWeights
+        explicit splineInterpolationWeights
         (
             const scalarField& samples,
             const bool checkEqualDistance = true
@@ -74,14 +77,13 @@ public:
 
 
     //- Destructor
-    virtual ~splineInterpolationWeights()
-    {}
+    virtual ~splineInterpolationWeights() = default;
 
 
     // Member Functions
 
         //- Calculate weights and indices to calculate t from samples.
-        //  Returns true if indices changed.
+        //  \return true if indices changed.
         virtual bool valueWeights
         (
             const scalar t,
@@ -90,7 +92,8 @@ public:
         ) const;
 
         //- Calculate weights and indices to calculate integrand of t1..t2
-        //  from samples. Returns true if indices changed.
+        //- from samples.
+        //  \return true if indices changed.
         virtual bool integrationWeights
         (
             const scalar t1,

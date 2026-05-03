@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,136 +28,53 @@ License
 
 #include "IOstream.H"
 #include "error.H"
-#include "Switch.H"
-#include <sstream>
+#include "argList.H"
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-Foam::fileName Foam::IOstream::name_("IOstream");
-
-
-// * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * * //
-
-Foam::IOstream::streamFormat
-Foam::IOstream::formatEnum(const word& format)
-{
-    if (format == "ascii")
-    {
-        return IOstream::ASCII;
-    }
-    else if (format == "binary")
-    {
-        return IOstream::BINARY;
-    }
-    else
-    {
-        WarningInFunction
-            << "bad format specifier '" << format << "', using 'ascii'"
-            << endl;
-
-        return IOstream::ASCII;
-    }
-}
-
-
-Foam::IOstream::compressionType
-Foam::IOstream::compressionEnum(const word& compression)
-{
-    // get Switch (bool) value, but allow it to fail
-    Switch sw(compression, true);
-
-    if (sw.valid())
-    {
-        return sw ? IOstream::COMPRESSED : IOstream::UNCOMPRESSED;
-    }
-    else if (compression == "uncompressed")
-    {
-        return IOstream::UNCOMPRESSED;
-    }
-    else if (compression == "compressed")
-    {
-        return IOstream::COMPRESSED;
-    }
-    else
-    {
-        WarningInFunction
-            << "bad compression specifier '" << compression
-            << "', using 'uncompressed'"
-            << endl;
-
-        return IOstream::UNCOMPRESSED;
-    }
-}
-
-
-unsigned int Foam::IOstream::highPrecision()
-{
-    static const unsigned int p = log10(1/pow(small, 0.75));
-
-    return max(defaultPrecision(), p);
-}
-
-
-unsigned int Foam::IOstream::fullPrecision()
-{
-    static const unsigned int p = log10(1/small);
-
-    return max(defaultPrecision(), p);
-}
+Foam::fileName Foam::IOstream::staticName_("stream");
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
+const Foam::fileName& Foam::IOstream::name() const
+{
+    return staticName_;
+}
+
+
+Foam::fileName Foam::IOstream::relativeName() const
+{
+    return argList::envRelativePath(this->name());
+}
+
+
 bool Foam::IOstream::check(const char* operation) const
 {
-    if (bad())
-    {
-        FatalIOErrorInFunction(*this)
-            << "error in IOstream " << name() << " for operation " << operation
-            << exit(FatalIOError);
-    }
-
-    return !bad();
+    return fatalCheck(operation);
 }
 
 
-void Foam::IOstream::fatalCheck(const char* operation) const
+bool Foam::IOstream::fatalCheck(const char* operation) const
 {
-    if (bad())
+    const bool ok = !bad();
+
+    if (!ok)
     {
         FatalIOErrorInFunction(*this)
-            << "error in IOstream " << name() << " for operation " << operation
+            << "error in IOstream " << relativeName()
+            << " for operation " << operation
             << exit(FatalIOError);
     }
-}
 
-
-Foam::string Foam::IOstream::versionNumber::str() const
-{
-    std::ostringstream os;
-    os.precision(1);
-    os.setf(ios_base::fixed, ios_base::floatfield);
-    os  << versionNumber_;
-    return os.str();
+    return ok;
 }
 
 
 void Foam::IOstream::print(Ostream& os) const
 {
-    os  << "IOstream: " << "Version "  << version_ << ", format ";
-
-    switch (format_)
-    {
-        case ASCII:
-            os  << "ASCII";
-        break;
-
-        case BINARY:
-            os  << "BINARY";
-        break;
-    }
-
-    os  << ", line "       << lineNumber();
+    os  << "IOstream: " << "Version "  << version() << ", format "
+        << format() << ", line " << lineNumber();
 
     if (opened())
     {
@@ -192,57 +112,35 @@ void Foam::IOstream::print(Ostream& os) const
 
 void Foam::IOstream::print(Ostream& os, const int streamState) const
 {
-    if (streamState == ios_base::goodbit)
+    if (streamState == std::ios_base::goodbit)
     {
-        os  << "ios_base::goodbit set : the last operation on stream succeeded"
-            << endl;
+        os  << "goodbit set : the last operation on stream succeeded" << endl;
     }
-    else if (streamState & ios_base::badbit)
+    else if (streamState & std::ios_base::badbit)
     {
-        os  << "ios_base::badbit set : characters possibly lost"
-            << endl;
+        os  << "badbit set : characters possibly lost" << endl;
     }
-    else if (streamState & ios_base::failbit)
+    else if (streamState & std::ios_base::failbit)
     {
-        os  << "ios_base::failbit set : some type of formatting error"
-            << endl;
+        os  << "failbit set : some type of formatting error" << endl;
     }
-    else if (streamState & ios_base::eofbit)
+    else if (streamState & std::ios_base::eofbit)
     {
-        os  << "ios_base::eofbit set : at end of stream"
-            << endl;
+        os  << "eofbit set : at end of stream" << endl;
     }
 }
 
 
 // * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
 
-Foam::Ostream& Foam::operator<<(Ostream& os, const IOstream::streamFormat& sf)
-{
-    if (sf == IOstream::ASCII)
-    {
-        os  << "ascii";
-    }
-    else
-    {
-        os  << "binary";
-    }
-
-    return os;
-}
-
-
-Foam::Ostream& Foam::operator<<(Ostream& os, const IOstream::versionNumber& vn)
-{
-    os  << vn.str().c_str();
-    return os;
-}
-
-
 template<>
-Foam::Ostream& Foam::operator<<(Ostream& os, const InfoProxy<IOstream>& ip)
+Foam::Ostream& Foam::operator<<
+(
+    Ostream& os,
+    const InfoProxy<IOstream>& iproxy
+)
 {
-    ip.t_.print(os);
+    (*iproxy).print(os);
     return os;
 }
 

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2016-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -59,31 +61,25 @@ const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::one
 template<>
 const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::max
 (
-    compactSpatialTensor::uniform(vGreat)
+    compactSpatialTensor::uniform(VGREAT)
 );
 
 template<>
 const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::min
 (
-    compactSpatialTensor::uniform(-vGreat)
+    compactSpatialTensor::uniform(-VGREAT)
 );
 
 template<>
 const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::rootMax
 (
-    compactSpatialTensor::uniform(rootVGreat)
+    compactSpatialTensor::uniform(ROOTVGREAT)
 );
 
 template<>
 const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::rootMin
 (
-    compactSpatialTensor::uniform(-rootVGreat)
-);
-
-template<>
-const Foam::compactSpatialTensor Foam::compactSpatialTensor::vsType::nan
-(
-    compactSpatialTensor::uniform(NaN)
+    compactSpatialTensor::uniform(-ROOTVGREAT)
 );
 
 

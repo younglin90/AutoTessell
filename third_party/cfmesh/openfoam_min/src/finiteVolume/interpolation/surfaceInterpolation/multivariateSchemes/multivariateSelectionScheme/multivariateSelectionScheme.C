@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -56,15 +59,14 @@ Foam::multivariateSelectionScheme<Type>::multivariateSelectionScheme
         IOobject
         (
             "multivariateWeights",
-            mesh.time().name(),
+            mesh.time().timeName(),
             mesh
         ),
         mesh,
         dimless
     )
 {
-    typename multivariateSurfaceInterpolationScheme<Type>::
-        fieldTable::const_iterator iter = this->fields().begin();
+    auto iter = this->fields().cbegin();
 
     surfaceScalarField limiter
     (
@@ -76,7 +78,7 @@ Foam::multivariateSelectionScheme<Type>::multivariateSelectionScheme
         )().limiter(*iter())
     );
 
-    for (++iter; iter != this->fields().end(); ++iter)
+    for (++iter; iter.good(); ++iter)
     {
         limiter = min
         (

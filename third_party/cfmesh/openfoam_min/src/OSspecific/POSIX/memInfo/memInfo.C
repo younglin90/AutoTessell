@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2016-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,100 +27,185 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "memInfo.H"
+#include "IOstreams.H"
+#include "OSspecific.H"  // For pid()
+
+#include <cstdlib>
+#include <fstream>
+#include <string>
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::memInfo::memInfo()
 :
-    peak_(-1),
-    size_(-1),
-    rss_(-1)
+    peak_(0),
+    size_(0),
+    rss_(0),
+    free_(0)
 {
-    update();
+    populate();
 }
-
-
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
-
-Foam::memInfo::~memInfo()
-{}
 
 
 // * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * * //
 
-const Foam::memInfo& Foam::memInfo::update()
+bool Foam::memInfo::good() const noexcept
 {
-    // reset to invalid values first
-    peak_ = size_ = rss_ = -1;
-    IFstream is("/proc/" + name(pid()) + "/status");
+    return peak_ > 0;
+}
 
-    while (is.good())
+
+void Foam::memInfo::clear() noexcept
+{
+    peak_ = size_ = rss_ = free_ = 0;
+}
+
+
+void Foam::memInfo::populate()
+{
+    std::string line;
+
+    // "/proc/meminfo"
+    // ===========================
+    // MemTotal:       65879268 kB
+    // MemFree:        51544256 kB
+    // MemAvailable:   58999636 kB
+    // Buffers:            2116 kB
+    // ...
+    // Stop parsing when known keys have been extracted
     {
-        string line;
-        is.getLine(line);
-        char tag[32];
-        int value;
+        std::ifstream is("/proc/meminfo");
 
-        if (sscanf(line.c_str(), "%30s %d", tag, &value) == 2)
+        for
+        (
+            unsigned nkeys = 1;
+            nkeys && is.good() && std::getline(is, line);
+            /*nil*/
+        )
         {
-            if (!strcmp(tag, "VmPeak:"))
+            const auto delim = line.find(':');
+            if (delim == std::string::npos)
             {
-                peak_ = value;
+                continue;
             }
-            else if (!strcmp(tag, "VmSize:"))
+
+            const std::string key(line.substr(0, delim));
+
+            // std::stol() skips whitespace before using as many digits as
+            // possible. So just need to skip over the ':' and let stol do
+            // the rest
+
+            if (key == "MemFree")
             {
-                size_ = value;
-            }
-            else if (!strcmp(tag, "VmRSS:"))
-            {
-                rss_ = value;
+                free_ = std::stol(line.substr(delim+1));
+                --nkeys;
             }
         }
     }
 
+    // "/proc/PID/status"
+    // ===========================
+    // VmPeak:    15920 kB
+    // VmSize:    15916 kB
+    // VmLck:         0 kB
+    // VmPin:         0 kB
+    // VmHWM:      6972 kB
+    // VmRSS:      6972 kB
+    // ...
+    // Stop parsing when known keys have been extracted
+
+    // These units are kibi-btyes (1024)
+    {
+        std::ifstream is("/proc/" + std::to_string(Foam::pid()) + "/status");
+
+        for
+        (
+            unsigned nkeys = 3;
+            nkeys && is.good() && std::getline(is, line);
+            /*nil*/
+        )
+        {
+            const auto delim = line.find(':');
+            if (delim == std::string::npos)
+            {
+                continue;
+            }
+
+            const std::string key(line.substr(0, delim));
+
+            // std::stoi() skips whitespace before using as many digits as
+            // possible. So just need to skip over the ':' and let stoi do
+            // the rest
+
+            if (key == "VmPeak")
+            {
+                peak_ = std::stol(line.substr(delim+1));
+                --nkeys;
+            }
+            else if (key == "VmSize")
+            {
+                size_ = std::stol(line.substr(delim+1));
+                --nkeys;
+            }
+            else if (key == "VmRSS")
+            {
+                rss_ = std::stol(line.substr(delim+1));
+                --nkeys;
+            }
+        }
+    }
+}
+
+
+const Foam::memInfo& Foam::memInfo::update()
+{
+    clear();
+    populate();
     return *this;
 }
 
 
-bool Foam::memInfo::valid() const
+void Foam::memInfo::writeEntries(Ostream& os) const
 {
-    return peak_ != -1;
+    os.writeEntry("size", size_);
+    os.writeEntry("peak", peak_);
+    os.writeEntry("rss", rss_);
+    os.writeEntry("free", free_);
+    os.writeEntry("units", "kB");
+}
+
+
+void Foam::memInfo::writeEntry(const word& keyword, Ostream& os) const
+{
+    os.beginBlock(keyword);
+    writeEntries(os);
+    os.endBlock();
 }
 
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Foam::Istream& Foam::operator>>(Istream& is, memInfo& m)
-{
-    is.readBegin("memInfo");
-
-    is  >> m.peak_ >> m.size_ >> m.rss_;
-
-    is.readEnd("memInfo");
-
-    // Check state of Istream
-    is.check
-    (
-        "Foam::Istream& Foam::operator>>(Foam::Istream&, Foam::memInfo&)"
-    );
-
-    return is;
-}
+// Foam::Istream& Foam::operator>>(Istream& is, memInfo& m)
+// {
+//     is.readBegin("memInfo");
+//     is  >> m.peak_ >> m.size_ >> m.rss_ >> m.free_;
+//     is.readEnd("memInfo");
+//
+//     is.check(FUNCTION_NAME);
+//     return is;
+// }
 
 
 Foam::Ostream& Foam::operator<<(Ostream& os, const memInfo& m)
 {
     os  << token::BEGIN_LIST
-        << m.peak_ << token::SPACE << m.size_ << token::SPACE << m.rss_
+        << m.peak() << token::SPACE
+        << m.size() << token::SPACE
+        << m.rss()  << token::SPACE
+        << m.free()
         << token::END_LIST;
 
-    // Check state of Ostream
-    os.check
-    (
-        "Foam::Ostream& Foam::operator<<(Foam::Ostream&, "
-        "const Foam::memInfo&)"
-    );
-
+    os.check(FUNCTION_NAME);
     return os;
 }
 

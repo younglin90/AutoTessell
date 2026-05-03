@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -33,108 +36,58 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef dynamicIndexedOctree_H
-#define dynamicIndexedOctree_H
+#ifndef Foam_dynamicIndexedOctree_H
+#define Foam_dynamicIndexedOctree_H
 
-#include "treeBoundBox.H"
-#include "pointIndexHit.H"
-#include "FixedList.H"
-#include "Ostream.H"
-#include "HashSet.H"
-#include "labelBits.H"
-#include "PackedList.H"
-#include "volumeType.H"
+#include "indexedOctree.H"
+#include "DynamicList.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-typedef DynamicList<autoPtr<DynamicList<label >>> contentListList;
-
-// Forward declaration of classes
+// Forward Declarations
 template<class Type> class dynamicIndexedOctree;
-
-template<class Type> Ostream& operator<<
-(
-    Ostream&,
-    const dynamicIndexedOctree<Type>&
-);
-
-class Istream;
+template<class Type>
+Ostream& operator<<(Ostream&, const dynamicIndexedOctree<Type>&);
 
 
 /*---------------------------------------------------------------------------*\
-                  Class dynamicIndexedOctreeName Declaration
+                  Class dynamicIndexedOctreeBase Declaration
 \*---------------------------------------------------------------------------*/
 
-TemplateName(dynamicIndexedOctree);
+//- Template invariant parts for dynamicIndexedOctree
+//  Same type of node bookkeeping as indexedOctree
+class dynamicIndexedOctreeBase
+:
+    public indexedOctreeBase
+{
+public:
+
+    //- Document that we are using the same types of node
+    using node = indexedOctreeBase::node;
+
+    //- Runtime type information
+    ClassName("dynamicIndexedOctree");
+
+
+    // Constructors
+
+        //- Default construct
+        dynamicIndexedOctreeBase() = default;
+};
 
 
 /*---------------------------------------------------------------------------*\
-                    Class dynamicIndexedOctree Declaration
+                           Class dynamicIndexedOctree Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class dynamicIndexedOctree
 :
-    public dynamicIndexedOctreeName
+    public dynamicIndexedOctreeBase
 {
-public:
-
-    // Data types
-
-        //- Tree node. Has up pointer and down pointers.
-        class node
-        {
-        public:
-
-            //- Bounding box of this node
-            treeBoundBox bb_;
-
-            //- Parent node (index into nodes_ of tree)
-            label parent_;
-
-            //- IDs of the 8 nodes on all sides of the mid point
-            FixedList<labelBits, 8> subNodes_;
-
-            friend Ostream& operator<< (Ostream& os, const node& n)
-            {
-                return os << n.bb_ << token::SPACE
-                    << n.parent_ << token::SPACE << n.subNodes_;
-            }
-
-            friend Istream& operator>> (Istream& is, node& n)
-            {
-                return is >> n.bb_ >> n.parent_ >> n.subNodes_;
-            }
-
-            friend bool operator==(const node& a, const node& b)
-            {
-                return
-                    a.bb_ == b.bb_
-                 && a.parent_ == b.parent_
-                 && a.subNodes_ == b.subNodes_;
-            }
-
-            friend bool operator!=(const node& a, const node& b)
-            {
-                return !(a == b);
-            }
-        };
-
-
-private:
-
-    // Static data
-
-        //- Relative perturbation tolerance. Determines when point is
-        //  considered to be close to face/edge of bb of node.
-        //  The tolerance is relative to the bounding box of the smallest
-        //  node.
-        static scalar perturbTol_;
-
-
     // Private Data
 
         //- Underlying shapes for geometric queries.
@@ -157,7 +110,7 @@ private:
         DynamicList<node> nodes_;
 
         //- List of all contents (referenced by those nodes that are contents)
-        contentListList contents_;
+        DynamicList<DynamicList<label>> contents_;
 
         //- Per node per octant whether is fully inside/outside/mixed.
         mutable PackedList<2> nodeTypes_;
@@ -165,27 +118,15 @@ private:
 
     // Private Member Functions
 
-        //- Helper: does bb intersect a sphere around sample? Or is any
-        //  corner point of bb closer than nearestDistSqr to sample.
-        //  (bb is implicitly provided as parent bb + octant)
-        static bool overlaps
-        (
-            const treeBoundBox& parentBb,
-            const direction octant,
-            const scalar nearestDistSqr,
-            const point& sample
-        );
-
-
         // Construction
 
             //- Split list of indices into 8 bins
             //  according to where they are in relation to mid.
             void divide
             (
-                const autoPtr<DynamicList<label>>& indices,
+                const labelUList& indices,
                 const treeBoundBox& bb,
-                contentListList& result
+                FixedList<DynamicList<label>, 8>& dividedIndices
             ) const;
 
             //- Subdivide the contents node at position contentI.
@@ -193,7 +134,7 @@ private:
             node divide
             (
                 const treeBoundBox& bb,
-                const label contentI,
+                label contentIndex,
                 const label parentNodeIndex,
                 const label octantToBeDivided
             );
@@ -271,6 +212,7 @@ private:
             (
                 const label nodeI,
                 const direction octant,
+
                 label& parentNodeI,
                 label& parentOctant
             ) const;
@@ -297,10 +239,12 @@ private:
                 const bool findAny,
                 const point& treeStart,
                 const vector& treeVec,
+
                 const point& start,
                 const point& end,
                 const label nodeI,
                 const direction octantI,
+
                 pointIndexHit& hitInfo,
                 direction& faceID
             ) const;
@@ -324,24 +268,26 @@ private:
                 const point& end
             ) const;
 
-            //- Find all elements intersecting box.
-            void findBox
+            //- Find elements intersecting box
+            //  Store all results in elements (if non-null), or early exit
+            bool findBox
             (
                 const label nodeI,
                 const treeBoundBox& searchBox,
-                labelHashSet& elements
+                labelHashSet* elements
             ) const;
 
-            //- Find all elements intersecting sphere.
-            void findSphere
+            //- Find elements intersecting sphere.
+            //  Store all results in elements (if non-null), or early exit
+            bool findSphere
             (
                 const label nodeI,
                 const point& centre,
                 const scalar radiusSqr,
-                labelHashSet& elements
+                labelHashSet* elements
             ) const;
 
-            //- ...
+
             template<class CompareOp>
             static void findNear
             (
@@ -357,48 +303,26 @@ private:
             );
 
 
-        // Other
+    // Other
 
-            //- Count number of elements on this and sublevels
-            label countElements(const labelBits index) const;
+        //- Count number of elements on this and sublevels
+        label countElements(const labelBits index) const;
 
-            //- Dump node+octant to an obj file
-            void writeOBJ(const label nodeI, const direction octant) const;
+        //- Write node treeBoundBoxes in OBJ format
+        void writeOBJ
+        (
+            const label nodeI,
+            Ostream& os,
+            label& vertIndex,
+            const bool leavesOnly,
+            const bool writeLinesOnly = false
+        ) const;
 
-            //- From index into contents_ to subNodes_ entry
-            static labelBits contentPlusOctant
-            (
-                const label i,
-                const direction octant
-            )
-            {
-                return labelBits(-i - 1, octant);
-            }
+        //- Dump node+octant to an obj file
+        void writeOBJ(const label nodeI, const direction octant) const;
 
-            //- From index into nodes_ to subNodes_ entry
-            static labelBits nodePlusOctant
-            (
-                const label i,
-                const direction octant
-            )
-            {
-                return labelBits(i + 1, octant);
-            }
-
-            //- From empty to subNodes_ entry
-            static labelBits emptyPlusOctant
-            (
-                const direction octant
-            )
-            {
-                return labelBits(0, octant);
-            }
 
 public:
-
-        //- Get the perturbation tolerance
-        static scalar& perturbTol();
-
 
     // Constructors
 
@@ -416,89 +340,42 @@ public:
         //- Clone
         autoPtr<dynamicIndexedOctree<Type>> clone() const
         {
-            return autoPtr<dynamicIndexedOctree<Type>>
-            (
-                new dynamicIndexedOctree<Type>(*this)
-            );
+            return autoPtr<dynamicIndexedOctree<Type>>::New(*this);
         }
 
 
     // Member Functions
 
-        // Access
+    // Access
 
-            //- Reference to shape
-            const Type& shapes() const
+        //- Reference to shape
+        const Type& shapes() const noexcept { return shapes_; }
+
+        //- List of all nodes
+        const List<node>& nodes() const noexcept { return nodes_; }
+
+        //- List of all contents
+        //- (referenced by those nodes that are contents)
+        const DynamicList<DynamicList<label>>& contents() const noexcept
+        {
+            return contents_;
+        }
+
+        //- Per node, per octant whether is fully inside/outside/mixed.
+        PackedList<2>& nodeTypes() const noexcept
+        {
+            return nodeTypes_;
+        }
+
+        //- Top bounding box
+        const treeBoundBox& bb() const
+        {
+            if (nodes_.empty())
             {
-                return shapes_;
+                return treeBoundBox::null();
             }
-
-            //- List of all nodes
-            const List<node>& nodes() const
-            {
-                return nodes_;
-            }
-
-            //- List of all contents (referenced by those nodes that are
-            //  contents)
-            const contentListList& contents() const
-            {
-                return contents_;
-            }
-
-            //- Top bounding box
-            const treeBoundBox& bb() const
-            {
-                if (nodes_.empty())
-                {
-                    FatalErrorInFunction
-                        << "Tree is empty" << abort(FatalError);
-                }
-                return nodes_[0].bb_;
-            }
-
-
-        // Conversions for entries in subNodes_.
-
-            static bool isContent(const labelBits i)
-            {
-                return i.val() < 0;
-            }
-
-            static bool isEmpty(const labelBits i)
-            {
-                return i.val() == 0;
-            }
-
-            static bool isNode(const labelBits i)
-            {
-                return i.val() > 0;
-            }
-
-            static label getContent(const labelBits i)
-            {
-                if (!isContent(i))
-                {
-                    FatalErrorInFunction
-                        << abort(FatalError);
-                }
-                return -i.val()-1;
-            }
-
-            static label getNode(const labelBits i)
-            {
-                if (!isNode(i))
-                {
-                    FatalErrorInFunction
-                        << abort(FatalError);
-                }
-                return i.val() - 1;
-            }
-
-            static direction getOctant(const labelBits i)
-            {
-                return i.bits();
-            }
+            return nodes_[0].bb_;
+        }
 
 
         // Queries
@@ -519,6 +396,7 @@ public:
             (
                 const label nodeI,
                 const point&,
+
                 scalar& nearestDistSqr,
                 label& nearestShapeI,
                 point& nearestPoint
@@ -552,18 +430,52 @@ public:
                 const point& end
             ) const;
 
-            //- Find (in no particular order) indices of all shapes inside or
-            //  overlapping bounding box (i.e. all shapes not outside box)
-            labelList findBox(const treeBoundBox& bb) const;
+            //- True if any shapes overlap the bounding box
+            bool overlaps(const treeBoundBox& bb) const;
 
-            //- Find (in no particular order) indices of all shapes inside or
-            //  overlapping a bounding sphere (i.e. all shapes not outside
-            //  sphere)
+            //- Find indices of all shapes inside or overlapping
+            //- a bounding box (i.e. all shapes not outside box)
+            //  \returns the indices (in no particular order)
+            labelList findBox
+            (
+                const treeBoundBox& bb  //!< bound box limits
+            ) const;
+
+            //- Find indices of all shapes inside or overlapping
+            //- a bounding box (i.e. all shapes not outside box)
+            //  \returns the number of elements found
+            label findBox
+            (
+                const treeBoundBox& bb, //!< bound box limits
+                labelHashSet& elements  //!< [out] elements found
+            ) const;
+
+            //- True if any shapes overlap the bounding sphere
+            bool overlaps
+            (
+                const point& centre,    //!< centre of bound sphere
+                const scalar radiusSqr  //!< radius^2 of sphere
+            ) const;
+
+            //- Find indices of all shapes inside or overlapping
+            //- a bounding sphere (i.e. all shapes not outside a sphere)
+            //  \returns the indices (in no particular order)
             labelList findSphere
             (
-                const point& centre,
-                const scalar radiusSqr
+                const point& centre,    //!< centre of bound sphere
+                const scalar radiusSqr  //!< radius^2 of sphere
             ) const;
+
+            //- Find indices of all shapes inside or overlapping
+            //- a bounding sphere (i.e. all shapes not outside sphere)
+            //  \returns the number of elements found
+            label findSphere
+            (
+                const point& centre,    //!< centre of bound sphere
+                const scalar radiusSqr, //!< radius^2 of sphere
+                labelHashSet& elements  //!< [out] elements found
+            ) const;
+
 
             //- Find deepest node (as parent+octant) containing point. Starts
             //  off from starting index in nodes_ (use 0 to start from top)
@@ -572,8 +484,7 @@ public:
 
             //- Find shape containing point. Only implemented for certain
             //  shapes.
-            template<class ... Args>
-            label findInside(const point&, const Args& ...) const;
+            label findInside(const point&) const;
 
             //- Find the shape indices that occupy the result of findNode
             const labelList& findIndices(const point&) const;
@@ -588,16 +499,6 @@ public:
             (
                 const vector& outsideNormal,
                 const vector& vec
-            );
-
-            //- Helper: does bb intersect a sphere around sample? Or is any
-            //  corner point of bb closer than nearestDistSqr to sample.
-            static bool overlaps
-            (
-                const point& bbMin,
-                const point& bbMax,
-                const scalar nearestDistSqr,
-                const point& sample
             );
 
             //- Find near pairs and apply CompareOp to them.
@@ -629,22 +530,23 @@ public:
             label removeIndex(const label nodIndex, const label index);
 
 
-        // Write
+    // Write
 
-            //- Print tree. Either print all indices (printContent = true) or
-            //  just size of contents nodes.
-            void print
-            (
-                prefixOSstream&,
-                const bool printContents,
-                const label
-            ) const;
+        //- Write all tree boxes as OBJ format
+        void writeOBJ(Ostream& os) const;
 
-            //- Write to a stream
-            bool write(Ostream& os) const;
+        //- Print tree. Either print all indices (printContent = true) or
+        //  just size of contents nodes.
+        void print
+        (
+            prefixOSstream&,
+            const bool printContents,
+            const label
+        ) const;
 
-            //- Print information
-            void writeTreeInfo() const;
+        bool write(Ostream& os) const;
+
+        void writeTreeInfo() const;
 
 
     // IOstream Operators

@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,41 +26,67 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "DynamicList.H"
+#include "labelRange.H"
 
-// * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
-
-template<class T, unsigned SizeInc, unsigned SizeMult, unsigned SizeDiv>
-Foam::DynamicList<T, SizeInc, SizeMult, SizeDiv>::DynamicList(Istream& is)
-:
-    List<T>(is),
-    capacity_(List<T>::size())
-{}
-
-
-template<class T, unsigned SizeInc, unsigned SizeMult, unsigned SizeDiv>
-Foam::Ostream& Foam::operator<<
+template<class T, int SizeMin>
+Foam::label Foam::DynamicList<T, SizeMin>::removeElements
 (
-    Ostream& os,
-    const DynamicList<T, SizeInc, SizeMult, SizeDiv>& lst
+    const labelRange& slice
 )
 {
-    os << static_cast<const List<T>&>(lst);
-    return os;
+    if (!slice.good())
+    {
+        // No-op
+        return 0;
+    }
+
+    // Note: already checked for valid begin_value before
+    if (slice.end_value() >= this->size())
+    {
+        // Remove entire tail
+        this->resize(slice.begin_value());
+    }
+    else
+    {
+        // Move all trailing elements down into space previously
+        // occupied by the slice. Truncate after
+        std::move
+        (
+            this->begin(slice.end_value()),
+            this->end(),
+            this->begin(slice.begin_value())
+        );
+
+        this->resize(this->size() - slice.size());
+    }
+
+    return slice.size();
 }
 
 
-template<class T, unsigned SizeInc, unsigned SizeMult, unsigned SizeDiv>
-Foam::Istream& Foam::operator>>
+template<class T, int SizeMin>
+Foam::label Foam::DynamicList<T, SizeMin>::subsetElements
 (
-    Istream& is,
-    DynamicList<T, SizeInc, SizeMult, SizeDiv>& lst
+    const labelRange& slice
 )
 {
-    is >> static_cast<List<T>&>(lst);
-    lst.capacity_ = lst.List<T>::size();
+    if (slice.begin_value() > 0)
+    {
+        // Move elements down.
+        // Since begin_value > 0, the initial destination is non-overlapping
+        std::move
+        (
+            this->begin(slice.begin_value()),
+            this->begin(slice.end_value()),
+            this->begin()
+        );
+    }
 
-    return is;
+    // Don't need min size, since slice size was already checked before
+    resize(slice.size());
+    return this->size();
 }
 
 

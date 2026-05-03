@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2025-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2019-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,19 +27,21 @@ Class
     Foam::OTstream
 
 Description
-    Output token stream.
+    A simple output token stream that can be used to build token lists.
+    Always UNCOMPRESSED.
+
+Note
+    Appending single characters to token list is fragile.
 
 SourceFiles
     OTstream.C
 
-See also
-    Foam::ITstream
-
 \*---------------------------------------------------------------------------*/
 
-#ifndef OTstream_H
-#define OTstream_H
+#ifndef Foam_OTstream_H
+#define Foam_OTstream_H
 
+#include "token.H"
 #include "Ostream.H"
 #include "DynamicList.H"
 
@@ -55,167 +59,220 @@ class OTstream
     public Ostream,
     public DynamicList<token>
 {
-    // Private Data
-
-        //- Name of OTstream
-        fileName name_;
-
-
 public:
 
     // Constructors
 
-        //- Construct given name write format and IO version
-        OTstream
-        (
-            const string& name,
-            const streamFormat format = ASCII,
-            const versionNumber version = currentVersion,
-            const bool global = false
-        );
+        //- Default construct, set stream status
+        explicit OTstream(IOstreamOption streamOpt = IOstreamOption())
+        :
+            Ostream(IOstreamOption(streamOpt.format(), streamOpt.version())),
+            DynamicList<token>()
+        {
+            setOpened();
+            setGood();
+        }
+
+        //- Copy construct
+        OTstream(const OTstream& os)
+        :
+            Ostream(static_cast<IOstreamOption>(os)),
+            DynamicList<token>(os.tokens())
+        {
+            setOpened();
+            setGood();
+        }
+
+        //- Move construct
+        OTstream(OTstream&& os)
+        :
+            Ostream(static_cast<IOstreamOption>(os)),
+            DynamicList<token>(std::move(os.tokens()))
+        {
+            setOpened();
+            setGood();
+        }
 
 
     //- Destructor
-    virtual ~OTstream();
+    ~OTstream() = default;
 
 
     // Member Functions
 
-        // Inquiry
+        //- The tokens
+        const DynamicList<token>& tokens() const noexcept { return *this; }
 
-            //- Return the name of the stream
-            virtual const fileName& name() const
-            {
-                return name_;
-            }
-
-            //- Return non-const access to the name of the stream
-            virtual fileName& name()
-            {
-                return name_;
-            }
-
-            //- Return flags of output stream
-            ios_base::fmtflags flags() const
-            {
-                return ios_base::fmtflags(0);
-            }
+        //- The tokens
+        DynamicList<token>& tokens() noexcept { return *this; }
 
 
-        // Write functions
+    // Write
 
-            //- Write token
-            virtual Ostream& write(const token&);
+        //- Inherit write methods from Ostream
+        using Ostream::writeQuoted;
 
-            //- No need to write the compound token tag for an OTstream
-            virtual Ostream& writeCompoundTag(const word& typeName)
-            {
-                return *this;
-            }
+        //- Write token to stream or otherwise handle it.
+        //  \return false if the token type was not handled by this method
+        virtual bool write(const token& tok) override;
 
-            //- Write character
-            virtual Ostream& write(const char);
+        //- Write single character. Whitespace is suppressed.
+        virtual Ostream& write(const char c) override;
 
-            //- Parse raw C-string and append tokens
-            virtual Ostream& write(const char*);
+        //- Write character/string content, with/without surrounding quotes
+        virtual Ostream& writeQuoted
+        (
+            const char* str,
+            std::streamsize len,
+            const bool quoted=true
+        ) override;
 
-            //- Write word
-            virtual Ostream& write(const word&);
+        //- Write the word-characters of a character string.
+        //  Sends as a single char, or as word.
+        virtual Ostream& write(const char* str) override;
 
-            //- Write string
-            virtual Ostream& write(const string&);
+        //- Write word
+        virtual Ostream& write(const word& str) override;
 
-            //- Write keyType
-            virtual Ostream& write(const keyType&);
+        //- Write string
+        virtual Ostream& write(const std::string& str) override;
 
-            //- Write verbatimString
-            virtual Ostream& write(const verbatimString&);
+        //- Write int32_t as a label
+        virtual Ostream& write(const int32_t val) override;
 
-            //- Write std::string surrounded by quotes.
-            //  Optional write without quotes.
-            virtual Ostream& writeQuoted
-            (
-                const std::string&,
-                const bool quoted=true
-            );
+        //- Write int64_t as a label
+        virtual Ostream& write(const int64_t val) override;
 
-            //- Write int32_t
-            virtual Ostream& write(const int32_t);
+        //- Write float
+        virtual Ostream& write(const float val) override;
 
-            //- Write int64_t
-            virtual Ostream& write(const int64_t);
+        //- Write double
+        virtual Ostream& write(const double val) override;
 
-            //- Write uint32_t
-            virtual Ostream& write(const uint32_t);
+        //- Write binary block with 8-byte alignment.
+        virtual Ostream& write
+        (
+            const char* data,
+            std::streamsize count
+        ) override;
 
-            //- Write uint64_t
-            virtual Ostream& write(const uint64_t);
+        //- Low-level raw binary output.
+        virtual Ostream& writeRaw
+        (
+            const char* data,
+            std::streamsize count
+        ) override;
 
-            //- Write floatScalar
-            virtual Ostream& write(const floatScalar);
+        //- Begin marker for low-level raw binary output.
+        //  The count indicates the number of bytes for subsequent
+        //  writeRaw calls.
+        virtual bool beginRawWrite(std::streamsize count) override;
 
-            //- Write doubleScalar
-            virtual Ostream& write(const doubleScalar);
+        //- End marker for low-level raw binary output.
+        virtual bool endRawWrite() override
+        {
+            return true;
+        }
 
-            //- Write longDoubleScalar
-            virtual Ostream& write(const longDoubleScalar);
-
-            //- Write binary block
-            virtual Ostream& write(const char*, std::streamsize);
-
-            //- Add indentation characters
-            virtual void indent()
-            {}
-
-
-        // Stream state functions
-
-            //- Flush stream
-            virtual void flush()
-            {}
-
-            //- Add newline and flush stream
-            virtual void endl()
-            {}
-
-            //- Get width of output field
-            virtual int width() const
-            {
-                return 0;
-            }
-
-            //- Set width of output field (and return old width)
-            virtual int width(const int)
-            {
-                 return 0;
-            }
-
-            //- Get precision of output field
-            virtual int precision() const
-            {
-                 return 0;
-            }
-
-            //- Set precision of output field (and return old precision)
-            virtual int precision(const int)
-            {
-                 return 0;
-            }
+        //- Add indentation characters
+        virtual void indent() override
+        {}
 
 
-        // Edit
+    // Stream State Functions
 
-            //- Set flags of stream
-            ios_base::fmtflags flags(const ios_base::fmtflags)
-            {
-                return ios_base::fmtflags(0);
-            }
+        //- Return current stream flags.
+        //- Dummy for token stream, returns 0.
+        virtual std::ios_base::fmtflags flags() const override
+        {
+            return std::ios_base::fmtflags(0);
+        }
+
+        //- Set stream flags, return old stream flags.
+        //- Dummy for token stream, returns 0.
+        std::ios_base::fmtflags flags(std::ios_base::fmtflags) override
+        {
+            return std::ios_base::fmtflags(0);
+        }
+
+        //- Flush stream
+        virtual void flush() override
+        {}
+
+        //- Add newline and flush stream
+        virtual void endl() override
+        {}
+
+        //- Get the current padding character
+        //  \return previous padding character
+        virtual char fill() const override
+        {
+            return 0;
+        }
+
+        //- Set padding character for formatted field up to field width
+        virtual char fill(const char) override
+        {
+            return 0;
+        }
+
+        //- Get width of output field
+        virtual int width() const override
+        {
+            return 0;
+        }
+
+        //- Set width of output field
+        //  \return previous width
+        virtual int width(const int) override
+        {
+             return 0;
+        }
+
+        //- Get precision of output field
+        virtual int precision() const override
+        {
+             return 0;
+        }
+
+        //- Set precision of output field
+        //  \return old precision
+        virtual int precision(const int) override
+        {
+             return 0;
+        }
 
 
-        // Print
+    // Other
 
-            //- Print description of IOstream to Ostream
-            void print(Ostream&) const;
+        //- Rewind the output stream to position 0 (non-virtual!)
+        //- and adjust the stream status (open/good/eof ...)
+        //- Reset the output buffer and rewind the stream
+        void reset() noexcept
+        {
+            DynamicList<token>::clear();
+            setOpened();
+            setGood();
+        }
+
+        //- Rewind the output stream to position 0
+        //- and adjust the stream status (open/good/eof ...)
+        virtual void rewind() { OTstream::reset(); }
+
+        //- Print stream description to Ostream
+        void print(Ostream& os) const override;
+
+
+    // Additional constructors and methods (as per v2012 and earlier)
+    #ifdef Foam_IOstream_extras
+
+        //- Construct empty with format
+        explicit OTstream(IOstreamOption::streamFormat fmt)
+        :
+            OTstream(IOstreamOption(fmt))
+        {}
+
+    #endif /* Foam_IOstream_extras */
 };
 
 

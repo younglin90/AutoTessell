@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -21,85 +23,19 @@ License
     You should have received a copy of the GNU General Public License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
-Class
+Typedef
     Foam::cpuTime
 
 Description
-    Starts timing CPU usage and return elapsed time from start.
-
-    Uses the POSIX clock() function which return the processor time consumed
-    in clock ticks @ CLOCKS_PER_SEC clock ticks per second.
-
-See also
-    clockTime
-
-SourceFiles
-    cpuTime.C
+    Selection of preferred clock mechanism for the elapsed cpu time.
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cpuTime_H
-#define cpuTime_H
+#ifndef Foam_cpuTime_H
+#define Foam_cpuTime_H
 
-#include <time.h>
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-namespace Foam
-{
-
-/*---------------------------------------------------------------------------*\
-                           Class cpuTime Declaration
-\*---------------------------------------------------------------------------*/
-
-class cpuTime
-{
-    // Private Data
-
-        //- Start CPU clock tick count
-        clock_t startTime_;
-
-        //- Previous CPU clock tick count
-        mutable clock_t prevTime_;
-
-        //- Current CPU clock tick count
-        mutable clock_t curTime_;
-
-
-    // Private Member Functions
-
-        //- Return the difference between two times clock tick counts
-        //  as elapsed CPU time (in seconds)
-        inline double timeDifference
-        (
-            const clock_t prev,
-            const clock_t cur
-        ) const;
-
-
-public:
-
-    // Constructors
-
-        //- Construct with the current clock time
-        cpuTime();
-
-
-    // Member Functions
-
-        //- Return CPU time (in seconds) from the start
-        double elapsedCpuTime() const;
-
-        //- Return CPU time (in seconds) since last call to cpuTimeIncrement()
-        double cpuTimeIncrement() const;
-};
-
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-} // End namespace Foam
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+#include "cpuTimePosix.H"
+#include "cpuTimeFwd.H"
 
 #endif
 

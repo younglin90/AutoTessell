@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2025 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,29 +34,127 @@ License
 
 namespace Foam
 {
-    defineTypeNameAndDebug(treeDataCell, 0);
+    defineTypeName(treeDataCell);
+}
+
+
+// * * * * * * * * * * * * * * * Local Functions * * * * * * * * * * * * * * //
+
+namespace Foam
+{
+
+// Bound boxes corresponding to specified cells
+template<class ElementIds>
+static treeBoundBoxList boxesImpl
+(
+    const primitiveMesh& mesh,
+    const ElementIds& elemIds
+)
+{
+    treeBoundBoxList bbs(elemIds.size());
+
+    if (mesh.hasCellPoints())
+    {
+        std::transform
+        (
+            elemIds.cbegin(),
+            elemIds.cend(),
+            bbs.begin(),
+            [&](label celli)
+            {
+                return treeBoundBox(mesh.points(), mesh.cellPoints(celli));
+            }
+        );
+    }
+    else
+    {
+        std::transform
+        (
+            elemIds.cbegin(),
+            elemIds.cend(),
+            bbs.begin(),
+            [&](label celli)
+            {
+                return treeBoundBox(mesh.cells()[celli].box(mesh));
+            }
+        );
+    }
+
+    return bbs;
+}
+
+}  // End namespace Foam
+
+
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
+
+Foam::treeBoundBoxList
+Foam::treeDataCell::boxes(const primitiveMesh& mesh)
+{
+    // All cells
+    return boxesImpl(mesh, labelRange(mesh.nCells()));
+}
+
+
+Foam::treeBoundBoxList
+Foam::treeDataCell::boxes
+(
+    const primitiveMesh& mesh,
+    const labelUList& cellIds
+)
+{
+    return boxesImpl(mesh, cellIds);
+}
+
+
+Foam::treeBoundBox
+Foam::treeDataCell::bounds
+(
+    const primitiveMesh& mesh,
+    const labelUList& cellIds
+)
+{
+    treeBoundBox bb;
+
+    if (mesh.hasCellPoints())
+    {
+        for (const label celli : cellIds)
+        {
+            bb.add(mesh.points(), mesh.cellPoints(celli));
+        }
+    }
+    else
+    {
+        for (const label celli : cellIds)
+        {
+            bb.add(mesh.cells()[celli].box(mesh));
+        }
+    }
+
+    return bb;
 }
 
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+inline Foam::treeBoundBox
+Foam::treeDataCell::getBounds(const label index) const
+{
+    return treeBoundBox(mesh_.cellBb(objectIndex(index)));
+}
+
+
 void Foam::treeDataCell::update()
 {
     if (cacheBb_)
     {
-        bbs_.setSize(cellLabels_.size());
-
-        forAll(cellLabels_, i)
+        if (useSubset_)
         {
-            bbs_[i] =
-                treeBoundBox
-                (
-                    mesh_.cells()[cellLabels_[i]].bb
-                    (
-                        mesh_.points(),
-                        mesh_.faces()
-                    )
-                );
+            bbs_ = treeDataCell::boxes(mesh_, cellLabels_);
+        }
+        else
+        {
+            bbs_ = treeDataCell::boxes(mesh_);
         }
     }
 }
@@ -65,12 +166,14 @@ Foam::treeDataCell::treeDataCell
 (
     const bool cacheBb,
     const polyMesh& mesh,
-    const labelUList& cellLabels
+    const polyMesh::cellDecomposition decompMode
 )
 :
     mesh_(mesh),
-    cellLabels_(cellLabels),
-    cacheBb_(cacheBb)
+    cellLabels_(),
+    useSubset_(false),
+    cacheBb_(cacheBb),
+    decompMode_(decompMode)
 {
     update();
 }
@@ -80,12 +183,15 @@ Foam::treeDataCell::treeDataCell
 (
     const bool cacheBb,
     const polyMesh& mesh,
-    labelList&& cellLabels
+    const labelUList& cellLabels,
+    const polyMesh::cellDecomposition decompMode
 )
 :
     mesh_(mesh),
-    cellLabels_(move(cellLabels)),
-    cacheBb_(cacheBb)
+    cellLabels_(cellLabels),
+    useSubset_(true),
+    cacheBb_(cacheBb),
+    decompMode_(decompMode)
 {
     update();
 }
@@ -94,16 +200,93 @@ Foam::treeDataCell::treeDataCell
 Foam::treeDataCell::treeDataCell
 (
     const bool cacheBb,
-    const polyMesh& mesh
+    const polyMesh& mesh,
+    labelList&& cellLabels,
+    const polyMesh::cellDecomposition decompMode
 )
 :
     mesh_(mesh),
-    cellLabels_(identityMap(mesh_.nCells())),
-    cacheBb_(cacheBb)
+    cellLabels_(std::move(cellLabels)),
+    useSubset_(true),
+    cacheBb_(cacheBb),
+    decompMode_(decompMode)
 {
     update();
 }
 
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+Foam::treeBoundBox
+Foam::treeDataCell::bounds(const labelUList& indices) const
+{
+    if (useSubset_)
+    {
+        treeBoundBox bb;
+
+        if (mesh_.hasCellPoints())
+        {
+            for (const label index : indices)
+            {
+                const label celli = cellLabels_[index];
+
+                bb.add(mesh_.points(), mesh_.cellPoints(celli));
+            }
+        }
+        else
+        {
+            for (const label index : indices)
+            {
+                const label celli = cellLabels_[index];
+
+                bb.add(mesh_.cells()[celli].box(mesh_));
+            }
+        }
+
+        return bb;
+    }
+
+    return treeDataCell::bounds(mesh_, indices);
+}
+
+
+Foam::tmp<Foam::pointField> Foam::treeDataCell::centres() const
+{
+    if (useSubset_)
+    {
+        return tmp<pointField>::New(mesh_.cellCentres(), cellLabels_);
+    }
+
+    return mesh_.cellCentres();
+}
+
+
+bool Foam::treeDataCell::overlaps
+(
+    const label index,
+    const treeBoundBox& searchBox
+) const
+{
+    return
+    (
+        cacheBb_
+      ? searchBox.overlaps(bbs_[index])
+      : searchBox.overlaps(getBounds(index))
+    );
+}
+
+
+bool Foam::treeDataCell::contains
+(
+    const label index,
+    const point& sample
+) const
+{
+    return mesh_.pointInCell(sample, objectIndex(index), decompMode_);
+}
+
+
+// * * * * * * * * * * * * * * * * Searching * * * * * * * * * * * * * * * * //
 
 Foam::treeDataCell::findNearestOp::findNearestOp
 (
@@ -123,53 +306,29 @@ Foam::treeDataCell::findIntersectOp::findIntersectOp
 {}
 
 
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-Foam::pointField Foam::treeDataCell::shapePoints() const
-{
-    pointField cc(cellLabels_.size());
-
-    forAll(cellLabels_, i)
-    {
-        cc[i] = mesh_.cellCentres()[cellLabels_[i]];
-    }
-
-    return cc;
-}
-
-
-bool Foam::treeDataCell::overlaps
+void Foam::treeDataCell::findNearest
 (
-    const label index,
-    const treeBoundBox& cubeBb
-) const
-{
-    if (cacheBb_)
-    {
-        return cubeBb.overlaps(bbs_[index]);
-    }
-    else
-    {
-        return cubeBb.overlaps
-        (
-            mesh_.cells()[cellLabels_[index]].bb
-            (
-                mesh_.points(),
-                mesh_.faces()
-            )
-        );
-    }
-}
-
-
-bool Foam::treeDataCell::contains
-(
-    const label index,
+    const labelUList& indices,
     const point& sample,
-    const pointInCellShapes cellShapes
+
+    scalar& nearestDistSqr,
+    label& minIndex,
+    point& nearestPoint
 ) const
 {
-    return pointInCell(sample, mesh_, cellLabels_[index], cellShapes);
+    for (const label index : indices)
+    {
+        const point& pt = centre(index);
+
+        const scalar distSqr = sample.distSqr(pt);
+
+        if (distSqr < nearestDistSqr)
+        {
+            nearestDistSqr = distSqr;
+            minIndex = index;
+            nearestPoint = pt;
+        }
+    }
 }
 
 
@@ -183,21 +342,14 @@ void Foam::treeDataCell::findNearestOp::operator()
     point& nearestPoint
 ) const
 {
-    const treeDataCell& shape = tree_.shapes();
-
-    forAll(indices, i)
-    {
-        label index = indices[i];
-        label celli = shape.cellLabels()[index];
-        scalar distSqr = magSqr(sample - shape.mesh().cellCentres()[celli]);
-
-        if (distSqr < nearestDistSqr)
-        {
-            nearestDistSqr = distSqr;
-            minIndex = index;
-            nearestPoint = shape.mesh().cellCentres()[celli];
-        }
-    }
+    tree_.shapes().findNearest
+    (
+        indices,
+        sample,
+        nearestDistSqr,
+        minIndex,
+        nearestPoint
+    );
 }
 
 
@@ -233,24 +385,17 @@ bool Foam::treeDataCell::findIntersectOp::operator()
 
         if ((cellBb.posBits(start) & cellBb.posBits(end)) != 0)
         {
-            // Start and end in same block outside of cellBb.
+            // start and end in same block outside of cellBb.
             return false;
         }
     }
     else
     {
-        const treeBoundBox cellBb
-        (
-            shape.mesh_.cells()[shape.cellLabels_[index]].bb
-            (
-                shape.mesh_.points(),
-                shape.mesh_.faces()
-            )
-        );
+        const treeBoundBox cellBb = shape.getBounds(index);
 
         if ((cellBb.posBits(start) & cellBb.posBits(end)) != 0)
         {
-            // Start and end in same block outside of cellBb.
+            // start and end in same block outside of cellBb.
             return false;
         }
     }
@@ -260,24 +405,24 @@ bool Foam::treeDataCell::findIntersectOp::operator()
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     // Disable picking up intersections behind us.
-    scalar oldTol = intersection::setPlanarTol(0.0);
-
-    const cell& cFaces = shape.mesh_.cells()[shape.cellLabels_[index]];
+    const scalar oldTol = intersection::setPlanarTol(0);
 
     const vector dir(end - start);
     scalar minDistSqr = magSqr(dir);
     bool hasMin = false;
 
-    forAll(cFaces, i)
+    const label celli = shape.objectIndex(index);
+
+    for (const label facei : shape.mesh().cells()[celli])
     {
-        const face& f = shape.mesh_.faces()[cFaces[i]];
+        const face& f = shape.mesh().faces()[facei];
 
         pointHit inter = f.ray
         (
             start,
             dir,
-            shape.mesh_.points(),
-            intersection::algorithm::halfRay
+            shape.mesh().points(),
+            intersection::HALF_RAY
         );
 
         if (inter.hit() && sqr(inter.distance()) <= minDistSqr)
@@ -286,7 +431,7 @@ bool Foam::treeDataCell::findIntersectOp::operator()
             // since using half_ray AND zero tolerance. (note that tolerance
             // is used to look behind us)
             minDistSqr = sqr(inter.distance());
-            intersectionPoint = inter.hitPoint();
+            intersectionPoint = inter.point();
             hasMin = true;
         }
     }

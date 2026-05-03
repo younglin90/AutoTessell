@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::translatingWallVelocityFvPatchVectorField
 
+Group
+    grpWallBoundaryConditions grpGenericBoundaryConditions
+
 Description
     This boundary condition provides a velocity condition for translational
     motion on walls.
@@ -43,12 +48,12 @@ Usage
     }
     \endverbatim
 
-    The \c U entry is a Function1 of time, see Foam::Function1s.
+    The \c U entry is a Function1 of time, see Foam::Function1Types.
 
 
 See also
     Foam::fixedValueFvPatchField
-    Foam::Function1s
+    Foam::Function1Types
 
 SourceFiles
     translatingWallVelocityFvPatchVectorField.C
@@ -67,14 +72,14 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-             Class translatingWallVelocityFvPatchField Declaration
+            Class translatingWallVelocityFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 class translatingWallVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-    // Private Data
+    // Private data
 
         //- Translational velocity
         autoPtr<Function1<vector>> U_;
@@ -88,11 +93,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        translatingWallVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         translatingWallVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -102,49 +114,46 @@ public:
         (
             const translatingWallVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         translatingWallVelocityFvPatchVectorField
         (
             const translatingWallVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         translatingWallVelocityFvPatchVectorField
         (
             const translatingWallVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-             const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new translatingWallVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
-    // Member Functions
+    // Member functions
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

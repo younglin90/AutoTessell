@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,21 +32,16 @@ License
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcMeshData() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcMeshData() const
 {
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcMeshData() : "
-               "calculating mesh data in PrimitivePatch"
-            << endl;
-    }
+    DebugInFunction << "Calculating mesh data" << endl;
 
-    // It is considered an error to attempt to recalculate meshPoints
-    // if they have already been calculated.
     if (meshPointsPtr_ || localFacesPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
-            << "meshPointsPtr_ or localFacesPtr_already allocated"
+            << "meshPointsPtr_ or localFacesPtr_ already allocated"
             << abort(FatalError);
     }
 
@@ -60,9 +58,9 @@ void Foam::PrimitivePatch<FaceList, PointField>::calcMeshData() const
 
     ////- 1.5 code:
     //// if the point is used, set the mark to 1
-    // forAll(*this, facei)
+    //forAll(*this, facei)
     //{
-    //    const FaceType& curPoints = this->operator[](facei);
+    //    const face_type& curPoints = this->operator[](facei);
     //
     //    forAll(curPoints, pointi)
     //    {
@@ -72,301 +70,241 @@ void Foam::PrimitivePatch<FaceList, PointField>::calcMeshData() const
     //
     //// Create the storage and store the meshPoints.  Mesh points are
     //// the ones marked by the usage loop above
-    // meshPointsPtr_ = new labelList(markedPoints.toc());
-    // labelList& pointPatch = *meshPointsPtr_;
+    //meshPointsPtr_.reset(new labelList(markedPoints.toc()));
+    //auto& pointPatch = *meshPointsPtr_;
     //
     //// Sort the list to preserve compatibility with the old ordering
-    // sort(pointPatch);
+    //sort(pointPatch);
     //
     //// For every point in map give it its label in mesh points
-    // forAll(pointPatch, pointi)
+    //forAll(pointPatch, pointi)
     //{
     //    markedPoints.find(pointPatch[pointi])() = pointi;
     //}
 
     //- Unsorted version:
     DynamicList<label> meshPoints(2*this->size());
-    forAll(*this, facei)
+    for (const face_type& f : *this)
     {
-        const FaceType& curPoints = this->operator[](facei);
-
-        forAll(curPoints, pointi)
+        for (const label pointi : f)
         {
-            if (markedPoints.insert(curPoints[pointi], meshPoints.size()))
+            if (markedPoints.insert(pointi, meshPoints.size()))
             {
-                meshPoints.append(curPoints[pointi]);
+                meshPoints.push_back(pointi);
             }
         }
     }
     // Transfer to straight list (reuses storage)
-    meshPointsPtr_ = new labelList(meshPoints, true);
+    meshPointsPtr_.reset(new labelList(meshPoints, true));
 
+    // Create local faces. Deep-copy original faces to retain additional
+    // data (e.g. region number of labelledTri)
+    // The vertices will be overwritten later
+    localFacesPtr_.reset(new List<face_type>(*this));
+    auto& locFaces = *localFacesPtr_;
 
-    // Create local faces. Note that we start off from copy of original face
-    // list (even though vertices are overwritten below). This is done so
-    // additional data gets copied (e.g. region number of labelledTri)
-    localFacesPtr_ = new List<FaceType>(*this);
-    List<FaceType>& lf = *localFacesPtr_;
-
-    forAll(*this, facei)
+    for (face_type& f : locFaces)
     {
-        const FaceType& curFace = this->operator[](facei);
-        lf[facei].setSize(curFace.size());
-
-        forAll(curFace, labelI)
+        for (label& pointi : f)
         {
-            lf[facei][labelI] = markedPoints.find(curFace[labelI])();
+            pointi = *(markedPoints.cfind(pointi));
         }
     }
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcMeshData() : "
-               "finished calculating mesh data in PrimitivePatch"
-            << endl;
-    }
+    DebugInfo << "Calculated mesh data" << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcMeshPointMap() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcMeshPointMap() const
 {
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcMeshPointMap() : "
-               "calculating mesh point map in PrimitivePatch"
-            << endl;
-    }
+    DebugInFunction << "Calculating mesh point map" << endl;
 
-    // It is considered an error to attempt to recalculate meshPoints
-    // if they have already been calculated.
     if (meshPointMapPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
             << "meshPointMapPtr_ already allocated"
             << abort(FatalError);
     }
 
-    const labelList& mp = meshPoints();
+    const labelList& meshPts = meshPoints();
 
-    meshPointMapPtr_ = new Map<label>(2*mp.size());
-    Map<label>& mpMap = *meshPointMapPtr_;
+    meshPointMapPtr_.reset(new Map<label>(invertToMap(meshPts)));
 
-    forAll(mp, i)
-    {
-        mpMap.insert(mp[i], i);
-    }
-
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcMeshPointMap() : "
-               "finished calculating mesh point map in PrimitivePatch"
-            << endl;
-    }
+    DebugInfo << "Calculated mesh point map" << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcLocalPoints() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcLocalPoints() const
 {
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcLocalPoints() : "
-               "calculating localPoints in PrimitivePatch"
-            << endl;
-    }
+    DebugInFunction << "Calculating localPoints" << endl;
 
-    // It is considered an error to attempt to recalculate localPoints
-    // if they have already been calculated.
     if (localPointsPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
-            << "localPointsPtr_already allocated"
+            << "localPointsPtr_ already allocated"
             << abort(FatalError);
     }
 
     const labelList& meshPts = meshPoints();
 
-    localPointsPtr_ = new Field<PointType>(meshPts.size());
-
-    Field<PointType>& locPts = *localPointsPtr_;
+    localPointsPtr_.reset(new Field<point_type>(meshPts.size()));
+    auto& locPts = *localPointsPtr_;
 
     forAll(meshPts, pointi)
     {
         locPts[pointi] = points_[meshPts[pointi]];
     }
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcLocalPoints() : "
-            << "finished calculating localPoints in PrimitivePatch"
-            << endl;
-    }
+    DebugInfo << "Calculated localPoints" << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcPointNormals() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcPointNormals() const
 {
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcPointNormals() : "
-               "calculating pointNormals in PrimitivePatch"
-            << endl;
-    }
+    DebugInFunction << "Calculating pointNormals" << endl;
 
-    // It is considered an error to attempt to recalculate pointNormals
-    // if they have already been calculated.
     if (pointNormalsPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
-            << "pointNormalsPtr_already allocated"
+            << "pointNormalsPtr_ already allocated"
             << abort(FatalError);
     }
 
-    const Field<PointType>& faceUnitNormals = faceNormals();
+    const auto& faceUnitNormals = faceNormals();
 
     const labelListList& pf = pointFaces();
 
-    pointNormalsPtr_ = new Field<PointType>
-    (
-        meshPoints().size(),
-        PointType::zero
-    );
-
-    Field<PointType>& n = *pointNormalsPtr_;
+    pointNormalsPtr_.reset(new Field<point_type>(meshPoints().size(), Zero));
+    auto& n = *pointNormalsPtr_;
 
     forAll(pf, pointi)
     {
-        PointType& curNormal = n[pointi];
+        point_type& curNormal = n[pointi];
 
         const labelList& curFaces = pf[pointi];
 
-        forAll(curFaces, facei)
+        for (const label facei : curFaces)
         {
-            curNormal += faceUnitNormals[curFaces[facei]];
+            curNormal += faceUnitNormals[facei];
         }
 
-        curNormal /= mag(curNormal) + vSmall;
+        curNormal.normalise();
     }
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcPointNormals() : "
-               "finished calculating pointNormals in PrimitivePatch"
-            << endl;
-    }
+    DebugInfo << "Calculated pointNormals" << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcFaceCentres() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcFaceCentres() const
 {
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceCentres() : "
-               "calculating faceCentres in PrimitivePatch"
-            << endl;
-    }
+    DebugInFunction << "Calculating faceCentres" << endl;
 
-    // It is considered an error to attempt to recalculate faceCentres
-    // if they have already been calculated.
     if (faceCentresPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
-            << "faceCentresPtr_already allocated"
+            << "faceCentresPtr_ already allocated"
             << abort(FatalError);
     }
 
-    faceCentresPtr_ = new Field<PointType>(this->size());
-
-    Field<PointType>& c = *faceCentresPtr_;
+    faceCentresPtr_.reset(new Field<point_type>(this->size()));
+    auto& c = *faceCentresPtr_;
 
     forAll(c, facei)
     {
         c[facei] = this->operator[](facei).centre(points_);
     }
 
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceCentres() : "
-               "finished calculating faceCentres in PrimitivePatch"
-            << endl;
-    }
+    DebugInfo << "Calculated faceCentres" << endl;
 }
 
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcFaceAreas() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcMagFaceAreas() const
 {
-    if (debug)
+    DebugInFunction << "Calculating magFaceAreas" << endl;
+
+    if (magFaceAreasPtr_)
     {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceAreas() : "
-               "calculating faceAreas in PrimitivePatch"
-            << endl;
+        // An error to recalculate if already allocated
+        FatalErrorInFunction
+            << "magFaceAreasPtr_ already allocated"
+            << abort(FatalError);
     }
 
-    // It is considered an error to attempt to recalculate faceAreas
-    // if they have already been calculated.
+    magFaceAreasPtr_.reset(new Field<scalar>(this->size()));
+    auto& a = *magFaceAreasPtr_;
+
+    forAll(a, facei)
+    {
+        a[facei] = this->operator[](facei).mag(points_);
+    }
+
+    DebugInfo << "Calculated magFaceAreas" << endl;
+}
+
+
+template<class FaceList, class PointField>
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcFaceAreas() const
+{
+    DebugInFunction << "Calculating faceAreas" << endl;
+
     if (faceAreasPtr_)
     {
+        // An error to recalculate if already allocated
         FatalErrorInFunction
-            << "faceAreasPtr_already allocated"
+            << "faceAreasPtr_ already allocated"
             << abort(FatalError);
     }
 
-    faceAreasPtr_ = new Field<PointType>(this->size());
-
-    Field<PointType>& c = *faceAreasPtr_;
-
-    forAll(c, facei)
-    {
-        c[facei] = this->operator[](facei).area(points_);
-    }
-
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceAreas() : "
-               "finished calculating faceAreas in PrimitivePatch"
-            << endl;
-    }
-}
-
-
-template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcFaceNormals() const
-{
-    if (debug)
-    {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceNormals() : "
-               "calculating faceNormals in PrimitivePatch"
-            << endl;
-    }
-
-    // It is considered an error to attempt to recalculate faceNormals
-    // if they have already been calculated.
-    if (faceNormalsPtr_)
-    {
-        FatalErrorInFunction
-            << "faceNormalsPtr_already allocated"
-            << abort(FatalError);
-    }
-
-    faceNormalsPtr_ = new Field<PointType>(this->size());
-
-    Field<PointType>& n = *faceNormalsPtr_;
+    faceAreasPtr_.reset(new Field<point_type>(this->size()));
+    auto& n = *faceAreasPtr_;
 
     forAll(n, facei)
     {
-        n[facei] = this->operator[](facei).normal(points_);
+        n[facei] = this->operator[](facei).areaNormal(points_);
     }
 
-    if (debug)
+    DebugInfo << "Calculated faceAreas" << endl;
+}
+
+
+template<class FaceList, class PointField>
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcFaceNormals() const
+{
+    DebugInFunction << "Calculating faceNormals" << endl;
+
+    if (faceNormalsPtr_)
     {
-        Pout<< "PrimitivePatch<FaceList, PointField>::calcFaceNormals() : "
-               "finished calculating faceNormals in PrimitivePatch"
-            << endl;
+        // An error to recalculate if already allocated
+        FatalErrorInFunction
+            << "faceNormalsPtr_ already allocated"
+            << abort(FatalError);
     }
+
+    faceNormalsPtr_.reset(new Field<point_type>(this->size()));
+    auto& n = *faceNormalsPtr_;
+
+    forAll(n, facei)
+    {
+        n[facei] = this->operator[](facei).unitNormal(points_);
+    }
+
+    DebugInfo << "Calculated faceNormals" << endl;
 }
 
 

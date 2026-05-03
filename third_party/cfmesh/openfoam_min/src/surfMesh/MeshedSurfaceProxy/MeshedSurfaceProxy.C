@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,12 +27,11 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "MeshedSurfaceProxy.H"
-
 #include "Time.H"
+#include "ListOps.H"
 #include "surfMesh.H"
 #include "OFstream.H"
-#include "ListOps.H"
-#include "OSspecific.H"
+#include "faceTraits.H"
 
 // * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
@@ -43,13 +45,16 @@ Foam::wordHashSet Foam::MeshedSurfaceProxy<Face>::writeTypes()
 template<class Face>
 bool Foam::MeshedSurfaceProxy<Face>::canWriteType
 (
-    const word& ext,
-    const bool verbose
+    const word& fileType,
+    bool verbose
 )
 {
     return fileFormats::surfaceFormatsCore::checkSupport
     (
-        writeTypes(), ext, verbose, "writing"
+        writeTypes(),
+        fileType,
+        verbose,
+        "writing"
     );
 }
 
@@ -58,29 +63,58 @@ template<class Face>
 void Foam::MeshedSurfaceProxy<Face>::write
 (
     const fileName& name,
-    const MeshedSurfaceProxy& surf
+    const MeshedSurfaceProxy& surf,
+    IOstreamOption streamOpt,
+    const dictionary& options
 )
 {
-    if (debug)
+    write(name, name.ext(), surf, streamOpt, options);
+}
+
+
+template<class Face>
+void Foam::MeshedSurfaceProxy<Face>::write
+(
+    const fileName& name,
+    const word& fileType,
+    const MeshedSurfaceProxy& surf,
+    IOstreamOption streamOpt,
+    const dictionary& options
+)
+{
+    if (fileType.empty())
     {
-        InfoInFunction << "Writing to " << name << endl;
+        // Handle empty/missing type
+
+        const word ext(name.ext());
+
+        if (ext.empty())
+        {
+            FatalErrorInFunction
+                << "Cannot determine format from filename" << nl
+                << "    " << name << nl
+                << exit(FatalError);
+        }
+
+        write(name, ext, surf, streamOpt, options);
+        return;
     }
 
-    word ext = name.ext();
 
-    typename writefileExtensionMemberFunctionTable::iterator mfIter =
-        writefileExtensionMemberFunctionTablePtr_->find(ext);
+    DebugInFunction << "Writing to " << name << nl;
 
-    if (mfIter == writefileExtensionMemberFunctionTablePtr_->end())
+    auto* mfuncPtr = writefileExtensionMemberFunctionTable(fileType);
+
+    if (!mfuncPtr)
     {
         FatalErrorInFunction
-            << "Unknown file extension " << ext << nl << nl
-            << "Valid types are :" << endl
-            << writeTypes()
+            << "Unknown file type " << fileType << nl << nl
+            << "Valid types:" << nl
+            << flatOutput(writeTypes().sortedToc()) << nl
             << exit(FatalError);
     }
 
-    mfIter()(name, surf);
+    mfuncPtr(name, surf, streamOpt, options);
 }
 
 
@@ -92,12 +126,9 @@ void Foam::MeshedSurfaceProxy<Face>::write
 ) const
 {
     // the surface name to be used
-    word name(surfName.size() ? surfName : surfaceRegistry::defaultName);
+    const word name(surfName.size() ? surfName : surfaceRegistry::defaultName);
 
-    if (debug)
-    {
-        InfoInFunction << "Writing to " << name << endl;
-    }
+    DebugInFunction << "Writing to " << name << endl;
 
 
     // The local location
@@ -112,102 +143,90 @@ void Foam::MeshedSurfaceProxy<Face>::write
     }
 
 
-    // write surfMesh/points
+    // Write surfMesh/points
     {
         pointIOField io
         (
             IOobject
             (
                 "points",
-                t.name(),
+                t.timeName(),
                 surfMesh::meshSubDir,
                 t,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
+                IOobjectOption::NO_READ,
+                IOobjectOption::NO_WRITE,
+                IOobjectOption::NO_REGISTER
             )
         );
 
-        OFstream os
-        (
-            objectDir/io.name(),
-            t.writeFormat(),
-            IOstream::currentVersion,
-            t.writeCompression()
-        );
+        OFstream os(objectDir/io.name(), t.writeStreamOption());
 
         io.writeHeader(os);
 
         os  << this->points();
 
-        io.writeEndDivider(os);
+        IOobject::writeEndDivider(os);
     }
 
 
-    // write surfMesh/faces
+    // Write surfMesh/faces
     {
         faceCompactIOList io
         (
             IOobject
             (
                 "faces",
-                t.name(),
+                t.timeName(),
                 surfMesh::meshSubDir,
                 t,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
+                IOobjectOption::NO_READ,
+                IOobjectOption::NO_WRITE,
+                IOobjectOption::NO_REGISTER
             )
         );
 
-        OFstream os
-        (
-            objectDir/io.name(),
-            t.writeFormat(),
-            IOstream::currentVersion,
-            t.writeCompression()
-        );
+        OFstream os(objectDir/io.name(), t.writeStreamOption());
+
         io.writeHeader(os);
 
         if (this->useFaceMap())
         {
-            // this is really a bit annoying (and wasteful) but no other way
-            os  << reorder(this->faceMap(), this->faces());
+            os  << UIndirectList<Face>(this->surfFaces(), this->faceMap());
         }
         else
         {
-            os  << this->faces();
+            os  << this->surfFaces();
         }
 
-        io.writeEndDivider(os);
+        IOobject::writeEndDivider(os);
     }
 
 
-    // write surfMesh/surfZones
+    // Write surfMesh/surfZones
     {
         surfZoneIOList io
         (
             IOobject
             (
                 "surfZones",
-                t.name(),
+                t.timeName(),
                 surfMesh::meshSubDir,
                 t,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
+                IOobjectOption::NO_READ,
+                IOobjectOption::NO_WRITE,
+                IOobjectOption::NO_REGISTER
             )
         );
 
-        // write as ascii
+        // Write as ASCII-only
         OFstream os(objectDir/io.name());
+
         io.writeHeader(os);
 
         os  << this->surfZones();
 
-        io.writeEndDivider(os);
+        IOobject::writeEndDivider(os);
     }
-
 }
 
 
@@ -217,23 +236,38 @@ template<class Face>
 Foam::MeshedSurfaceProxy<Face>::MeshedSurfaceProxy
 (
     const pointField& pointLst,
-    const List<Face>& faceLst,
-    const List<surfZone>& zoneLst,
-    const List<label>& faceMap
+    const UList<Face>& faceLst,
+    const UList<surfZone>& zoneLst,
+    const labelUList& faceMap,
+    const labelUList& faceIdsLst
 )
 :
     points_(pointLst),
     faces_(faceLst),
     zones_(zoneLst),
-    faceMap_(faceMap)
+    faceMap_(faceMap),
+    faceIds_(faceIdsLst)
 {}
 
 
-// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Face>
-Foam::MeshedSurfaceProxy<Face>::~MeshedSurfaceProxy()
-{}
+inline Foam::label Foam::MeshedSurfaceProxy<Face>::nTriangles() const
+{
+    if (faceTraits<Face>::isTri())
+    {
+        return this->size();
+    }
+
+    label nTri = 0;
+    for (const auto& f : faces_)
+    {
+        nTri += f.nTriangles();
+    }
+
+    return nTri;
+}
 
 
 // ************************************************************************* //

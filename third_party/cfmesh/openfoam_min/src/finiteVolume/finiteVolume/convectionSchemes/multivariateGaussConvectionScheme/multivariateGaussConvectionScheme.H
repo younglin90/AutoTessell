@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::fv::multivariateGaussConvectionScheme
+
+Group
+    grpFvConvectionSchemes
 
 Description
     Basic second-order convection using face-gradients and Gauss' theorem.
@@ -48,7 +53,7 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-              Class multivariateGaussConvectionScheme Declaration
+                       Class multivariateGaussConvectionScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -56,7 +61,7 @@ class multivariateGaussConvectionScheme
 :
     public fv::convectionScheme<Type>
 {
-    // Private Data
+    // Private data
 
         tmp<multivariateSurfaceInterpolationScheme<Type>> tinterpScheme_;
 
@@ -98,28 +103,28 @@ public:
             return tinterpScheme_;
         }
 
-        tmp<SurfaceField<Type>> interpolate
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> interpolate
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<SurfaceField<Type>> flux
+        tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> flux
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
         tmp<fvMatrix<Type>> fvmDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 
-        tmp<VolField<Type>> fvcDiv
+        tmp<GeometricField<Type, fvPatchField, volMesh>> fvcDiv
         (
             const surfaceScalarField&,
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const;
 };
 

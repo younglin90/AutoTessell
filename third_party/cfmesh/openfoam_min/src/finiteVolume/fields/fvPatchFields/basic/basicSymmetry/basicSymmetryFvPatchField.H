@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,8 +26,12 @@ License
 Class
     Foam::basicSymmetryFvPatchField
 
+Group
+    grpConstraintBoundaryConditions
+
 Description
-    A symmetry patch
+    A symmetry patch.
+    The "value" entry is NO_READ, NO_WRITE.
 
 SourceFiles
     basicSymmetryFvPatchField.C
@@ -44,7 +50,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                  Class basicSymmetryFvPatchField Declaration
+                 Class basicSymmetryFvPatchField Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,7 +58,6 @@ class basicSymmetryFvPatchField
 :
     public transformFvPatchField<Type>
 {
-
 public:
 
     // Constructors
@@ -61,50 +66,54 @@ public:
         basicSymmetryFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct from patch, internal field and dictionary
+        //- Construct from patch, internal field and dictionary.
+        //- The "value" entry is NO_READ.
         basicSymmetryFvPatchField
         (
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
+            const DimensionedField<Type, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given basicSymmetryFvPatchField onto a new
-        //  patch
+        //- Construct by mapping given basicSymmetry patch field
+        //- onto a new patch
         basicSymmetryFvPatchField
         (
             const basicSymmetryFvPatchField<Type>&,
             const fvPatch&,
-            const DimensionedField<Type, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<Type, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         basicSymmetryFvPatchField
         (
             const basicSymmetryFvPatchField<Type>&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         basicSymmetryFvPatchField
         (
             const basicSymmetryFvPatchField<Type>&,
-            const DimensionedField<Type, fvMesh>&
+            const DimensionedField<Type, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
+        //- Return a clone
+        virtual tmp<fvPatchField<Type>> clone() const
+        {
+            return fvPatchField<Type>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
         virtual tmp<fvPatchField<Type>> clone
         (
-            const DimensionedField<Type, fvMesh>& iF
+            const DimensionedField<Type, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchField<Type>>
-            (
-                new basicSymmetryFvPatchField<Type>(*this, iF)
-            );
+            return fvPatchField<Type>::Clone(*this, iF);
         }
 
 
@@ -116,7 +125,7 @@ public:
         //- Evaluate the patch field
         virtual void evaluate
         (
-            const Pstream::commsTypes commsType=Pstream::commsTypes::blocking
+            const Pstream::commsTypes commsType=Pstream::commsTypes::buffered
         );
 
         //- Return face-gradient transform diagonal
@@ -125,7 +134,7 @@ public:
 
     // Member Operators
 
-        //- Inherit assignment
+        //- Inherit assignment operators
         using transformFvPatchField<Type>::operator=;
 };
 
@@ -133,7 +142,7 @@ public:
 // * * * * * * * * * * * Template Specialisations  * * * * * * * * * * * * * //
 
 template<>
-tmp<scalarField > basicSymmetryFvPatchField<scalar>::snGrad() const;
+tmp<scalarField> basicSymmetryFvPatchField<scalar>::snGrad() const;
 
 template<>
 void basicSymmetryFvPatchField<scalar>::evaluate

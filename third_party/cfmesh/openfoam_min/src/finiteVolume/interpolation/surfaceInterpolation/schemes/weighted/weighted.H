@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,6 +25,9 @@ License
 
 Class
     Foam::weighted
+
+Group
+    grpFvSurfaceInterpolationSchemes
 
 Description
     Interpolation scheme class using weights looked-up from the objectRegistry.
@@ -44,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class weighted Declaration
+                           Class weighted Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -52,9 +57,15 @@ class weighted
 :
     public surfaceInterpolationScheme<Type>
 {
-    // Private Data
+    // Private member data
 
         const surfaceScalarField& weights_;
+
+
+    // Private Member Functions
+
+        //- No copy assignment
+        void operator=(const weighted&) = delete;
 
 
 public:
@@ -111,17 +122,11 @@ public:
         //- Return the interpolation weighting factors
         tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             return weights_;
         }
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const weighted&) = delete;
 };
 
 

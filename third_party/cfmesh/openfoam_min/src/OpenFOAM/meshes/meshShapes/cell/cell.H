@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011 OpenFOAM Foundation
+    Copyright (C) 2017-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,37 +32,33 @@ Description
 
 SourceFiles
     cellI.H
+    cell.C
+    oppositeCellFace.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef cell_H
-#define cell_H
+#ifndef Foam_cell_H
+#define Foam_cell_H
 
 #include "faceList.H"
 #include "oppositeFace.H"
-#include "boundBox.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
-class cell;
-bool operator==(const cell&, const cell&);
-inline bool operator!=(const cell&, const cell&);
-
+// Forward Declarations
+class primitiveMesh;
 
 /*---------------------------------------------------------------------------*\
-                            Class cell Declaration
+                           Class cell Declaration
 \*---------------------------------------------------------------------------*/
 
 class cell
 :
     public labelList
 {
-
 public:
 
     // Static Data Members
@@ -69,35 +68,50 @@ public:
 
     // Constructors
 
-        //- Construct null
-        inline cell();
+        //- Default construct
+        constexpr cell() noexcept = default;
 
-        //- Construct given size
-        explicit inline cell(label);
+        //- Construct given size, with invalid point labels (-1)
+        inline explicit cell(const label sz);
 
-        //- Construct from list of labels
-        explicit inline cell(const labelUList&);
+        //- Copy construct from list of face labels
+        inline explicit cell(const labelUList& list);
 
-        //- Construct by transferring the parameter contents
-        explicit inline cell(labelList&&);
+        //- Move construct from list of face labels
+        inline explicit cell(labelList&& list);
+
+        //- Copy construct from list of face labels
+        template<unsigned N>
+        inline explicit cell(const FixedList<label, N>& list);
+
+        //- Copy construct from subset of face labels
+        inline cell(const labelUList& list, const labelUList& indices);
+
+        //- Copy construct from subset of face labels
+        template<unsigned N>
+        inline cell(const labelUList& list, const FixedList<label, N>& indices);
 
         //- Construct from Istream
-        inline cell(Istream&);
+        inline explicit cell(Istream& is);
 
 
     // Member Functions
 
         //- Return number of faces
-        inline label nFaces() const;
+        inline label nFaces() const noexcept;
 
-        //- Return labels of cell vertices
-        labelList labels(const faceUList&) const;
+        //- Return unordered list of cell vertices given the list of faces
+        labelList labels(const faceUList& meshFaces) const;
 
-        //- Return the cell vertices
-        pointField points(const faceUList&, const pointField&) const;
+        //- Return the cell vertices given the list of faces and mesh points
+        pointField points
+        (
+            const faceUList& meshFaces,
+            const UList<point>& meshPoints
+        ) const;
 
         //- Return cell edges
-        edgeList edges(const faceUList&) const;
+        edgeList edges(const faceUList& meshFaces) const;
 
         //- Return index of opposite face
         label opposingFaceLabel
@@ -113,6 +127,7 @@ public:
             const faceUList& meshFaces
         ) const;
 
+
         // Instructions for centre and mag:
         // When one wants to access the cell centre and magnitude, the
         // functionality on the mesh level should be used in preference to the
@@ -122,26 +137,39 @@ public:
         // future.
 
         //- Returns cell centre
-        point centre(const pointField&, const faceUList&) const;
+        point centre
+        (
+            const UList<point>& meshPoints,
+            const faceUList& meshFaces
+        ) const;
 
         //- Returns cell volume
-        scalar mag(const pointField&, const faceUList&) const;
+        scalar mag
+        (
+            const UList<point>& meshPoints,
+            const faceUList& meshFaces
+        ) const;
 
-        //- Returns the cell bounding box
-        boundBox bb(const pointField&, const faceUList&) const;
+        //- The bounding box for the cell
+        Pair<point> box
+        (
+            const UList<point>& meshPoints,
+            const faceUList& meshFaces
+        ) const;
 
-
-    // Member Operators
-
-        //- Move assignment labelList
-        inline void operator=(labelList&&);
-
-
-    // Friend Operators
-
-        friend bool operator==(const cell&, const cell&);
-        friend bool operator!=(const cell&, const cell&);
+        //- The bounding box for the cell associated with given mesh
+        Pair<point> box(const primitiveMesh& mesh) const;
 };
+
+
+// Global Operators
+
+//- Test if both cells are the same size and contain the same points
+//  The internal point ordering is ignored
+bool operator==(const cell& a, const cell& b);
+
+//- Test if the cells differ (different size or different points)
+inline bool operator!=(const cell& a, const cell& b);
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

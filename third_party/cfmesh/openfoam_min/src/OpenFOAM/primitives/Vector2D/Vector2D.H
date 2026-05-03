@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -34,9 +37,10 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef Vector2D_H
-#define Vector2D_H
+#ifndef Foam_Vector2D_H
+#define Foam_Vector2D_H
 
+#include "contiguous.H"
 #include "VectorSpace.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -45,7 +49,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class Vector2D Declaration
+                           Class Vector2D Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Cmpt>
@@ -53,57 +57,135 @@ class Vector2D
 :
     public VectorSpace<Vector2D<Cmpt>, Cmpt, 2>
 {
-
 public:
 
-    //- Equivalent type of labels used for valid component indexing
-    typedef Vector2D<label> labelType;
+    // Typedefs
+
+        //- Equivalent type of labels used for valid component indexing
+        typedef Vector2D<label> labelType;
 
 
-    // Member constants
+    // Member Constants
 
         //- Rank of Vector2D is 1
-        static const direction rank = 1;
+        static constexpr direction rank = 1;
 
 
     //- Component labeling enumeration
     enum components { X, Y };
 
 
+    // Generated Methods
+
+        //- Default construct
+        Vector2D() = default;
+
+        //- Copy construct
+        Vector2D(const Vector2D&) = default;
+
+        //- Copy assignment
+        Vector2D& operator=(const Vector2D&) = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline Vector2D();
-
-        //- Construct initialised to zero
+        //- Construct initialized to zero
         inline Vector2D(const Foam::zero);
 
-        //- Construct given VectorSpace
-        inline Vector2D(const VectorSpace<Vector2D<Cmpt>, Cmpt, 2>&);
+        //- Copy construct from VectorSpace of the same rank
+        inline Vector2D(const VectorSpace<Vector2D<Cmpt>, Cmpt, 2>& vs);
 
-        //- Construct given two components
+        //- Construct from two components
         inline Vector2D(const Cmpt& vx, const Cmpt& vy);
 
         //- Construct from Istream
-        inline Vector2D(Istream&);
+        inline explicit Vector2D(Istream& is);
 
 
     // Member Functions
 
-        // Access
+    // Component Access
 
-            inline const Cmpt& x() const;
-            inline const Cmpt& y() const;
+        //- Access to the vector x component
+        const Cmpt& x() const noexcept { return this->v_[X]; }
 
-            inline Cmpt& x();
-            inline Cmpt& y();
+        //- Access to the vector y component
+        const Cmpt& y() const noexcept { return this->v_[Y]; }
+
+        //- Access to the vector x component
+        Cmpt& x() noexcept { return this->v_[X]; }
+
+        //- Access to the vector y component
+        Cmpt& y() noexcept { return this->v_[Y]; }
 
 
-        // Operators
+    // Vector Operations
 
-            //- Perp dot product (dot product with perpendicular vector)
-            inline scalar perp(const Vector2D<Cmpt>& b) const;
+        //- The length (L2-norm) of the vector
+        inline scalar mag() const;
+
+        //- The length (L2-norm) squared of the vector.
+        inline scalar magSqr() const;
+
+        //- The L2-norm distance from another vector.
+        //- The mag() of the difference.
+        inline scalar dist(const Vector2D<Cmpt>& v2) const;
+
+        //- The L2-norm distance squared from another vector.
+        //- The magSqr() of the difference.
+        inline scalar distSqr(const Vector2D<Cmpt>& v2) const;
+
+        //- Normalise the vector by its magnitude
+        //  For small magnitudes (less than ROOTVSMALL) set to zero.
+        //  Will not be particularly useful for a vector of labels
+        inline Vector2D<Cmpt>& normalise(const scalar tol = ROOTVSMALL);
+
+        //- Inplace removal of components that are collinear to the given
+        //- unit vector.
+        inline Vector2D<Cmpt>& removeCollinear(const Vector2D<Cmpt>& unitVec);
+
+        //- Perp dot product (dot product with perpendicular vector)
+        inline scalar perp(const Vector2D<Cmpt>& b) const;
+
+        //- Return true if vector is within tol
+        inline bool isClose
+        (
+            const Vector2D<Cmpt>& b,
+            const scalar tol = 1e-10
+        ) const;
+
+
+    // Comparison Operations
+
+        //- Lexicographically compare \em a and \em b with order (x:y)
+        static inline bool less_xy
+        (
+            const Vector2D<Cmpt>& a,
+            const Vector2D<Cmpt>& b
+        );
+
+        //- Lexicographically compare \em a and \em b with order (y:x)
+        static inline bool less_yx
+        (
+            const Vector2D<Cmpt>& a,
+            const Vector2D<Cmpt>& b
+        );
 };
+
+
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Data are contiguous if component type is contiguous
+template<class Cmpt>
+struct is_contiguous<Vector2D<Cmpt>> : is_contiguous<Cmpt> {};
+
+//- Data are contiguous label if component type is label
+template<class Cmpt>
+struct is_contiguous_label<Vector2D<Cmpt>> : is_contiguous_label<Cmpt> {};
+
+//- Data are contiguous scalar if component type is scalar
+template<class Cmpt>
+struct is_contiguous_scalar<Vector2D<Cmpt>> : is_contiguous_scalar<Cmpt> {};
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -112,7 +194,6 @@ public:
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-// Include inline implementations
 #include "Vector2DI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

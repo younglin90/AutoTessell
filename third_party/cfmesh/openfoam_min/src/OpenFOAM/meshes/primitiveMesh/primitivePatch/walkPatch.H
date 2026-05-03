@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,12 +46,12 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class walkPatch Declaration
+                           Class walkPatch Declaration
 \*---------------------------------------------------------------------------*/
 
 class walkPatch
 {
-    // Private Data
+    // Private data
 
         //- Reference to patch to walk on
         const primitivePatch& pp_;
@@ -94,6 +96,12 @@ class walkPatch
         );
 
 
+        //- No copy construct
+        walkPatch(const walkPatch&) = delete;
+
+        //- No copy assignment
+        void operator=(const walkPatch&) = delete;
+
 public:
 
     ClassName("walkPatch");
@@ -113,9 +121,6 @@ public:
             boolList& visited
         );
 
-        //- Disallow default bitwise copy construction
-        walkPatch(const walkPatch&) = delete;
-
 
     // Member Functions
 
@@ -129,11 +134,6 @@ public:
             return indexInFace_;
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const walkPatch&) = delete;
 };
 
 

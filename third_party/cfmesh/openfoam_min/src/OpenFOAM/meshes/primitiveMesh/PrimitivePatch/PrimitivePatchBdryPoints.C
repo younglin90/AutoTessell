@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2019 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2020-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -29,41 +32,152 @@ License
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 template<class FaceList, class PointField>
-void Foam::PrimitivePatch<FaceList, PointField>::calcBdryPoints() const
+void
+Foam::PrimitivePatch<FaceList, PointField>::calcBdryPoints() const
 {
-    if (debug)
-    {
-        InfoInFunction << "Calculating boundary points" << endl;
-    }
-
     if (boundaryPointsPtr_)
     {
-        // it is considered an error to attempt to recalculate
-        // if already allocated
+        // Error to recalculate if already allocated
         FatalErrorInFunction
-            << "edge types already calculated"
+            << "boundaryPoints already calculated"
             << abort(FatalError);
     }
 
-    const edgeList& e = edges();
+    labelHashSet bp(0);
 
-    labelHashSet bp(2*e.size());
-
-    for (label edgeI = nInternalEdges_; edgeI < e.size(); edgeI++)
+    if (hasEdges())
     {
-        const edge& curEdge = e[edgeI];
+        DebugInFunction
+            << "Calculating boundary points from existing addressing"
+            << nl;
 
-        bp.insert(curEdge.start());
-        bp.insert(curEdge.end());
+        bp.reserve(2*nBoundaryEdges());
+
+        for (const edge& e : boundaryEdges())
+        {
+            bp.insert(e.first());
+            bp.insert(e.second());
+        }
+    }
+    else
+    {
+        DebugInFunction
+            << "Calculating boundary points with manual edge addressing"
+            << nl;
+
+
+        // Calculate manually.
+        // Needs localFaces, but uses local hashes of the edges here
+        // instead of forcing a full faceFaces/edgeFaces/faceEdges calculation
+
+        // Get reference to localFaces
+        const List<face_type>& locFcs = localFaces();
+
+        // Guess the max number of edges/neighbours for a face
+        label edgeCount = 0;
+        for (const auto& f : locFcs)
+        {
+            edgeCount += f.nEdges();
+        }
+
+        // ie, EdgeMap<label> to keep counts
+        HashTable<label, edge, Hash<edge>> knownEdges(2*edgeCount);
+
+        for (const auto& f : locFcs)
+        {
+            const label numEdges = f.nEdges();
+
+            for (label edgei = 0; edgei < numEdges; ++edgei)
+            {
+                ++ knownEdges(f.edge(edgei));
+            }
+        }
+
+        edgeCount = 0;
+
+        forAllConstIters(knownEdges, iter)
+        {
+            if (1 == iter.val())  // Singly connected edge
+            {
+                ++edgeCount;
+            }
+        }
+
+        bp.reserve(2*edgeCount);
+
+        forAllConstIters(knownEdges, iter)
+        {
+            const edge& e = iter.key();
+
+            if (1 == iter.val())  // Singly connected edge
+            {
+                bp.insert(e.first());
+                bp.insert(e.second());
+            }
+        }
     }
 
-    boundaryPointsPtr_ = new labelList(bp.toc());
-    sort(*boundaryPointsPtr_);
+    boundaryPointsPtr_.reset(new labelList(bp.sortedToc()));
+    DebugInfo << "    Finished." << nl;
+}
 
-    if (debug)
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class FaceList, class PointField>
+Foam::Pair<typename Foam::PrimitivePatch<FaceList, PointField>::point_type>
+Foam::PrimitivePatch<FaceList, PointField>::box() const
+{
+    Pair<point_type> bb
+    (
+        point_type::uniform(ROOTVGREAT),
+        point_type::uniform(-ROOTVGREAT)
+    );
+
+    if (hasMeshPoints())
     {
-        Info<< "    Finished." << endl;
+        // Less looping if meshPoints() are already available
+        for (const label pointi : meshPoints())
+        {
+            bb.first()  = min(bb.first(),  points_[pointi]);
+            bb.second() = max(bb.second(), points_[pointi]);
+        }
     }
+    else
+    {
+        // Walk the points on each face
+        for (const face_type& f : *this)
+        {
+            for (const label pointi : f)
+            {
+                bb.first()  = min(bb.first(),  points_[pointi]);
+                bb.second() = max(bb.second(), points_[pointi]);
+            }
+        }
+    }
+
+    return bb;
+}
+
+
+template<class FaceList, class PointField>
+Foam::scalar
+Foam::PrimitivePatch<FaceList, PointField>::sphere(const label facei) const
+{
+    scalar radiusSqr = 0;
+
+    const point_type& fc = this->faceCentres()[facei];
+
+    for (const label fp : this->operator[](facei))
+    {
+        const scalar sqrDist = magSqr(fc - points_[fp]);
+        if (radiusSqr < sqrDist)
+        {
+            radiusSqr = sqrDist;
+        }
+    }
+
+    return radiusSqr;
 }
 
 

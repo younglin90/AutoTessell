@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -23,91 +26,69 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-inline Foam::labelRanges::labelRanges()
+inline Foam::labelRanges::labelRanges(const label initialCapacity)
 :
-    ParentType()
+    ranges_(initialCapacity)
 {}
 
 
-inline Foam::labelRanges::labelRanges(const label nElem)
+inline Foam::labelRanges::labelRanges(const UList<labelRange>& list)
 :
-    ParentType(nElem)
+    ranges_(list)
+{}
+
+
+inline Foam::labelRanges::labelRanges(List<labelRange>&& list)
+:
+    ranges_(std::move(list))
+{}
+
+
+template<int AnySizeMin>
+inline Foam::labelRanges::labelRanges
+(
+    DynamicList<labelRange, AnySizeMin>&& list
+)
+:
+    ranges_(std::move(list))
 {}
 
 
 // * * * * * * * * * * * * * * * * Iterators * * * * * * * * * * * * * * * * //
 
-inline Foam::labelRanges::const_iterator::const_iterator()
+inline constexpr Foam::labelRanges::const_iterator::
+const_iterator
+(
+    const UList<labelRange>* list,
+    const label idx,
+    const label subIdx
+) noexcept
 :
-   list_(endLabelRanges_),
-   index_(-1),
-   subIndex_(-1)
+    list_(list),
+    index_(idx),
+    subIndex_(subIdx)
 {}
 
 
-inline Foam::labelRanges::const_iterator::const_iterator(const labelRanges& lst)
-:
-   list_(lst),
-   index_(0),
-   subIndex_(0)
+inline Foam::label Foam::labelRanges::const_iterator::
+operator*() const
 {
-    if (list_.empty())
-    {
-        // equivalent to end iterator
-        index_ = subIndex_ = -1;
-    }
-}
-
-
-inline bool Foam::labelRanges::const_iterator::operator==
-(
-    const const_iterator& iter
-) const
-{
-    return
-    (
-        this->index_ == iter.index_
-     && this->subIndex_ == iter.subIndex_
-    );
-}
-
-
-inline bool Foam::labelRanges::const_iterator::operator!=
-(
-    const const_iterator& iter
-) const
-{
-    return !(this->operator==(iter));
-}
-
-
-inline Foam::label Foam::labelRanges::const_iterator::operator*() const
-{
-    return list_[index_][subIndex_];
-}
-
-
-inline Foam::label Foam::labelRanges::const_iterator::operator()() const
-{
-    return list_[index_][subIndex_];
+    return (*list_)[index_][subIndex_];
 }
 
 
 inline Foam::labelRanges::const_iterator&
-Foam::labelRanges::const_iterator::operator++()
+Foam::labelRanges::const_iterator::
+operator++()
 {
-    if (++subIndex_ >= list_[index_].size())
+    // TBD: trap (index_ >= list_->size()) and make a no-op?
+    if (++subIndex_ >= (*list_)[index_].size())
     {
-        // go to next list entry
+        // Move to the next range
+        ++index_;
         subIndex_ = 0;
-        if (++index_ >= list_.size())
-        {
-            // equivalent to end iterator
-            index_ = subIndex_ = -1;
-        }
     }
 
     return *this;
@@ -115,51 +96,146 @@ Foam::labelRanges::const_iterator::operator++()
 
 
 inline Foam::labelRanges::const_iterator
-Foam::labelRanges::const_iterator::operator++(int)
+Foam::labelRanges::const_iterator::
+operator++(int)
 {
-    const_iterator old = *this;
+    const_iterator old(*this);
     this->operator++();
     return old;
 }
 
 
-inline Foam::labelRanges::const_iterator Foam::labelRanges::cbegin() const
+inline constexpr bool
+Foam::labelRanges::const_iterator::
+operator==
+(
+    const const_iterator& iter
+) const noexcept
 {
-    return const_iterator(*this);
+    return
+    (
+        index_    == iter.index_
+     && subIndex_ == iter.subIndex_
+    );
 }
 
 
-inline const Foam::labelRanges::const_iterator& Foam::labelRanges::cend() const
+inline constexpr bool
+Foam::labelRanges::const_iterator::
+operator!=
+(
+    const const_iterator& iter
+) const noexcept
 {
-    return endIter_;
-}
-
-
-inline Foam::labelRanges::const_iterator Foam::labelRanges::begin() const
-{
-    return const_iterator(*this);
-}
-
-
-inline const Foam::labelRanges::const_iterator& Foam::labelRanges::end() const
-{
-    return endIter_;
+    return !(*this == iter);
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-inline bool Foam::labelRanges::contains(const label value) const
+inline Foam::label Foam::labelRanges::totalSize() const noexcept
 {
-    forAll(*this, i)
+    label total = 0;
+    for (const labelRange& range : ranges_)
     {
-        if (this->ParentType::operator[](i).contains(value))
+        if (range.size() > 0)  // Ignore negative size (paranoid)
+        {
+            total += range.size();
+        }
+    }
+    return total;
+}
+
+
+inline bool Foam::labelRanges::contains(const label value) const noexcept
+{
+    for (const labelRange& range : ranges_)
+    {
+        if (range.contains(value))
         {
             return true;
         }
     }
 
     return false;
+}
+
+
+template<class... Args>
+inline Foam::labelRange& Foam::labelRanges::emplace_back(Args&&... args)
+{
+    return ranges_.emplace_back(args...);
+}
+
+
+inline void Foam::labelRanges::sort()
+{
+    Foam::sort(ranges_);
+}
+
+
+// * * * * * * * * * * * * * * * * Iterators * * * * * * * * * * * * * * * * //
+
+inline Foam::labelRanges::const_iterator
+Foam::labelRanges::cbegin() const noexcept
+{
+    return const_iterator(&ranges_);
+}
+
+
+inline const Foam::labelRanges::const_iterator
+Foam::labelRanges::cend() const noexcept
+{
+    return const_iterator(&ranges_, ranges_.size());
+}
+
+
+inline Foam::labelRanges::const_iterator
+Foam::labelRanges::begin() const noexcept
+{
+    return const_iterator(&ranges_);
+}
+
+
+inline const Foam::labelRanges::const_iterator
+Foam::labelRanges::end() const noexcept
+{
+    return const_iterator(&ranges_, ranges_.size());
+}
+
+
+inline Foam::labelRanges::const_iterator
+Foam::labelRanges::cbegin(const label i) const
+{
+    if (i <= 0) return this->cbegin();
+
+    label idx = 0;
+    label subIdx = i;
+
+    for (const labelRange& range : ranges_)
+    {
+        if (subIdx < range.size())
+        {
+            return const_iterator(&ranges_, idx, subIdx);
+        }
+        else
+        {
+            ++idx;
+            if (range.size() > 0)  // Ignore negative size (paranoid)
+            {
+                subIdx -= range.size();
+            }
+        }
+    }
+
+    return this->cend();
+}
+
+
+inline Foam::labelRanges::const_iterator
+Foam::labelRanges::begin(const label i) const
+{
+    return this->cbegin(i);
 }
 
 

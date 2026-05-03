@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2023 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,24 +31,21 @@ License
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 const char* const pTraits<Scalar>::typeName = "scalar";
-const Scalar pTraits<Scalar>::zero = 0.0;
-const Scalar pTraits<Scalar>::one = 1.0;
-const Scalar pTraits<Scalar>::min = -ScalarVGreat;
-const Scalar pTraits<Scalar>::max = ScalarVGreat;
-const Scalar pTraits<Scalar>::rootMin = -ScalarRootVGreat;
-const Scalar pTraits<Scalar>::rootMax = ScalarRootVGreat;
-const Scalar pTraits<Scalar>::nan = ScalarNaN;
-
 const char* const pTraits<Scalar>::componentNames[] = { "" };
 
-pTraits<Scalar>::pTraits(const Scalar& p)
-:
-    p_(p)
-{}
+const Scalar pTraits<Scalar>::zero = 0.0;
+const Scalar pTraits<Scalar>::one = 1.0;
+const Scalar pTraits<Scalar>::min = -ScalarVGREAT;
+const Scalar pTraits<Scalar>::max = ScalarVGREAT;
+const Scalar pTraits<Scalar>::rootMin = -ScalarROOTVGREAT;
+const Scalar pTraits<Scalar>::rootMax = ScalarROOTVGREAT;
+const Scalar pTraits<Scalar>::vsmall = ScalarVSMALL;
 
+
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 pTraits<Scalar>::pTraits(Istream& is)
 {
@@ -53,70 +53,139 @@ pTraits<Scalar>::pTraits(Istream& is)
 }
 
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * IO/Conversion * * * * * * * * * * * * * * * //
 
 word name(const Scalar val)
 {
+    // Caution std::to_string(double) is locale sensitive!
     std::ostringstream buf;
     buf << val;
-    return buf.str();
+
+    return word(buf.str(), false);  // Needs no stripping
 }
 
 
-// * * * * * * * * * * * * * * * IOstream Functions  * * * * * * * * * * * * //
-
-Scalar readScalar(Istream& is)
+Scalar ScalarRead(const char* buf)
 {
-    Scalar rs;
-    is  >> rs;
+    char* endptr = nullptr;
+    errno = 0;
+    const auto parsed = ScalarConvert(buf, &endptr);
 
-    return rs;
+    const parsing::errorType err =
+    (
+        (parsed < -ScalarVGREAT || parsed > ScalarVGREAT)
+      ? parsing::errorType::RANGE
+      : parsing::checkConversion(buf, endptr)
+    );
+
+    if (err != parsing::errorType::NONE)
+    {
+        FatalIOErrorInFunction("unknown")
+            << parsing::errorNames[err] << " '" << buf << "'"
+            << exit(FatalIOError);
+    }
+
+    // Round underflow to zero
+    return
+    (
+        (parsed > -ScalarVSMALL && parsed < ScalarVSMALL)
+      ? 0
+      : Scalar(parsed)
+    );
 }
 
 
-void writeEntry(Ostream& os, const Scalar value)
+bool ScalarRead(const char* buf, Scalar& val)
 {
-    os << value;
+    char* endptr = nullptr;
+    errno = 0;
+    const auto parsed = ScalarConvert(buf, &endptr);
+
+    // Round underflow to zero
+    val =
+    (
+        (parsed >= -ScalarVSMALL && parsed <= ScalarVSMALL)
+      ? 0
+      : Scalar(parsed)
+    );
+
+    return
+    (
+        (parsed < -ScalarVGREAT || parsed > ScalarVGREAT)
+      ? false
+      : (parsing::checkConversion(buf, endptr) == parsing::errorType::NONE)
+    );
 }
 
 
 // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-Istream& operator>>(Istream& is, Scalar& s)
+Scalar ScalarRead(Istream& is)
+{
+    Scalar val(0);
+    is  >> val;
+
+    return val;
+}
+
+
+Istream& operator>>(Istream& is, Scalar& val)
 {
     token t(is);
 
     if (!t.good())
     {
+        FatalIOErrorInFunction(is)
+            << "Bad token - could not get scalar value"
+            << exit(FatalIOError);
         is.setBad();
         return is;
+    }
+
+    // Accept separated '-' (or '+') while expecting a number.
+    // This can arise during dictionary expansions (Eg, -$value)
+
+    char prefix = 0;
+    if (t.isPunctuation())
+    {
+        prefix = t.pToken();
+        if (prefix == token::PLUS || prefix == token::MINUS)
+        {
+            is >> t;
+        }
     }
 
     if (t.isNumber())
     {
-        s = t.number();
+        val =
+        (
+            (prefix == token::MINUS)
+          ? (0 - t.number())
+          : t.number()
+        );
     }
     else
     {
-        is.setBad();
         FatalIOErrorInFunction(is)
-            << "wrong token type - expected Scalar, found " << t.info()
-            << exit(FatalIOError);
-
+            << "Wrong token type - expected scalar value, found ";
+        if (prefix == token::PLUS || prefix == token::MINUS)
+        {
+            FatalIOError << '\'' << prefix << "' followed by ";
+        }
+        FatalIOError << t.info() << exit(FatalIOError);
+        is.setBad();
         return is;
     }
 
-    // Check state of Istream
-    is.check("Istream& operator>>(Istream&, Scalar&)");
-
+    is.check(FUNCTION_NAME);
     return is;
 }
 
 
-Ostream& operator<<(Ostream& os, const Scalar s)
+Ostream& operator<<(Ostream& os, const Scalar val)
 {
-    os.write(s);
-    os.check("Ostream& operator<<(Ostream&, const Scalar&)");
+    os.write(val);
+    os.check(FUNCTION_NAME);
     return os;
 }
 

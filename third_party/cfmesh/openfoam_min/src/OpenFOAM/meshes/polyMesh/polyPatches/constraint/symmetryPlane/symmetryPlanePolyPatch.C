@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2013-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2013-2015 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,8 +28,6 @@ License
 
 #include "symmetryPlanePolyPatch.H"
 #include "addToRunTimeSelectionTable.H"
-#include "RemoteData.H"
-#include "Tuple3.H"
 #include "symmetryPolyPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -44,62 +45,40 @@ namespace Foam
 
 void Foam::symmetryPlanePolyPatch::calcGeometry(PstreamBuffers&)
 {
-    if (n_ != vector::rootMax)
+    if (n_ == vector::rootMax)
     {
-        return;
-    }
-
-    if (!returnReduce(size(), sumOp<label>()))
-    {
-        return;
-    }
-
-    const pointField& cf(primitivePatch::faceCentres());
-    const vectorField& nf(faceNormals());
-    n_ = gAverage(nf);
-
-    if (debug)
-    {
-        Info<< "Patch " << name() << " calculated average normal "
-            << n_ << endl;
-    }
-
-    // Get the largest variation from the average normal
-    RemoteData<Tuple3<scalar, vector, vector>> maxDeltaN;
-    if (size())
-    {
-        const scalarField deltaNSqr(magSqr(n_ - nf));
-        const label i = findMax(deltaNSqr);
-        maxDeltaN = {Pstream::myProcNo(), i, {deltaNSqr[i], cf[i], nf[i]}};
-    }
-    combineReduce
-    (
-        maxDeltaN,
-        RemoteData<Tuple3<scalar, vector, vector>>::greatestFirstEqOp()
-    );
-
-    // Fail if the symmetry plane is not planar
-    if (maxDeltaN.data.first() > small)
-    {
-        Ostream& fos =
-            FatalErrorInFunction
-                << "Symmetry plane '" << name()
-                << "' is not planar" << endl;
-
-        fos << "At patch face #" << maxDeltaN.elementi;
-
-        if (Pstream::parRun())
+        if (returnReduceOr(size()))
         {
-            fos << " on processor #" << maxDeltaN.proci;
-        }
+            const vectorField& nf = faceNormals();
+            n_ = gAverage(nf);
 
-        fos << " with centre " << maxDeltaN.data.second()
-            << " the normal " << maxDeltaN.data.third()
-            << " differs from the average normal " << n_
-            << " by " << maxDeltaN.data.first() << nl
-            << "Either split the patch into planar parts or use the "
-            << symmetryPolyPatch::typeName << " patch type"
-            << exit(FatalError);
+            if (debug)
+            {
+                Info<< "Patch " << name() << " calculated average normal "
+                    << n_ << endl;
+            }
+
+
+            // Check the symmetry plane is planar
+            forAll(nf, facei)
+            {
+                if (magSqr(n_ - nf[facei]) > SMALL)
+                {
+                    FatalErrorInFunction
+                        << "Symmetry plane '" << name() << "' is not planar."
+                        << endl
+                        << "At local face at "
+                        << primitivePatch::faceCentres()[facei]
+                        << " the normal " << nf[facei]
+                        << " differs from the average normal " << n_
+                        << " by " << magSqr(n_ - nf[facei]) << endl
+                        << "Either split the patch into planar parts"
+                        << " or use the " << symmetryPolyPatch::typeName
+                        << " patch type"
+                        << exit(FatalError);
+                }
+            }
+        }
     }
 }
 
@@ -112,10 +91,11 @@ Foam::symmetryPlanePolyPatch::symmetryPlanePolyPatch
     const label size,
     const label start,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, size, start, index, bm),
+    polyPatch(name, size, start, index, bm, patchType),
     n_(vector::rootMax)
 {}
 
@@ -125,10 +105,11 @@ Foam::symmetryPlanePolyPatch::symmetryPlanePolyPatch
     const word& name,
     const dictionary& dict,
     const label index,
-    const polyBoundaryMesh& bm
+    const polyBoundaryMesh& bm,
+    const word& patchType
 )
 :
-    polyPatch(name, dict, index, bm),
+    polyPatch(name, dict, index, bm, patchType),
     n_(vector::rootMax)
 {}
 
@@ -154,6 +135,20 @@ Foam::symmetryPlanePolyPatch::symmetryPlanePolyPatch
 )
 :
     polyPatch(pp, bm, index, newSize, newStart),
+    n_(pp.n_)
+{}
+
+
+Foam::symmetryPlanePolyPatch::symmetryPlanePolyPatch
+(
+    const symmetryPlanePolyPatch& pp,
+    const polyBoundaryMesh& bm,
+    const label index,
+    const labelUList& mapAddressing,
+    const label newStart
+)
+:
+    polyPatch(pp, bm, index, mapAddressing, newStart),
     n_(pp.n_)
 {}
 

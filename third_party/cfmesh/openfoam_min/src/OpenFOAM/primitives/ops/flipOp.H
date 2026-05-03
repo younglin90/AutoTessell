@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2019 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,7 +28,7 @@ Class
     Foam::flipOp
 
 Description
-    Class containing functor to negate primitives. Dummy for all other types.
+    Functor to negate primitives. Dummy for most other types.
 
     Used in mesh transformations where face can flip.
 
@@ -34,8 +37,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef flipOp_H
-#define flipOp_H
+#ifndef Foam_flipOp_H
+#define Foam_flipOp_H
 
 #include "fieldTypes.H"
 
@@ -45,38 +48,48 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
+                           Class noOp Declaration
+\*---------------------------------------------------------------------------*/
+
+//- Same as Foam::identityOp. Should \em never be specialized.
+struct noOp
+{
+    template<class T>
+    const T& operator()(const T& val) const noexcept
+    {
+        return val;
+    }
+};
+
+
+/*---------------------------------------------------------------------------*\
                            Class flipOp Declaration
 \*---------------------------------------------------------------------------*/
 
-class flipOp
+struct flipOp
 {
-public:
-
-    template<class Type>
-    Type operator()(const Type& val) const
+    template<class T>
+    T operator()(const T& val) const
     {
         return val;
     }
 };
 
 
-class noOp
+//- Invert boolean value
+struct flipBoolOp
 {
-public:
-
-    template<class Type>
-    Type operator()(const Type& val) const
+    bool operator()(const bool val) const noexcept
     {
-        return val;
+        return !val;
     }
 };
 
 
-class flipLabelOp
+//- Negate integer values
+struct flipLabelOp
 {
-public:
-
-    label operator()(const label& val) const
+    label operator()(const label val) const
     {
         return -val;
     }

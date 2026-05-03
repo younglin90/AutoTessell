@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2017 OpenFOAM Foundation
+    Copyright (C) 2021-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,46 +31,16 @@ License
 #include "Pstream.H"
 #include "Time.H"
 
-// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
-
-namespace Foam
-{
-    defineTypeNameAndDebug(IOdictionary, 0);
-
-    bool IOdictionary::writeDictionaries
-    (
-        debug::infoSwitch("writeDictionaries", 0)
-    );
-}
-
-
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 Foam::IOdictionary::IOdictionary
 (
     const IOobject& io,
-    const word& wantedType
+    const dictionary* fallback
 )
 :
-    regIOobject(io)
-{
-    dictionary::name() = regIOobject::objectPath();
-
-    // Reading performed by derived type
-}
-
-
-Foam::IOdictionary::IOdictionary(const IOobject& io)
-:
-    regIOobject(io)
-{
-    dictionary::name() = regIOobject::objectPath();
-
-    readHeaderOk(IOstream::ASCII, typeName);
-
-    // For if MUST_READ_IF_MODIFIED
-    addWatch();
-}
+    IOdictionary(io, typeName, fallback)
+{}
 
 
 Foam::IOdictionary::IOdictionary
@@ -76,13 +49,22 @@ Foam::IOdictionary::IOdictionary
     const dictionary& dict
 )
 :
-    regIOobject(io)
-{
-    dictionary::name() = regIOobject::objectPath();
+    IOdictionary(io, typeName, &dict)
+{}
 
-    if (!readHeaderOk(IOstream::ASCII, typeName))
+
+Foam::IOdictionary::IOdictionary
+(
+    const IOobject& io,
+    const word& wantedType,
+    const dictionary* fallback
+)
+:
+    baseIOdictionary(io, fallback)
+{
+    if (!readHeaderOk(IOstreamOption::ASCII, wantedType) && fallback)
     {
-        dictionary::operator=(dict);
+        dictionary::operator=(*fallback);
     }
 
     // For if MUST_READ_IF_MODIFIED
@@ -96,12 +78,9 @@ Foam::IOdictionary::IOdictionary
     Istream& is
 )
 :
-    regIOobject(io)
+    baseIOdictionary(io, is)
 {
-    dictionary::name() = regIOobject::objectPath();
-
-    // Note that we do construct the dictionary null and read in
-    // afterwards
+    // Default construct dictionary and read in afterwards
     // so that if there is some fancy massaging due to a
     // functionEntry in
     // the dictionary at least the type information is already complete.
@@ -112,37 +91,36 @@ Foam::IOdictionary::IOdictionary
 }
 
 
-Foam::IOdictionary::IOdictionary(const IOdictionary& dict)
-:
-    regIOobject(dict),
-    dictionary(dict)
-{}
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-
-Foam::IOdictionary::IOdictionary(IOdictionary&& dict)
-:
-    regIOobject(move(dict)),
-    dictionary(move(dict))
-{}
-
-
-// * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * * //
-
-Foam::IOdictionary::~IOdictionary()
-{}
-
-
-// * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
-
-void Foam::IOdictionary::operator=(const IOdictionary& rhs)
+Foam::dictionary Foam::IOdictionary::readContents(const IOobject& io)
 {
-    dictionary::operator=(rhs);
+    return readContents(io, typeName);
 }
 
 
-void Foam::IOdictionary::operator=(IOdictionary&& rhs)
+Foam::dictionary Foam::IOdictionary::readContents
+(
+    const IOobject& io,
+    const word& wantedType
+)
 {
-    dictionary::operator=(move(rhs));
+    IOobject rio(io, IOobjectOption::NO_REGISTER);
+    if (rio.readOpt() == IOobjectOption::READ_MODIFIED)
+    {
+        rio.readOpt(IOobjectOption::MUST_READ);
+    }
+
+    // The object is global
+    rio.globalObject(true);
+
+    IOdictionary reader
+    (
+        rio,
+        (wantedType.empty() ? typeName : wantedType)
+    );
+
+    return dictionary(std::move(static_cast<dictionary&>(reader)));
 }
 
 

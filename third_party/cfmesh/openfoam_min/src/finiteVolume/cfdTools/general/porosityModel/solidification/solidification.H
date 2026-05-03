@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2017-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017 OpenFOAM Foundation
+    Copyright (C) 2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -47,7 +50,7 @@ Description
     \verbatim
         type            solidification;
 
-        solidification
+        solidificationCoeffs
         {
             // Solidify between 330K and 330.5K
             D table
@@ -63,14 +66,9 @@ Description
             // use the global coordinate system
             coordinateSystem
             {
-                type    cartesian;
                 origin  (0 0 0);
-                coordinateRotation
-                {
-                    type    axesRotation;
-                    e1      (1 0 0);
-                    e2      (0 1 0);
-                }
+                e1      (1 0 0);
+                e2      (0 1 0);
             }
         }
     \endverbatim
@@ -81,8 +79,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef solidification_H
-#define solidification_H
+#ifndef Foam_porosityModels_solidification_H
+#define Foam_porosityModels_solidification_H
 
 #include "porosityModel.H"
 #include "Function1.H"
@@ -95,7 +93,7 @@ namespace porosityModels
 {
 
 /*---------------------------------------------------------------------------*\
-                       Class solidification Declaration
+                      Class solidification Declaration
 \*---------------------------------------------------------------------------*/
 
 class solidification
@@ -159,29 +157,30 @@ class solidification
             const volVectorField& U
         ) const;
 
+        //- No copy construct
+        solidification(const solidification&) = delete;
+
+        //- No copy assignment
+        void operator=(const solidification&) = delete;
+
 
 public:
 
     //- Runtime type information
     TypeName("solidification");
 
-    // Constructors
-
-        solidification
-        (
-            const word& name,
-            const fvMesh& mesh,
-            const dictionary& dict,
-            const dictionary& coeffDict,
-            const word& cellZoneName
-        );
-
-        //- Disallow default bitwise copy construction
-        solidification(const solidification&) = delete;
-
+    //- Constructor
+    solidification
+    (
+        const word& name,
+        const word& modelType,
+        const fvMesh& mesh,
+        const dictionary& dict,
+        const wordRe& cellZoneName
+    );
 
     //- Destructor
-    virtual ~solidification();
+    virtual ~solidification() = default;
 
 
     // Member Functions
@@ -204,17 +203,24 @@ public:
         //- Add resistance
         virtual void correct
         (
+            fvVectorMatrix& UEqn,
+            const volScalarField& rho,
+            const volScalarField& mu
+        ) const;
+
+        //- Add resistance
+        virtual void correct
+        (
             const fvVectorMatrix& UEqn,
             volTensorField& AU
         ) const;
 
 
-    // Member Operators
+    // I-O
 
-        //- Disallow default bitwise assignment
-        void operator=(const solidification&) = delete;
+        //- Write
+        bool writeData(Ostream& os) const;
 };
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

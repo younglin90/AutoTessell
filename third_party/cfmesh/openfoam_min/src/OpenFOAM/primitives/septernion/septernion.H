@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2019-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -45,27 +48,25 @@ SourceFiles
 #include "quaternion.H"
 #include "spatialTransform.H"
 #include "word.H"
-#include "contiguous.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// Forward declaration of friend functions and operators
-
+// Forward Declarations
 class septernion;
 Istream& operator>>(Istream& is, septernion&);
 Ostream& operator<<(Ostream& os, const septernion& C);
 
 
 /*---------------------------------------------------------------------------*\
-                         Class septernion Declaration
+                           Class septernion Declaration
 \*---------------------------------------------------------------------------*/
 
 class septernion
 {
-    // private data
+    // Private Data
 
         //- Translation vector
         vector t_;
@@ -76,7 +77,7 @@ class septernion
 
 public:
 
-    // Static Data Members
+    // Static Data
 
         static const char* const typeName;
 
@@ -84,10 +85,22 @@ public:
         static const septernion I;
 
 
+    // Generated Methods
+
+        //- Default construct
+        septernion() = default;
+
+        //- Copy construct
+        septernion(const septernion&) = default;
+
+        //- Copy assignment
+        septernion& operator=(const septernion&) = default;
+
+
     // Constructors
 
-        //- Construct null
-        inline septernion();
+        //- Construct zero initialized
+        inline septernion(const Foam::zero);
 
         //- Construct given a translation vector and rotation quaternion
         inline septernion(const vector& t, const quaternion& r);
@@ -102,24 +115,24 @@ public:
         inline explicit septernion(const spatialTransform& st);
 
         //- Construct from Istream
-        septernion(Istream&);
+        explicit septernion(Istream& is);
 
 
     // Member Functions
 
-           // Access
+        // Access
 
                inline const vector& t() const;
                inline const quaternion& r() const;
 
 
-           // Edit
+        // Edit
 
                inline vector& t();
                inline quaternion& r();
 
 
-           // Transform
+        // Transform
 
                //- Transform the given coordinate point
                inline vector transformPoint(const vector& v) const;
@@ -151,6 +164,15 @@ public:
 };
 
 
+// * * * * * * * * * * * * * * * * * Traits  * * * * * * * * * * * * * * * * //
+
+//- Contiguous data for septernion
+template<> struct is_contiguous<septernion> : std::true_type {};
+
+//- Contiguous scalar data for septernion
+template<> struct is_contiguous_scalar<septernion> : std::true_type {};
+
+
 // * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
 //- Return the inverse of the given septernion
@@ -173,10 +195,6 @@ septernion average
     const UList<septernion>& ss,
     const UList<scalar> w
 );
-
-//- Data associated with septernion type are contiguous
-template<>
-inline bool contiguous<septernion>() {return true;}
 
 
 // * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //

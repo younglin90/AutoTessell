@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2015-2021 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,10 +27,12 @@ License
 Class
     Foam::movingWallVelocityFvPatchVectorField
 
+Group
+    grpWallBoundaryConditions
+
 Description
-    This boundary condition provides a no-slip velocity condition for ridged
-    moving walls or flexible moving walls on which the mesh vertices move
-    with the surface.
+    This boundary condition provides a velocity condition for cases with
+    moving walls.
 
 Usage
     Example of the boundary condition specification:
@@ -41,6 +46,7 @@ Usage
 
 See also
     Foam::fixedValueFvPatchVectorField
+    Foam::MRFZone
 
 SourceFiles
     movingWallVelocityFvPatchVectorField.C
@@ -58,14 +64,13 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-            Class movingWallVelocityFvPatchVectorField Declaration
+             Class movingWallVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
 class movingWallVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
-
 public:
 
     //- Runtime type information
@@ -74,11 +79,18 @@ public:
 
     // Constructors
 
+        //- Construct from patch and internal field
+        movingWallVelocityFvPatchVectorField
+        (
+            const fvPatch&,
+            const DimensionedField<vector, volMesh>&
+        );
+
         //- Construct from patch, internal field and dictionary
         movingWallVelocityFvPatchVectorField
         (
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
+            const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
@@ -88,49 +100,49 @@ public:
         (
             const movingWallVelocityFvPatchVectorField&,
             const fvPatch&,
-            const DimensionedField<vector, fvMesh>&,
-            const fieldMapper&
+            const DimensionedField<vector, volMesh>&,
+            const fvPatchFieldMapper&
         );
 
-        //- Disallow copy without setting internal field reference
+        //- Construct as copy
         movingWallVelocityFvPatchVectorField
         (
             const movingWallVelocityFvPatchVectorField&
-        ) = delete;
+        );
 
-        //- Copy constructor setting internal field reference
+        //- Construct as copy setting internal field reference
         movingWallVelocityFvPatchVectorField
         (
             const movingWallVelocityFvPatchVectorField&,
-            const DimensionedField<vector, fvMesh>&
+            const DimensionedField<vector, volMesh>&
         );
 
-        //- Construct and return a clone setting internal field reference
-        virtual tmp<fvPatchVectorField> clone
+        //- Return a clone
+        virtual tmp<fvPatchField<vector>> clone() const
+        {
+            return fvPatchField<vector>::Clone(*this);
+        }
+
+        //- Clone with an internal field reference
+        virtual tmp<fvPatchField<vector>> clone
         (
-            const DimensionedField<vector, fvMesh>& iF
+            const DimensionedField<vector, volMesh>& iF
         ) const
         {
-            return tmp<fvPatchVectorField>
-            (
-                new movingWallVelocityFvPatchVectorField(*this, iF)
-            );
+            return fvPatchField<vector>::Clone(*this, iF);
         }
 
 
     // Member Functions
+
+        //- Return wall velocity field
+        tmp<vectorField> Uwall() const;
 
         //- Update the coefficients associated with the patch field
         virtual void updateCoeffs();
 
         //- Write
         virtual void write(Ostream&) const;
-
-
-    // Member Operators
-
-        //- Inherit assignment
-        using fixedValueFvPatchVectorField::operator=;
 };
 
 

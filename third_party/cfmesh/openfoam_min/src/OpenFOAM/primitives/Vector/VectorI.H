@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2021 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,11 +27,6 @@ License
 \*---------------------------------------------------------------------------*/
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
-
-template<class Cmpt>
-inline Foam::Vector<Cmpt>::Vector()
-{}
-
 
 template<class Cmpt>
 inline Foam::Vector<Cmpt>::Vector(const Foam::zero)
@@ -72,65 +70,216 @@ inline Foam::Vector<Cmpt>::Vector(Istream& is)
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 template<class Cmpt>
-inline const Cmpt& Foam::Vector<Cmpt>::x() const
-{
-    return this->v_[X];
-}
-
-template<class Cmpt>
-inline const Cmpt& Foam::Vector<Cmpt>::y() const
-{
-    return this->v_[Y];
-}
-
-template<class Cmpt>
-inline const Cmpt& Foam::Vector<Cmpt>::z() const
-{
-    return this->v_[Z];
-}
-
-
-template<class Cmpt>
-inline Cmpt& Foam::Vector<Cmpt>::x()
-{
-    return this->v_[X];
-}
-
-template<class Cmpt>
-inline Cmpt& Foam::Vector<Cmpt>::y()
-{
-    return this->v_[Y];
-}
-
-template<class Cmpt>
-inline Cmpt& Foam::Vector<Cmpt>::z()
-{
-    return this->v_[Z];
-}
-
-
-// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class Cmpt>
 inline const Foam::Vector<Cmpt>& Foam::Vector<Cmpt>::centre
 (
-    const Foam::List<Vector<Cmpt>>&
-)const
+    const Foam::UList<Vector<Cmpt>>&
+) const noexcept
 {
     return *this;
 }
 
 
-// * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
+template<class Cmpt>
+inline Foam::scalar Foam::Vector<Cmpt>::magSqr() const
+{
+    return
+    (
+        Foam::magSqr(this->x())
+      + Foam::magSqr(this->y())
+      + Foam::magSqr(this->z())
+    );
+}
+
+
+template<class Cmpt>
+inline Foam::scalar Foam::Vector<Cmpt>::mag() const
+{
+    return ::sqrt(this->magSqr());
+}
+
+
+template<class Cmpt>
+inline Foam::scalar Foam::Vector<Cmpt>::distSqr(const Vector<Cmpt>& v2) const
+{
+    return
+    (
+        Foam::magSqr(v2.x() - this->x())
+      + Foam::magSqr(v2.y() - this->y())
+      + Foam::magSqr(v2.z() - this->z())
+    );
+}
+
+
+template<class Cmpt>
+inline Foam::scalar Foam::Vector<Cmpt>::dist(const Vector<Cmpt>& v2) const
+{
+    return ::sqrt(this->distSqr(v2));
+}
+
+
+template<class Cmpt>
+inline Foam::Vector<Cmpt>& Foam::Vector<Cmpt>::normalise(const scalar tol)
+{
+    #ifdef __clang__
+    volatile  // Use volatile to avoid aggressive branch optimization
+    #endif
+    const scalar s = this->mag();
+
+    if (s < tol)
+    {
+        *this = Zero;
+    }
+    else
+    {
+        *this /= s;
+    }
+
+    return *this;
+}
+
+
+template<class Cmpt>
+inline Foam::Vector<Cmpt>&
+Foam::Vector<Cmpt>::removeCollinear(const Vector<Cmpt>& unitVec)
+{
+    *this -= (*this & unitVec) * unitVec;
+    return *this;
+}
+
+
+// * * * * * * * * * * * * * * * Member Operations * * * * * * * * * * * * * //
+
+template<class Cmpt>
+inline Cmpt Foam::Vector<Cmpt>::inner(const Vector<Cmpt>& v2) const
+{
+    const Vector<Cmpt>& v1 = *this;
+
+    return (v1.x()*v2.x() + v1.y()*v2.y() + v1.z()*v2.z());
+}
+
+
+template<class Cmpt>
+inline Foam::Vector<Cmpt>
+Foam::Vector<Cmpt>::cross(const Vector<Cmpt>& v2) const
+{
+    const Vector<Cmpt>& v1 = *this;
+
+    return Vector<Cmpt>
+    (
+        (v1.y()*v2.z() - v1.z()*v2.y()),
+        (v1.z()*v2.x() - v1.x()*v2.z()),
+        (v1.x()*v2.y() - v1.y()*v2.x())
+    );
+}
+
+
+// * * * * * * * * * * * * * Comparison Operations * * * * * * * * * * * * * //
+
+template<class Cmpt>
+inline bool
+Foam::Vector<Cmpt>::less_xyz(const Vector<Cmpt>& a, const Vector<Cmpt>& b)
+{
+    return
+    (
+        (a.x() < b.x())  // Component is less
+     ||
+        (
+            !(b.x() < a.x())  // Equal? Check next component
+         &&
+            (
+                (a.y() < b.y())  // Component is less
+             ||
+                (
+                    !(b.y() < a.y())  // Equal? Check next component
+                 && (a.z() < b.z())
+                )
+            )
+        )
+    );
+}
+
+
+template<class Cmpt>
+inline bool
+Foam::Vector<Cmpt>::less_yzx(const Vector<Cmpt>& a, const Vector<Cmpt>& b)
+{
+    return
+    (
+        (a.y() < b.y())  // Component is less
+     ||
+        (
+            !(b.y() < a.y())  // Equal? Check next component
+         &&
+            (
+                (a.z() < b.z())  // Component is less
+             ||
+                (
+                    !(b.z() < a.z())  // Equal? Check next component
+                 && (a.x() < b.x())
+                )
+            )
+        )
+    );
+}
+
+
+template<class Cmpt>
+inline bool
+Foam::Vector<Cmpt>::less_zxy(const Vector<Cmpt>& a, const Vector<Cmpt>& b)
+{
+    return
+    (
+        (a.z() < b.z())  // Component is less
+     ||
+        (
+            !(b.z() < a.z())  // Equal? Check next component
+         &&
+            (
+                (a.x() < b.x())  // Component is less
+             ||
+                (
+                    !(b.x() < a.x())  // Equal? Check next component
+                 && (a.y() < b.y())
+                )
+            )
+        )
+    );
+}
+
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
 
-//- Dummy innerProduct for scalar to allow the construction of vtables for
-//  virtual member functions involving the inner-products of fields
-//  for which a "NotImplemented" specialisation for scalar is provided.
+//- Linear interpolation of vectors a and b by factor t
+template<class Cmpt>
+inline Vector<Cmpt> lerp
+(
+    const Vector<Cmpt>& a,
+    const Vector<Cmpt>& b,
+    const scalar t
+)
+{
+    const scalar onet = (1-t);
+
+    return Vector<Cmpt>
+    (
+        onet*a.x() + t*b.x(),
+        onet*a.y() + t*b.y(),
+        onet*a.z() + t*b.z()
+    );
+}
+
+
+// * * * * * * * * * * * * * * * Global Operators  * * * * * * * * * * * * * //
+
+//- Dummy innerProduct for scalar
+//  Allows the construction of vtables for virtual member functions
+//  involving the inner-products of fields
+//  for which a "NotImplemented" specialization for scalar is provided.
 template<class Cmpt>
 class innerProduct<Vector<Cmpt>, scalar>
 {
@@ -141,33 +290,30 @@ public:
 
 
 template<class Cmpt>
-inline typename innerProduct<Vector<Cmpt>, Vector<Cmpt>>::type
-operator&(const Vector<Cmpt>& v1, const Vector<Cmpt>& v2)
+inline Cmpt operator&(const Vector<Cmpt>& v1, const Vector<Cmpt>& v2)
 {
-    return Cmpt(v1.x()*v2.x() + v1.y()*v2.y() + v1.z()*v2.z());
+    return v1.inner(v2);
 }
 
 
 template<class Cmpt>
 inline Vector<Cmpt> operator^(const Vector<Cmpt>& v1, const Vector<Cmpt>& v2)
 {
-    return Vector<Cmpt>
-    (
-        (v1.y()*v2.z() - v1.z()*v2.y()),
-        (v1.z()*v2.x() - v1.x()*v2.z()),
-        (v1.x()*v2.y() - v1.y()*v2.x())
-    );
+    return v1.cross(v2);
 }
 
 
-// * * * * * * * * * * * * * * * Global Functions  * * * * * * * * * * * * * //
+template<class Cmpt>
+inline Vector<Cmpt> operator*(const Cmpt& s, const Vector<Cmpt>& v)
+{
+    return Vector<Cmpt>(s*v.x(), s*v.y(), s*v.z());
+}
+
 
 template<class Cmpt>
-inline Vector<Cmpt> perpendicular(const Vector<Cmpt>& v)
+inline Vector<Cmpt> operator*(const Vector<Cmpt>& v, const Cmpt& s)
 {
-    Vector<Cmpt> u(Zero);
-    u[findMin(cmptMag(v))] = 1;
-    return u ^ v;
+    return s*v;
 }
 
 

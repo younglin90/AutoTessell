@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2015-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2015-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2017 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -76,27 +79,45 @@ bool Foam::patchDistMethods::Poisson::correct
     volVectorField& n
 )
 {
-    if (!tyPsi_.valid())
+    if (!tyPsi_)
     {
-        tyPsi_ = tmp<volScalarField>
+        tyPsi_ = volScalarField::New
         (
-            volScalarField::New
-            (
-                "yPsi",
-                mesh_,
-                dimensionedScalar(sqr(dimLength), 0),
-                y.boundaryFieldRef().types()
-            )
+            "yPsi",
+            IOobject::NO_REGISTER,
+            mesh_,
+            dimensionedScalar(sqr(dimLength), Zero),
+            y.boundaryFieldRef().types()
         );
     }
-    volScalarField& yPsi = tyPsi_.ref();
+    auto& yPsi = tyPsi_.ref();
 
-    solve(fvm::laplacian(yPsi) == dimensionedScalar(dimless, -1.0));
+    solve(fvm::laplacian(yPsi) == dimensionedScalar("1", dimless, -1.0));
 
     volVectorField gradyPsi(fvc::grad(yPsi));
     volScalarField magGradyPsi(mag(gradyPsi));
 
-    y = sqrt(magSqr(gradyPsi) + 2*yPsi) - magGradyPsi;
+    // Need to stabilise the y for overset meshes since the holed cells
+    // keep the initial value (0.0) so the gradient of that will be
+    // zero as well. Turbulence models do not like zero wall distance.
+    y = max
+    (
+        sqrt(magSqr(gradyPsi) + 2*yPsi) - magGradyPsi,
+        dimensionedScalar("smallY", dimLength, SMALL)
+    );
+
+    // For overset: enforce smooth y field (yPsi is smooth, magGradyPsi is
+    // not)
+    mesh_.interpolate(y);
+
+    // Need to stabilise the y for overset meshes since the holed cells
+    // keep the initial value (0.0) so the gradient of that will be
+    // zero as well. Turbulence models do not like zero wall distance.
+    y.clamp_min(SMALL);
+
+    // For overset: enforce smooth y field (yPsi is smooth, magGradyPsi is
+    // not)
+    mesh_.interpolate(y);
 
     // Cache yPsi if the mesh is moving otherwise delete
     if (!mesh_.changing())
@@ -112,8 +133,12 @@ bool Foam::patchDistMethods::Poisson::correct
            /max
             (
                 magGradyPsi,
-                dimensionedScalar(dimLength, small)
+                dimensionedScalar("smallMagGradyPsi", dimLength, SMALL)
+
             );
+
+        // For overset: enforce smooth field
+        mesh_.interpolate(n);
     }
 
     return true;

@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2024 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,22 +28,28 @@ Class
     Foam::fileFormats::AC3DsurfaceFormat
 
 Description
-    Provide a means of reading/writing AC3D format.
+    Read/write AC3D format.
 
     http://www.inivis.com/ac3d/man/ac3dfileformat.html
 
-    Note:
-        On input, the faces are already organised as zones.
-        The output is always sorted by zones.
-        In the absence of zones, a single zone will be assigned.
+    Output stream options:
+       - ASCII only
+       - compression on/off
+
+    Output dictionary options: ignored
+
+Note
+    On input, the faces are already organized as zones.
+    The output is always sorted by zones.
+    In the absence of zones, a single zone will be assigned.
 
 SourceFiles
     AC3DsurfaceFormat.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef AC3DsurfaceFormat_H
-#define AC3DsurfaceFormat_H
+#ifndef Foam_AC3DsurfaceFormat_H
+#define Foam_AC3DsurfaceFormat_H
 
 #include "MeshedSurface.H"
 #include "MeshedSurfaceProxy.H"
@@ -55,7 +64,7 @@ namespace fileFormats
 {
 
 /*---------------------------------------------------------------------------*\
-                      Class AC3DsurfaceFormat Declaration
+               Class fileFormats::AC3DsurfaceFormat Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Face>
@@ -69,51 +78,61 @@ public:
     // Constructors
 
         //- Construct from file name
-        AC3DsurfaceFormat(const fileName&);
-
-        //- Disallow default bitwise copy construction
-        AC3DsurfaceFormat(const AC3DsurfaceFormat<Face>&) = delete;
-
-
-    // Selectors
-
-        //- Read file and return surface
-        static autoPtr<MeshedSurface<Face>> New(const fileName& name)
-        {
-            return autoPtr<MeshedSurface<Face>>
-            (
-                new AC3DsurfaceFormat<Face>(name)
-            );
-        }
+        explicit AC3DsurfaceFormat(const fileName& filename);
 
 
     //- Destructor
-    virtual ~AC3DsurfaceFormat()
-    {}
+    virtual ~AC3DsurfaceFormat() = default;
+
+
+    // Static Functions
+
+        //- Write surface mesh components by proxy
+        static void write
+        (
+            const fileName& filename,
+            const MeshedSurfaceProxy<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
+
+        //- Write UnsortedMeshedSurface, the output is always sorted by zones.
+        static void write
+        (
+            const fileName& filename,
+            const UnsortedMeshedSurface<Face>& surf,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& /*unused*/ = dictionary::null
+        );
 
 
     // Member Functions
 
-        //- Write surface mesh components by proxy
-        static void write(const fileName&, const MeshedSurfaceProxy<Face>&);
-
-        //- Write UnsortedMeshedSurface, the output is always sorted by zones.
-        static void write(const fileName&, const UnsortedMeshedSurface<Face>&);
-
         //- Read from file
-        virtual bool read(const fileName&);
+        virtual bool read(const fileName& filename) override;
 
-        //- Write object
-        virtual void write(const fileName& name) const
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
         {
-            write(name, MeshedSurfaceProxy<Face>(*this));
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
         }
 
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const AC3DsurfaceFormat<Face>&) = delete;
+        //- Write surface mesh to file (by proxy)
+        virtual void write
+        (
+            const fileName& name,
+            const word& fileType,  /* ignored */
+            IOstreamOption streamOpt = IOstreamOption(),
+            const dictionary& options = dictionary::null
+        ) const override
+        {
+            write(name, MeshedSurfaceProxy<Face>(*this), streamOpt, options);
+        }
 };
 
 

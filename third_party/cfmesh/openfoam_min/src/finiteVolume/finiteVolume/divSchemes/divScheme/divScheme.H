@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::fv::divScheme
 
+Group
+    grpFvDivSchemes
+
 Description
     Abstract base class for div schemes.
 
@@ -32,8 +37,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef divScheme_H
-#define divScheme_H
+#ifndef Foam_divScheme_H
+#define Foam_divScheme_H
 
 #include "tmp.H"
 #include "volFieldsFwd.H"
@@ -58,21 +63,30 @@ namespace fv
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class divScheme Declaration
+                           Class divScheme Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
 class divScheme
 :
-    public tmp<divScheme<Type>>::refCount
+    public refCount
 {
-
 protected:
 
     // Protected data
 
         const fvMesh& mesh_;
+
         tmp<surfaceInterpolationScheme<Type>> tinterpScheme_;
+
+
+    // Private Member Functions
+
+        //- No copy construct
+        divScheme(const divScheme&) = delete;
+
+        //- No copy assignment
+        void operator=(const divScheme&) = delete;
 
 
 public:
@@ -106,11 +120,23 @@ public:
         divScheme(const fvMesh& mesh, Istream& is)
         :
             mesh_(mesh),
-            tinterpScheme_(surfaceInterpolationScheme<Type>::New(mesh, is))
-        {}
-
-        //- Disallow default bitwise copy construction
-        divScheme(const divScheme&) = delete;
+            tinterpScheme_(nullptr)
+        {
+            if (is.eof())
+            {
+                tinterpScheme_.reset
+                (
+                    new linear<Type>(mesh)
+                );
+            }
+            else
+            {
+                tinterpScheme_.reset
+                (
+                    surfaceInterpolationScheme<Type>::New(mesh, is)
+                );
+            }
+        }
 
 
     // Selectors
@@ -124,7 +150,7 @@ public:
 
 
     //- Destructor
-    virtual ~divScheme();
+    virtual ~divScheme() = default;
 
 
     // Member Functions
@@ -135,16 +161,14 @@ public:
             return mesh_;
         }
 
-        virtual tmp<VolField<typename innerProduct<vector, Type>::type>> fvcDiv
+        virtual tmp
+        <
+            GeometricField
+            <typename innerProduct<vector, Type>::type, fvPatchField, volMesh>
+        > fvcDiv
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) = 0;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const divScheme&) = delete;
 };
 
 

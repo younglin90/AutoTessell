@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2016-2022 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -22,27 +25,32 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::sampledSurfaces::patch
+    Foam::sampledPatch
 
 Description
     A sampledSurface on patches. Non-triangulated by default.
 
-    Example:
+    This is often embedded as part of a sampled surfaces function object.
+
+Usage
+    Example of function object partial specification:
     \verbatim
+    surfaces
     {
-        type        patch;
-        patches     (walls);
-        triangulate no;
-        interpolate yes;
+        surface1
+        {
+            type    patch;
+            patches (inlet "outlet.*");
+        }
     }
     \endverbatim
 
-Usage
+    Where the sub-entries comprise:
     \table
-        Property     | Description             | Required    | Default value
-        patches      | the names of patches on which to sample | yes |
-        triangulate  | triangulate the output  | no          | no
-        interpolate  | interpolate values to the surface points | no | no
+        Property | Description                             | Required | Default
+        type     | patch                                   | yes      |
+        patches  | patch selection as word/regex list      | yes      |
+        triangulate | triangulate faces                    | no       | false
     \endtable
 
 SourceFiles
@@ -50,35 +58,37 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef sampledPatch_H
-#define sampledPatch_H
+#ifndef Foam_sampledPatch_H
+#define Foam_sampledPatch_H
 
 #include "sampledSurface.H"
-#include "MeshedSurface.H"
+#include "MeshedSurfaces.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
-namespace sampledSurfaces
-{
 
 /*---------------------------------------------------------------------------*\
-                            Class patch Declaration
+                       Class sampledPatch Declaration
 \*---------------------------------------------------------------------------*/
 
-class patch
+class sampledPatch
 :
-    public MeshedSurface<face>,
+    public meshedSurface,
     public sampledSurface
 {
+    //- Mesh storage type
+    typedef meshedSurface Mesh;
+
+
     // Private Data
 
-        //- Name of patches
-        const wordReList patchNames_;
+        //- Selection (word/regex) of patches
+        const wordRes selectionNames_;
 
-        //- Corresponding patchIDs
-        mutable labelList patchIndices_;
+        //- The IDs for selected patches. Sorted and no emptyPolyPatch
+        mutable labelList patchIDs_;
 
         //- Triangulated faces or keep faces as is
         bool triangulate_;
@@ -86,34 +96,39 @@ class patch
         //- Track if the surface needs an update
         mutable bool needsUpdate_;
 
+        //- Start indices (in patchFaceLabels_) of patches
+        labelList patchStart_;
+
         //- For every face (or triangle) the originating patch
         labelList patchIndex_;
 
         //- For every face (or triangle) the index in the originating patch
         labelList patchFaceLabels_;
 
-        //- Start indices (in patchFaceLabels_) of patches
-        labelList patchStart_;
-
 
     // Private Member Functions
 
-        //- Sample field on faces
+        //- Sample boundary field (from volume field) onto surface faces
         template<class Type>
-        tmp<Field<Type>> sampleField
+        tmp<Field<Type>> sampleOnFaces
         (
-            const VolField<Type>& vField
+            const interpolation<Type>& sampler
         ) const;
 
-        //- Sample surface field on faces
+        //- Sample boundary field (from surface field) onto surface faces
         template<class Type>
-        tmp<Field<Type>> sampleField
+        tmp<Field<Type>> sampleOnFaces
         (
             const SurfaceField<Type>& sField
         ) const;
 
+        //- Interpolate boundary field (from volume field) onto surface points
         template<class Type>
-        tmp<Field<Type>> interpolateField(const interpolation<Type>&) const;
+        tmp<Field<Type>> sampleOnPoints
+        (
+            const interpolation<Type>& interpolator
+        ) const;
+
 
         //- Re-map action on triangulation or cleanup
         virtual void remapFaces(const labelUList& faceMap);
@@ -121,18 +136,28 @@ class patch
 
 protected:
 
-        const wordReList& patchNames() const
+        //- The selection (word/regex) of patches
+        const wordRes& patchNames() const
         {
-            return patchNames_;
+            return selectionNames_;
         }
 
-        const labelList& patchIndices() const;
+        //- The patches selected
+        const labelList& patchIDs() const;
 
+        //- The offset into patchIndex, patchFaceLabels
         const labelList& patchStart() const
         {
             return patchStart_;
         }
 
+        //- For each face, the patch ID
+        const labelList& patchIndex() const
+        {
+            return patchIndex_;
+        }
+
+        //- For each face, the patch local face ID
         const labelList& patchFaceLabels() const
         {
             return patchFaceLabels_;
@@ -142,22 +167,22 @@ protected:
 public:
 
     //- Runtime type information
-    TypeName("patch");
+    TypeName("sampledPatch");
 
 
     // Constructors
 
         //- Construct from components
-        patch
+        sampledPatch
         (
             const word& name,
             const polyMesh& mesh,
-            const wordReList& patchNames,
+            const UList<wordRe>& patchNames,
             const bool triangulate = false
         );
 
         //- Construct from dictionary
-        patch
+        sampledPatch
         (
             const word& name,
             const polyMesh& mesh,
@@ -166,7 +191,7 @@ public:
 
 
     //- Destructor
-    virtual ~patch();
+    virtual ~sampledPatch() = default;
 
 
     // Member Functions
@@ -174,65 +199,163 @@ public:
         //- Does the surface need an update?
         virtual bool needsUpdate() const;
 
+        //- Mark the surface as needing an update.
+        //  May also free up unneeded data.
+        //  Return false if surface was already marked as expired.
+        virtual bool expire();
+
         //- Update the surface as required.
         //  Do nothing (and return false) if no update was needed
         virtual bool update();
 
+
         //- Points of surface
         virtual const pointField& points() const
         {
-            return MeshedSurface<face>::points();
+            return Mesh::points();
         }
 
         //- Faces of surface
         virtual const faceList& faces() const
         {
-            return MeshedSurface<face>::faces();
+            return Mesh::surfFaces();
         }
 
-        //- Sample field on the surface's faces
-        #define DEFINE_SAMPLE(Type, nullArg)                                   \
-            virtual tmp<Field<Type>> sample                                    \
-            (                                                                  \
-                const VolField<Type>&                                          \
-            ) const;                                                           \
-                                                                               \
-            virtual tmp<Field<Type>> sample                                    \
-            (                                                                  \
-                const SurfaceField<Type>&                                      \
-            ) const;
-        FOR_ALL_FIELD_TYPES(DEFINE_SAMPLE);
-        #undef DEFINE_SAMPLE
+        //- Per-face zone/region information
+        virtual const labelList& zoneIds() const
+        {
+            return labelList::null();
+        }
 
-        //- Interpolate field to the surface's points
-        #define DEFINE_INTERPOLATE(Type, nullArg)                              \
-            virtual tmp<Field<Type>> interpolate                               \
-            (                                                                  \
-                const interpolation<Type>&                                     \
-            ) const;
-        FOR_ALL_FIELD_TYPES(DEFINE_INTERPOLATE);
-        #undef DEFINE_INTERPOLATE
+        //- Face area vectors
+        virtual const vectorField& Sf() const
+        {
+            return Mesh::Sf();
+        }
 
-        //- Update for mesh point-motion
-        virtual void movePoints();
+        //- Face area magnitudes
+        virtual const scalarField& magSf() const
+        {
+            return Mesh::magSf();
+        }
 
-        //- Update topology using the given map
-        virtual void topoChange(const polyTopoChangeMap&);
+        //- Face centres
+        virtual const vectorField& Cf() const
+        {
+            return Mesh::Cf();
+        }
 
-        //- Update from another mesh using the given map
-        virtual void mapMesh(const polyMeshMap&);
 
-        //- Redistribute or update using the given distribution map
-        virtual void distribute(const polyDistributionMap&);
+    // Sample
 
-        //- Write
-        virtual void print(Ostream&) const;
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<scalarField> sample
+        (
+            const interpolation<scalar>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<vectorField> sample
+        (
+            const interpolation<vector>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<sphericalTensorField> sample
+        (
+            const interpolation<sphericalTensor>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<symmTensorField> sample
+        (
+            const interpolation<symmTensor>& sampler
+        ) const;
+
+        //- Sample boundary of volume field onto surface faces
+        virtual tmp<tensorField> sample
+        (
+            const interpolation<tensor>& sampler
+        ) const;
+
+
+        //- Can it sample surface-fields?
+        virtual bool withSurfaceFields() const;
+
+
+        //- Sample boundary of surface field on surface
+        virtual tmp<scalarField> sample
+        (
+            const surfaceScalarField&
+        ) const;
+
+        //- Sample boundary of surface field on surface
+        virtual tmp<vectorField> sample
+        (
+            const surfaceVectorField&
+        ) const;
+
+        //- Sample boundary of surface field on surface
+        virtual tmp<sphericalTensorField> sample
+        (
+            const surfaceSphericalTensorField&
+        ) const;
+
+        //- Sample boundary of surface field on surface
+        virtual tmp<symmTensorField> sample
+        (
+            const surfaceSymmTensorField&
+        ) const;
+
+        //- Sample boundary of surface field on surface
+        virtual tmp<tensorField> sample
+        (
+            const surfaceTensorField&
+        ) const;
+
+
+    // Interpolate
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<scalarField> interpolate
+        (
+            const interpolation<scalar>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<vectorField> interpolate
+        (
+            const interpolation<vector>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<sphericalTensorField> interpolate
+        (
+            const interpolation<sphericalTensor>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<symmTensorField> interpolate
+        (
+            const interpolation<symmTensor>& interpolator
+        ) const;
+
+        //- Interpolate boundary of volume field onto surface points
+        virtual tmp<tensorField> interpolate
+        (
+            const interpolation<tensor>& interpolator
+        ) const;
+
+
+    // Output
+
+        //- Print information
+        virtual void print(Ostream& os, int level=0) const;
 };
 
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-} // End namespace sampledSurfaces
 } // End namespace Foam
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

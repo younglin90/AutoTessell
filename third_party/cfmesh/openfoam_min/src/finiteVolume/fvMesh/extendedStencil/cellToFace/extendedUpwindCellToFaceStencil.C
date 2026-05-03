@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2026 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
+    Copyright (C) 2018 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -44,7 +47,7 @@ void Foam::extendedUpwindCellToFaceStencil::selectOppositeFaces
     const labelList& own = mesh_.faceOwner();
     const cell& cFaces = mesh_.cells()[celli];
 
-    SortableList<scalar> opposedness(cFaces.size(), -great);
+    SortableList<scalar> opposedness(cFaces.size(), -GREAT);
 
     // Pick up all the faces that oppose this one.
     forAll(cFaces, i)
@@ -70,7 +73,7 @@ void Foam::extendedUpwindCellToFaceStencil::selectOppositeFaces
 
     scalar myAreaSqr = magSqr(areas[facei]);
 
-    if (myAreaSqr > vSmall)
+    if (myAreaSqr > VSMALL)
     {
         forAll(opposedness, i)
         {
@@ -159,11 +162,11 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencil
         transportedStencil[n++] = globalOwn;
         transportedStencil[n++] = globalNei;
 
-        forAllConstIter(labelHashSet, faceStencilSet, iter)
+        for (const label stencili : faceStencilSet)
         {
-            if (iter.key() != globalOwn && iter.key() != globalNei)
+            if (stencili != globalOwn && stencili != globalNei)
             {
-                transportedStencil[n++] = iter.key();
+                transportedStencil[n++] = stencili;
             }
         }
         if (n != transportedStencil.size())
@@ -179,11 +182,11 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencil
         label n = 0;
         transportedStencil[n++] = globalOwn;
 
-        forAllConstIter(labelHashSet, faceStencilSet, iter)
+        for (const label stencili : faceStencilSet)
         {
-            if (iter.key() != globalOwn)
+            if (stencili != globalOwn)
             {
-                transportedStencil[n++] = iter.key();
+                transportedStencil[n++] = stencili;
             }
         }
         if (n != transportedStencil.size())
@@ -204,8 +207,8 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
     labelListList& neiStencil
 )
 {
-    const polyBoundaryMesh& patches = mesh_.boundary();
-    const label nBnd = mesh_.nFaces()-mesh_.nInternalFaces();
+    const polyBoundaryMesh& patches = mesh_.boundaryMesh();
+    const label nBnd = mesh_.nBoundaryFaces();
     const labelList& own = mesh_.faceOwner();
     const labelList& nei = mesh_.faceNeighbour();
 
@@ -248,7 +251,7 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
             minOpposedness,
             facei,
             own[facei],
-            true,                   // stencilHasNeighbour
+            true,                   //stencilHasNeighbour
             oppositeFaces,
             faceStencilSet,
             ownStencil[facei]
@@ -271,7 +274,7 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
                     minOpposedness,
                     facei,
                     own[facei],
-                    true,                   // stencilHasNeighbour
+                    true,                   //stencilHasNeighbour
 
                     oppositeFaces,
                     faceStencilSet,
@@ -292,7 +295,7 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
                     minOpposedness,
                     facei,
                     own[facei],
-                    false,                  // stencilHasNeighbour
+                    false,                  //stencilHasNeighbour
 
                     oppositeFaces,
                     faceStencilSet,
@@ -312,7 +315,7 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
     {
         neiBndStencil[facei-mesh_.nInternalFaces()] = ownStencil[facei];
     }
-    // syncTools::swapBoundaryFaceList(mesh_, neiBndStencil);
+    //syncTools::swapBoundaryFaceList(mesh_, neiBndStencil);
     syncTools::syncBoundaryFaceList
     (
         mesh_,
@@ -341,7 +344,7 @@ void Foam::extendedUpwindCellToFaceStencil::transportStencils
             minOpposedness,
             facei,
             nei[facei],
-            true,                   // stencilHasNeighbour
+            true,                   //stencilHasNeighbour
 
             oppositeFaces,
             faceStencilSet,
@@ -386,7 +389,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
     extendedCellToFaceStencil(stencil.mesh()),
     pureUpwind_(pureUpwind)
 {
-    // forAll(stencil, facei)
+    //forAll(stencil, facei)
     //{
     //    const labelList& fCells = stencil[facei];
     //
@@ -411,7 +414,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
     //        }
     //    }
     //}
-    // Pout<< endl << endl;
+    //Pout<< endl << endl;
 
 
     // Transport centred stencil to upwind/downwind face
@@ -427,7 +430,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
         List<Map<label>> compactMap(Pstream::nProcs());
         ownMapPtr_.reset
         (
-            new distributionMap
+            new mapDistribute
             (
                 stencil.globalNumbering(),
                 ownStencil_,
@@ -441,7 +444,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
         List<Map<label>> compactMap(Pstream::nProcs());
         neiMapPtr_.reset
         (
-            new distributionMap
+            new mapDistribute
             (
                 stencil.globalNumbering(),
                 neiStencil_,
@@ -536,7 +539,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
         List<Map<label>> compactMap(Pstream::nProcs());
         ownMapPtr_.reset
         (
-            new distributionMap
+            new mapDistribute
             (
                 stencil.globalNumbering(),
                 ownStencil_,
@@ -582,7 +585,7 @@ Foam::extendedUpwindCellToFaceStencil::extendedUpwindCellToFaceStencil
     }
 
     // Should compact schedule. Or have both return the same schedule.
-    neiMapPtr_.reset(new distributionMap(ownMapPtr_()));
+    neiMapPtr_.reset(new mapDistribute(ownMapPtr_()));
 }
 
 

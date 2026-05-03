@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2017-2020 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -28,99 +30,94 @@ License
 
 // * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * * //
 
+Foam::vtk::outputOptions
+Foam::fileFormats::VTKsurfaceFormatCore::formatOptions
+(
+    const dictionary& dict,
+    vtk::outputOptions opts
+)
+{
+    opts.legacy(true);  // Legacy. Use VTPsurfaceFormat for non-legacy
+    opts.append(false); // No append format for legacy
+
+    opts.ascii
+    (
+        IOstreamOption::ASCII
+     == IOstreamOption::formatEnum("format", dict, IOstreamOption::ASCII)
+    );
+
+    opts.precision
+    (
+        dict.getOrDefault("precision", IOstream::defaultPrecision())
+    );
+
+    return opts;
+}
+
+
 void Foam::fileFormats::VTKsurfaceFormatCore::writeHeader
 (
-    Ostream& os,
-    const pointField& pointLst
+    vtk::formatter& format,
+    const UList<point>& pts
 )
 {
-    // Write header
-    os  << "# vtk DataFile Version 2.0" << nl
-        << "surface written " << clock::dateTime().c_str() << nl
-        << "ASCII" << nl
-        << nl
-        << "DATASET POLYDATA" << nl;
+    vtk::legacy::fileHeader<vtk::fileTag::POLY_DATA>
+    (
+        format,
+        ("surface written " + clock::dateTime())
+    );
 
-    // Write vertex coords
-    os  << "POINTS " << pointLst.size() << " float" << nl;
-    forAll(pointLst, ptI)
-    {
-        const point& pt = pointLst[ptI];
+    vtk::legacy::beginPoints(format.os(), pts.size());
 
-        os  << pt.x() << ' ' << pt.y() << ' ' << pt.z() << nl;
-    }
+    vtk::writeList(format, pts);
+    format.flush();
 }
 
 
-void Foam::fileFormats::VTKsurfaceFormatCore::writeTail
+void Foam::fileFormats::VTKsurfaceFormatCore::writeCellData
 (
-    Ostream& os,
-    const UList<surfZone>& zoneLst
+    vtk::formatter& format,
+    const UList<surfZone>& zones
 )
 {
+    // Zone ids as CellData
+
+    // Number of faces covered by the zones
     label nFaces = 0;
-    forAll(zoneLst, zoneI)
+    for (const surfZone& z : zones)
     {
-        nFaces += zoneLst[zoneI].size();
+        nFaces += z.size();
     }
 
-    // Print zone numbers
-    os  << nl
-        << "CELL_DATA " << nFaces << nl
-        << "FIELD attributes 1" << nl
-        << "region 1 " << nFaces << " float" << nl;
+    vtk::legacy::beginCellData(format, nFaces, 1);      // 1 field
+    vtk::legacy::intField<1>(format, "region", nFaces); // 1 component
 
-
-    forAll(zoneLst, zoneI)
+    label zoneId = 0;
+    for (const surfZone& z : zones)
     {
-        forAll(zoneLst[zoneI], localFacei)
-        {
-            if (localFacei)
-            {
-                if (localFacei % 20)
-                {
-                    os << ' ';
-                }
-                else
-                {
-                    os << nl;
-                }
-            }
-            os  << zoneI + 1;
-        }
-        os  << nl;
+        vtk::write(format, zoneId, z.size());
+        ++zoneId;
     }
+    format.flush();
 }
 
 
-void Foam::fileFormats::VTKsurfaceFormatCore::writeTail
+void Foam::fileFormats::VTKsurfaceFormatCore::writeCellData
 (
-    Ostream& os,
+    vtk::formatter& format,
     const labelUList& zoneIds
 )
 {
-    // Print zone numbers
-    os  << nl
-        << "CELL_DATA " << zoneIds.size() << nl
-        << "FIELD attributes 1" << nl
-        << "region 1 " << zoneIds.size() << " float" << nl;
+    // Zone ids as CellData
 
-    forAll(zoneIds, facei)
-    {
-        if (facei)
-        {
-            if (facei % 20)
-            {
-                os << ' ';
-            }
-            else
-            {
-                os << nl;
-            }
-        }
-        os  << zoneIds[facei] + 1;
-    }
-    os  << nl;
+    // Number of faces
+    const label nFaces = zoneIds.size();
+
+    vtk::legacy::beginCellData(format, nFaces, 1);      // 1 field
+    vtk::legacy::intField<1>(format, "region", nFaces); // 1 component
+
+    vtk::writeList(format, zoneIds);
+    format.flush();
 }
 
 

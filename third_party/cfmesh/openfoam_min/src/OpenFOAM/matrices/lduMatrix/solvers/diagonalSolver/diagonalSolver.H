@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2020 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2012 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,6 +26,9 @@ License
 Class
     Foam::diagonalSolver
 
+Group
+    grpLduMatrixSolvers
+
 Description
     Foam::diagonalSolver
 
@@ -32,8 +37,8 @@ SourceFiles
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef diagonalSolver_H
-#define diagonalSolver_H
+#ifndef Foam_diagonalSolver_H
+#define Foam_diagonalSolver_H
 
 #include "lduMatrix.H"
 
@@ -50,8 +55,16 @@ class diagonalSolver
 :
     public lduMatrix::solver
 {
-
 public:
+
+    // Generated Methods
+
+        //- No copy construct
+        diagonalSolver(const diagonalSolver&) = delete;
+
+        //- No copy assignment
+        void operator=(const diagonalSolver&) = delete;
+
 
     //- Runtime type information
     TypeName("diagonal");
@@ -70,9 +83,6 @@ public:
             const dictionary& solverControls
         );
 
-        //- Disallow default bitwise copy construction
-        diagonalSolver(const diagonalSolver&) = delete;
-
 
     // Member Functions
 
@@ -87,12 +97,6 @@ public:
             const scalarField& source,
             const direction cmpt=0
         ) const;
-
-
-    // Member Operators
-
-        //- Disallow default bitwise assignment
-        void operator=(const diagonalSolver&) = delete;
 };
 
 

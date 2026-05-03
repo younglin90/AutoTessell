@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,9 +26,14 @@ License
 Class
     Foam::localMax
 
+Group
+    grpFvSurfaceInterpolationSchemes
+
 Description
-    Local maximum interpolation scheme in which the face value is set to
-    the maximum of the two neighbouring cell values.
+    LocalMax-mean differencing scheme class.
+
+    This scheme interpolates 1/field using a scheme specified at run-time
+    and return the reciprocal of the interpolate.
 
 SourceFiles
     localMax.C
@@ -46,7 +53,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                          Class localMax Declaration
+                           Class localMax Declaration
 \*---------------------------------------------------------------------------*/
 
 template<class Type>
@@ -56,7 +63,7 @@ class localMax
 {
     // Private Member Functions
 
-        //- Disallow default bitwise assignment
+        //- No copy assignment
         void operator=(const localMax&) = delete;
 
 
@@ -103,33 +110,37 @@ public:
         //- Return the interpolation weighting factors
         virtual tmp<surfaceScalarField> weights
         (
-            const VolField<Type>&
+            const GeometricField<Type, fvPatchField, volMesh>&
         ) const
         {
             NotImplemented;
-
-            return tmp<surfaceScalarField>(nullptr);
+            return nullptr;
         }
 
         //- Return the face-interpolate of the given cell field
-        virtual tmp<SurfaceField<Type>>
+        virtual tmp<GeometricField<Type, fvsPatchField, surfaceMesh>>
         interpolate
         (
-            const VolField<Type>& vf
+            const GeometricField<Type, fvPatchField, volMesh>& vf
         ) const
         {
             const fvMesh& mesh = vf.mesh();
 
-            tmp<SurfaceField<Type>> tvff
+            tmp<GeometricField<Type, fvsPatchField, surfaceMesh>> tvff
             (
-                SurfaceField<Type>::New
+                new GeometricField<Type, fvsPatchField, surfaceMesh>
                 (
-                    "localMax::interpolate(" + vf.name() + ')',
+                    IOobject
+                    (
+                        "localMax::interpolate(" + vf.name() + ')',
+                        mesh.time().timeName(),
+                        mesh
+                    ),
                     mesh,
                     vf.dimensions()
                 )
             );
-            SurfaceField<Type>& vff = tvff.ref();
+            GeometricField<Type, fvsPatchField, surfaceMesh>& vff = tvff.ref();
 
             const labelUList& own = mesh.owner();
             const labelUList& nei = mesh.neighbour();
@@ -139,7 +150,7 @@ public:
                 vff[facei] = max(vf[own[facei]], vf[nei[facei]]);
             }
 
-            typename SurfaceField<Type>::
+            typename GeometricField<Type, fvsPatchField, surfaceMesh>::
                 Boundary& bff = vff.boundaryFieldRef();
 
             forAll(bff, patchi)

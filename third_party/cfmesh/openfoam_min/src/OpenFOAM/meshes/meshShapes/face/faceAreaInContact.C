@@ -1,9 +1,11 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2018 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2016 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -31,7 +33,7 @@ License
 
 Foam::scalar Foam::face::areaInContact
 (
-    const pointField& meshPoints,
+    const UList<point>& meshPoints,
     const scalarField& v
 ) const
 {
@@ -90,7 +92,7 @@ Foam::scalar Foam::face::areaInContact
     // Dimension new point list to max possible size
     const labelList& faceLabels = *this;
 
-    pointField newFacePoints(2*size());
+    List<point> newFacePoints(2*size());
     label nNewFacePoints = 0;
 
     for (label vI = 0; vI < size() - 1; vI++)
@@ -154,7 +156,7 @@ Foam::scalar Foam::face::areaInContact
     }
 
     // Calculate relative area
-    return face(sfl).mag(newFacePoints)/(mag(meshPoints) + vSmall);
+    return face(sfl).mag(newFacePoints)/(mag(meshPoints) + VSMALL);
 }
 
 

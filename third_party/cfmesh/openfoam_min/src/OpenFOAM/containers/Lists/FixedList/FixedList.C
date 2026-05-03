@@ -1,9 +1,12 @@
 /*---------------------------------------------------------------------------*\
   =========                 |
   \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
-   \\    /   O peration     | Website:  https://openfoam.org
-    \\  /    A nd           | Copyright (C) 2011-2022 OpenFOAM Foundation
+   \\    /   O peration     |
+    \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
+-------------------------------------------------------------------------------
+    Copyright (C) 2011-2015 OpenFOAM Foundation
+    Copyright (C) 2017-2023 OpenCFD Ltd.
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -24,96 +27,200 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "FixedList.H"
-#include "ListLoopM.H"
 
-// * * * * * * * * * * * * * * STL Member Functions  * * * * * * * * * * * * //
+// * * * * * * * * * * * * * Static Member Functions * * * * * * * * * * * * //
 
-template<class T, unsigned Size>
-void Foam::FixedList<T, Size>::swap(FixedList<T, Size>& a)
+template<class T, unsigned N>
+std::streamsize Foam::FixedList<T, N>::byteSize()
 {
-    List_ACCESS(T, (*this), vp);
-    List_ACCESS(T, a, ap);
-    T tmp;
-    List_FOR_ALL((*this), i)
-        tmp = List_CELEM((*this), vp, i);
-        List_ELEM((*this), vp, i) = List_CELEM(a, ap, i);
-        List_ELEM(a, ap, i) = tmp;
-    List_END_FOR_ALL
+    if (!is_contiguous<T>::value)
+    {
+        FatalErrorInFunction
+            << "Invalid for non-contiguous data types"
+            << abort(FatalError);
+    }
+    return FixedList<T, N>::size_bytes();
+}
+
+
+// * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+template<class T, unsigned N>
+Foam::label Foam::FixedList<T, N>::find(const T& val) const
+{
+    const auto iter = std::find(this->cbegin(), this->cend(), val);
+    return (iter != this->cend() ? label(iter - this->cbegin()) : label(-1));
+}
+
+
+template<class T, unsigned N>
+Foam::label Foam::FixedList<T, N>::find
+(
+    const T& val,
+    label pos,
+    label len
+) const
+{
+    if (pos >= 0 && pos < label(N))
+    {
+        // Change sub-length to (one-past) end position
+        // len == -1 (like std::string::npos) - search until end
+
+        if (len > 0) len += pos;
+        if (len < 0 || len > label(N))
+        {
+            len = label(N);
+        }
+
+        const auto iter = std::find
+        (
+            (this->cbegin() + pos),
+            (this->cbegin() + len),
+            val
+        );
+
+        if (iter != (this->cbegin() + len))
+        {
+            return label(iter - this->cbegin());
+        }
+    }
+
+    return -1;
+}
+
+
+template<class T, unsigned N>
+Foam::label Foam::FixedList<T, N>::rfind(const T& val, label pos) const
+{
+    // pos == -1 (like std::string::npos) - search from end
+
+    if (pos < 0 || pos >= label(N))
+    {
+        pos = label(N)-1;
+    }
+
+    while (pos >= 0)
+    {
+        if (this->v_[pos] == val)
+        {
+            return pos;
+        }
+
+        --pos;
+    }
+
+    return -1;
+}
+
+
+template<class T, unsigned N>
+void Foam::FixedList<T, N>::moveFirst(const label i)
+{
+    checkIndex(i);
+
+    for (label lower = 0; lower < i; ++lower)
+    {
+        Foam::Swap(v_[lower], v_[i]);
+    }
+}
+
+
+template<class T, unsigned N>
+void Foam::FixedList<T, N>::moveLast(const label i)
+{
+    checkIndex(i);
+
+    for (label upper = label(N-1); upper > i; --upper)
+    {
+        Foam::Swap(v_[i], v_[upper]);
+    }
+}
+
+
+template<class T, unsigned N>
+void Foam::FixedList<T, N>::swapFirst(const label i)
+{
+    checkIndex(i);
+
+    if (i > 0)
+    {
+        Foam::Swap(v_[0], v_[i]);
+    }
+}
+
+
+template<class T, unsigned N>
+void Foam::FixedList<T, N>::swapLast(const label i)
+{
+    checkIndex(i);
+
+    const label upper = label(N-1);
+
+    if (i < upper)
+    {
+        Foam::Swap(v_[i], v_[upper]);
+    }
 }
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator==(const FixedList<T, Size>& a) const
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator==(const FixedList<T, N>& list) const
 {
-    bool equal = true;
-
-    List_CONST_ACCESS(T, (*this), vp);
-    List_CONST_ACCESS(T, (a), ap);
-
-    List_FOR_ALL((*this), i)
-        equal = equal && (List_ELEM((*this), vp, i) == List_ELEM((a), ap, i));
-    List_END_FOR_ALL
-
-    return equal;
-}
-
-
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator!=(const FixedList<T, Size>& a) const
-{
-    return !operator==(a);
-}
-
-
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator<(const FixedList<T, Size>& a) const
-{
-    for
+    // Can dispatch with
+    // - std::execution::parallel_unsequenced_policy
+    // - std::execution::unsequenced_policy
+    return
     (
-        const_iterator vi = cbegin(), ai = a.cbegin();
-        vi < cend() && ai < a.cend();
-        vi++, ai++
-    )
-    {
-        if (*vi < *ai)
-        {
-            return true;
-        }
-        else if (*vi > *ai)
-        {
-            return false;
-        }
-    }
-
-    return false;
+        // List sizes are identical by definition (template parameter)
+        std::equal(this->cbegin(), this->cend(), list.cbegin())
+    );
 }
 
 
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator>(const FixedList<T, Size>& a) const
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator<(const FixedList<T, N>& list) const
 {
-    return a.operator<(*this);
+    // List sizes are identical by definition (template parameter)
+
+    // Can dispatch with
+    // - std::execution::parallel_unsequenced_policy
+    // - std::execution::unsequenced_policy
+    return std::lexicographical_compare
+    (
+        this->cbegin(), this->cend(),
+        list.cbegin(), list.cend()
+    );
 }
 
 
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator<=(const FixedList<T, Size>& a) const
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator!=(const FixedList<T, N>& list) const
 {
-    return !operator>(a);
+    return !operator==(list);
 }
 
 
-template<class T, unsigned Size>
-bool Foam::FixedList<T, Size>::operator>=(const FixedList<T, Size>& a) const
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator>(const FixedList<T, N>& list) const
 {
-    return !operator<(a);
+    return list.operator<(*this);
 }
 
 
-// * * * * * * * * * * * * * * * *  IOStream operators * * * * * * * * * * * //
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator<=(const FixedList<T, N>& list) const
+{
+    return !list.operator<(*this);
+}
 
-#include "FixedListIO.C"
+
+template<class T, unsigned N>
+bool Foam::FixedList<T, N>::operator>=(const FixedList<T, N>& list) const
+{
+    return !operator<(list);
+}
+
 
 // ************************************************************************* //
