@@ -41,9 +41,22 @@ def _configure_pyvista_runtime() -> None:
         qt_offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
         has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
         is_windows = _sys.platform == "win32"
+        # WSL2 감지 — kernel release 에 'microsoft' 포함.
+        is_wsl = (
+            os.path.exists("/proc/version")
+            and "microsoft" in open("/proc/version").read().lower()
+        )
         is_headless = qt_offscreen or (not is_windows and not has_display)
 
-        pv.OFF_SCREEN = bool(is_headless)
+        # BETA2853 — WSL2+WSLg 에서 PyVistaQt 의 OpenGL context 생성이 hang 함
+        # (Xwayland → mesa → llvmpipe 경로 문제). 디스플레이 있어도 OFF_SCREEN
+        # mode (static PNG fallback) 강제 → GUI 정상 동작.
+        # 사용자 명시 override: AUTO_TESSELL_PYVISTA_GLX=1 → real OpenGL 시도.
+        force_glx = os.environ.get("AUTO_TESSELL_PYVISTA_GLX", "0") == "1"
+        if is_wsl and not force_glx:
+            pv.OFF_SCREEN = True
+        else:
+            pv.OFF_SCREEN = bool(is_headless)
 
         if is_windows:
             return
