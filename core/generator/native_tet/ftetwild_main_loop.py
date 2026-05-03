@@ -190,12 +190,27 @@ def ftetwild_main_loop(
         n_c = 0  # 이 iter 의 collapse count.
         # a) split long edges (> 4/3 × target_edge). envelope 가드는 split 이
         # surface vertex 위치를 바꾸지 않으므로 불필요 — interior 만 추가.
+        # BETA2832 (B-7) — env AUTO_TESSELL_FTETWILD_SELECTIVE_SPLIT=1 로
+        # selective split 활성. iter ≥ 1 부터 max_splits 를 bad_quality_tet 수
+        # 비례 cap → V parity 향상 (cube V 41→87%) 하지만 T parity 감소
+        # (T 94→33%). default OFF, T priority 가 평균 우수.
         try:
+            _selective = (
+                __import__("os").environ.get(
+                    "AUTO_TESSELL_FTETWILD_SELECTIVE_SPLIT", "0"
+                ) == "1"
+            )
+            if _selective and it >= 1:
+                _q_arr = _tet_quality_batch(pts, tets)
+                _bad_count = int((_q_arr < 0.3).sum()) if _q_arr.size else 0
+                _max_splits = max(50, min(_bad_count * 6 + 100, 2000))
+            else:
+                _max_splits = 2000
             pts_s, tets_s, n_s = split_long_edges(
                 pts, tets,
                 target_edge=target_edge_length,
                 ratio=4.0 / 3.0,
-                max_splits=2000,
+                max_splits=_max_splits,
                 protected_edges=surf_set,
             )
             if n_s > 0 and tets_s.shape[0] > 0:
