@@ -72,17 +72,13 @@ class CfMeshPolyGenerator:
         bl = getattr(strategy, "boundary_layers", None)
         # BETA2846 — STL 형상 보존을 위한 완전한 cell size 정책.
         _target = float(getattr(sm, "target_cell_size", 0.0) or 0.0) if sm else 0.0
-        _min = float(getattr(sm, "min_cell_size", 0.0) or 0.0) if sm else 0.0
         max_cell = float(params.get(
             "cfmesh_max_cell_size",
             _target * 4 if _target > 0 else 0.2,
         ))
-        boundary_cell = float(params.get(
-            "cfmesh_boundary_cell_size", _target,
-        ))
-        min_cell = float(params.get(
-            "cfmesh_min_cell_size", _min,
-        ))
+        # BETA2851 — boundary_cell / min_cell default 0 (cfMesh 자체 sizing).
+        boundary_cell = float(params.get("cfmesh_boundary_cell_size", 0.0))
+        min_cell = float(params.get("cfmesh_min_cell_size", 0.0))
         n_layers = 0
         thickness_ratio = 1.2
         max_first = 0.0

@@ -137,17 +137,13 @@ class Tier15CfMeshGenerator:
                     _sm = strategy.surface_mesh
                     _bl = getattr(strategy, "boundary_layers", None)
                     _target = float(getattr(_sm, "target_cell_size", 0.0) or 0.0) if _sm else 0.0
-                    _min_sm = float(getattr(_sm, "min_cell_size", 0.0) or 0.0) if _sm else 0.0
                     _max = float(_params.get(
                         "cfmesh_max_cell_size",
                         _target * 4 if _target > 0 else 0.2,
                     ))
-                    _bnd = float(_params.get(
-                        "cfmesh_boundary_cell_size", _target,
-                    ))
-                    _min = float(_params.get(
-                        "cfmesh_min_cell_size", _min_sm,
-                    ))
+                    # BETA2851 — boundary/min default 0 (cfMesh 자체 sizing).
+                    _bnd = float(_params.get("cfmesh_boundary_cell_size", 0.0))
+                    _min = float(_params.get("cfmesh_min_cell_size", 0.0))
                     _nL = 0; _tr = 1.2; _mf = 0.0
                     if _bl and getattr(_bl, "enabled", False):
                         _nL = int(getattr(_bl, "num_layers", 0) or 0)

@@ -78,19 +78,17 @@ class CfMeshTetGenerator:
         # max_cell_size: tier_specific_params 우선, 없으면 base_cell_size * 4.
         # boundary_cell_size: target_cell_size (surface 셀).
         # min_cell_size: min_cell_size (sharp feature 셀).
-        # SurfaceMeshConfig fields: target_cell_size, min_cell_size, feature_angle.
+        # SurfaceMeshConfig fields: target_cell_size, min_cell_size.
         _target = float(getattr(sm, "target_cell_size", 0.0) or 0.0) if sm else 0.0
-        _min = float(getattr(sm, "min_cell_size", 0.0) or 0.0) if sm else 0.0
         max_cell = float(params.get(
             "cfmesh_max_cell_size",
             _target * 4 if _target > 0 else 0.2,
         ))
-        boundary_cell = float(params.get(
-            "cfmesh_boundary_cell_size", _target,
-        ))
-        min_cell = float(params.get(
-            "cfmesh_min_cell_size", _min,
-        ))
+        # BETA2851 — boundary_cell / min_cell default 0 (cfMesh 자체 균일 sizing).
+        # User 가 GUI 슬라이더로 명시할 때만 surfaceMeshRefinement 활성화.
+        # 이전 default (target_cell_size) 는 cube 에서 200k+ cell 폭증 원인.
+        boundary_cell = float(params.get("cfmesh_boundary_cell_size", 0.0))
+        min_cell = float(params.get("cfmesh_min_cell_size", 0.0))
         n_layers = 0
         thickness_ratio = 1.2
         max_first = 0.0

@@ -94,27 +94,22 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
     // Surface 가까이의 cell 을 항상 유지 → boundary 정확도 향상.
     oss << "keepCellsIntersectingBoundary "
         << (keep_cells_intersecting_boundary ? 1 : 0) << ";\n";
-    // checkForGluedMesh 0: surface 통과 cell 보존 (default 가 too aggressive).
-    oss << "checkForGluedMesh 0;\n";
-    // BETA2848 — internal mesh smoother 강화로 max_non_ortho 89-90° → 85° 미만 유도.
-    // mesh_optimization 의 nIterations 늘리고 quality threshold 강화.
+    // BETA2851 — cfMesh quality settings 완화 (BETA2848 너무 aggressive).
+    // 기본값을 cfMesh 자체 default 에 가깝게 → 비현실적 smoothing 반복으로 인한
+    // 시간 폭증 방지. evaluator 임계는 이미 90° 까지 허용.
     oss << "meshQualitySettings\n{\n"
-        << "    maxNonOrthogonality 75;\n"
-        << "    maxBoundarySkewness 4;\n"
+        << "    maxNonOrthogonality 65;\n"
+        << "    maxBoundarySkewness 20;\n"
         << "    maxInternalSkewness 4;\n"
         << "    maxConcave         85;\n"
         << "    minVol             1e-13;\n"
-        << "    minTetQuality      1e-15;\n"
-        << "    minDeterminant     1e-3;\n"
-        << "    minFaceWeight      0.05;\n"
-        << "    minVolRatio        0.005;\n"
+        << "    minDeterminant     0.001;\n"
+        << "    minFaceWeight      0.02;\n"
+        << "    minVolRatio        0.01;\n"
         << "    minTwist           0.02;\n"
-        << "    minTriangleTwist   -1;\n"
         << "}\n";
-    // Anisotropic source 재정렬 + non-ortho 줄이는 추가 smoothing pass.
-    oss << "anisotropicSources\n{\n}\n"
-        << "renumberMesh true;\n";
-    // Surface refinement — 모든 patch 에 boundary cell size 강제.
+    // Surface refinement 는 user 가 명시적으로 boundary_cell_size 를 설정한
+    // 경우만 적용. default (0) 시 cfMesh 가 maxCellSize 로 균일 sizing.
     if (boundary_cell_size > 0.0) {
         oss << "surfaceMeshRefinement\n{\n"
             << "    surface\n    {\n"

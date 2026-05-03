@@ -2336,90 +2336,11 @@ class AutoTessellWindow:  # type: ignore[misc]
             "자동 재시도 (beta68 도입, CLI --cross-engine-fallback 동등).\n"
             "extreme tier 의 self-intersect 형상에서 회복률 향상."
         )
-        # beta2345 — CLI --enable-vvv9h-apply / --enable-offplane-steiner 동등.
-        self._enable_vvv9h_apply_check = QCheckBox(
-            "VVV9H Klingner edge-contract real apply (실험적)"
-        )
-        self._enable_vvv9h_apply_check.setToolTip(
-            "체크 시 Klingner 2008 §3.5 edge-contract 가 sliver 격감 위해 실 apply.\n"
-            "AUTO_TESSELL_VVV9H_APPLY=1 동등. monotone guard 로 안전성 보장."
-        )
-        self._enable_offplane_steiner_check = QCheckBox(
-            "Off-plane Steiner exudation (실험적)"
-        )
-        self._enable_offplane_steiner_check.setToolTip(
-            "체크 시 Klingner-Shewchuk 2008 §4.1 off-plane Steiner 가 실 apply.\n"
-            "AUTO_TESSELL_OFFPLANE_STEINER=1 동등. flat sliver tet 격감용."
-        )
-        # beta2351 — CLI VVV9J/K/P 동등 GUI 체크박스 (V-series 5 완전).
-        self._enable_vvv9j_apply_check = QCheckBox(
-            "VVV9J SLIM global-pass (실험적)"
-        )
-        self._enable_vvv9j_apply_check.setToolTip(
-            "AUTO_TESSELL_VVV9J_APPLY=1 — SLIM smoothing 강화 (sliver-gated)."
-        )
-        self._enable_vvv9k_apply_check = QCheckBox(
-            "VVV9K priority-queue main-loop (실험적)"
-        )
-        self._enable_vvv9k_apply_check.setToolTip(
-            "AUTO_TESSELL_VVV9K_APPLY=1 — worst-first priority queue + monotone guard."
-        )
-        self._enable_vvv9p_apply_check = QCheckBox(
-            "VVV9P multi-face removal (실험적)"
-        )
-        self._enable_vvv9p_apply_check.setToolTip(
-            "AUTO_TESSELL_VVV9P_APPLY=1 — multi-face removal + monotone guard."
-        )
-        # C-GUI-8 / beta2419 — 최근 backend env flags 의 GUI 체크박스 노출.
-        self._seed_gwn_check = QCheckBox(
-            "Seed GWN (Jacobson 2013 SI-robust)"
-        )
-        self._seed_gwn_check.setToolTip(
-            "체크 시 시드 inside test 에 generalized winding number 사용.\n"
-            "SI/non-manifold 입력 robust. AUTO_TESSELL_SEED_GWN=1 동등.\n"
-            "기본값은 자동 fallback (SI 검출 시 자동 ON, beta2394)."
-        )
-        self._stellar_split_check = QCheckBox(
-            "Stellar 4-op split-pass (실험적)"
-        )
-        self._stellar_split_check.setToolTip(
-            "체크 시 Stellar queue 의 split-pass 가 강제 활성.\n"
-            "fine quality 는 자동 ON (beta2378).\n"
-            "AUTO_TESSELL_STELLAR_SPLIT=1 동등."
-        )
-        self._parallel_delaunay_check = QCheckBox(
-            "Parallel chunked Delaunay (V > 30k)"
-        )
-        self._parallel_delaunay_check.setToolTip(
-            "체크 시 ProcessPoolExecutor 기반 chunked Delaunay 강제 활성.\n"
-            "기본은 cpu_count() ≥ 2 시 자동 (beta2375).\n"
-            "AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등."
-        )
-        # C-GUI-D3 / beta2594 — beta2581-2593 신규 env flags 노출.
-        self._cvt3d_qweight_check = QCheckBox(
-            "CVT3D quality-weighted Lloyd (beta2586)"
-        )
-        self._cvt3d_qweight_check.setToolTip(
-            "체크 시 Volumetric Lloyd 가 quality-weighted target.\n"
-            "poor tet (q<0.3) → centroid weight 1/(q+0.05) — sliver pull 가속.\n"
-            "AUTO_TESSELL_CVT3D_QUALITY_WEIGHT=1 동등."
-        )
-        self._lcr_auto_reduce_check = QCheckBox(
-            "BL LCR global num_layers auto-reduce (beta2587)"
-        )
-        self._lcr_auto_reduce_check.setToolTip(
-            "50%+ wall verts 가 좁은 gap 인 경우 cfg.num_layers 를\n"
-            "median 으로 globally 감소 (Pointwise T-Rex 동등).\n"
-            "AUTO_TESSELL_LCR_AUTO_REDUCE=1 동등."
-        )
-        self._bl_aniso_split_check = QCheckBox(
-            "BL anisotropic prism split (beta2591)"
-        )
-        self._bl_aniso_split_check.setToolTip(
-            "체크 시 mean wall-normal aspect > 4.0 인 BL 의 layer 를 mid-vertex\n"
-            "삽입으로 균일 subdivide (cfMesh splitInternalLayers 동등).\n"
-            "cfg.num_layers 2배. AUTO_TESSELL_BL_ANISO_SPLIT=1 동등."
-        )
+        # BETA2851 — legacy native_tet/native_hex/native_bl debug widgets 제거.
+        # 이전 widgets (VVV9H/J/K/P, OFFPLANE_STEINER, SEED_GWN, STELLAR_SPLIT,
+        # PARALLEL_DELAUNAY, CVT3D_QWEIGHT, LCR_AUTO_REDUCE, BL_ANISO_SPLIT) 는
+        # 모두 자체 native_tet 알고리즘 디버깅용. vendored fTetWild + cfMesh 가
+        # primary 가 된 정책에서 사용되지 않음 → 정리.
         self._ml_smooth_model_path = QLineEdit() if False else None  # lazy init below
         # C-GUI-D3: ML model path inputs.
         from PySide6.QtWidgets import QLineEdit as _QLE
@@ -2435,53 +2356,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             "BL collision predictor model 경로. 비워두면 ML predict 비활성.\n"
             "models/bl_predictor.pt 추천. AUTO_TESSELL_BL_PREDICT_MODEL 동등."
         )
-        # C-GUI-14 / beta2449 — BL floor ratio (curvature_adaptive 강도).
-        from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget, QSpinBox
-        self._bl_floor_ratio_spin = QDoubleSpinBox()
-        self._bl_floor_ratio_spin.setRange(0.0, 1.0)
-        self._bl_floor_ratio_spin.setSingleStep(0.05)
-        self._bl_floor_ratio_spin.setDecimals(2)
-        self._bl_floor_ratio_spin.setValue(1.0)
-        self._bl_floor_ratio_spin.setToolTip(
-            "BL curvature_adaptive_thickness floor ratio.\n"
-            "1.0 = uniform thickness (안정성 ↑, hard mesh 권장).\n"
-            "0.7 = cfMesh maxFirstLayerThickness parity.\n"
-            "0.5 = balanced.\n"
-            "0.3 = aggressive curvature adaptation (sharp feature 자동 thinning).\n"
-            "AUTO_TESSELL_BL_FLOOR_RATIO 환경변수 동등."
-        )
-        # C-GUI-15 / beta2460 — patch count cap (polyMesh boundary).
-        self._patch_cap_spin = QSpinBox()
-        self._patch_cap_spin.setRange(8, 1024)
-        self._patch_cap_spin.setSingleStep(8)
-        self._patch_cap_spin.setValue(64)
-        self._patch_cap_spin.setToolTip(
-            "polyMesh patch count cap. 이 값을 초과하는 patch 는 wall_misc 로 병합.\n"
-            "기본 64. 늘리면 BC 별 세분화 가능 (boundary 파일 증가).\n"
-            "AUTO_TESSELL_PATCH_CAP 환경변수 동등."
-        )
-        # C-GUI-16 / beta2461 — hex feature snap budget (s).
-        self._hex_snap_budget_spin = QDoubleSpinBox()
-        self._hex_snap_budget_spin.setRange(0.0, 600.0)
-        self._hex_snap_budget_spin.setSingleStep(5.0)
-        self._hex_snap_budget_spin.setDecimals(1)
-        self._hex_snap_budget_spin.setValue(0.0)  # 0 = off
-        self._hex_snap_budget_spin.setToolTip(
-            "Hex feature snap pass 의 wall-clock budget (초).\n"
-            "0 = off (기본). 설정 시 강제 cap (hard hex 메쉬에서 hang 방지).\n"
-            "AUTO_TESSELL_HEX_WWW7_BUDGET_S 환경변수 동등."
-        )
-        # C-GUI-17 / beta2462 — Lloyd plateau threshold (poly CVT 수렴).
-        self._lloyd_plateau_spin = QDoubleSpinBox()
-        self._lloyd_plateau_spin.setRange(1e-7, 1e-1)
-        self._lloyd_plateau_spin.setSingleStep(5e-5)
-        self._lloyd_plateau_spin.setDecimals(7)
-        self._lloyd_plateau_spin.setValue(1e-4)  # default
-        self._lloyd_plateau_spin.setToolTip(
-            "Poly Lloyd CVT plateau early-exit threshold (rel-disp/bbox).\n"
-            "기본 1e-4. 작을수록 더 수렴 (느림), 클수록 일찍 종료.\n"
-            "AUTO_TESSELL_LLOYD_PLATEAU_THRESH 환경변수 동등."
-        )
+        # BETA2851 — legacy native_bl / native_hex / native_poly tuning spinboxes
+        # 제거 (BL floor ratio, patch cap, hex snap budget, Lloyd plateau).
+        # vendored cfMesh 가 BL/hex/poly 모두 본체에 통합 처리. 사용자 cell-size
+        # / BL 조절은 _cfm_*_spin (mesh type combo 아래) 으로 일원화.
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2489,30 +2367,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._prefer_native_check.setChecked(True)  # beta26 default
         self._prefer_native_tier_check.setChecked(False)
         self._cross_engine_fallback_check.setChecked(False)
-        self._enable_vvv9h_apply_check.setChecked(False)
-        self._enable_offplane_steiner_check.setChecked(False)
-        self._enable_vvv9j_apply_check.setChecked(False)
-        self._enable_vvv9k_apply_check.setChecked(False)
-        self._enable_vvv9p_apply_check.setChecked(False)
-        # C-GUI-8 / beta2420 — 신규 env 체크박스 default OFF + layout 추가.
-        self._seed_gwn_check.setChecked(False)
-        self._stellar_split_check.setChecked(False)
-        self._parallel_delaunay_check.setChecked(False)
-        # C-GUI-D3 / beta2594 — 신규 env-flag default OFF.
-        self._cvt3d_qweight_check.setChecked(False)
-        self._lcr_auto_reduce_check.setChecked(False)
-        self._bl_aniso_split_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
             self._prefer_native_tier_check, self._cross_engine_fallback_check,
-            self._enable_vvv9h_apply_check, self._enable_offplane_steiner_check,
-            self._enable_vvv9j_apply_check, self._enable_vvv9k_apply_check,
-            self._enable_vvv9p_apply_check,
-            self._seed_gwn_check, self._stellar_split_check,
-            self._parallel_delaunay_check,
-            self._cvt3d_qweight_check, self._lcr_auto_reduce_check,
-            self._bl_aniso_split_check,
         ):
             v.addWidget(chk)
         # C-GUI-D3: ML model path rows.
@@ -2531,58 +2389,7 @@ class AutoTessellWindow:  # type: ignore[misc]
                 v.addWidget(_row)
         except Exception:
             pass
-        # C-GUI-14 / beta2449 — BL floor ratio spin row.
-        try:
-            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
-            _bl_row = QWidget()
-            _bl_row.setStyleSheet("background: transparent;")
-            _bl_layout = QHBoxLayout(_bl_row)
-            _bl_layout.setContentsMargins(0, 0, 0, 0); _bl_layout.setSpacing(8)
-            _bl_layout.addWidget(QLabel("BL floor ratio:"))
-            _bl_layout.addWidget(self._bl_floor_ratio_spin)
-            _bl_layout.addStretch(1)
-            v.addWidget(_bl_row)
-        except Exception:
-            pass
-        # C-GUI-15 / beta2460 — patch cap spin row.
-        try:
-            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
-            _pc_row = QWidget()
-            _pc_row.setStyleSheet("background: transparent;")
-            _pc_layout = QHBoxLayout(_pc_row)
-            _pc_layout.setContentsMargins(0, 0, 0, 0); _pc_layout.setSpacing(8)
-            _pc_layout.addWidget(QLabel("Patch cap:"))
-            _pc_layout.addWidget(self._patch_cap_spin)
-            _pc_layout.addStretch(1)
-            v.addWidget(_pc_row)
-        except Exception:
-            pass
-        # C-GUI-16 / beta2461 — hex snap budget spin row.
-        try:
-            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
-            _hs_row = QWidget()
-            _hs_row.setStyleSheet("background: transparent;")
-            _hs_layout = QHBoxLayout(_hs_row)
-            _hs_layout.setContentsMargins(0, 0, 0, 0); _hs_layout.setSpacing(8)
-            _hs_layout.addWidget(QLabel("Hex snap budget (s):"))
-            _hs_layout.addWidget(self._hex_snap_budget_spin)
-            _hs_layout.addStretch(1)
-            v.addWidget(_hs_row)
-        except Exception:
-            pass
-        # C-GUI-17 / beta2462 — Lloyd plateau threshold spin row.
-        try:
-            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
-            _lp_row = QWidget()
-            _lp_row.setStyleSheet("background: transparent;")
-            _lp_layout = QHBoxLayout(_lp_row)
-            _lp_layout.setContentsMargins(0, 0, 0, 0); _lp_layout.setSpacing(8)
-            _lp_layout.addWidget(QLabel("Lloyd plateau thresh:"))
-            _lp_layout.addWidget(self._lloyd_plateau_spin)
-            _lp_layout.addStretch(1)
-            v.addWidget(_lp_row)
-        except Exception:
-            pass
+        # BETA2851 — legacy native_bl/hex/poly spin row 제거.
             try:
                 chk.toggled.connect(lambda _v: self._refresh_tier_strip_engine_labels())
             except Exception:
@@ -3245,98 +3052,12 @@ class AutoTessellWindow:  # type: ignore[misc]
                     )
                 except Exception:
                     _prefer_native_tier_flag = False
-            # beta2345 — V-series 실험적 플래그를 환경변수로 worker 에 전달.
-            # CLI --enable-vvv9h-apply / --enable-offplane-steiner 동등.
-            try:
-                import os as _os_v9
-                _vvv9h_on = bool(
-                    self._enable_vvv9h_apply_check.isChecked()
-                    if getattr(self, "_enable_vvv9h_apply_check", None)
-                    else False
-                )
-                _offplane_on = bool(
-                    self._enable_offplane_steiner_check.isChecked()
-                    if getattr(self, "_enable_offplane_steiner_check", None)
-                    else False
-                )
-                if _vvv9h_on:
-                    _os_v9.environ["AUTO_TESSELL_VVV9H_APPLY"] = "1"
-                if _offplane_on:
-                    _os_v9.environ["AUTO_TESSELL_OFFPLANE_STEINER"] = "1"
-                # beta2351 — VVV9J/K/P GUI 체크박스 → env vars.
-                _vvv9j_on = bool(
-                    self._enable_vvv9j_apply_check.isChecked()
-                    if getattr(self, "_enable_vvv9j_apply_check", None)
-                    else False
-                )
-                _vvv9k_on = bool(
-                    self._enable_vvv9k_apply_check.isChecked()
-                    if getattr(self, "_enable_vvv9k_apply_check", None)
-                    else False
-                )
-                _vvv9p_on = bool(
-                    self._enable_vvv9p_apply_check.isChecked()
-                    if getattr(self, "_enable_vvv9p_apply_check", None)
-                    else False
-                )
-                if _vvv9j_on:
-                    _os_v9.environ["AUTO_TESSELL_VVV9J_APPLY"] = "1"
-                if _vvv9k_on:
-                    _os_v9.environ["AUTO_TESSELL_VVV9K_APPLY"] = "1"
-                if _vvv9p_on:
-                    _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
-                # C-GUI-8 / beta2419 — 신규 env wiring (CLI parity).
-                if (getattr(self, "_seed_gwn_check", None)
-                        and self._seed_gwn_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_SEED_GWN"] = "1"
-                if (getattr(self, "_stellar_split_check", None)
-                        and self._stellar_split_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
-                # C-GUI-D3 / beta2594 — beta2581-2593 env flags.
-                if (getattr(self, "_cvt3d_qweight_check", None)
-                        and self._cvt3d_qweight_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_CVT3D_QUALITY_WEIGHT"] = "1"
-                if (getattr(self, "_lcr_auto_reduce_check", None)
-                        and self._lcr_auto_reduce_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_LCR_AUTO_REDUCE"] = "1"
-                if (getattr(self, "_bl_aniso_split_check", None)
-                        and self._bl_aniso_split_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_BL_ANISO_SPLIT"] = "1"
-                _ml_path = getattr(self, "_ml_smooth_model_path", None)
-                if _ml_path is not None:
-                    _ml_str = _ml_path.text().strip()
-                    if _ml_str:
-                        _os_v9.environ["AUTO_TESSELL_ML_SMOOTH_MODEL"] = _ml_str
-                _bl_path = getattr(self, "_bl_predict_model_path", None)
-                if _bl_path is not None:
-                    _bl_str = _bl_path.text().strip()
-                    if _bl_str:
-                        _os_v9.environ["AUTO_TESSELL_BL_PREDICT_MODEL"] = _bl_str
-                if (getattr(self, "_parallel_delaunay_check", None)
-                        and self._parallel_delaunay_check.isChecked()):
-                    _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
-                # C-GUI-14 / beta2449 — BL floor ratio spin → env.
-                if (getattr(self, "_bl_floor_ratio_spin", None) is not None):
-                    _val = float(self._bl_floor_ratio_spin.value())
-                    if abs(_val - 1.0) > 1e-6:  # default 1.0 → no env.
-                        _os_v9.environ["AUTO_TESSELL_BL_FLOOR_RATIO"] = str(_val)
-                # C-GUI-15 / beta2460 — patch cap spin → env.
-                if (getattr(self, "_patch_cap_spin", None) is not None):
-                    _pc_val = int(self._patch_cap_spin.value())
-                    if _pc_val != 64:  # default 64 → no env.
-                        _os_v9.environ["AUTO_TESSELL_PATCH_CAP"] = str(_pc_val)
-                # C-GUI-16 / beta2461 — hex snap budget spin → env.
-                if (getattr(self, "_hex_snap_budget_spin", None) is not None):
-                    _hs_val = float(self._hex_snap_budget_spin.value())
-                    if _hs_val > 0.0:  # 0 = off (default) → no env.
-                        _os_v9.environ["AUTO_TESSELL_HEX_WWW7_BUDGET_S"] = str(_hs_val)
-                # C-GUI-17 / beta2462 — Lloyd plateau threshold spin → env.
-                if (getattr(self, "_lloyd_plateau_spin", None) is not None):
-                    _lp_val = float(self._lloyd_plateau_spin.value())
-                    if abs(_lp_val - 1e-4) > 1e-9:  # default 1e-4 → no env.
-                        _os_v9.environ["AUTO_TESSELL_LLOYD_PLATEAU_THRESH"] = str(_lp_val)
-            except Exception:
-                pass
+            # BETA2851 — legacy debug widget env propagation 제거 (VVV9H/J/K/P,
+            # OFFPLANE_STEINER, SEED_GWN, STELLAR_SPLIT, PARALLEL_DELAUNAY,
+            # CVT3D_QWEIGHT, LCR_AUTO_REDUCE, BL_ANISO_SPLIT, BL_FLOOR_RATIO,
+            # PATCH_CAP, HEX_WWW7_BUDGET_S, LLOYD_PLATEAU_THRESH).
+            # 자체 native_tet/hex/poly 디버깅용 — vendored fTetWild + cfMesh
+            # primary 정책에서 사용 안 됨. cell_size / BL 조절은 _cfm_*_spin 경유.
             worker = PipelineWorker(
                 self._input_path, self._quality_level,
                 output_dir=self._output_dir,
