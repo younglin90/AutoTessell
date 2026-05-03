@@ -51,7 +51,7 @@ for _alias, _repl in _NP2_COMPAT.items():
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
-from core.utils.openfoam_utils import run_openfoam
+from core.utils.openfoam_utils import OpenFOAMError, run_openfoam
 
 logger = get_logger(__name__)
 
@@ -407,6 +407,13 @@ mergePatchPairs
             logger.info("blockmesh_running", case_dir=str(case_dir))
             run_openfoam("blockMesh", case_dir)
             logger.info("blockmesh_success")
+        except OpenFOAMError as exc:
+            logger.info("blockmesh_external_blocked",
+                        hint="use vendored cfMesh tier (tier15_cfmesh) instead")
+            raise RuntimeError(
+                f"tier_hex_classy_blocks 는 외부 OpenFOAM blockMesh 필요 — "
+                f"차단됨. vendored cfMesh (mesh_type=hex_dominant) 사용 권장. ({exc})"
+            ) from exc
         except Exception as exc:
             logger.warning("blockmesh_failed", error=str(exc))
             raise RuntimeError(f"blockMesh 실행 실패: {exc}")

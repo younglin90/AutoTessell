@@ -38,9 +38,15 @@ def convert_to_polyhedral(
         log.warning("polyhedral_no_polymesh", case_dir=str(case_dir))
         return False
 
-    # 1. OpenFOAM polyDualMesh 시도
+    # BETA2850 — 외부 OpenFOAM 차단 정책. 항상 native 변환 사용.
+    # legacy 동작은 env AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM=1 로만 활성.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        log.info("polyDualMesh_native_only", reason="external_openfoam_blocked")
+        return _convert_native(case_dir)
+
     try:
-        from core.utils.openfoam_utils import run_openfoam
+        from core.utils.openfoam_utils import run_openfoam, OpenFOAMError
 
         args = [str(feature_angle)]
         if concave_multi_cells:
@@ -55,13 +61,13 @@ def convert_to_polyhedral(
         log.info("polyDualMesh_success")
         return True
 
-    except FileNotFoundError:
-        log.info("polyDualMesh_not_available", hint="OpenFOAM 미설치")
+    except (FileNotFoundError, OpenFOAMError):
+        log.info("polyDualMesh_unavailable", fallback="native_dual")
         return _convert_native(case_dir)
 
     except Exception as exc:
         log.warning("polyDualMesh_failed", error=str(exc))
-        return False
+        return _convert_native(case_dir)
 
 
 def _convert_native(case_dir: Path) -> bool:

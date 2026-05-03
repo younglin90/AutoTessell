@@ -296,8 +296,12 @@ def _run_generate_boundary_layers(
 
     ``twodlayers=True`` 면 2D 경계층 옵션 (얇은 extruded 2.5D case 용).
     """
+    # BETA2850 — 외부 OpenFOAM 차단. cfMesh tier 가 BL 통합.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        return False, "external OpenFOAM blocked; use cfMesh meshDict.boundaryLayers"
     try:
-        from core.utils.openfoam_utils import run_openfoam
+        from core.utils.openfoam_utils import run_openfoam, OpenFOAMError
     except Exception as exc:
         return False, f"openfoam_utils import 실패: {exc}"
 
@@ -346,8 +350,12 @@ def _run_refine_wall_layer(
     case_dir: Path, edge_fraction: float, patches: list[str] | None,
 ) -> tuple[bool, str]:
     """OpenFOAM refineWallLayer — 벽 근처 cell 을 edge_fraction 으로 분할."""
+    # BETA2850 — 외부 OpenFOAM 차단. cfMesh tier 가 BL 통합.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        return False, "external OpenFOAM blocked; use cfMesh meshDict.boundaryLayers"
     try:
-        from core.utils.openfoam_utils import run_openfoam
+        from core.utils.openfoam_utils import run_openfoam, OpenFOAMError
     except Exception as exc:
         return False, f"openfoam_utils import 실패: {exc}"
 
@@ -946,8 +954,12 @@ def _run_extrude_mesh(
 
     실패 시 어느 단계인지 message 에 명시.
     """
+    # BETA2850 — 외부 OpenFOAM 차단. cfMesh tier 가 BL 통합.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        return False, "external OpenFOAM blocked; use cfMesh meshDict.boundaryLayers"
     try:
-        from core.utils.openfoam_utils import run_openfoam
+        from core.utils.openfoam_utils import run_openfoam, OpenFOAMError
     except Exception as exc:
         return False, f"openfoam_utils import 실패: {exc}"
 
@@ -1178,8 +1190,12 @@ def _run_snappy_addlayers_only(
     주 엔진이 snappy 가 아니면 일반적으로 호환 안 됨. 실패 시 generateBoundaryLayers
     fallback 권장.
     """
+    # BETA2850 — 외부 OpenFOAM 차단. cfMesh tier 가 BL 통합.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        return False, "external OpenFOAM blocked; use cfMesh meshDict.boundaryLayers"
     try:
-        from core.utils.openfoam_utils import run_openfoam
+        from core.utils.openfoam_utils import run_openfoam, OpenFOAMError
     except Exception as exc:
         return False, f"openfoam_utils import 실패: {exc}"
 

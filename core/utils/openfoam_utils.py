@@ -207,25 +207,25 @@ def run_openfoam(
     case_dir: Path,
     args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """OpenFOAM 유틸리티를 실행한다.
+    """OpenFOAM 유틸리티 실행.
 
-    Windows에서는 다음 순서로 실행 방법을 결정한다.
+    BETA2850 — default 차단. AutoTessell 의 mesh path 는 vendored cfMesh
+    (third_party/cfmesh/build/{cartesianMesh,tetMesh,pMesh}) + vendored
+    fTetWild + 자체 native 구현으로 외부 OpenFOAM 의존 0 이 정책.
+    이 함수가 호출되면 즉시 OpenFOAMError 로 raise → caller 가 native
+    대체 path 로 fallback 해야 함.
 
-    1. ESI OpenFOAM for Windows 감지 → MSYS2 bash로 직접 실행
-    2. ESI 없음 → WSL2를 통해 Linux OpenFOAM 실행
-
-    Args:
-        utility: 실행할 유틸리티 이름 (예: "blockMesh", "snappyHexMesh").
-        case_dir: OpenFOAM 케이스 디렉터리 경로.
-        args: 추가 CLI 인자 목록.
-
-    Returns:
-        subprocess.CompletedProcess 객체.
-
-    Raises:
-        FileNotFoundError: OpenFOAM을 찾을 수 없을 때.
-        OpenFOAMError: 유틸리티 실행 실패 또는 returncode != 0.
+    탈출구: env AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM=1 설정 시 기존 외부 호출
+    경로 활성화 (legacy / 디버깅 용).
     """
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
+        raise OpenFOAMError(
+            f"외부 OpenFOAM 호출 차단됨 (utility={utility}). "
+            "AutoTessell 정책: vendored mesh backend 만 사용. "
+            "탈출 (legacy debug): AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM=1."
+        )
+
     # ── Windows 분기 ────────────────────────────────────────────────────────
     if sys.platform == "win32":
         return _run_openfoam_windows(utility, case_dir, args)
