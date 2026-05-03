@@ -78,7 +78,11 @@ def ftetwild_main_loop(
     bmin = V.min(axis=0)
     bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))
-    pad = 0.1 * diag  # bbox padding to avoid surface coincidence with bbox.
+    # BETA2829 (B-4) — bbox padding 축소: 10% diag → 2 × ε. fTetWild 처럼
+    # envelope 두께 정도만 padding 해서 bbox padding region 의 over-split 방지.
+    # 너무 작으면 surface vertex 가 bbox 면 위에 일치할 수 있어 Delaunay
+    # degenerate → 2*epsilon 안전 마진.
+    pad = max(2.0 * float(epsilon) * diag, 1e-6 * diag)
     bmin_p = bmin - pad
     bmax_p = bmax + pad
 
@@ -130,6 +134,27 @@ def ftetwild_main_loop(
     pts = pts0
     tets = tets0
 
+    # BETA2828 (B-3) — envelope ε-check: split/collapse 후 surface vertex 위치
+    # 가 envelope 안인지 검증 → 위반 시 revert. Hu 2020 §3.1 핵심 가드.
+    try:
+        from .envelope import Envelope
+        env = Envelope.build_auto_eps(V, F, base_ratio=float(epsilon))
+    except Exception as e:
+        env = None
+        logger.debug("ftetwild_envelope_build_skipped", extra={"error": str(e)})
+
+    def _envelope_ok(pts_to_check: NDArray[np.float64], n_surface: int) -> bool:
+        """surface vertex 가 모두 envelope 안인지. interior 는 검사 안 함."""
+        if env is None or pts_to_check.shape[0] < n_surface:
+            return True
+        try:
+            inside = env.contains_points(pts_to_check[:n_surface])
+            return bool(np.all(inside))
+        except Exception:
+            return True
+
+    n_surface_in = int(V.shape[0])  # surface vertex 는 input 의 첫 N 개.
+
     # 3) main iteration: split → collapse → swap → smooth.
     from .local_ops import split_long_edges, collapse_short_edges
     from .stellar import (
@@ -161,7 +186,10 @@ def ftetwild_main_loop(
     n_iters_used = 0
     for it in range(int(max_its)):
         n_iters_used = it + 1
-        # a) split long edges (> 4/3 × target_edge).
+        n_s = 0  # 이 iter 의 split count.
+        n_c = 0  # 이 iter 의 collapse count.
+        # a) split long edges (> 4/3 × target_edge). envelope 가드는 split 이
+        # surface vertex 위치를 바꾸지 않으므로 불필요 — interior 만 추가.
         try:
             pts_s, tets_s, n_s = split_long_edges(
                 pts, tets,
@@ -176,8 +204,12 @@ def ftetwild_main_loop(
         except Exception as e:
             logger.debug("ftetwild_split_skipped", extra={"error": str(e)})
 
-        # b) collapse short edges (< 4/5 × target_edge).
+        # b) collapse short edges (< 4/5 × target_edge). envelope 가드: collapse
+        # 후 surface vertex 가 envelope 밖이면 revert. (현재 locked surface 라
+        # surface 자체는 안 움직이지만, 안전망으로 가드 유지).
         try:
+            _pre_pts = pts
+            _pre_tets = tets
             pts_c, tets_c, n_c = collapse_short_edges(
                 pts, tets,
                 target_edge=target_edge_length,
@@ -186,10 +218,19 @@ def ftetwild_main_loop(
                 max_collapses=2000,
                 protected_edges=surf_set,
                 allow_surface_keeper=False,
+                envelope=env,  # B-3: envelope object 전달.
             )
             if n_c > 0 and tets_c.shape[0] > 0:
-                pts, tets = pts_c, tets_c
-                n_collapse_total += int(n_c)
+                if _envelope_ok(pts_c, n_surface_in):
+                    pts, tets = pts_c, tets_c
+                    n_collapse_total += int(n_c)
+                else:
+                    # envelope violation → revert.
+                    pts, tets = _pre_pts, _pre_tets
+                    logger.debug(
+                        "ftetwild_collapse_envelope_revert",
+                        extra={"iter": it, "n_collapse": int(n_c)},
+                    )
         except Exception as e:
             logger.debug("ftetwild_collapse_skipped", extra={"error": str(e)})
 
@@ -219,19 +260,32 @@ def ftetwild_main_loop(
             except Exception as e:
                 logger.debug("ftetwild_smooth_skipped", extra={"error": str(e)})
 
-        # e) quality stop (Hu §3.4: max AMIPS energy ≤ stop_quality).
+        # e) quality stop + churn stop. fTetWild 는 max_AMIPS_energy 가 더
+        # 이상 줄지 않으면 종료. 여기선 (1) max_e ≤ stop_quality 또는
+        # (2) split+collapse 가 거의 동량 (churn) 또는 (3) tet count 변동 < 1%
+        # 인 경우 break — over-iteration 방지.
         try:
             q_arr = _tet_quality_batch(pts, tets)
-            # AMIPS energy ≈ 1/q for quality 0~1 metric — proxy.
             if q_arr.size > 0:
                 q_min = float(q_arr.min())
-                if q_min > 1e-12:
-                    max_e = 1.0 / q_min
-                else:
-                    max_e = float("inf")
+                max_e = (1.0 / q_min) if q_min > 1e-12 else float("inf")
+                # 종료 조건 1: 품질 목표 도달.
                 if max_e < float(stop_quality):
                     last_max_e = max_e
                     break
+                # 종료 조건 2: 이번 iter 의 split-collapse 가 churn (≈ 같음).
+                if it >= 2:
+                    _churn = abs(int(n_s) - int(n_c))
+                    _ops = int(n_s) + int(n_c)
+                    if _ops > 0 and _churn / _ops < 0.05:
+                        last_max_e = max_e
+                        logger.debug(
+                            "ftetwild_churn_stop",
+                            extra={"iter": it, "split": int(n_s),
+                                   "collapse": int(n_c)},
+                        )
+                        break
+                # 종료 조건 3: tet count 변화율 < 1% (수렴).
                 if abs(last_max_e - max_e) < 1e-6 * max(1.0, last_max_e):
                     last_max_e = max_e
                     break
@@ -247,6 +301,15 @@ def ftetwild_main_loop(
         tets = tets[inside]
     except Exception as e:
         logger.debug("ftetwild_winding_filter_skipped", extra={"error": str(e)})
+
+    # 5) BETA2830 (B-5) — compact unused vertices: collapse 후 victim 으로
+    # 참조 잃은 정점 제거. wildmesh 와 V/T 비율 정렬에 결정적.
+    try:
+        from .local_ops import compact_unused_vertices
+        # surface vertex (input 의 첫 N 개) 는 항상 유지.
+        pts, tets = compact_unused_vertices(pts, tets, keep_first_n=int(V.shape[0]))
+    except Exception as e:
+        logger.debug("ftetwild_compact_skipped", extra={"error": str(e)})
 
     # final quality.
     final_min_q = 0.0

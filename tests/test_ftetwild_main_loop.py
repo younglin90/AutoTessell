@@ -41,17 +41,48 @@ def test_ftetwild_main_loop_target_edge_override():
     pytest.importorskip("scipy")
     from core.generator.native_tet.ftetwild_main_loop import ftetwild_main_loop
     V, F = _cube_VF()
-    r1 = ftetwild_main_loop(V, F, target_edge_length=0.5, max_its=2)
-    r2 = ftetwild_main_loop(V, F, edge_length_r=0.05, max_its=2)
+    r1 = ftetwild_main_loop(V, F, target_edge_length=2.0, max_its=3)
+    r2 = ftetwild_main_loop(V, F, edge_length_r=0.05, max_its=3)
     # 두 호출 모두 성공.
     assert r1.success and r2.success
-    # 적어도 collapse 또는 mean_q 가 다르게 나옴 (target 값에 민감).
-    diff = (
-        r1.n_collapse_total != r2.n_collapse_total
-        or r1.pts.shape[0] != r2.pts.shape[0]
-        or abs(r1.final_mean_q - r2.final_mean_q) > 1e-6
+    # split-trigger threshold 가 달라 split 횟수가 명확히 차이남.
+    assert r1.n_split_total != r2.n_split_total
+
+
+def test_ftetwild_main_loop_cube_parity_T_count():
+    """B-5: cube 에서 T count parity ≥ 80% (wildmesh 2879 기준)."""
+    pytest.importorskip("scipy")
+    from core.generator.native_tet.ftetwild_main_loop import ftetwild_main_loop
+    V, F = _cube_VF()
+    r = ftetwild_main_loop(
+        V, F, edge_length_r=0.06, max_its=20,
+        stop_quality=10.0, epsilon=1e-3,
     )
-    assert diff
+    assert r.success
+    # cube 기준 wildmesh lib 결과 ~2879 cells. parity ≥ 80% 보장.
+    target_T = 2879
+    parity = 100.0 * min(target_T, r.tets.shape[0]) / max(target_T, r.tets.shape[0])
+    assert parity >= 80.0, (
+        f"T parity {parity:.1f}% < 80% (got T={r.tets.shape[0]}, target={target_T})"
+    )
+
+
+def test_ftetwild_main_loop_compact_reduces_V():
+    """B-5: compact pass 후 V_final < V_intermediate (collapse stale 제거)."""
+    pytest.importorskip("scipy")
+    from core.generator.native_tet.ftetwild_main_loop import ftetwild_main_loop
+    V, F = _cube_VF()
+    r = ftetwild_main_loop(
+        V, F, edge_length_r=0.06, max_its=20,
+        stop_quality=10.0, epsilon=1e-3,
+    )
+    # split + collapse 가 모두 동작 후 vertex < (init + n_split - n_collapse).
+    # 그래서 compact pass 가 collapse 잔재 제거했음을 확인.
+    assert r.pts.shape[0] < (
+        16 + r.n_split_total - r.n_collapse_total + 1  # 여유.
+    )
+    # input surface vertex 8 개는 모두 유지 (keep_first_n).
+    assert r.pts.shape[0] >= 8
 
 
 def test_ftetwild_result_dataclass_fields():
