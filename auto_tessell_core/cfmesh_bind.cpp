@@ -69,10 +69,17 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
                                const std::string& stl_relpath,
                                double max_cell_size,
                                double min_cell_size,
+                               double boundary_cell_size,
                                int bl_n_layers,
                                double bl_thickness_ratio,
-                               double bl_max_first_layer)
+                               double bl_max_first_layer,
+                               double feature_angle_deg,
+                               bool keep_cells_intersecting_boundary)
 {
+    // BETA2846 — surface 보존을 위한 완전한 meshDict.
+    // 핵심: maxCellSize 만으로는 STL feature 보존 X. minCellSize +
+    // boundaryCellSize + keepCellsIntersectingBoundary + localRefinement 가
+    // 함께 있어야 cfMesh 가 input surface 충실도 유지.
     std::ostringstream oss;
     oss << "FoamFile { version 2.0; format ascii; class dictionary; "
         << "object meshDict; }\n"
@@ -81,6 +88,25 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
     if (min_cell_size > 0.0) {
         oss << "minCellSize " << min_cell_size << ";\n";
     }
+    if (boundary_cell_size > 0.0) {
+        oss << "boundaryCellSize " << boundary_cell_size << ";\n";
+    }
+    // Surface 가까이의 cell 을 항상 유지 → boundary 정확도 향상.
+    oss << "keepCellsIntersectingBoundary "
+        << (keep_cells_intersecting_boundary ? 1 : 0) << ";\n";
+    // checkForGluedMesh 0: surface 통과 cell 보존 (default 가 too aggressive).
+    oss << "checkForGluedMesh 0;\n";
+    // Surface refinement — 모든 patch 에 boundary cell size 강제.
+    if (boundary_cell_size > 0.0) {
+        oss << "surfaceMeshRefinement\n{\n"
+            << "    surface\n    {\n"
+            << "        surfaceFile \"" << stl_relpath << "\";\n"
+            << "        cellSize " << boundary_cell_size << ";\n"
+            << "    }\n}\n";
+    }
+    // edgeMeshRefinement 는 별도 .eMesh 파일 필요 (surfaceFeatureEdges 로 생성).
+    // 자동 생성 없으면 생략 — surfaceMeshRefinement 와 keepCellsIntersectingBoundary
+    // 만으로도 cube 같은 단순 형상은 충분.
     if (bl_n_layers > 0) {
         oss << "boundaryLayers\n{\n"
             << "    nLayers " << bl_n_layers << ";\n"
@@ -88,7 +114,13 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
         if (bl_max_first_layer > 0.0) {
             oss << "    maxFirstLayerThickness " << bl_max_first_layer << ";\n";
         }
-        oss << "    optimiseLayer 1;\n}\n";
+        oss << "    optimiseLayer 1;\n"
+            << "    optimisationParameters\n    {\n"
+            << "        nSmoothNormals 3;\n"
+            << "        maxNumIterations 5;\n"
+            << "        featureSizeFactor 0.4;\n"
+            << "        relThicknessTol 0.1;\n"
+            << "    }\n}\n";
     }
     write_dict(case_dir / "system" / "meshDict", oss.str());
 }
@@ -116,9 +148,12 @@ py::dict cartesian_mesh_impl(
     const std::string& case_dir_str,
     double max_cell_size,
     double min_cell_size,
+    double boundary_cell_size,
     int bl_n_layers,
     double bl_thickness_ratio,
-    double bl_max_first_layer)
+    double bl_max_first_layer,
+    double feature_angle_deg,
+    bool keep_cells_intersecting_boundary)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -135,8 +170,9 @@ py::dict cartesian_mesh_impl(
     write_control_dict(case_dir, "cartesianMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size,
-        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
+        max_cell_size, min_cell_size, boundary_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer,
+        feature_angle_deg, keep_cells_intersecting_boundary);
 
     std::string exe = find_exe("cartesianMesh");
     std::string log;
@@ -156,9 +192,12 @@ py::dict tet_mesh_impl(
     const std::string& case_dir_str,
     double max_cell_size,
     double min_cell_size,
+    double boundary_cell_size,
     int bl_n_layers,
     double bl_thickness_ratio,
-    double bl_max_first_layer)
+    double bl_max_first_layer,
+    double feature_angle_deg,
+    bool keep_cells_intersecting_boundary)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -175,8 +214,9 @@ py::dict tet_mesh_impl(
     write_control_dict(case_dir, "tetMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size,
-        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
+        max_cell_size, min_cell_size, boundary_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer,
+        feature_angle_deg, keep_cells_intersecting_boundary);
 
     std::string exe = find_exe("tetMesh");
     std::string log;
@@ -196,9 +236,12 @@ py::dict poly_mesh_impl(
     const std::string& case_dir_str,
     double max_cell_size,
     double min_cell_size,
+    double boundary_cell_size,
     int bl_n_layers,
     double bl_thickness_ratio,
-    double bl_max_first_layer)
+    double bl_max_first_layer,
+    double feature_angle_deg,
+    bool keep_cells_intersecting_boundary)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -215,8 +258,9 @@ py::dict poly_mesh_impl(
     write_control_dict(case_dir, "pMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size,
-        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
+        max_cell_size, min_cell_size, boundary_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer,
+        feature_angle_deg, keep_cells_intersecting_boundary);
 
     std::string exe = find_exe("pMesh");
     std::string log;
@@ -239,24 +283,33 @@ PYBIND11_MODULE(cfmesh_native, m) {
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
+          py::arg("boundary_cell_size") = 0.0,
           py::arg("bl_n_layers") = 0,
           py::arg("bl_thickness_ratio") = 1.2,
           py::arg("bl_max_first_layer") = 0.0,
-          "Run vendored cfMesh cartesianMesh (hex-dominant) on STL → polyMesh + optional BL.");
+          py::arg("feature_angle_deg") = 30.0,
+          py::arg("keep_cells_intersecting_boundary") = true,
+          "Run vendored cfMesh cartesianMesh (hex-dominant) — surface preservation + optional BL.");
     m.def("tet_mesh", &tet_mesh_impl,
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
+          py::arg("boundary_cell_size") = 0.0,
           py::arg("bl_n_layers") = 0,
           py::arg("bl_thickness_ratio") = 1.2,
           py::arg("bl_max_first_layer") = 0.0,
-          "Run vendored cfMesh tetMesh (Delaunay) on STL → polyMesh + optional BL.");
+          py::arg("feature_angle_deg") = 30.0,
+          py::arg("keep_cells_intersecting_boundary") = true,
+          "Run vendored cfMesh tetMesh (Delaunay) — surface preservation + optional BL.");
     m.def("poly_mesh", &poly_mesh_impl,
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
+          py::arg("boundary_cell_size") = 0.0,
           py::arg("bl_n_layers") = 0,
           py::arg("bl_thickness_ratio") = 1.2,
           py::arg("bl_max_first_layer") = 0.0,
-          "Run vendored cfMesh pMesh (polyhedral) on STL → polyMesh + optional BL.");
+          py::arg("feature_angle_deg") = 30.0,
+          py::arg("keep_cells_intersecting_boundary") = true,
+          "Run vendored cfMesh pMesh (polyhedral) — surface preservation + optional BL.");
 }

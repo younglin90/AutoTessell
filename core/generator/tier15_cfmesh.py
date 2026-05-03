@@ -131,18 +131,46 @@ class Tier15CfMeshGenerator:
                 _stl_dir = case_dir / "constant" / "triSurface"
                 _stls = list(_stl_dir.glob("*.stl")) + list(_stl_dir.glob("*.STL"))
                 if _stls:
+                    # BETA2846 — STL 형상 보존 위해 boundary_cell_size,
+                    # min_cell_size, BL 옵션 모두 propagate.
+                    _params = strategy.tier_specific_params or {}
+                    _sm = strategy.surface_mesh
+                    _bl = getattr(strategy, "boundary_layers", None)
+                    _target = float(getattr(_sm, "target_cell_size", 0.0) or 0.0) if _sm else 0.0
+                    _min_sm = float(getattr(_sm, "min_cell_size", 0.0) or 0.0) if _sm else 0.0
+                    _max = float(_params.get(
+                        "cfmesh_max_cell_size",
+                        _target * 4 if _target > 0 else 0.2,
+                    ))
+                    _bnd = float(_params.get(
+                        "cfmesh_boundary_cell_size", _target,
+                    ))
+                    _min = float(_params.get(
+                        "cfmesh_min_cell_size", _min_sm,
+                    ))
+                    _nL = 0; _tr = 1.2; _mf = 0.0
+                    if _bl and getattr(_bl, "enabled", False):
+                        _nL = int(getattr(_bl, "num_layers", 0) or 0)
+                        _tr = float(getattr(_bl, "growth_ratio", 1.2) or 1.2)
+                        _mf = float(getattr(_bl, "first_layer_thickness", 0.0) or 0.0)
                     _r = _cfm.cartesian_mesh(
                         str(_stls[0]), str(case_dir),
-                        max_cell_size=float(
-                            strategy.tier_specific_params.get(
-                                "cfmesh_max_cell_size", 0.2
-                            )
+                        max_cell_size=_max,
+                        min_cell_size=_min,
+                        boundary_cell_size=_bnd,
+                        bl_n_layers=_nL,
+                        bl_thickness_ratio=_tr,
+                        bl_max_first_layer=_mf,
+                        feature_angle_deg=float(
+                            _params.get("bl_feature_angle", 30.0)
                         ),
+                        keep_cells_intersecting_boundary=True,
                     )
                     if _r.get("success"):
                         _used_vendored = True
                         logger.info("cfmesh_vendored_used",
-                                    polymesh=_r.get("polymesh_dir"))
+                                    polymesh=_r.get("polymesh_dir"),
+                                    max=_max, bnd=_bnd, min=_min)
             except Exception as _exc:
                 logger.debug("cfmesh_vendored_skipped", error=str(_exc)[:120])
             try:

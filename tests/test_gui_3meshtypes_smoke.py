@@ -38,10 +38,15 @@ def _cube_VF() -> tuple[np.ndarray, np.ndarray]:
 
 
 def _read_polymesh_count(poly_dir: Path) -> int:
-    """polyMesh dir → cell count (owner 줄 max + 1)."""
+    """polyMesh dir → cell count.
+
+    1) ccmio reader 시도, 2) owner 파일에서 직접 cell 개수 파싱 (owner 의
+    `\\n<count>\\n(\\n` 패턴은 face 수 → cell = max(owner)+1).
+    """
     owner = poly_dir / "owner"
     if not owner.exists():
         return 0
+    # 1) ccmio reader.
     try:
         from core.utils.ccmio_native_binary import _simple_polymesh_read
         _, _, own_list, _, _ = _simple_polymesh_read(poly_dir)
@@ -49,7 +54,32 @@ def _read_polymesh_count(poly_dir: Path) -> int:
             return max(int(o) for o in own_list) + 1
     except Exception:
         pass
-    return 0
+    # 2) owner 파일 직접 파싱.
+    try:
+        text = owner.read_text(errors="ignore")
+        # FoamFile 헤더 끝 후 첫 숫자 줄이 face 개수, 그 다음 ( 다음 줄부터
+        # owner index 들. cell 개수 = max + 1.
+        lines = text.split("\n")
+        # 데이터 시작 찾기: '(' 만 있는 줄.
+        start = None
+        for i, line in enumerate(lines):
+            if line.strip() == "(":
+                start = i + 1
+                break
+        if start is None:
+            return 0
+        max_cell = -1
+        for line in lines[start:]:
+            s = line.strip()
+            if s == ")":
+                break
+            if s.isdigit():
+                v = int(s)
+                if v > max_cell:
+                    max_cell = v
+        return max_cell + 1 if max_cell >= 0 else 0
+    except Exception:
+        return 0
 
 
 def _run_meshtype(mesh_type: str, tier_hint: str, label: str) -> dict:

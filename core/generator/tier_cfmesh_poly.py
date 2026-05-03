@@ -68,12 +68,41 @@ class CfMeshPolyGenerator:
             )
 
         params = strategy.tier_specific_params or {}
-        max_cell = float(params.get("cfmesh_max_cell_size", 0.2))
-        min_cell = float(params.get("cfmesh_min_cell_size", 0.0))
+        sm = strategy.surface_mesh
+        bl = getattr(strategy, "boundary_layers", None)
+        # BETA2846 — STL 형상 보존을 위한 완전한 cell size 정책.
+        _target = float(getattr(sm, "target_cell_size", 0.0) or 0.0) if sm else 0.0
+        _min = float(getattr(sm, "min_cell_size", 0.0) or 0.0) if sm else 0.0
+        max_cell = float(params.get(
+            "cfmesh_max_cell_size",
+            _target * 4 if _target > 0 else 0.2,
+        ))
+        boundary_cell = float(params.get(
+            "cfmesh_boundary_cell_size", _target,
+        ))
+        min_cell = float(params.get(
+            "cfmesh_min_cell_size", _min,
+        ))
+        n_layers = 0
+        thickness_ratio = 1.2
+        max_first = 0.0
+        if bl and getattr(bl, "enabled", False):
+            n_layers = int(getattr(bl, "num_layers", 0) or 0)
+            thickness_ratio = float(getattr(bl, "growth_ratio", 1.2) or 1.2)
+            max_first = float(getattr(bl, "first_layer_thickness", 0.0) or 0.0)
 
         t_step = time.monotonic()
-        r = cfm.poly_mesh(str(stl_path), str(case_dir),
-                          max_cell_size=max_cell, min_cell_size=min_cell)
+        r = cfm.poly_mesh(
+            str(stl_path), str(case_dir),
+            max_cell_size=max_cell,
+            min_cell_size=min_cell,
+            boundary_cell_size=boundary_cell,
+            bl_n_layers=n_layers,
+            bl_thickness_ratio=thickness_ratio,
+            bl_max_first_layer=max_first,
+            feature_angle_deg=float(params.get("bl_feature_angle", 30.0)),
+            keep_cells_intersecting_boundary=True,
+        )
         step_time = time.monotonic() - t_step
         elapsed = time.monotonic() - t_start
 
