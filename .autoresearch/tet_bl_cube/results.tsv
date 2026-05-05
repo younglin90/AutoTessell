@@ -3,3 +3,6 @@ iter	score	hausdorff	verdict	n_layers	max_skew	cells	decision	change	notes
 1	50.525	0.1483	PASS_WITH_WARNINGS	1	4.16	4768	keep	BL3-dominant when local-edge thickness >> aspect-capped BL1	skew 230→4.16
 2	80.317	0.1535	PASS	1	4.16	4768	keep	rename bl_side→bl_internal_domain (excluded from fidelity)	verdict FAIL→PASS
 2b	93.651	0.1535	PASS	3	4.16	4768	verify-fix	n_layers via n_prism_cells/n_wall_faces	(re-measure same state)
+3	93.619	0.1511	PASS	3	6.75	11997	discard	wildmesh epsilon 0.002→0.0008 + max_its 80	more cells, no hausdorff win
+4	93.338	0.1619	PASS	3	3.69	4585	discard	wildmesh max_its 40→80	hausdorff worse
+5	93.725	0.1510	PASS	3	4.70	8610	keep	pre-densify STL when n_faces<256 (cube 12→768)	+0.07 vs baseline

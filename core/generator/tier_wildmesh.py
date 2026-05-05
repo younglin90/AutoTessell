@@ -566,7 +566,7 @@ class TierWildMeshGenerator:
             _surf_to_use = surf
             try:
                 _n_in = int(len(surf.faces))
-                _n_target = int(params.get("wildmesh_min_input_faces", 256))
+                _n_target = int(params.get("wildmesh_min_input_faces", 1024))
                 _max_subdiv = int(params.get("wildmesh_max_subdiv_passes", 4))
                 _passes = 0
                 while _n_in < _n_target and _passes < _max_subdiv:
