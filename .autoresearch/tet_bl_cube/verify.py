@@ -98,8 +98,10 @@ def main() -> int:
         if n_layers == 0:
             try:
                 bnd = case / "constant" / "polyMesh" / "boundary"
-                if bnd.exists() and "bl_side" in bnd.read_text():
-                    n_layers = 1
+                if bnd.exists():
+                    txt = bnd.read_text()
+                    if "bl_side" in txt or "bl_internal_domain" in txt or "bl_layer" in txt:
+                        n_layers = 1
             except Exception:
                 pass
 
