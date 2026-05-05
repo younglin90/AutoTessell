@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -flto -shared  -o /home/younglin90/work/claude_code/AutoTessell/backend/mesh/tessell_mesh.cpython-312-x86_64-linux-gnu.so CMakeFiles/tessell_mesh.dir/src/bindings.cpp.o  -Wl,-rpath,/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/lib libtessell_mesh_core.a lib/libgeogram.so.1.9.5 -lpthread -ldl 

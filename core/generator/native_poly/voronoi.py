@@ -996,6 +996,7 @@ def _lloyd_3d_iteration(
     F: np.ndarray,
     n_lloyd: int,
     lp_p: float = 2.0,
+    pinned_mask: "np.ndarray | None" = None,
 ) -> np.ndarray:
     """3D Lloyd CVT 반복 — Voronoi region centroid 를 새 seed 로 갱신.
 
@@ -1008,12 +1009,21 @@ def _lloyd_3d_iteration(
         V: 표면 vertex.
         F: 표면 face.
         n_lloyd: Lloyd 반복 횟수. 0 이면 즉시 반환.
+        pinned_mask: (N,) bool — True 인 seed 는 매 반복마다 원본 위치로 복원되어
+            Lloyd 평탄화를 받지 않는다. 표면 feature seed 가 경계로부터 흘러
+            들어가는 것을 방지하기 위함 (Yan & Wonka 2014 §3 변형).
 
     Returns:
         정제된 seed 배열 (M, 3), M <= N.
     """
     if n_lloyd <= 0 or seeds.shape[0] < 5:
         return seeds
+    pinned = (
+        np.asarray(pinned_mask, dtype=bool)
+        if pinned_mask is not None and len(pinned_mask) == seeds.shape[0]
+        else None
+    )
+    pinned_orig = seeds[pinned].copy() if pinned is not None and pinned.any() else None
     try:
         from scipy.spatial import Voronoi  # noqa: PLC0415
     except Exception:
@@ -1082,10 +1092,11 @@ def _lloyd_3d_iteration(
                         new_seeds_arr[si] = vs.mean(axis=0)
                 except Exception as exc:
                     log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
+        # Pin: feature seeds 위치를 매 반복마다 원본으로 복원 — Lloyd 평탄화로
+        # 인한 sharp edge drift 방지 (poly mesh 경계 보존).
+        if pinned is not None and pinned_orig is not None:
+            new_seeds_arr[pinned] = pinned_orig
         # C-PERF-1 / beta2380 — Lloyd plateau early-exit (Du 1999 §3 monotonicity).
-        # 이전 seed 와의 평균 displacement 가 bbox 의 1e-4 이하면 수렴 →
-        # 추가 iteration 비용 회수 불가. 5×, 10× 가속.
-        # C-PERF-15 / beta2454 — threshold env-tunable.
         try:
             import os as _os_lp
             _plateau_thresh = float(
@@ -1765,18 +1776,26 @@ def _generate_native_poly_voronoi_inner(
 
     # PPP10 — feature-conformal seed injection (Yan & Wonka 2014 §3).
     # Sharp surface edges produce aligned Voronoi seeds → better conformity.
+    # 2026-05 — max_seeds 200 → 1000 으로 확대해 복잡 형상에서 sharp edge 충분히
+    # 샘플. 추가로 feature seeds 인덱스를 _feature_seed_offset 으로 기록해 Lloyd
+    # 단계에서 pinning 한다.
+    _feature_seed_offset: int | None = None
     try:
-        feat_seeds = _inject_feature_seeds(V, F, dihedral_deg=30.0, max_seeds=200)
+        _feat_max = max(200, int(np.sqrt(F.shape[0]) * 8))
+        _feat_max = min(_feat_max, 2000)
+        feat_seeds = _inject_feature_seeds(V, F, dihedral_deg=30.0, max_seeds=_feat_max)
         if feat_seeds.shape[0] > 0:
             # keep only interior feature seeds
             feat_inside = _inside_ray_cast(feat_seeds, V, F)
             feat_seeds = feat_seeds[feat_inside]
             if feat_seeds.shape[0] > 0:
+                _feature_seed_offset = int(seeds.shape[0])
                 seeds = np.vstack([seeds, feat_seeds])
                 log.info(
                     "native_poly_ppp10_feature_seeds",
                     n_feature=int(feat_seeds.shape[0]),
                     n_total=int(seeds.shape[0]),
+                    pinned=True,
                 )
     except Exception as exc:
         log.debug("native_poly_ppp10_skipped", reason=str(exc)[:120])
@@ -1787,9 +1806,15 @@ def _generate_native_poly_voronoi_inner(
             message=f"inside seed 부족 ({seeds.shape[0]})",
         )
 
-    # 3D Lloyd CVT 정제: seed 분포 균일화
+    # 3D Lloyd CVT 정제: seed 분포 균일화. feature seeds 는 pin 해 sharp edge 보존.
     if n_lloyd > 0:
-        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd, lp_p=lp_p)
+        _pin_mask: np.ndarray | None = None
+        if _feature_seed_offset is not None and _feature_seed_offset < seeds.shape[0]:
+            _pin_mask = np.zeros(seeds.shape[0], dtype=bool)
+            _pin_mask[_feature_seed_offset:] = True
+        seeds_refined = _lloyd_3d_iteration(
+            seeds, V, F, n_lloyd, lp_p=lp_p, pinned_mask=_pin_mask,
+        )
         if seeds_refined.shape[0] >= 5:
             seeds = seeds_refined
             log.info(
@@ -1797,6 +1822,7 @@ def _generate_native_poly_voronoi_inner(
                 n_lloyd=n_lloyd,
                 n_seeds_before=int(inside.sum()),
                 n_seeds_after=seeds.shape[0],
+                n_pinned=int(_pin_mask.sum()) if _pin_mask is not None else 0,
                 lp_p=lp_p,
             )
 

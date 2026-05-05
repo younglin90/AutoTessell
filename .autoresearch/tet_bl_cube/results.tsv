@@ -1,0 +1,2 @@
+iter	score	hausdorff	verdict	n_layers	max_skew	cells	decision	change	notes
+0	40.557	0.1527	FAIL	1	229.70	4768	baseline	(none)	hard_fails=1 soft_fails=2

@@ -1,0 +1,863 @@
+=== Thingi10K hard 5 × 3 engines × BL (parallel) ===
+
+  [1/5] file_id=100027 V=218 F=508 comps=1 closed=True
+  [2/5] file_id=100030 V=608 F=1504 comps=1 closed=False
+  [3/5] file_id=100040 V=362 F=736 comps=2 closed=False
+  [4/5] file_id=1004826 V=394 F=784 comps=1 closed=True
+  [5/5] file_id=101085 V=664 F=1587 comps=2 closed=True
+
+workers=4 per_cell_timeout=90.0s jobs=30
+2026-04-27 00:05:41 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:41 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:41 [info     ] native_hex_snap_done           cap=4.159172743341046 n_candidates=16 n_feature_snapped=0 n_skipped_beyond_cap=0 n_skipped_far=0 n_snapped=16 search_r=12.47751823002314
+2026-04-27 00:05:41 [info     ] native_hex_boundary_snap_applied n_candidates=16 n_feature_snapped=0 n_skipped_beyond_cap=0 n_skipped_far=0 n_snapped=16
+2026-04-27 00:05:41 [info     ] native_hex_snap_done           cap=4.159172743341046 n_candidates=16 n_feature_snapped=0 n_skipped_beyond_cap=0 n_skipped_far=0 n_snapped=16 search_r=12.47751823002314
+2026-04-27 00:05:41 [info     ] native_hex_boundary_snap_applied n_candidates=16 n_feature_snapped=0 n_skipped_beyond_cap=0 n_skipped_far=0 n_snapped=16
+2026-04-27 00:05:41 [info     ] native_hex_low_fill_ratio      fill_ratio=0.03636363636363636 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=55 n_kept=2
+2026-04-27 00:05:41 [info     ] native_hex_quality_gate        grade=A max_aspect=3.28 max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:41 [info     ] native_hex_low_fill_ratio      fill_ratio=0.03636363636363636 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=55 n_kept=2
+2026-04-27 00:05:41 [info     ] native_hex_quality_gate        grade=A max_aspect=3.28 max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:41 [info     ] native_bl_read                 component=native_bl n_cells=2 n_faces=12 n_internal=0 n_points=16
+2026-04-27 00:05:41 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=12 phase=beta89
+  fid= 100027 hex       : grade=A cells=2 t=0.12s no=0.0° sk=0.0
+2026-04-27 00:05:41 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=16 phase=Phase2 reduction=0.5
+2026-04-27 00:05:41 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=16 phase=beta90
+2026-04-27 00:05:41 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=45498.85624633621 n_degenerate_prisms=72 phase=Phase2 threshold=50.0
+  fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
+2026-04-27 00:05:41 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=203 n_zero_area=1
+2026-04-27 00:05:41 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=56 warnings=['zero-area triangles: 1 (< 1.00e-20)', 'non-manifold: 56 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=1
+2026-04-27 00:05:41 [info     ] native_tet_start               bbox_diag=99.82014584018512 n_surf_faces=660 n_surf_verts=218 target_edge_length=12.47751823002314
+2026-04-27 00:05:41 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=203 n_zero_area=1
+2026-04-27 00:05:41 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=56 warnings=['zero-area triangles: 1 (< 1.00e-20)', 'non-manifold: 56 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=1
+2026-04-27 00:05:41 [info     ] native_tet_start               bbox_diag=99.82014584018512 n_surf_faces=660 n_surf_verts=218 target_edge_length=12.47751823002314
+2026-04-27 00:05:41 [info     ] native_tet_seed                n_grid_inside=14 n_points=232
+2026-04-27 00:05:41 [info     ] native_tet_seed                n_grid_inside=14 n_points=232
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=11 n_seeds_before=15
+2026-04-27 00:05:42 [info     ] native_tet_recovery_iter       iter=0 n_missing=422 n_new_seeds=844
+2026-04-27 00:05:42 [info     ] native_tet_recovery_iter       iter=0 n_missing=422 n_new_seeds=844
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=11 n_seeds_before=15
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=583
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=583
+2026-04-27 00:05:42 [info     ] native_tet_recovery_iter       iter=1 n_missing=584 n_new_seeds=1168
+2026-04-27 00:05:42 [info     ] native_tet_recovery_iter       iter=1 n_missing=584 n_new_seeds=1168
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=37 n_seeds_before=401
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=37 n_seeds_before=401
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=748
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=748
+2026-04-27 00:05:42 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=255
+2026-04-27 00:05:42 [info     ] ttt4_poly_bl_extruded          n_added=4
+2026-04-27 00:05:42 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:42 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:42 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=255
+2026-04-27 00:05:42 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=7 raw=0.389 raw_info={'n': 8, 'no': 85.5, 'sk': 0.376} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:42 [info     ] native_poly_quality_gate       avg_fpc=5.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:42 [info     ] ttt4_poly_bl_extruded          n_added=4
+2026-04-27 00:05:42 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:42 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:42 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=7 raw=0.389 raw_info={'n': 8, 'no': 85.5, 'sk': 0.376} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:42 [info     ] native_poly_quality_gate       avg_fpc=5.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=41 n_seeds_before=401
+2026-04-27 00:05:42 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=41 n_seeds_before=401
+2026-04-27 00:05:42 [info     ] native_tet_sliver_filter_phase_a boundary_protected=0 dropped_total=555 interior_dropped=423 kept=1796 q_thresh_boundary=0.005000000000000001 q_thresh_interior=0.05
+2026-04-27 00:05:42 [info     ] native_tet_sliver_filter_phase_a boundary_protected=0 dropped_total=555 interior_dropped=423 kept=1796 q_thresh_boundary=0.005000000000000001 q_thresh_interior=0.05
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=771
+2026-04-27 00:05:42 [info     ] native_tet_smooth              max_disp=5.237295830410102 moved=882 n_corner=152 n_corner_new=152 n_feature_edges=457 n_iter=2
+2026-04-27 00:05:42 [info     ] native_tet_smooth              max_disp=5.237295830410102 moved=882 n_corner=152 n_corner_new=152 n_feature_edges=457 n_iter=2
+2026-04-27 00:05:42 [info     ] native_poly_boundary_snap      n_outside_snapped=771
+2026-04-27 00:05:42 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=876 n_inverted=876
+2026-04-27 00:05:42 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=876 n_inverted=876
+2026-04-27 00:05:42 [info     ] native_tet_smooth_then_drop    dropped=1 moved=18
+2026-04-27 00:05:42 [info     ] native_tet_smooth_then_drop    dropped=1 moved=18
+2026-04-27 00:05:42 [info     ] native_tet_drop_slivers        dropped=4
+2026-04-27 00:05:42 [info     ] native_tet_drop_slivers        dropped=4
+2026-04-27 00:05:42 [debug    ] normalize_tet_winding          n_negative=2 n_total=1791
+2026-04-27 00:05:42 [info     ] polymesh_writer_start          case_dir=/tmp/tmpykeyql32/c num_cells=1791 num_points=659
+2026-04-27 00:05:42 [debug    ] normalize_tet_winding          n_negative=2 n_total=1791
+2026-04-27 00:05:42 [info     ] polymesh_writer_start          case_dir=/tmp/tmpt3z95rn2/c num_cells=1791 num_points=659
+2026-04-27 00:05:42 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=259
+2026-04-27 00:05:42 [info     ] ttt4_poly_bl_extruded          n_added=4
+2026-04-27 00:05:42 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:42 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:42 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=259
+2026-04-27 00:05:42 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=7 raw=0.389 raw_info={'n': 8, 'no': 85.5, 'sk': 0.376} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:42 [info     ] native_poly_quality_gate       avg_fpc=5.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:42 [info     ] ttt4_poly_bl_extruded          n_added=4
+2026-04-27 00:05:42 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:42 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:42 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=7 raw=0.389 raw_info={'n': 8, 'no': 85.5, 'sk': 0.376} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:42 [info     ] native_poly_quality_gate       avg_fpc=5.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:42 [info     ] polymesh_writer_done           num_cells=1791 num_faces=4644 num_internal_faces=2520 num_points=659
+2026-04-27 00:05:42 [info     ] polymesh_writer_done           num_cells=1791 num_faces=4644 num_internal_faces=2520 num_points=659
+2026-04-27 00:05:42 [info     ] native_hex_snap_done           cap=3.119379557505785 n_candidates=252 n_feature_snapped=0 n_skipped_beyond_cap=30 n_skipped_far=7 n_snapped=215 search_r=9.358138672517356
+2026-04-27 00:05:42 [info     ] native_hex_boundary_snap_applied n_candidates=252 n_feature_snapped=0 n_skipped_beyond_cap=30 n_skipped_far=7 n_snapped=215
+2026-04-27 00:05:42 [info     ] native_hex_snap_done           cap=3.119379557505785 n_candidates=252 n_feature_snapped=0 n_skipped_beyond_cap=30 n_skipped_far=7 n_snapped=215 search_r=9.358138672517356
+2026-04-27 00:05:42 [info     ] native_hex_boundary_snap_applied n_candidates=252 n_feature_snapped=0 n_skipped_beyond_cap=30 n_skipped_far=7 n_snapped=215
+2026-04-27 00:05:42 [info     ] native_hex_quality_gate        grade=A max_aspect=2275271.62 max_non_ortho=43.29 max_skew=0.194 mean_non_ortho=6.08
+2026-04-27 00:05:42 [info     ] native_poly_best_of_n          cells=78 chosen=hex_fallback cont_score=0.4346 grade=A n_candidates=1
+  fid= 100027 poly      : grade=A cells=78 t=0.45s no=43.3° sk=0.19
+2026-04-27 00:05:42 [info     ] native_hex_quality_gate        grade=A max_aspect=2275271.62 max_non_ortho=43.29 max_skew=0.194 mean_non_ortho=6.08
+2026-04-27 00:05:42 [info     ] native_poly_best_of_n          cells=78 chosen=hex_fallback cont_score=0.4346 grade=A n_candidates=1
+2026-04-27 00:05:42 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:42 [info     ] native_bl_read                 component=native_bl n_cells=78 n_faces=366 n_internal=102 n_points=252
+2026-04-27 00:05:42 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=264 phase=beta89
+2026-04-27 00:05:42 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=208 phase=Phase2 reduction=0.5
+2026-04-27 00:05:42 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.27472527472527475 min_collision=8.683874917236735e-07 new_total=0.001 phase=Phase2 safety=0.5
+2026-04-27 00:05:42 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=208 phase=beta90
+2026-04-27 00:05:42 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=156393.3448372661 n_degenerate_prisms=1584 phase=Phase2 threshold=50.0
+2026-04-27 00:05:42 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=479 n_zero_area=0
+  fid= 100027 poly+BL   : grade=A cells=78 t=0.45s no=43.3° sk=0.19 BL=OK prism=1584
+2026-04-27 00:05:42 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:42 [info     ] native_tet_best_of_candidates  base_metrics=(0.129, 0.665, 0.034) base_score=0.23 final_metrics=(0.052, 0.36, 0.082) final_score=0.14 v_only_score=0.2
+2026-04-27 00:05:42 [info     ] native_tet_best_of_candidates  base_metrics=(0.129, 0.665, 0.034) base_score=0.23 final_metrics=(0.052, 0.36, 0.082) final_score=0.14 v_only_score=0.2
+2026-04-27 00:05:42 [warning  ] native_tet_best_of_picks_alt   final_score=0.14 pick=base score=0.23
+2026-04-27 00:05:42 [warning  ] native_tet_best_of_picks_alt   final_score=0.14 pick=base score=0.23
+2026-04-27 00:05:42 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=479 n_zero_area=0
+2026-04-27 00:05:42 [info     ] native_tet_flip_23             mq_after=0.048 mq_before=0.034 n_flips=226 t_after=1316 t_before=1090
+2026-04-27 00:05:42 [info     ] native_tet_flip_23             mq_after=0.048 mq_before=0.034 n_flips=226 t_after=1316 t_before=1090
+2026-04-27 00:05:42 [info     ] native_tet_flip_32             mq_after=0.048 mq_before=0.048 n_flips=11 t_after=1305 t_before=1316
+2026-04-27 00:05:42 [info     ] native_tet_flip_32             mq_after=0.048 mq_before=0.048 n_flips=11 t_after=1305 t_before=1316
+2026-04-27 00:05:43 [warning  ] native_tet_input_warnings      boundary_edges=5 duplicate=0 nonmanifold=228 warnings=['non-watertight: 5 boundary edges', 'non-manifold: 228 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:05:43 [info     ] native_tet_start               bbox_diag=144.43710243320172 n_surf_faces=1865 n_surf_verts=608 target_edge_length=18.054637804150214
+2026-04-27 00:05:43 [info     ] native_tet_seed                n_grid_inside=17 n_points=625
+2026-04-27 00:05:43 [info     ] native_tet_recovery_iter       iter=0 n_missing=1348 n_new_seeds=2696
+2026-04-27 00:05:43 [info     ] native_tet_flip_44             mq_after=0.049 mq_before=0.048 n_flips=14 t_after=1305 t_before=1305
+2026-04-27 00:05:43 [info     ] native_tet_flip_44             mq_after=0.049 mq_before=0.048 n_flips=14 t_after=1305 t_before=1305
+2026-04-27 00:05:43 [warning  ] native_tet_input_warnings      boundary_edges=5 duplicate=0 nonmanifold=228 warnings=['non-watertight: 5 boundary edges', 'non-manifold: 228 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:05:43 [info     ] native_tet_start               bbox_diag=144.43710243320172 n_surf_faces=1865 n_surf_verts=608 target_edge_length=18.054637804150214
+2026-04-27 00:05:43 [info     ] native_tet_seed                n_grid_inside=17 n_points=625
+2026-04-27 00:05:43 [info     ] native_tet_recovery_iter       iter=0 n_missing=1348 n_new_seeds=2696
+2026-04-27 00:05:43 [info     ] native_tet_recovery_iter       iter=1 n_missing=1621 n_new_seeds=3242
+2026-04-27 00:05:43 [info     ] native_tet_recovery_iter       iter=1 n_missing=1621 n_new_seeds=3242
+2026-04-27 00:05:43 [info     ] native_tet_flip_23_c2          mq_after=0.054 mq_before=0.049 n_flips=108
+2026-04-27 00:05:43 [info     ] native_tet_flip_23_c2          mq_after=0.054 mq_before=0.049 n_flips=108
+2026-04-27 00:05:43 [info     ] native_tet_flip_32_c2          mq_after=0.054 mq_before=0.054 n_flips=1
+2026-04-27 00:05:43 [info     ] native_tet_flip_32_c2          mq_after=0.054 mq_before=0.054 n_flips=1
+2026-04-27 00:05:43 [info     ] native_tet_flip_23_c3          mq_after=0.057 mq_before=0.054 n_flips=60
+2026-04-27 00:05:43 [info     ] native_tet_flip_23_c3          mq_after=0.057 mq_before=0.054 n_flips=60
+2026-04-27 00:05:43 [info     ] native_tet_flip_32_c3          mq_after=0.058 mq_before=0.057 n_flips=8
+2026-04-27 00:05:43 [info     ] native_tet_flip_32_c3          mq_after=0.058 mq_before=0.057 n_flips=8
+2026-04-27 00:05:43 [info     ] native_tet_flip_44_c2          mq_after=0.059 mq_before=0.058 n_flips=9
+2026-04-27 00:05:43 [info     ] native_tet_flip_44_c2          mq_after=0.059 mq_before=0.058 n_flips=9
+2026-04-27 00:05:44 [info     ] native_tet_amips_post_flip     mq_after=0.059 mq_before=0.059
+2026-04-27 00:05:44 [info     ] native_tet_amips_post_flip     mq_after=0.059 mq_before=0.059
+2026-04-27 00:05:44 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=489 n_inserted_points=800 n_recovered=490 t_after=1068 t_before=1464 v_after=1032 v_before=232
+2026-04-27 00:05:44 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=489 n_inserted_points=800 n_recovered=490 t_after=1068 t_before=1464 v_after=1032 v_before=232
+2026-04-27 00:05:44 [warning  ] native_tet_sliver_filter_revert new_area=0.129 prev_area=0.202 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:05:44 [info     ] native_tet_post_bsp_flip_23    mq_after=0.056 mq_before=0.055 n_flips=21
+2026-04-27 00:05:44 [info     ] native_tet_post_bsp_flip_23    mq_after=0.056 mq_before=0.055 n_flips=21
+2026-04-27 00:05:44 [info     ] native_tet_smooth              max_disp=13.833269461602846 moved=3686 n_corner=318 n_corner_new=318 n_feature_edges=1084 n_iter=2
+2026-04-27 00:05:44 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=6104 n_inverted=6104
+2026-04-27 00:05:44 [warning  ] native_tet_sliver_filter_revert new_area=0.129 prev_area=0.202 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:05:44 [info     ] native_tet_smooth_then_drop    dropped=112 moved=224
+2026-04-27 00:05:44 [info     ] native_tet_smooth              max_disp=13.833269461602846 moved=3686 n_corner=318 n_corner_new=318 n_feature_edges=1084 n_iter=2
+2026-04-27 00:05:44 [info     ] native_tet_drop_slivers        dropped=53
+2026-04-27 00:05:44 [debug    ] normalize_tet_winding          n_negative=68 n_total=11979
+2026-04-27 00:05:44 [info     ] polymesh_writer_start          case_dir=/tmp/tmp4idj0dva/c num_cells=11979 num_points=2451
+2026-04-27 00:05:44 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=6104 n_inverted=6104
+2026-04-27 00:05:44 [info     ] native_tet_smooth_then_drop    dropped=112 moved=224
+2026-04-27 00:05:44 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.056 n_flips_23=10 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:44 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.056 n_flips_23=10 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:44 [info     ] native_tet_drop_slivers        dropped=53
+2026-04-27 00:05:44 [debug    ] normalize_tet_winding          n_negative=68 n_total=11979
+2026-04-27 00:05:44 [info     ] polymesh_writer_start          case_dir=/tmp/tmpig31ti3j/c num_cells=11979 num_points=2451
+2026-04-27 00:05:44 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.058 n_flips_23=4 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:44 [info     ] native_tet_nnn1_dry_run        n_sliver=681 n_sliver_inside=681 threshold=0.05
+2026-04-27 00:05:44 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.058 n_flips_23=4 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:44 [info     ] native_tet_nnn1_dry_run        n_sliver=681 n_sliver_inside=681 threshold=0.05
+2026-04-27 00:05:44 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:44 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:44 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:44 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:44 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:44 [info     ] polymesh_writer_done           num_cells=11979 num_faces=27163 num_internal_faces=20753 num_points=2451
+2026-04-27 00:05:44 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
+2026-04-27 00:05:45 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=14 n_iter=2 n_worst=886 p5=0.0018590368416723385 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16 q_thresh=0.1
+2026-04-27 00:05:45 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=14 n_iter=2 n_worst=886 p5=0.0018590368416723385 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16 q_thresh=0.1
+2026-04-27 00:05:45 [info     ] native_tet_stellar_queue       n_queue=1103 worst_q=5.66443919838835e-11
+2026-04-27 00:05:45 [info     ] native_tet_stellar_queue       n_queue=1103 worst_q=5.66443919838835e-11
+2026-04-27 00:05:45 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.058344202297332455 pre_min=2.31849482639971e-16
+2026-04-27 00:05:45 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.058344202297332455 pre_min=2.31849482639971e-16
+2026-04-27 00:05:45 [info     ] polymesh_writer_done           num_cells=11979 num_faces=27163 num_internal_faces=20753 num_points=2451
+2026-04-27 00:05:46 [info     ] native_tet_best_of_candidates  base_metrics=(0.233, 0.549, 0.044) base_score=0.246 final_metrics=(0.199, 0.345, 0.095) final_score=0.199 v_only_score=0.237
+2026-04-27 00:05:46 [warning  ] native_tet_best_of_picks_alt   final_score=0.199 pick=base score=0.246
+2026-04-27 00:05:46 [info     ] native_tet_best_of_candidates  base_metrics=(0.233, 0.549, 0.044) base_score=0.246 final_metrics=(0.199, 0.345, 0.095) final_score=0.199 v_only_score=0.237
+2026-04-27 00:05:46 [warning  ] native_tet_best_of_picks_alt   final_score=0.199 pick=base score=0.246
+2026-04-27 00:05:47 [info     ] native_tet_flip_23             mq_after=0.056 mq_before=0.044 n_flips=621 t_after=4008 t_before=3387
+2026-04-27 00:05:47 [info     ] native_tet_flip_23             mq_after=0.056 mq_before=0.044 n_flips=621 t_after=4008 t_before=3387
+2026-04-27 00:05:47 [info     ] native_tet_flip_32             mq_after=0.056 mq_before=0.056 n_flips=46 t_after=3962 t_before=4008
+2026-04-27 00:05:47 [info     ] native_tet_flip_32             mq_after=0.056 mq_before=0.056 n_flips=46 t_after=3962 t_before=4008
+2026-04-27 00:05:47 [info     ] native_tet_flip_44             mq_after=0.057 mq_before=0.056 n_flips=55 t_after=3962 t_before=3962
+2026-04-27 00:05:47 [info     ] native_tet_flip_44             mq_after=0.057 mq_before=0.056 n_flips=55 t_after=3962 t_before=3962
+2026-04-27 00:05:48 [info     ] native_tet_flip_23_c2          mq_after=0.061 mq_before=0.057 n_flips=256
+2026-04-27 00:05:48 [info     ] native_tet_flip_23_c2          mq_after=0.061 mq_before=0.057 n_flips=256
+2026-04-27 00:05:48 [info     ] native_tet_flip_32_c2          mq_after=0.061 mq_before=0.061 n_flips=6
+2026-04-27 00:05:48 [info     ] native_tet_flip_32_c2          mq_after=0.061 mq_before=0.061 n_flips=6
+2026-04-27 00:05:49 [info     ] native_tet_flip_23_c3          mq_after=0.063 mq_before=0.061 n_flips=133
+2026-04-27 00:05:49 [info     ] native_tet_flip_23_c3          mq_after=0.063 mq_before=0.061 n_flips=133
+2026-04-27 00:05:49 [info     ] native_tet_flip_32_c3          mq_after=0.064 mq_before=0.063 n_flips=10
+2026-04-27 00:05:49 [info     ] native_tet_flip_32_c3          mq_after=0.064 mq_before=0.063 n_flips=10
+2026-04-27 00:05:50 [info     ] native_tet_flip_44_c2          mq_after=0.064 mq_before=0.064 n_flips=17
+2026-04-27 00:05:50 [info     ] native_tet_amips_post_flip     mq_after=0.064 mq_before=0.064
+2026-04-27 00:05:50 [info     ] native_tet_flip_44_c2          mq_after=0.064 mq_before=0.064 n_flips=17
+2026-04-27 00:05:50 [info     ] native_tet_amips_post_flip     mq_after=0.064 mq_before=0.064
+2026-04-27 00:05:51 [info     ] native_tet_post_bsp_flip_23    mq_after=0.066 mq_before=0.064 n_flips=71
+2026-04-27 00:05:51 [info     ] native_tet_post_bsp_flip_23    mq_after=0.066 mq_before=0.064 n_flips=71
+2026-04-27 00:05:51 [info     ] native_tet_post_bsp_flip_32    mq_after=0.066 mq_before=0.066 n_flips=1
+2026-04-27 00:05:51 [info     ] native_tet_post_bsp_flip_32    mq_after=0.066 mq_before=0.066 n_flips=1
+2026-04-27 00:05:51 [info     ] native_tet_pass_gate           cdt_face_ratio=0.205 cdt_ratio=0.538 grade=D hausdorff_rel=0.07715 mean_q=0.082 plane_area_coverage=0.11 plane_coverage=0.027
+  fid= 100027 tet       : grade=D cells=1791 t=9.58s mq=0.082
+2026-04-27 00:05:51 [info     ] native_tet_pass_gate           cdt_face_ratio=0.205 cdt_ratio=0.538 grade=D hausdorff_rel=0.07715 mean_q=0.082 plane_area_coverage=0.11 plane_coverage=0.027
+2026-04-27 00:05:51 [info     ] native_bl_read                 component=native_bl n_cells=1791 n_faces=4644 n_internal=2520 n_points=659
+2026-04-27 00:05:51 [info     ] native_hex_snap_done           cap=6.0182126013834045 n_candidates=497 n_feature_snapped=0 n_skipped_beyond_cap=173 n_skipped_far=13 n_snapped=311 search_r=18.054637804150214
+2026-04-27 00:05:51 [info     ] native_hex_boundary_snap_applied n_candidates=497 n_feature_snapped=0 n_skipped_beyond_cap=173 n_skipped_far=13 n_snapped=311
+2026-04-27 00:05:51 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=626 phase=Phase2 reduction=0.5
+2026-04-27 00:05:51 [info     ] native_hex_quality_gate        grade=A max_aspect=5.34 max_non_ortho=39.62 max_skew=0.214 mean_non_ortho=5.38
+  fid= 100030 hex       : grade=A cells=266 t=0.3s no=39.6° sk=0.21
+2026-04-27 00:05:51 [info     ] native_hex_snap_done           cap=6.0182126013834045 n_candidates=497 n_feature_snapped=0 n_skipped_beyond_cap=173 n_skipped_far=13 n_snapped=311 search_r=18.054637804150214
+2026-04-27 00:05:51 [info     ] native_hex_boundary_snap_applied n_candidates=497 n_feature_snapped=0 n_skipped_beyond_cap=173 n_skipped_far=13 n_snapped=311
+2026-04-27 00:05:51 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.45454545454545464 min_collision=0.0005961370641595887 new_total=0.001 phase=Phase2 safety=0.5
+2026-04-27 00:05:51 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=626 phase=beta90
+2026-04-27 00:05:52 [info     ] native_hex_quality_gate        grade=A max_aspect=5.34 max_non_ortho=39.62 max_skew=0.214 mean_non_ortho=5.38
+2026-04-27 00:05:52 [info     ] native_bl_read                 component=native_bl n_cells=266 n_faces=1021 n_internal=575 n_points=497
+2026-04-27 00:05:52 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=446 phase=beta89
+2026-04-27 00:05:52 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=777519.0478086448 n_degenerate_prisms=4248 phase=Phase2 threshold=50.0
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.59s mq=0.082 BL=OK prism=4248
+2026-04-27 00:05:52 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=52 n_seeds_before=71
+2026-04-27 00:05:52 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=226 phase=Phase2 reduction=0.5
+2026-04-27 00:05:52 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.27472527472527475 min_collision=7.229192052026457e-08 new_total=0.001 phase=Phase2 safety=0.5
+2026-04-27 00:05:52 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=226 phase=beta90
+2026-04-27 00:05:52 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=274439.77568276966 n_degenerate_prisms=2676 phase=Phase2 threshold=50.0
+  fid= 100030 hex+BL    : grade=A cells=266 t=0.33s no=39.6° sk=0.21 BL=OK prism=2676
+2026-04-27 00:05:52 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=52 n_seeds_before=71
+2026-04-27 00:05:52 [info     ] native_poly_boundary_snap      n_outside_snapped=2338
+2026-04-27 00:05:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=660
+2026-04-27 00:05:52 [info     ] ttt4_poly_bl_extruded          n_added=1
+2026-04-27 00:05:52 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:52 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:52 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=1 raw=0.562 raw_info={'n': 2, 'no': 38.1, 'sk': 0.018} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:52 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:52 [info     ] native_poly_boundary_snap      n_outside_snapped=2338
+2026-04-27 00:05:52 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=170 n_seeds_before=305
+2026-04-27 00:05:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=660
+2026-04-27 00:05:52 [info     ] ttt4_poly_bl_extruded          n_added=1
+2026-04-27 00:05:52 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:52 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:52 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=1 raw=0.562 raw_info={'n': 2, 'no': 38.1, 'sk': 0.018} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:05:52 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:05:52 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=170 n_seeds_before=305
+2026-04-27 00:05:52 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=44 n_flips_32=3 n_flips_44=7
+2026-04-27 00:05:52 [info     ] native_poly_boundary_snap      n_outside_snapped=2666
+2026-04-27 00:05:52 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=44 n_flips_32=3 n_flips_44=7
+2026-04-27 00:05:52 [info     ] native_poly_boundary_snap      n_outside_snapped=2666
+2026-04-27 00:05:53 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-27 00:05:53 [info     ] ttt4_poly_bl_extruded          n_added=24
+2026-04-27 00:05:53 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:53 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:53 [info     ] native_poly_best_of_three      drop=0.721 drop_info={'n': 24, 'no': 28.2, 'sk': 0.194} n_drop=24 raw=0.34 raw_info={'n': 48, 'no': 76.6, 'sk': 18.679} sm_info={'n': 24, 'no': 28.2, 'sk': 0.194} smooth=0.721
+2026-04-27 00:05:53 [warning  ] generic_polymesh_non_manifold_face key_len=4 n_refs=4
+2026-04-27 00:05:53 [info     ] native_poly_quality_gate       avg_fpc=9.21 grade=A max_non_ortho=28.24 max_skew=0.194 mean_non_ortho=13.87
+2026-04-27 00:05:53 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=127 n_seeds_before=305
+2026-04-27 00:05:53 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-27 00:05:53 [info     ] ttt4_poly_bl_extruded          n_added=24
+2026-04-27 00:05:53 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:53 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:53 [info     ] native_poly_best_of_three      drop=0.721 drop_info={'n': 24, 'no': 28.2, 'sk': 0.194} n_drop=24 raw=0.34 raw_info={'n': 48, 'no': 76.6, 'sk': 18.679} sm_info={'n': 24, 'no': 28.2, 'sk': 0.194} smooth=0.721
+2026-04-27 00:05:53 [warning  ] generic_polymesh_non_manifold_face key_len=4 n_refs=4
+2026-04-27 00:05:53 [info     ] native_poly_quality_gate       avg_fpc=9.21 grade=A max_non_ortho=28.24 max_skew=0.194 mean_non_ortho=13.87
+2026-04-27 00:05:53 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=127 n_seeds_before=305
+2026-04-27 00:05:53 [info     ] native_poly_boundary_snap      n_outside_snapped=2596
+2026-04-27 00:05:53 [info     ] native_poly_boundary_snap      n_outside_snapped=2596
+2026-04-27 00:05:53 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=735
+2026-04-27 00:05:54 [info     ] ttt4_poly_bl_extruded          n_added=14
+2026-04-27 00:05:54 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:54 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:54 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=735
+2026-04-27 00:05:54 [info     ] native_poly_best_of_three      drop=0.621 drop_info={'n': 11, 'no': 31.6, 'sk': 0.324} n_drop=17 raw=0.459 raw_info={'n': 28, 'no': 88.6, 'sk': 0.927} sm_info={'n': 11, 'no': 31.6, 'sk': 0.324} smooth=0.621
+2026-04-27 00:05:54 [info     ] native_poly_quality_gate       avg_fpc=9.18 grade=A max_non_ortho=31.56 max_skew=0.324 mean_non_ortho=20.48
+2026-04-27 00:05:54 [info     ] ttt4_poly_bl_extruded          n_added=14
+2026-04-27 00:05:54 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:54 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:54 [info     ] native_poly_best_of_three      drop=0.621 drop_info={'n': 11, 'no': 31.6, 'sk': 0.324} n_drop=17 raw=0.459 raw_info={'n': 28, 'no': 88.6, 'sk': 0.927} sm_info={'n': 11, 'no': 31.6, 'sk': 0.324} smooth=0.621
+2026-04-27 00:05:54 [info     ] native_poly_quality_gate       avg_fpc=9.18 grade=A max_non_ortho=31.56 max_skew=0.324 mean_non_ortho=20.48
+2026-04-27 00:05:54 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=170 n_seeds_before=305
+2026-04-27 00:05:54 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=170 n_seeds_before=305
+2026-04-27 00:05:54 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=27 n_flips_32=0 n_flips_44=2
+2026-04-27 00:05:54 [info     ] native_tet_nnn1_dry_run        n_sliver=2808 n_sliver_inside=2808 threshold=0.05
+2026-04-27 00:05:54 [info     ] native_poly_boundary_snap      n_outside_snapped=2666
+2026-04-27 00:05:54 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=17 n_iter=2 n_worst=3402 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09 q_thresh=0.1
+2026-04-27 00:05:54 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=27 n_flips_32=0 n_flips_44=2
+2026-04-27 00:05:54 [info     ] native_tet_nnn1_dry_run        n_sliver=2808 n_sliver_inside=2808 threshold=0.05
+2026-04-27 00:05:54 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=17 n_iter=2 n_worst=3402 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09 q_thresh=0.1
+2026-04-27 00:05:54 [info     ] native_tet_stellar_queue       n_queue=4473 worst_q=2.341540764390185e-06
+2026-04-27 00:05:54 [info     ] native_poly_boundary_snap      n_outside_snapped=2666
+2026-04-27 00:05:54 [info     ] native_tet_stellar_queue       n_queue=4473 worst_q=2.341540764390185e-06
+2026-04-27 00:05:54 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-27 00:05:54 [info     ] ttt4_poly_bl_extruded          n_added=24
+2026-04-27 00:05:54 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:54 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:54 [info     ] native_poly_best_of_three      drop=0.721 drop_info={'n': 24, 'no': 28.2, 'sk': 0.194} n_drop=24 raw=0.34 raw_info={'n': 48, 'no': 76.6, 'sk': 18.679} sm_info={'n': 24, 'no': 28.2, 'sk': 0.194} smooth=0.721
+2026-04-27 00:05:54 [warning  ] generic_polymesh_non_manifold_face key_len=4 n_refs=4
+2026-04-27 00:05:54 [info     ] native_poly_quality_gate       avg_fpc=9.21 grade=A max_non_ortho=28.24 max_skew=0.194 mean_non_ortho=13.87
+2026-04-27 00:05:54 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_hex_snap_done           cap=7.221855121660086 n_candidates=290 n_feature_snapped=0 n_skipped_beyond_cap=83 n_skipped_far=1 n_snapped=206 search_r=21.66556536498026
+2026-04-27 00:05:54 [info     ] native_hex_boundary_snap_applied n_candidates=290 n_feature_snapped=0 n_skipped_beyond_cap=83 n_skipped_far=1 n_snapped=206
+2026-04-27 00:05:54 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-27 00:05:54 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
+2026-04-27 00:05:54 [info     ] native_hex_quality_gate        grade=A max_aspect=6.2 max_non_ortho=41.11 max_skew=0.14 mean_non_ortho=6.65
+2026-04-27 00:05:54 [info     ] native_poly_best_of_n          cells=24 chosen='voronoi_clipped(sd=15)' cont_score=0.351 grade=A n_candidates=4
+  fid= 100030 poly      : grade=A cells=24 t=2.89s no=28.2° sk=0.19
+2026-04-27 00:05:54 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:55 [info     ] ttt4_poly_bl_extruded          n_added=24
+2026-04-27 00:05:55 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:55 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:55 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=229 n_zero_area=0
+2026-04-27 00:05:55 [warning  ] native_tet_input_warnings      boundary_edges=4 duplicate=0 nonmanifold=4 warnings=['non-watertight: 4 boundary edges', 'non-manifold: 4 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:05:55 [info     ] native_tet_start               bbox_diag=168.44105596388547 n_surf_faces=900 n_surf_verts=362 target_edge_length=21.055131995485684
+2026-04-27 00:05:55 [info     ] native_tet_seed                n_grid_inside=11 n_points=373
+2026-04-27 00:05:55 [info     ] native_tet_recovery_iter       iter=0 n_missing=607 n_new_seeds=1214
+2026-04-27 00:05:55 [info     ] native_poly_best_of_three      drop=0.721 drop_info={'n': 24, 'no': 28.2, 'sk': 0.194} n_drop=24 raw=0.34 raw_info={'n': 48, 'no': 76.6, 'sk': 18.679} sm_info={'n': 24, 'no': 28.2, 'sk': 0.194} smooth=0.721
+2026-04-27 00:05:55 [warning  ] generic_polymesh_non_manifold_face key_len=4 n_refs=4
+2026-04-27 00:05:55 [info     ] native_poly_quality_gate       avg_fpc=9.21 grade=A max_non_ortho=28.24 max_skew=0.194 mean_non_ortho=13.87
+2026-04-27 00:05:55 [info     ] native_tet_recovery_iter       iter=1 n_missing=811 n_new_seeds=1622
+2026-04-27 00:05:55 [info     ] native_hex_snap_done           cap=7.221855121660086 n_candidates=290 n_feature_snapped=0 n_skipped_beyond_cap=83 n_skipped_far=1 n_snapped=206 search_r=21.66556536498026
+2026-04-27 00:05:55 [info     ] native_hex_boundary_snap_applied n_candidates=290 n_feature_snapped=0 n_skipped_beyond_cap=83 n_skipped_far=1 n_snapped=206
+2026-04-27 00:05:55 [info     ] native_hex_quality_gate        grade=A max_aspect=6.2 max_non_ortho=41.11 max_skew=0.14 mean_non_ortho=6.65
+2026-04-27 00:05:55 [info     ] native_poly_best_of_n          cells=24 chosen='voronoi_clipped(sd=15)' cont_score=0.351 grade=A n_candidates=4
+2026-04-27 00:05:55 [info     ] native_bl_read                 component=native_bl n_cells=24 n_faces=210 n_internal=9 n_points=595
+2026-04-27 00:05:55 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=187 phase=beta89
+2026-04-27 00:05:55 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=276 phase=Phase2 reduction=0.5
+2026-04-27 00:05:55 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=276 phase=beta90
+2026-04-27 00:05:55 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=112942.7589869321 n_degenerate_prisms=1608 phase=Phase2 threshold=50.0
+  fid= 100030 poly+BL   : grade=A cells=24 t=2.93s no=28.2° sk=0.19 BL=OK prism=1608
+2026-04-27 00:05:55 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:05:55 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=229 n_zero_area=0
+2026-04-27 00:05:55 [warning  ] native_tet_input_warnings      boundary_edges=4 duplicate=0 nonmanifold=4 warnings=['non-watertight: 4 boundary edges', 'non-manifold: 4 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:05:55 [info     ] native_tet_start               bbox_diag=168.44105596388547 n_surf_faces=900 n_surf_verts=362 target_edge_length=21.055131995485684
+2026-04-27 00:05:55 [info     ] native_tet_seed                n_grid_inside=11 n_points=373
+2026-04-27 00:05:55 [info     ] native_tet_recovery_iter       iter=0 n_missing=607 n_new_seeds=1214
+2026-04-27 00:05:55 [info     ] native_tet_recovery_iter       iter=1 n_missing=811 n_new_seeds=1622
+2026-04-27 00:05:55 [warning  ] native_tet_sliver_filter_revert new_area=0.168 prev_area=0.317 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:05:55 [warning  ] native_tet_smooth_revert       new_area=0.238 prev_area=0.328 reason='surface plane coverage 가 smooth 후 떨어짐'
+2026-04-27 00:05:55 [info     ] native_tet_smooth              max_disp=11.958746968783421 moved=1494 n_corner=168 n_corner_new=168 n_feature_edges=544 n_iter=2
+2026-04-27 00:05:55 [info     ] native_tet_validate            degenerate=18 fixed_by_swap=2367 n_inverted=2367
+2026-04-27 00:05:55 [info     ] native_tet_smooth_then_drop    dropped=26 moved=282
+2026-04-27 00:05:55 [info     ] native_tet_drop_slivers        dropped=34
+2026-04-27 00:05:55 [debug    ] normalize_tet_winding          n_negative=252 n_total=4710
+2026-04-27 00:05:55 [info     ] polymesh_writer_start          case_dir=/tmp/tmpsqktp8wq/c num_cells=4710 num_points=1109
+2026-04-27 00:05:55 [info     ] polymesh_writer_done           num_cells=4710 num_faces=10881 num_internal_faces=7959 num_points=1109
+2026-04-27 00:05:55 [warning  ] native_tet_sliver_filter_revert new_area=0.168 prev_area=0.317 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:05:55 [warning  ] native_tet_smooth_revert       new_area=0.238 prev_area=0.328 reason='surface plane coverage 가 smooth 후 떨어짐'
+2026-04-27 00:05:55 [info     ] native_tet_smooth              max_disp=11.958746968783421 moved=1494 n_corner=168 n_corner_new=168 n_feature_edges=544 n_iter=2
+2026-04-27 00:05:55 [info     ] native_tet_validate            degenerate=18 fixed_by_swap=2367 n_inverted=2367
+2026-04-27 00:05:55 [info     ] native_tet_smooth_then_drop    dropped=26 moved=282
+2026-04-27 00:05:55 [info     ] native_tet_drop_slivers        dropped=34
+2026-04-27 00:05:55 [debug    ] normalize_tet_winding          n_negative=252 n_total=4710
+2026-04-27 00:05:55 [info     ] polymesh_writer_start          case_dir=/tmp/tmpvhgwjihg/c num_cells=4710 num_points=1109
+2026-04-27 00:05:55 [info     ] polymesh_writer_done           num_cells=4710 num_faces=10881 num_internal_faces=7959 num_points=1109
+2026-04-27 00:05:55 [info     ] native_tet_best_of_candidates  base_metrics=(0.334, 0.592, 0.036) base_score=0.294 final_metrics=(0.3, 0.359, 0.055) final_score=0.229 v_only_score=0.29
+2026-04-27 00:05:55 [warning  ] native_tet_best_of_picks_alt   final_score=0.229 pick=base score=0.294
+2026-04-27 00:05:56 [info     ] native_tet_flip_23             mq_after=0.056 mq_before=0.036 n_flips=255 t_after=1488 t_before=1233
+2026-04-27 00:05:56 [info     ] native_tet_flip_32             mq_after=0.056 mq_before=0.056 n_flips=6 t_after=1482 t_before=1488
+2026-04-27 00:05:56 [info     ] native_tet_flip_44             mq_after=0.057 mq_before=0.056 n_flips=2 t_after=1482 t_before=1482
+2026-04-27 00:05:56 [info     ] native_tet_best_of_candidates  base_metrics=(0.334, 0.592, 0.036) base_score=0.294 final_metrics=(0.3, 0.359, 0.055) final_score=0.229 v_only_score=0.29
+2026-04-27 00:05:56 [warning  ] native_tet_best_of_picks_alt   final_score=0.229 pick=base score=0.294
+2026-04-27 00:05:56 [info     ] native_tet_flip_23             mq_after=0.056 mq_before=0.036 n_flips=255 t_after=1488 t_before=1233
+2026-04-27 00:05:56 [info     ] native_tet_flip_23_c2          mq_after=0.06 mq_before=0.057 n_flips=82
+2026-04-27 00:05:56 [info     ] native_tet_flip_32             mq_after=0.056 mq_before=0.056 n_flips=6 t_after=1482 t_before=1488
+2026-04-27 00:05:56 [info     ] native_tet_flip_32_c2          mq_after=0.06 mq_before=0.06 n_flips=2
+2026-04-27 00:05:56 [info     ] native_tet_flip_44             mq_after=0.057 mq_before=0.056 n_flips=2 t_after=1482 t_before=1482
+2026-04-27 00:05:56 [info     ] native_tet_flip_23_c2          mq_after=0.06 mq_before=0.057 n_flips=82
+2026-04-27 00:05:56 [info     ] native_tet_flip_23_c3          mq_after=0.062 mq_before=0.06 n_flips=28
+2026-04-27 00:05:56 [info     ] native_tet_flip_32_c2          mq_after=0.06 mq_before=0.06 n_flips=2
+2026-04-27 00:05:57 [info     ] native_tet_flip_44_c2          mq_after=0.062 mq_before=0.062 n_flips=1
+2026-04-27 00:05:57 [info     ] native_tet_amips_post_flip     mq_after=0.062 mq_before=0.062
+2026-04-27 00:05:57 [info     ] native_tet_flip_23_c3          mq_after=0.062 mq_before=0.06 n_flips=28
+2026-04-27 00:05:57 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=662 n_inserted_points=800 n_recovered=663 t_after=1112 t_before=1590 v_after=1173 v_before=373
+2026-04-27 00:05:57 [info     ] native_tet_flip_44_c2          mq_after=0.062 mq_before=0.062 n_flips=1
+2026-04-27 00:05:57 [info     ] native_tet_amips_post_flip     mq_after=0.062 mq_before=0.062
+2026-04-27 00:05:57 [info     ] native_tet_post_bsp_flip_23    mq_after=0.054 mq_before=0.053 n_flips=6
+2026-04-27 00:05:57 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=662 n_inserted_points=800 n_recovered=663 t_after=1112 t_before=1590 v_after=1173 v_before=373
+2026-04-27 00:05:57 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.054 n_flips_23=3 n_flips_32=0 n_flips_44=1
+2026-04-27 00:05:57 [info     ] native_tet_post_bsp_flip_23    mq_after=0.054 mq_before=0.053 n_flips=6
+2026-04-27 00:05:58 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.055 n_flips_23=1 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:58 [info     ] native_tet_nnn1_dry_run        n_sliver=810 n_sliver_inside=810 threshold=0.05
+2026-04-27 00:05:58 [info     ] native_tet_nnn2                n_inserted=200 post_mean=0.07011327185533028 post_min=0.0 pre_mean=0.05456388039386846 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_nnn3                n_inserted_iter2=200 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07011327185533028 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=54 n_iter=2 n_worst=233 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0 q_thresh=0.1
+2026-04-27 00:05:58 [info     ] native_tet_stellar_queue       n_queue=323 worst_q=0.0
+2026-04-27 00:05:58 [info     ] native_tet_stellar_apply       accepted=False n_app=34 post_mean=0.07852552006611903 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.054 n_flips_23=3 n_flips_32=0 n_flips_44=1
+2026-04-27 00:05:58 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.055 n_flips_23=1 n_flips_32=0 n_flips_44=0
+2026-04-27 00:05:58 [info     ] native_tet_nnn1_dry_run        n_sliver=810 n_sliver_inside=810 threshold=0.05
+2026-04-27 00:05:58 [info     ] native_tet_nnn2                n_inserted=200 post_mean=0.07011327185533028 post_min=0.0 pre_mean=0.05456388039386846 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_nnn3                n_inserted_iter2=200 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07011327185533028 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
+2026-04-27 00:05:58 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=54 n_iter=2 n_worst=233 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0 q_thresh=0.1
+2026-04-27 00:05:58 [info     ] native_tet_stellar_queue       n_queue=323 worst_q=0.0
+2026-04-27 00:05:58 [info     ] native_tet_stellar_apply       accepted=False n_app=34 post_mean=0.07852552006611903 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
+2026-04-27 00:05:59 [info     ] native_tet_pass_gate           cdt_face_ratio=0.002 cdt_ratio=0.007 grade=D hausdorff_rel=612158.00606 mean_q=0.055 plane_area_coverage=0.117 plane_coverage=0.0
+  fid= 100040 tet       : grade=D cells=4710 t=4.56s mq=0.055
+2026-04-27 00:05:59 [info     ] native_hex_snap_done           cap=7.018377331828561 n_candidates=132 n_feature_snapped=0 n_skipped_beyond_cap=13 n_skipped_far=0 n_snapped=119 search_r=21.055131995485684
+2026-04-27 00:05:59 [info     ] native_hex_boundary_snap_applied n_candidates=132 n_feature_snapped=0 n_skipped_beyond_cap=13 n_skipped_far=0 n_snapped=119
+2026-04-27 00:05:59 [info     ] native_hex_quality_gate        grade=A max_aspect=16.37 max_non_ortho=36.54 max_skew=0.202 mean_non_ortho=8.29
+  fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
+2026-04-27 00:05:59 [info     ] native_hex_snap_done           cap=7.018377331828561 n_candidates=132 n_feature_snapped=0 n_skipped_beyond_cap=13 n_skipped_far=0 n_snapped=119 search_r=21.055131995485684
+2026-04-27 00:05:59 [info     ] native_hex_boundary_snap_applied n_candidates=132 n_feature_snapped=0 n_skipped_beyond_cap=13 n_skipped_far=0 n_snapped=119
+2026-04-27 00:05:59 [info     ] native_hex_quality_gate        grade=A max_aspect=16.37 max_non_ortho=36.54 max_skew=0.202 mean_non_ortho=8.29
+2026-04-27 00:05:59 [info     ] native_bl_read                 component=native_bl n_cells=38 n_faces=177 n_internal=51 n_points=132
+2026-04-27 00:05:59 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=126 phase=beta89
+2026-04-27 00:05:59 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=118 phase=Phase2 reduction=0.5
+2026-04-27 00:05:59 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=118 phase=beta90
+2026-04-27 00:05:59 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=86064.75355821925 n_degenerate_prisms=756 phase=Phase2 threshold=50.0
+  fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
+2026-04-27 00:05:59 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=14 n_seeds_before=15
+2026-04-27 00:05:59 [info     ] native_poly_boundary_snap      n_outside_snapped=546
+2026-04-27 00:05:59 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:05:59 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:05:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:05:59 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:05:59 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:59 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:59 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:05:59 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:05:59 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:05:59 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:05:59 [info     ] native_tet_pass_gate           cdt_face_ratio=0.002 cdt_ratio=0.007 grade=D hausdorff_rel=612158.00606 mean_q=0.055 plane_area_coverage=0.117 plane_coverage=0.0
+2026-04-27 00:05:59 [info     ] native_bl_read                 component=native_bl n_cells=4710 n_faces=10881 n_internal=7959 n_points=1109
+2026-04-27 00:05:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:05:59 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:05:59 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:05:59 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:05:59 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:05:59 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:05:59 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:06:00 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:06:00 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:06:00 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:00 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:00 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:00 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:06:00 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:06:00 [info     ] native_hex_snap_done           cap=8.422052798194274 n_candidates=52 n_feature_snapped=0 n_skipped_beyond_cap=3 n_skipped_far=0 n_snapped=49 search_r=25.266158394582824
+2026-04-27 00:06:00 [info     ] native_hex_boundary_snap_applied n_candidates=52 n_feature_snapped=0 n_skipped_beyond_cap=3 n_skipped_far=0 n_snapped=49
+2026-04-27 00:06:00 [info     ] native_hex_quality_gate        grade=A max_aspect=10.17 max_non_ortho=41.79 max_skew=0.143 mean_non_ortho=10.81
+2026-04-27 00:06:00 [info     ] native_poly_best_of_n          cells=12 chosen=hex_fallback cont_score=0.3748 grade=A n_candidates=4
+  fid= 100040 poly      : grade=A cells=12 t=0.42s no=41.8° sk=0.14
+2026-04-27 00:06:00 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=14 n_seeds_before=15
+2026-04-27 00:06:00 [info     ] native_poly_boundary_snap      n_outside_snapped=546
+2026-04-27 00:06:00 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:06:00 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=835 phase=Phase2 reduction=0.5
+2026-04-27 00:06:00 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:06:00 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:06:00 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:00 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:00 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:00 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:06:00 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:06:00 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:06:00 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:06:00 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:06:00 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:00 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:00 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:00 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:06:00 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:06:00 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=25 n_seeds_before=49
+2026-04-27 00:06:00 [info     ] native_poly_boundary_snap      n_outside_snapped=715
+2026-04-27 00:06:00 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-27 00:06:00 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:00 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:00 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:00 [info     ] native_poly_best_of_three      drop=-1.0 drop_info={'n': 0} n_drop=4 raw=0.287 raw_info={'n': 4, 'no': 88.4, 'sk': 1.33} sm_info={'n': 0} smooth=-1.0
+2026-04-27 00:06:00 [info     ] native_poly_quality_gate       avg_fpc=15.75 grade=D max_non_ortho=88.36 max_skew=1.33 mean_non_ortho=87.76
+2026-04-27 00:06:00 [info     ] native_hex_snap_done           cap=8.422052798194274 n_candidates=52 n_feature_snapped=0 n_skipped_beyond_cap=3 n_skipped_far=0 n_snapped=49 search_r=25.266158394582824
+2026-04-27 00:06:00 [info     ] native_hex_boundary_snap_applied n_candidates=52 n_feature_snapped=0 n_skipped_beyond_cap=3 n_skipped_far=0 n_snapped=49
+2026-04-27 00:06:00 [info     ] native_hex_quality_gate        grade=A max_aspect=10.17 max_non_ortho=41.79 max_skew=0.143 mean_non_ortho=10.81
+2026-04-27 00:06:00 [info     ] native_poly_best_of_n          cells=12 chosen=hex_fallback cont_score=0.3748 grade=A n_candidates=4
+2026-04-27 00:06:00 [info     ] native_bl_read                 component=native_bl n_cells=12 n_faces=60 n_internal=12 n_points=52
+2026-04-27 00:06:00 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=48 phase=beta89
+2026-04-27 00:06:00 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=48 phase=Phase2 reduction=0.5
+2026-04-27 00:06:00 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=48 phase=beta90
+2026-04-27 00:06:00 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=102902.74735436337 n_degenerate_prisms=288 phase=Phase2 threshold=50.0
+  fid= 100040 poly+BL   : grade=A cells=12 t=0.42s no=41.8° sk=0.14 BL=OK prism=288
+2026-04-27 00:06:00 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:06:00 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=105 n_zero_area=0
+2026-04-27 00:06:00 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=1 warnings=['non-manifold: 1 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:06:00 [info     ] native_tet_start               bbox_diag=44.81263553729297 n_surf_faces=808 n_surf_verts=394 target_edge_length=5.601579442161621
+2026-04-27 00:06:00 [info     ] native_tet_seed                n_grid_inside=3 n_points=397
+2026-04-27 00:06:00 [info     ] native_tet_recovery_iter       iter=0 n_missing=280 n_new_seeds=560
+2026-04-27 00:06:00 [info     ] native_tet_recovery_iter       iter=1 n_missing=314 n_new_seeds=628
+2026-04-27 00:06:00 [info     ] native_tet_sliver_filter_phase_a boundary_protected=0 dropped_total=186 interior_dropped=56 kept=3035 q_thresh_boundary=0.005000000000000001 q_thresh_interior=0.05
+2026-04-27 00:06:00 [info     ] native_tet_smooth              max_disp=1.5811195165379244 moved=634 n_corner=31 n_corner_new=31 n_feature_edges=144 n_iter=2
+2026-04-27 00:06:00 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=1500 n_inverted=1500
+2026-04-27 00:06:00 [info     ] native_tet_smooth_then_drop    dropped=0 moved=10
+2026-04-27 00:06:00 [info     ] native_tet_drop_slivers        dropped=2
+2026-04-27 00:06:00 [debug    ] normalize_tet_winding          n_negative=1 n_total=3033
+2026-04-27 00:06:00 [info     ] polymesh_writer_start          case_dir=/tmp/tmpambmc4tm/c num_cells=3033 num_points=711
+2026-04-27 00:06:00 [info     ] polymesh_writer_done           num_cells=3033 num_faces=6670 num_internal_faces=5462 num_points=711
+2026-04-27 00:06:00 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=835 phase=beta90
+2026-04-27 00:06:01 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=634117.6571766887 n_degenerate_prisms=5844 phase=Phase2 threshold=50.0
+  fid= 100040 tet+BL    : grade=D cells=4710 t=4.58s mq=0.055 BL=OK prism=5844
+2026-04-27 00:06:01 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:06:01 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=105 n_zero_area=0
+2026-04-27 00:06:01 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=1 warnings=['non-manifold: 1 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:06:01 [info     ] native_tet_start               bbox_diag=44.81263553729297 n_surf_faces=808 n_surf_verts=394 target_edge_length=5.601579442161621
+2026-04-27 00:06:01 [info     ] native_tet_seed                n_grid_inside=3 n_points=397
+2026-04-27 00:06:01 [info     ] native_tet_recovery_iter       iter=0 n_missing=280 n_new_seeds=560
+2026-04-27 00:06:01 [info     ] native_tet_recovery_iter       iter=1 n_missing=314 n_new_seeds=628
+2026-04-27 00:06:01 [info     ] native_tet_best_of_candidates  base_metrics=(0.33, 0.862, 0.086) base_score=0.378 final_metrics=(0.657, 0.78, 0.208) final_score=0.531 v_only_score=0.376
+2026-04-27 00:06:01 [info     ] native_tet_sliver_filter_phase_a boundary_protected=0 dropped_total=186 interior_dropped=56 kept=3035 q_thresh_boundary=0.005000000000000001 q_thresh_interior=0.05
+2026-04-27 00:06:01 [info     ] native_tet_smooth              max_disp=1.5811195165379244 moved=634 n_corner=31 n_corner_new=31 n_feature_edges=144 n_iter=2
+2026-04-27 00:06:01 [info     ] native_tet_validate            degenerate=0 fixed_by_swap=1500 n_inverted=1500
+2026-04-27 00:06:01 [info     ] native_tet_smooth_then_drop    dropped=0 moved=10
+2026-04-27 00:06:01 [info     ] native_tet_drop_slivers        dropped=2
+2026-04-27 00:06:01 [debug    ] normalize_tet_winding          n_negative=1 n_total=3033
+2026-04-27 00:06:01 [info     ] polymesh_writer_start          case_dir=/tmp/tmpmtsohsq2/c num_cells=3033 num_points=711
+2026-04-27 00:06:01 [info     ] polymesh_writer_done           num_cells=3033 num_faces=6670 num_internal_faces=5462 num_points=711
+2026-04-27 00:06:02 [info     ] native_tet_best_of_candidates  base_metrics=(0.33, 0.862, 0.086) base_score=0.378 final_metrics=(0.657, 0.78, 0.208) final_score=0.531 v_only_score=0.376
+2026-04-27 00:06:02 [info     ] native_tet_flip_23             mq_after=0.227 mq_before=0.208 n_flips=510 t_after=3543 t_before=3033
+2026-04-27 00:06:02 [info     ] native_tet_flip_32             mq_after=0.229 mq_before=0.227 n_flips=61 t_after=3482 t_before=3543
+2026-04-27 00:06:02 [info     ] native_tet_flip_44             mq_after=0.231 mq_before=0.229 n_flips=54 t_after=3482 t_before=3482
+2026-04-27 00:06:02 [info     ] native_tet_flip_23             mq_after=0.227 mq_before=0.208 n_flips=510 t_after=3543 t_before=3033
+2026-04-27 00:06:02 [info     ] native_tet_flip_32             mq_after=0.229 mq_before=0.227 n_flips=61 t_after=3482 t_before=3543
+2026-04-27 00:06:03 [info     ] native_tet_flip_44             mq_after=0.231 mq_before=0.229 n_flips=54 t_after=3482 t_before=3482
+2026-04-27 00:06:03 [info     ] native_tet_flip_23_c2          mq_after=0.232 mq_before=0.231 n_flips=110
+2026-04-27 00:06:03 [info     ] native_tet_flip_32_c2          mq_after=0.232 mq_before=0.232 n_flips=9
+2026-04-27 00:06:04 [info     ] native_tet_flip_23_c2          mq_after=0.232 mq_before=0.231 n_flips=110
+2026-04-27 00:06:04 [info     ] native_tet_flip_32_c2          mq_after=0.232 mq_before=0.232 n_flips=9
+2026-04-27 00:06:04 [info     ] native_tet_flip_23_c3          mq_after=0.233 mq_before=0.232 n_flips=40
+2026-04-27 00:06:04 [info     ] native_tet_flip_32_c3          mq_after=0.234 mq_before=0.233 n_flips=3
+2026-04-27 00:06:04 [info     ] native_tet_flip_44_c2          mq_after=0.234 mq_before=0.234 n_flips=9
+2026-04-27 00:06:04 [info     ] native_tet_amips_post_flip     mq_after=0.234 mq_before=0.234
+2026-04-27 00:06:05 [info     ] native_tet_flip_23_c3          mq_after=0.233 mq_before=0.232 n_flips=40
+2026-04-27 00:06:05 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=406 n_inserted_points=380 n_recovered=407 t_after=3335 t_before=3620 v_after=1091 v_before=711
+2026-04-27 00:06:05 [info     ] native_tet_flip_32_c3          mq_after=0.234 mq_before=0.233 n_flips=3
+2026-04-27 00:06:05 [info     ] native_tet_flip_44_c2          mq_after=0.234 mq_before=0.234 n_flips=9
+2026-04-27 00:06:05 [info     ] native_tet_amips_post_flip     mq_after=0.234 mq_before=0.234
+2026-04-27 00:06:05 [info     ] native_tet_bsp_insert          missing_after=-1 missing_before=406 n_inserted_points=380 n_recovered=407 t_after=3335 t_before=3620 v_after=1091 v_before=711
+2026-04-27 00:06:05 [info     ] native_tet_post_bsp_flip_23    mq_after=0.236 mq_before=0.236 n_flips=16
+2026-04-27 00:06:06 [info     ] native_tet_post_bsp_flip_23    mq_after=0.236 mq_before=0.236 n_flips=16
+2026-04-27 00:06:06 [info     ] native_tet_kkk1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.236 mq_before=0.236 n_flips_23=6 n_flips_32=0 n_flips_44=0
+2026-04-27 00:06:07 [info     ] native_tet_kkk1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.236 mq_before=0.236 n_flips_23=6 n_flips_32=0 n_flips_44=0
+2026-04-27 00:06:08 [info     ] native_tet_mmm1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.237 mq_before=0.236 n_flips_23=3 n_flips_32=0 n_flips_44=0
+2026-04-27 00:06:08 [info     ] native_tet_nnn1_dry_run        n_sliver=128 n_sliver_inside=128 threshold=0.05
+2026-04-27 00:06:08 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.23680083435192212 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=210 n_iter=2 n_worst=505 p5=0.05721842235474888 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23680083435192212 pre_min=0.006632378448310056 q_thresh=0.1
+2026-04-27 00:06:08 [info     ] native_tet_stellar_queue       n_queue=3360 worst_q=0.07660392132244083
+2026-04-27 00:06:08 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23681624622496722 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_mmm1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.237 mq_before=0.236 n_flips_23=3 n_flips_32=0 n_flips_44=0
+2026-04-27 00:06:08 [info     ] native_tet_nnn1_dry_run        n_sliver=128 n_sliver_inside=128 threshold=0.05
+2026-04-27 00:06:08 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.23680083435192212 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
+2026-04-27 00:06:08 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=210 n_iter=2 n_worst=505 p5=0.05721842235474888 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23680083435192212 pre_min=0.006632378448310056 q_thresh=0.1
+2026-04-27 00:06:08 [info     ] native_tet_stellar_queue       n_queue=3360 worst_q=0.07660392132244083
+2026-04-27 00:06:09 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23681624622496722 pre_min=0.006632378448310056
+2026-04-27 00:06:14 [info     ] native_tet_pass_gate           cdt_face_ratio=0.211 cdt_ratio=0.541 grade=D hausdorff_rel=0.14267 mean_q=0.095 plane_area_coverage=0.221 plane_coverage=0.111
+  fid= 100030 tet       : grade=D cells=11979 t=31.83s mq=0.095
+2026-04-27 00:06:14 [info     ] native_hex_snap_done           cap=1.867193147387207 n_candidates=164 n_feature_snapped=0 n_skipped_beyond_cap=28 n_skipped_far=0 n_snapped=136 search_r=5.601579442161621
+2026-04-27 00:06:14 [info     ] native_hex_boundary_snap_applied n_candidates=164 n_feature_snapped=0 n_skipped_beyond_cap=28 n_skipped_far=0 n_snapped=136
+2026-04-27 00:06:14 [info     ] native_hex_low_fill_ratio      fill_ratio=0.21428571428571427 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=280 n_kept=60
+2026-04-27 00:06:14 [info     ] native_hex_quality_gate        grade=A max_aspect=6.9 max_non_ortho=22.35 max_skew=0.11 mean_non_ortho=6.17
+  fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
+2026-04-27 00:06:14 [info     ] native_hex_snap_done           cap=1.867193147387207 n_candidates=164 n_feature_snapped=0 n_skipped_beyond_cap=28 n_skipped_far=0 n_snapped=136 search_r=5.601579442161621
+2026-04-27 00:06:14 [info     ] native_hex_boundary_snap_applied n_candidates=164 n_feature_snapped=0 n_skipped_beyond_cap=28 n_skipped_far=0 n_snapped=136
+2026-04-27 00:06:14 [info     ] native_hex_low_fill_ratio      fill_ratio=0.21428571428571427 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=280 n_kept=60
+2026-04-27 00:06:14 [info     ] native_tet_pass_gate           cdt_face_ratio=0.211 cdt_ratio=0.541 grade=D hausdorff_rel=0.14267 mean_q=0.095 plane_area_coverage=0.221 plane_coverage=0.111
+2026-04-27 00:06:14 [info     ] native_hex_quality_gate        grade=A max_aspect=6.9 max_non_ortho=22.35 max_skew=0.11 mean_non_ortho=6.17
+2026-04-27 00:06:14 [info     ] native_bl_read                 component=native_bl n_cells=60 n_faces=260 n_internal=100 n_points=164
+2026-04-27 00:06:14 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=160 phase=beta89
+2026-04-27 00:06:14 [info     ] native_bl_read                 component=native_bl n_cells=11979 n_faces=27163 n_internal=20753 n_points=2451
+2026-04-27 00:06:14 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=92 phase=Phase2 reduction=0.5
+2026-04-27 00:06:14 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=92 phase=beta90
+2026-04-27 00:06:14 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=23466.724747339715 n_degenerate_prisms=960 phase=Phase2 threshold=50.0
+  fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
+2026-04-27 00:06:14 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=11 n_seeds_before=12
+2026-04-27 00:06:14 [info     ] native_poly_boundary_snap      n_outside_snapped=1367
+2026-04-27 00:06:14 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-27 00:06:14 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:14 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:14 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:14 [info     ] native_poly_best_of_three      drop=0.637 drop_info={'n': 2, 'no': 19.1, 'sk': 0.016} n_drop=2 raw=0.612 raw_info={'n': 4, 'no': 24.9, 'sk': 0.212} sm_info={'n': 2, 'no': 19.1, 'sk': 0.016} smooth=0.637
+2026-04-27 00:06:14 [info     ] native_poly_quality_gate       avg_fpc=13.5 grade=D max_non_ortho=19.1 max_skew=0.016 mean_non_ortho=19.1
+2026-04-27 00:06:14 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:14 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:14 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:14 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:14 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:14 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:14 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:14 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:14 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:14 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:14 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:14 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:14 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:14 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:14 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:14 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:14 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:14 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:15 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=1927 phase=Phase2 reduction=0.5
+2026-04-27 00:06:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:15 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:15 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:15 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:15 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:15 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:15 [info     ] native_hex_snap_done           cap=2.2406317768646486 n_candidates=108 n_feature_snapped=0 n_skipped_beyond_cap=20 n_skipped_far=0 n_snapped=88 search_r=6.721895330593946
+2026-04-27 00:06:15 [info     ] native_hex_boundary_snap_applied n_candidates=108 n_feature_snapped=0 n_skipped_beyond_cap=20 n_skipped_far=0 n_snapped=88
+2026-04-27 00:06:15 [info     ] native_hex_low_fill_ratio      fill_ratio=0.2345679012345679 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=162 n_kept=38
+2026-04-27 00:06:15 [info     ] native_hex_quality_gate        grade=A max_aspect=4.4 max_non_ortho=20.33 max_skew=0.136 mean_non_ortho=6.67
+2026-04-27 00:06:15 [info     ] native_poly_best_of_n          cells=6 chosen='voronoi_clipped(sd=15)' cont_score=0.1905 grade=A n_candidates=4
+  fid=1004826 poly      : grade=A cells=6 t=0.69s no=26.7° sk=0.04
+2026-04-27 00:06:15 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=11 n_seeds_before=12
+2026-04-27 00:06:15 [info     ] native_poly_boundary_snap      n_outside_snapped=1367
+2026-04-27 00:06:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-27 00:06:15 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:15 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:15 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:15 [info     ] native_poly_best_of_three      drop=0.637 drop_info={'n': 2, 'no': 19.1, 'sk': 0.016} n_drop=2 raw=0.612 raw_info={'n': 4, 'no': 24.9, 'sk': 0.212} sm_info={'n': 2, 'no': 19.1, 'sk': 0.016} smooth=0.637
+2026-04-27 00:06:15 [info     ] native_poly_quality_gate       avg_fpc=13.5 grade=D max_non_ortho=19.1 max_skew=0.016 mean_non_ortho=19.1
+2026-04-27 00:06:15 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:15 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:15 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:15 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:15 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:15 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:15 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:15 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:15 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:15 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:15 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:15 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:15 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:15 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:15 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=24 n_seeds_before=43
+2026-04-27 00:06:15 [info     ] native_poly_boundary_snap      n_outside_snapped=1346
+2026-04-27 00:06:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-27 00:06:15 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:15 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:15 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:15 [info     ] native_poly_best_of_three      drop=0.629 drop_info={'n': 6, 'no': 26.7, 'sk': 0.042} n_drop=6 raw=0.238 raw_info={'n': 12, 'no': 47.4, 'sk': 34.765} sm_info={'n': 6, 'no': 26.7, 'sk': 0.042} smooth=0.629
+2026-04-27 00:06:15 [info     ] native_poly_quality_gate       avg_fpc=9.0 grade=A max_non_ortho=26.74 max_skew=0.042 mean_non_ortho=26.74
+2026-04-27 00:06:15 [info     ] native_hex_snap_done           cap=2.2406317768646486 n_candidates=108 n_feature_snapped=0 n_skipped_beyond_cap=20 n_skipped_far=0 n_snapped=88 search_r=6.721895330593946
+2026-04-27 00:06:15 [info     ] native_hex_boundary_snap_applied n_candidates=108 n_feature_snapped=0 n_skipped_beyond_cap=20 n_skipped_far=0 n_snapped=88
+2026-04-27 00:06:15 [info     ] native_hex_low_fill_ratio      fill_ratio=0.2345679012345679 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=162 n_kept=38
+2026-04-27 00:06:15 [info     ] native_hex_quality_gate        grade=A max_aspect=4.4 max_non_ortho=20.33 max_skew=0.136 mean_non_ortho=6.67
+2026-04-27 00:06:15 [info     ] native_poly_best_of_n          cells=6 chosen='voronoi_clipped(sd=15)' cont_score=0.1905 grade=A n_candidates=4
+2026-04-27 00:06:15 [info     ] native_bl_read                 component=native_bl n_cells=6 n_faces=53 n_internal=1 n_points=239
+2026-04-27 00:06:15 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=47 phase=beta89
+2026-04-27 00:06:15 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=78 phase=Phase2 reduction=0.5
+2026-04-27 00:06:15 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.2797296028734198 min_collision=0.002036431508918496 new_total=0.001018215754459248 phase=Phase2 safety=0.5
+2026-04-27 00:06:15 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=78 phase=beta90
+2026-04-27 00:06:16 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=43448.35038979697 n_degenerate_prisms=408 phase=Phase2 threshold=50.0
+  fid=1004826 poly+BL   : grade=A cells=6 t=0.86s no=26.7° sk=0.04 BL=OK prism=408
+2026-04-27 00:06:16 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:06:16 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=471 n_zero_area=0
+2026-04-27 00:06:16 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=257 warnings=['non-manifold: 257 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:06:16 [info     ] native_tet_start               bbox_diag=206.94071205005577 n_surf_faces=1755 n_surf_verts=664 target_edge_length=25.86758900625697
+2026-04-27 00:06:16 [info     ] native_tet_seed                n_grid_inside=0 n_points=664
+2026-04-27 00:06:16 [info     ] native_tet_recovery_iter       iter=0 n_missing=1151 n_new_seeds=2302
+2026-04-27 00:06:16 [info     ] native_tet_recovery_iter       iter=1 n_missing=1371 n_new_seeds=2742
+2026-04-27 00:06:17 [warning  ] native_tet_sliver_filter_revert new_area=0.248 prev_area=0.305 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:06:17 [info     ] native_tet_smooth              max_disp=8.962833121491077 moved=2992 n_corner=340 n_corner_new=340 n_feature_edges=1067 n_iter=2
+2026-04-27 00:06:17 [info     ] native_tet_validate            degenerate=1 fixed_by_swap=4949 n_inverted=4949
+2026-04-27 00:06:17 [info     ] native_tet_smooth_then_drop    dropped=38 moved=122
+2026-04-27 00:06:17 [info     ] native_tet_drop_slivers        dropped=40
+2026-04-27 00:06:17 [debug    ] normalize_tet_winding          n_negative=35 n_total=9897
+2026-04-27 00:06:17 [info     ] polymesh_writer_start          case_dir=/tmp/tmpt1wnc_k4/c num_cells=9897 num_points=2160
+2026-04-27 00:06:17 [info     ] polymesh_writer_done           num_cells=9897 num_faces=22004 num_internal_faces=17584 num_points=2160
+2026-04-27 00:06:18 [info     ] native_tet_pass_gate           cdt_face_ratio=0.451 cdt_ratio=0.777 grade=C hausdorff_rel=0.08728 mean_q=0.208 plane_area_coverage=0.473 plane_coverage=0.514
+  fid=1004826 tet       : grade=C cells=3033 t=17.68s mq=0.208
+2026-04-27 00:06:18 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-27 00:06:18 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=471 n_zero_area=0
+2026-04-27 00:06:18 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=257 warnings=['non-manifold: 257 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-27 00:06:18 [info     ] native_tet_start               bbox_diag=206.94071205005577 n_surf_faces=1755 n_surf_verts=664 target_edge_length=25.86758900625697
+2026-04-27 00:06:18 [info     ] native_tet_seed                n_grid_inside=0 n_points=664
+2026-04-27 00:06:18 [info     ] native_tet_recovery_iter       iter=0 n_missing=1151 n_new_seeds=2302
+2026-04-27 00:06:18 [info     ] native_tet_recovery_iter       iter=1 n_missing=1371 n_new_seeds=2742
+2026-04-27 00:06:18 [info     ] native_tet_best_of_candidates  base_metrics=(0.307, 0.618, 0.044) base_score=0.293 final_metrics=(0.267, 0.461, 0.127) final_score=0.266 v_only_score=0.293
+2026-04-27 00:06:18 [warning  ] native_tet_best_of_picks_alt   final_score=0.266 pick=base score=0.293
+2026-04-27 00:06:18 [info     ] native_tet_pass_gate           cdt_face_ratio=0.451 cdt_ratio=0.777 grade=C hausdorff_rel=0.08728 mean_q=0.208 plane_area_coverage=0.473 plane_coverage=0.514
+2026-04-27 00:06:18 [info     ] native_bl_read                 component=native_bl n_cells=3033 n_faces=6670 n_internal=5462 n_points=711
+2026-04-27 00:06:18 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=282 phase=Phase2 reduction=0.5
+2026-04-27 00:06:18 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.45454545454545464 min_collision=0.0019489986018247584 new_total=0.001 phase=Phase2 safety=0.5
+2026-04-27 00:06:18 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=1927 phase=beta90
+2026-04-27 00:06:18 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=282 phase=beta90
+2026-04-27 00:06:19 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=69191.07441292345 n_degenerate_prisms=2416 phase=Phase2 threshold=50.0
+  fid=1004826 tet+BL    : grade=C cells=3033 t=17.6s mq=0.208 BL=OK prism=2416
+2026-04-27 00:06:19 [info     ] native_hex_snap_done           cap=8.622529668752323 n_candidates=106 n_feature_snapped=0 n_skipped_beyond_cap=7 n_skipped_far=0 n_snapped=99 search_r=25.86758900625697
+2026-04-27 00:06:19 [info     ] native_hex_boundary_snap_applied n_candidates=106 n_feature_snapped=0 n_skipped_beyond_cap=7 n_skipped_far=0 n_snapped=99
+2026-04-27 00:06:19 [info     ] native_hex_quality_gate        grade=A max_aspect=6.12 max_non_ortho=16.18 max_skew=0.143 mean_non_ortho=4.66
+  fid= 101085 hex       : grade=A cells=28 t=0.04s no=16.2° sk=0.14
+2026-04-27 00:06:19 [info     ] native_hex_snap_done           cap=8.622529668752323 n_candidates=106 n_feature_snapped=0 n_skipped_beyond_cap=7 n_skipped_far=0 n_snapped=99 search_r=25.86758900625697
+2026-04-27 00:06:19 [info     ] native_hex_boundary_snap_applied n_candidates=106 n_feature_snapped=0 n_skipped_beyond_cap=7 n_skipped_far=0 n_snapped=99
+2026-04-27 00:06:19 [info     ] native_hex_quality_gate        grade=A max_aspect=6.12 max_non_ortho=16.18 max_skew=0.143 mean_non_ortho=4.66
+2026-04-27 00:06:19 [info     ] native_bl_read                 component=native_bl n_cells=28 n_faces=135 n_internal=33 n_points=106
+2026-04-27 00:06:19 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=102 phase=beta89
+2026-04-27 00:06:19 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=94 phase=Phase2 reduction=0.5
+2026-04-27 00:06:19 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=94 phase=beta90
+2026-04-27 00:06:19 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=110551.05840886569 n_degenerate_prisms=612 phase=Phase2 threshold=50.0
+  fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
+2026-04-27 00:06:19 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=9 n_seeds_before=13
+2026-04-27 00:06:19 [info     ] native_poly_boundary_snap      n_outside_snapped=2312
+2026-04-27 00:06:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=673
+2026-04-27 00:06:19 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:19 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:19 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:19 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=3 raw=0.274 raw_info={'n': 4, 'no': 87.3, 'sk': 1.586} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:06:19 [info     ] native_poly_quality_gate       avg_fpc=6.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:19 [warning  ] native_tet_sliver_filter_revert new_area=0.248 prev_area=0.305 reason='filter_slivers 가 surface plane 깨뜨림'
+2026-04-27 00:06:19 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=783697.1664955413 n_degenerate_prisms=12820 phase=Phase2 threshold=50.0
+2026-04-27 00:06:19 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=42 n_seeds_before=83
+  fid= 100030 tet+BL    : grade=D cells=11979 t=31.83s mq=0.095 BL=OK prism=12820
+2026-04-27 00:06:19 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=9 n_seeds_before=13
+2026-04-27 00:06:19 [info     ] native_tet_smooth              max_disp=8.962833121491077 moved=2992 n_corner=340 n_corner_new=340 n_feature_edges=1067 n_iter=2
+2026-04-27 00:06:19 [info     ] native_tet_validate            degenerate=1 fixed_by_swap=4949 n_inverted=4949
+2026-04-27 00:06:19 [info     ] native_tet_smooth_then_drop    dropped=38 moved=122
+2026-04-27 00:06:19 [info     ] native_tet_drop_slivers        dropped=40
+2026-04-27 00:06:19 [debug    ] normalize_tet_winding          n_negative=35 n_total=9897
+2026-04-27 00:06:19 [info     ] polymesh_writer_start          case_dir=/tmp/tmp_w4a5xw2/c num_cells=9897 num_points=2160
+2026-04-27 00:06:19 [info     ] native_poly_boundary_snap      n_outside_snapped=2196
+2026-04-27 00:06:19 [info     ] native_poly_boundary_snap      n_outside_snapped=2312
+2026-04-27 00:06:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=673
+2026-04-27 00:06:19 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-27 00:06:19 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:19 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:19 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=3 raw=0.274 raw_info={'n': 4, 'no': 87.3, 'sk': 1.586} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-27 00:06:19 [info     ] native_poly_quality_gate       avg_fpc=6.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:19 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=42 n_seeds_before=83
+2026-04-27 00:06:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-27 00:06:19 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:19 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:19 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:19 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.467 raw_info={'n': 12, 'no': 70.5, 'sk': 0.435} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:19 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:19 [info     ] native_tet_flip_23             mq_after=0.064 mq_before=0.044 n_flips=785 t_after=4714 t_before=3929
+2026-04-27 00:06:19 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=32 n_seeds_before=83
+2026-04-27 00:06:19 [info     ] native_poly_boundary_snap      n_outside_snapped=2196
+2026-04-27 00:06:19 [info     ] native_tet_flip_32             mq_after=0.066 mq_before=0.064 n_flips=81 t_after=4633 t_before=4714
+2026-04-27 00:06:19 [info     ] polymesh_writer_done           num_cells=9897 num_faces=22004 num_internal_faces=17584 num_points=2160
+2026-04-27 00:06:19 [info     ] native_poly_boundary_snap      n_outside_snapped=2123
+2026-04-27 00:06:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-27 00:06:20 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:20 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:20 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:20 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.467 raw_info={'n': 12, 'no': 70.5, 'sk': 0.435} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:20 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:20 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=2 n_seeds_after=32 n_seeds_before=83
+2026-04-27 00:06:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=696
+2026-04-27 00:06:20 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:20 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:20 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:20 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.408 raw_info={'n': 12, 'no': 79.1, 'sk': 0.809} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:20 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:20 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=42 n_seeds_before=83
+2026-04-27 00:06:20 [info     ] native_poly_boundary_snap      n_outside_snapped=2123
+2026-04-27 00:06:20 [info     ] native_tet_flip_44             mq_after=0.067 mq_before=0.066 n_flips=67 t_after=4633 t_before=4633
+2026-04-27 00:06:20 [info     ] native_poly_boundary_snap      n_outside_snapped=2196
+2026-04-27 00:06:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=696
+2026-04-27 00:06:20 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:20 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:20 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:20 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.408 raw_info={'n': 12, 'no': 79.1, 'sk': 0.809} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:20 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:20 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=2 n_seeds_after=42 n_seeds_before=83
+2026-04-27 00:06:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-27 00:06:20 [info     ] native_poly_boundary_snap      n_outside_snapped=2196
+2026-04-27 00:06:20 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:20 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:20 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:20 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.467 raw_info={'n': 12, 'no': 70.5, 'sk': 0.435} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:20 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-27 00:06:20 [info     ] native_hex_snap_done           cap=10.347035602502789 n_candidates=86 n_feature_snapped=0 n_skipped_beyond_cap=2 n_skipped_far=0 n_snapped=84 search_r=31.041106807508367
+2026-04-27 00:06:20 [info     ] native_hex_boundary_snap_applied n_candidates=86 n_feature_snapped=0 n_skipped_beyond_cap=2 n_skipped_far=0 n_snapped=84
+2026-04-27 00:06:20 [info     ] native_hex_quality_gate        grade=A max_aspect=6.85 max_non_ortho=22.29 max_skew=0.11 mean_non_ortho=5.72
+2026-04-27 00:06:20 [info     ] native_poly_best_of_n          cells=4 chosen='voronoi_clipped(sd=22)' cont_score=0.0 grade=A n_candidates=4
+  fid= 101085 poly      : grade=A cells=4 t=1.46s no=0.0° sk=0.0
+2026-04-27 00:06:20 [info     ] ttt4_poly_bl_extruded          n_added=6
+2026-04-27 00:06:20 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-27 00:06:20 [info     ] ttt8_poly_bl_2nd_layer_skipped reason=no_cells_added
+2026-04-27 00:06:20 [info     ] native_poly_best_of_three      drop=0.724 drop_info={'n': 4, 'no': 0.0, 'sk': 0.0} n_drop=8 raw=0.467 raw_info={'n': 12, 'no': 70.5, 'sk': 0.435} sm_info={'n': 4, 'no': 0.0, 'sk': 0.0} smooth=0.724
+2026-04-27 00:06:20 [info     ] native_poly_quality_gate       avg_fpc=6.25 grade=A max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-27 00:06:20 [info     ] native_hex_snap_done           cap=10.347035602502789 n_candidates=86 n_feature_snapped=0 n_skipped_beyond_cap=2 n_skipped_far=0 n_snapped=84 search_r=31.041106807508367
+2026-04-27 00:06:20 [info     ] native_hex_boundary_snap_applied n_candidates=86 n_feature_snapped=0 n_skipped_beyond_cap=2 n_skipped_far=0 n_snapped=84
+2026-04-27 00:06:20 [info     ] native_hex_quality_gate        grade=A max_aspect=6.85 max_non_ortho=22.29 max_skew=0.11 mean_non_ortho=5.72
+2026-04-27 00:06:20 [info     ] native_poly_best_of_n          cells=4 chosen='voronoi_clipped(sd=22)' cont_score=0.0 grade=A n_candidates=4
+2026-04-27 00:06:20 [info     ] native_bl_read                 component=native_bl n_cells=4 n_faces=25 n_internal=0 n_points=139
+2026-04-27 00:06:20 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=21 phase=beta89
+2026-04-27 00:06:20 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=34 phase=Phase2 reduction=0.5
+2026-04-27 00:06:20 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=34 phase=beta90
+2026-04-27 00:06:20 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=59025.62794029043 n_degenerate_prisms=156 phase=Phase2 threshold=50.0
+  fid= 101085 poly+BL   : grade=A cells=4 t=1.25s no=0.0° sk=0.0 BL=OK prism=156
+2026-04-27 00:06:20 [info     ] native_tet_best_of_candidates  base_metrics=(0.307, 0.618, 0.044) base_score=0.293 final_metrics=(0.267, 0.461, 0.127) final_score=0.266 v_only_score=0.293
+2026-04-27 00:06:20 [warning  ] native_tet_best_of_picks_alt   final_score=0.266 pick=base score=0.293
+2026-04-27 00:06:21 [info     ] native_tet_flip_23_c2          mq_after=0.072 mq_before=0.067 n_flips=342
+2026-04-27 00:06:21 [info     ] native_tet_flip_32_c2          mq_after=0.072 mq_before=0.072 n_flips=20
+2026-04-27 00:06:21 [info     ] native_tet_flip_23             mq_after=0.064 mq_before=0.044 n_flips=785 t_after=4714 t_before=3929
+2026-04-27 00:06:22 [info     ] native_tet_flip_32             mq_after=0.066 mq_before=0.064 n_flips=81 t_after=4633 t_before=4714
+2026-04-27 00:06:22 [info     ] native_tet_flip_44             mq_after=0.067 mq_before=0.066 n_flips=67 t_after=4633 t_before=4633
+2026-04-27 00:06:22 [info     ] native_tet_flip_23_c3          mq_after=0.074 mq_before=0.072 n_flips=202
+2026-04-27 00:06:22 [info     ] native_tet_flip_32_c3          mq_after=0.075 mq_before=0.074 n_flips=14
+2026-04-27 00:06:23 [info     ] native_tet_flip_44_c2          mq_after=0.075 mq_before=0.075 n_flips=22
+2026-04-27 00:06:23 [info     ] native_tet_amips_post_flip     mq_after=0.075 mq_before=0.075
+2026-04-27 00:06:23 [info     ] native_tet_flip_23_c2          mq_after=0.072 mq_before=0.067 n_flips=342
+2026-04-27 00:06:23 [info     ] native_tet_flip_32_c2          mq_after=0.072 mq_before=0.072 n_flips=20
+2026-04-27 00:06:24 [info     ] native_tet_post_bsp_flip_23    mq_after=0.075 mq_before=0.075 n_flips=154
+2026-04-27 00:06:24 [info     ] native_tet_post_bsp_flip_32    mq_after=0.076 mq_before=0.075 n_flips=13
+2026-04-27 00:06:24 [info     ] native_tet_flip_23_c3          mq_after=0.074 mq_before=0.072 n_flips=202
+2026-04-27 00:06:25 [info     ] native_tet_flip_32_c3          mq_after=0.075 mq_before=0.074 n_flips=14
+2026-04-27 00:06:25 [info     ] native_tet_flip_44_c2          mq_after=0.075 mq_before=0.075 n_flips=22
+2026-04-27 00:06:25 [info     ] native_tet_amips_post_flip     mq_after=0.075 mq_before=0.075
+2026-04-27 00:06:26 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=122 n_flips_32=8 n_flips_44=8
+2026-04-27 00:06:26 [info     ] native_tet_post_bsp_flip_23    mq_after=0.075 mq_before=0.075 n_flips=154
+2026-04-27 00:06:26 [info     ] native_tet_post_bsp_flip_32    mq_after=0.076 mq_before=0.075 n_flips=13
+2026-04-27 00:06:27 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=96 n_flips_32=8 n_flips_44=2
+2026-04-27 00:06:27 [info     ] native_tet_nnn1_dry_run        n_sliver=2936 n_sliver_inside=2936 threshold=0.05
+2026-04-27 00:06:27 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:27 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:27 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:27 [info     ] native_tet_rrr2_targeted_amips_skip p5=7.030301723464784e-05 reason=no_free_interior_vertices
+2026-04-27 00:06:27 [info     ] native_tet_stellar_queue       n_queue=5486 worst_q=6.769352401690269e-08
+2026-04-27 00:06:28 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=122 n_flips_32=8 n_flips_44=8
+2026-04-27 00:06:28 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:30 [info     ] native_tet_mmm1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=96 n_flips_32=8 n_flips_44=2
+2026-04-27 00:06:30 [info     ] native_tet_nnn1_dry_run        n_sliver=2936 n_sliver_inside=2936 threshold=0.05
+2026-04-27 00:06:30 [info     ] native_tet_nnn2                n_inserted=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:30 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:30 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:30 [info     ] native_tet_rrr2_targeted_amips_skip p5=7.030301723464784e-05 reason=no_free_interior_vertices
+2026-04-27 00:06:30 [info     ] native_tet_stellar_queue       n_queue=5486 worst_q=6.769352401690269e-08
+2026-04-27 00:06:30 [info     ] native_tet_stellar_apply       accepted=True n_app=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
+2026-04-27 00:06:35 [info     ] native_tet_pass_gate           cdt_face_ratio=0.265 cdt_ratio=0.597 grade=C hausdorff_rel=0.08249 mean_q=0.127 plane_area_coverage=0.311 plane_coverage=0.177
+  fid= 101085 tet       : grade=C cells=9897 t=19.46s mq=0.127
+2026-04-27 00:06:37 [info     ] native_tet_pass_gate           cdt_face_ratio=0.265 cdt_ratio=0.597 grade=C hausdorff_rel=0.08249 mean_q=0.127 plane_area_coverage=0.311 plane_coverage=0.177
+2026-04-27 00:06:37 [info     ] native_bl_read                 component=native_bl n_cells=9897 n_faces=22004 n_internal=17584 n_points=2160
+2026-04-27 00:06:38 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=1462 phase=Phase2 reduction=0.5
+2026-04-27 00:06:40 [warning  ] native_bl_collision_safety_scaled component=native_bl factor=0.45454545454545464 min_collision=0.0005920603029856677 new_total=0.001 phase=Phase2 safety=0.5
+2026-04-27 00:06:40 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=1462 phase=beta90
+2026-04-27 00:06:40 [warning  ] native_bl_quality_check        component=native_bl max_aspect_ratio=703998.8560061939 n_degenerate_prisms=8840 phase=Phase2 threshold=50.0
+  fid= 101085 tet+BL    : grade=C cells=9897 t=19.67s mq=0.127 BL=OK prism=8840
+
+=== 요약 ===
+total time: 59.1s
+결과: /home/younglin90/work/claude_code/AutoTessell/tests/stl/bench_thingi10k_all_result.json
+  hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
+  hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
+  polyraw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  tet +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 5}
+  tet raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 0}

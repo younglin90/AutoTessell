@@ -1,0 +1,192 @@
+name: Windows Installer Build
+
+on:
+  push:
+    tags:
+      - "v*"           # v0.3.4 처럼 태그 push 시 자동 빌드
+  workflow_dispatch:    # 수동 실행도 가능
+    inputs:
+      version:
+        description: "빌드 버전 (예: 0.3.4)"
+        required: false
+        default: "dev"
+
+permissions:
+  contents: write      # GitHub Release 업로드 권한
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      # ─── 소스 체크아웃 ───────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ─── 버전 결정 ───────────────────────────────────────────────────────
+      - name: Set version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="dev-$(date +%Y%m%d)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      # ─── Miniconda 설치 ──────────────────────────────────────────────────
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          miniforge-version: latest
+          channels: conda-forge,defaults
+          channel-priority: flexible
+          activate-environment: autotessell
+          environment-file: installer/environment.yml
+          auto-activate-base: false
+
+      # ─── pip 추가 패키지 ─────────────────────────────────────────────────
+      - name: Install pip packages
+        shell: pwsh
+        run: |
+          conda run -n autotessell python -m pip install `
+            pytetwild wildmeshing pyacvd pymeshlab `
+            jigsawpy pyvoro-mm cadquery laspy `
+            xxhash fast-simplification classy-blocks `
+            pyinstaller
+
+      # ─── AutoTessell 소스 설치 ────────────────────────────────────────────
+      - name: Install AutoTessell
+        shell: pwsh
+        run: conda run -n autotessell python -m pip install -e . --no-warn-script-location
+
+      # ─── 외부 바이너리 다운로드 ──────────────────────────────────────────
+      - name: Download external binaries
+        shell: pwsh
+        run: |
+          $BinDir = "bin"
+          New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+
+          # mmg3d
+          try {
+            Invoke-WebRequest `
+              "https://github.com/MmgTools/mmg/releases/download/v5.7.3/mmg_windows_release.zip" `
+              -OutFile "$env:TEMP\mmg.zip" -UseBasicParsing
+            Expand-Archive "$env:TEMP\mmg.zip" "$env:TEMP\mmg" -Force
+            $exe = Get-ChildItem "$env:TEMP\mmg" -Filter "mmg3d_O3.exe" -Recurse | Select-Object -First 1
+            if ($exe) { Copy-Item $exe.FullName "$BinDir\mmg3d.exe" }
+            Write-Host "mmg3d.exe: OK"
+          } catch { Write-Warning "mmg3d download failed: $_" }
+
+          # HOHQMesh
+          try {
+            Invoke-WebRequest `
+              "https://github.com/trixi-framework/HOHQMesh/releases/download/v1.5.1/HOHQMesh-v1.5.1-Windows.zip" `
+              -OutFile "$env:TEMP\hohq.zip" -UseBasicParsing
+            Expand-Archive "$env:TEMP\hohq.zip" "$env:TEMP\hohq" -Force
+            $exe = Get-ChildItem "$env:TEMP\hohq" -Filter "HOHQMesh.exe" -Recurse | Select-Object -First 1
+            if ($exe) { Copy-Item $exe.FullName "$BinDir\HOHQMesh.exe" }
+            Write-Host "HOHQMesh.exe: OK"
+          } catch { Write-Warning "HOHQMesh download failed: $_" }
+
+          # libjigsaw.dll
+          try {
+            Invoke-WebRequest `
+              "https://github.com/dengwirda/jigsaw/releases/download/v0.9.14/jigsaw-v0.9.14-Windows.zip" `
+              -OutFile "$env:TEMP\jigsaw.zip" -UseBasicParsing
+            Expand-Archive "$env:TEMP\jigsaw.zip" "$env:TEMP\jigsaw" -Force
+            $dll = Get-ChildItem "$env:TEMP\jigsaw" -Filter "libjigsaw.dll" -Recurse | Select-Object -First 1
+            if ($dll) { Copy-Item $dll.FullName "$BinDir\libjigsaw.dll" }
+            Write-Host "libjigsaw.dll: OK"
+          } catch { Write-Warning "libjigsaw.dll download failed: $_" }
+
+      # ─── Inno Setup 설치 ─────────────────────────────────────────────────
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+
+      # ─── conda 환경 패키징 (conda-pack) ─────────────────────────────────
+      - name: Pack conda environment
+        shell: pwsh
+        run: |
+          conda run -n autotessell python -m pip install conda-pack
+          conda run -n autotessell conda-pack -n autotessell -o conda_env.tar.gz --ignore-missing-files
+          New-Item -ItemType Directory -Path "installer\assets\conda_env" -Force | Out-Null
+          tar -xzf conda_env.tar.gz -C "installer\assets\conda_env"
+          Remove-Item conda_env.tar.gz
+          Write-Host "conda env size: $((Get-ChildItem 'installer\assets\conda_env' -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
+
+      # ─── Inno Setup 컴파일 ───────────────────────────────────────────────
+      - name: Compile Inno Setup installer
+        shell: pwsh
+        run: |
+          # 버전 주입
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $issContent = Get-Content "installer\AutoTessell_Setup.iss" -Raw
+          $issContent = $issContent -replace '#define AppVersion ".*"', "#define AppVersion `"$version`""
+          $issContent | Set-Content "installer\AutoTessell_Setup_ci.iss"
+
+          # 컴파일
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DSourceRoot="$PWD" `
+            "installer\AutoTessell_Setup_ci.iss"
+
+          $outExe = "installer\dist\AutoTessell-$version-Setup.exe"
+          if (Test-Path $outExe) {
+            $sizeMB = [math]::Round((Get-Item $outExe).Length / 1MB, 1)
+            Write-Host "인스톨러 생성 완료: $outExe ($sizeMB MB)"
+          } else {
+            throw "인스톨러 생성 실패"
+          }
+
+      # ─── GitHub Release 업로드 ────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/dist/AutoTessell-*-Setup.exe
+            installer/Install-AutoTessell.ps1
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          body: |
+            ## AutoTessell ${{ steps.version.outputs.VERSION }}
+
+            ### 설치 방법
+
+            #### 방법 1: .exe 인스톨러 (권장)
+            `AutoTessell-${{ steps.version.outputs.VERSION }}-Setup.exe` 다운로드 후 실행
+
+            #### 방법 2: PowerShell 스크립트
+            ```powershell
+            # AutoTessell 소스 디렉터리 내에서 실행
+            .\installer\Install-AutoTessell.ps1
+            ```
+
+            ### 시스템 요구사항
+            - Windows 10 버전 2004 (빌드 19041) 이상
+            - 인터넷 연결 (패키지 자동 다운로드)
+            - 디스크 여유 공간 10 GB 이상
+
+            ### 포함된 메쉬 엔진
+            WildMesh, TetWild, Netgen, GMSH, MeshPy, MMG3D, JIGSAW, HOHQMesh, Voronoi 등 14개+
+
+            ### OpenFOAM (선택사항)
+            snappyHexMesh/cfMesh를 사용하려면 [ESI OpenFOAM for Windows](https://openfoam.com/download/windows) 별도 설치 필요
+
+      # ─── 빌드 아티팩트 (태그 없는 경우) ─────────────────────────────────
+      - name: Upload artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoTessell-${{ steps.version.outputs.VERSION }}-Setup
+          path: installer/dist/*.exe
+          retention-days: 7

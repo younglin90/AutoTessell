@@ -16,18 +16,37 @@ if TYPE_CHECKING:
 
 
 class _QtLogHandler(logging.Handler):
-    """root logger의 모든 record를 worker.progress 시그널로 forward 한다."""
+    """root logger 의 record 를 worker.progress 시그널로 forward.
+
+    주의 — 이 handler 는 worker thread 에서 호출되지만 progress.emit() 는 main thread
+    의 signal queue 로 queued connection 으로 들어간다. 메쉬 빌드 단계에서 DEBUG 로그가
+    초당 수천 건 발생하면 GUI thread 가 signal flood 를 처리하느라 마우스 입력이 막힌다.
+    → 기본 INFO 레벨 + 동일 메시지 burst 무시 (단순 rate limit).
+    """
 
     def __init__(self, worker: object) -> None:
-        super().__init__(level=logging.DEBUG)
+        # GUI 에 노출할 가치가 있는 INFO 이상만 forward. DEBUG 는 콘솔/파일 logger 가
+        # 받음 (root logger 는 level 그대로 유지).
+        super().__init__(level=logging.INFO)
         self._worker = worker
+        self._last_msg = ""
+        self._last_msg_count = 0
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
         except Exception:
             msg = record.getMessage()
-        level = record.levelname  # DEBUG/INFO/WARNING/ERROR/CRITICAL
+        # 초당 수천 회 동일/유사 메시지 폭주를 단순 압축.
+        if msg == self._last_msg:
+            self._last_msg_count += 1
+            # 같은 줄이 16번 연속이면 그 다음부터는 16배수마다만 emit.
+            if self._last_msg_count & (self._last_msg_count - 1):
+                return
+        else:
+            self._last_msg = msg
+            self._last_msg_count = 1
+        level = record.levelname
         tag = {"WARNING": "WARN", "CRITICAL": "ERR", "ERROR": "ERR"}.get(level, level)
         try:
             self._worker.progress.emit(f"[{tag}] {msg}")  # type: ignore[attr-defined]
@@ -361,12 +380,47 @@ def _try_emit_intermediate(worker: object, message: str, output_dir: Path) -> No
 
 
 def _emit_quality_from_result(worker: object, result: object) -> None:
-    """파이프라인 완료 결과에서 quality_report 메트릭을 emit."""
+    """파이프라인 완료 결과에서 quality_report 메트릭을 emit.
+
+    BETA2872 — 이전 구현이 quality_report 를 dict 로 가정해 isinstance(qr, dict)
+    가 항상 False (실제 type 은 QualityReport pydantic model) → quality_update
+    signal 한 번도 발화되지 않아 GUI Quality 탭이 영원히 0 으로 남았다.
+    이제 evaluation_summary.checkmesh / additional_metrics 직접 추출.
+    """
+    metrics: dict = {}
     try:
-        qr = getattr(result, "quality_report", None) or {}
-        if isinstance(qr, dict):
-            metrics = qr.get("metrics", {})
-            if metrics:
-                worker.quality_update.emit(metrics)  # type: ignore[union-attr]
-    except Exception:
-        pass
+        qr = getattr(result, "quality_report", None)
+        if qr is None:
+            return
+        es = getattr(qr, "evaluation_summary", None)
+        cm = getattr(es, "checkmesh", None) if es is not None else None
+        if cm is not None:
+            for src_attr, dst_key in (
+                ("max_non_orthogonality", "max_non_ortho"),
+                ("max_skewness", "max_skewness"),
+                ("max_aspect_ratio", "max_aspect_ratio"),
+                ("negative_volumes", "negative_volumes"),
+                ("cells", "n_cells"),
+                ("min_face_area", "min_face_area"),
+                ("min_cell_volume", "min_vol"),
+            ):
+                v = getattr(cm, src_attr, None)
+                if v is not None:
+                    metrics[dst_key] = v
+        am = getattr(es, "additional_metrics", None) if es is not None else None
+        if am is not None:
+            for src_attr, dst_key in (
+                ("max_aspect_ratio", "max_aspect_ratio"),
+            ):
+                v = getattr(am, src_attr, None)
+                if v is not None:
+                    metrics[dst_key] = v
+        if metrics:
+            worker.quality_update.emit(metrics)  # type: ignore[union-attr]
+    except Exception as exc:
+        try:
+            worker.progress.emit(  # type: ignore[union-attr]
+                f"[DBG] quality emit 실패: {type(exc).__name__}: {exc}"
+            )
+        except Exception:
+            pass

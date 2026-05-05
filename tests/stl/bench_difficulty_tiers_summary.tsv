@@ -1,0 +1,13 @@
+tier	engine	n_ok	n_total	n_grade_A	n_bl_ok
+easy	tet	3	3	3	3
+easy	hex	0	0	0	0
+easy	poly	0	0	0	0
+medium	tet	3	3	3	3
+medium	hex	0	0	0	0
+medium	poly	0	0	0	0
+hard	tet	0	0	0	0
+hard	hex	0	0	0	0
+hard	poly	0	0	0	0
+extreme	tet	0	0	0	0
+extreme	hex	0	0	0	0
+extreme	poly	0	0	0	0

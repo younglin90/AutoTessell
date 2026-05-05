@@ -129,6 +129,7 @@ def subdivide_prism_layers_to_tet(
     case_dir: Path,
     *,
     backup_original: bool = True,
+    aspect_cap: float = 200.0,
 ) -> TetSubdivResult:
     """case_dir/constant/polyMesh 의 모든 prism cell 을 3 tet 로 분할한다.
 
@@ -213,16 +214,20 @@ def subdivide_prism_layers_to_tet(
         _min_e = float(_all_edges.min())
         _max_e = float(_all_edges.max())
         _aspect = _max_e / (_min_e + 1e-30)
-        if _aspect > 50.0:
+        if _aspect > aspect_cap:
             _n_rejected_aspect += 1
             log.debug("tet_bl_prism_rejected_aspect", cell=cid, aspect=round(_aspect, 2))
             continue
 
         # TET_BL1 guard 2 — collision check (Garimella 2003 §3 advancing-front).
         # New top vertices (inner) centroid must not lie inside any neighbouring tet.
+        # BETA2877 — _local_radius 를 outer tri edge × 0.5 (= 외부 tet 1 개 정도)
+        # 로 잡으면 prism height 가 그보다 작은 BL (정상 케이스) 모두 거짓 collision
+        # 으로 거부됨. 대신 prism 높이 (= mean lateral edge) 의 0.5 로 잡아 정말
+        # inner triangle 이 인접 tet centroid 를 침범할 때만 reject.
         _top_centroid = inner_pts.mean(axis=0)
-        # Estimate local tet radius from outer triangle edge length.
-        _local_radius = (_max_e * 0.5) if _max_e > 0 else 1e-6
+        _height_mean = float(_e_lat.mean())
+        _local_radius = (_height_mean * 0.5) if _height_mean > 0 else 1e-9
         # Vectorised: compute all distances at once; avoid Python loop over centroids.
         if _tet_centroids_arr.shape[0] > 0:
             _dists = np.linalg.norm(_tet_centroids_arr - _top_centroid, axis=1)
@@ -312,15 +317,18 @@ def subdivide_prism_layers_to_tet(
                     _min_e_li = float(_all_e_li.min())
                     _max_e_li = float(_all_e_li.max())
                     _aspect_li = _max_e_li / (_min_e_li + 1e-30)
-                    if _aspect_li > 50.0:
+                    if _aspect_li > aspect_cap:
                         _n_rej_asp_li += 1
                         log.debug("tet_layers_prism_rejected_aspect",
                                   layer=_li + 1, cell=_cid_prev, aspect=round(_aspect_li, 2))
                         continue
 
-                    # TET_BL1 guard 2 — collision check (bounding-sphere approx)
+                    # TET_BL1 guard 2 — collision check (bounding-sphere approx).
+                    # BETA2877 — radius 를 prism height 기반으로 (outer edge 가
+                    # 아니라). 자세한 사유는 같은 모듈 line 222~ 의 코멘트.
                     _top_c_li = _inner_pts_li.mean(axis=0)
-                    _local_r_li = (_max_e_li * 0.5) if _max_e_li > 0 else 1e-6
+                    _height_mean_li = float(_el_li.mean())
+                    _local_r_li = (_height_mean_li * 0.5) if _height_mean_li > 0 else 1e-9
                     # Vectorised distance check over all tet centroids.
                     if _tet_centroids_arr.shape[0] > 0:
                         _dists_li = np.linalg.norm(_tet_centroids_arr - _top_c_li, axis=1)
@@ -429,22 +437,37 @@ def subdivide_prism_layers_to_tet(
     # 기존 tet cell 추출 — 4 face + all triangles → (4 vertex set).
     # 하지만 원본 cell 이 어떤 tet 인지 알려면 owner/neighbour 면 정보 만으로는
     # 부족. 기존 tet 의 4 vertex 를 cell_faces_map 의 triangle 4 개에서 추출.
+    # BETA2877 — native_bl 후 일부 cell 이 4 vertex / 5 face 같은 비표준 토폴로지
+    # (face split 부산물) 를 가질 수 있다. tet-only 가 아닌 입력은 subdivide 의
+    # face graph 전제를 깨므로 (manifold 4-share 위반), early 로 success=True 의
+    # 의미상 "BL 은 native_bl 단계까지만 적용" 으로 빠져나간다. 결과 mesh 는
+    # mixed (tet + prism wedge) — CFD 사용 가능, 단지 100% 순수 tet 은 아님.
     old_tet_verts: dict[int, tuple[int, int, int, int]] = {}
+    _has_non_tet = False
     for cid in old_non_prism:
         f_list = cell_faces_map[cid]
         verts_set: set[int] = set()
         for f in f_list:
             verts_set.update(f)
         if len(verts_set) != 4 or len(f_list) != 4:
-            # tet 이 아닌 cell (hex, poly 등) — 지원 밖
-            return TetSubdivResult(
-                False, time.perf_counter() - t0,
-                message=(
-                    f"cell {cid} 은 tet 아님 (vertex={len(verts_set)}, "
-                    f"faces={len(f_list)}) — tet-only 입력 필요"
-                ),
-            )
+            _has_non_tet = True
+            break
         old_tet_verts[cid] = tuple(sorted(verts_set))
+    if _has_non_tet:
+        log.info(
+            "tet_bl_subdivide_skipped_non_tet_input",
+            note="원본 mesh 에 non-tet cell 이 있어 subdivide 건너뜀 — "
+                 "native_bl 단계까지의 prism wedge layer 가 그대로 남는다.",
+            n_prism_pairs_eligible=len(prism_pairs),
+        )
+        return TetSubdivResult(
+            True, time.perf_counter() - t0,
+            n_prism_before=len(prism_cells), n_tet_added=0,
+            message=(
+                "non-tet 입력 — subdivide 건너뜀 (BL 은 native_bl 단계까지 적용). "
+                "결과 mesh 는 tet+prism mixed."
+            ),
+        )
 
     # 4b) cell id → 4 vertex 매핑 + face 리스트
     cell_vertices: dict[int, tuple[int, ...]] = {}
@@ -456,6 +479,7 @@ def subdivide_prism_layers_to_tet(
         cell_vertices[t1] = (outer[0], outer[1], outer[2], inner[0])
         cell_vertices[t2] = (outer[1], outer[2], inner[0], inner[1])
         cell_vertices[t3] = (outer[2], inner[0], inner[1], inner[2])
+
 
     # 4c) 모든 face 를 수집 (cell → 4 face vertex tuple)
     # face direction (winding) 을 결정하려면 cell centroid 기준 outward 방향을 써야
@@ -472,7 +496,7 @@ def subdivide_prism_layers_to_tet(
 
     # canonical face key: sorted tuple
     # face_map: key → [(cid, winding_verts), ...]
-    face_map: dict[tuple[int, ...], list[tuple[int, tuple[int, int, int]]]] = {}
+    face_map: dict[tuple[int, ...], list[tuple[int, tuple[int, ...]]]] = {}
 
     # tet faces ordering (0,1,2,3) → 4 triangle faces with winding such that normal
     # points OUT of cell centroid. For canonical 4-vertex tet we use:
@@ -498,6 +522,7 @@ def subdivide_prism_layers_to_tet(
                 f = (f[0], f[2], f[1])
             key = tuple(sorted(f))
             face_map.setdefault(key, []).append((cid, f))
+
 
     # 4d) 원본 boundary patch 를 추적하기 위해 기존 boundary face 의 canonical key →
     # patch 매핑 생성

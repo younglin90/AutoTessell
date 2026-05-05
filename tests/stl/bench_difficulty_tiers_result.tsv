@@ -1,0 +1,7 @@
+tier	engine	fid	success	grade	n_cells	elapsed	t_gen_s	t_bl_s	pct_gen	pct_bl	mq	min_q	max_aspect	n_self_intersect_pre	bl_success	bl_n_prism	bl_max_aspect
+easy	tet		True	A	310	1.42	0.984	0.433	69.3	30.5	0.383734482092515				True		
+easy	tet		True	A	1190	5.84	2.237	3.601	38.3	61.7	0.2502547073054729				True		
+medium	tet		True	A	3752	11.31	4.249	7.06	37.6	62.4	0.4345178659751746				True		
+medium	tet		True	A	4852	15.78	6.142	9.638	38.9	61.1	0.40650748529500913				True		
+medium	tet		True	A	6043	26.88	5.675	21.201	21.1	78.9	0.38518726711783546				True		
+easy	tet		True	A	9005	46.22	7.803	38.412	16.9	83.1	0.36510553895818715				True		

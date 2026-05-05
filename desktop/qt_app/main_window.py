@@ -687,9 +687,43 @@ class AutoTessellWindow:  # type: ignore[misc]
     def show(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qmain") or self._qmain is None:
             self._build()
-        self._qmain.move(80, 80)  # type: ignore[union-attr]
+        # BETA2877 — 화면 가운데에 띄우기. show() 전 frameGeometry() 는 0×0
+        # 이므로 resize 직후 sizeHint() 를 사용. 정확한 frameGeometry 는 단일
+        # showEvent 후 보정 (QTimer.singleShot).
+        from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QGuiApplication
+        try:
+            scr = QGuiApplication.primaryScreen()
+            if scr is not None:
+                ag = scr.availableGeometry()
+                # 윈도우 크기 — resize(1440,920) 가 이미 호출됨. size() 는 그대로.
+                w = self._qmain.size().width()    # type: ignore[union-attr]
+                h = self._qmain.size().height()   # type: ignore[union-attr]
+                if w <= 0 or h <= 0:
+                    sh = self._qmain.sizeHint()    # type: ignore[union-attr]
+                    w = max(w, sh.width())
+                    h = max(h, sh.height())
+                cx = ag.x() + max(0, (ag.width()  - w) // 2)
+                cy = ag.y() + max(0, (ag.height() - h) // 2)
+                self._qmain.move(cx, cy)  # type: ignore[union-attr]
+        except Exception:
+            self._qmain.move(80, 80)  # type: ignore[union-attr]
         self._qmain.showNormal()  # type: ignore[union-attr]
         self._qmain.show()  # type: ignore[union-attr]
+        # show 후 frameGeometry 가 결정되면 한 번 더 정확히 중앙 정렬.
+        def _recenter() -> None:
+            try:
+                scr2 = QGuiApplication.primaryScreen()
+                if scr2 is None:
+                    return
+                ag2 = scr2.availableGeometry()
+                fg2 = self._qmain.frameGeometry()  # type: ignore[union-attr]
+                cx2 = ag2.x() + max(0, (ag2.width()  - fg2.width())  // 2)
+                cy2 = ag2.y() + max(0, (ag2.height() - fg2.height()) // 2)
+                self._qmain.move(cx2, cy2)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        QTimer.singleShot(0, _recenter)
 
     # ═════════════════════════════════════════════════════════════════════
     # 비즈니스 헬퍼 (기존 API 보존 — 테스트 요구)
@@ -770,6 +804,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._qmain.setWindowTitle("AutoTessell")
         self._qmain.resize(1440, 920)
         self._qmain.setStyleSheet(GLOBAL_STYLE)
+        # 종료 확인 팝업 — closeEvent 를 hijack 해 사용자 확인 후에만 종료.
+        self._install_close_confirm()
 
         # ── 메뉴바 ─────────────────────────────────────────
         self._build_menubar(QAction, APP_VERSION)
@@ -800,9 +836,20 @@ class AutoTessellWindow:  # type: ignore[misc]
         body.setHandleWidth(3)
         root.addWidget(body, stretch=1)
 
-        # [L] Sidebar
+        # [L] Sidebar — scroll area + 하단 Run control bar 를 한 컬럼에 묶음.
         sidebar = self._build_sidebar()
-        body.addWidget(sidebar)
+        try:
+            from PySide6.QtWidgets import QVBoxLayout, QWidget
+            sidebar_col = QWidget()
+            _scol = QVBoxLayout(sidebar_col)
+            _scol.setContentsMargins(0, 0, 0, 0)
+            _scol.setSpacing(0)
+            _scol.addWidget(sidebar, stretch=1)  # type: ignore[arg-type]
+            _scol.addWidget(self._build_run_control_bar())  # type: ignore[arg-type]
+            body.addWidget(sidebar_col)
+        except Exception:
+            # fallback — Run bar 부착 실패 시 sidebar 단독 사용 (UI 일부만 손상).
+            body.addWidget(sidebar)
 
         # [M] Main area (viewport + pipeline)
         main_area = self._build_main_area()
@@ -1133,6 +1180,9 @@ class AutoTessellWindow:  # type: ignore[misc]
             QPushButton, QScrollArea, QVBoxLayout, QWidget,
         )
 
+        # 외부 contract — `test_sidebar_uses_scroll_area` 가 반환값이 QScrollArea
+        # 임을 검증한다. 따라서 이 메서드는 항상 QScrollArea 를 반환하고,
+        # Run control bar 는 호출자 (`_build` ─ body.addWidget) 가 별도로 추가한다.
         scroll = QScrollArea()
         # 사용자가 QSplitter로 드래그하여 조정 가능하도록 min/max 범위만 지정.
         # 기본값은 main_window._build() 의 body.setSizes([420, ...]) 에서 결정.
@@ -1206,23 +1256,197 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 6. 엔진 파라미터 (wildmesh + polyhedral + generic + surface mesh)
         # 7. 전처리
         # 8. y⁺ 자동 BL 두께
+        # BETA2858 — left panel 최소화: input mesh + mesh type + cell count + BL.
+        # 사용자 요청 (2026-05-03): preset / quality / 엔진 파라미터 / 표면메쉬 /
+        # 전처리 / y+ 패널 모두 제거. 이 4가지만 있어도 메쉬 제작에 충분.
         v.addWidget(self._build_section_input_geometry())
         v.addWidget(self._build_section_mesh_type())
-        v.addWidget(self._build_section_preset())
         v.addWidget(self._build_section_tier_engines())
-        v.addWidget(self._build_section_quality())
-        v.addWidget(self._build_section_wildmesh_params())
-        v.addWidget(self._build_section_polyhedral_params())
-        v.addWidget(self._build_section_generic_engine_params())
-        v.addWidget(self._build_section_surface_mesh())
-        v.addWidget(self._build_section_preprocess())
-        v.addWidget(self._build_section_yplus())
         # 파이프라인 실행 버튼은 하단 Tier 스트립의 Run/Stop 버튼으로 통합됨.
         # (중복 UI 제거 — 2026-04-19)
         v.addStretch()
         # 출력 디렉토리는 Export 탭에서 담당 — 사이드바에서 제거 (2026-04-18)
         # _output_path_edit 은 Export 탭의 path_box 로 리디렉션된다.
         return scroll
+
+    def _build_run_control_bar(self) -> object:  # pragma: no cover
+        """왼쪽 사이드바 맨 아래 — Run / Resume / Stop 버튼 바.
+
+        2026-05 사용자 요청: 별도 '다시 실행' 버튼은 두지 않고 Run 버튼 라벨이
+        ``▶  실행`` ↔ ``↻  다시 실행`` 으로 토글된다.
+
+        상태 매트릭스 (``_set_pipeline_running`` 에서 갱신):
+        - idle (결과 없음): Run='▶  실행' 활성, Resume/Stop 비활성
+        - running: Run='실행 중...' 비활성, Stop 활성, Resume 비활성
+        - done (결과 있음): Run='↻  다시 실행' 활성, Resume 활성, Stop 비활성
+        """
+        from PySide6.QtWidgets import (
+            QFrame, QHBoxLayout, QPushButton, QVBoxLayout,
+        )
+        wrap = QFrame()
+        wrap.setStyleSheet(
+            f"QFrame {{ background: {PALETTE['bg_1']}; "
+            f"border-top: 1px solid {PALETTE['line_1']}; }}"
+        )
+        outer = QVBoxLayout(wrap)
+        outer.setContentsMargins(10, 10, 10, 12)
+        outer.setSpacing(6)
+
+        row_top = QHBoxLayout()
+        row_top.setSpacing(6)
+        row_bot = QHBoxLayout()
+        row_bot.setSpacing(6)
+
+        def _mk(label: str, accent: str, slot, h: int = 36) -> QPushButton:
+            b = QPushButton(label)
+            b.setProperty("accent", accent)
+            b.setMinimumHeight(h)
+            b.clicked.connect(slot)
+            return b
+
+        self._run_btn = _mk("▶  실행", "primary", self._on_run_clicked)
+        row_top.addWidget(self._run_btn, stretch=1)
+
+        self._resume_btn = _mk("⟲  Resume", "default", self._on_run_clicked)
+        row_bot.addWidget(self._resume_btn, stretch=1)
+
+        self._stop_btn = _mk("■  Stop", "danger", self._on_stop_clicked)
+        row_bot.addWidget(self._stop_btn, stretch=1)
+
+        # _rerun_btn 는 더 이상 별도 위젯이 아님 — _run_btn 이 라벨로 토글한다.
+        self._rerun_btn = None
+
+        outer.addLayout(row_top)
+        outer.addLayout(row_bot)
+
+        # 키보드 shortcut — F5 = Run/Re-run, Esc = Stop, Ctrl+R = Re-run.
+        try:
+            from PySide6.QtGui import QShortcut, QKeySequence
+            QShortcut(QKeySequence("F5"), self._qmain).activated.connect(
+                self._on_run_clicked,
+            )
+            QShortcut(QKeySequence("Esc"), self._qmain).activated.connect(
+                self._on_stop_clicked,
+            )
+            QShortcut(QKeySequence("Ctrl+R"), self._qmain).activated.connect(
+                self._on_run_clicked,
+            )
+        except Exception:
+            pass
+
+        # 초기 상태 — idle (결과 없음).
+        self._apply_run_button_states(running=False, has_result=False)
+        return wrap
+
+    def _apply_run_button_states(self, running: bool, has_result: bool) -> None:  # pragma: no cover
+        """Run / Resume / Stop 버튼 enable + Run 라벨 토글 일관 적용."""
+        run = getattr(self, "_run_btn", None)
+        resume = getattr(self, "_resume_btn", None)
+        stop = getattr(self, "_stop_btn", None)
+        if run is None:
+            return
+        if running:
+            run.setEnabled(False)  # type: ignore[union-attr]
+            run.setText("⏳  실행 중...")  # type: ignore[union-attr]
+            if resume is not None:
+                resume.setEnabled(False)  # type: ignore[union-attr]
+            if stop is not None:
+                stop.setEnabled(True)  # type: ignore[union-attr]
+        else:
+            if has_result:
+                # 한 번 이상 실행한 뒤 — Run 라벨이 '다시 실행' 으로 변경.
+                run.setEnabled(True)  # type: ignore[union-attr]
+                run.setText("↻  다시 실행")  # type: ignore[union-attr]
+                if resume is not None:
+                    resume.setEnabled(True)  # type: ignore[union-attr]
+                if stop is not None:
+                    stop.setEnabled(False)  # type: ignore[union-attr]
+            else:
+                # 처음 — Run 만 활성.
+                run.setEnabled(True)  # type: ignore[union-attr]
+                run.setText("▶  실행")  # type: ignore[union-attr]
+                if resume is not None:
+                    resume.setEnabled(False)  # type: ignore[union-attr]
+                if stop is not None:
+                    stop.setEnabled(False)  # type: ignore[union-attr]
+
+    def _install_close_confirm(self) -> None:  # pragma: no cover
+        """QMainWindow 의 closeEvent 를 wrap — 종료 직전 확인 팝업.
+
+        팝업은 현재 윈도우 (또는 멀티모니터 환경에서 윈도우가 위치한 화면) 의
+        중앙에 위치한다. 파이프라인 실행 중이면 경고 메시지로 표시. '예' 선택 시
+        worker stop 후 종료.
+        """
+        if self._qmain is None:
+            return
+        try:
+            from PySide6.QtCore import Qt
+            from PySide6.QtWidgets import QMessageBox
+        except Exception:
+            return
+
+        original_close = self._qmain.closeEvent
+        outer = self
+
+        def _wrapped_close(event) -> None:
+            try:
+                running = (
+                    getattr(outer, "_worker", None) is not None
+                    and outer._worker.isRunning()  # type: ignore[union-attr]
+                )
+            except Exception:
+                running = False
+
+            title = "AutoTessell 종료"
+            if running:
+                msg = (
+                    "메쉬 생성이 진행 중입니다.\n\n"
+                    "지금 종료하면 작업이 중단되고 진행 상태가 사라집니다.\n"
+                    "정말로 종료하시겠습니까?"
+                )
+                default_btn = QMessageBox.StandardButton.No
+            else:
+                msg = "AutoTessell 을 종료하시겠습니까?"
+                default_btn = QMessageBox.StandardButton.Yes
+
+            # 메인 윈도우 중앙에 정렬 — QMessageBox 기본은 화면 중앙이라
+            # 멀티모니터/창이동 후 엉뚱한 위치에 뜬다. 직접 geometry 계산.
+            box = QMessageBox(outer._qmain)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle(title)
+            box.setText(msg)
+            box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            box.setDefaultButton(default_btn)
+            box.setWindowModality(Qt.WindowModal)
+            try:
+                box.adjustSize()
+                parent_geo = outer._qmain.frameGeometry()
+                box_size = box.sizeHint()
+                cx = parent_geo.x() + (parent_geo.width() - box_size.width()) // 2
+                cy = parent_geo.y() + (parent_geo.height() - box_size.height()) // 2
+                box.move(cx, cy)
+            except Exception:
+                pass
+
+            reply = box.exec()
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+
+            if running:
+                try:
+                    outer._on_stop_clicked()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
+            try:
+                original_close(event)
+            except Exception:
+                event.accept()
+
+        self._qmain.closeEvent = _wrapped_close  # type: ignore[assignment]
 
     def _make_section_label(self, text: str) -> object:  # pragma: no cover
         """스펙의 accent-bar prefix label."""
@@ -1789,57 +2013,42 @@ class AutoTessellWindow:  # type: ignore[misc]
     )
 
     def _build_section_tier_engines(self) -> object:  # pragma: no cover
-        """Tier 0/1/2/4/5 각 단계의 엔진을 개별 드롭다운으로 선택.
+        """단순화된 셀/BL 설정 섹션.
 
-        Tier 3 (볼륨 메쉬)는 상위 '메시 엔진' 섹션에서 이미 선택하므로 제외.
-        기본적으로 Tier 0/1/2/4는 비활성화 — WildMesh 단독으로 돌릴 수 있게.
+        BETA2858 — left panel 최소화: 메쉬 종류 (위 _build_section_mesh_type),
+        max cells, BL 토글 + 세부 (BL layers/ratio/first thick), max cell size.
+        엔진 콤보는 제거. tier_hint 는 mesh_type 으로부터 strategist 가 결정.
         """
-        # GUI-SIMPLIFY / beta2814 — Option C: mesh_type 1콤보 + BL 체크박스만 노출.
-        # Tier 3 (볼륨) → Mesh Type combo (tet / hex / poly).
-        # Tier 4 (BL) → 체크박스 1개 (체크 시 auto, 미체크 시 disabled).
-        # Tier 5 (검증) → 항상 native (UI 숨김).
         from PySide6.QtWidgets import (
-            QCheckBox, QComboBox, QHBoxLayout, QLabel, QWidget,
+            QCheckBox, QHBoxLayout, QLabel, QLineEdit, QWidget,
         )
 
-        f, v = self._section_frame("메쉬 설정")
+        f, v = self._section_frame("셀 / 경계층")
 
-        # --- Mesh Type combo (Tier 3) ---
-        row1 = QWidget()
-        row1.setStyleSheet("background: transparent;")
-        rl1 = QHBoxLayout(row1)
-        rl1.setContentsMargins(0, 0, 0, 0); rl1.setSpacing(8)
-        lbl1 = QLabel("Mesh Type")
-        lbl1.setStyleSheet(
+        # 엔진 콤보 alias 비활성화 — tier_hint 자동 (strategist 가 mesh_type 으로 결정).
+        self._engine_combo = None
+        self._tier_combo = None
+        self._tier3_engine_combo = None
+
+        # --- Max Cells 입력 ---
+        row0 = QWidget()
+        row0.setStyleSheet("background: transparent;")
+        rl0 = QHBoxLayout(row0)
+        rl0.setContentsMargins(0, 0, 0, 0); rl0.setSpacing(8)
+        lbl0 = QLabel("Max Cells")
+        lbl0.setStyleSheet(
             f"color: {PALETTE['text_2']}; font-size: 11px; "
             f"background: transparent; min-width: 120px;"
         )
-        rl1.addWidget(lbl1)
-
-        cb_mesh = QComboBox()
-        cb_mesh.setStyleSheet(self._dark_combo_qss())
-        # 핵심 3 mesh type 만 노출 (CLAUDE.md mesh_type 정책).
-        # BETA2836 — Tet 옵션을 vendored fTetWild (wildmesh) 로 매핑.
-        # 이전 "native_tet" 은 우리 Python self-impl tet engine (tier_native_tet)
-        # 으로 wildmesh 와 알고리즘 자체가 다른 결과 생성. BETA2834 vendored
-        # binding 이 있으므로 default 는 fTetWild 로 변경 — 결과 동일성 보장.
-        # BETA2845 — 3 mesh_type 모두 vendored backend 로 default.
-        for value, display in [
-            ("wildmesh",    "Tet · fTetWild (vendored, wildmesh-identical)"),
-            ("cfmesh",      "Hex_dominant · cfMesh cartesianMesh (vendored, BL 통합)"),
-            ("cfmesh_poly", "Poly · cfMesh pMesh (vendored, BL 통합)"),
-        ]:
-            cb_mesh.addItem(display, value)
-        cb_mesh.setCurrentIndex(0)  # default: wildmesh (vendored fTetWild).
-        cb_mesh.currentIndexChanged.connect(
-            lambda _idx: self._on_engine_changed()
+        rl0.addWidget(lbl0)
+        self._max_cells_edit = QLineEdit()
+        self._max_cells_edit.setPlaceholderText("(no cap)")
+        self._max_cells_edit.setToolTip(
+            "최대 셀 수 cap. 초과 시 셀 크기 자동 확대 후 재생성.\n"
+            "비워두면 무제한. CLI --max-cells 동등."
         )
-        # alias 로 기존 핸들러 호환.
-        self._engine_combo = cb_mesh
-        self._tier_combo = cb_mesh
-        self._tier3_engine_combo = cb_mesh
-        rl1.addWidget(cb_mesh, stretch=1)
-        v.addWidget(row1)
+        rl0.addWidget(self._max_cells_edit, stretch=1)
+        v.addWidget(row0)
 
         # --- BL checkbox (Tier 4) ---
         row2 = QWidget()
@@ -1851,10 +2060,13 @@ class AutoTessellWindow:  # type: ignore[misc]
             f"color: {PALETTE['text_2']}; font-size: 11px; "
             f"background: transparent;"
         )
-        self._bl_check.setChecked(True)   # default ON.
+        # BETA2875 — default OFF (사용자 요청). CFD draft 의 일반적 워크플로
+        # 는 BL 없는 inviscid/Euler 메쉬 먼저 생성. user 가 명시적으로 켜야 BL.
+        self._bl_check.setChecked(False)
         self._bl_check.setToolTip(
-            "체크 시: quality_level 기반 자동 BL.\n"
-            "미체크 시: BL 비활성화 (Euler/inviscid simulation 용)."
+            "체크 시: 아래 BL layers/ratio/first thick 파라미터로 BL 생성.\n"
+            "미체크 시 (default): BL 비활성화 (Euler/inviscid 용).\n"
+            "체크 시 strategist 의 draft BL 자동비활성을 override 한다."
         )
         # 가짜 combobox alias — 기존 _tier4_engine_text() 호환.
         class _BLComboShim:
@@ -1867,70 +2079,74 @@ class AutoTessellWindow:  # type: ignore[misc]
         rl2.addStretch(1)
         v.addWidget(row2)
 
-        # --- BETA2847 — cfMesh cell size 조절 (hex_dominant + poly 에 적용) ---
-        from PySide6.QtWidgets import QDoubleSpinBox, QSpinBox, QLabel as _QL
-        row3 = QWidget()
-        row3.setStyleSheet("background: transparent;")
-        rl3 = QHBoxLayout(row3)
-        rl3.setContentsMargins(0, 0, 0, 0); rl3.setSpacing(8)
-        rl3.addWidget(_QL("max cell:"))
-        self._cfm_max_cell_spin = QDoubleSpinBox()
-        self._cfm_max_cell_spin.setRange(0.0, 10.0)
-        self._cfm_max_cell_spin.setSingleStep(0.01)
-        self._cfm_max_cell_spin.setDecimals(4)
-        self._cfm_max_cell_spin.setValue(0.0)  # 0 = auto from strategist.
-        self._cfm_max_cell_spin.setToolTip(
-            "cfMesh maxCellSize (volume cell size). 0 = strategist 자동값."
-        )
-        rl3.addWidget(self._cfm_max_cell_spin)
-        rl3.addWidget(_QL("boundary cell:"))
-        self._cfm_bnd_cell_spin = QDoubleSpinBox()
-        self._cfm_bnd_cell_spin.setRange(0.0, 10.0)
-        self._cfm_bnd_cell_spin.setSingleStep(0.005)
-        self._cfm_bnd_cell_spin.setDecimals(4)
-        self._cfm_bnd_cell_spin.setValue(0.0)  # 0 = auto.
-        self._cfm_bnd_cell_spin.setToolTip(
-            "cfMesh boundaryCellSize (surface 셀 크기, 작을수록 STL 정확).\n"
-            "0 = strategist 자동값. 보통 max cell 의 1/4~1/10."
-        )
-        rl3.addWidget(self._cfm_bnd_cell_spin)
-        rl3.addStretch(1)
-        v.addWidget(row3)
+        # --- BETA2863 — cfMesh / BL 슬라이더: 패널 폭에 맞춰 stack 형 QFormLayout ---
+        from PySide6.QtWidgets import QDoubleSpinBox, QSpinBox, QFormLayout
+        from PySide6.QtCore import Qt as _QtAlign
 
-        # --- BETA2847 — BL 세부 조절 (BL checkbox 가 켜진 경우에만 사용) ---
-        row4 = QWidget()
-        row4.setStyleSheet("background: transparent;")
-        rl4 = QHBoxLayout(row4)
-        rl4.setContentsMargins(0, 0, 0, 0); rl4.setSpacing(8)
-        rl4.addWidget(_QL("BL layers:"))
-        self._cfm_bl_layers_spin = QSpinBox()
-        self._cfm_bl_layers_spin.setRange(0, 30)
-        self._cfm_bl_layers_spin.setValue(0)  # 0 = auto from strategist.
-        self._cfm_bl_layers_spin.setToolTip(
-            "BL 레이어 수. 0 = quality_level 자동 결정 (BL 체크박스 ON 시).\n"
-            ">0 = 명시적으로 강제 (overrides BL checkbox)."
+        cell_form = QFormLayout()
+        cell_form.setContentsMargins(0, 0, 0, 0)
+        cell_form.setHorizontalSpacing(8); cell_form.setVerticalSpacing(4)
+        cell_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        cell_form.setLabelAlignment(_QtAlign.AlignLeft | _QtAlign.AlignVCenter)
+
+        from PySide6.QtWidgets import QSizePolicy as _QSP
+        def _spin(double: bool, lo: float, hi: float, step: float, decimals: int,
+                  value: float, tip: str) -> object:
+            sp = QDoubleSpinBox() if double else QSpinBox()
+            sp.setRange(lo, hi)
+            if double:
+                sp.setSingleStep(step); sp.setDecimals(decimals)
+                sp.setValue(float(value))
+            else:
+                sp.setSingleStep(int(step)); sp.setValue(int(value))
+            sp.setToolTip(tip)
+            sp.setMinimumWidth(0)
+            sp.setSizePolicy(_QSP.Expanding, _QSP.Fixed)
+            return sp
+
+        self._cfm_max_cell_spin = _spin(
+            True, 0.0, 10.0, 0.01, 4, 0.0,
+            "cfMesh maxCellSize (volume cell size). 0 = strategist 자동값.",
         )
-        rl4.addWidget(self._cfm_bl_layers_spin)
-        rl4.addWidget(_QL("BL ratio:"))
-        self._cfm_bl_ratio_spin = QDoubleSpinBox()
-        self._cfm_bl_ratio_spin.setRange(1.0, 3.0)
-        self._cfm_bl_ratio_spin.setSingleStep(0.05)
-        self._cfm_bl_ratio_spin.setDecimals(3)
-        self._cfm_bl_ratio_spin.setValue(1.2)
-        self._cfm_bl_ratio_spin.setToolTip("BL expansion ratio (각 레이어 두께 증가율).")
-        rl4.addWidget(self._cfm_bl_ratio_spin)
-        rl4.addWidget(_QL("first thick:"))
-        self._cfm_bl_first_spin = QDoubleSpinBox()
-        self._cfm_bl_first_spin.setRange(0.0, 1.0)
-        self._cfm_bl_first_spin.setSingleStep(0.001)
-        self._cfm_bl_first_spin.setDecimals(5)
-        self._cfm_bl_first_spin.setValue(0.0)  # 0 = auto.
-        self._cfm_bl_first_spin.setToolTip(
-            "최외곽 레이어 두께 (maxFirstLayerThickness). 0 = cfMesh 자동."
+        self._cfm_bnd_cell_spin = _spin(
+            True, 0.0, 10.0, 0.005, 4, 0.0,
+            "cfMesh boundaryCellSize (surface 셀 크기, 작을수록 STL 정확).\n"
+            "0 = max cell / 4 자동 (poly: 표면 보존), 명시 시 그 값.",
         )
-        rl4.addWidget(self._cfm_bl_first_spin)
-        rl4.addStretch(1)
-        v.addWidget(row4)
+        # BETA2875 — BL 파라미터 default 값 채움 (사용자 요청).
+        # BL checkbox OFF 시엔 무시됨. ON 시 이 값들이 cfMesh meshDict 의
+        # boundaryLayers 블록에 그대로 전달.
+        self._cfm_bl_layers_spin = _spin(
+            False, 0, 30, 1, 0, 3,           # default 3 layers (CFD 표준)
+            "BL 레이어 수. default 3 (CFD 표준 inflation layer 수).\n"
+            "BL 체크박스 ON 시 cfMesh boundaryLayers.nLayers 로 전달.",
+        )
+        self._cfm_bl_ratio_spin = _spin(
+            True, 1.0, 3.0, 0.05, 3, 1.2,    # default 1.2 (cfMesh default)
+            "BL expansion ratio (각 레이어 두께 증가율).\n"
+            "default 1.2 — cfMesh thicknessRatio.",
+        )
+        self._cfm_bl_first_spin = _spin(
+            True, 0.0, 1.0, 0.001, 5, 0.0,   # default 0 = cfMesh auto
+            "최외곽 레이어 두께 (maxFirstLayerThickness).\n"
+            "default 0 = cfMesh 가 surface 셀 크기로부터 자동 결정.\n"
+            ">0 = 절대값으로 강제 (예: y+ 계산 결과 주입).",
+        )
+
+        cell_form.addRow("max cell", self._cfm_max_cell_spin)
+        cell_form.addRow("boundary cell", self._cfm_bnd_cell_spin)
+        cell_form.addRow("BL layers", self._cfm_bl_layers_spin)
+        cell_form.addRow("BL ratio", self._cfm_bl_ratio_spin)
+        cell_form.addRow("BL first thick", self._cfm_bl_first_spin)
+
+        form_holder = QWidget()
+        form_holder.setStyleSheet(
+            f"QWidget {{ background: transparent; }} "
+            f"QLabel {{ color: {PALETTE['text_2']}; font-size: 11px; "
+            f"  background: transparent; }}"
+        )
+        form_holder.setLayout(cell_form)
+        v.addWidget(form_holder)
 
         # Tier 5 (검증) — 항상 native, UI 노출 안 함.
         # _tier5_engine_combo 미생성 → _tier5_engine_text() fallback "native".
@@ -2179,11 +2395,17 @@ class AutoTessellWindow:  # type: ignore[misc]
             except Exception:
                 pass
 
+    # BETA2873 — CFD 가이드 명시. Tet (fTetWild) 는 AMIPS 등방성 최적화이므로
+    # 본질적으로 non-orthogonality 65~85° 범위 → CFD 에는 Hex-Dom/Poly 권장.
     _MESH_TYPE_DESC = {
         "auto":         "Strategist 자동 선택 (geometry/quality 기반).",
-        "tet":          "Tet — 복잡 형상 강건, isotropic.",
-        "hex_dominant": "Hex-dominant — CFD BL 품질 우수, 셀 수 효율적.",
-        "poly":         "Poly — 셀 수 최소, large-gradient 해소 우수.",
+        "tet":          ("Tet (fTetWild) — FEM/구조 해석에 적합. "
+                         "CFD 는 권장 안 함 (tet 본질적 non-ortho 70~85°). "
+                         "CFD 목적이면 Hex-Dom 또는 Poly 선택."),
+        "hex_dominant": ("Hex-Dom (cfMesh cartesianMesh) — CFD 표준. "
+                         "non-ortho 50~70°, BL 통합. 일반 CFD 에 권장."),
+        "poly":         ("Poly (cfMesh pMesh) — CFD 고품질. "
+                         "non-ortho 30~50°, 셀 수 최소. 복잡 형상/LES 권장."),
     }
 
     def _build_section_mesh_type(self) -> object:  # pragma: no cover
@@ -2231,13 +2453,36 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         desc = QLabel(self._MESH_TYPE_DESC.get(self._mesh_type, ""))
         desc.setWordWrap(True)
+        # BETA2873 — tet 선택 시 CFD 부적합 경고 강조 (orange tint).
         desc.setStyleSheet(
             f"color: {PALETTE['text_2']}; font-size: 11px; font-style: italic; "
-            f"background: transparent; padding-top: 4px;"
+            f"background: transparent; padding-top: 4px; line-height: 1.4em;"
         )
         self._mesh_type_desc_label = desc
         v.addWidget(desc)
+        # 초기 styling 적용 (tet default 일 때도 경고 색).
+        try:
+            self._refresh_mesh_type_desc_style()
+        except Exception:
+            pass
         return f
+
+    def _refresh_mesh_type_desc_style(self) -> None:  # pragma: no cover
+        """현재 mesh_type 에 맞춰 desc 라벨 색상 보정 (tet=warn orange)."""
+        lbl = getattr(self, "_mesh_type_desc_label", None)
+        if lbl is None:
+            return
+        if self._mesh_type == "tet":
+            color = "#ff9f7b"   # orange — CFD 부적합 경고
+        else:
+            color = PALETTE['text_2']
+        try:
+            lbl.setStyleSheet(  # type: ignore[union-attr]
+                f"color: {color}; font-size: 11px; font-style: italic; "
+                f"background: transparent; padding-top: 4px; line-height: 1.4em;"
+            )
+        except Exception:
+            pass
 
     def set_mesh_type(self, mesh_type: str) -> None:  # pragma: no cover
         """메쉬 타입 변경 — 세그먼트 버튼 상태 + desc label 동기화."""
@@ -2259,6 +2504,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                 lbl.setText(self._MESH_TYPE_DESC.get(mt, ""))  # type: ignore[attr-defined]
             except Exception:
                 pass
+        # BETA2873 — desc 색상 갱신 (tet=warn orange, 외=기본).
+        try:
+            self._refresh_mesh_type_desc_style()
+        except Exception:
+            pass
         if prev != mt:
             try:
                 self._log(f"[INFO] 메쉬 타입 변경: {prev} → {mt}")
@@ -2560,43 +2810,6 @@ class AutoTessellWindow:  # type: ignore[misc]
             except Exception:
                 pass
 
-    def _build_run_buttons(self) -> object:  # pragma: no cover
-        from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QWidget
-        wrap = QWidget()
-        wrap.setStyleSheet("background: transparent;")
-        h = QHBoxLayout(wrap)
-        h.setContentsMargins(14, 14, 14, 18)
-        h.setSpacing(8)
-
-        run_btn = QPushButton("▶  Run Meshing")
-        run_btn.setProperty("accent", "primary")
-        run_btn.setMinimumHeight(36)
-        run_btn.clicked.connect(self._on_run_clicked)
-        self._run_btn = run_btn
-        h.addWidget(run_btn, stretch=3)
-
-        stop_btn = QPushButton("■")
-        stop_btn.setProperty("accent", "danger")
-        stop_btn.setMinimumHeight(36)
-        stop_btn.setFixedWidth(44)
-        stop_btn.clicked.connect(self._on_stop_clicked)
-        self._stop_btn = stop_btn
-        h.addWidget(stop_btn)
-
-        # J5 / beta2630 — 키보드 shortcut.
-        # F5 = Run, Esc = Stop, Ctrl+L = clear log, Ctrl+R = re-run.
-        try:
-            from PySide6.QtGui import QShortcut, QKeySequence
-            _sc_run = QShortcut(QKeySequence("F5"), self._qmain)
-            _sc_run.activated.connect(self._on_run_clicked)
-            _sc_stop = QShortcut(QKeySequence("Esc"), self._qmain)
-            _sc_stop.activated.connect(self._on_stop_clicked)
-            _sc_rerun = QShortcut(QKeySequence("Ctrl+R"), self._qmain)
-            _sc_rerun.activated.connect(self._on_run_clicked)
-        except Exception:
-            pass
-        return wrap
-
     def _build_main_area(self) -> object:  # pragma: no cover
         from PySide6.QtWidgets import (
             QFrame, QLabel, QStackedLayout, QVBoxLayout, QWidget,
@@ -2700,6 +2913,17 @@ class AutoTessellWindow:  # type: ignore[misc]
                 self._viewport_chrome.set_crumbs(parts)  # type: ignore[union-attr]
             except Exception:
                 pass
+        # BETA2860 — drop / 파일 선택 즉시 표면 메쉬 렌더. 이전에는 _sync_input_to_ui
+        # 가 viewer 에 알리지 않아 사용자가 Run 누르기 전까지 viewport 가 비어 있었다.
+        # _open_recent_file 경로와 동일하게 load_mesh() 호출.
+        if self._mesh_viewer is not None:
+            try:
+                self._mesh_viewer.load_mesh(str(resolved))  # type: ignore[union-attr]
+            except Exception as _exc:
+                try:
+                    self._log(f"[WARN] 표면 프리뷰 로드 실패: {_exc}")
+                except Exception:
+                    pass
         if self._right_column is not None:
             try:
                 size_kb = resolved.stat().st_size // 1024
@@ -2749,10 +2973,68 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._qmain, "입력 파일 선택", "", filter_str
         )
         if path:
+            self._load_input_with_progress(path)
+
+    def _load_input_with_progress(self, path: str) -> None:
+        """입력 지오메트리 로딩 — 무거운 ``geometry_hint.analyze()`` 를 백그라운드
+        스레드에서 실행하고, 그동안 indeterminate progress 다이얼로그를 표시한다.
+
+        분석 결과는 main thread 의 ``set_input_path()`` 가 다시 사용한다 (UI 업데이트는
+        반드시 메인 스레드). 분석 자체는 캐싱 덕에 두 번째 호출은 즉시 반환됨.
+        """
+        try:
+            from PySide6.QtWidgets import QProgressDialog, QApplication
+            from PySide6.QtCore import Qt as _Qt, QThread as _QThread, Signal as _Sig
+
+            from pathlib import Path as _Path
+            name = _Path(path).name
+            dlg = QProgressDialog(
+                f"지오메트리 분석 중...\n{name}",
+                None,
+                0, 0,  # indeterminate
+                self._qmain,
+            )
+            dlg.setWindowTitle("입력 파일 로딩")
+            dlg.setWindowModality(_Qt.WindowModal)
+            dlg.setMinimumDuration(0)
+            dlg.setAutoClose(False)
+            dlg.setAutoReset(False)
+            dlg.setCancelButton(None)
+
+            class _AnalyzeWorker(_QThread):
+                done = _Sig(object, object)  # (hint, error_str|None)
+
+                def __init__(self, p: str) -> None:
+                    super().__init__()
+                    self._p = p
+
+                def run(self) -> None:  # type: ignore[override]
+                    try:
+                        from desktop.qt_app.geometry_hint import analyze as _ana
+                        h = _ana(self._p)
+                        self.done.emit(h, None)
+                    except Exception as exc:  # pragma: no cover
+                        self.done.emit(None, str(exc))
+
+            worker = _AnalyzeWorker(path)
+            done_state: dict = {}
+
+            def _on_done(_hint, _err) -> None:
+                done_state["hint"] = _hint
+                done_state["err"] = _err
+                dlg.close()
+
+            worker.done.connect(_on_done)
+            worker.start()
+            dlg.exec()  # blocks until close() inside _on_done.
+            worker.wait(2000)
+
             try:
                 self.set_input_path(path)
             except Exception as e:
                 self._log(f"[ERR] {e}")
+        except Exception as e:
+            self._log(f"[ERR] {e}")
 
     def _on_pick_output_dir(self) -> None:  # pragma: no cover
         if self._qmain is None:
@@ -2838,13 +3120,30 @@ class AutoTessellWindow:  # type: ignore[misc]
         # tier_hint: engine_combo 의 itemData value
         tier_hint = self._tier_combo_text()
 
+        # BETA2856 — `cfmesh` family hint 를 mesh_type 에 맞춰 올바른 vendored
+        # tier 로 번역. `cfmesh` 만 단일 alias 로 두면 mesh_type=tet/poly 인
+        # 경우에도 cartesianMesh (hex) 가 강제되어 전혀 다른 메쉬가 나온다.
+        try:
+            _h = (tier_hint or "").lower()
+            _mt = str(self._mesh_type or "auto").lower()
+            if _h == "cfmesh":
+                if _mt == "tet":
+                    tier_hint = "cfmesh_tet"
+                elif _mt == "poly":
+                    tier_hint = "cfmesh_poly"
+                # hex_dominant / auto → 기존 cartesianMesh (tier15_cfmesh) 유지.
+        except Exception:
+            pass
+
         # tier-specific params: feature_angle 이 있으면 BL 파라미터에 반영
         tier_params: dict[str, object] = {}
         if feature_angle is not None:
             tier_params["bl_feature_angle"] = feature_angle
 
-        # BETA2847 — cfMesh GUI widget 값 propagate (hex_dominant + poly).
-        # 0 값은 strategist 자동값을 그대로 쓰겠다는 뜻이므로 키 추가 안 함.
+        # BETA2875 — cfMesh GUI widget 값 propagate. BL 파라미터는 BL 체크박스
+        # 가 ON 일 때만 (default OFF). 그렇지 않으면 cfmesh_bl_* 키를 명시적
+        # 0 으로 박아 strategist/tier 의 BL 자동값을 차단.
+        bl_on = bool(getattr(self, "_bl_check", None) and self._bl_check.isChecked())
         try:
             if getattr(self, "_cfm_max_cell_spin", None) is not None:
                 _v = float(self._cfm_max_cell_spin.value())
@@ -2854,18 +3153,25 @@ class AutoTessellWindow:  # type: ignore[misc]
                 _v = float(self._cfm_bnd_cell_spin.value())
                 if _v > 0.0:
                     tier_params["cfmesh_boundary_cell_size"] = _v
-            if getattr(self, "_cfm_bl_layers_spin", None) is not None:
-                _v = int(self._cfm_bl_layers_spin.value())
-                if _v > 0:
-                    tier_params["cfmesh_bl_n_layers"] = _v
-            if getattr(self, "_cfm_bl_ratio_spin", None) is not None:
-                _v = float(self._cfm_bl_ratio_spin.value())
-                if abs(_v - 1.2) > 1e-9:
-                    tier_params["cfmesh_bl_thickness_ratio"] = _v
-            if getattr(self, "_cfm_bl_first_spin", None) is not None:
-                _v = float(self._cfm_bl_first_spin.value())
-                if _v > 0.0:
-                    tier_params["cfmesh_bl_max_first_layer"] = _v
+
+            if bl_on:
+                # BL ON — spin 값 그대로 propagate.
+                if getattr(self, "_cfm_bl_layers_spin", None) is not None:
+                    tier_params["cfmesh_bl_n_layers"] = int(
+                        self._cfm_bl_layers_spin.value()
+                    )
+                if getattr(self, "_cfm_bl_ratio_spin", None) is not None:
+                    tier_params["cfmesh_bl_thickness_ratio"] = float(
+                        self._cfm_bl_ratio_spin.value()
+                    )
+                if getattr(self, "_cfm_bl_first_spin", None) is not None:
+                    _v = float(self._cfm_bl_first_spin.value())
+                    if _v > 0.0:
+                        tier_params["cfmesh_bl_max_first_layer"] = _v
+            else:
+                # BL OFF — 명시적으로 0 layers 강제. spin default (3) 가 tier 까지
+                # 새지 않도록.
+                tier_params["cfmesh_bl_n_layers"] = 0
         except Exception:
             pass
 
@@ -2910,7 +3216,14 @@ class AutoTessellWindow:  # type: ignore[misc]
                 tier_params["boundary_layers_enabled"] = False
                 tier_params["skip_addLayers"] = True
                 post_engine = tier4_choice
-            # else: auto → strategist 가 결정하도록 override 안 함.
+            elif tier4_choice == "auto":
+                # BETA2874 — BL 체크박스 ON (auto) 인데 strategist 가 draft 일 때
+                # BL 비활성화 → 사용자 의도 무시. 명시적으로 BL ON 요청 + cfMesh
+                # default n_layers 주입 (사용자가 spin 으로 안 정한 경우).
+                tier_params["boundary_layers_enabled"] = True
+                tier_params["skip_addLayers"] = False
+                if "cfmesh_bl_n_layers" not in tier_params:
+                    tier_params["cfmesh_bl_n_layers"] = 3  # cfMesh draft default
             if post_engine is not None:
                 tier_params["post_layers_engine"] = post_engine
         except Exception:
@@ -3067,8 +3380,12 @@ class AutoTessellWindow:  # type: ignore[misc]
                 tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())
                     if self._no_repair_check else False,
+                # BETA2859 — simplified panel 은 _surface_remesh_check 를 제거함.
+                # default True 였던 이전 fallback 은 watertight 12-face cube 를
+                # L2 native remesh 가 2-face / 3-vertex 로 decimate → wildmesh
+                # SIGSEGV. simplified panel 의 안전한 default = False (L2 비활성).
                 surface_remesh=bool(self._surface_remesh_check.isChecked())
-                    if self._surface_remesh_check else True,
+                    if self._surface_remesh_check else False,
                 allow_ai_fallback=bool(self._allow_ai_fallback_check.isChecked())
                     if self._allow_ai_fallback_check else False,
                 # beta2299 — GUI cross_engine_fallback 체크박스 propagate.
@@ -3116,14 +3433,19 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._set_pipeline_running(False)
 
     def _set_pipeline_running(self, running: bool) -> None:  # pragma: no cover
-        """파이프라인 실행 상태에 맞춰 tier strip의 버튼 그룹을 전환한다."""
+        """파이프라인 실행 상태에 맞춰 사이드바 하단 버튼 + tier strip 표시를 전환."""
+        has_result = self._pipeline_result is not None
+        # 좌측 사이드바 하단의 Run/Resume/Stop/Re-run 버튼 enable 매트릭스.
+        try:
+            self._apply_run_button_states(running=running, has_result=has_result)
+        except Exception:
+            pass
+        # Tier strip 의 진행 표시는 그대로 유지 (헤더 버튼은 hide 됨).
         try:
             if self._tier_pipeline is not None:
-                # 실행 중: running / 아이들: 이전에 실행했으면 done, 아니면 idle
                 if running:
                     self._tier_pipeline.set_state("running")  # type: ignore[union-attr]
                 else:
-                    has_result = self._pipeline_result is not None
                     self._tier_pipeline.set_state("done" if has_result else "idle")  # type: ignore[union-attr]
         except Exception:
             pass
@@ -3393,10 +3715,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                 try:
                     poly = Path(out_dir) / "constant" / "polyMesh"
                     if poly.exists():
-                        # foamToVTK 를 명시적으로 돌려 최신 polyMesh 기반 internal.vtu
-                        # 가 생성되도록 보장 (Quality 탭/3D 뷰어가 stale VTU 를 잡지 않게)
-                        self._ensure_fresh_foam_to_vtk(Path(out_dir))
-                        self._mesh_viewer.load_polymesh(out_dir)  # type: ignore[union-attr]
+                        # BETA2877 — VTU export (polyMesh→.vtu) 는 polyhedron+BL
+                        # 케이스에서 5~30s 가 걸려 main thread 를 막아 GUI 가 동결되는
+                        # 현상이 있다. QThread 로 비동기 실행 후 완료 시 load_polymesh
+                        # 를 호출.
+                        self._async_export_then_load(Path(out_dir))
                 except Exception:
                     pass
         else:
@@ -3422,13 +3745,12 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._set_pipeline_running(False)
 
     def _maybe_show_retry_dialog(self, result: object) -> None:  # pragma: no cover
-        """v0.4: Evaluator FAIL 시 "재시도 / 수락" 다이얼로그 표시.
+        """Evaluator FAIL 처리 — popup 으로 가로막지 않고 항상 수락.
 
-        auto_retry="off" 기본 경로에서만 (already retried 는 skip). "예" 선택 시
-        현재 설정 그대로 파이프라인 재실행 (_on_run_clicked 호출).
+        2026-05 사용자 정책 — 합격 기준 미통과여도 메시는 그대로 만들어 두고
+        Quality 탭의 '합격 기준' 영역에서만 FAIL 을 표시한다. 재시도 여부는
+        사용자가 Quality 탭/배지를 보고 수동으로 다시 실행하면 된다.
         """
-        if str(self._auto_retry).lower() != "off":
-            return
         q_report = getattr(result, "quality_report", None)
         if q_report is None:
             return
@@ -3439,46 +3761,96 @@ class AutoTessellWindow:  # type: ignore[misc]
         if str(verdict_val).upper() != "FAIL":
             return
         try:
-            from PySide6.QtWidgets import QMessageBox
+            q_report.evaluation_summary.user_decision = "accept"
         except Exception:
-            return
-        recs = getattr(q_report.evaluation_summary, "recommendations", []) or []
-        rec_text = "\n".join(
-            f"  • {getattr(r, 'action', str(r))}" for r in recs[:4]
+            pass
+        self._log(
+            "[WARN] Quality 합격 기준 FAIL — mesh 는 그대로 유지. "
+            "Quality 탭의 '합격 기준' 표시 확인."
         )
-        msg = (
-            "Evaluator 가 품질 기준을 통과하지 못했습니다 (FAIL).\n\n"
-            + (f"권고:\n{rec_text}\n\n" if rec_text else "")
-            + "Strategist 권고 파라미터로 한 번 더 시도하시겠습니까?"
-        )
-        try:
-            choice = QMessageBox.question(
-                self,                         # type: ignore[arg-type]
-                "재시도 — AutoTessell",
-                msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-        except Exception:
-            return
-        if choice == QMessageBox.StandardButton.Yes:
-            # user_decision 기록
+
+    def _async_export_then_load(self, case_dir: Path) -> None:  # pragma: no cover
+        """BETA2877 — VTU export 를 QThread 에서 실행하고, 완료 시 load_polymesh.
+
+        polyhedral + BL 케이스의 export_vtk() 는 main thread 에서 ~10-30s 걸려
+        GUI 가 동결되는 문제를 해결.
+
+        BETA2878 — Qt UI 위젯 (QTextEdit log) 은 main thread 에서만 접근 가능.
+        BG thread 에서 self._log() 를 호출하면 SIGSEGV. _ensure_fresh_foam_to_vtk
+        의 _log 는 모두 우회하기 위해 BG 진입점 (`_export_no_log`) 을 별도로
+        구성하고, 결과 메시지는 Signal 로 main thread 에 전달해 거기서 _log.
+        """
+        from PySide6.QtCore import QThread, Signal as _Signal
+
+        class _ExportThread(QThread):
+            done = _Signal(str)
+            err  = _Signal(str)
+
+            def __init__(self, cdir):
+                super().__init__()
+                self._case_dir = cdir
+
+            def run(self):  # type: ignore[override]
+                # BG-safe export — _log 호출 없이 export_vtk 만 실행.
+                try:
+                    from pathlib import Path as _P
+                    import shutil as _shutil
+                    cdir = self._case_dir
+                    vtk_dir = cdir / "VTK"
+                    poly_faces = cdir / "constant" / "polyMesh" / "faces"
+                    needs_regen = True
+                    if vtk_dir.exists() and poly_faces.exists():
+                        try:
+                            newest_vtu = max(
+                                (p for p in vtk_dir.glob("**/internal.vtu") if p.is_file()),
+                                key=lambda p: p.stat().st_mtime,
+                                default=None,
+                            )
+                            if newest_vtu is not None:
+                                needs_regen = (
+                                    newest_vtu.stat().st_mtime < poly_faces.stat().st_mtime
+                                )
+                        except Exception:
+                            needs_regen = True
+                    if not needs_regen:
+                        self.done.emit("VTU 최신 — 변환 생략")
+                        return
+                    if vtk_dir.exists():
+                        _shutil.rmtree(str(vtk_dir), ignore_errors=True)
+                    from core.utils.vtk_exporter import export_vtk
+                    target_dir = vtk_dir / f"{cdir.name}_0"
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    target = target_dir / "internal.vtu"
+                    out = export_vtk(cdir, output_path=target, include_quality=True)
+                    self.done.emit(
+                        "internal.vtu 재생성 완료" if out is not None
+                        else "VTU 변환 실패 (polyMesh 없음/파싱 오류)"
+                    )
+                except Exception as exc:
+                    self.err.emit(str(exc))
+
+        t = _ExportThread(case_dir)
+
+        def _on_done(msg):
+            self._log(f"[INFO] VTU export: {msg}")
             try:
-                q_report.evaluation_summary.user_decision = "retry"
-            except Exception:
-                pass
-            # 동일 설정으로 재실행
-            try:
-                self._log("[INFO] 사용자 재시도 선택 — 파이프라인 재실행")
-                self._on_run_clicked()    # type: ignore[attr-defined]
+                if self._mesh_viewer is not None:
+                    self._mesh_viewer.load_polymesh(str(case_dir))  # type: ignore[union-attr]
             except Exception as exc:
-                self._log(f"[ERR] 재실행 실패: {exc}")
-        else:
-            try:
-                q_report.evaluation_summary.user_decision = "accept"
-            except Exception:
-                pass
-            self._log("[INFO] 사용자가 현재 mesh 를 수락 (재시도 안 함)")
+                self._log(f"[WARN] mesh viewer load 실패: {exc}")
+
+        def _on_err(msg):
+            self._log(f"[WARN] VTU export 실패: {msg}")
+
+        t.done.connect(_on_done)
+        t.err.connect(_on_err)
+        # 참조 유지 — 그렇지 않으면 GC 로 thread 가 사라진다.
+        if not hasattr(self, "_export_threads"):
+            self._export_threads: list = []
+        self._export_threads = [_t for _t in self._export_threads if _t.isRunning()]
+        self._export_threads.append(t)
+        t.start()
+        self._log("[INFO] VTU export 시작 (백그라운드) — 완료 시 3D 뷰어 갱신")
 
     def _ensure_fresh_foam_to_vtk(self, case_dir: Path) -> None:  # pragma: no cover
         """VTK/ 가 없거나 polyMesh보다 오래됐으면 foamToVTK를 실행한다.
@@ -3508,16 +3880,25 @@ class AutoTessellWindow:  # type: ignore[misc]
             if not needs_regen:
                 return
 
-            # stale VTK 제거 후 foamToVTK 재실행
+            # BETA2855 — native polyMesh→VTU exporter 로 foamToVTK 대체.
+            # 외부 OpenFOAM 차단 정책 (BETA2850) 하에서도 GUI Quality 탭이 동작하도록
+            # 자체 구현 `core/utils/vtk_exporter.export_vtk` 가 polyMesh 를 읽어
+            # foamToVTK 와 동일한 경로 (`VTK/<case>_0/internal.vtu`) 에 .vtu 를 쓴다.
+            import shutil as _shutil
             if vtk_dir.exists():
-                import shutil
-                shutil.rmtree(str(vtk_dir), ignore_errors=True)
+                _shutil.rmtree(str(vtk_dir), ignore_errors=True)
 
-            from core.utils.openfoam_utils import run_openfoam
-            run_openfoam("foamToVTK", case_dir)
-            self._log("[INFO] foamToVTK 재생성 완료 — Quality 탭 갱신")
+            from core.utils.vtk_exporter import export_vtk
+            target_dir = vtk_dir / f"{case_dir.name}_0"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / "internal.vtu"
+            out = export_vtk(case_dir, output_path=target, include_quality=True)
+            if out is not None:
+                self._log("[INFO] internal.vtu 재생성 완료 (native exporter) — Quality 탭 갱신")
+            else:
+                self._log("[WARN] native VTU 변환 실패 (polyMesh 없음/파싱 오류)")
         except Exception as exc:
-            self._log(f"[WARN] foamToVTK 실행 실패: {exc}")
+            self._log(f"[WARN] native VTU 변환 실행 실패: {exc}")
 
     def _show_error_recovery(self, error_message: str) -> None:  # pragma: no cover
         """에러 메시지 패턴 분석 → 복구 다이얼로그 표시."""
@@ -3678,20 +4059,21 @@ class AutoTessellWindow:  # type: ignore[misc]
                         kpi.set_value("Cells", cells_str)
                     if hex_ratio is not None:
                         kpi.set_value("Hex %", hex_str)
+                    # BETA2874 — invalid -1 sentinel 무시.
                     max_ar = stats.get("max_aspect_ratio")
-                    if max_ar is not None:
+                    if max_ar is not None and float(max_ar) >= 0:
                         kpi.set_value(
                             "Aspect", f"{float(max_ar):.2f}",
                             warn=float(max_ar) > 100.0,
                         )
                     max_sk = stats.get("max_skewness")
-                    if max_sk is not None:
+                    if max_sk is not None and float(max_sk) >= 0:
                         kpi.set_value(
                             "Skew", f"{float(max_sk):.2f}",
                             warn=float(max_sk) > 4.0,
                         )
                     max_no = stats.get("max_non_orthogonality")
-                    if max_no is not None:
+                    if max_no is not None and float(max_no) >= 0:
                         kpi.set_value(
                             "Non-ortho", f"{float(max_no):.1f}°",
                             warn=float(max_no) > 65.0,
@@ -3702,13 +4084,14 @@ class AutoTessellWindow:  # type: ignore[misc]
             # Quality 탭 — aspect/skewness
             if self._right_column is not None:
                 q = self._right_column.quality_pane
+                # BETA2874 — invalid -1 sentinel 무시 (cfMesh polyhedron output).
                 max_ar = stats.get("max_aspect_ratio")
-                if max_ar is not None:
+                if max_ar is not None and float(max_ar) >= 0:
                     ratio = min(1.0, float(max_ar) / 20.0)
                     warn = float(max_ar) > 10.0
                     q.set_metric("aspect", ratio, f"{float(max_ar):.2f}", warn=warn)
                 max_sk = stats.get("max_skewness")
-                if max_sk is not None:
+                if max_sk is not None and float(max_sk) >= 0:
                     ratio = min(1.0, float(max_sk) / 5.0)
                     warn = float(max_sk) > 3.5
                     q.set_metric("skew", ratio, f"{float(max_sk):.2f}", warn=warn)
@@ -3750,10 +4133,22 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._log(f"[DBG] 메시 통계 KPI 갱신 실패: {e}")
 
     def _on_intermediate_ready(self, path: str, stage_label: str) -> None:  # pragma: no cover
-        """중간 artifact 준비 — 뷰포트 자동 로드 + 스테이지 배지 업데이트."""
+        """중간 artifact 준비 — 뷰포트 자동 로드 + 스테이지 배지 업데이트.
+
+        UI freeze 방지 — 같은 건의 중간 결과를 5초 이내에 반복 받으면 무시한다.
+        load_mesh/load_polymesh 는 main thread 에서 PyVista 가 렌더하므로 큰 메쉬에서
+        쉽게 200ms+ 가 걸려 마우스 입력이 끊긴다.
+        """
         if self._mesh_viewer is None:
             return
         from pathlib import Path
+        import time as _t
+        _now = _t.monotonic()
+        _last = getattr(self, "_last_intermediate_load_ts", 0.0)
+        if _now - _last < 5.0:
+            # 직전 프리뷰가 5초 이내면 새 로드 생략 (debounce).
+            return
+        self._last_intermediate_load_ts = _now
 
         p = Path(path)
         if not p.exists():
@@ -3799,6 +4194,16 @@ class AutoTessellWindow:  # type: ignore[misc]
         try:
             q = self._right_column.quality_pane
 
+            def _fmt(v: float) -> str:
+                # BETA2874 — 작은 값 (min_face_area ~1e-3, min_vol ~1e-5) 이
+                # f'{v:.2f}' 로 '0.00' 잘림. 절대값에 따라 적응형 포맷.
+                a = abs(v)
+                if a >= 100:    return f"{v:.0f}"
+                if a >= 1.0:    return f"{v:.2f}"
+                if a >= 0.01:   return f"{v:.3f}"
+                if a > 0:       return f"{v:.2e}"
+                return "0"
+
             def _set(key: str, value, max_value: float, warn_threshold=None):
                 if value is None:
                     return
@@ -3806,15 +4211,21 @@ class AutoTessellWindow:  # type: ignore[misc]
                     v = float(value)
                 except (TypeError, ValueError):
                     return
+                # BETA2874 — invalid sentinel (-1) 무시.
+                if v < 0 and key in ("aspect", "skew", "nonortho"):
+                    return
                 ratio = min(1.0, v / max_value) if max_value > 0 else 0.0
                 warn = warn_threshold is not None and v > warn_threshold
-                q.set_metric(key, ratio, f"{v:.2f}", warn=warn)
+                q.set_metric(key, ratio, _fmt(v), warn=warn)
 
             _set("aspect", metrics.get("max_aspect_ratio"), 20.0, 10.0)
             _set("skew", metrics.get("max_skewness"), 5.0, 3.5)
             _set("nonortho", metrics.get("max_non_ortho"), 90.0, 65.0)
             _set("min_area", metrics.get("min_face_area"), 1.0)
-            _set("min_vol", metrics.get("min_volume"), 1.0)
+            # BETA2874 — worker 가 'min_vol' 키로 emit. 이전 'min_volume' 은 None.
+            _set("min_vol",
+                 metrics.get("min_vol", metrics.get("min_volume")),
+                 1.0)
             neg = metrics.get("negative_volumes")
             if neg is not None:
                 neg_i = int(neg)

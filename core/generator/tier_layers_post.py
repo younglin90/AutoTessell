@@ -1319,10 +1319,22 @@ class LayersPostGenerator:
             "post_layers_growth_ratio",
             getattr(bl, "growth_ratio", 1.2) or 1.2,
         ))
-        first_thickness = float(params.get(
-            "post_layers_first_thickness",
-            getattr(bl, "first_layer_thickness", 0.001) or 0.001,
-        ))
+        # BETA2877 — first_thickness default 가 0.001 인데 큰 도메인 (bbox > 1) 에서
+        # 너무 얇아 aspect ratio > 50 으로 모든 prism 이 거부됨 (test_cube: aspect
+        # 1100~1400). target_cell_size 의 5% 로 fallback → 평균 base 길이 대비
+        # aspect ≈ 20 으로 거부되지 않음. strategist 가 0.001 (BL_DEFAULT_T0_FRACTION)
+        # 같은 작은 절대값을 넣었어도 target × 0.05 가 이보다 크면 그쪽을 채택.
+        _strategy_t = getattr(strategy.surface_mesh, "target_cell_size", 0.0) if strategy.surface_mesh else 0.0
+        _bl_first = getattr(bl, "first_layer_thickness", 0.0) or 0.0
+        _autom = float(_strategy_t) * 0.05 if _strategy_t > 0.0 else 0.0
+        if _autom > _bl_first:
+            log.info("bl_first_thickness_auto_scaled",
+                     prev=_bl_first, new=_autom,
+                     target_cell=_strategy_t)
+            _bl_first = _autom
+        if _bl_first <= 0.0:
+            _bl_first = 0.001
+        first_thickness = float(params.get("post_layers_first_thickness", _bl_first))
         edge_fraction = float(params.get("post_layers_refine_wall_fraction", 0.3))
 
         ok = False
@@ -1395,8 +1407,15 @@ class LayersPostGenerator:
                 if not _res.success:
                     ok, msg = False, f"native_bl 단계 실패: {_res.message}"
                 else:
+                    # BETA2877 — aspect cap 을 quality 기반으로 완화. draft 50→2000
+                    # (강한 완화) 으로 풀어 큰 도메인 (cube bbox=3.4, mean_edge=0.16,
+                    # first_thickness=0.0001 → aspect ≈ 1600) 의 prism 도 통과.
+                    # fine 은 100 (Garimella 2003 권장 50 보다 살짝 완화) 유지.
+                    _ql = str(_quality_level or "").lower()
+                    _ac = 2000.0 if _ql == "draft" else (500.0 if _ql == "standard" else 100.0)
+                    _ac = float(params.get("tet_bl_aspect_cap", _ac))
                     _res2 = subdivide_prism_layers_to_tet(
-                        case_dir, backup_original=False,
+                        case_dir, backup_original=False, aspect_cap=_ac,
                     )
                     ok = bool(_res2.success)
                     msg = (

@@ -807,14 +807,38 @@ class PipelineOrchestrator:
                 strategy.boundary_layers.enabled = bl_layers > 0
                 strategy.boundary_layers.num_layers = bl_layers
                 log.info("bl_layers_override", bl_layers=bl_layers)
+            # BETA2876 — GUI 가 cfmesh_bl_n_layers 만 보낼 때 (tet+wildmesh 등
+            # cfMesh 가 아닌 주 엔진에서도) strategy.num_layers 까지 동기화 해야
+            # post_layers stage 가 발화 (orchestrator line 416 의 num_layers > 0
+            # 가드 통과). 그렇지 않으면 BL 체크 ON + tet 일 때 BL 이 만들어지지
+            # 않는다.
+            elif (
+                "cfmesh_bl_n_layers" in tier_specific_params
+                and strategy.boundary_layers.enabled
+            ):
+                _nL = int(tier_specific_params["cfmesh_bl_n_layers"])
+                if _nL > 0:
+                    strategy.boundary_layers.num_layers = _nL
+                    log.info("bl_layers_synced_from_cfmesh", num_layers=_nL)
             if "bl_first_height" in tier_specific_params:
                 bl_first_height = tier_specific_params["bl_first_height"]
                 strategy.boundary_layers.first_layer_thickness = bl_first_height
                 log.info("bl_first_height_override", bl_first_height=bl_first_height)
+            elif (
+                "cfmesh_bl_max_first_layer" in tier_specific_params
+                and float(tier_specific_params["cfmesh_bl_max_first_layer"]) > 0.0
+            ):
+                _f = float(tier_specific_params["cfmesh_bl_max_first_layer"])
+                strategy.boundary_layers.first_layer_thickness = _f
+                log.info("bl_first_height_synced_from_cfmesh", v=_f)
             if "bl_growth_ratio" in tier_specific_params:
                 bl_growth_ratio = tier_specific_params["bl_growth_ratio"]
                 strategy.boundary_layers.growth_ratio = bl_growth_ratio
                 log.info("bl_growth_ratio_override", bl_growth_ratio=bl_growth_ratio)
+            elif "cfmesh_bl_thickness_ratio" in tier_specific_params:
+                _r = float(tier_specific_params["cfmesh_bl_thickness_ratio"])
+                strategy.boundary_layers.growth_ratio = _r
+                log.info("bl_growth_ratio_synced_from_cfmesh", v=_r)
             if "min_cell_size" in tier_specific_params:
                 min_cell_size = tier_specific_params["min_cell_size"]
                 strategy.surface_mesh.min_cell_size = min_cell_size

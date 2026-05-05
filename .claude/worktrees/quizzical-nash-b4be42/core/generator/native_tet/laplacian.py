@@ -1,0 +1,515 @@
+"""VVV7 — interior Laplacian smoothing targeting top-K worst-quality tets.
+
+Only vertices that are ≥2 rings from any boundary face are moved.
+Per-vertex strict quality guard: accept move only if min_q of incident tets
+improves by at least min_quality_improvement.
+
+Reference: Freitag & Ollivier-Gooch 1997, "Tetrahedral mesh improvement using
+swapping and smoothing" — §3 local quality-improving Laplacian.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+# ── TET_CACHE1 (beta2152) — boundary-face memo ────────────────────────────────
+# LRU-1: cache last boundary-face computation keyed by tets.tobytes().
+# Avoids redundant O(T) dict build across VVV7 / VVV8 / TET_QUALITY1 post-passes
+# when tets array has not changed (smoothing only moves pts, not topology).
+_BF_CACHE_KEY: bytes | None = None
+_BF_CACHE_VAL: "tuple[dict[tuple[int,int,int],int], set[int]] | None" = None
+
+
+def _compute_boundary_faces_cached(
+    tets: np.ndarray,
+) -> "tuple[dict[tuple[int,int,int],int], set[int]]":
+    """Return (face_count, boundary_verts) for tets, using a 1-entry memo cache.
+
+    face_count: maps sorted 3-tuple → int (1 = boundary, 2 = interior).
+    boundary_verts: set of vertex indices on boundary faces.
+    Cache is invalidated whenever tets.tobytes() changes (topology mutation).
+    """
+    global _BF_CACHE_KEY, _BF_CACHE_VAL  # noqa: PLW0603
+    key = tets.tobytes()
+    if key == _BF_CACHE_KEY and _BF_CACHE_VAL is not None:
+        return _BF_CACHE_VAL
+
+    face_count: dict[tuple[int, int, int], int] = {}
+    for tet in tets:
+        for combo in (
+            (tet[0], tet[1], tet[2]),
+            (tet[0], tet[1], tet[3]),
+            (tet[0], tet[2], tet[3]),
+            (tet[1], tet[2], tet[3]),
+        ):
+            f: tuple[int, int, int] = tuple(sorted(combo))  # type: ignore[assignment]
+            face_count[f] = face_count.get(f, 0) + 1
+
+    boundary_verts: set[int] = set()
+    for f, cnt in face_count.items():
+        if cnt == 1:
+            boundary_verts.update(f)
+
+    _BF_CACHE_KEY = key
+    _BF_CACHE_VAL = (face_count, boundary_verts)
+    return _BF_CACHE_VAL
+
+
+def _tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """Per-tet shape quality in [0,1]. Regular tet ≈ 1."""
+    v = pts[tets]
+    e01 = np.linalg.norm(v[:, 1] - v[:, 0], axis=1)
+    e02 = np.linalg.norm(v[:, 2] - v[:, 0], axis=1)
+    e03 = np.linalg.norm(v[:, 3] - v[:, 0], axis=1)
+    e12 = np.linalg.norm(v[:, 2] - v[:, 1], axis=1)
+    e13 = np.linalg.norm(v[:, 3] - v[:, 1], axis=1)
+    e23 = np.linalg.norm(v[:, 3] - v[:, 2], axis=1)
+    emax = np.maximum.reduce([e01, e02, e03, e12, e13, e23])
+    vol = np.abs(
+        np.einsum(
+            "ij,ij->i",
+            v[:, 1] - v[:, 0],
+            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+        )
+    ) / 6.0
+    q = np.zeros(len(tets))
+    safe = emax > 1e-30
+    q[safe] = 8.48 * vol[safe] / emax[safe] ** 3
+    return q
+
+
+def smooth_interior_laplacian(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    top_k: int = 20,
+    n_iter: int = 1,
+    min_quality_improvement: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Pure centroid-of-1-ring Laplacian for top-K worst-tet incident vertices.
+
+    Only interior-safe vertices (≥2 rings from boundary) are candidates.
+    Each candidate vertex is moved only if the minimum quality of its incident
+    tets strictly improves by at least min_quality_improvement.
+
+    Returns (pts_out, tets_unchanged, n_moved).
+    """
+    pts = np.array(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    n_verts = pts.shape[0]
+    n_tets = tets.shape[0]
+
+    if n_tets == 0 or n_verts == 0:
+        return pts, tets, 0
+
+    # ── 1. Build vert → incident-tet adjacency (vectorised) ──────────────────
+    # vert_tets[v] = list of tet indices containing v.
+    # Vectorised: sort by vertex index, then split at boundaries.
+    _ti_all = np.repeat(np.arange(n_tets, dtype=np.int64), 4)  # (n_tets*4,)
+    _v_all = tets.ravel()  # (n_tets*4,)
+    _order = np.argsort(_v_all, kind="stable")
+    _v_sorted = _v_all[_order]
+    _ti_sorted = _ti_all[_order]
+    _split_pts = np.where(np.diff(_v_sorted))[0] + 1
+    _groups = np.split(_ti_sorted, _split_pts)
+    _unique_v = _v_sorted[np.concatenate(([0], _split_pts))]
+    vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
+    for _vi, _grp in zip(_unique_v, _groups):
+        vert_tets[_vi] = _grp.tolist()
+
+    # ── 2. Identify boundary faces (appear in exactly 1 tet) ─────────────────
+    # TET_CACHE1: reuse cached result when tets topology hasn't changed.
+    _fc, boundary_verts = _compute_boundary_faces_cached(tets)
+
+    # ── 3. 2-ring BFS from boundary — vectorised depth propagation ────────────
+    # Build edge list from tets: all (i,j) pairs with i<j per tet.
+    # Shape: (n_tets*6, 2) — 6 edges per tet.
+    _EDGE_PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    edges_list = [tets[:, [a, b]] for a, b in _EDGE_PAIRS]
+    edges = np.concatenate(edges_list, axis=0)  # (n_tets*6, 2)
+    # Symmetric: add reverse direction.
+    edges = np.concatenate([edges, edges[:, ::-1]], axis=0)  # (n_tets*12, 2)
+
+    # depth[v] = min BFS ring distance from any boundary vert.
+    depth = np.full(n_verts, n_verts, dtype=np.int64)
+    bv_arr = np.fromiter(boundary_verts, dtype=np.int64)
+    if bv_arr.size > 0:
+        depth[bv_arr] = 0
+
+    # Two BFS waves (we only need depth ≥ 2 check, so 2 rounds suffice).
+    for _wave in range(2):
+        # For each edge (u→v): if depth[u]+1 < depth[v], update depth[v].
+        src_depth = depth[edges[:, 0]]
+        candidate_depth = src_depth + 1
+        # Vectorised scatter-min via np.minimum.at.
+        np.minimum.at(depth, edges[:, 1], candidate_depth)
+
+    # interior_safe_mask[v] = True iff depth[v] >= 2.
+    interior_safe_mask = depth >= 2
+
+    # Build vert_neighbors (edge-connected) — vectorised over 6 edge pairs.
+    _PAIRS6 = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
+    for _a, _b in _PAIRS6:
+        _ua = tets[:, _a]; _ub = tets[:, _b]
+        for _va, _vb in zip(_ua.tolist(), _ub.tolist()):
+            vert_neighbors[_va].add(_vb)
+            vert_neighbors[_vb].add(_va)
+
+    interior_safe = set(int(v) for v in np.where(interior_safe_mask)[0])
+
+    if not interior_safe:
+        return pts, tets, 0
+
+    # ── 4. Identify candidate verts from top-K worst tets (vectorised) ────────
+    q_all = _tet_shape_quality(pts, tets)
+    k = min(top_k, n_tets)
+    worst_ti = np.argpartition(q_all, k - 1)[:k] if k < n_tets else np.arange(n_tets)
+
+    # Gather all verts from worst tets, then filter by interior_safe_mask.
+    worst_verts = tets[worst_ti].ravel()  # (k*4,)
+    cand_mask = interior_safe_mask[worst_verts]
+    candidate_verts: set[int] = set(worst_verts[cand_mask].tolist())
+
+    if not candidate_verts:
+        return pts, tets, 0
+
+    # ── 5. Per-vertex smoothing with strict quality guard ─────────────────────
+    n_moved = 0
+    for _it in range(n_iter):
+        for v in candidate_verts:
+            nbs = vert_neighbors[v]
+            if not nbs:
+                continue
+
+            # Centroid of 1-ring neighbors (exclude self).
+            p_new = np.mean(pts[list(nbs)], axis=0)
+
+            # Quality before move.
+            inc_tets = vert_tets[v]
+            if not inc_tets:
+                continue
+            q_before = _tet_shape_quality(pts, tets[inc_tets])
+            q_min_before = float(q_before.min())
+
+            # Tentative move.
+            p_old = pts[v].copy()
+            pts[v] = p_new
+
+            # Quality after candidate move.
+            q_after = _tet_shape_quality(pts, tets[inc_tets])
+            q_min_after = float(q_after.min())
+
+            if q_min_after >= q_min_before + min_quality_improvement:
+                n_moved += 1  # accept
+            else:
+                pts[v] = p_old  # revert
+
+    return pts, tets, n_moved
+
+
+# ── TET_QUALITY1 (beta2141) ────────────────────────────────────────────────────
+
+
+def _tet_face_nonortho(
+    pts: np.ndarray,
+    tet_a: np.ndarray,
+    tet_b: np.ndarray,
+    shared_face: tuple[int, int, int],
+) -> float:
+    """Non-orthogonality (degrees) between face normal and cell-cell vector."""
+    c0 = pts[tet_a].mean(axis=0)
+    c1 = pts[tet_b].mean(axis=0)
+    cc = c1 - c0
+    cc_len = float(np.linalg.norm(cc))
+    if cc_len < 1e-30:
+        return 0.0
+    a, b, c = pts[shared_face[0]], pts[shared_face[1]], pts[shared_face[2]]
+    n_vec = np.cross(b - a, c - a)
+    n_len = float(np.linalg.norm(n_vec))
+    if n_len < 1e-30:
+        return 0.0
+    cos_a = abs(float(np.dot(n_vec / n_len, cc / cc_len)))
+    cos_a = min(1.0, cos_a)
+    return float(np.degrees(np.arccos(cos_a)))
+
+
+def reduce_nonortho_tet(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    threshold_deg: float = 60.0,
+    top_k: int = 20,
+    min_improve_deg: float = 2.0,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """TET_QUALITY1: non-orthogonality local post-pass for tet meshes.
+
+    For internal faces with non-ortho > threshold_deg (top_k worst), nudge
+    incident face verts along the cell-cell vector projection (0.1x scale).
+    STRICT GUARD: revert if local max non-ortho does not decrease by at least
+    min_improve_deg.  Boundary faces are skipped.
+
+    Returns (pts_out, tets_unchanged, n_moved).
+    """
+    pts = np.array(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    # ── 1. Build face -> owner tets ──────────────────────────────────────────
+    _TET_FACES = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
+    face_owners: dict[tuple[int, int, int], list[int]] = {}
+    for ti in range(n_tets):
+        for fl in _TET_FACES:
+            key = tuple(sorted(int(tets[ti, k]) for k in fl))
+            face_owners.setdefault(key, []).append(ti)  # type: ignore[arg-type]
+
+    # ── 2. Collect internal faces with non-ortho > threshold ─────────────────
+    bad: list[tuple[float, tuple[int, int, int], int, int]] = []
+    seen: set[tuple[int, int, int]] = set()
+    for ti in range(n_tets):
+        for fl in _TET_FACES:
+            key2: tuple[int, int, int] = tuple(sorted(int(tets[ti, k]) for k in fl))  # type: ignore[assignment]
+            if key2 in seen:
+                continue
+            seen.add(key2)
+            owners = face_owners.get(key2, [])
+            if len(owners) < 2:
+                continue  # boundary face
+            ang = _tet_face_nonortho(pts, tets[owners[0]], tets[owners[1]], key2)
+            if ang > threshold_deg:
+                bad.append((ang, key2, owners[0], owners[1]))
+
+    if not bad:
+        return pts, tets, 0
+
+    bad.sort(key=lambda t: t[0], reverse=True)
+    bad = bad[:top_k]
+
+    # ── 3. Helper: local max non-ortho over faces incident to two tet cells ──
+    def _local_max_no(ti0: int, ti1: int) -> float:
+        incident: set[tuple[int, int, int]] = set()
+        for ci in (ti0, ti1):
+            for fl in _TET_FACES:
+                k2: tuple[int, int, int] = tuple(sorted(int(tets[ci, k]) for k in fl))  # type: ignore[assignment]
+                incident.add(k2)
+        vals = []
+        for k2 in incident:
+            ow = face_owners.get(k2, [])
+            if len(ow) == 2:
+                vals.append(_tet_face_nonortho(pts, tets[ow[0]], tets[ow[1]], k2))
+        return max(vals) if vals else 0.0
+
+    all_bad_keys = {entry[1] for entry in bad}
+    pre_global_max = max(e[0] for e in bad)
+
+    # ── 4. Per-face nudge with strict guard ───────────────────────────────────
+    n_moved = 0
+    for _ang_pre, face_key, ci0, ci1 in bad:
+        c0 = pts[tets[ci0]].mean(axis=0)
+        c1 = pts[tets[ci1]].mean(axis=0)
+        cc = c1 - c0
+        cc_len = float(np.linalg.norm(cc))
+        if cc_len < 1e-30:
+            continue
+
+        fvp = pts[list(face_key)]
+        n_vec = np.cross(fvp[1] - fvp[0], fvp[2] - fvp[0])
+        n_len = float(np.linalg.norm(n_vec))
+        if n_len < 1e-30:
+            continue
+        n_hat = n_vec / n_len
+        proj = float(np.dot(cc / cc_len, n_hat))
+        delta = 0.1 * proj * n_hat * cc_len
+
+        pre_local = _local_max_no(ci0, ci1)
+
+        orig = {vi: pts[vi].copy() for vi in face_key}
+        for vi in face_key:
+            pts[vi] = pts[vi] + delta
+
+        post_local = _local_max_no(ci0, ci1)
+
+        # Triple monotone guard: local improves AND global does not regress.
+        post_global = max(
+            (
+                _tet_face_nonortho(pts, tets[fo[0]], tets[fo[1]], k2)
+                for k2 in all_bad_keys
+                if len((fo := face_owners.get(k2, []))) == 2
+            ),
+            default=0.0,
+        )
+
+        if (post_local <= pre_local - min_improve_deg
+                and post_global <= pre_global_max):
+            n_moved += 1
+            pre_global_max = post_global
+        else:
+            for vi, p in orig.items():
+                pts[vi] = p
+
+    return pts, tets, n_moved
+
+
+def _point_to_triangle_distance(p: np.ndarray, tri_pts: np.ndarray) -> tuple[float, np.ndarray]:
+    """Closest point on triangle to p. tri_pts shape (3,3)."""
+    a, b, c = tri_pts[0], tri_pts[1], tri_pts[2]
+    ab = b - a; ac = c - a; ap = p - a
+    d1 = np.dot(ab, ap); d2 = np.dot(ac, ap)
+    if d1 <= 0 and d2 <= 0:
+        return float(np.linalg.norm(p - a)), a
+    bp = p - b; d3 = np.dot(ab, bp); d4 = np.dot(ac, bp)
+    if d3 >= 0 and d4 <= d3:
+        return float(np.linalg.norm(p - b)), b
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0 and d1 >= 0 and d3 <= 0:
+        v = d1 / (d1 - d3); cp = a + v * ab
+        return float(np.linalg.norm(p - cp)), cp
+    cp2 = p - c; d5 = np.dot(ab, cp2); d6 = np.dot(ac, cp2)
+    if d6 >= 0 and d5 <= d6:
+        return float(np.linalg.norm(p - c)), c
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0 and d2 >= 0 and d6 <= 0:
+        w = d2 / (d2 - d6); cp = a + w * ac
+        return float(np.linalg.norm(p - cp)), cp
+    va = d3 * d6 - d5 * d4
+    w2 = d4 - d3; w3 = d5 - d6
+    if va <= 0 and w2 >= 0 and w3 >= 0:
+        denom = w2 + w3
+        if denom > 1e-30:
+            v = w2 / denom; cp = b + v * (c - b)
+            return float(np.linalg.norm(p - cp)), cp
+    denom2 = 1.0 / (va + vb + vc + 1e-300)
+    v2 = vb * denom2; w4 = vc * denom2
+    cp = a + v2 * ab + w4 * ac
+    return float(np.linalg.norm(p - cp)), cp
+
+
+def _nearest_surface_point(p: np.ndarray, surface_pts: np.ndarray, surface_faces: np.ndarray) -> np.ndarray:
+    """O(F) point-to-triangle scan; returns nearest point on surface."""
+    tri_pts = surface_pts[surface_faces]  # (F,3,3)
+    # vectorised squared-distance to face centroids for quick bbox pruning
+    centroids = tri_pts.mean(axis=1)  # (F,3)
+    dists_c = np.linalg.norm(centroids - p, axis=1)
+    coarse_k = min(64, len(surface_faces))
+    top_idx = np.argpartition(dists_c, coarse_k - 1)[:coarse_k]
+    best_dist = np.inf
+    best_cp = p.copy()
+    for fi in top_idx:
+        d, cp = _point_to_triangle_distance(p, tri_pts[fi])
+        if d < best_dist:
+            best_dist = d
+            best_cp = cp
+    return best_cp
+
+
+def smooth_boundary_envelope(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    surface_pts: np.ndarray,
+    surface_faces: np.ndarray,
+    *,
+    top_k: int = 20,
+    n_iter: int = 1,
+    min_quality_improvement: float = 1e-6,
+    envelope_eps: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV8 — boundary Laplacian + envelope projection (Loseille 2013 §3.2).
+
+    For boundary verts incident to the top-K worst tets:
+      candidate = centroid of 1-ring boundary neighbors.
+      project candidate to nearest surface point.
+      Accept iff min_q over incident tets improves by min_quality_improvement.
+
+    Returns (pts_out, tets_unchanged, n_moved).
+    """
+    pts = np.array(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    surface_pts = np.asarray(surface_pts, dtype=np.float64)
+    surface_faces = np.asarray(surface_faces, dtype=np.int64)
+    n_verts = pts.shape[0]
+    n_tets = tets.shape[0]
+
+    if n_tets == 0 or n_verts == 0 or surface_faces.shape[0] == 0:
+        return pts, tets, 0
+
+    # ── 1. Build adjacency (fully vectorised) ────────────────────────────────
+    _ti_all2 = np.repeat(np.arange(n_tets, dtype=np.int64), 4)
+    _v_all2 = tets.ravel()
+    _order2 = np.argsort(_v_all2, kind="stable")
+    _v_sorted2 = _v_all2[_order2]
+    _ti_sorted2 = _ti_all2[_order2]
+    _split2 = np.where(np.diff(_v_sorted2))[0] + 1
+    _grps2 = np.split(_ti_sorted2, _split2)
+    _uv2 = _v_sorted2[np.concatenate(([0], _split2))]
+    vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
+    for _vi2, _g2 in zip(_uv2, _grps2):
+        vert_tets[_vi2] = _g2.tolist()
+
+    # TET_CACHE1: reuse cached boundary-face result when tets topology unchanged.
+    _fc2, boundary_verts = _compute_boundary_faces_cached(tets)
+
+    if not boundary_verts:
+        return pts, tets, 0
+
+    # boundary_verts_mask[v] = True iff v is on boundary — vectorised.
+    boundary_verts_arr = np.fromiter(boundary_verts, dtype=np.int64)
+    boundary_mask = np.zeros(n_verts, dtype=bool)
+    boundary_mask[boundary_verts_arr] = True
+
+    # ── 2. Vert neighbors (edge-connected) — vectorised over 6 edge pairs ────
+    _PAIRS6b = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
+    for _a2, _b2 in _PAIRS6b:
+        _ua2 = tets[:, _a2]; _ub2 = tets[:, _b2]
+        for _va2, _vb2 in zip(_ua2.tolist(), _ub2.tolist()):
+            vert_neighbors[_va2].add(_vb2)
+            vert_neighbors[_vb2].add(_va2)
+
+    # ── 3. Candidate verts: boundary + incident to top-K worst tets (vectorised)
+    q_all = _tet_shape_quality(pts, tets)
+    k = min(top_k, n_tets)
+    worst_ti = np.argpartition(q_all, k - 1)[:k] if k < n_tets else np.arange(n_tets)
+
+    # Gather all verts from worst tets, filter by boundary_mask — vectorised.
+    worst_verts = tets[worst_ti].ravel()  # (k*4,)
+    cand_mask = boundary_mask[worst_verts]
+    candidate_verts: set[int] = set(worst_verts[cand_mask].tolist())
+
+    if not candidate_verts:
+        return pts, tets, 0
+
+    # ── 4. Smoothing with projection + strict quality guard ───────────────────
+    n_moved = 0
+    for _it in range(n_iter):
+        for v in candidate_verts:
+            bdy_nbs = [nb for nb in vert_neighbors[v] if nb in boundary_verts]
+            if not bdy_nbs:
+                continue
+
+            candidate = np.mean(pts[bdy_nbs], axis=0)
+            projected = _nearest_surface_point(candidate, surface_pts, surface_faces)
+
+            if envelope_eps is not None:
+                dist_to_surf = float(np.linalg.norm(projected - candidate))
+                if dist_to_surf > envelope_eps:
+                    continue
+
+            inc_tets = vert_tets[v]
+            if not inc_tets:
+                continue
+            q_before = _tet_shape_quality(pts, tets[inc_tets])
+            q_min_before = float(q_before.min())
+
+            p_old = pts[v].copy()
+            pts[v] = projected
+
+            q_after = _tet_shape_quality(pts, tets[inc_tets])
+            q_min_after = float(q_after.min())
+
+            if q_min_after >= q_min_before + min_quality_improvement:
+                n_moved += 1  # accept
+            else:
+                pts[v] = p_old  # revert
+
+    return pts, tets, n_moved

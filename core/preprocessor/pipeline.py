@@ -116,10 +116,40 @@ class Preprocessor:
         from core.analyzer.file_reader import load_mesh
 
         mesh = load_mesh(current_path)
-        # v0.4.0-beta19: watertight 판정을 native topology 로 통일
+        # BETA2867 — empty / degenerate STL 가드. zero-face mesh 가 후속
+        # bounds/min/max reduction 에서 'zero-size array' ValueError 유발.
         import numpy as np  # noqa: PLC0415
         from core.analyzer import topology as _T  # noqa: PLC0415
         _faces_np = np.asarray(mesh.faces, dtype=np.int64)
+        if _faces_np.size == 0 or len(getattr(mesh, "vertices", [])) == 0:
+            log.error(
+                "preprocess_empty_input",
+                path=str(current_path),
+                num_faces=int(_faces_np.size // 3),
+                num_vertices=len(getattr(mesh, "vertices", [])),
+            )
+            from core.schemas import (
+                PreprocessedReport, PreprocessingSummary, FinalValidation,
+            )
+            return input_path, PreprocessedReport(
+                preprocessing_summary=PreprocessingSummary(
+                    input_file=str(input_path),
+                    input_format=current_path.suffix.lstrip("."),
+                    output_file=str(input_path),
+                    passthrough_cad=False,
+                    total_time_seconds=0.0,
+                    steps_performed=steps_performed,
+                    final_validation=FinalValidation(
+                        is_watertight=False,
+                        is_manifold=False,
+                        num_faces=0,
+                        min_face_area=0.0,
+                        max_edge_length_ratio=1.0,
+                    ),
+                    surface_quality_level=None,
+                ),
+                surface_quality_level=None,
+            )
         _is_watertight = bool(_T.is_watertight(_faces_np))
         is_open_boundary = (not _is_watertight) and not is_cad
         log.info(
@@ -141,6 +171,42 @@ class Preprocessor:
                 mesh, geometry_report, prefer_native=prefer_native,
             )
             steps_performed.append(PreprocessStep(**l1_record))
+
+            # BETA2868 — pymeshfix 가 mesh 를 0-face 로 destroy 한 경우 (예:
+            # hard_100027.stl 508→0) 후속 L2 의 V.min(axis=0) 에서 zero-size
+            # array crash. 즉시 원본 STL 그대로 반환하여 cfMesh 가 직접 처리.
+            try:
+                _post_l1_faces = len(mesh.faces) if hasattr(mesh, "faces") else 0
+            except Exception:
+                _post_l1_faces = 0
+            if _post_l1_faces == 0:
+                log.warning(
+                    "preprocess_l1_destroyed_mesh",
+                    note="pymeshfix produced 0 faces — preserving original STL",
+                    path=str(input_path),
+                )
+                from core.schemas import (
+                    PreprocessedReport, PreprocessingSummary, FinalValidation,
+                )
+                return input_path, PreprocessedReport(
+                    preprocessing_summary=PreprocessingSummary(
+                        input_file=str(input_path),
+                        input_format=current_path.suffix.lstrip("."),
+                        output_file=str(input_path),
+                        passthrough_cad=False,
+                        total_time_seconds=0.0,
+                        steps_performed=steps_performed,
+                        final_validation=FinalValidation(
+                            is_watertight=False,
+                            is_manifold=False,
+                            num_faces=0,
+                            min_face_area=0.0,
+                            max_edge_length_ratio=1.0,
+                        ),
+                        surface_quality_level=None,
+                    ),
+                    surface_quality_level=None,
+                )
 
             if l1_passed and not surface_remesh and not force_l2_for_open:
                 surface_quality_level = "l1_repair"
@@ -362,6 +428,19 @@ class Preprocessor:
             V, F, target_edge_length=float(target_edge), n_iter=3,
         )
         elapsed = _time.perf_counter() - t0
+        # BETA2859 — degenerate-output 안전 장치. native_isotropic 이 watertight
+        # 12-face cube 같은 작은 valid mesh 를 2-face / 3-vertex 로 decimate 하면
+        # 다운스트림 (wildmesh / cfMesh / native_tet) 이 SIGSEGV 또는 0-cell 출력.
+        # 출력 face 수가 입력 1/4 미만 또는 < 4 면 입력을 그대로 보존.
+        min_acceptable = max(4, int(F.shape[0] // 4))
+        if F2.shape[0] < min_acceptable and F.shape[0] >= 4:
+            log.warning(
+                "l2_native_remesh_degenerate_revert",
+                input_faces=int(F.shape[0]),
+                output_faces=int(F2.shape[0]),
+                reason="output_too_small — preserving input",
+            )
+            V2, F2 = V, F
         new_mesh = _tm.Trimesh(vertices=V2, faces=F2, process=False)
         passed = bool(_gate(new_mesh))
         step_record = {

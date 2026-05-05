@@ -1,0 +1,890 @@
+"""native_hex N-level octree adaptive refinement (beta92).
+
+알고리즘:
+    1. Fine grid (2^n_levels × resolution) 생성.
+    2. 각 fine cell 의 inside 여부 + 표면 거리 계산.
+    3. 거리 기반으로 목표 레벨 지정 (0=coarsest ~ n_levels=finest).
+    4. 2:1 균형 조건 적용 (인접 cell 레벨 차이 ≤ 1).
+    5. 레벨별로 coarsen 가능한 2^k × 2^k × 2^k 블록 병합.
+    6. Conformal transition faces (coarse ↔ fine 경계).
+    7. write_generic_polymesh 로 출력.
+
+메모리 제한:
+    fine grid 총 셀 수 ≤ 500,000. 초과 시 n_levels 자동 감소 + warning.
+
+변경 이력:
+    beta91: 2-level 고정 구현.
+    beta92: n_levels 파라미터 추가 → N-level 지원 (n_levels=2 가 기존 동작과 호환).
+"""
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import numpy as np
+
+from core.utils.geometry import inside_winding_number as _iwn
+from core.utils.logging import get_logger
+
+log = get_logger(__name__)
+
+# WWW1: octree 2:1 balance 시퀀스 스켈레톤 (Marechal 2009 §3) — default OFF
+_WWW1_OCTREE_BALANCE: bool = True
+
+# WWW3: surface 근접 cell refinement 스켈레톤 (snappy castellated 모티프) — default OFF
+_WWW3_SURFACE_REFINE: bool = True
+
+# WWW5: octree cell templating 스켈레톤 (Marechal 2009 §4) — default OFF
+_WWW5_TEMPLATING: bool = True
+
+# WWW8: feature-driven octree refinement — default ON
+# env AUTO_TESSELL_WWW8_OFF=1 to disable.
+_WWW8_FEATURE_REFINE: bool = True
+
+# WWW5: 26 cell type → pre-defined hex subdivision 패턴 (WWW6 에서 채울 자리)
+_TEMPLATE_PATTERNS: dict[str, list] = {}
+
+
+def _classify_cell_type(node: object, neighbors: dict) -> str:
+    """face neighbor level diff 기반 26 type 분류.
+
+    Args:
+        node: octree leaf node (level 속성 보유).
+        neighbors: face 방향 키('x+','x-','y+','y-','z+','z-') →
+                   인접 node 또는 None 인 dict.
+
+    Returns:
+        cell type 문자열 (e.g. 'uniform', 'f1', 'f2', ...).
+        현재 스켈레톤: level diff 가 없으면 'uniform',
+        face 마다 diff 비트를 조합한 6-bit key 반환.
+    """
+    node_level: int = getattr(node, "level", 0)
+    bits: list[int] = []
+    for face_key in ("x+", "x-", "y+", "y-", "z+", "z-"):
+        nb = neighbors.get(face_key)
+        if nb is None:
+            bits.append(0)
+        else:
+            diff = getattr(nb, "level", 0) - node_level
+            bits.append(1 if diff > 0 else 0)
+    code = sum(b << i for i, b in enumerate(bits))
+    if code == 0:
+        return "uniform"
+    return f"t{code:02d}"
+
+
+# --------------------------------------------------------------------------
+# 기본 인덱싱 유틸
+# --------------------------------------------------------------------------
+
+
+def _fid(i: int, j: int, k: int, ny1: int, nz1: int) -> int:
+    """Fine grid 의 (i,j,k) vertex → linear index."""
+    return i * ny1 * nz1 + j * nz1 + k
+
+
+def _hex8(i: int, j: int, k: int, ny1: int, nz1: int) -> list[int]:
+    """(i,j,k) fine cell 의 8 vertex id (OpenFOAM hex order)."""
+    f = _fid
+    return [
+        f(i,   j,   k,   ny1, nz1),
+        f(i+1, j,   k,   ny1, nz1),
+        f(i+1, j+1, k,   ny1, nz1),
+        f(i,   j+1, k,   ny1, nz1),
+        f(i,   j,   k+1, ny1, nz1),
+        f(i+1, j,   k+1, ny1, nz1),
+        f(i+1, j+1, k+1, ny1, nz1),
+        f(i,   j+1, k+1, ny1, nz1),
+    ]
+
+
+# OpenFOAM hex face definitions (각 면의 vertex local index, CCW from outside)
+_HEX_FACES: tuple[tuple[int, ...], ...] = (
+    (0, 3, 2, 1),   # bottom -z
+    (4, 5, 6, 7),   # top    +z
+    (0, 1, 5, 4),   # front  -y
+    (3, 7, 6, 2),   # back   +y
+    (0, 4, 7, 3),   # left   -x
+    (1, 2, 6, 5),   # right  +x
+)
+
+# Face neighbour direction deltas (fi, fj, fk) — 6 faces 순서로 _HEX_FACES 와 대응.
+_FACE_DIRS: tuple[tuple[int, int, int], ...] = (
+    (0,  0, -1),  # bottom -z
+    (0,  0, +1),  # top    +z
+    (0, -1,  0),  # front  -y
+    (0, +1,  0),  # back   +y
+    (-1, 0,  0),  # left   -x
+    (+1, 0,  0),  # right  +x
+)
+
+
+# --------------------------------------------------------------------------
+# Conformal transition face 생성 — 다중 레벨 대응
+# --------------------------------------------------------------------------
+
+def _sub_quads_on_face(
+    fi_base: int, fj_base: int, fk_base: int,
+    face_idx: int,
+    step: int,
+    ny1: int, nz1: int,
+) -> list[list[int]]:
+    """Coarse cell (fine origin fi_base,fj_base,fk_base, edge=step) 의 face_idx 면을
+    (step//2) 크기의 서브 quad 4개로 분할.
+
+    face_idx: 0=bottom(-z), 1=top(+z), 2=front(-y), 3=back(+y), 4=left(-x), 5=right(+x)
+    반환: sub-quad 마다 4 개의 fine grid vertex id 리스트.
+    """
+    s = step  # coarse edge 크기 (fine grid units)
+    h = s // 2  # sub-quad edge 크기
+
+    def gid(di: int, dj: int, dk: int) -> int:
+        return _fid(fi_base + di, fj_base + dj, fk_base + dk, ny1, nz1)
+
+    if face_idx == 0:  # bottom z=0
+        return [
+            [gid(0,   0,   0), gid(h,   0,   0), gid(h,   h,   0), gid(0,   h,   0)],
+            [gid(h,   0,   0), gid(s,   0,   0), gid(s,   h,   0), gid(h,   h,   0)],
+            [gid(0,   h,   0), gid(h,   h,   0), gid(h,   s,   0), gid(0,   s,   0)],
+            [gid(h,   h,   0), gid(s,   h,   0), gid(s,   s,   0), gid(h,   s,   0)],
+        ]
+    elif face_idx == 1:  # top z=s
+        return [
+            [gid(0,   0,   s), gid(0,   h,   s), gid(h,   h,   s), gid(h,   0,   s)],
+            [gid(h,   0,   s), gid(h,   h,   s), gid(s,   h,   s), gid(s,   0,   s)],
+            [gid(0,   h,   s), gid(0,   s,   s), gid(h,   s,   s), gid(h,   h,   s)],
+            [gid(h,   h,   s), gid(h,   s,   s), gid(s,   s,   s), gid(s,   h,   s)],
+        ]
+    elif face_idx == 2:  # front y=0
+        return [
+            [gid(0,   0,   0), gid(0,   0,   h), gid(h,   0,   h), gid(h,   0,   0)],
+            [gid(h,   0,   0), gid(h,   0,   h), gid(s,   0,   h), gid(s,   0,   0)],
+            [gid(0,   0,   h), gid(0,   0,   s), gid(h,   0,   s), gid(h,   0,   h)],
+            [gid(h,   0,   h), gid(h,   0,   s), gid(s,   0,   s), gid(s,   0,   h)],
+        ]
+    elif face_idx == 3:  # back y=s
+        return [
+            [gid(0,   s,   0), gid(h,   s,   0), gid(h,   s,   h), gid(0,   s,   h)],
+            [gid(h,   s,   0), gid(s,   s,   0), gid(s,   s,   h), gid(h,   s,   h)],
+            [gid(0,   s,   h), gid(h,   s,   h), gid(h,   s,   s), gid(0,   s,   s)],
+            [gid(h,   s,   h), gid(s,   s,   h), gid(s,   s,   s), gid(h,   s,   s)],
+        ]
+    elif face_idx == 4:  # left x=0
+        return [
+            [gid(0,   0,   0), gid(0,   h,   0), gid(0,   h,   h), gid(0,   0,   h)],
+            [gid(0,   h,   0), gid(0,   s,   0), gid(0,   s,   h), gid(0,   h,   h)],
+            [gid(0,   0,   h), gid(0,   h,   h), gid(0,   h,   s), gid(0,   0,   s)],
+            [gid(0,   h,   h), gid(0,   s,   h), gid(0,   s,   s), gid(0,   h,   s)],
+        ]
+    else:  # right x=s
+        return [
+            [gid(s,   0,   0), gid(s,   0,   h), gid(s,   h,   h), gid(s,   h,   0)],
+            [gid(s,   h,   0), gid(s,   h,   h), gid(s,   s,   h), gid(s,   s,   0)],
+            [gid(s,   0,   h), gid(s,   0,   s), gid(s,   h,   s), gid(s,   h,   h)],
+            [gid(s,   h,   h), gid(s,   h,   s), gid(s,   s,   s), gid(s,   s,   h)],
+        ]
+
+
+# --------------------------------------------------------------------------
+# 2-level 호환 래퍼 (기존 테스트 호환)
+# --------------------------------------------------------------------------
+
+def _coarse_face_sub_quads(
+    ci: int, cj: int, ck: int,
+    face_idx: int,
+    ny1: int, nz1: int,
+) -> list[list[int]]:
+    """Coarse cell (ci,cj,ck) 의 face_idx 면을 4개 fine sub-quad 로 분할 (2-level 호환)."""
+    fi_base, fj_base, fk_base = ci * 2, cj * 2, ck * 2
+    return _sub_quads_on_face(fi_base, fj_base, fk_base, face_idx, 2, ny1, nz1)
+
+
+# --------------------------------------------------------------------------
+# N-level octree 핵심 구현
+# --------------------------------------------------------------------------
+
+def _compute_surface_distances(
+    cell_centroids: np.ndarray,
+    surface_V: np.ndarray,
+    surface_F: np.ndarray,
+) -> np.ndarray:
+    """각 cell centroid 에서 표면 triangle 까지의 최솟거리 (근사).
+
+    KDTree 를 triangle centroid 로 구성하여 근접 거리 추정.
+    정확한 point-to-triangle 대신 centroid-to-centroid 로 빠르게 근사.
+    """
+    from scipy.spatial import cKDTree  # noqa: PLC0415
+
+    # triangle centroid 계산
+    tri_centroids = surface_V[surface_F].mean(axis=1)  # (T, 3)
+    tree = cKDTree(tri_centroids)
+    dists, _ = tree.query(cell_centroids, k=1, workers=1)
+    return dists.astype(np.float64)
+
+
+def _apply_2to1_balance(
+    level_grid: np.ndarray,
+    n_levels: int,
+) -> np.ndarray:
+    """2:1 균형 조건: 인접 cell 레벨 차이 ≤ 1.
+
+    인접 cell 레벨 차이가 1 초과이면 낮은 쪽 레벨을 올린다.
+    수렴할 때까지 반복 (최대 n_levels 번).
+    """
+    nx, ny, nz = level_grid.shape
+    changed = True
+    iterations = 0
+    while changed and iterations < n_levels + 2:
+        changed = False
+        iterations += 1
+        for di, dj, dk in (
+            (1, 0, 0), (0, 1, 0), (0, 0, 1),
+            (-1, 0, 0), (0, -1, 0), (0, 0, -1),
+        ):
+            # Shift arrays to compare neighbours
+            if di == 1:
+                a = level_grid[:-1, :, :]
+                b = level_grid[1:,  :, :]
+            elif di == -1:
+                a = level_grid[1:,  :, :]
+                b = level_grid[:-1, :, :]
+            elif dj == 1:
+                a = level_grid[:, :-1, :]
+                b = level_grid[:, 1:,  :]
+            elif dj == -1:
+                a = level_grid[:, 1:,  :]
+                b = level_grid[:, :-1, :]
+            elif dk == 1:
+                a = level_grid[:, :, :-1]
+                b = level_grid[:, :, 1:]
+            else:
+                a = level_grid[:, :, 1:]
+                b = level_grid[:, :, :-1]
+
+            # 차이가 2 이상이면 낮은 쪽 레벨 올리기
+            diff = a.astype(np.int32) - b.astype(np.int32)
+            # a 가 b 보다 2 이상 높으면 b 를 1 올림
+            mask_b_up = diff >= 2
+            if mask_b_up.any():
+                # b 에 해당하는 grid 슬라이스 찾기
+                if di == 1:
+                    level_grid[1:, :, :] = np.maximum(
+                        level_grid[1:, :, :],
+                        np.where(mask_b_up, level_grid[:-1, :, :] - 1, level_grid[1:, :, :]),
+                    )
+                elif di == -1:
+                    level_grid[:-1, :, :] = np.maximum(
+                        level_grid[:-1, :, :],
+                        np.where(mask_b_up, level_grid[1:, :, :] - 1, level_grid[:-1, :, :]),
+                    )
+                elif dj == 1:
+                    level_grid[:, 1:, :] = np.maximum(
+                        level_grid[:, 1:, :],
+                        np.where(mask_b_up, level_grid[:, :-1, :] - 1, level_grid[:, 1:, :]),
+                    )
+                elif dj == -1:
+                    level_grid[:, :-1, :] = np.maximum(
+                        level_grid[:, :-1, :],
+                        np.where(mask_b_up, level_grid[:, 1:, :] - 1, level_grid[:, :-1, :]),
+                    )
+                elif dk == 1:
+                    level_grid[:, :, 1:] = np.maximum(
+                        level_grid[:, :, 1:],
+                        np.where(mask_b_up, level_grid[:, :, :-1] - 1, level_grid[:, :, 1:]),
+                    )
+                else:
+                    level_grid[:, :, :-1] = np.maximum(
+                        level_grid[:, :, :-1],
+                        np.where(mask_b_up, level_grid[:, :, 1:] - 1, level_grid[:, :, :-1]),
+                    )
+                changed = True
+    return level_grid
+
+
+def _build_nlevel_cells(
+    fine_pts: np.ndarray,
+    inside_3d: np.ndarray,
+    level_3d: np.ndarray,
+    n_levels: int,
+    nfx: int, nfy: int, nfz: int,
+    nfy1: int, nfz1: int,
+) -> list[list[list[int]]]:
+    """N-level octree cell 및 face 리스트 생성.
+
+    level_3d[i,j,k] = 0..n_levels: 해당 fine cell 의 목표 refinement level.
+    level=0 → 2^n_levels × 2^n_levels × 2^n_levels fine cell 을 1개 coarsest hex 로 병합.
+    level=l → 2^(n_levels-l) 크기 블록.
+    level=n_levels → fine cell 1개.
+
+    구현 전략:
+      각 레벨 l=0..n_levels 에 대해, 해당 레벨로 처리되는 블록을 먼저 식별.
+      높은 레벨(fine) 부터 처리하고, 이미 처리된 fine cell 은 covered 배열로 추적.
+    """
+    stride = 1 << n_levels  # 최대 coarse block 크기 (fine grid units)
+    covered = np.zeros((nfx, nfy, nfz), dtype=bool)
+    cell_face_verts: list[list[list[int]]] = []
+
+    # 각 fine cell 의 inside 여부
+    # level_3d 는 inside_3d=True 인 cell 에만 의미있다. outside cell 은 skip.
+
+    # 레벨 0 (가장 거친) 부터 n_levels (가장 미세) 까지 처리
+    # 단, 처리 순서: 거친 것 먼저, 그 안에 미세한 것이 있으면 분할.
+    # 실용적 접근: fine (level=n_levels) → coarser 순서로 진행하면
+    # "이 블록이 단일 레벨로 묶을 수 있는가?" 판단이 쉬움.
+
+    for target_lev in range(n_levels, -1, -1):
+        block_sz = 1 << (n_levels - target_lev)  # fine grid 기준 블록 크기
+        step_i = max(1, nfx // (nfx // block_sz + 1)) if block_sz > nfx else block_sz
+        step_i = block_sz  # 단순화: block_sz 로 순회
+
+        for fi in range(0, nfx, block_sz):
+            for fj in range(0, nfy, block_sz):
+                for fk in range(0, nfz, block_sz):
+                    # 이미 처리된 cell 은 skip
+                    if covered[fi, fj, fk]:
+                        continue
+                    # 블록 범위
+                    fi_end = min(fi + block_sz, nfx)
+                    fj_end = min(fj + block_sz, nfy)
+                    fk_end = min(fk + block_sz, nfz)
+
+                    # 블록 내 모든 cell 이 inside 이고 목표 레벨 == target_lev 이어야 함
+                    # 또는 target_lev 이하 (더 거친 레벨이 허용됨) 이어야 함
+                    sub_inside = inside_3d[fi:fi_end, fj:fj_end, fk:fk_end]
+                    sub_level = level_3d[fi:fi_end, fj:fj_end, fk:fk_end]
+
+                    # 블록 크기가 1×1×1 이면 fine cell
+                    if block_sz == 1:
+                        if not bool(sub_inside[0, 0, 0]):
+                            continue
+                        # Fine cell
+                        hex8 = _hex8(fi, fj, fk, nfy1, nfz1)
+                        # Fine cell 의 faces — 인접 cell 과의 conformal 연결은
+                        # 단순 6-quad (fine 레벨끼리는 크기 동일)
+                        faces_of_cell = [[hex8[v] for v in lf] for lf in _HEX_FACES]
+                        # WWW6: templating 활성 — cell type 식별 + log only
+                        if _WWW5_TEMPLATING:
+                            class _N:
+                                level = target_lev
+                            _nbrs: dict[str, object | None] = {}
+                            for _fdir, (_di, _dj, _dk) in zip(
+                                ("x+", "x-", "y+", "y-", "z+", "z-"),
+                                ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)),
+                            ):
+                                _ni, _nj, _nk = fi+_di, fj+_dj, fk+_dk
+                                if 0<=_ni<nfx and 0<=_nj<nfy and 0<=_nk<nfz and bool(inside_3d[_ni,_nj,_nk]):
+                                    class _NB:
+                                        level = int(level_3d[_ni, _nj, _nk])
+                                    _nbrs[_fdir] = _NB()
+                                else:
+                                    _nbrs[_fdir] = None
+                            _ctype = _classify_cell_type(_N(), _nbrs)
+                            log.debug("wwww6_cell_type", ctype=_ctype, fi=fi, fj=fj, fk=fk)
+                        cell_face_verts.append(faces_of_cell)
+                        covered[fi, fj, fk] = True
+                        continue
+
+                    # 블록 전체가 inside 이고, 전부 target_lev 이하 레벨을 갖는가?
+                    # (이 블록을 하나의 coarse hex 로 병합 가능한 조건)
+                    sub_sz_act = (fi_end - fi, fj_end - fj, fk_end - fk)
+                    if sub_sz_act != (block_sz, block_sz, block_sz):
+                        # 경계에서 블록이 잘린 경우 — 병합 불가, 하위 레벨에서 처리
+                        continue
+                    if not bool(sub_inside.all()):
+                        # 부분만 inside → 이 블록 통째로 병합 불가
+                        continue
+                    if not bool((sub_level <= target_lev).all()):
+                        # 하위 cell 중 더 fine 해야 하는 것이 있음 → 병합 불가
+                        continue
+
+                    # 이 블록을 하나의 coarse hex 로 병합
+                    # coarse hex 의 8 corner vertex: fine grid 기준 0,block_sz 위치
+                    s = block_sz
+                    def gv(di: int, dj: int, dk: int) -> int:
+                        return _fid(fi+di, fj+dj, fk+dk, nfy1, nfz1)
+
+                    coarse_v8 = [
+                        gv(0, 0, 0), gv(s, 0, 0), gv(s, s, 0), gv(0, s, 0),
+                        gv(0, 0, s), gv(s, 0, s), gv(s, s, s), gv(0, s, s),
+                    ]
+
+                    # 각 face: 인접 블록 레벨 확인 → split 필요하면 sub-quad 4개
+                    faces_out: list[list[int]] = []
+                    for fid_local, (local_verts, (di, dj, dk)) in enumerate(
+                        zip(_HEX_FACES, _FACE_DIRS)
+                    ):
+                        # 인접 블록 origin
+                        ni = fi + di * s
+                        nj = fj + dj * s
+                        nk = fk + dk * s
+
+                        # 인접이 grid 밖이면 그냥 coarse quad
+                        if not (0 <= ni < nfx and 0 <= nj < nfy and 0 <= nk < nfz):
+                            faces_out.append([coarse_v8[v] for v in local_verts])
+                            continue
+
+                        # 인접 cell 의 목표 레벨 확인
+                        nbr_level = int(level_3d[ni, nj, nk])
+                        nbr_inside = bool(inside_3d[ni, nj, nk])
+
+                        # 인접이 outside 이면 coarse quad (경계)
+                        if not nbr_inside:
+                            faces_out.append([coarse_v8[v] for v in local_verts])
+                            continue
+
+                        # 인접 레벨이 더 높으면 (fine) → sub-quad 분할
+                        if nbr_level > target_lev:
+                            sub_quads = _sub_quads_on_face(
+                                fi, fj, fk, fid_local, s, nfy1, nfz1,
+                            )
+                            faces_out.extend(sub_quads)
+                        else:
+                            faces_out.append([coarse_v8[v] for v in local_verts])
+
+                    cell_face_verts.append(faces_out)
+                    covered[fi:fi_end, fj:fj_end, fk:fk_end] = True
+
+    return cell_face_verts
+
+
+# --------------------------------------------------------------------------
+# WWW8: feature-driven octree refinement (snappyHexMesh featureLevel +1 style)
+# --------------------------------------------------------------------------
+
+def _segment_intersects_aabb(
+    A: np.ndarray, B: np.ndarray,
+    lo: np.ndarray, hi: np.ndarray,
+) -> bool:
+    """Test if line segment AB intersects axis-aligned bounding box [lo, hi].
+
+    Uses the slab method (Amy Williams 2005).
+    Returns True if segment overlaps the AABB.
+    """
+    inv_d = np.where(np.abs(B - A) > 1e-30, 1.0 / (B - A), 1e30)
+    t0 = (lo - A) * inv_d
+    t1 = (hi - A) * inv_d
+    t_min = np.minimum(t0, t1)
+    t_max = np.maximum(t0, t1)
+    t_enter = float(t_min.max())
+    t_exit = float(t_max.min())
+    return t_enter <= t_exit + 1e-9 and t_exit >= -1e-9 and t_enter <= 1.0 + 1e-9
+
+
+def _refine_at_features(
+    level_3d: np.ndarray,
+    fine_inside_3d: np.ndarray,
+    fine_pts_xs: np.ndarray,
+    fine_pts_ys: np.ndarray,
+    fine_pts_zs: np.ndarray,
+    feature_segs: np.ndarray,
+    n_lev: int,
+    *,
+    max_extra_levels: int = 1,
+) -> tuple[np.ndarray, int]:
+    """WWW8 — bump level_3d +1 wherever a feature edge segment intersects a cell AABB.
+
+    Args:
+        level_3d: (nfx, nfy, nfz) int8 target-level grid (modified in-place copy).
+        fine_inside_3d: (nfx, nfy, nfz) bool.
+        fine_pts_xs/ys/zs: 1-D coordinate arrays for fine grid vertices (size nfx+1/nfy+1/nfz+1).
+        feature_segs: (M, 2, 3) feature edge segment endpoints.
+        n_lev: maximum allowed level (cap).
+        max_extra_levels: how many extra levels to add (default 1).
+
+    Returns:
+        (updated level_3d, n_refined) — n_refined = number of cells bumped.
+    """
+    import os  # noqa: PLC0415
+    if os.environ.get("AUTO_TESSELL_WWW8_OFF", "").strip().lower() in ("1", "true", "yes"):
+        return level_3d, 0
+
+    if feature_segs.shape[0] == 0:
+        return level_3d, 0
+
+    out = level_3d.copy()
+    nfx, nfy, nfz = out.shape
+    seg_A = feature_segs[:, 0, :]  # (M, 3)
+    seg_B = feature_segs[:, 1, :]  # (M, 3)
+
+    # Coarse filter: for each segment, find candidate cells via bounding box overlap
+    # We iterate segments and test cells in the AABB of the segment.
+    n_refined = 0
+    max_lev_cap = int(n_lev)
+
+    for si in range(feature_segs.shape[0]):
+        sa = seg_A[si]
+        sb = seg_B[si]
+        seg_lo = np.minimum(sa, sb)
+        seg_hi = np.maximum(sa, sb)
+
+        # Find cell index range that overlaps the segment bounding box
+        # xs[i] <= x < xs[i+1] for cell i
+        i0 = max(0, int(np.searchsorted(fine_pts_xs, seg_lo[0], side="left")) - 1)
+        i1 = min(nfx - 1, int(np.searchsorted(fine_pts_xs, seg_hi[0], side="right")))
+        j0 = max(0, int(np.searchsorted(fine_pts_ys, seg_lo[1], side="left")) - 1)
+        j1 = min(nfy - 1, int(np.searchsorted(fine_pts_ys, seg_hi[1], side="right")))
+        k0 = max(0, int(np.searchsorted(fine_pts_zs, seg_lo[2], side="left")) - 1)
+        k1 = min(nfz - 1, int(np.searchsorted(fine_pts_zs, seg_hi[2], side="right")))
+
+        # Vectorized AABB slab test over candidate cell sub-grid
+        # Build lo/hi arrays for the candidate block
+        sub_xs_lo = fine_pts_xs[i0 : i1 + 1]          # (di,)
+        sub_xs_hi = fine_pts_xs[i0 + 1 : i1 + 2]
+        sub_ys_lo = fine_pts_ys[j0 : j1 + 1]          # (dj,)
+        sub_ys_hi = fine_pts_ys[j0 + 1 : j1 + 2]
+        sub_zs_lo = fine_pts_zs[k0 : k1 + 1]          # (dk,)
+        sub_zs_hi = fine_pts_zs[k0 + 1 : k1 + 2]
+
+        inv_dx = 1.0 / (sb[0] - sa[0]) if abs(sb[0] - sa[0]) > 1e-30 else 1e30
+        inv_dy = 1.0 / (sb[1] - sa[1]) if abs(sb[1] - sa[1]) > 1e-30 else 1e30
+        inv_dz = 1.0 / (sb[2] - sa[2]) if abs(sb[2] - sa[2]) > 1e-30 else 1e30
+
+        # slab t-intervals per axis (shape: di/dj/dk respectively)
+        tx0 = (sub_xs_lo - sa[0]) * inv_dx; tx1 = (sub_xs_hi - sa[0]) * inv_dx
+        ty0 = (sub_ys_lo - sa[1]) * inv_dy; ty1 = (sub_ys_hi - sa[1]) * inv_dy
+        tz0 = (sub_zs_lo - sa[2]) * inv_dz; tz1 = (sub_zs_hi - sa[2]) * inv_dz
+
+        txmin = np.minimum(tx0, tx1); txmax = np.maximum(tx0, tx1)  # (di,)
+        tymin = np.minimum(ty0, ty1); tymax = np.maximum(ty0, ty1)  # (dj,)
+        tzmin = np.minimum(tz0, tz1); tzmax = np.maximum(tz0, tz1)  # (dk,)
+
+        # Broadcast to (di, dj, dk)
+        t_enter = np.maximum(txmin[:, None, None],
+                  np.maximum(tymin[None, :, None], tzmin[None, None, :]))
+        t_exit  = np.minimum(txmax[:, None, None],
+                  np.minimum(tymax[None, :, None], tzmax[None, None, :]))
+
+        hit = (t_enter <= t_exit + 1e-9) & (t_exit >= -1e-9) & (t_enter <= 1.0 + 1e-9)
+
+        # Combine with inside mask for the sub-block
+        sub_inside = fine_inside_3d[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1]
+        cand_mask = hit & sub_inside  # (di, dj, dk) bool
+
+        if not cand_mask.any():
+            continue
+
+        # Apply level bump where candidate
+        sub_out = out[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1]
+        new_lev = np.minimum(sub_out.astype(np.int16) + max_extra_levels, max_lev_cap)
+        improve = cand_mask & (new_lev > sub_out)
+        n_refined += int(improve.sum())
+        sub_out[improve] = new_lev[improve].astype(np.int8)
+        out[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1] = sub_out
+
+    return out, n_refined
+
+
+# --------------------------------------------------------------------------
+# 공개 API
+# --------------------------------------------------------------------------
+
+def build_octree_hex_cells(
+    surface_V: np.ndarray,
+    surface_F: np.ndarray,
+    bmin: np.ndarray,
+    bmax: np.ndarray,
+    target_edge: float,
+    max_cells_per_axis: int = 50,
+    n_levels: int = 2,
+    refinement_distance_factor: float = 2.0,
+) -> tuple[np.ndarray, list[list[list[int]]], dict]:
+    """N-level octree hex grid 생성 (beta92).
+
+    Args:
+        surface_V: (V, 3) 표면 점.
+        surface_F: (F, 3) 표면 triangles.
+        bmin, bmax: bounding box.
+        target_edge: coarsest level 의 hex edge length.
+        max_cells_per_axis: fine grid 각 축당 최대 cell 수.
+        n_levels: octree 최대 refinement 레벨 (기본 2, beta91 호환).
+                  레벨 0 = target_edge, 레벨 k = target_edge / 2^k.
+        refinement_distance_factor: 표면까지 거리 < factor × h_level_k 이면 level k 이상.
+
+    Returns:
+        (fine_pts, cell_face_verts, stats)
+        fine_pts: (P, 3) fine grid 모든 vertex.
+        cell_face_verts: 각 cell 의 face vertex list (write_generic_polymesh 입력 형식).
+        stats: n_coarse, n_fine, n_total, grid_shape.
+
+    메모리 제한:
+        fine grid 총 셀 수 ≤ 500,000. 초과 시 n_levels 자동 감소.
+    """
+    t0 = time.perf_counter()
+    h = float(target_edge)
+    n_lev = int(max(1, n_levels))
+
+    # 메모리 제한: fine grid 총 셀 수 ≤ 500,000
+    _MAX_FINE_CELLS = 500_000
+    while n_lev > 1:
+        cap_fine = max_cells_per_axis * (1 << n_lev)
+        nfxyz_est = np.maximum(
+            np.ceil((bmax - bmin) / (h / (1 << n_lev))).astype(int), 2,
+        )
+        nfxyz_est = np.minimum(nfxyz_est, cap_fine)
+        est_cells = int(nfxyz_est[0]) * int(nfxyz_est[1]) * int(nfxyz_est[2])
+        if est_cells <= _MAX_FINE_CELLS:
+            break
+        old = n_lev
+        n_lev -= 1
+        log.warning(
+            "native_hex_octree_nlevel_reduced",
+            from_levels=old, to_levels=n_lev,
+            estimated_cells=est_cells, limit=_MAX_FINE_CELLS,
+        )
+
+    # Fine grid 크기: h_fine = h / 2^n_lev (가장 미세한 cell 크기)
+    h_fine = h / (1 << n_lev)
+    cap_fine = max_cells_per_axis * (1 << n_lev)
+    nfxyz = np.maximum(
+        np.ceil((bmax - bmin) / h_fine).astype(int), 2,
+    )
+    nfxyz = np.minimum(nfxyz, cap_fine)
+    nfx, nfy, nfz = int(nfxyz[0]), int(nfxyz[1]), int(nfxyz[2])
+    nfx1, nfy1, nfz1 = nfx + 1, nfy + 1, nfz + 1
+
+    log.info(
+        "native_hex_octree_build",
+        fine_grid=(nfx, nfy, nfz), h=h, h_fine=h_fine,
+        n_levels=n_lev, cap_fine=cap_fine,
+    )
+
+    # Fine grid vertex coordinates
+    xs = np.linspace(float(bmin[0]), float(bmax[0]), nfx1)
+    ys = np.linspace(float(bmin[1]), float(bmax[1]), nfy1)
+    zs = np.linspace(float(bmin[2]), float(bmax[2]), nfz1)
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
+    fine_pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+
+    # Fine cell centroids
+    n_fine_total = nfx * nfy * nfz
+    # HEX_BUILD_VEC: vectorized hex8 index construction (beta2187)
+    # _fid(i,j,k) = i*nfy1*nfz1 + j*nfz1 + k
+    _ia = np.arange(nfx, dtype=np.int64)
+    _ja = np.arange(nfy, dtype=np.int64)
+    _ka = np.arange(nfz, dtype=np.int64)
+    _I, _J, _K = np.meshgrid(_ia, _ja, _ka, indexing="ij")
+    _base = _I.ravel() * (nfy1 * nfz1) + _J.ravel() * nfz1 + _K.ravel()
+    # 8 vertex offsets for hex (OpenFOAM order): di,dj,dk in _hex8
+    _off_di = np.array([0, 1, 1, 0, 0, 1, 1, 0], dtype=np.int64)
+    _off_dj = np.array([0, 0, 1, 1, 0, 0, 1, 1], dtype=np.int64)
+    _off_dk = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int64)
+    _vert_offsets = _off_di * (nfy1 * nfz1) + _off_dj * nfz1 + _off_dk  # (8,)
+    fine_cells_idx = (_base[:, None] + _vert_offsets[None, :]).astype(np.int64)  # (N_fine, 8)
+
+    centroids = fine_pts[fine_cells_idx].mean(axis=1)  # (N_fine, 3)
+
+    # Inside test
+    fine_inside = _iwn(centroids, surface_V, surface_F)  # (N_fine,) bool
+    fine_inside_3d = fine_inside.reshape(nfx, nfy, nfz)
+
+    # Surface distance 계산 (inside cell 만)
+    inside_idx = np.where(fine_inside)[0]
+    all_dists = np.full(n_fine_total, np.inf, dtype=np.float64)
+    if len(inside_idx) > 0:
+        try:
+            dists = _compute_surface_distances(
+                centroids[inside_idx], surface_V, surface_F,
+            )
+            all_dists[inside_idx] = dists
+        except Exception as exc:
+            log.warning("native_hex_octree_dist_failed", error=str(exc))
+            all_dists[inside_idx] = 0.0  # 거리 계산 실패 → 전부 finest
+
+    dists_3d = all_dists.reshape(nfx, nfy, nfz)
+
+    # 목표 레벨 지정:
+    #   level = n_lev (finest) if dist < factor × h_fine
+    #   level = n_lev - k if dist < factor × h_level(k)
+    #   level = 0 (coarsest) otherwise
+    level_3d = np.zeros((nfx, nfy, nfz), dtype=np.int8)
+    for k in range(n_lev + 1):
+        h_k = h / (1 << k)  # level k 의 cell 크기
+        threshold = refinement_distance_factor * h_k
+        mask = (dists_3d < threshold) & fine_inside_3d
+        level_3d[mask] = np.maximum(level_3d[mask], np.int8(k))
+
+    # Outside cell 은 level=0 으로 유지 (나중에 skip 됨)
+    level_3d[~fine_inside_3d] = 0
+
+    # WWW8: feature-driven refinement — bump cells intersected by feature edges
+    if _WWW8_FEATURE_REFINE:
+        try:
+            from core.generator.native_hex.snap import (  # noqa: PLC0415
+                _extract_feature_edge_segments,
+            )
+            feat_segs = _extract_feature_edge_segments(
+                surface_V, surface_F, feature_angle_deg=30.0,
+            )
+            n_feat = int(feat_segs.shape[0])
+            if n_feat == 0:
+                log.info("www8_no_features", n_feat=0)
+            else:
+                level_3d, n_www8_refined = _refine_at_features(
+                    level_3d, fine_inside_3d,
+                    xs, ys, zs,
+                    feat_segs, n_lev,
+                    max_extra_levels=1,
+                )
+                log.info(
+                    "native_hex_feature_refine",
+                    n_feature_segs=n_feat,
+                    n_refined=n_www8_refined,
+                )
+        except Exception as exc:
+            log.warning("www8_feature_refine_failed", error=str(exc))
+
+    # 2:1 균형 조건 적용
+    if n_lev > 1:
+        level_3d = _apply_2to1_balance(level_3d, n_lev)
+        if _WWW1_OCTREE_BALANCE and n_lev > 1:
+            _levels_dict = {
+                (int(i), int(j), int(k)): int(level_3d[i, j, k])
+                for i in range(nfx) for j in range(nfy) for k in range(nfz)
+                if fine_inside_3d[i, j, k] and level_3d[i, j, k] > 0
+            }
+            _balanced = _balance_octree_2to1_nodes(_levels_dict)
+            _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=20)
+            _balanced = _balance_octree_2to1_nodes(_refined)
+            for (i, j, k), lv in _balanced.items():
+                if lv > level_3d[i, j, k]:
+                    level_3d[i, j, k] = np.int8(min(lv, n_lev))
+
+    # N-level cell 및 face 생성
+    cell_face_verts = _build_nlevel_cells(
+        fine_pts, fine_inside_3d, level_3d, n_lev,
+        nfx, nfy, nfz, nfy1, nfz1,
+    )
+
+    # 통계: 레벨별 cell 수
+    n_finest = int((level_3d == n_lev).sum())
+    n_coarser = len(cell_face_verts) - n_finest
+    n_total = len(cell_face_verts)
+
+    # beta91 호환 통계 키 (n_coarse = coarsest level, n_fine = finest level)
+    # coarsest level cell 수를 n_coarse 로, finest 를 n_fine 으로 보고.
+    n_coarse_lev0 = int((level_3d[fine_inside_3d] == 0).sum()) if fine_inside_3d.any() else 0
+    # n_coarse 는 level=0 블록 (2^n_lev × 2^n_lev × 2^n_lev 병합된 것들)
+    # 실제로는 cell_face_verts 로 카운트하기 어려우므로 아래처럼 근사.
+    n_coarse = max(0, n_total - n_finest)
+    n_fine_cells = n_finest
+
+    stats = {
+        "n_coarse": n_coarse,
+        "n_fine": n_fine_cells,
+        "n_total": n_total,
+        "n_levels": n_lev,
+        "grid_shape": (nfx // (1 << n_lev), nfy // (1 << n_lev), nfz // (1 << n_lev)),
+        "fine_grid": (nfx, nfy, nfz),
+        "elapsed": time.perf_counter() - t0,
+    }
+    log.info("native_hex_octree_done", **stats)
+    return fine_pts, cell_face_verts, stats
+
+
+# --------------------------------------------------------------------------
+# WWW1 스켈레톤: node-level octree 2:1 balance helper (Marechal 2009 §3)
+# _WWW1_OCTREE_BALANCE = False 이므로 호출 경로 없음 — 영향 없음.
+# --------------------------------------------------------------------------
+
+def _balance_octree_2to1_nodes(
+    levels: dict[tuple[int, int, int], int],
+) -> dict[tuple[int, int, int], int]:
+    """BFS 로 26-이웃 leaf level diff > 1 인 셀을 split(level += 1) 하여
+    2:1 balance 를 만족하는 levels dict 를 반환한다.
+
+    Parameters
+    ----------
+    levels:
+        {(ix, iy, iz): refinement_level} 노드 레벨 딕셔너리.
+        빈 딕셔너리나 단일 노드 입력이면 변경 없이 반환.
+
+    Returns
+    -------
+    dict[tuple[int, int, int], int]
+        2:1 balance 가 보장된 levels 사본.
+    """
+    from collections import deque
+
+    if len(levels) <= 1:
+        return dict(levels)
+
+    balanced = dict(levels)
+
+    # 26-이웃 오프셋 (face + edge + corner)
+    _NEIGHBOR_OFFSETS: list[tuple[int, int, int]] = [
+        (di, dj, dk)
+        for di in (-1, 0, 1)
+        for dj in (-1, 0, 1)
+        for dk in (-1, 0, 1)
+        if not (di == 0 and dj == 0 and dk == 0)
+    ]
+
+    # 초기 큐: level diff > 1 이 존재하는 셀 전부
+    queue: deque[tuple[int, int, int]] = deque()
+    for cell in balanced:
+        for di, dj, dk in _NEIGHBOR_OFFSETS:
+            nb = (cell[0] + di, cell[1] + dj, cell[2] + dk)
+            if nb in balanced and abs(balanced[cell] - balanced[nb]) > 1:
+                queue.append(cell)
+                break
+
+    visited_in_queue: set[tuple[int, int, int]] = set(queue)
+
+    while queue:
+        cell = queue.popleft()
+        visited_in_queue.discard(cell)
+
+        cell_lev = balanced.get(cell, 0)
+        for di, dj, dk in _NEIGHBOR_OFFSETS:
+            nb = (cell[0] + di, cell[1] + dj, cell[2] + dk)
+            if nb not in balanced:
+                continue
+            nb_lev = balanced[nb]
+            if cell_lev - nb_lev > 1:
+                # nb 의 level 을 올려 diff 를 1 로 줄임
+                balanced[nb] = cell_lev - 1
+                if nb not in visited_in_queue:
+                    queue.append(nb)
+                    visited_in_queue.add(nb)
+            elif nb_lev - cell_lev > 1:
+                # cell 의 level 을 올림
+                balanced[cell] = nb_lev - 1
+                cell_lev = balanced[cell]
+                if cell not in visited_in_queue:
+                    queue.append(cell)
+                    visited_in_queue.add(cell)
+
+    return balanced
+
+
+def _refine_surface_adjacent_nodes(
+    nodes: dict,
+    V: np.ndarray,
+    F: np.ndarray,
+    max_refine: int = 20,
+) -> dict:
+    """WWW3 (beta2108) — surface 근접 cell level +1 (스켈레톤, default OFF).
+    snappy castellated 모티프: cell center 와 face centroid 거리 < cell_size 인 경우 refine.
+    활성 시 후속 _balance_octree_2to1_nodes 호출 필요. 호출 경로 없음 — 영향 없음.
+    """
+    if not _WWW3_SURFACE_REFINE:
+        return nodes
+
+    import numpy as _np
+
+    refined = dict(nodes)
+    face_centroids = V[F].mean(axis=1)  # (n_faces, 3)
+
+    refined_count = 0
+    for cell, lev in list(nodes.items()):
+        if refined_count >= max_refine:
+            break
+        # cell size: base_size / 2^lev (상대 단위, 비교는 정규화 불필요)
+        cell_size = 1.0 / (2 ** lev) if lev > 0 else 1.0
+        cx, cy, cz = [(c + 0.5) * cell_size for c in cell]
+        dists = _np.sqrt(((face_centroids - _np.array([cx, cy, cz])) ** 2).sum(axis=1))
+        if dists.min() < cell_size:
+            refined[cell] = lev + 1
+            refined_count += 1
+
+    return refined

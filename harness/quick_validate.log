@@ -1,0 +1,109 @@
+=== quick_validate_9 (n=3, seed=42) ===
+
+[1/3] file_id=740247 V=3116 F=6272
+2026-04-29 19:58:15 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-29 19:58:16 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=811 n_zero_area=0
+2026-04-29 19:58:17 [info     ] native_tet_hard_pre_remesh     f_after=2586 f_before=6552 h_target=0.09474 v_after=1557 v_before=3116
+2026-04-29 19:58:17 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=38 warnings=['non-manifold: 38 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-29 19:58:17 [info     ] native_tet_pre3_remesh         edge_length_ratio=138.6 faces_after=2418 faces_before=2586 target_edge_length=0.030338
+2026-04-29 19:58:17 [info     ] native_tet_start               bbox_diag=2.9593011455169047 n_surf_faces=2418 n_surf_verts=2982 target_edge_length=0.18495632159480654
+2026-04-29 19:58:17 [info     ] native_tet_seed                n_grid_inside=24 n_points=3006
+2026-04-29 19:58:17 [info     ] native_tet_recovery_iter       iter=0 n_missing=109 n_new_seeds=218
+2026-04-29 19:58:17 [info     ] native_tet_recovery_iter       iter=1 n_missing=121 n_new_seeds=242
+2026-04-29 19:58:17 [info     ] native_tet_recovery_iter       iter=2 n_missing=121 n_new_seeds=242
+2026-04-29 19:58:18 [info     ] native_tet_edge_recovery_iter  inserted_this_iter=8 iter=0 missing=97
+2026-04-29 19:58:18 [info     ] native_tet_edge_recovery_done  missing_after=97 missing_before=97 total_inserted=8
+2026-04-29 19:58:24 [info     ] native_tet_edge_recovery_flip_iter missing_after=18 pass_=0 recovered=81
+2026-04-29 19:58:26 [info     ] native_tet_edge_recovery_flip_iter missing_after=17 pass_=1 recovered=3
+2026-04-29 19:58:27 [info     ] native_tet_edge_recovery_flip_iter missing_after=17 pass_=2 recovered=2
+2026-04-29 19:58:27 [info     ] native_tet_bsp_insert_start    n_missing=31
+2026-04-29 19:58:32 [info     ] native_tet_bw_post_snap        max_disp=0.012177543994085514 snapped=5
+2026-04-29 19:58:32 [info     ] native_tet_bsp_bw_insert_done  bsp_proposed_points=39 bw_cavity_total=91 bw_inserted=11 missing_after=36 missing_before=31
+2026-04-29 19:58:33 [info     ] native_tet_sliver_filter_phase_a boundary_protected=352 dropped_total=504 interior_dropped=13 kept=1453 q_thresh_boundary=0.010000000000000002 q_thresh_interior=0.1
+2026-04-29 19:58:33 [info     ] native_tet_bsp_orient_fix      n_degenerate=0 n_flipped=702
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=1 pass_name=BSP_ORIENT_FIX
+2026-04-29 19:58:33 [info     ] native_tet_smooth              max_disp=0.2800528499916345 moved=204 n_corner=1217 n_corner_new=1217 n_feature_edges=3981 n_iter=2
+2026-04-29 19:58:33 [info     ] native_tet_phase_bc_skip       n_tets=1453 phase_a_mean_q=0.0519 reason=below_threshold_p4c_fallback_will_rescue skip_thresh=0.18 skipped_passes=18
+2026-04-29 19:58:33 [info     ] native_tet_polymesh_write_deferred n_tets=1453 reason=_phase_bc_skip
+2026-04-29 19:58:33 [debug    ] native_tet_best_of_skipped     reason=_phase_bc_skip
+2026-04-29 19:58:33 [debug    ] native_tet_sliver_post_skipped reason=_phase_bc_skip
+2026-04-29 19:58:33 [debug    ] native_tet_flip_23_skipped     reason=_phase_bc_skip
+2026-04-29 19:58:33 [debug    ] native_tet_bsp_insert_skipped  reason=_phase_bc_skip
+2026-04-29 19:58:33 [debug    ] native_tet_post_bsp_pass_skipped reason=_phase_bc_skip
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=init_post_bsp
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV3b
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV3b
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV5b
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV5b
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV6
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV7
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV7
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV8
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV8
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV9
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV9
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV10
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV11
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV12
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV12
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV13
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV13
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV14
+2026-04-29 19:58:33 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV14
+2026-04-29 19:58:33 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=TET_QUALITY1
+2026-04-29 19:58:33 [debug    ] native_tet_pass_gate_skipped   reason=_phase_bc_skip
+2026-04-29 19:58:47 [info     ] native_tet_p4c_pytetwild_fallback accepted=False elapsed=14.13 grade_new=A grade_old=D mq_new=0.259 mq_old=0.052 n_cells_new=6 n_cells_old=1453
+2026-04-29 19:58:47 [debug    ] normalize_tet_winding          n_negative=57 n_total=1453
+2026-04-29 19:58:47 [info     ] polymesh_writer_start          case_dir=/tmp/tmp3oos2_98/c num_cells=1453 num_points=3084
+2026-04-29 19:58:47 [info     ] polymesh_writer_face_merge     after=1041 before=1041 reduced=0
+2026-04-29 19:58:47 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=3730 n_groups=2271 n_kept=63 n_misc=3041
+2026-04-29 19:58:47 [info     ] polymesh_writer_patches        n_boundary_faces=3730 n_patches=64 patch_sizes=[9, 5, 37, 4, 16, 4, 4, 25, 54, 4, 4, 7, 4, 4, 51, 17, 5, 4, 10, 4, 5, 4, 11, 5, 7, 14, 5, 4, 5, 4, 6, 10, 6, 5, 12, 38, 27, 5, 7, 6, 5, 9, 6, 5, 5, 7, 13, 7, 12, 5, 17, 13, 6, 5, 39, 8, 11, 7, 5, 5, 26, 8, 7, 3041]
+2026-04-29 19:58:47 [info     ] polymesh_writer_done           num_cells=1453 num_faces=4771 num_internal_faces=1041 num_points=3084
+2026-04-29 19:58:47 [info     ] native_tet_polymesh_write_post_p4c num_cells=1453 num_points=3084
+2026-04-29 19:58:47 [info     ] native_tet_validate            n_degenerate=0 n_flipped=57 questionable=False
+2026-04-29 19:58:47 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VAL1
+2026-04-29 19:58:47 [info     ] native_tet_run_summary         elapsed=18.084 grade=D mean_q=0.0519 min_q=0.0 n_aniso_detected=0 n_cells=1453 n_chains=0 n_points=3084 n_sliver_detected=0 n_val_degen=0 n_val_flipped=57
+2026-04-29 19:58:47 [info     ] native_bl_read                 component=native_bl n_cells=1453 n_faces=4771 n_internal=1041 n_points=3084
+  tet: OK cells=1453 t=32.32s grade=D  +BL[skip:exc:list index out of range]
+2026-04-29 19:58:47 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=10385043 from_levels=4 limit=500000 to_levels=3
+2026-04-29 19:58:47 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=1316250 from_levels=3 limit=500000 to_levels=2
+2026-04-29 19:58:47 [info     ] native_hex_octree_build        cap_fine=200 fine_grid=(63, 45, 59) h=0.12769811946780907 h_fine=0.03192452986695227 n_levels=2
+2026-04-29 19:58:51 [info     ] native_hex_feature_refine      n_feature_segs=258 n_refined=1
+2026-04-29 19:59:01 [info     ] native_hex_octree_done         elapsed=14.7821273120353 fine_grid=(63, 45, 59) grid_shape=(15, 11, 14) n_coarse=41799 n_fine=21527 n_levels=2 n_total=63326
+2026-04-29 20:03:46 [info     ] snap_iterative_done            cap=0.03830943584034272 final_n_snapped=100215 max_displacement=0.019154595369353742 n_iter_run=3
+2026-04-29 20:03:46 [info     ] native_hex_iterative_snap_applied final_n_snapped=100215 max_displacement=0.019154595369353742 n_iter=3
+2026-04-29 20:03:48 [info     ] polymesh_writer_face_merge     after=183021 before=183021 reduced=0
+2026-04-29 20:03:50 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=13914 n_groups=804 n_kept=63 n_misc=778
+2026-04-29 20:03:50 [info     ] polymesh_writer_patches        n_boundary_faces=13914 n_patches=64 patch_sizes=[11841, 2, 2, 48, 4, 2, 30, 7, 2, 2, 3, 2, 16, 3, 2, 2, 2, 2, 2, 2, 3, 3, 7, 6, 819, 5, 5, 3, 3, 7, 3, 3, 9, 9, 92, 3, 5, 4, 4, 4, 7, 7, 3, 19, 9, 3, 5, 3, 15, 3, 6, 3, 3, 3, 5, 3, 15, 8, 28, 5, 3, 4, 3, 778]
+2026-04-29 20:03:50 [info     ] native_bl_read                 component=native_bl n_cells=63326 n_faces=196935 n_internal=183021 n_points=176640
+2026-04-29 20:03:50 [info     ] native_bl_polygon_wall_fan_triangulate component=native_bl n_polygon=13914 phase=beta89
+2026-04-29 20:03:53 [info     ] native_bl_geometric_growth     component=native_bl first_thickness=0.001 growth_ratio=1.2 n_layers=3 phase=BL2 thicknesses=[0.001, 0.0012, 0.00144] total=0.00364
+2026-04-29 20:03:53 [info     ] native_bl_local_safety_scaled  component=native_bl factor=0.6225523555904758 min_local=0.0028326132179366643 new_total=0.002266090574349332
+2026-04-29 20:03:54 [info     ] native_bl_feature_lock         angle_deg=45.0 component=native_bl n_feature_verts=1378 phase=Phase2 reduction=0.5
+2026-04-29 20:03:54 [info     ] native_bl_collision_skipped_large cap=20000 component=native_bl hint='너무 큰 wall mesh → collision check 생략 (local cell-dist cap 사용)' n_tris=27828 phase=Phase2
+2026-04-29 20:03:54 [info     ] native_bl_per_vertex_scale     component=native_bl min_scale=0.5 n_limited_verts=1378 phase=beta90
+2026-04-29 20:04:02 [debug    ] hex_bl_prism_rejected_collision face=197150
+2026-04-29 20:04:02 [debug    ] hex_bl_prism_rejected_collision face=197151
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197156
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197176
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197177
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197178
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197182
+2026-04-29 20:04:03 [debug    ] hex_bl_prism_rejected_collision face=197183
+2026-04-29 20:04:04 [debug    ] hex_bl_prism_rejected_collision face=197192
+2026-04-29 20:04:35 [debug    ] hex_bl_prism_rejected_collision face=197975
+2026-04-29 20:04:43 [debug    ] hex_bl_prism_rejected_collision face=198196
+2026-04-29 20:04:43 [debug    ] hex_bl_prism_rejected_collision face=198197
+2026-04-29 20:04:43 [debug    ] hex_bl_prism_rejected_collision face=198198
+2026-04-29 20:04:54 [debug    ] hex_bl_prism_rejected_collision face=198474
+2026-04-29 20:04:54 [debug    ] hex_bl_prism_rejected_collision face=198475
+2026-04-29 20:04:54 [debug    ] hex_bl_prism_rejected_collision face=198476
+2026-04-29 20:04:57 [debug    ] hex_bl_prism_rejected_collision face=198563
+2026-04-29 20:04:57 [debug    ] hex_bl_prism_rejected_collision face=198567
+2026-04-29 20:04:57 [debug    ] hex_bl_prism_rejected_collision face=198568
+2026-04-29 20:05:06 [debug    ] hex_bl_prism_rejected_collision face=198770
+2026-04-29 20:05:20 [debug    ] hex_bl_prism_rejected_collision face=199145
+2026-04-29 20:05:20 [debug    ] hex_bl_prism_rejected_collision face=199146
+2026-04-29 20:07:47 [debug    ] hex_bl_prism_rejected_collision face=202873
+2026-04-29 20:07:49 [debug    ] hex_bl_prism_rejected_collision face=202905
+2026-04-29 20:07:49 [debug    ] hex_bl_prism_rejected_collision face=202906

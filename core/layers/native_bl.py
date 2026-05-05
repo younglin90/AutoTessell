@@ -2136,8 +2136,16 @@ def generate_native_bl(
             # Guard: if rel_thick is all-zero (degenerate mesh) skip BL3 combination
             rel_valid = rel_thick.max() > 1e-30 if len(rel_thick) > 0 else False
             if rel_valid:
-                # BL3 combines with BL1: take min → conservative thickness
-                combined_thick = np.minimum(adap_thick, rel_thick)
+                # BETA2879 — BL1 (adap_thick) 이 aspect_cap 으로 mean_edge/1000
+                # 까지 줄어들면 prism aspect 가 1000 에 도달해 subdivide 가 거부.
+                # BL3 (= 0.3 × local_edge) 가 BL1 보다 클 때는 BL3 채택 — local
+                # mesh 밀도 기반 적정 두께로 aspect 3-10 의 양질 prism 을 얻는다.
+                # BL3 < BL1 이면 기존 min 동작 (예: feature-aware shrink).
+                _bl3_dominant = float(rel_thick.mean()) > float(adap_thick.mean()) * 2.0
+                if _bl3_dominant:
+                    combined_thick = rel_thick.copy()
+                else:
+                    combined_thick = np.minimum(adap_thick, rel_thick)
                 # Clamp: never below 1% of effective_first_thickness (avoid near-zero collapse).
                 # C-BL-6 / beta2434 — auto-scaled value 사용.
                 combined_thick = np.maximum(combined_thick, effective_first_thickness * 0.01)

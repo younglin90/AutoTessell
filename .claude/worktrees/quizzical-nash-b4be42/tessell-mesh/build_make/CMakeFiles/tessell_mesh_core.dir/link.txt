@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtessell_mesh_core.a CMakeFiles/tessell_mesh_core.dir/src/mesh2d.cpp.o CMakeFiles/tessell_mesh_core.dir/src/mesh3d.cpp.o CMakeFiles/tessell_mesh_core.dir/src/of_writer.cpp.o
+/usr/bin/ranlib libtessell_mesh_core.a

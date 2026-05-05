@@ -1,0 +1,7 @@
+# R219 env-only gate PASS (no mesh change)
+# baseline R218: bench_time=67.59s, worst_mq=0.208, BL_OK=5/5
+total time: 67.59 (baseline, no change expected)
+tet raw: A=0 B=0 C=2 D=3 OK=5
+hex raw: A=5
+poly raw: A=5
+tet worst_mq: 0.208

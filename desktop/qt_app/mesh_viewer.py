@@ -103,6 +103,72 @@ _TM_EXTS    = {".off", ".3mf"}          # trimesh 경유
 _MESHIO_EXTS = {".msh"}                  # meshio → VTU
 
 
+# PyVista cell_quality 측정 키는 셀 타입마다 지원 범위가 다르다. ``skew`` 는
+# quadrilateral / hexahedron 전용 → 표면(tri) 메쉬와 tetrahedral mesh 에서는 모두
+# ``-1`` sentinel 을 반환한다. 사용자 정의 키 → 시도할 PyVista 측정 키 시퀀스.
+_QUALITY_MEASURE_FALLBACKS = {
+    # GUI label keys → ordered list of PyVista measures to try until 유효 값이 나옴.
+    "skew":              ["skew", "scaled_jacobian", "shape"],
+    "skewness":          ["skew", "scaled_jacobian", "shape"],
+    "scaled_jacobian":   ["scaled_jacobian", "shape"],
+    "aspect_ratio":      ["aspect_ratio", "aspect_frobenius", "max_edge_ratio"],
+    "max_angle":         ["max_angle", "min_angle"],
+    "min_angle":         ["min_angle", "max_angle"],
+    "shape":             ["shape", "scaled_jacobian"],
+    "volume":            ["volume", "jacobian"],
+}
+
+
+def _compute_cell_quality_compat(mesh, measure: str):
+    """PyVista 0.45+ ``cell_quality()`` 우선 + 구버전 ``compute_cell_quality()`` fallback.
+
+    추가로 — 요청된 measure 가 해당 셀 타입에 미지원이면 (모두 -1 sentinel) 같은
+    의미 군의 대체 측정 키 (`_QUALITY_MEASURE_FALLBACKS`) 로 자동 재시도해 의미
+    있는 컬러맵을 만든다.
+
+    Returns: ``(qual_dataset, scalar_array_name)``. 실패 시 ``(None, "")``.
+    """
+    if mesh is None:
+        return None, ""
+    import warnings
+    try:
+        import numpy as _np
+
+        candidates = _QUALITY_MEASURE_FALLBACKS.get(measure, [measure])
+
+        def _try_one(m: str):
+            try:
+                if hasattr(mesh, "cell_quality"):
+                    qual = mesh.cell_quality(quality_measure=m)
+                    name = m if m in qual.cell_data else (
+                        list(qual.cell_data.keys())[0]
+                        if qual.cell_data else ""
+                    )
+                else:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        qual = mesh.compute_cell_quality(quality_measure=m)
+                    name = "CellQuality"
+                arr = qual.cell_data.get(name) if name else None
+                if arr is None:
+                    return None, ""
+                a = _np.asarray(arr, dtype=float)
+                # 유효 값(>-0.5 + finite) 이 하나도 없으면 다음 측정 키로 fallback.
+                if not _np.any((a > -0.5) & _np.isfinite(a)):
+                    return None, ""
+                return qual, name
+            except Exception:
+                return None, ""
+
+        for m in candidates:
+            q, n = _try_one(m)
+            if q is not None:
+                return q, n
+        return None, ""
+    except Exception:
+        return None, ""
+
+
 def _pv_read_any(path: Path) -> "pv.DataSet":
     """포맷을 자동 감지해 PyVista 메시를 반환.
 
@@ -723,11 +789,46 @@ class InteractiveMeshViewer(QWidget):
         toolbar = self._build_toolbar()
         layout.addWidget(toolbar)
 
-        # QtInteractor (VTK 렌더 윈도우)
+        # QtInteractor (VTK 렌더 윈도우) — BETA2864 ParaView-style 룩.
         try:
             self._plotter = QtInteractor(self)
             self._plotter.setMinimumSize(400, 300)
-            self._plotter.background_color = "#0d1117"
+            # ParaView 와 비슷한 grey-blue 그라데이션 배경.
+            try:
+                self._plotter.set_background("#3c4046", top="#7a808a")
+            except Exception:
+                self._plotter.background_color = "#3c4046"
+            # Anti-aliasing — MSAA / SSAA / FXAA 순서로 시도.
+            for aa in ("ssaa", "msaa", "fxaa"):
+                try:
+                    self._plotter.enable_anti_aliasing(aa)
+                    break
+                except Exception:
+                    continue
+            # 3-light 표준 조명 — ParaView 의 default headlight 유사.
+            try:
+                self._plotter.enable_lightkit()
+            except Exception:
+                try:
+                    self._plotter.enable_3_lights()
+                except Exception:
+                    pass
+            # parallel projection — engineering view 표준 (orthographic).
+            try:
+                self._plotter.enable_parallel_projection()
+            except Exception:
+                pass
+            # 좌하단 axes 위젯 (ParaView 스타일).
+            try:
+                self._plotter.show_axes()
+            except Exception:
+                try:
+                    self._plotter.add_axes(
+                        xlabel="X", ylabel="Y", zlabel="Z",
+                        line_width=3, labels_off=False,
+                    )
+                except Exception:
+                    pass
             layout.addWidget(self._plotter, stretch=1)
         except Exception as e:
             log.error(f"QtInteractor 초기화 실패: {e}")
@@ -736,17 +837,9 @@ class InteractiveMeshViewer(QWidget):
             fallback.setStyleSheet("background: #0d1117; color: white;")
             layout.addWidget(fallback, stretch=1)
 
-        # BC-INTEGRATION / beta2798 — face-pick BC toolbar (collapsible).
-        try:
-            from desktop.qt_app.bc_picker_integration import attach_bc_picker
-            if self._plotter is not None:
-                self._bc_ui = attach_bc_picker(
-                    self._plotter, surface_mesh=None, parent=self,
-                )
-                if self._bc_ui and self._bc_ui.toolbar is not None:
-                    layout.addWidget(self._bc_ui.toolbar)
-        except Exception as _bc_exc:
-            log.debug(f"BC picker attach skipped: {_bc_exc}")
+        # BC-INTEGRATION — 중복 attach 제거 (BETA2810 이후 외부 MeshViewerWidget
+        # 가 toolbar 부착을 담당). 여기서 한 번 더 부착하면 "Pick faces (single/box)"
+        # 등 버튼이 두 번 표시됨.
 
         # 정보 패널 (크게)
         self._info_label = QLabel("대기 중...")
@@ -761,13 +854,20 @@ class InteractiveMeshViewer(QWidget):
         layout.addWidget(self._info_label)
 
     def _build_toolbar(self) -> QWidget:
+        # BETA2876 — 단일 QHBoxLayout 가 너무 길어 우측 컨트롤이 화면 밖으로 잘려
+        # 보이지 않는 문제 → 2 행 레이아웃 으로 변경. 1 행: 뷰/엣지/버텍스/품질,
+        # 2 행: Slice/Clip/축/슬라이더. 두 행 모두 전체 너비에 맞춰 wrap 됨.
         bar = QWidget()
         bar.setStyleSheet(
             "QWidget { background-color: #161b22; border-bottom: 1px solid #30363d; }"
         )
-        h = QHBoxLayout(bar)
-        h.setContentsMargins(6, 4, 6, 4)
-        h.setSpacing(6)
+        outer = QVBoxLayout(bar)
+        outer.setContentsMargins(6, 4, 6, 4)
+        outer.setSpacing(4)
+        row1 = QWidget(); row2 = QWidget()
+        h = QHBoxLayout(row1); h.setContentsMargins(0, 0, 0, 0); h.setSpacing(6)
+        h2 = QHBoxLayout(row2); h2.setContentsMargins(0, 0, 0, 0); h2.setSpacing(6)
+        outer.addWidget(row1); outer.addWidget(row2)
 
         def _btn(label: str, tip: str, fn) -> QPushButton:
             b = QPushButton(label)
@@ -824,36 +924,7 @@ class InteractiveMeshViewer(QWidget):
 
         h.addWidget(_separator())
 
-        # 슬라이스 (단면 보기)
-        self._slice_btn = QPushButton("Slice")
-        self._slice_btn.setCheckable(True)
-        self._slice_btn.setFixedHeight(26)
-        self._slice_btn.setToolTip("단면(Slice) 위젯 토글 — 드래그로 단면 위치 조절")
-        self._slice_btn.setStyleSheet(
-            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
-            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
-            "QPushButton:checked { background: #388bfd; border-color: #58a6ff; color: white; } "
-            "QPushButton:hover { background: #30363d; }"
-        )
-        self._slice_btn.toggled.connect(self._toggle_slice)
-        h.addWidget(self._slice_btn)
-
-        # 클립 (반쪽 잘라내기)
-        self._clip_btn = QPushButton("Clip")
-        self._clip_btn.setCheckable(True)
-        self._clip_btn.setFixedHeight(26)
-        self._clip_btn.setToolTip("클리핑 평면(Clip) 위젯 토글 — 메시를 잘라 내부 구조 확인")
-        self._clip_btn.setStyleSheet(
-            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
-            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
-            "QPushButton:checked { background: #388bfd; border-color: #58a6ff; color: white; } "
-            "QPushButton:hover { background: #30363d; }"
-        )
-        self._clip_btn.toggled.connect(self._toggle_clip)
-        h.addWidget(self._clip_btn)
-
-        h.addWidget(_separator())
-
+        # BETA2876 — 품질 토글: 1행 우측에 배치 (한 손에 잡힘).
         self._quality_btn = QToolButton()
         self._quality_btn.setText("품질: Aspect ▾")
         self._quality_btn.setCheckable(True)
@@ -882,23 +953,95 @@ class InteractiveMeshViewer(QWidget):
         self._quality_btn.setPopupMode(QToolButton.MenuButtonPopup)  # type: ignore[attr-defined]
         self._quality_btn.setMenu(_qmenu)
         self._quality_btn.toggled.connect(self._toggle_quality_color)
+        h.addStretch()
         h.addWidget(self._quality_btn)
+
+        # ── 2 행: Slice / Clip / 축 / 슬라이더 (BETA2876) ──────────────
+        from PySide6.QtWidgets import QSlider
+        from PySide6.QtCore import Qt as _Qt
+
+        def _mode_btn(label: str, tip: str) -> QPushButton:
+            b = QPushButton(label)
+            b.setCheckable(True)
+            b.setFixedHeight(26)
+            b.setToolTip(tip)
+            b.setStyleSheet(
+                "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+                "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+                "QPushButton:checked { background: #388bfd; border-color: #58a6ff; color: white; } "
+                "QPushButton:hover { background: #30363d; }"
+            )
+            return b
+
+        h2.addWidget(QLabel("자르기:"))
+        self._slice_btn = _mode_btn(
+            "Slice",
+            "단면(Slice) — 셀 표면 결대로 자름. 축 선택 + 슬라이더 드래그.",
+        )
+        self._slice_btn.toggled.connect(self._toggle_slice)
+        h2.addWidget(self._slice_btn)
+        self._clip_btn = _mode_btn(
+            "Clip",
+            "클립(Clip) — 셀 단위로 한쪽만 표시. 축 선택 + 슬라이더 드래그.",
+        )
+        self._clip_btn.toggled.connect(self._toggle_clip)
+        h2.addWidget(self._clip_btn)
+
+        h2.addWidget(_separator())
+
+        # 축 선택 (X/Y/Z) + 위치 슬라이더 — Slice/Clip 활성 시에만 동작.
+        def _axis_btn(label: str) -> QPushButton:
+            b = QPushButton(label)
+            b.setCheckable(True)
+            b.setFixedHeight(26); b.setFixedWidth(28)
+            b.setStyleSheet(
+                "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+                "border-radius: 4px; font-size: 11px; font-weight: 700; } "
+                "QPushButton:checked { background: #ff7b54; border-color: #ff9f7b; color: white; } "
+                "QPushButton:hover { background: #30363d; }"
+            )
+            return b
+
+        self._axis_btns: dict[str, QPushButton] = {}
+        for axis in ("X", "Y", "Z"):
+            ab = _axis_btn(axis)
+            ab.clicked.connect(lambda _checked=False, a=axis: self._set_slice_axis(a))
+            self._axis_btns[axis] = ab
+            h2.addWidget(ab)
+        self._slice_axis: str = "X"
+        self._axis_btns["X"].setChecked(True)
+
+        self._slice_slider = QSlider(_Qt.Horizontal)
+        self._slice_slider.setRange(0, 1000)   # normalized [0..1] × 1000
+        self._slice_slider.setValue(500)       # mid-plane.
+        self._slice_slider.setFixedHeight(26)
+        self._slice_slider.setMinimumWidth(140)
+        self._slice_slider.setEnabled(False)
+        self._slice_slider.setToolTip("선택한 축을 따라 평면 위치 드래그 (셀 결 따라 스냅).")
+        self._slice_slider.setStyleSheet(
+            "QSlider::groove:horizontal { background: #30363d; height: 4px; border-radius: 2px; } "
+            "QSlider::handle:horizontal { background: #58a6ff; width: 14px; height: 14px; "
+            "  margin: -6px 0; border-radius: 7px; } "
+            "QSlider::sub-page:horizontal { background: #388bfd; border-radius: 2px; }"
+        )
+        self._slice_slider.valueChanged.connect(self._on_slice_slider_changed)
+        h2.addWidget(self._slice_slider, stretch=1)
+
+        self._slice_pos_label = QLabel("—")
+        self._slice_pos_label.setFixedHeight(26)
+        self._slice_pos_label.setMinimumWidth(78)
+        self._slice_pos_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        self._slice_pos_label.setStyleSheet(
+            "QLabel { color: #c9d1d9; background: transparent; "
+            "font-family: 'Courier New', monospace; font-size: 11px; padding-right: 4px; }"
+        )
+        h2.addWidget(self._slice_pos_label)
 
         h.addStretch()
 
-        # 와이어프레임 토글
-        self._wire_btn = QPushButton("와이어프레임")
-        self._wire_btn.setCheckable(True)
-        self._wire_btn.setFixedHeight(26)
-        self._wire_btn.setToolTip("와이어프레임 모드 토글")
-        self._wire_btn.setStyleSheet(
-            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
-            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
-            "QPushButton:checked { background: #1f6feb; border-color: #388bfd; } "
-            "QPushButton:hover { background: #30363d; }"
-        )
-        self._wire_btn.toggled.connect(self._toggle_wireframe)
-        h.addWidget(self._wire_btn)
+        # 2026-05 사용자 요청: '와이어프레임' 버튼 제거. 엣지 표시는 '엣지 표시'
+        # 토글 (_edge_btn) 으로만 컨트롤한다.
+        self._wire_btn = None  # type: ignore[assignment]
 
         return bar
 
@@ -1178,21 +1321,23 @@ class InteractiveMeshViewer(QWidget):
     # ------------------------------------------------------------------
 
     def _render_mesh(self, mesh: object, camera_view: str = "isometric") -> None:
-        """메시를 플로터에 그림."""
+        """메시를 플로터에 그림 — BETA2864 ParaView-style 렌더 룩.
+
+        - grey-blue 그라데이션 배경
+        - 3-point lighting (이미 lightkit 활성)
+        - PBR-ish 머티리얼 (silver-blue surface, 어두운 edge)
+        - axes orientation widget (좌하단)
+        - parallel projection (orthographic, ParaView default)
+        """
         if self._plotter is None:
             return
 
         try:
             self._plotter.clear()
-            self._plotter.background_color = "#0d1117"
-
-            # 라이팅
-            self._plotter.add_light(
-                pv.Light(position=(1, 1, 1), intensity=0.8, color="white")
-            )
-            self._plotter.add_light(
-                pv.Light(position=(-1, -1, 0.5), intensity=0.4, color="lightblue")
-            )
+            try:
+                self._plotter.set_background("#3c4046", top="#7a808a")
+            except Exception:
+                self._plotter.background_color = "#3c4046"
 
             # UnstructuredGrid (볼륨 메시)는 VTK plotter.clear() 후 재사용 시
             # dangling C++ 참조로 segfault가 발생한다. 표면을 추출해 PolyData로
@@ -1203,46 +1348,76 @@ class InteractiveMeshViewer(QWidget):
             except Exception:
                 pass
 
-            # PolyData 에만 compute_normals 적용 (날카로운 모서리 보존)
+            # BETA2871 — normals outward 보장 + auto-orient.
+            # PolyData: compute_normals 으로 outward consistent normals 생성
+            # (auto_orient_normals=True 로 closed surface 의 normal 외향 강제).
             try:
                 if isinstance(mesh, pv.PolyData) and hasattr(mesh, "compute_normals"):
                     mesh = mesh.compute_normals(
                         feature_angle=30,
                         split_vertices=True,
                         consistent_normals=True,
+                        auto_orient_normals=True,
                         non_manifold_traversal=False,
+                        flip_normals=False,
                     )
             except Exception:
                 pass
 
-            # 메시 추가
+            # BETA2871 — solid Phong shading + backface culling ON.
+            # 이전 (BETA2866) backface/frontface culling 모두 OFF 였음 → 닫힌
+            # surface 의 안쪽 (back face) 가 viewport 일부에서 뚫려 보이는 착시.
+            # 정상 구성 = backface culling ON (앞면만 그림) + outward normals 보장.
             self._mesh_actor = self._plotter.add_mesh(
                 mesh,
-                color="#00d9ff",
+                color="#c9d1d9",
                 opacity=self._opacity,
                 show_edges=self._show_edges,
-                edge_color="#ffffff" if self._show_edges else None,
+                edge_color="#1a1f24" if self._show_edges else None,
+                line_width=0.6,
                 smooth_shading=True,
+                ambient=0.30,
+                diffuse=0.85,
+                specular=0.18,
+                specular_power=15,
+                lighting=True,
+                culling="back",  # backface culling — 앞면만 표시
                 name="main_mesh",
             )
+            # VTK property 보강 — 일부 PyVista 버전이 culling kwarg 무시 가능.
+            try:
+                prop = self._mesh_actor.GetProperty()  # vtkProperty
+                prop.BackfaceCullingOn()      # 뒷면 안 그림 (착시 제거)
+                prop.FrontfaceCullingOff()    # 앞면만 그림
+                prop.SetInterpolationToPhong()
+            except Exception:
+                pass
 
             # 버텍스 표시
             if self._show_points and hasattr(mesh, "points"):
                 self._points_actor = self._plotter.add_points(
                     mesh.points,
-                    color="yellow",
-                    point_size=6,
+                    color="#ffd866",
+                    point_size=5,
                     render_points_as_spheres=True,
                     name="mesh_points",
                 )
 
-            # 축
-            self._plotter.add_axes(
-                xlabel="X", ylabel="Y", zlabel="Z",
-                line_width=2, color="white",
-            )
+            # ParaView 스타일 axes orientation widget (좌하단).
+            try:
+                self._plotter.show_axes()
+            except Exception:
+                self._plotter.add_axes(
+                    xlabel="X", ylabel="Y", zlabel="Z",
+                    line_width=3,
+                )
 
-            # 카메라 뷰
+            # parallel projection (engineering view).
+            try:
+                self._plotter.enable_parallel_projection()
+            except Exception:
+                pass
+
             self._apply_camera_view(camera_view)
 
         except Exception as e:
@@ -1258,6 +1433,9 @@ class InteractiveMeshViewer(QWidget):
 
     def _apply_camera_view(self, view: str) -> None:
         if self._plotter is None:
+            return
+        if view == "keep":
+            # 호출자가 카메라를 외부에서 복원할 예정이므로 변경하지 않음.
             return
         if view == "front":
             self._plotter.view_xy()
@@ -1323,83 +1501,263 @@ class InteractiveMeshViewer(QWidget):
         self._show_points = checked
         self._rerender()
 
-    def _toggle_wireframe(self, checked: bool) -> None:
-        if self._plotter is None or self._current_mesh is None:
+    # _toggle_wireframe 핸들러 제거 — 2026-05 GUI 정리에서 와이어프레임 버튼 삭제.
+
+    # ── BETA2861 — cell-aligned slice / clip with axis + slider control ────
+    def _set_slice_axis(self, axis: str) -> None:
+        """축 선택 (X/Y/Z) — 슬라이더 범위를 해당 축의 bbox 로 갱신. 카메라 보존."""
+        axis = axis.upper()
+        if axis not in ("X", "Y", "Z"):
             return
+        self._slice_axis = axis
+        for k, b in self._axis_btns.items():
+            try:
+                b.setChecked(k == axis)
+            except Exception:
+                pass
+        if self._slice_active or self._clip_active:
+            cam = self._capture_camera()
+            self._apply_slice_or_clip(preserve_camera=cam)
+
+    def _on_slice_slider_changed(self, value: int) -> None:
+        """슬라이더 드래그 — 슬라이스/클립 평면 위치만 갱신, 카메라(zoom 등) 보존."""
+        if not (self._slice_active or self._clip_active):
+            return
+        cam = self._capture_camera()
+        self._apply_slice_or_clip(preserve_camera=cam)
+
+    def _slice_axis_index(self) -> int:
+        return {"X": 0, "Y": 1, "Z": 2}[self._slice_axis]
+
+    def _slice_world_position(self) -> tuple[float, float, float]:
+        """슬라이더 [0..1000] 을 mesh bbox 의 해당 축 위치로 변환."""
+        bounds = (-1.0, 1.0, -1.0, 1.0, -1.0, 1.0)
         try:
-            self._plotter.clear()
-            self._plotter.background_color = "#0d1117"
-            style = "wireframe" if checked else "surface"
-            self._plotter.add_mesh(
-                self._current_mesh,
-                color="#00d9ff",
-                style=style,
-                opacity=self._opacity,
-                name="main_mesh",
-            )
-            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
-            self._plotter.reset_camera()
-        except Exception as e:
-            log.error(f"_toggle_wireframe 오류: {e}")
+            bounds = tuple(self._current_mesh.bounds)  # type: ignore[union-attr]
+        except Exception:
+            pass
+        idx = self._slice_axis_index()
+        lo, hi = bounds[idx * 2], bounds[idx * 2 + 1]
+        t = float(self._slice_slider.value()) / 1000.0
+        return lo, hi, lo + (hi - lo) * t
 
     def _toggle_slice(self, checked: bool) -> None:
-        """단면(Slice) 위젯 토글."""
+        """Slice 토글 — 셀 결을 따라 face stratum 표시. 카메라 위치 보존."""
         if self._plotter is None or self._current_mesh is None:
             return
+        cam = self._capture_camera()
         self._slice_active = checked
-        # Clip과 동시에 켤 수 없음
         if checked and self._clip_active:
             self._clip_btn.setChecked(False)
-
-        try:
-            self._plotter.clear()
-            self._plotter.background_color = "#0d1117"
-            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
-
-            if checked:
-                # 인터랙티브 슬라이스 위젯 (드래그로 단면 이동)
-                self._plotter.add_mesh_slice(
-                    self._current_mesh,
-                    normal="x",
-                    color="#00d9ff",
-                    show_edges=self._show_edges,
-                    edge_color="#ffffff" if self._show_edges else None,
-                )
-            else:
-                self._render_mesh(self._current_mesh)
-        except Exception as e:
-            log.error(f"_toggle_slice 오류: {e}")
-            self._render_mesh(self._current_mesh)
+        self._slice_slider.setEnabled(checked or self._clip_active)
+        if checked:
+            self._apply_slice_or_clip(preserve_camera=cam)
+        else:
+            self._render_mesh(self._current_mesh, camera_view="keep")
+            self._restore_camera(cam)
+            self._slice_pos_label.setText("—")
 
     def _toggle_clip(self, checked: bool) -> None:
-        """클리핑 평면(Clip) 위젯 토글."""
+        """Clip 토글 — 셀 단위로 한쪽 영역만 (셀 cut 없음). 카메라 보존."""
         if self._plotter is None or self._current_mesh is None:
             return
+        cam = self._capture_camera()
         self._clip_active = checked
-        # Slice와 동시에 켤 수 없음
         if checked and self._slice_active:
             self._slice_btn.setChecked(False)
+        self._slice_slider.setEnabled(checked or self._slice_active)
+        if checked:
+            self._apply_slice_or_clip(preserve_camera=cam)
+        else:
+            self._render_mesh(self._current_mesh, camera_view="keep")
+            self._restore_camera(cam)
+            self._slice_pos_label.setText("—")
 
+    def _capture_camera(self) -> tuple | None:
+        """현재 카메라 상태 capture (slice/clip 등 재렌더 시 복원용)."""
+        if self._plotter is None:
+            return None
         try:
-            self._plotter.clear()
-            self._plotter.background_color = "#0d1117"
-            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+            cam = self._plotter.camera
+            return (
+                tuple(cam.position),
+                tuple(cam.focal_point),
+                tuple(cam.up),
+                float(cam.parallel_scale),
+                bool(cam.parallel_projection),
+            )
+        except Exception:
+            try:
+                # 구버전 fallback
+                return tuple(self._plotter.camera_position)  # type: ignore[union-attr]
+            except Exception:
+                return None
 
-            if checked:
-                # 인터랙티브 클리핑 평면 (드래그로 잘라내기)
-                self._plotter.add_mesh_clip_plane(
-                    self._current_mesh,
-                    normal="x",
-                    color="#00d9ff",
-                    show_edges=self._show_edges,
-                    edge_color="#ffffff" if self._show_edges else None,
-                    opacity=self._opacity,
-                )
+    def _restore_camera(self, cam) -> None:
+        """_capture_camera 로 저장한 상태 복원."""
+        if self._plotter is None or cam is None:
+            return
+        try:
+            if isinstance(cam, tuple) and len(cam) == 5:
+                pos, foc, up, pscale, ppar = cam
+                c = self._plotter.camera
+                c.position = pos
+                c.focal_point = foc
+                c.up = up
+                c.parallel_scale = pscale
+                if ppar:
+                    self._plotter.enable_parallel_projection()
             else:
-                self._render_mesh(self._current_mesh)
+                self._plotter.camera_position = cam  # type: ignore[assignment]
+            self._plotter.render()
+        except Exception:
+            pass
+
+    def _apply_slice_or_clip(self, preserve_camera=None) -> None:
+        """현재 axis + 슬라이더 위치로 cell-aligned slice / clip 재렌더.
+
+        preserve_camera: _capture_camera() 반환값. None 이면 현재 카메라를 즉석에서 캡처해 보존.
+        """
+        if self._plotter is None or self._current_mesh is None:
+            return
+        if preserve_camera is None:
+            preserve_camera = self._capture_camera()
+        try:
+            import numpy as _np
+            mesh = self._current_mesh
+            lo, hi, pos = self._slice_world_position()
+            self._slice_pos_label.setText(f"{self._slice_axis}={pos:+.3g}")
+
+            # 셀 중심을 셀당 1점으로 사용 → cell-aligned (셀을 자르지 않음).
+            try:
+                centers = _np.asarray(mesh.cell_centers().points)
+            except Exception:
+                centers = None
+            self._plotter.clear()
+            # _render_mesh 와 동일한 ParaView-style 룩 (배경 그라데이션 + 축).
+            try:
+                self._plotter.set_background("#3c4046", top="#7a808a")
+            except Exception:
+                self._plotter.background_color = "#3c4046"
+            try:
+                self._plotter.show_axes()
+            except Exception:
+                self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", line_width=3)
+            try:
+                self._plotter.enable_parallel_projection()
+            except Exception:
+                pass
+
+            ax = self._slice_axis_index()
+
+            # _render_mesh 와 동일한 머티리얼/lighting kwarg 묶음.
+            _surf_style = dict(
+                color="#c9d1d9",
+                show_edges=self._show_edges,
+                edge_color="#1a1f24" if self._show_edges else None,
+                line_width=0.6,
+                smooth_shading=True,
+                ambient=0.30,
+                diffuse=0.85,
+                specular=0.18,
+                specular_power=15,
+                lighting=True,
+            )
+
+            def _harden_actor(actor) -> None:
+                """outward normal + backface culling — 닫힌 surface 의 안쪽 빈 공간이
+                viewport 일부를 통과해 보이는 착시 제거 (clip 결과 앞면 보장)."""
+                try:
+                    prop = actor.GetProperty()
+                    prop.BackfaceCullingOn()
+                    prop.FrontfaceCullingOff()
+                    prop.SetInterpolationToPhong()
+                except Exception:
+                    pass
+
+            def _orient_normals(poly):
+                """PolyData 면 법선을 외향으로 일관 정렬."""
+                try:
+                    if isinstance(poly, pv.PolyData) and hasattr(poly, "compute_normals"):
+                        return poly.compute_normals(
+                            feature_angle=30,
+                            split_vertices=True,
+                            consistent_normals=True,
+                            auto_orient_normals=True,
+                            non_manifold_traversal=False,
+                            flip_normals=False,
+                        )
+                except Exception:
+                    pass
+                return poly
+
+            if self._slice_active:
+                # Slice: 평면이 메쉬를 자른 *단면* 만 표시 (PyVista 의 plane slice).
+                # 양쪽 셀 surface 를 모두 그리지 않는다 — 그러면 clip 과 구분이 안 됨.
+                try:
+                    normal = [0.0, 0.0, 0.0]
+                    normal[ax] = 1.0
+                    origin = mesh.center
+                    # PyVista 의 plane slice — UnstructuredGrid 든 PolyData 든 모두 지원.
+                    cross = mesh.slice(
+                        normal=normal,
+                        origin=(origin[0] if ax != 0 else pos,
+                                origin[1] if ax != 1 else pos,
+                                origin[2] if ax != 2 else pos),
+                    )
+                    # PyVista 의 ``slice`` 는 지정 평면에서 자른 평면 PolyData 를 반환.
+                    self._mesh_actor = self._plotter.add_mesh(
+                        cross,
+                        color="#4ea3ff",
+                        show_edges=self._show_edges,
+                        edge_color="#0d1117" if self._show_edges else None,
+                        line_width=0.7,
+                        lighting=False,  # 단면은 평면 — flat shading.
+                        name="slice_cross_section",
+                    )
+                except Exception as _e:
+                    log.debug(f"slice fail, fallback: {_e}")
+                    self._render_mesh(mesh, camera_view="keep")
+                    self._restore_camera(preserve_camera)
+                    return
+            elif self._clip_active:
+                # Clip: 셀 중심이 plane 한쪽에 있는 셀만 추출 (cell cut 없음).
+                # 반대쪽 outline / wireframe 은 그리지 않음 — slice 와 시각적 구분 명확화.
+                if centers is not None and centers.shape[0] == mesh.n_cells:
+                    keep = _np.where(centers[:, ax] >= pos)[0]
+                    if keep.size > 0:
+                        kept = mesh.extract_cells(keep).extract_surface(
+                            algorithm="dataset_surface",
+                        )
+                        kept = _orient_normals(kept)
+                        self._mesh_actor = self._plotter.add_mesh(
+                            kept, opacity=self._opacity, name="clip_main", **_surf_style,
+                        )
+                        _harden_actor(self._mesh_actor)
+                else:
+                    # 셀 단위 클립 불가 → bbox-clip fallback.
+                    bounds = list(mesh.bounds)
+                    bounds[ax * 2] = pos
+                    clipped = mesh.clip_box(bounds, invert=False)
+                    try:
+                        clipped = clipped.extract_surface(algorithm="dataset_surface")
+                    except Exception:
+                        pass
+                    clipped = _orient_normals(clipped)
+                    self._mesh_actor = self._plotter.add_mesh(
+                        clipped, opacity=self._opacity, name="clip_main_bbox",
+                        **_surf_style,
+                    )
+                    _harden_actor(self._mesh_actor)
+            # 카메라 복원 — slice/clip 토글이 view 를 리셋하지 않도록 마지막에 복원.
+            self._restore_camera(preserve_camera)
         except Exception as e:
-            log.error(f"_toggle_clip 오류: {e}")
-            self._render_mesh(self._current_mesh)
+            log.error(f"_apply_slice_or_clip 오류: {e}")
+            try:
+                self._render_mesh(self._current_mesh, camera_view="keep")
+                self._restore_camera(preserve_camera)
+            except Exception:
+                pass
 
     def _on_quality_metric_selected(self, action: object) -> None:
         """드롭다운에서 품질 메트릭 선택 시 호출."""
@@ -1413,51 +1771,173 @@ class InteractiveMeshViewer(QWidget):
                 self._toggle_quality_color(True)
 
     def _toggle_quality_color(self, checked: bool) -> None:
-        """선택된 메트릭 기반 셀 품질 색상화 토글."""
+        """선택된 메트릭 기반 셀 품질 색상화 토글. 카메라 보존 + 컨투어 가시화 보장.
+
+        BETA2876 — VTK_POLYHEDRON 셀은 ``cell_quality()`` 가 모두 -1 sentinel 을
+        리턴하므로, 그 경우 먼저 ``extract_surface()`` 로 PolyData 표면을 뽑아
+        triangle/quad 면 단위 quality 를 계산해 색상을 입힌다. 사용자에게는
+        ``_info_label`` 로 fallback 사실을 알려준다.
+        """
         if self._plotter is None or self._current_mesh is None:
             return
+        cam = self._capture_camera()
         try:
             self._plotter.clear()
-            self._plotter.background_color = "#0d1117"
-            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+            # _render_mesh 와 동일한 ParaView-style 룩.
+            try:
+                self._plotter.set_background("#3c4046", top="#7a808a")
+            except Exception:
+                self._plotter.background_color = "#3c4046"
+            try:
+                self._plotter.show_axes()
+            except Exception:
+                self._plotter.add_axes(
+                    xlabel="X", ylabel="Y", zlabel="Z", line_width=3,
+                )
+            try:
+                self._plotter.enable_parallel_projection()
+            except Exception:
+                pass
 
             if checked:
                 try:
                     import numpy as _np
                     metric = self._quality_metric
                     metric_info = self._QUALITY_METRICS.get(metric, ("Quality", "Quality"))
-                    qual = self._current_mesh.compute_cell_quality(  # type: ignore[union-attr]
-                        quality_measure=metric
+
+                    # 1차: 원본 메시에서 cell_quality 시도 (tet/hex 는 직접 값).
+                    qual, scalar_name = _compute_cell_quality_compat(
+                        self._current_mesh, metric
                     )
-                    arr = qual.cell_data.get("CellQuality")
-                    if arr is not None and len(arr) > 0:
-                        clim_min = float(_np.percentile(arr, 5))
-                        clim_max = float(_np.percentile(arr, 95))
-                        if clim_min >= clim_max:
-                            clim_max = clim_min + 1.0
+                    surf_for_render = None
+                    arr_valid = None
+
+                    def _extract_valid(_q, _name):
+                        if _q is None or not _name:
+                            return None
+                        _a = _q.cell_data.get(_name)
+                        if _a is None or len(_a) == 0:
+                            return None
+                        _a = _np.asarray(_a, dtype=float)
+                        _v = _a[(_a > -0.5) & _np.isfinite(_a)]
+                        return _v if _v.size > 0 else None
+
+                    arr_valid = _extract_valid(qual, scalar_name)
+
+                    # 2차 fallback: VTK_POLYHEDRON 셀 (poly mesh) → 표면 추출 후
+                    # 표면 face 단위 quality 재계산.
+                    if arr_valid is None:
+                        try:
+                            ext = self._current_mesh.extract_surface()  # type: ignore[attr-defined]
+                            qual, scalar_name = _compute_cell_quality_compat(ext, metric)
+                            arr_valid = _extract_valid(qual, scalar_name)
+                            if arr_valid is not None:
+                                surf_for_render = qual  # 이미 PolyData
+                                try:
+                                    self._info_label.setText(
+                                        f"ℹ 표면 face 기준 {metric_info[0]} 색상화 (volume "
+                                        "polyhedral cells 는 직접 측정 불가)"
+                                    )
+                                except Exception:
+                                    pass
+                        except Exception:
+                            arr_valid = None
+
+                    if arr_valid is None or arr_valid.size == 0:
+                        try:
+                            self._info_label.setText(
+                                f"⚠ 품질 메트릭 '{metric_info[0]}' 계산 실패 — 메시 형식이 지원되지 않습니다"
+                            )
+                        except Exception:
+                            pass
+                        log.warning(
+                            f"품질 메트릭 '{metric}' 의 유효 값이 없음 (셀 타입 미지원)"
+                        )
+                        self._render_mesh(self._current_mesh, camera_view="keep")
+                        self._restore_camera(cam)
+                        # 토글 상태 풀어줌 — 사용자에게 시각적 피드백.
+                        try:
+                            self._quality_btn.blockSignals(True)
+                            self._quality_btn.setChecked(False)
+                            self._quality_btn.blockSignals(False)
+                        except Exception:
+                            pass
+                        return
+
+                    a_valid = arr_valid
+                    clim_min = float(_np.percentile(a_valid, 5))
+                    clim_max = float(_np.percentile(a_valid, 95))
+                    if clim_min >= clim_max:
+                        clim_max = clim_min + 1.0
+
+                    if surf_for_render is not None:
+                        surf = surf_for_render
+                    else:
+                        try:
+                            surf = qual.extract_surface(
+                                algorithm="dataset_surface",
+                                pass_cellid=True,
+                            )
+                        except Exception:
+                            surf = qual
+                    # 이름 매핑 — extract_surface 후에도 cell_data 에 존재하면 그대로,
+                    # 없으면 첫 번째 cell_data array 로 fallback.
+                    if scalar_name not in getattr(surf, "cell_data", {}):
+                        keys = list(getattr(surf, "cell_data", {}).keys())
+                        if keys:
+                            scalar_name = keys[0]
+                    try:
+                        surf.set_active_scalars(scalar_name, preference="cell")
+                    except Exception:
+                        pass
+
+                    if True:
+
+                        # 셀별 컨투어가 또렷하게 보이도록 lighting OFF + interpolate
+                        # before map=False (셀 단위 평면 색상). categorical scalar 가
+                        # 아니어도 cell_data 는 셀당 1색으로 매핑된다.
                         self._plotter.add_mesh(
-                            qual,
-                            scalars="CellQuality",
+                            surf,
+                            scalars=scalar_name,
+                            preference="cell",
                             cmap="RdYlGn_r",
                             clim=[clim_min, clim_max],
                             show_edges=self._show_edges,
-                            edge_color="#333333" if self._show_edges else None,
+                            edge_color="#1a1f24" if self._show_edges else None,
+                            line_width=0.6,
                             opacity=self._opacity,
+                            lighting=False,
+                            interpolate_before_map=False,
                             scalar_bar_args={
                                 "title": metric_info[0],
-                                "color": "white",
-                                "fmt": "%.2f",
+                                "color": "#0d1117",
+                                "fmt": "%.3g",
+                                "n_labels": 5,
+                                "shadow": False,
+                                "title_font_size": 14,
+                                "label_font_size": 12,
                             },
                             name="quality_mesh",
                         )
-                        self._plotter.reset_camera()
+                        # actor property 보강 — 일부 PyVista 버전이 lighting kwarg 무시.
+                        try:
+                            actor = self._plotter.actors.get("quality_mesh")
+                            if actor is not None:
+                                prop = actor.GetProperty()
+                                prop.LightingOff()
+                                prop.SetInterpolationToFlat()
+                        except Exception:
+                            pass
+                        self._restore_camera(cam)
                         return
                 except Exception as e:
                     log.warning(f"품질 색상화 실패, 기본 렌더로 전환: {e}")
-            self._render_mesh(self._current_mesh)
+            self._render_mesh(self._current_mesh, camera_view="keep")
+            self._restore_camera(cam)
         except Exception as e:
             log.error(f"_toggle_quality_color 오류: {e}")
-            self._render_mesh(self._current_mesh)
+            self._render_mesh(self._current_mesh, camera_view="keep")
+            self._restore_camera(cam)
 
     def closeEvent(self, event: object) -> None:
         if self._plotter:
@@ -1609,41 +2089,40 @@ class MeshViewerWidget(QWidget):
                 import numpy as _np
 
                 def _cell_quality_array(m: object, measure: str) -> "_np.ndarray | None":
-                    """새 cell_quality() API 우선, 없으면 compute_cell_quality() fallback."""
-                    try:
-                        if hasattr(m, "cell_quality"):
-                            result = m.cell_quality(quality_measure=measure)  # type: ignore[union-attr]
-                            # 새 API는 배열 이름이 quality_measure 값과 동일
-                            arr = result.cell_data.get(measure)
-                            if arr is None:
-                                # fallback: 첫 번째 cell_data array
-                                keys = list(result.cell_data.keys())
-                                arr = result.cell_data[keys[0]] if keys else None
-                        else:
-                            result = m.compute_cell_quality(quality_measure=measure)  # type: ignore[union-attr]
-                            arr = result.cell_data.get("CellQuality")
-                        if arr is None or len(arr) == 0:
-                            return None
-                        arr = _np.asarray(arr, dtype=float)
-                        return arr[_np.isfinite(arr)] if len(arr) > 0 else None
-                    except Exception:
+                    """모듈 레벨 _compute_cell_quality_compat 위임 (deprecation 안전)."""
+                    qual, name = _compute_cell_quality_compat(m, measure)
+                    if qual is None or not name:
                         return None
+                    arr = qual.cell_data.get(name)
+                    if arr is None or len(arr) == 0:
+                        return None
+                    arr = _np.asarray(arr, dtype=float)
+                    return arr[_np.isfinite(arr)] if len(arr) > 0 else None
 
-                arr = _cell_quality_array(mesh, "aspect_ratio")
-                if arr is not None and len(arr) > 0:
+                # BETA2874 — PyVista cell_quality() 가 VTK_POLYHEDRON (type 42)
+                # cell 에 대해 quality measure 미지원 → -1.0 sentinel 반환.
+                # cfMesh 출력은 모두 polyhedron 으로 export 되므로 max=-1 가
+                # GUI Quality 탭을 덮어씀. 음수/-1 sentinel 필터링.
+                def _valid_quality_arr(a):
+                    if a is None or len(a) == 0:
+                        return None
+                    a = a[(a > -0.5) & _np.isfinite(a)]
+                    return a if len(a) > 0 else None
+
+                arr = _valid_quality_arr(_cell_quality_array(mesh, "aspect_ratio"))
+                if arr is not None:
                     stats["max_aspect_ratio"] = float(arr.max())
                     stats["mean_aspect_ratio"] = float(arr.mean())
                     stats["hist_aspect_ratio"] = arr.tolist()
 
-                arr = _cell_quality_array(mesh, "skew")
-                if arr is not None and len(arr) > 0:
+                arr = _valid_quality_arr(_cell_quality_array(mesh, "skew"))
+                if arr is not None:
                     stats["max_skewness"] = float(arr.max())
                     stats["mean_skewness"] = float(arr.mean())
                     stats["hist_skewness"] = arr.tolist()
 
-                # Non-orthogonality proxy (max_angle)
-                arr = _cell_quality_array(mesh, "max_angle")
-                if arr is not None and len(arr) > 0:
+                arr = _valid_quality_arr(_cell_quality_array(mesh, "max_angle"))
+                if arr is not None:
                     stats["max_non_orthogonality"] = float(arr.max())
                     stats["mean_non_orthogonality"] = float(arr.mean())
                     stats["hist_non_orthogonality"] = arr.tolist()

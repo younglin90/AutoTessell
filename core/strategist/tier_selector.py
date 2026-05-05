@@ -119,9 +119,15 @@ _MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
                      "tier_robust_hex","tier_algohex"],
     },
     "poly": {
-        "draft":    ["tier_voro_poly", "tier_polyhedral"],
-        "standard": ["tier_polyhedral","tier_voro_poly"],
-        "fine":     ["tier_polyhedral","tier_voro_poly"],
+        # BETA2856 — user policy (BETA2845): poly default = vendored cfMesh pMesh.
+        # tier_voro_poly (Voronoi sampling) loses surface fidelity (hausdorff 0.49
+        # on a 1m cube) → 강제로 fallback 으로 격하.
+        "draft":    ["tier_cfmesh_poly", "tier_native_poly", "tier_polyhedral",
+                     "tier_voro_poly"],
+        "standard": ["tier_cfmesh_poly", "tier_native_poly", "tier_polyhedral",
+                     "tier_voro_poly"],
+        "fine":     ["tier_cfmesh_poly", "tier_native_poly", "tier_polyhedral",
+                     "tier_voro_poly"],
     },
 }
 
@@ -504,15 +510,25 @@ class TierSelector:
             )
             return selected, fallbacks
 
-        # l3_ai 표면 → tetwild 강제
+        # BETA2868 — l3_ai 표면이라도 mesh_type 을 우선 존중.
+        # hex_dominant / poly 는 cfMesh 가 keepCellsIntersectingBoundary 로
+        # bad surface 도 직접 처리. tet 인 경우만 tier2_tetwild 강제.
         if sql == SurfaceQualityLevel.L3_AI.value:
-            log.info("tier_forced_l3ai", tier="tier2_tetwild")
-            fallbacks = [t for t in _TIER_ORDER if t != "tier2_tetwild"]
-            selected, fallbacks = _policy_filter_tier("tier2_tetwild", fallbacks)
+            l3_primary = "tier2_tetwild"
+            l3_reason = "l3_ai_forces_tetwild"
+            if mt == "hex_dominant":
+                l3_primary = "tier15_cfmesh"
+                l3_reason = "l3_ai_hex_routes_cfmesh"
+            elif mt == "poly":
+                l3_primary = "tier_cfmesh_poly"
+                l3_reason = "l3_ai_poly_routes_cfmesh_poly"
+            log.info("tier_forced_l3ai", tier=l3_primary, mesh_type=mt)
+            fallbacks = [t for t in _TIER_ORDER if t != l3_primary]
+            selected, fallbacks = _policy_filter_tier(l3_primary, fallbacks)
             self.last_selection_context = {
                 "source": "surface_quality_forced",
                 "hint": tier_hint,
-                "reason": "l3_ai_forces_tetwild",
+                "reason": l3_reason,
                 "quality_level": ql,
                 "surface_quality_level": sql,
                 "selected_tier": selected,

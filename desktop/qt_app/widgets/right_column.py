@@ -488,14 +488,29 @@ class _HistogramCanvas(QWidget):
             if data and len(data) > 1:
                 import numpy as _np
                 arr = _np.asarray(data, dtype=float)
-                _d = _np.clip(arr, 0, _np.percentile(arr, 99))
-                ax.hist(_d, bins=30, color=color, **_style)
-                # OpenFOAM 한계선 표시 (있는 경우)
+                arr = arr[_np.isfinite(arr) & (arr > -0.5)]  # polyhedron sentinel(-1) 제거
+                if arr.size <= 1:
+                    ax.text(0.5, 0.5, "유효 데이터 없음", ha="center", va="center",
+                            transform=ax.transAxes, color="#5a6270", fontsize=8)
+                    return
+                hi = float(_np.percentile(arr, 99))
+                lo = float(arr.min())
+                if hi <= lo:
+                    hi = lo + 1.0
+                _d = _np.clip(arr, lo, hi)
+                # 셀 수가 적으면 bin 수 자동 축소 (Sturges-like).
+                bins = int(min(30, max(5, _np.sqrt(arr.size))))
+                ax.hist(_d, bins=bins, color=color, **_style)
+                # OpenFOAM 한계선 — threshold 가 데이터 범위 밖이어도 보이도록 xlim 확장.
                 if threshold is not None:
                     ax.axvline(
                         x=threshold, color="#ff6b6b", linestyle="--",
-                        linewidth=1.0, alpha=0.7,
+                        linewidth=1.0, alpha=0.85,
                     )
+                    cur_lo, cur_hi = ax.get_xlim()
+                    new_lo = min(cur_lo, threshold * 0.95)
+                    new_hi = max(cur_hi, threshold * 1.05)
+                    ax.set_xlim(new_lo, new_hi)
             else:
                 ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
                         transform=ax.transAxes, color="#5a6270", fontsize=8)

@@ -137,13 +137,31 @@ class Tier15CfMeshGenerator:
                     _sm = strategy.surface_mesh
                     _bl = getattr(strategy, "boundary_layers", None)
                     _target = float(getattr(_sm, "target_cell_size", 0.0) or 0.0) if _sm else 0.0
+                    # BETA2869 — max_cell = target*4 (= L/12.5, 12 cells/dim) 로
+                    # 복원. draft 의 industry-typical coarseness 유지. sparse
+                    # geometry refinement 는 min_cell (target*0.5 = L/100) 와
+                    # boundary_cell (max*0.6) 로 처리.
                     _max = float(_params.get(
                         "cfmesh_max_cell_size",
                         _target * 4 if _target > 0 else 0.2,
                     ))
-                    # BETA2851 — boundary/min default 0 (cfMesh 자체 sizing).
-                    _bnd = float(_params.get("cfmesh_boundary_cell_size", 0.0))
-                    _min = float(_params.get("cfmesh_min_cell_size", 0.0))
+                    # BETA2870 — draft default = uniform sizing (no surface
+                    # refinement). cfMesh octree halves cell size per level →
+                    # any bnd < max forces +1 level (8× cells). bnd=0 으로 두고
+                    # 사용자가 GUI slider 로 명시할 때만 refinement 활성.
+                    # cube → 1.7k cell (12 cells/dim, draft 적정).
+                    if "cfmesh_boundary_cell_size" in _params:
+                        _bnd = float(_params["cfmesh_boundary_cell_size"])
+                    else:
+                        _bnd = 0.0
+                    # BETA2869 — min_cell = boundary_cell (= max*0.6).
+                    # target*0.5 (= L/100) 은 draft 에 비해 너무 fine 해서 cube
+                    # 가 14k cell 폭증. min=bnd 로 통일 — surface refine 은
+                    # boundaryCellSize 까지, 그 이하 octree level 진입 안 함.
+                    if "cfmesh_min_cell_size" in _params:
+                        _min = float(_params["cfmesh_min_cell_size"])
+                    else:
+                        _min = _bnd if _bnd > 0 else 0.0
                     _nL = 0; _tr = 1.2; _mf = 0.0
                     if _bl and getattr(_bl, "enabled", False):
                         _nL = int(getattr(_bl, "num_layers", 0) or 0)

@@ -1,0 +1,136 @@
+name: Windows Installer Test
+
+# NSIS 인스톨러 실제 설치 + 검증 — 수동 실행 전용 (시간 오래 걸림)
+# Actions 탭 → "Windows Installer Test" → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      installer_tag:
+        description: 'GitHub Release 태그 (인스톨러 다운로드 경로)'
+        required: false
+        default: 'latest'
+
+jobs:
+  installer-test:
+    name: NSIS installer install + verify
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      INSTALL_DIR: C:\AutoTessell-Test
+
+    steps:
+      - name: Checkout (테스트 파일용)
+        uses: actions/checkout@v4
+
+      - name: Download installer from GitHub Releases
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.installer_tag }}"
+          if ($tag -eq "latest") {
+            $url = "https://github.com/younglin90/AutoTessell/releases/latest/download/AutoTessell-Setup.exe"
+          } else {
+            $url = "https://github.com/younglin90/AutoTessell/releases/download/$tag/AutoTessell-Setup.exe"
+          }
+          Write-Host "Downloading from: $url"
+          Invoke-WebRequest -Uri $url -OutFile "AutoTessell-Setup.exe" -UseBasicParsing
+          Write-Host "Downloaded: $((Get-Item AutoTessell-Setup.exe).Length) bytes"
+
+      - name: Run installer silently
+        shell: pwsh
+        run: |
+          # NSIS 사일런트 설치: /S = silent, /D = install dir
+          Start-Process -FilePath "AutoTessell-Setup.exe" `
+            -ArgumentList "/S /D=$env:INSTALL_DIR" `
+            -Wait -NoNewWindow
+          Write-Host "Installer exit code: $LASTEXITCODE"
+
+      - name: Verify install directory
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:INSTALL_DIR") {
+            Write-Host "Install directory exists: $env:INSTALL_DIR"
+            Get-ChildItem "$env:INSTALL_DIR" | Select-Object Name, Length
+          } else {
+            Write-Error "Install directory not found!"
+            exit 1
+          }
+
+      - name: Find installed Python / auto-tessell
+        shell: pwsh
+        run: |
+          # conda 환경 또는 직접 설치 경로 탐색
+          $pythonPaths = @(
+            "$env:INSTALL_DIR\python.exe",
+            "$env:INSTALL_DIR\condaenv\python.exe",
+            "$env:LOCALAPPDATA\AutoTessell\condaenv\python.exe",
+            "$env:LOCALAPPDATA\AutoTessell\python.exe"
+          )
+          $found = $false
+          foreach ($p in $pythonPaths) {
+            if (Test-Path $p) {
+              Write-Host "Found Python: $p"
+              echo "PYTHON_EXE=$p" >> $env:GITHUB_ENV
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Host "Python not found at expected paths, searching..."
+            Get-ChildItem -Recurse "$env:INSTALL_DIR" -Filter "python.exe" -ErrorAction SilentlyContinue |
+              Select-Object -First 1 |
+              ForEach-Object {
+                Write-Host "Found: $($_.FullName)"
+                echo "PYTHON_EXE=$($_.FullName)" >> $env:GITHUB_ENV
+              }
+          }
+
+      - name: CLI --help via installed Python
+        shell: pwsh
+        run: |
+          if ($env:PYTHON_EXE) {
+            & $env:PYTHON_EXE -m auto_tessell.cli.main --help
+          } else {
+            # 설치된 auto-tessell.exe 탐색
+            $exe = Get-ChildItem -Recurse "$env:INSTALL_DIR" -Filter "auto-tessell.exe" -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            if ($exe) {
+              & $exe.FullName --help
+            } else {
+              Write-Error "auto-tessell not found after installation"
+              exit 1
+            }
+          }
+
+      - name: CLI analyze sphere.stl
+        shell: pwsh
+        run: |
+          $sphereStl = "${{ github.workspace }}\tests\benchmarks\sphere.stl"
+          if ($env:PYTHON_EXE) {
+            & $env:PYTHON_EXE -m auto_tessell.cli.main analyze $sphereStl
+          } else {
+            $exe = Get-ChildItem -Recurse "$env:INSTALL_DIR" -Filter "auto-tessell.exe" -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            & $exe.FullName analyze $sphereStl
+          }
+
+      - name: Uninstaller exists check
+        shell: pwsh
+        run: |
+          $uninst = Get-ChildItem -Recurse "$env:INSTALL_DIR" -Filter "Uninstall*.exe" -ErrorAction SilentlyContinue |
+                    Select-Object -First 1
+          if ($uninst) {
+            Write-Host "Uninstaller found: $($uninst.FullName)"
+          } else {
+            Write-Warning "No uninstaller found (NSIS uninstall.exe missing)"
+          }
+
+      - name: Upload install log (if exists)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-log
+          path: |
+            ${{ env.INSTALL_DIR }}\install.log
+            ${{ env.INSTALL_DIR }}\*.log
+          if-no-files-found: ignore

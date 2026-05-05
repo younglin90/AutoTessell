@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+__pycache__
+*.pyc
+dist/
+build/
+*.egg-info/
+godot/.godot/
+data/
+node_modules/
+.next/
+frontend/
+backend/
+.venv/
+venv/

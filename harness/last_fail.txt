@@ -1,2 +1,4 @@
-PPP9b (beta2118) FAIL: tet worst_mq=0.055 (fid=100040) below threshold 0.067.
-Voronoi continuous tie-break unintentionally degrades tet mesh quality edge case.
+FAILED tests/test_native_hex_octree.py::test_nlevel_harness_params_fine_n_levels
+AssertionError: assert 4 == 3
+Expected n_levels=3 in HARNESS_PARAMS["tier_native_hex"]["fine"], got n_levels=4
+1 failed, 44 passed in 22.90s

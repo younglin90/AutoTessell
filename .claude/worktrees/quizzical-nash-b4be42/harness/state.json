@@ -1,0 +1,54 @@
+{
+  "target_engine": "tet",
+  "beta": 2293,
+  "max_round": 1000,
+  "round": 228,
+  "last_grade": {
+    "tet": {
+      "A": 0,
+      "B": 0,
+      "C": 2,
+      "D": 3,
+      "OK": 5,
+      "BL_OK": 5,
+      "total": 5,
+      "source": "BETA2293_VVV9P5_REAL_APPLY_ENV - Multi-face removal caller (env-only OFF default, no change)",
+      "bench_time_s": 59.1
+    },
+    "hex": {
+      "A": 5,
+      "B": 0,
+      "C": 0,
+      "D": 0
+    },
+    "poly": {
+      "A": 5,
+      "B": 0,
+      "C": 0,
+      "D": 0
+    }
+  },
+  "last_mq": {
+    "tet_worst": 0.208,
+    "tet_industrial_reach": "100%"
+  },
+  "last_bench_time": 59.1,
+  "consecutive_fails": 0,
+  "dones": [
+    "hex",
+    "poly"
+  ],
+  "recent_cards": [
+    "BETA2293_VVV9P5_REAL_APPLY_ENV",
+    "BETA2292_VVV9P4_APPLY_HELPER",
+    "BETA2291_VVV9P3_DIAG_ON",
+    "BETA2290_VVV9P2_DIAG_HOOK",
+    "BETA2289_VVV9P1_MULTI_FACE_REMOVAL_HELPER"
+  ],
+  "rotate_targets": [
+    "tet",
+    "hex",
+    "poly"
+  ],
+  "plan_archive": "BETA2293_VVV9P5_REAL_APPLY_ENV (R228)"
+}

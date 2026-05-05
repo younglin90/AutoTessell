@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+.next/
+.env.local
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev runtime files
+dev_storage/
+tessell.db
+tessell.db-shm
+tessell.db-wal
+backend/__tracked_surface.stl
+
+# bkit
+.bkit/
+
+# Auto-Tessell temp files
+__tracked_surface.stl
+mesh_strategy.json
+_plan.md
+_blocked.md
+uv.lock
+
+# Generated reports
+tests/benchmarks/*.geometry_report.json
+tests/fixtures/screenshots/actual/
+
+# Generated benchmark STLs (large, reproducible)
+tests/benchmarks/sphere_20k.stl
+tests/benchmarks/sphere_100k.stl
+tests/benchmarks/wing.stl
+tests/benchmarks/sphere.obj
+tests/benchmarks/sphere.ply
+
+# Godot
+godot/.godot/
+godot/export_presets.cfg
+
+# OpenFOAM case output
+/case/
+case_fine/
+godot/**/*.import
+godot/**/*.uid
+*.obj
+
+# E2E test runtime artifacts (auto-generated)
+test_cube_case/
+*_case/
+_matrix_runs/
+
+# Benchmark / session reports (transient)
+reports/
+BENCHMARK_RUN_*.log
+PERFORMANCE_REPORT.json
+E2E_TEST_RESULTS.json
+MESH_FORMAT_VALIDATION_REPORT.json
+
+# OpenFOAM install packages
+openfoam*.deb
+
+# C++ extension build artifacts
+auto_tessell_core/build/
+auto_tessell_core/*.so
+
+# External research/reference checkouts and generated dependency trees
+/AlgoHex/
+/Feature-Preserving-Octree-Hex-Meshing/
+/HOHQMesh/
+/VoroCrust/
+/pdmt/
+/voro/
+/bin/
+/installer/staging/
+/octree.vtk
+/tessell-mesh/build_make/_deps/
+
+# Next.js reference UI
+b_aYczSLScZNH/.next/
+b_aYczSLScZNH/node_modules/
+b_aYczSLScZNH/tsconfig.tsbuildinfo

@@ -1,0 +1,940 @@
+=== validate_30 (n_meshes=5, seed=42) ===
+
+[1/5] file_id=740247 V=3116 F=6272
+2026-04-29 18:34:49 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-29 18:34:49 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=811 n_zero_area=0
+2026-04-29 18:34:50 [info     ] native_tet_hard_pre_remesh     f_after=2586 f_before=6552 h_target=0.09474 v_after=1557 v_before=3116
+2026-04-29 18:34:50 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=38 warnings=['non-manifold: 38 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-29 18:34:51 [info     ] native_tet_pre3_remesh         edge_length_ratio=138.6 faces_after=2418 faces_before=2586 target_edge_length=0.030338
+2026-04-29 18:34:51 [info     ] native_tet_start               bbox_diag=2.9593011455169047 n_surf_faces=2418 n_surf_verts=2982 target_edge_length=0.18495632159480654
+2026-04-29 18:34:51 [info     ] native_tet_seed                n_grid_inside=24 n_points=3006
+2026-04-29 18:34:51 [info     ] native_tet_recovery_iter       iter=0 n_missing=109 n_new_seeds=218
+2026-04-29 18:34:51 [info     ] native_tet_recovery_iter       iter=1 n_missing=121 n_new_seeds=242
+2026-04-29 18:34:52 [info     ] native_tet_recovery_iter       iter=2 n_missing=121 n_new_seeds=242
+2026-04-29 18:34:53 [info     ] native_tet_edge_recovery_iter  inserted_this_iter=8 iter=0 missing=97
+2026-04-29 18:34:53 [info     ] native_tet_edge_recovery_done  missing_after=97 missing_before=97 total_inserted=8
+2026-04-29 18:34:59 [info     ] native_tet_edge_recovery_flip_iter missing_after=18 pass_=0 recovered=81
+2026-04-29 18:35:01 [info     ] native_tet_edge_recovery_flip_iter missing_after=17 pass_=1 recovered=3
+2026-04-29 18:35:02 [info     ] native_tet_edge_recovery_flip_iter missing_after=17 pass_=2 recovered=2
+2026-04-29 18:35:02 [info     ] native_tet_bsp_insert_start    n_missing=31
+2026-04-29 18:35:07 [info     ] native_tet_bw_post_snap        max_disp=0.012177543994085514 snapped=5
+2026-04-29 18:35:07 [info     ] native_tet_bsp_bw_insert_done  bsp_proposed_points=39 bw_cavity_total=91 bw_inserted=11 missing_after=36 missing_before=31
+2026-04-29 18:35:07 [info     ] native_tet_sliver_filter_phase_a boundary_protected=352 dropped_total=504 interior_dropped=13 kept=1453 q_thresh_boundary=0.010000000000000002 q_thresh_interior=0.1
+2026-04-29 18:35:07 [info     ] native_tet_bsp_orient_fix      n_degenerate=0 n_flipped=702
+2026-04-29 18:35:07 [info     ] native_tet_pass_timing         dt_ms=1 pass_name=BSP_ORIENT_FIX
+2026-04-29 18:35:07 [info     ] native_tet_smooth              max_disp=0.2800528499916345 moved=204 n_corner=1217 n_corner_new=1217 n_feature_edges=3981 n_iter=2
+2026-04-29 18:35:07 [info     ] native_tet_phase_bc_skip       n_tets=1453 phase_a_mean_q=0.0519 reason=below_threshold_p4c_fallback_will_rescue skip_thresh=0.18 skipped_passes=18
+2026-04-29 18:35:07 [info     ] native_tet_polymesh_write_deferred n_tets=1453 reason=_phase_bc_skip
+2026-04-29 18:35:07 [debug    ] native_tet_best_of_skipped     reason=_phase_bc_skip
+2026-04-29 18:35:08 [debug    ] native_tet_sliver_post_skipped reason=_phase_bc_skip
+2026-04-29 18:35:08 [debug    ] native_tet_flip_23_skipped     reason=_phase_bc_skip
+2026-04-29 18:35:08 [debug    ] native_tet_bsp_insert_skipped  reason=_phase_bc_skip
+2026-04-29 18:35:08 [debug    ] native_tet_post_bsp_pass_skipped reason=_phase_bc_skip
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=init_post_bsp
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV3b
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV3b
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV5b
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV5b
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV6
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV7
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV7
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV8
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV8
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV9
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV9
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV10
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV11
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV12
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV12
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV13
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV13
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV14
+2026-04-29 18:35:08 [info     ] native_tet_neg_vol_track       delta=0 n_neg=57 pass_name=VVV14
+2026-04-29 18:35:08 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=TET_QUALITY1
+2026-04-29 18:35:08 [debug    ] native_tet_pass_gate_skipped   reason=_phase_bc_skip
+2026-04-29 18:35:20 [info     ] native_tet_p4c_pytetwild_fallback accepted=False elapsed=12.21 grade_new=B grade_old=D mq_new=0.186 mq_old=0.052 n_cells_new=3 n_cells_old=1453
+2026-04-29 18:35:20 [debug    ] normalize_tet_winding          n_negative=57 n_total=1453
+2026-04-29 18:35:20 [info     ] polymesh_writer_start          case_dir=/tmp/tmpnugxv6qb/c num_cells=1453 num_points=3084
+2026-04-29 18:35:20 [info     ] polymesh_writer_face_merge     after=1041 before=1041 reduced=0
+2026-04-29 18:35:20 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=3730 n_groups=2271 n_kept=63 n_misc=3041
+2026-04-29 18:35:20 [info     ] polymesh_writer_patches        n_boundary_faces=3730 n_patches=64 patch_sizes=[9, 5, 37, 4, 16, 4, 4, 25, 54, 4, 4, 7, 4, 4, 51, 17, 5, 4, 10, 4, 5, 4, 11, 5, 7, 14, 5, 4, 5, 4, 6, 10, 6, 5, 12, 38, 27, 5, 7, 6, 5, 9, 6, 5, 5, 7, 13, 7, 12, 5, 17, 13, 6, 5, 39, 8, 11, 7, 5, 5, 26, 8, 7, 3041]
+2026-04-29 18:35:20 [info     ] polymesh_writer_done           num_cells=1453 num_faces=4771 num_internal_faces=1041 num_points=3084
+2026-04-29 18:35:20 [info     ] native_tet_polymesh_write_post_p4c num_cells=1453 num_points=3084
+2026-04-29 18:35:20 [info     ] native_tet_validate            n_degenerate=0 n_flipped=57 questionable=False
+2026-04-29 18:35:20 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VAL1
+2026-04-29 18:35:20 [info     ] native_tet_run_summary         elapsed=18.503 grade=D n_aniso_detected=0 n_cells=1453 n_chains=0 n_points=3084 n_sliver_detected=0 n_val_degen=0 n_val_flipped=57
+  tet: OK cells=1453 t=31.01s grade=D
+2026-04-29 18:35:20 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=10385043 from_levels=4 limit=500000 to_levels=3
+2026-04-29 18:35:20 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=1316250 from_levels=3 limit=500000 to_levels=2
+2026-04-29 18:35:20 [info     ] native_hex_octree_build        cap_fine=200 fine_grid=(63, 45, 59) h=0.12769811946780907 h_fine=0.03192452986695227 n_levels=2
+2026-04-29 18:35:24 [info     ] native_hex_feature_refine      n_feature_segs=258 n_refined=1
+2026-04-29 18:35:34 [info     ] native_hex_octree_done         elapsed=15.068116120994091 fine_grid=(63, 45, 59) grid_shape=(15, 11, 14) n_coarse=41799 n_fine=21527 n_levels=2 n_total=63326
+2026-04-29 18:40:35 [info     ] snap_iterative_done            cap=0.03830943584034272 final_n_snapped=100215 max_displacement=0.019154595369353742 n_iter_run=3
+2026-04-29 18:40:35 [info     ] native_hex_iterative_snap_applied final_n_snapped=100215 max_displacement=0.019154595369353742 n_iter=3
+2026-04-29 18:40:37 [info     ] polymesh_writer_face_merge     after=183021 before=183021 reduced=0
+2026-04-29 18:40:37 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=13914 n_groups=804 n_kept=63 n_misc=778
+2026-04-29 18:40:37 [info     ] polymesh_writer_patches        n_boundary_faces=13914 n_patches=64 patch_sizes=[11841, 2, 2, 48, 4, 2, 30, 7, 2, 2, 3, 2, 16, 3, 2, 2, 2, 2, 2, 2, 3, 3, 7, 6, 819, 5, 5, 3, 3, 7, 3, 3, 9, 9, 92, 3, 5, 4, 4, 4, 7, 7, 3, 19, 9, 3, 5, 3, 15, 3, 6, 3, 3, 3, 5, 3, 15, 8, 28, 5, 3, 4, 3, 778]
+  hex: OK cells=63326 t=326.54s
+2026-04-29 18:40:38 [info     ] native_poly_ppp10_feature_seeds n_feature=103 n_total=559
+2026-04-29 18:40:38 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=5 n_seeds_after=285 n_seeds_before=231
+2026-04-29 18:40:38 [info     ] native_poly_ppp11_relaxed      n_relaxed=6
+2026-04-29 18:41:12 [info     ] native_poly_boundary_snap      n_outside_snapped=8196
+2026-04-29 18:41:13 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=3401
+2026-04-29 18:41:14 [info     ] native_poly_neg_vol_track      delta=0 n_neg=101 pass_name=initial_voronoi
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=0
+2026-04-29 18:41:14 [warning  ] poly_bl1_orient_fail           seed=2 sv=-0.00061593
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=3
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=4
+2026-04-29 18:41:14 [warning  ] poly_bl1_orient_fail           seed=7 sv=-0.02775519
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=8
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=9
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=10
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=11
+2026-04-29 18:41:14 [warning  ] poly_bl1_orient_fail           seed=12 sv=-0.0032356
+2026-04-29 18:41:14 [warning  ] poly_bl1_orient_fail           seed=14 sv=-0.00308328
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=15
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=16
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=19
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=21
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=22
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=23
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=24
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=25
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=28
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=29
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=14872.63
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=103.35
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=32
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=33
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=3057.13
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=37
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=38
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=39
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=41
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=42
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=5659.05
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=44
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=45
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=5811.36
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=47
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=48
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=49
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=3153.85
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=503.0
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=129.85
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=54
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=55
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=56
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=57
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=181.18
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=59
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=60
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=81.19
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=62
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=63
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=28395.39
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=65
+2026-04-29 18:41:14 [warning  ] poly_bl1_orient_fail           seed=66 sv=-0.00662359
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=4190.24
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=68
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=69
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=70
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=71
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=12954.86
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=73
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=74
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=76
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=77
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=78
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=79
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=80
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=81
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=82
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=83
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=84
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_collision seed=85
+2026-04-29 18:41:14 [debug    ] poly_bl_prism_rejected_aspect  aspect=3007.88
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=2905.15
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=90
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=91
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=92
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=93
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=94
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=95
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=2610.81
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=515.61
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=101
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=102
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=103
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=104
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=105
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=106
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=107
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=108
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=109
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=111
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=112
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=113
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=114
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=115
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=116
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=117
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=119
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=122
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=123
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=125
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=126
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=127
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=128
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=130
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=131
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=132
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=133
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=4009.03
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=135
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=22533.61
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=137
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=139
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=140
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=142
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=63.86
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=71.37
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=146
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=151.71
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=148
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=149
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=151
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=152 sv=-0.00061492
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=153
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=154
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=155
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=3997.36
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=157
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=159
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=160
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=161
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=162
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=163
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=164
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=165
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=166
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=167
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=168
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=169 sv=-0.00149609
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=170
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=100.4
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=173
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=175
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=176
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=177
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=6642.4
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=180
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=2043.62
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=182
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=183
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=184
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=185
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=186 sv=-0.0052232
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=188
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=189
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=59.33
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=191
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=192
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=193
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=194
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=195
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=196
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=8001.64
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=198
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=203 sv=-0.00572132
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=204
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=207
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=208
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=211
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=212 sv=-0.04703165
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=142.85
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=214
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=217
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=219 sv=-0.00541696
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=220
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=221 sv=-0.00019088
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=223
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=224 sv=-0.00027476
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=61.01
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=233
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=144.41
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=560.23
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=8.797560208134139e+28
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=242
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.1085788720985046e+29
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=244 sv=-0.01970245
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=251
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=252
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.7858766434268705e+29
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=261 sv=-0.00842472
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=262
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=263
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=7.161558035456404e+28
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=265
+2026-04-29 18:41:15 [warning  ] poly_bl1_orient_fail           seed=266 sv=-0.00254647
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=269
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=273
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=275
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=276
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=277
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_aspect  aspect=67.47
+2026-04-29 18:41:15 [debug    ] poly_bl_prism_rejected_collision seed=283
+2026-04-29 18:41:15 [info     ] poly_bl_prism_added            n_prism=26 n_rejected_aspect=53 n_rejected_collision=150
+2026-04-29 18:41:15 [info     ] ttt4_poly_bl_extruded          n_added=26
+2026-04-29 18:41:15 [info     ] native_bl_thickness_stats      component=native_bl n_verts=26 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.01455759 t_mean=0.01455759 t_min=0.01455759 t_std=0.0
+2026-04-29 18:41:15 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.01455759 n_prisms=26 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:41:16 [info     ] native_poly_neg_vol_track      delta=13 n_neg=114 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:41:16 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:41:16 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:41:16 [info     ] pol_layers_summary             n_layers=1 n_total_prism=26
+2026-04-29 18:41:16 [info     ] native_poly_neg_vol_track      delta=0 n_neg=114 pass_name=POL_LAYERS
+2026-04-29 18:41:16 [info     ] poly_bl_tangent_smooth         n_moved=58 n_prism=26
+2026-04-29 18:41:16 [info     ] native_poly_neg_vol_track      delta=-1 n_neg=113 pass_name=POL_BL_TANGENT
+2026-04-29 18:41:17 [info     ] native_poly_best_of_three      drop=0.72 drop_info={'n': 67, 'no': 25.6, 'sk': 2.578} n_drop=188 raw=0.451 raw_info={'n': 255, 'no': 51.1, 'sk': 110.791} sm_info={'n': 67, 'no': 35.8, 'sk': 1.404} smooth=0.763
+2026-04-29 18:41:17 [info     ] native_poly_neg_vol_track      delta=-86 n_neg=27 pass_name=PPP9b_smooth
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=1 vol=-0.009508
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=7 vol=-0.004732
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=12 vol=-0.011162
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=15 vol=-0.002886
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=16 vol=-0.011275
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=17 vol=-0.016749
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=18 vol=-0.001811
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=20 vol=-0.005836
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=22 vol=-0.035713
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=24 vol=-0.003759
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=25 vol=-0.008228
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=31 vol=-0.005713
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=34 vol=-0.019192
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=38 vol=-0.023555
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=39 vol=-0.001694
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=43 vol=-5.7e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=44 vol=-6.1e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=47 vol=-0.00058
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=48 vol=-0.000164
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=51 vol=-5e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=53 vol=-1e-06
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=55 vol=-0.0001
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=58 vol=-1.9e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=59 vol=-1.2e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=62 vol=-1.4e-05
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=63 vol=-2e-06
+2026-04-29 18:41:17 [warning  ] native_poly_degenerate_volume  cell_idx=66 vol=-0.000141
+2026-04-29 18:41:17 [info     ] native_poly_validate           n_cells=67 n_degenerate=0 n_negative_volume=27
+2026-04-29 18:41:17 [info     ] native_poly_neg_vol_track      delta=0 n_neg=27 pass_name=VAL2_post
+2026-04-29 18:41:17 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=678 n_groups=557 n_kept=63 n_misc=509
+2026-04-29 18:41:17 [info     ] polymesh_writer_patches        n_boundary_faces=678 n_patches=64 patch_sizes=[2, 2, 2, 2, 2, 3, 6, 12, 3, 4, 2, 2, 2, 2, 3, 2, 3, 2, 2, 3, 2, 2, 3, 2, 4, 10, 2, 2, 3, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2, 4, 2, 5, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 3, 509]
+2026-04-29 18:41:17 [info     ] native_poly_quality_gate       avg_fpc=12.96 grade=B max_non_ortho=35.77 max_skew=1.404 mean_non_ortho=8.59
+2026-04-29 18:41:17 [info     ] native_poly_run_summary        elapsed=40.261 grade=B max_non_ortho=35.7705 max_skewness=1.4045 n_cells=67 n_points=7617
+2026-04-29 18:41:17 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=67 n_surface_v=3116 phase=beta2401 ratio=0.0215
+2026-04-29 18:41:17 [info     ] native_poly_ppp10_feature_seeds n_feature=103 n_total=559
+2026-04-29 18:41:17 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=5 n_seeds_after=174 n_seeds_before=231
+2026-04-29 18:41:17 [info     ] native_poly_ppp11_relaxed      n_relaxed=7
+2026-04-29 18:41:53 [info     ] native_poly_boundary_snap      n_outside_snapped=8158
+2026-04-29 18:41:54 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=3290
+2026-04-29 18:41:55 [info     ] native_poly_neg_vol_track      delta=0 n_neg=67 pass_name=initial_voronoi
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=3
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=5
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=6
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=7
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=8
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=10
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=12
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=64.68
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=193.42
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=17
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=18
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=19
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=21
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=22
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=23
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=25
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=444.62
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=129.85
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=28
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=29
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=30
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=31
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=7984.44
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=34
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=35
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=36
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=37
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=6631.84
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=39
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=40
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=2526.87
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=7534.88
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=43
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=44
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=45
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=46
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=11394.63
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=65.09
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=50
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=51
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=52
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=53
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=54
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=9154.92
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=184.35
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=59
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=60
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=61
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=95.8
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=63
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=64
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=66
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=5921.64
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=6013.85
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=69
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=70
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=71
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=72
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=73
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=74
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=75
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=1339.92
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=77
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=78
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=79
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=52.33
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=83 sv=-0.08313866
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=84
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=71.24
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=4839.46
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=87
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=3076.29
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=89
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=91
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=92
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=93
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=94 sv=-0.16651163
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=151.89
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=96
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=97
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=99
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=383.15
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=101
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=102
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=6973.33
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=104
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=57.65
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=107
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=108 sv=-0.04133614
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=110
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=111
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=112
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=113
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=114
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=118
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=126
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=127
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=130
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=133 sv=-0.00261361
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=61.01
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=136
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=138 sv=-0.00706696
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=140 sv=-0.0016028
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=52.54
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=148
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=149 sv=-0.00871672
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.2057931333044054e+29
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.2026110392656337e+29
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=157 sv=-0.02237231
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=70.42
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=166
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_aspect  aspect=72.61
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=170
+2026-04-29 18:41:55 [debug    ] poly_bl_prism_rejected_collision seed=171
+2026-04-29 18:41:55 [warning  ] poly_bl1_orient_fail           seed=172 sv=-0.00018153
+2026-04-29 18:41:55 [info     ] poly_bl_prism_added            n_prism=15 n_rejected_aspect=39 n_rejected_collision=76
+2026-04-29 18:41:55 [info     ] ttt4_poly_bl_extruded          n_added=15
+2026-04-29 18:41:55 [info     ] native_bl_thickness_stats      component=native_bl n_verts=15 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.01455759 t_mean=0.01455759 t_min=0.01455759 t_std=0.0
+2026-04-29 18:41:55 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.01455759 n_prisms=15 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:41:55 [info     ] native_poly_neg_vol_track      delta=7 n_neg=74 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:41:55 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:41:55 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:41:55 [info     ] pol_layers_summary             n_layers=1 n_total_prism=15
+2026-04-29 18:41:56 [info     ] native_poly_neg_vol_track      delta=0 n_neg=74 pass_name=POL_LAYERS
+2026-04-29 18:41:56 [info     ] poly_bl_tangent_smooth         n_moved=28 n_prism=15
+2026-04-29 18:41:56 [info     ] native_poly_neg_vol_track      delta=0 n_neg=74 pass_name=POL_BL_TANGENT
+2026-04-29 18:41:56 [info     ] native_poly_best_of_three      drop=0.6 drop_info={'n': 24, 'no': 48.8, 'sk': 0.774} n_drop=121 raw=0.46 raw_info={'n': 145, 'no': 48.8, 'sk': 32.327} sm_info={'n': 24, 'no': 48.8, 'sk': 0.517} smooth=0.618
+2026-04-29 18:41:56 [info     ] native_poly_neg_vol_track      delta=-63 n_neg=11 pass_name=PPP9b_smooth
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=2 vol=-0.023554
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=4 vol=-0.015695
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=7 vol=-0.011427
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=8 vol=-0.008927
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=9 vol=-5e-06
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=11 vol=-0.001551
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=13 vol=-1.8e-05
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=15 vol=-7e-06
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=20 vol=-7.5e-05
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=21 vol=-1e-06
+2026-04-29 18:41:56 [warning  ] native_poly_degenerate_volume  cell_idx=22 vol=-4.7e-05
+2026-04-29 18:41:56 [info     ] native_poly_validate           n_cells=24 n_degenerate=0 n_negative_volume=11
+2026-04-29 18:41:56 [info     ] native_poly_neg_vol_track      delta=0 n_neg=11 pass_name=VAL2_post
+2026-04-29 18:41:56 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=216 n_groups=183 n_kept=63 n_misc=120
+2026-04-29 18:41:56 [info     ] polymesh_writer_patches        n_boundary_faces=216 n_patches=64 patch_sizes=[1, 1, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 3, 2, 3, 2, 2, 120]
+2026-04-29 18:41:56 [info     ] native_poly_quality_gate       avg_fpc=10.25 grade=B max_non_ortho=48.76 max_skew=0.517 mean_non_ortho=11.28
+2026-04-29 18:41:56 [info     ] native_poly_run_summary        elapsed=40.039 grade=B max_non_ortho=48.7586 max_skewness=0.517 n_cells=24 n_points=6269
+2026-04-29 18:41:56 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=24 n_surface_v=3116 phase=beta2401 ratio=0.0077
+2026-04-29 18:41:56 [info     ] native_poly_ppp10_feature_seeds n_feature=103 n_total=559
+2026-04-29 18:41:56 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=5 n_seeds_after=285 n_seeds_before=231
+2026-04-29 18:41:56 [info     ] native_poly_ppp11_relaxed      n_relaxed=6
+2026-04-29 18:42:34 [info     ] native_poly_boundary_snap      n_outside_snapped=8196
+2026-04-29 18:42:35 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=3401
+2026-04-29 18:42:37 [info     ] native_poly_neg_vol_track      delta=0 n_neg=101 pass_name=initial_voronoi
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=0
+2026-04-29 18:42:37 [warning  ] poly_bl1_orient_fail           seed=2 sv=-0.00061593
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=3
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=4
+2026-04-29 18:42:37 [warning  ] poly_bl1_orient_fail           seed=7 sv=-0.02775519
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=8
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=9
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=10
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=11
+2026-04-29 18:42:37 [warning  ] poly_bl1_orient_fail           seed=12 sv=-0.0032356
+2026-04-29 18:42:37 [warning  ] poly_bl1_orient_fail           seed=14 sv=-0.00308328
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=15
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=16
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=19
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=21
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=22
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=23
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=24
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=25
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=28
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=29
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=14872.63
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=103.35
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=32
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=33
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=3057.13
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=37
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=38
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=39
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=41
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=42
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=5659.05
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=44
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=45
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=5811.36
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=47
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=48
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=49
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=3153.85
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=503.0
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=129.85
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=54
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=55
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=56
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=57
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=181.18
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=59
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=60
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=81.19
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=62
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=63
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=28395.39
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=65
+2026-04-29 18:42:37 [warning  ] poly_bl1_orient_fail           seed=66 sv=-0.00662359
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=4190.24
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=68
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=69
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=70
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=71
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=12954.86
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=73
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=74
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=76
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=77
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=78
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=79
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=80
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=81
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=82
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=83
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=84
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=85
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=3007.88
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=2905.15
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=90
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=91
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=92
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=93
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=94
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=95
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=2610.81
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=515.61
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=101
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=102
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=103
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=104
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=105
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=106
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=107
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=108
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=109
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=111
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=112
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=113
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=114
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=115
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=116
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=117
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=119
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=122
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=123
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=125
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=126
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=127
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=128
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=130
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=131
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=132
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=133
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=4009.03
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=135
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=22533.61
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=137
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=139
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=140
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_collision seed=142
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=63.86
+2026-04-29 18:42:37 [debug    ] poly_bl_prism_rejected_aspect  aspect=71.37
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=146
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=151.71
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=148
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=149
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=151
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=152 sv=-0.00061492
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=153
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=154
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=155
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=3997.36
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=157
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=159
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=160
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=161
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=162
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=163
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=164
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=165
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=166
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=167
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=168
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=169 sv=-0.00149609
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=170
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=100.4
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=173
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=175
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=176
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=177
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=6642.4
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=180
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=2043.62
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=182
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=183
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=184
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=185
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=186 sv=-0.0052232
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=188
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=189
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=59.33
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=191
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=192
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=193
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=194
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=195
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=196
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=8001.64
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=198
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=203 sv=-0.00572132
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=204
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=207
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=208
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=211
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=212 sv=-0.04703165
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=142.85
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=214
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=217
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=219 sv=-0.00541696
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=220
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=221 sv=-0.00019088
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=223
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=224 sv=-0.00027476
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=61.01
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=233
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=144.41
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=560.23
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=8.797560208134139e+28
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=242
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.1085788720985046e+29
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=244 sv=-0.01970245
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=251
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=252
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=1.7858766434268705e+29
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=261 sv=-0.00842472
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=262
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=263
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=7.161558035456404e+28
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=265
+2026-04-29 18:42:38 [warning  ] poly_bl1_orient_fail           seed=266 sv=-0.00254647
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=269
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=273
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=275
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=276
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=277
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_aspect  aspect=67.47
+2026-04-29 18:42:38 [debug    ] poly_bl_prism_rejected_collision seed=283
+2026-04-29 18:42:38 [info     ] poly_bl_prism_added            n_prism=26 n_rejected_aspect=53 n_rejected_collision=150
+2026-04-29 18:42:38 [info     ] ttt4_poly_bl_extruded          n_added=26
+2026-04-29 18:42:38 [info     ] native_bl_thickness_stats      component=native_bl n_verts=26 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.01455759 t_mean=0.01455759 t_min=0.01455759 t_std=0.0
+2026-04-29 18:42:38 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.01455759 n_prisms=26 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:42:38 [info     ] native_poly_neg_vol_track      delta=13 n_neg=114 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:42:38 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:42:38 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:42:38 [info     ] pol_layers_summary             n_layers=1 n_total_prism=26
+2026-04-29 18:42:39 [info     ] native_poly_neg_vol_track      delta=0 n_neg=114 pass_name=POL_LAYERS
+2026-04-29 18:42:39 [info     ] poly_bl_tangent_smooth         n_moved=58 n_prism=26
+2026-04-29 18:42:39 [info     ] native_poly_neg_vol_track      delta=-1 n_neg=113 pass_name=POL_BL_TANGENT
+2026-04-29 18:42:40 [info     ] native_poly_best_of_three      drop=0.72 drop_info={'n': 67, 'no': 25.6, 'sk': 2.578} n_drop=188 raw=0.451 raw_info={'n': 255, 'no': 51.1, 'sk': 110.791} sm_info={'n': 67, 'no': 35.8, 'sk': 1.404} smooth=0.763
+2026-04-29 18:42:40 [info     ] native_poly_neg_vol_track      delta=-86 n_neg=27 pass_name=PPP9b_smooth
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=1 vol=-0.009508
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=7 vol=-0.004732
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=12 vol=-0.011162
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=15 vol=-0.002886
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=16 vol=-0.011275
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=17 vol=-0.016749
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=18 vol=-0.001811
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=20 vol=-0.005836
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=22 vol=-0.035713
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=24 vol=-0.003759
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=25 vol=-0.008228
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=31 vol=-0.005713
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=34 vol=-0.019192
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=38 vol=-0.023555
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=39 vol=-0.001694
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=43 vol=-5.7e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=44 vol=-6.1e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=47 vol=-0.00058
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=48 vol=-0.000164
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=51 vol=-5e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=53 vol=-1e-06
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=55 vol=-0.0001
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=58 vol=-1.9e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=59 vol=-1.2e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=62 vol=-1.4e-05
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=63 vol=-2e-06
+2026-04-29 18:42:40 [warning  ] native_poly_degenerate_volume  cell_idx=66 vol=-0.000141
+2026-04-29 18:42:40 [info     ] native_poly_validate           n_cells=67 n_degenerate=0 n_negative_volume=27
+2026-04-29 18:42:40 [info     ] native_poly_neg_vol_track      delta=0 n_neg=27 pass_name=VAL2_post
+2026-04-29 18:42:40 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=678 n_groups=557 n_kept=63 n_misc=509
+2026-04-29 18:42:40 [info     ] polymesh_writer_patches        n_boundary_faces=678 n_patches=64 patch_sizes=[2, 2, 2, 2, 2, 3, 6, 12, 3, 4, 2, 2, 2, 2, 3, 2, 3, 2, 2, 3, 2, 2, 3, 2, 4, 10, 2, 2, 3, 2, 3, 2, 2, 2, 2, 3, 2, 2, 2, 4, 2, 5, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 3, 509]
+2026-04-29 18:42:40 [info     ] native_poly_quality_gate       avg_fpc=12.96 grade=B max_non_ortho=35.77 max_skew=1.404 mean_non_ortho=8.59
+2026-04-29 18:42:40 [info     ] native_poly_run_summary        elapsed=44.498 grade=B max_non_ortho=35.7705 max_skewness=1.4045 n_cells=67 n_points=7617
+2026-04-29 18:42:40 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=67 n_surface_v=3116 phase=beta2401 ratio=0.0215
+2026-04-29 18:42:40 [info     ] native_poly_aniso_cvt_seeds_generated converged=False elapsed_s=0.261 n_iter=3 n_seeds=256
+2026-04-29 18:42:40 [info     ] native_hex_snap_done           cap=0.0957735896008568 n_candidates=565 n_feature_snapped=0 n_skipped_beyond_cap=195 n_skipped_far=59 n_snapped=311 search_r=0.2873207688025704
+2026-04-29 18:42:40 [info     ] native_hex_boundary_snap_applied n_candidates=565 n_feature_snapped=0 n_skipped_beyond_cap=195 n_skipped_far=59 n_snapped=311
+2026-04-29 18:42:40 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=post_filter
+2026-04-29 18:42:40 [info     ] native_hex_www7_feature_snap   max_dist=0.030519 n_eligible=43 n_feature_segs=258 n_no_feature=0 n_rejected_quality=22 n_snapped=21
+2026-04-29 18:42:40 [info     ] native_hex_www7_done           n_no_feature=0 n_rejected_quality=22 n_snapped=21
+2026-04-29 18:42:40 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=WWW7
+2026-04-29 18:42:40 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=HEX_QUALITY1
+2026-04-29 18:42:41 [info     ] native_hex_validate            n_cells=333 n_degenerate=0 n_flipped=0
+2026-04-29 18:42:41 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=VAL2_post
+2026-04-29 18:42:41 [info     ] polymesh_writer_face_merge     after=800 before=800 reduced=0
+2026-04-29 18:42:41 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=398 n_groups=137 n_kept=63 n_misc=74
+2026-04-29 18:42:41 [info     ] polymesh_writer_patches        n_boundary_faces=398 n_patches=64 patch_sizes=[1, 3, 1, 1, 1, 1, 1, 3, 6, 1, 1, 1, 1, 1, 29, 38, 1, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 51, 2, 1, 1, 1, 1, 51, 1, 4, 2, 2, 3, 2, 5, 3, 2, 17, 5, 8, 2, 2, 2, 2, 2, 5, 5, 2, 13, 2, 2, 2, 8, 2, 4, 2, 74]
+2026-04-29 18:42:41 [info     ] native_hex_quality_gate        grade=A max_aspect=4.06 max_non_ortho=30.92 max_skew=0.186 mean_non_ortho=3.85
+2026-04-29 18:42:41 [info     ] native_hex_run_summary         elapsed=0.543 fill_ratio=0.3784 grade=A n_cells=333 n_points=565 n_val_degen=0 n_val_flipped=0
+2026-04-29 18:42:41 [info     ] native_poly_best_of_n          cells=333 chosen=hex_fallback cont_score=0.3581 grade=A n_candidates=4
+  poly: OK cells=333 t=125.65s
+
+[2/5] file_id=931873 V=12000 F=24014
+2026-04-29 18:42:41 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-29 18:42:42 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=6977 n_zero_area=0
+2026-04-29 18:42:44 [info     ] native_tet_qed_decimate        f_after=12854 f_before=24180 mode=auto target=12090 v_after=6416 v_before=12000
+2026-04-29 18:42:45 [info     ] native_tet_hard_pre_remesh     f_after=4090 f_before=12854 h_target=2.37085 v_after=2841 v_before=6416
+2026-04-29 18:42:45 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=1 warnings=['non-manifold: 1 edges with 3+ owners'] zero_area=0
+2026-04-29 18:42:46 [info     ] native_tet_pre3_remesh         edge_length_ratio=666.0 faces_after=1561 faces_before=4090 target_edge_length=0.870378
+2026-04-29 18:42:46 [info     ] native_tet_start               bbox_diag=85.350639922083 n_surf_faces=1561 n_surf_verts=2198 target_edge_length=5.334414995130188
+2026-04-29 18:42:46 [info     ] native_tet_seed                n_grid_inside=11 n_points=2209
+2026-04-29 18:42:46 [info     ] native_tet_recovery_iter       iter=0 n_missing=75 n_new_seeds=150
+2026-04-29 18:42:47 [info     ] native_tet_recovery_iter       iter=1 n_missing=77 n_new_seeds=154
+2026-04-29 18:42:47 [info     ] native_tet_recovery_iter       iter=2 n_missing=77 n_new_seeds=154
+2026-04-29 18:42:47 [info     ] native_tet_edge_recovery_iter  inserted_this_iter=1 iter=0 missing=65
+2026-04-29 18:42:47 [info     ] native_tet_edge_recovery_done  missing_after=65 missing_before=65 total_inserted=1
+2026-04-29 18:42:50 [info     ] native_tet_edge_recovery_flip_iter missing_after=4 pass_=0 recovered=62
+2026-04-29 18:42:51 [info     ] native_tet_edge_recovery_flip_iter missing_after=3 pass_=1 recovered=2
+2026-04-29 18:42:51 [info     ] native_tet_edge_recovery_flip_iter missing_after=3 pass_=2 recovered=1
+2026-04-29 18:42:51 [info     ] native_tet_bsp_insert_start    n_missing=6
+2026-04-29 18:42:51 [info     ] native_tet_bsp_insert_redelaunay_fallback
+2026-04-29 18:42:52 [info     ] native_tet_sliver_filter_phase_a boundary_protected=178 dropped_total=277 interior_dropped=0 kept=1072 q_thresh_boundary=0.010000000000000002 q_thresh_interior=0.1
+2026-04-29 18:42:52 [info     ] native_tet_bsp_orient_fix      n_degenerate=0 n_flipped=513
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=BSP_ORIENT_FIX
+2026-04-29 18:42:52 [info     ] native_tet_smooth              max_disp=4.0072936918410615 moved=62 n_corner=813 n_corner_new=813 n_feature_edges=2872 n_iter=2
+2026-04-29 18:42:52 [info     ] native_tet_phase_bc_skip       n_tets=1072 phase_a_mean_q=0.0594 reason=below_threshold_p4c_fallback_will_rescue skip_thresh=0.18 skipped_passes=18
+2026-04-29 18:42:52 [info     ] native_tet_polymesh_write_deferred n_tets=1072 reason=_phase_bc_skip
+2026-04-29 18:42:52 [debug    ] native_tet_best_of_skipped     reason=_phase_bc_skip
+2026-04-29 18:42:52 [debug    ] native_tet_sliver_post_skipped reason=_phase_bc_skip
+2026-04-29 18:42:52 [debug    ] native_tet_flip_23_skipped     reason=_phase_bc_skip
+2026-04-29 18:42:52 [debug    ] native_tet_bsp_insert_skipped  reason=_phase_bc_skip
+2026-04-29 18:42:52 [debug    ] native_tet_post_bsp_pass_skipped reason=_phase_bc_skip
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=init_post_bsp
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV3b
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV3b
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV5b
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV5b
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV6
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV7
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV7
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV8
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV8
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV9
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV9
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV10
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV11
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV12
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV12
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV13
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV13
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VVV14
+2026-04-29 18:42:52 [info     ] native_tet_neg_vol_track       delta=0 n_neg=48 pass_name=VVV14
+2026-04-29 18:42:52 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=TET_QUALITY1
+2026-04-29 18:42:52 [debug    ] native_tet_pass_gate_skipped   reason=_phase_bc_skip
+2026-04-29 18:43:00 [debug    ] normalize_tet_winding          n_negative=48 n_total=1072
+2026-04-29 18:43:00 [info     ] polymesh_writer_start          case_dir=/tmp/tmphtn8p5b2/c num_cells=1072 num_points=2229
+2026-04-29 18:43:00 [info     ] polymesh_writer_face_merge     after=632 before=632 reduced=0
+2026-04-29 18:43:00 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=3024 n_groups=2207 n_kept=63 n_misc=2640
+2026-04-29 18:43:00 [info     ] polymesh_writer_patches        n_boundary_faces=3024 n_patches=64 patch_sizes=[3, 16, 4, 7, 5, 3, 3, 6, 6, 13, 10, 9, 3, 3, 3, 4, 5, 3, 5, 3, 4, 3, 3, 8, 3, 5, 3, 4, 4, 4, 4, 9, 3, 5, 4, 5, 3, 5, 3, 5, 17, 3, 11, 36, 14, 6, 4, 7, 4, 5, 4, 4, 5, 9, 7, 4, 13, 4, 5, 4, 4, 9, 4, 2640]
+2026-04-29 18:43:00 [info     ] polymesh_writer_done           num_cells=1072 num_faces=3656 num_internal_faces=632 num_points=2229
+2026-04-29 18:43:00 [info     ] native_tet_polymesh_write_post_p4c num_cells=1072 num_points=2229
+2026-04-29 18:43:00 [info     ] native_tet_validate            n_degenerate=0 n_flipped=48 questionable=False
+2026-04-29 18:43:00 [info     ] native_tet_pass_timing         dt_ms=0 pass_name=VAL1
+2026-04-29 18:43:00 [info     ] native_tet_run_summary         elapsed=11.764 grade=D n_aniso_detected=0 n_cells=1072 n_chains=0 n_points=2229 n_sliver_detected=0 n_val_degen=0 n_val_flipped=48
+  tet: OK cells=1072 t=20.02s grade=D
+2026-04-29 18:43:05 [info     ] native_hex_pre3_remesh         edge_length_ratio=323218.63 faces_after=13367 faces_before=24014 target_edge_length=0.875875
+2026-04-29 18:43:05 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=4588992 from_levels=4 limit=500000 to_levels=3
+2026-04-29 18:43:05 [warning  ] native_hex_octree_nlevel_reduced estimated_cells=577920 from_levels=3 limit=500000 to_levels=2
+2026-04-29 18:43:05 [info     ] native_hex_octree_build        cap_fine=200 fine_grid=(65, 70, 16) h=3.6164464841529065 h_fine=0.9041116210382266 n_levels=2
+2026-04-29 18:43:08 [info     ] native_hex_feature_refine      n_feature_segs=12371 n_refined=0
+2026-04-29 18:43:16 [info     ] native_hex_octree_done         elapsed=12.60711166402325 fine_grid=(65, 70, 16) grid_shape=(16, 17, 4) n_coarse=12033 n_fine=16333 n_levels=2 n_total=28366
+2026-04-29 18:44:25 [info     ] snap_iterative_done            cap=1.084933945245872 final_n_snapped=88395 max_displacement=0.5424633535429505 n_iter_run=3
+2026-04-29 18:44:25 [info     ] native_hex_iterative_snap_applied final_n_snapped=88395 max_displacement=0.5424633535429505 n_iter=3
+2026-04-29 18:44:26 [info     ] polymesh_writer_face_merge     after=62558 before=62558 reduced=0
+2026-04-29 18:44:27 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=45080 n_groups=4100 n_kept=63 n_misc=26829
+2026-04-29 18:44:27 [info     ] polymesh_writer_patches        n_boundary_faces=45080 n_patches=64 patch_sizes=[95, 5774, 78, 924, 103, 90, 94, 116, 74, 236, 134, 152, 226, 72, 73, 99, 935, 91, 85, 2134, 2087, 88, 219, 75, 85, 113, 86, 139, 82, 96, 123, 74, 91, 142, 120, 74, 72, 89, 74, 80, 329, 134, 75, 101, 86, 74, 88, 76, 77, 253, 86, 110, 208, 135, 101, 103, 100, 87, 79, 79, 129, 74, 73, 26829]
+  hex: OK cells=28366 t=89.77s
+2026-04-29 18:44:30 [info     ] native_poly_qed_decimate       f_after=12842 f_before=24014 mode=auto target=12007
+2026-04-29 18:44:33 [info     ] native_poly_pre3_remesh        edge_length_ratio=3353.2 faces_after=9639 faces_before=12842 target_edge_length=0.875867
+2026-04-29 18:44:33 [info     ] native_poly_ppp10_feature_seeds n_feature=90 n_total=176
+2026-04-29 18:44:33 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=5 n_seeds_after=47 n_seeds_before=55
+2026-04-29 18:47:10 [info     ] native_poly_boundary_snap      n_outside_snapped=26864
+2026-04-29 18:47:10 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=7251
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=initial_voronoi
+2026-04-29 18:47:11 [info     ] poly_bl_prism_added            n_prism=1 n_rejected_aspect=0 n_rejected_collision=0
+2026-04-29 18:47:11 [info     ] ttt4_poly_bl_extruded          n_added=1
+2026-04-29 18:47:11 [info     ] native_bl_thickness_stats      component=native_bl n_verts=1 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.41161398 t_mean=0.41161398 t_min=0.41161398 t_std=0.0
+2026-04-29 18:47:11 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.41161398 n_prisms=1 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:47:11 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:47:11 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:47:11 [info     ] pol_layers_summary             n_layers=1 n_total_prism=1
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=POL_LAYERS
+2026-04-29 18:47:11 [info     ] poly_bl_tangent_smooth         n_moved=2 n_prism=1
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=1 n_neg=2 pass_name=POL_BL_TANGENT
+2026-04-29 18:47:11 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=1 raw=0.388 raw_info={'n': 2, 'no': 80.7, 'sk': 0.14} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=-1 n_neg=1 pass_name=PPP9b_smooth
+2026-04-29 18:47:11 [warning  ] native_poly_degenerate_volume  cell_idx=0 vol=-1.095797
+2026-04-29 18:47:11 [info     ] native_poly_validate           n_cells=1 n_degenerate=0 n_negative_volume=1
+2026-04-29 18:47:11 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=VAL2_post
+2026-04-29 18:47:11 [info     ] native_poly_quality_gate       avg_fpc=5.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-29 18:47:11 [info     ] native_poly_run_summary        elapsed=162.253 grade=D max_non_ortho=0.0 max_skewness=0.0 n_cells=1 n_points=9
+2026-04-29 18:47:11 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=1 n_surface_v=7204 phase=beta2401 ratio=0.0001
+2026-04-29 18:47:11 [warning  ] native_poly_budget_exhausted   attempts_done=1 budget_s=90.0 component=native_poly elapsed_s=162.3 phase=beta2381
+2026-04-29 18:47:11 [info     ] native_poly_ppp10_feature_seeds n_feature=90 n_total=490
+2026-04-29 18:47:11 [info     ] native_poly_lloyd_done         lp_p=4.0 n_lloyd=5 n_seeds_after=61 n_seeds_before=271
+2026-04-29 18:50:08 [info     ] native_poly_boundary_snap      n_outside_snapped=28293
+2026-04-29 18:50:09 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=7265
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=initial_voronoi
+2026-04-29 18:50:09 [info     ] poly_bl_prism_added            n_prism=1 n_rejected_aspect=0 n_rejected_collision=0
+2026-04-29 18:50:09 [info     ] ttt4_poly_bl_extruded          n_added=1
+2026-04-29 18:50:09 [info     ] native_bl_thickness_stats      component=native_bl n_verts=1 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.41161398 t_mean=0.41161398 t_min=0.41161398 t_std=0.0
+2026-04-29 18:50:09 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.41161398 n_prisms=1 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:50:09 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:50:09 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:50:09 [info     ] pol_layers_summary             n_layers=1 n_total_prism=1
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=POL_LAYERS
+2026-04-29 18:50:09 [info     ] poly_bl_tangent_smooth         n_moved=2 n_prism=1
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=0 n_neg=1 pass_name=POL_BL_TANGENT
+2026-04-29 18:50:09 [info     ] native_poly_best_of_three      drop=0.706 drop_info={'n': 1, 'no': 0.0, 'sk': 0.0} n_drop=1 raw=0.643 raw_info={'n': 2, 'no': 17.2, 'sk': 0.036} sm_info={'n': 1, 'no': 0.0, 'sk': 0.0} smooth=0.706
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=-1 n_neg=0 pass_name=PPP9b_smooth
+2026-04-29 18:50:09 [info     ] native_poly_validate           n_cells=1 n_degenerate=0 n_negative_volume=0
+2026-04-29 18:50:09 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=VAL2_post
+2026-04-29 18:50:09 [info     ] native_poly_quality_gate       avg_fpc=8.0 grade=D max_non_ortho=0.0 max_skew=0.0 mean_non_ortho=0.0
+2026-04-29 18:50:09 [info     ] native_poly_run_summary        elapsed=183.44 grade=D max_non_ortho=0.0 max_skewness=0.0 n_cells=1 n_points=82
+2026-04-29 18:50:09 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=1 n_surface_v=7204 phase=beta2401 ratio=0.0001
+2026-04-29 18:50:10 [info     ] native_poly_ppp10_feature_seeds n_feature=90 n_total=490
+2026-04-29 18:50:10 [info     ] native_poly_lloyd_done         lp_p=2.0 n_lloyd=5 n_seeds_after=77 n_seeds_before=271
+2026-04-29 18:50:10 [info     ] native_poly_ppp11_relaxed      n_relaxed=2
+2026-04-29 18:52:42 [info     ] native_poly_boundary_snap      n_outside_snapped=27596
+2026-04-29 18:52:42 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=7281
+2026-04-29 18:52:42 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=initial_voronoi
+2026-04-29 18:52:42 [debug    ] poly_bl_prism_rejected_collision seed=45
+2026-04-29 18:52:42 [info     ] poly_bl_prism_added            n_prism=2 n_rejected_aspect=0 n_rejected_collision=1
+2026-04-29 18:52:42 [info     ] ttt4_poly_bl_extruded          n_added=2
+2026-04-29 18:52:42 [info     ] native_bl_thickness_stats      component=native_bl n_verts=2 phase=HEX_BL_UNIFORM rel_variation=0.0 t_max=0.41161398 t_mean=0.41161398 t_min=0.41161398 t_std=0.0
+2026-04-29 18:52:42 [info     ] poly_bl_thickness_stats        component=native_poly first_step=0.41161398 n_prisms=2 phase=POL_BL_UNIFORM rel_variation=0.0
+2026-04-29 18:52:42 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=POL_BL1_prism_extrude
+2026-04-29 18:52:42 [warning  ] native_poly_ttt4_skipped       reason='list index out of range'
+2026-04-29 18:52:42 [info     ] pol_layers_layer_truncated     layer=2 reason=no_cells_added
+2026-04-29 18:52:42 [info     ] pol_layers_summary             n_layers=1 n_total_prism=2
+2026-04-29 18:52:42 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=POL_LAYERS
+2026-04-29 18:52:42 [info     ] poly_bl_tangent_smooth         n_moved=4 n_prism=2
+2026-04-29 18:52:42 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=POL_BL_TANGENT
+2026-04-29 18:52:42 [info     ] native_poly_best_of_three      drop=0.604 drop_info={'n': 3, 'no': 26.1, 'sk': 0.178} n_drop=2 raw=0.616 raw_info={'n': 5, 'no': 26.1, 'sk': 0.178} sm_info={'n': 3, 'no': 26.1, 'sk': 0.178} smooth=0.604
+2026-04-29 18:52:42 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=PPP9b_smooth
+2026-04-29 18:52:43 [info     ] native_poly_validate           n_cells=5 n_degenerate=0 n_negative_volume=0
+2026-04-29 18:52:43 [info     ] native_poly_neg_vol_track      delta=0 n_neg=0 pass_name=VAL2_post
+2026-04-29 18:52:43 [info     ] polymesh_writer_patches        n_boundary_faces=132 n_patches=57 patch_sizes=[22, 3, 9, 12, 4, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 3, 1, 2, 3, 2, 1, 1, 1, 1, 1, 2, 1, 1, 4, 1, 3, 2, 3, 1, 4, 1, 9, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1]
+2026-04-29 18:52:43 [info     ] native_poly_quality_gate       avg_fpc=27.2 grade=A max_non_ortho=26.13 max_skew=0.178 mean_non_ortho=24.67
+2026-04-29 18:52:43 [info     ] native_poly_run_summary        elapsed=156.516 grade=A max_non_ortho=26.1275 max_skewness=0.1781 n_cells=5 n_points=242
+2026-04-29 18:52:43 [warning  ] native_poly_mesh_integrity_suspect component=native_poly message='cells/V_surf < 1/32 — sparse poly mesh suspect' n_cells=5 n_surface_v=7204 phase=beta2401 ratio=0.0007
+2026-04-29 18:52:43 [info     ] native_poly_aniso_cvt_seeds_generated converged=False elapsed_s=0.419 n_iter=3 n_seeds=256
+2026-04-29 18:52:43 [info     ] native_hex_pre3_remesh         edge_length_ratio=616.94 faces_after=2228 faces_before=9639 target_edge_length=0.866556
+2026-04-29 18:52:43 [info     ] native_hex_snap_done           cap=2.4910000578178138 n_candidates=340 n_feature_snapped=0 n_skipped_beyond_cap=197 n_skipped_far=38 n_snapped=105 search_r=7.473000173453441
+2026-04-29 18:52:43 [info     ] native_hex_boundary_snap_applied n_candidates=340 n_feature_snapped=0 n_skipped_beyond_cap=197 n_skipped_far=38 n_snapped=105
+2026-04-29 18:52:43 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=post_filter
+2026-04-29 18:52:43 [info     ] native_hex_www7_feature_snap   max_dist=0.79712 n_eligible=104 n_feature_segs=1918 n_no_feature=0 n_rejected_quality=12 n_snapped=92
+2026-04-29 18:52:43 [info     ] native_hex_www7_done           n_no_feature=0 n_rejected_quality=12 n_snapped=92
+2026-04-29 18:52:43 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=WWW7
+2026-04-29 18:52:43 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=HEX_QUALITY1
+2026-04-29 18:52:43 [info     ] native_hex_validate            n_cells=95 n_degenerate=0 n_flipped=0
+2026-04-29 18:52:43 [info     ] native_hex_neg_vol_track       delta=0 n_neg=0 pass_name=VAL2_post
+2026-04-29 18:52:43 [info     ] polymesh_writer_face_merge     after=107 before=107 reduced=0
+2026-04-29 18:52:43 [info     ] polymesh_writer_patches_capped cap=64 n_boundary_faces=356 n_groups=86 n_kept=63 n_misc=23
+2026-04-29 18:52:43 [info     ] polymesh_writer_patches        n_boundary_faces=356 n_patches=64 patch_sizes=[5, 4, 11, 11, 1, 9, 5, 3, 1, 1, 1, 1, 10, 1, 17, 29, 1, 2, 1, 3, 3, 3, 3, 1, 10, 10, 10, 10, 1, 14, 14, 10, 2, 4, 1, 9, 1, 1, 9, 1, 2, 3, 1, 1, 9, 7, 11, 9, 6, 5, 6, 5, 4, 2, 4, 3, 3, 3, 3, 6, 2, 2, 2, 23]
+2026-04-29 18:52:43 [info     ] native_hex_low_fill_ratio      fill_ratio=0.2199074074074074 hint='target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선' n_grid_total=432 n_kept=95
+2026-04-29 18:52:43 [info     ] native_hex_quality_gate        grade=A max_aspect=4.42 max_non_ortho=46.55 max_skew=0.164 mean_non_ortho=9.26
+2026-04-29 18:52:43 [info     ] native_hex_run_summary         elapsed=0.764 fill_ratio=0.2199 grade=A n_cells=95 n_points=340 n_val_degen=0 n_val_flipped=0
+2026-04-29 18:52:43 [info     ] native_poly_best_of_n          cells=5 chosen='voronoi_clipped(sd=24)' cont_score=0.3233 grade=A n_candidates=2
+  poly: OK cells=5 t=509.09s [INTEGRITY?]
+
+[3/5] file_id=162092 V=2155 F=4368
+2026-04-29 18:52:43 [debug    ] native_tet_uuu2_si_detect_skipped reason='index 0 is out of bounds for axis 0 with size 0'
+2026-04-29 18:52:53 [info     ] native_tet_auto_fix            aggressive=True n_dedup=0 n_winding_flip=1788 n_zero_area=0
+2026-04-29 18:52:53 [warning  ] native_tet_input_warnings      boundary_edges=0 duplicate=0 nonmanifold=26 warnings=['non-manifold: 26 edges with 3+ owners', 'possible self-intersection candidates: 500 (AABB overlap heuristic — manual check 권장)'] zero_area=0
+2026-04-29 18:52:55 [debug    ] native_tet_pre3_remesh_skipped_facecount faces_after=9618 faces_before=4552
+2026-04-29 18:52:55 [info     ] native_tet_start               bbox_diag=137.9812766401586 n_surf_faces=4552 n_surf_verts=2155 target_edge_length=8.623829790009912
+2026-04-29 18:52:56 [info     ] native_tet_seed                n_grid_inside=20 n_points=2175
+2026-04-29 18:52:56 [info     ] native_tet_recovery_iter       iter=0 n_missing=2623 n_new_seeds=4000
+2026-04-29 18:52:56 [info     ] native_tet_recovery_iter       iter=1 n_missing=3141 n_new_seeds=4000
+2026-04-29 18:52:57 [info     ] native_tet_recovery_iter       iter=2 n_missing=3150 n_new_seeds=4000

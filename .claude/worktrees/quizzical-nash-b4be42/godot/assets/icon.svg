@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="16" fill="#2d2d3a"/>
+  <path d="M32 80 L64 32 L96 80 Z" fill="none" stroke="#4fc3f7" stroke-width="4"/>
+  <path d="M44 80 L64 48 L84 80 Z" fill="none" stroke="#81d4fa" stroke-width="2"/>
+  <circle cx="64" cy="60" r="6" fill="#4fc3f7"/>
+  <text x="64" y="110" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="#b0bec5">AT</text>
+</svg>

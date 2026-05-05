@@ -79,16 +79,24 @@ class CfMeshTetGenerator:
         # boundary_cell_size: target_cell_size (surface 셀).
         # min_cell_size: min_cell_size (sharp feature 셀).
         # SurfaceMeshConfig fields: target_cell_size, min_cell_size.
+        # BETA2869 — max_cell = target*4 (draft coarseness).
         _target = float(getattr(sm, "target_cell_size", 0.0) or 0.0) if sm else 0.0
         max_cell = float(params.get(
             "cfmesh_max_cell_size",
             _target * 4 if _target > 0 else 0.2,
         ))
-        # BETA2851 — boundary_cell / min_cell default 0 (cfMesh 자체 균일 sizing).
-        # User 가 GUI 슬라이더로 명시할 때만 surfaceMeshRefinement 활성화.
-        # 이전 default (target_cell_size) 는 cube 에서 200k+ cell 폭증 원인.
-        boundary_cell = float(params.get("cfmesh_boundary_cell_size", 0.0))
-        min_cell = float(params.get("cfmesh_min_cell_size", 0.0))
+        # BETA2865 — poly 와 동일: boundary 자동 refinement (max*0.6) default.
+        # 이전 0 default 는 큰 모델 + coarse max 일 때 표면 360 cell 로 손실.
+        # BETA2870 — draft default = uniform (no surface refinement, bnd=0).
+        if "cfmesh_boundary_cell_size" in params:
+            boundary_cell = float(params["cfmesh_boundary_cell_size"])
+        else:
+            boundary_cell = 0.0
+        # BETA2869 — min = boundary (= max*0.6) for draft sanity.
+        if "cfmesh_min_cell_size" in params:
+            min_cell = float(params["cfmesh_min_cell_size"])
+        else:
+            min_cell = boundary_cell if boundary_cell > 0 else 0.0
         n_layers = 0
         thickness_ratio = 1.2
         max_first = 0.0

@@ -1,0 +1,2 @@
+PASS
+Regression 31/31 OK. Bench 59.1s ≤ 80.9s. Grade stable (tet C2D3). BL 5/5. R226.

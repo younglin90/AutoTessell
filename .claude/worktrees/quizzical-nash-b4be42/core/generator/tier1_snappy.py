@@ -1,0 +1,478 @@
+"""Tier 1: snappyHexMesh 메쉬 생성기."""
+
+from __future__ import annotations
+
+import shutil
+import time
+from pathlib import Path
+from typing import Any
+
+from core.generator.openfoam_writer import OpenFOAMWriter
+from core.schemas import GeneratorStep, MeshStrategy, TierAttempt
+from core.utils.logging import get_logger
+from core.utils.openfoam_utils import OpenFOAMError, run_openfoam
+
+logger = get_logger(__name__)
+
+TIER_NAME = "tier1_snappy"
+
+
+def generate_block_mesh_dict(strategy: MeshStrategy) -> dict[str, Any]:
+    """blockMeshDict 내용을 Python dict로 생성한다.
+
+    도메인 설정에 따라 8개 꼭짓점과 블록 분할 수를 계산한다.
+
+    Args:
+        strategy: 메쉬 전략 (domain 설정 포함).
+
+    Returns:
+        blockMeshDict 구조를 담은 dict. vertices/blocks 키를 포함한다.
+    """
+    domain = strategy.domain
+    mn = domain.min
+    mx = domain.max
+    base = domain.base_cell_size
+
+    # 분할 수 계산 (최소 1)
+    nx = max(1, int((mx[0] - mn[0]) / base))
+    ny = max(1, int((mx[1] - mn[1]) / base))
+    nz = max(1, int((mx[2] - mn[2]) / base))
+
+    # 8개 꼭짓점 (아래 4개, 위 4개)
+    vertices = [
+        [mn[0], mn[1], mn[2]],  # 0
+        [mx[0], mn[1], mn[2]],  # 1
+        [mx[0], mx[1], mn[2]],  # 2
+        [mn[0], mx[1], mn[2]],  # 3
+        [mn[0], mn[1], mx[2]],  # 4
+        [mx[0], mn[1], mx[2]],  # 5
+        [mx[0], mx[1], mx[2]],  # 6
+        [mn[0], mx[1], mx[2]],  # 7
+    ]
+
+    return {
+        "scale": 1,
+        "vertices": vertices,
+        "blocks": f"hex (0 1 2 3 4 5 6 7) ({nx} {ny} {nz}) simpleGrading (1 1 1)",
+        "edges": [],
+        "boundary": {
+            "inlet": {
+                "type": "patch",
+                "faces": [[0, 4, 7, 3]],
+            },
+            "outlet": {
+                "type": "patch",
+                "faces": [[1, 2, 6, 5]],
+            },
+            "walls": {
+                "type": "wall",
+                "faces": [
+                    [0, 1, 5, 4],
+                    [3, 7, 6, 2],
+                    [0, 3, 2, 1],
+                    [4, 5, 6, 7],
+                ],
+            },
+        },
+    }
+
+
+def _find_interior_point(stl_path: "Path") -> list[float] | None:
+    """STL 표면 내부의 한 점을 자동으로 찾아 반환한다.
+
+    snappyHexMesh의 locationInMesh는 메싱할 영역 내부의 임의 점이어야 한다.
+    trimesh의 center_mass(부피 중심)를 사용하면 watertight 메시에서는
+    항상 내부에 위치하는 것이 보장된다.
+
+    Args:
+        stl_path: 전처리된 STL 파일 경로.
+
+    Returns:
+        내부 점 [x, y, z], 실패 시 None.
+    """
+    try:
+        import trimesh as _tm
+        surf = _tm.load(str(stl_path), force="mesh")
+
+        if getattr(surf, "is_watertight", False):
+            # watertight 메시: 부피 중심은 반드시 내부
+            pt = surf.center_mass.tolist()
+            logger.info("snappy_interior_point_center_mass", point=pt)
+            return pt
+
+        # 비가 닫힌 경우: bbox 중심을 시도 후 광선 검사
+        candidate = list(surf.centroid)
+        try:
+            inside = surf.ray.contains_points([candidate])
+            if inside[0]:
+                logger.info("snappy_interior_point_centroid", point=candidate)
+                return candidate
+        except Exception:
+            pass
+
+        # 최후 수단: 메시 bbox 내 랜덤 샘플링으로 내부 점 탐색
+        import numpy as _np
+        bbox_min = surf.bounds[0]
+        bbox_max = surf.bounds[1]
+        rng = _np.random.default_rng(42)
+        for _ in range(200):
+            pt_try = rng.uniform(bbox_min, bbox_max).tolist()
+            try:
+                inside = surf.ray.contains_points([pt_try])
+                if inside[0]:
+                    logger.info("snappy_interior_point_sampled", point=pt_try)
+                    return pt_try
+            except Exception:
+                break
+
+        logger.warning("snappy_interior_point_fallback_centroid")
+        return list(surf.centroid)
+
+    except Exception as exc:
+        logger.warning("snappy_interior_point_failed", error=str(exc))
+        return None
+
+
+def generate_snappy_dict(
+    strategy: MeshStrategy,
+    location_in_mesh: list[float] | None = None,
+) -> dict[str, Any]:
+    """snappyHexMeshDict 내용을 Python dict로 생성한다.
+
+    Args:
+        strategy: 메쉬 전략 (surface_mesh, boundary_layers, quality_targets 포함).
+        location_in_mesh: castellatedMesh에서 남길 영역의 임의 내부 점.
+            None이면 strategy.domain.location_in_mesh 를 사용한다.
+
+    Returns:
+        snappyHexMeshDict 구조를 담은 dict.
+        castellatedMeshControls/snapControls/addLayersControls 키를 포함한다.
+    """
+    params = strategy.tier_specific_params
+    sm = strategy.surface_mesh
+    bl = strategy.boundary_layers
+    qt = strategy.quality_targets
+    domain = strategy.domain
+
+    # OpenFOAM dictionary `word`는 경로 구분자(`/`)를 허용하지 않는다.
+    # 입력 경로와 무관하게 triSurface에 복사한 파일(`surface.stl`)의 논리 이름을 고정한다.
+    stl_name = "surface"
+
+    return {
+        "castellatedMesh": True,
+        "snap": True,
+        "addLayers": bl.enabled,
+        "geometry": {
+            "surface.stl": {
+                "type": "triSurfaceMesh",
+                "name": stl_name,
+            }
+        },
+        "castellatedMeshControls": {
+            "maxLocalCells": params.get("snappy_max_local_cells", 1_000_000),
+            "maxGlobalCells": params.get("snappy_max_global_cells", 10_000_000),
+            "minRefinementCells": params.get("snappy_min_refinement_cells", 10),
+            "nCellsBetweenLevels": params.get("snappy_n_cells_between_levels", 3),
+            "resolveFeatureAngle": sm.feature_angle,
+            "locationInMesh": location_in_mesh if location_in_mesh is not None else domain.location_in_mesh,
+            "features": [
+                {
+                    "file": "surface.eMesh",
+                    "level": sm.feature_extract_level,
+                }
+            ],
+            "refinementSurfaces": {
+                "surface": {
+                    "level": params.get("snappy_castellated_level", [1, 2]),
+                }
+            },
+            "refinementRegions": {},
+            "allowFreeStandingZoneFaces": True,
+        },
+        "snapControls": {
+            "nSmoothPatch": params.get("snappy_snap_smooth_patch", 3),
+            "tolerance": params.get("snappy_snap_tolerance", 2.0),
+            "nSolveIter": params.get("snappy_snap_iterations", 30),
+            "nRelaxIter": params.get("snappy_snap_relax_iter", 5),
+            "nFeatureSnapIter": params.get("snappy_feature_snap_iter", 10),
+            "implicitFeatureSnap": False,
+            "explicitFeatureSnap": True,
+            "multiRegionFeatureSnap": False,
+        },
+        "addLayersControls": {
+            "relativeSizes": True,
+            "layers": {
+                "surface": {
+                    "nSurfaceLayers": bl.num_layers,
+                }
+            },
+            "firstLayerThickness": bl.first_layer_thickness,
+            "expansionRatio": bl.growth_ratio,
+            "minThickness": bl.min_thickness_ratio,
+            "featureAngle": bl.feature_angle,
+            "maxFaceThicknessRatio": 0.5,
+            "nGrow": 0,
+            "nSmoothSurfaceNormals": 1,
+            "nSmoothNormals": 3,
+            "nSmoothThickness": 10,
+            "nRelaxIter": 5,
+            "nLayerIter": 50,
+            "nRelaxedIter": 20,
+            "nBufferCellsNoExtrude": 0,
+            "minMedialAxisAngle": 90,
+            "maxThicknessToMedialRatio": 0.3,
+            "nMedialAxisIter": 10,
+        },
+        "meshQualityControls": {
+            "maxNonOrtho": qt.max_non_orthogonality,
+            "maxBoundarySkewness": 20,
+            "maxInternalSkewness": qt.max_skewness,
+            "maxConcave": 80,
+            "minVol": 1e-30,
+            "minTetQuality": 1e-30,
+            "minArea": -1,
+            "minTwist": 0.02,
+            "minDeterminant": qt.min_determinant,
+            "minFaceWeight": 0.05,
+            "minVolRatio": 0.01,
+            "minTriangleTwist": -1,
+            "nSmoothScale": 4,
+            "errorReduction": 0.75,
+        },
+        "debug": 0,
+        "mergeTolerance": 1e-6,
+    }
+
+
+def _generate_surface_feature_extract_dict(stl_name: str) -> dict[str, Any]:
+    """surfaceFeatureExtractDict를 생성한다."""
+    return {
+        stl_name: {
+            "extractionMethod": "extractFromSurface",
+            "extractFromSurfaceCoeffs": {
+                "includedAngle": 150,
+            },
+            "subsetFeatures": {
+                "nonManifoldEdges": "yes",
+                "openEdges": "yes",
+            },
+            "writeObj": "yes",
+        }
+    }
+
+
+class Tier1SnappyGenerator:
+    """snappyHexMesh 기반 Hex-dominant 메쉬 생성기.
+
+    3단계 파이프라인: blockMesh → surfaceFeatureExtract → snappyHexMesh
+    """
+
+    def __init__(self) -> None:
+        self._writer = OpenFOAMWriter()
+
+    def run(
+        self,
+        strategy: MeshStrategy,
+        preprocessed_path: Path,
+        case_dir: Path,
+    ) -> TierAttempt:
+        """Tier 1 snappyHexMesh 파이프라인을 실행한다.
+
+        Args:
+            strategy: 메쉬 전략.
+            preprocessed_path: 전처리된 STL 파일 경로.
+            case_dir: OpenFOAM 케이스 디렉터리 경로.
+
+        Returns:
+            실행 결과를 담은 TierAttempt.
+        """
+        t_start = time.monotonic()
+        steps: list[GeneratorStep] = []
+        logger.info("tier1_snappy_start", case_dir=str(case_dir))
+
+        try:
+            # 케이스 구조 생성
+            self._writer.ensure_case_structure(case_dir)
+
+            # STL 복사
+            surface_stl = case_dir / "constant" / "triSurface" / "surface.stl"
+            if preprocessed_path.exists():
+                shutil.copy(str(preprocessed_path), str(surface_stl))
+                logger.info("stl_copied", src=str(preprocessed_path), dst=str(surface_stl))
+
+            # Dict 파일 생성 (STL 내부 포인트 자동 계산해서 locationInMesh로 사용)
+            self._write_dicts(strategy, case_dir, preprocessed_path=preprocessed_path)
+
+            # Step 1: blockMesh
+            t_step = time.monotonic()
+            try:
+                run_openfoam("blockMesh", case_dir)
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="blockMesh", status="success", time=step_elapsed))
+                logger.info("blockmesh_success", elapsed=step_elapsed)
+            except OpenFOAMError as exc:
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="blockMesh", status="failed", time=step_elapsed))
+                elapsed = time.monotonic() - t_start
+                logger.warning("blockmesh_failed", error=str(exc))
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    steps=steps,
+                    error_message=f"blockMesh 실패: {exc}",
+                )
+
+            # Step 2: surfaceFeatureExtract
+            t_step = time.monotonic()
+            try:
+                run_openfoam("surfaceFeatureExtract", case_dir)
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="surfaceFeatureExtract", status="success", time=step_elapsed))
+                logger.info("surface_feature_extract_success", elapsed=step_elapsed)
+            except OpenFOAMError as exc:
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="surfaceFeatureExtract", status="failed", time=step_elapsed))
+                elapsed = time.monotonic() - t_start
+                logger.warning("surface_feature_extract_failed", error=str(exc))
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    steps=steps,
+                    error_message=f"surfaceFeatureExtract 실패: {exc}",
+                )
+
+            # Step 3: snappyHexMesh
+            t_step = time.monotonic()
+            try:
+                run_openfoam("snappyHexMesh", case_dir, args=["-overwrite"])
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="snappyHexMesh", status="success", time=step_elapsed))
+                logger.info("snappy_success", elapsed=step_elapsed)
+            except OpenFOAMError as exc:
+                step_elapsed = time.monotonic() - t_step
+                steps.append(GeneratorStep(name="snappyHexMesh", status="failed", time=step_elapsed))
+                elapsed = time.monotonic() - t_start
+                logger.warning("snappy_failed", error=str(exc))
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    steps=steps,
+                    error_message=f"snappyHexMesh 실패: {exc}",
+                )
+
+            elapsed = time.monotonic() - t_start
+            logger.info("tier1_snappy_success", elapsed=elapsed)
+            return TierAttempt(
+                tier=TIER_NAME,
+                status="success",
+                time_seconds=elapsed,
+                steps=steps,
+            )
+
+        except Exception as exc:
+            elapsed = time.monotonic() - t_start
+            logger.exception("tier1_snappy_unexpected_error", error=str(exc))
+            return TierAttempt(
+                tier=TIER_NAME,
+                status="failed",
+                time_seconds=elapsed,
+                steps=steps,
+                error_message=f"Tier 1 예상치 못한 오류: {exc}",
+            )
+
+    def _write_dicts(
+        self,
+        strategy: MeshStrategy,
+        case_dir: Path,
+        preprocessed_path: "Path | None" = None,
+    ) -> None:
+        """모든 필요한 Dict 파일을 작성한다."""
+        system_dir = case_dir / "system"
+
+        # controlDict
+        self._writer.write_control_dict(case_dir, application="snappyHexMesh")
+
+        # fvSchemes, fvSolution
+        self._writer.write_fv_schemes(case_dir)
+        self._writer.write_fv_solution(case_dir)
+
+        # blockMeshDict
+        bmd = generate_block_mesh_dict(strategy)
+        bmd_path = system_dir / "blockMeshDict"
+        bmd_path.write_text(self._render_block_mesh_dict(bmd))
+        logger.info("wrote_block_mesh_dict", path=str(bmd_path))
+
+        # STL 내부 포인트 자동 계산 → locationInMesh
+        # snappyHexMesh의 castellatedMesh 단계에서 이 점이 속한 영역의 셀을 남기고
+        # 반대편(geometry 외부 또는 내부)을 제거한다.
+        # trimesh의 center_mass는 watertight 메시 내부에 항상 위치한다.
+        loc_in_mesh: list[float] | None = None
+        if preprocessed_path is not None and preprocessed_path.exists():
+            loc_in_mesh = _find_interior_point(preprocessed_path)
+            if loc_in_mesh is not None:
+                logger.info("snappy_using_interior_point", location=loc_in_mesh)
+            else:
+                logger.warning(
+                    "snappy_interior_point_unavailable",
+                    fallback="strategy.domain.location_in_mesh",
+                )
+
+        # snappyHexMeshDict
+        snappy = generate_snappy_dict(strategy, location_in_mesh=loc_in_mesh)
+        snappy_path = system_dir / "snappyHexMeshDict"
+        self._writer.write_foam_dict(
+            snappy_path, snappy,
+            location="system", object_name="snappyHexMeshDict"
+        )
+
+        # surfaceFeatureExtractDict
+        sfe_dict = _generate_surface_feature_extract_dict("surface.stl")
+        sfe_path = system_dir / "surfaceFeatureExtractDict"
+        self._writer.write_foam_dict(
+            sfe_path, sfe_dict,
+            location="system", object_name="surfaceFeatureExtractDict"
+        )
+
+    def _render_block_mesh_dict(self, bmd: dict[str, Any]) -> str:
+        """blockMeshDict를 OpenFOAM 형식 문자열로 렌더링한다."""
+        from core.generator.openfoam_writer import _foam_header
+        header = _foam_header(
+            foam_class="dictionary",
+            location="system",
+            object_name="blockMeshDict",
+        )
+        lines = [header]
+        lines.append(f"scale    {bmd['scale']};\n")
+
+        lines.append("vertices")
+        lines.append("(")
+        for v in bmd["vertices"]:
+            lines.append(f"    ({v[0]} {v[1]} {v[2]})")
+        lines.append(");\n")
+
+        lines.append("blocks")
+        lines.append("(")
+        lines.append(f"    {bmd['blocks']}")
+        lines.append(");\n")
+
+        lines.append("edges\n(\n);\n")
+
+        lines.append("boundary")
+        lines.append("(")
+        for patch_name, patch_data in bmd["boundary"].items():
+            lines.append(f"    {patch_name}")
+            lines.append("    {")
+            lines.append(f"        type {patch_data['type']};")
+            lines.append("        faces")
+            lines.append("        (")
+            for face in patch_data["faces"]:
+                lines.append(f"            ({' '.join(str(i) for i in face)})")
+            lines.append("        );")
+            lines.append("    }")
+        lines.append(");\n")
+
+        lines.append("// ************************************************************************* //")
+        return "\n".join(lines)

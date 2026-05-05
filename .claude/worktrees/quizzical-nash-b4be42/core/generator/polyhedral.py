@@ -1,0 +1,239 @@
+"""Polyhedral mesh 변환기.
+
+Tet mesh → Polyhedral dual mesh 변환.
+OpenFOAM polyDualMesh 또는 자체 듀얼 변환을 사용한다.
+"""
+
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+from core.schemas import MeshStrategy, TierAttempt
+from core.utils.logging import get_logger
+
+log = get_logger(__name__)
+
+
+def convert_to_polyhedral(
+    case_dir: Path,
+    feature_angle: float = 5.0,
+    concave_multi_cells: bool = True,
+) -> bool:
+    """polyMesh를 폴리헤드럴 듀얼 메쉬로 변환한다.
+
+    OpenFOAM polyDualMesh를 사용하여 tet/hex mesh를 폴리헤드럴로 변환.
+    원본 polyMesh는 백업 후 덮어쓴다.
+
+    Args:
+        case_dir: OpenFOAM case 디렉터리.
+        feature_angle: 특징 보존 각도 [도]. 작을수록 더 많은 특징 보존.
+        concave_multi_cells: True이면 오목 경계 셀을 분할.
+
+    Returns:
+        True if conversion succeeded, False otherwise.
+    """
+    poly_dir = case_dir / "constant" / "polyMesh"
+    if not poly_dir.exists():
+        log.warning("polyhedral_no_polymesh", case_dir=str(case_dir))
+        return False
+
+    # 1. OpenFOAM polyDualMesh 시도
+    try:
+        from core.utils.openfoam_utils import run_openfoam
+
+        args = [str(feature_angle)]
+        if concave_multi_cells:
+            args.append("-concaveMultiCells")
+        args.append("-overwrite")
+
+        log.info("polyDualMesh_start", feature_angle=feature_angle,
+                 concave=concave_multi_cells)
+
+        run_openfoam("polyDualMesh", case_dir, args=args)
+
+        log.info("polyDualMesh_success")
+        return True
+
+    except FileNotFoundError:
+        log.info("polyDualMesh_not_available", hint="OpenFOAM 미설치")
+        return _convert_native(case_dir)
+
+    except Exception as exc:
+        log.warning("polyDualMesh_failed", error=str(exc))
+        return False
+
+
+def _convert_native(case_dir: Path) -> bool:
+    """Python 네이티브 tet → poly 듀얼 변환 (OpenFOAM 없이).
+
+    알고리즘:
+    - 각 tet의 정점이 하나의 폴리헤드럴 셀이 됨
+    - 각 tet이 하나의 듀얼 정점이 됨 (tet 중심)
+    - 각 tet의 면(삼각형)이 듀얼 면의 일부가 됨
+
+    Returns:
+        True if succeeded.
+    """
+    try:
+        import numpy as np
+
+        from core.utils.polymesh_reader import (
+            parse_foam_faces,
+            parse_foam_labels,
+            parse_foam_points,
+        )
+
+        poly_dir = case_dir / "constant" / "polyMesh"
+        points = np.array(parse_foam_points(poly_dir / "points"))
+        faces = parse_foam_faces(poly_dir / "faces")
+        owner = np.array(parse_foam_labels(poly_dir / "owner"))
+        neighbour = np.array(parse_foam_labels(poly_dir / "neighbour"))
+
+        if len(points) == 0 or len(faces) == 0:
+            return False
+
+        n_internal = len(neighbour)
+        max_cell = int(owner.max())
+        if n_internal > 0:
+            max_cell = max(max_cell, int(neighbour.max()))
+        n_cells = max_cell + 1
+        n_points = len(points)
+
+        log.info("native_dual_start", n_cells=n_cells, n_points=n_points, n_faces=len(faces))
+
+        # 듀얼 정점 = 원래 셀의 중심점
+        # 듀얼 셀 = 원래 정점 주변의 셀 집합
+        # 이것은 완전한 듀얼 변환이 아닌 간소화 버전
+
+        # 셀 중심 계산
+        cell_centres = np.zeros((n_cells, 3))
+        cell_counts = np.zeros(n_cells)
+        face_centres = np.array([points[f].mean(axis=0) for f in faces])
+
+        np.add.at(cell_centres, owner, face_centres)
+        np.add.at(cell_counts, owner, 1)
+        if n_internal > 0:
+            np.add.at(cell_centres, neighbour, face_centres[:n_internal])
+            np.add.at(cell_counts, neighbour, 1)
+        nonzero = cell_counts > 0
+        cell_centres[nonzero] /= cell_counts[nonzero, np.newaxis]
+
+        log.info("native_dual_done",
+                 hint="Native tet→poly 변환은 제한적. OpenFOAM polyDualMesh 권장.")
+        # 전체 구현은 복잡 — 현재는 로그만 남기고 원본 유지
+        return False
+
+    except Exception as exc:
+        log.warning("native_dual_failed", error=str(exc))
+        return False
+
+
+def is_polyhedral_available() -> bool:
+    """polyDualMesh가 사용 가능한지 확인."""
+    try:
+        from core.utils.openfoam_utils import _find_openfoam_bashrc
+        return _find_openfoam_bashrc() is not None
+    except Exception:
+        return False
+
+
+class PolyhedralGenerator:
+    """Polyhedral 메시 생성기 (Tier).
+
+    Tet/Hex 메시를 다면체(polyhedral) 메시로 변환한다.
+    OpenFOAM polyDualMesh를 사용하여 원본 메시의 듀얼을 생성한다.
+
+    사용 목적:
+    - 셀 수 최소화 (최적화된 계산)
+    - 복합 내부 유동 (cavity 형상 등)
+    - OpenFOAM 네이티브 지원
+    """
+
+    TIER_NAME = "tier_polyhedral"
+
+    def run(
+        self,
+        strategy: MeshStrategy,
+        preprocessed_path: Path,
+        case_dir: Path,
+    ) -> TierAttempt:
+        """Polyhedral 변환을 실행한다.
+
+        주의: 이 Tier는 기존 tet/hex 메시를 입력으로 받아 변환한다.
+        따라서 다른 Tier 이후에만 사용 가능하다.
+
+        Args:
+            strategy: 메쉬 전략.
+            preprocessed_path: 전처리된 STL 파일 경로 (사용되지 않음).
+            case_dir: OpenFOAM 케이스 디렉터리 경로.
+
+        Returns:
+            실행 결과를 담은 TierAttempt.
+        """
+        t_start = time.monotonic()
+        log.info("tier_polyhedral_start", case_dir=str(case_dir))
+
+        try:
+            # OpenFOAM polyDualMesh 사용 가능한지 확인
+            if not is_polyhedral_available():
+                elapsed = time.monotonic() - t_start
+                log.warning(
+                    "tier_polyhedral_openfoam_unavailable",
+                    hint="OpenFOAM 미설치 또는 설정 오류",
+                )
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="openfoam_unavailable",
+                )
+
+            # 기존 polyMesh가 있는지 확인
+            poly_dir = case_dir / "constant" / "polyMesh"
+            if not poly_dir.exists():
+                elapsed = time.monotonic() - t_start
+                log.warning(
+                    "tier_polyhedral_no_existing_mesh",
+                    case_dir=str(case_dir),
+                )
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="no_existing_mesh: polyMesh not found. Run a tet/hex tier first.",
+                )
+
+            # Polyhedral 변환 수행
+            success = convert_to_polyhedral(
+                case_dir,
+                feature_angle=strategy.tier_specific_params.get("feature_angle", 5.0),
+                concave_multi_cells=strategy.tier_specific_params.get("concave_multi_cells", True),
+            )
+
+            elapsed = time.monotonic() - t_start
+            if success:
+                log.info("tier_polyhedral_success", elapsed=elapsed)
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    status="success",
+                    time_seconds=elapsed,
+                )
+            else:
+                log.warning("tier_polyhedral_conversion_failed", elapsed=elapsed)
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="polyhedral_conversion_failed: polyDualMesh returned False",
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.monotonic() - t_start
+            log.error("tier_polyhedral_exception", error=str(exc), elapsed=elapsed)
+            return TierAttempt(
+                tier=self.TIER_NAME,
+                status="failed",
+                time_seconds=elapsed,
+                error_message=f"exception: {str(exc)[:200]}",
+            )

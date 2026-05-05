@@ -1,0 +1,4 @@
+n_train=15903 n_val=3975
+final_tr=0.020304 final_va=0.020854
+elapsed=119.0s
+model=models/v14_quality_predictor.pt

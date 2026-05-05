@@ -221,9 +221,14 @@ def run_openfoam(
     import os as _os
     if _os.environ.get("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0") != "1":
         raise OpenFOAMError(
-            f"외부 OpenFOAM 호출 차단됨 (utility={utility}). "
-            "AutoTessell 정책: vendored mesh backend 만 사용. "
-            "탈출 (legacy debug): AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM=1."
+            utility=utility,
+            returncode=-3,
+            stdout="",
+            stderr=(
+                f"외부 OpenFOAM 호출 차단됨 (utility={utility}). "
+                "AutoTessell 정책: vendored mesh backend 만 사용. "
+                "탈출 (legacy debug): AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM=1."
+            ),
         )
 
     # ── Windows 분기 ────────────────────────────────────────────────────────

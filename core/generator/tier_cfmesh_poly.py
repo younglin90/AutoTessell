@@ -70,15 +70,27 @@ class CfMeshPolyGenerator:
         params = strategy.tier_specific_params or {}
         sm = strategy.surface_mesh
         bl = getattr(strategy, "boundary_layers", None)
-        # BETA2846 — STL 형상 보존을 위한 완전한 cell size 정책.
+        # BETA2869 — max_cell = target*4 (draft coarseness). sparse refinement
+        # 은 min_cell + boundary_cell 로 처리.
         _target = float(getattr(sm, "target_cell_size", 0.0) or 0.0) if sm else 0.0
         max_cell = float(params.get(
             "cfmesh_max_cell_size",
             _target * 4 if _target > 0 else 0.2,
         ))
-        # BETA2851 — boundary_cell / min_cell default 0 (cfMesh 자체 sizing).
-        boundary_cell = float(params.get("cfmesh_boundary_cell_size", 0.0))
-        min_cell = float(params.get("cfmesh_min_cell_size", 0.0))
+        # BETA2876 — poly 는 polyhedral 변환에서 surface refinement 가 없으면
+        # corner / sharp feature 가 뭉개진다 (사용자 QA: "원래 형상을 보존하지 못함").
+        # cfMesh octree 는 cell 을 절반씩 분할 — bnd >= max/2 면 같은 레벨 (refine
+        # 없이 sizing 힌트만), bnd < max/2 면 +1 level (≈8× cells in shell).
+        # default = max_cell * 0.7 → 같은 octree 레벨 유지 + boundary cell 정렬
+        # 으로 corner 보존, cell 폭증 회피. (원래 0.5 default 는 cube 122k 폭증.)
+        if "cfmesh_boundary_cell_size" in params:
+            boundary_cell = float(params["cfmesh_boundary_cell_size"])
+        else:
+            boundary_cell = max_cell * 0.7
+        if "cfmesh_min_cell_size" in params:
+            min_cell = float(params["cfmesh_min_cell_size"])
+        else:
+            min_cell = boundary_cell
         n_layers = 0
         thickness_ratio = 1.2
         max_first = 0.0

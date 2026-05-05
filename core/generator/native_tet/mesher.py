@@ -4366,6 +4366,62 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_p4c_pytetwild_skipped", reason=str(exc)[:120])
 
+    # CFD-QUALITY (2026-05) — 사용자 환경변수 ``AUTO_TESSELL_TET_CFD_QUALITY=1`` 시
+    # grade A 도달 후에도 추가 Klingner + AMIPS 사이클을 돌려 CFD 핵심 메트릭
+    # (aspect_ratio / skewness / non-orthogonality) 을 더 낮춘다. CFD solver 가
+    # 요구하는 max_non_ortho<60°, max_skew<2.5, max_aspect<50 목표.
+    if (
+        os.environ.get("AUTO_TESSELL_TET_CFD_QUALITY", "0") == "1"
+        and final_tets.shape[0] > 100
+    ):
+        try:
+            from core.generator.native_tet.klingner_full_sweep import (
+                klingner_full_sweep as _kf_cfd,
+            )
+            _ns_cfd = int(min(V.shape[0], final_pts.shape[0]))
+            _lock_cfd = np.arange(_ns_cfd, dtype=np.int64)
+            _new_pts_cfd, _new_tets_cfd, _cfd_res = _kf_cfd(
+                final_pts, final_tets,
+                n_cycles=4,                  # default 2 → 4: 추가 수렴.
+                locked_vertex_ids=_lock_cfd,
+                monotone_min_drop=0.005,     # 작은 개선도 받음 (default 0.020).
+            )
+            if _cfd_res.accepted:
+                final_pts = _new_pts_cfd
+                final_tets = _new_tets_cfd
+                log.info(
+                    "native_tet_cfd_quality_klingner",
+                    cycles=_cfd_res.n_cycles_used,
+                    mq_before=round(_cfd_res.pre_mean_q, 4),
+                    mq_after=round(_cfd_res.post_mean_q, 4),
+                    elapsed_s=round(_cfd_res.elapsed_s, 2),
+                )
+        except Exception as _cfd_exc:
+            log.debug("native_tet_cfd_quality_klingner_skipped",
+                      reason=str(_cfd_exc)[:120])
+        # AMIPS 추가 smoothing — surface vertices 는 lock.
+        try:
+            from core.generator.native_tet.amips import smooth_amips as _smooth_amips
+            _ns_amips = int(min(V.shape[0], final_pts.shape[0]))
+            _amips_lock = np.arange(_ns_amips, dtype=np.int64)
+            _amips_res, _amips_pts = _smooth_amips(
+                final_pts, final_tets,
+                locked_vertex_ids=_amips_lock,
+                n_iter=8,           # 추가 8 iteration.
+            )
+            if _amips_pts is not None and _amips_pts.shape == final_pts.shape:
+                final_pts = _amips_pts
+                log.info(
+                    "native_tet_cfd_quality_amips",
+                    n_iter=int(getattr(_amips_res, "n_iter", 0)),
+                    n_relocated=int(getattr(_amips_res, "n_relocated", 0)),
+                    e_init=round(float(getattr(_amips_res, "e_init", 0.0)), 4),
+                    e_final=round(float(getattr(_amips_res, "e_final", 0.0)), 4),
+                )
+        except Exception as _amips_exc:
+            log.debug("native_tet_cfd_quality_amips_skipped",
+                      reason=str(_amips_exc)[:120])
+
     # P4-B-5h (beta2245i): _phase_bc_skip 으로 deferred 된 경우 (또는 P4-C 가
     # final_pts/tets 를 재할당한 경우) polyMesh 를 정확한 최종 mesh 로 write.
     if _phase_bc_skip:

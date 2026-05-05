@@ -1,0 +1,37 @@
+version: "3.8"
+
+# Auto-Tessell Desktop — Docker Compose
+# Usage:
+#   docker compose -f docker-compose.desktop.yml up test      # 테스트 실행
+#   docker compose -f docker-compose.desktop.yml up desktop    # 데스크톱 서버
+#   docker compose -f docker-compose.desktop.yml run mesh      # 메쉬 생성
+
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: pytest tests/ -v --tb=short
+
+  desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python3 -m desktop.server --port 9720
+    ports:
+      - "9720:9720"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OPENFOAM_DIR=/usr/lib/openfoam/openfoam2406
+
+  mesh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: auto-tessell
+    command: run /app/data/input.stl -o /app/data/output --quality draft
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OPENFOAM_DIR=/usr/lib/openfoam/openfoam2406

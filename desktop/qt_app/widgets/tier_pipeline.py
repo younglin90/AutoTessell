@@ -218,17 +218,21 @@ class TierPipelineStrip(QFrame):
         h_layout.addWidget(self._title_label)
         h_layout.addStretch()
 
+        # 2026-05 사용자 요청 — Resume / Stop / 다시 실행 버튼은 사이드바
+        # 하단 (좌측 맨 아래) 으로 이동. 여기서는 위젯만 hidden 상태로 두고
+        # 시그널 (resume_requested / stop_requested / rerun_requested) 은 외부
+        # 호환성 유지를 위해 그대로 둔다 (main_window 가 connect 함).
         self.resume_btn = _PipelineBtn("▶  Resume", "default")
         self.resume_btn.clicked.connect(self.resume_requested.emit)
-        h_layout.addWidget(self.resume_btn)
+        self.resume_btn.hide()
 
         self.stop_btn = _PipelineBtn("■  Stop", "stop")
         self.stop_btn.clicked.connect(self.stop_requested.emit)
-        h_layout.addWidget(self.stop_btn)
+        self.stop_btn.hide()
 
         self.rerun_btn = _PipelineBtn("다시 실행", "primary")
         self.rerun_btn.clicked.connect(self.rerun_requested.emit)
-        h_layout.addWidget(self.rerun_btn)
+        self.rerun_btn.hide()
 
         root.addWidget(header)
 

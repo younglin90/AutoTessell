@@ -1,0 +1,14 @@
+name: Tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    uses: ./.github/workflows/common-checks.yml
+    with:
+      run_pytest: true
+      run_cli_smoke: true
