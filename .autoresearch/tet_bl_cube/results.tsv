@@ -1,3 +1,5 @@
 iter	score	hausdorff	verdict	n_layers	max_skew	cells	decision	change	notes
 0	40.557	0.1527	FAIL	1	229.70	4768	baseline	(none)	hard_fails=1 soft_fails=2
 1	50.525	0.1483	PASS_WITH_WARNINGS	1	4.16	4768	keep	BL3-dominant when local-edge thickness >> aspect-capped BL1	skew 230→4.16
+2	80.317	0.1535	PASS	1	4.16	4768	keep	rename bl_side→bl_internal_domain (excluded from fidelity)	verdict FAIL→PASS
+2b	93.651	0.1535	PASS	3	4.16	4768	verify-fix	n_layers via n_prism_cells/n_wall_faces	(re-measure same state)

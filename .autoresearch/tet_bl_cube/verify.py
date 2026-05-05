@@ -82,16 +82,21 @@ def main() -> int:
                     if h is not None:
                         hausdorff_rel = float(h)
 
-        # n_layers — bl_quality.json 에서 추출 시도, fallback 으로 패치 'bl_side' 존재 여부 확인
+        # n_layers — bl_quality.json: n_prism_cells / n_wall_faces 가 실제 누적 layer.
         bl_q = case / "native_bl_quality.json"
         if bl_q.exists():
             try:
                 d = json.loads(bl_q.read_text())
-                # n_layers_max 에 가까운 키 탐색
-                for k in ("n_layers_added", "n_layers_max", "avg_n_layers"):
-                    v = d.get(k)
-                    if v is not None:
-                        n_layers = max(n_layers, int(round(float(v))))
+                n_pc = float(d.get("n_prism_cells", 0) or 0)
+                n_wf = float(d.get("n_wall_faces", 0) or 0)
+                if n_wf > 0:
+                    n_layers = max(n_layers, int(round(n_pc / n_wf)))
+                # config.num_layers 도 fallback
+                cfg_d = d.get("config") or {}
+                if isinstance(cfg_d, dict):
+                    nl = cfg_d.get("num_layers")
+                    if nl is not None and n_layers == 0:
+                        n_layers = int(nl)
             except Exception:
                 pass
         # fallback — boundary 에 bl_side 패치 있으면 최소 1

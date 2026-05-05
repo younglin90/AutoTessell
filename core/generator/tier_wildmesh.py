@@ -559,8 +559,36 @@ class TierWildMeshGenerator:
                 compound_winding=compound_winding,
             )
         else:
-            vertices = np.asarray(surf.vertices, dtype=np.float64)
-            faces = np.asarray(surf.faces, dtype=np.int32)
+            # BETA2879 — coarse 입력 (예: cube 12 triangles) 은 fTetWild envelope
+            # optimizer 가 surface tessellation 에 hole 을 남길 수 있다. 입력
+            # 면이 매우 적으면 trimesh.subdivide 로 각 face 를 4 분할해 envelope
+            # 샘플 밀도 확보. test_cube hausdorff 0.265→? 측정.
+            _surf_to_use = surf
+            try:
+                _n_in = int(len(surf.faces))
+                _n_target = int(params.get("wildmesh_min_input_faces", 256))
+                _max_subdiv = int(params.get("wildmesh_max_subdiv_passes", 4))
+                _passes = 0
+                while _n_in < _n_target and _passes < _max_subdiv:
+                    _v_new, _f_new = _trimesh.remesh.subdivide(
+                        _surf_to_use.vertices, _surf_to_use.faces,
+                    )
+                    _surf_to_use = _trimesh.Trimesh(
+                        vertices=_v_new, faces=_f_new, process=False,
+                    )
+                    _n_in = int(len(_surf_to_use.faces))
+                    _passes += 1
+                if _passes > 0:
+                    logger.info(
+                        "wildmesh_input_pre_densified",
+                        passes=_passes,
+                        faces_in=int(len(surf.faces)),
+                        faces_out=_n_in,
+                    )
+            except Exception as _exc:
+                logger.debug("wildmesh_pre_densify_skipped", error=str(_exc))
+            vertices = np.asarray(_surf_to_use.vertices, dtype=np.float64)
+            faces = np.asarray(_surf_to_use.faces, dtype=np.int32)
 
         # 동적 timeout — 메쉬 크기 기반. 큰 메쉬일수록 비례 증가.
         # 사용자 override 는 wildmesh_timeout 로 가능 (상한 30분).
