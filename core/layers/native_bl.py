@@ -2510,12 +2510,67 @@ def generate_native_bl(
         p_bl_side_faces: list[list[int]] = []
         p_bl_side_owner: list[int] = []
 
+        def _face_parts(face_: list[int], *, force_quad_split: bool = False) -> list[list[int]]:
+            """Return one face or two triangles for a warped quad face."""
+            if len(face_) != 4 or len(set(face_)) != 4:
+                return [face_]
+
+            q = [int(v) for v in face_]
+            p0, p1, p2, p3 = (fp[q[0]], fp[q[1]], fp[q[2]], fp[q[3]])
+
+            def _tri_area(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+                return 0.5 * float(np.linalg.norm(np.cross(b - a, c - a)))
+
+            fc_q = 0.25 * (p0 + p1 + p2 + p3)
+            area_vec = np.zeros(3, dtype=np.float64)
+            area_sum = 0.0
+            signs: list[float] = []
+            for i_q, (a_q, b_q) in enumerate(((p0, p1), (p1, p2), (p2, p3), (p3, p0))):
+                av = 0.5 * np.cross(a_q - fc_q, b_q - fc_q)
+                area_vec += av
+                area_sum += float(np.linalg.norm(av))
+                prev_q = (p0, p1, p2, p3)[i_q - 1]
+                cur_q = (p0, p1, p2, p3)[i_q]
+                next_q = (p0, p1, p2, p3)[(i_q + 1) % 4]
+                n_tmp = area_vec
+                n_norm = float(np.linalg.norm(n_tmp))
+                if n_norm > 1e-30:
+                    s_q = float(np.dot(np.cross(cur_q - prev_q, next_q - cur_q), n_tmp / n_norm))
+                    if abs(s_q) > 1e-14:
+                        signs.append(s_q)
+            flatness = (
+                float(np.linalg.norm(area_vec)) / area_sum
+                if area_sum > 1e-30 else 0.0
+            )
+            concave = False
+            if signs:
+                ref = 1.0 if sum(1 for s_q in signs if s_q >= 0.0) >= len(signs) / 2 else -1.0
+                concave = any(s_q * ref < -1e-14 for s_q in signs)
+            if not force_quad_split and flatness >= 1.0 - 1e-9 and not concave:
+                return [face_]
+
+            diag_02 = (
+                [q[0], q[1], q[2]],
+                [q[0], q[2], q[3]],
+                min(_tri_area(p0, p1, p2), _tri_area(p0, p2, p3)),
+            )
+            diag_13 = (
+                [q[0], q[1], q[3]],
+                [q[1], q[2], q[3]],
+                min(_tri_area(p0, p1, p3), _tri_area(p1, p2, p3)),
+            )
+            best = diag_02 if diag_02[2] >= diag_13[2] else diag_13
+            if best[2] <= 1e-30:
+                return [face_]
+            return [best[0], best[1]]
+
         for fi_p in range(n_internal_orig):
             if fi_p in wall_set:
                 continue
-            p_int_faces.append(list(faces[fi_p]))
-            p_int_owner.append(int(owner[fi_p]))
-            p_int_nbr.append(int(neighbour[fi_p]))
+            for part_p in _face_parts(list(faces[fi_p])):
+                p_int_faces.append(part_p)
+                p_int_owner.append(int(owner[fi_p]))
+                p_int_nbr.append(int(neighbour[fi_p]))
 
         for pi_p, patch_p in enumerate(boundary):
             start_p = int(patch_p["startFace"])
@@ -2529,8 +2584,9 @@ def generate_native_bl(
                 # faces / owner 범위 벗어남. 직접 IndexError 의 두 번째 site.
                 if fi_p < 0 or fi_p >= len(faces) or fi_p >= len(owner):
                     continue
-                p_bnd_faces_by_patch[pi_p].append(list(faces[fi_p]))
-                p_bnd_owner_by_patch[pi_p].append(int(owner[fi_p]))
+                for part_p in _face_parts(list(faces[fi_p])):
+                    p_bnd_faces_by_patch[pi_p].append(part_p)
+                    p_bnd_owner_by_patch[pi_p].append(int(owner[fi_p]))
 
         def _ltri(fi_: int, layer_: int) -> tuple[int, int, int]:
             v0_, v1_, v2_ = wall_tri_verts[fi_]
@@ -2539,6 +2595,18 @@ def generate_native_bl(
 
         def _pcid(wi_: int, k_: int) -> int:
             return prism_cell_id_start + wi_ * cfg.num_layers + k_
+
+        def _side_face_parts(quad_: list[int]) -> list[list[int]]:
+            """Return side-face polygons; split warped BL quads into triangles.
+
+            BL side faces connect two layer edges. Around sharp/concave
+            features, endpoint normals can diverge enough that a single quad
+            becomes twisted or even has a near-zero area vector. OpenFOAM treats
+            those faces as poor face flatness/concavity. Keeping the same
+            owner-neighbour pair but emitting two triangular faces preserves the
+            FVM topology and removes the non-planar face.
+            """
+            return _face_parts(quad_, force_quad_split=True)
 
         for wi_p, fi_p in enumerate(wall_face_indices):
             patch_idx_p = wall_orig_patch[fi_p]
@@ -2576,20 +2644,23 @@ def generate_native_bl(
                     quad_p = [ov_a_p, iv_a_p, iv_b_p, ov_b_p]
 
                     if not other_p:
-                        p_bl_side_faces.append(quad_p)
-                        p_bl_side_owner.append(prism_cell_p)
+                        for side_p in _side_face_parts(quad_p):
+                            p_bl_side_faces.append(side_p)
+                            p_bl_side_owner.append(prism_cell_p)
                     else:
                         other_fi_p = other_p[0]
                         other_wi_p = wall_fi_to_wi.get(other_fi_p, -1)
                         if other_wi_p < 0:
-                            p_bl_side_faces.append(quad_p)
-                            p_bl_side_owner.append(prism_cell_p)
+                            for side_p in _side_face_parts(quad_p):
+                                p_bl_side_faces.append(side_p)
+                                p_bl_side_owner.append(prism_cell_p)
                             continue
                         nbr_prism_p = _pcid(other_wi_p, k_p)
                         if prism_cell_p < nbr_prism_p:
-                            p_int_faces.append(quad_p)
-                            p_int_owner.append(prism_cell_p)
-                            p_int_nbr.append(nbr_prism_p)
+                            for side_p in _side_face_parts(quad_p):
+                                p_int_faces.append(side_p)
+                                p_int_owner.append(prism_cell_p)
+                                p_int_nbr.append(nbr_prism_p)
 
         # 7) 최종 face 조립
         out_faces: list[list[int]] = []

@@ -283,3 +283,23 @@ def test_native_bl_quad_wall_prefilter_does_not_drop_all_layers(tmp_path: Path) 
     assert res.success
     assert res.n_wall_faces == 12
     assert res.n_prism_cells == 36
+
+
+def test_native_bl_splits_warped_quad_faces_for_fvm_quality(tmp_path: Path) -> None:
+    """BL side/interface warped quads are triangulated to avoid concavity/warpage."""
+    _write_single_hex_quad_case(tmp_path)
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=3,
+            first_thickness=0.05,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success
+
+    chk = NativeMeshChecker().run(tmp_path)
+    assert chk.min_face_area > 0.0
+    assert chk.max_concavity == 0.0
+    assert chk.max_face_warpage <= 1e-12
