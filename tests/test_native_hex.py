@@ -81,6 +81,9 @@ def test_native_hex_adaptive_snap_uses_fine_cell_cap(tmp_case_dir: Path) -> None
         enable_post_smooth=True,
     )
     assert res.success
+    # BL-aware budget must leave enough volume cells for BL3 final meshes to
+    # stay near the requested cell-count band instead of under-shooting on cubes.
+    assert res.n_cells >= 1500
     chk = NativeMeshChecker().run(tmp_case_dir)
     assert chk.max_non_orthogonality < 5.0
     assert chk.max_skewness < 0.1

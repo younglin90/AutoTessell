@@ -562,9 +562,18 @@ def generate_native_hex(
     _budget_layers = int(post_layers_num_layers or bl_layers or 0)
     _volume_budget = _cell_budget
     if _cell_budget > 0 and _budget_layers > 0:
+        # cfMesh-style BL budgeting: BL cells scale with boundary area (O(n^2)),
+        # not volume cells (O(n^3)). The old 3.5/layer divisor over-reserved for
+        # BL and made simple BL3 cubes land below the 0.5*target lower gate.
+        _bl_budget_per_layer = float(
+            os.environ.get("AUTO_TESSELL_HEX_BL_BUDGET_PER_LAYER", "1.2")
+        )
         _volume_budget = max(
             1,
-            int(float(_cell_budget) / (1.0 + 3.5 * float(_budget_layers))),
+            int(
+                float(_cell_budget)
+                / (1.0 + _bl_budget_per_layer * float(_budget_layers))
+            ),
         )
     h_pre = float(target_edge_length) if (
         target_edge_length is not None and target_edge_length > 0
