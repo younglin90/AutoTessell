@@ -59,6 +59,34 @@ def test_native_hex_perfect_aspect_ratio(tmp_case_dir: Path) -> None:
     assert chk.cells > 0
 
 
+def test_native_hex_adaptive_snap_uses_fine_cell_cap(tmp_case_dir: Path) -> None:
+    """Adaptive octree snap cap must use fine-cell edge, not coarse edge."""
+    if not CUBE_STL.exists():
+        pytest.skip()
+    m = read_stl(CUBE_STL)
+    res = generate_native_hex(
+        m.vertices,
+        m.faces,
+        tmp_case_dir,
+        seed_density=24,
+        snap_boundary=True,
+        adaptive=True,
+        n_levels=4,
+        snap_iterations=3,
+        target_cells=10000,
+        max_cells=10000,
+        bl_layers=3,
+        post_layers_num_layers=3,
+        preserve_features=True,
+        enable_post_smooth=True,
+    )
+    assert res.success
+    chk = NativeMeshChecker().run(tmp_case_dir)
+    assert chk.max_non_orthogonality < 5.0
+    assert chk.max_skewness < 0.1
+    assert chk.max_aspect_ratio < 2.0
+
+
 def test_native_hex_polymesh_files_exist(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
         pytest.skip()

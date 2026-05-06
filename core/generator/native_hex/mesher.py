@@ -624,8 +624,9 @@ def generate_native_hex(
                         from core.generator.native_hex.snap import (  # noqa: PLC0415
                             snap_to_surface_iterative,
                         )
+                        h_snap = h_pre / float(1 << max(0, int(n_levels)))
                         oct_pts, snap_stats_it = snap_to_surface_iterative(
-                            oct_pts, V, F, h_pre,
+                            oct_pts, V, F, h_snap,
                             n_iter=snap_iterations, relax=0.5,
                         )
                         log.info(
