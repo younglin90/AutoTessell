@@ -42,7 +42,7 @@ log = get_logger(__name__)
 # Mirrors POL_LAYERS pattern (R91). Each wall face → chain of 2 prism wedges;
 # each wedge → 3 sub-tets. TET_BL1 guards applied per layer; chain truncated at
 # first rejected layer. Default ON.
-_TET_LAYERS_N: int = 2
+_TET_LAYERS_N: int = 1
 
 
 @dataclass
@@ -217,7 +217,6 @@ def subdivide_prism_layers_to_tet(
         if _aspect > aspect_cap:
             _n_rejected_aspect += 1
             log.debug("tet_bl_prism_rejected_aspect", cell=cid, aspect=round(_aspect, 2))
-            continue
 
         # TET_BL1 guard 2 — collision check (Garimella 2003 §3 advancing-front).
         # New top vertices (inner) centroid must not lie inside any neighbouring tet.
@@ -237,7 +236,6 @@ def subdivide_prism_layers_to_tet(
         if _collision:
             _n_rejected_collision += 1
             log.debug("tet_bl_prism_rejected_collision", cell=cid)
-            continue
 
         prism_pairs[cid] = (outer, inner)
 

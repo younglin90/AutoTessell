@@ -1,6 +1,7 @@
 """native_tet MVP 메쉬 생성기."""
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -93,6 +94,114 @@ def _surf_faces_from_F(F: np.ndarray) -> set:
     Fs = np.sort(F, axis=1)
     return set(map(tuple, Fs.tolist()))
 
+
+def _is_axis_aligned_box_surface(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    tol: float = 1e-9,
+) -> bool:
+    """Return True for simple STL boxes represented by the 8 bbox corners."""
+    V = np.asarray(vertices, dtype=np.float64)
+    F = np.asarray(faces, dtype=np.int64)
+    if V.shape[0] < 8 or F.shape[0] < 12:
+        return False
+    bmin = V.min(axis=0)
+    bmax = V.max(axis=0)
+    ext = bmax - bmin
+    diag = float(np.linalg.norm(ext))
+    if diag <= 0.0 or np.any(ext <= max(tol, diag * tol)):
+        return False
+    atol = max(tol, diag * 1e-8)
+
+    # STL readers may deduplicate vertices; require exactly the eight box corners.
+    key = np.round((V - bmin) / atol).astype(np.int64)
+    _, unique_idx = np.unique(key, axis=0, return_index=True)
+    U = V[np.sort(unique_idx)]
+    if U.shape[0] != 8:
+        return False
+    on_bounds = np.isclose(U, bmin, atol=atol) | np.isclose(U, bmax, atol=atol)
+    if not bool(on_bounds.all()):
+        return False
+
+    expected = {
+        tuple(float(bmin[i] if bit[i] == 0 else bmax[i]) for i in range(3))
+        for bit in (
+            (0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0),
+            (0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1),
+        )
+    }
+    actual = {tuple(float(x) for x in p) for p in U}
+    if actual != expected:
+        return False
+
+    for tri in F:
+        pts = V[tri]
+        if not any(
+            np.all(np.isclose(pts[:, ax], bmin[ax], atol=atol))
+            or np.all(np.isclose(pts[:, ax], bmax[ax], atol=atol))
+            for ax in range(3)
+        ):
+            return False
+    return True
+
+
+def _structured_box_tets(
+    bbox_min: np.ndarray,
+    bbox_max: np.ndarray,
+    *,
+    target_edge_length: float | None,
+    seed_density: int,
+    target_cells: int | None,
+) -> tuple[np.ndarray, np.ndarray, tuple[int, int, int]]:
+    """Build a conformal axis-aligned box tet grid using six tets per voxel."""
+    ext = np.asarray(bbox_max - bbox_min, dtype=np.float64)
+    max_ext = float(ext.max())
+    if target_cells is not None and int(target_cells) > 0:
+        base_n = int(np.ceil((max(6, int(target_cells)) / 6.0) ** (1.0 / 3.0)))
+        cap = 24
+    elif target_edge_length is not None and float(target_edge_length) > 0.0:
+        base_n = int(np.ceil(max_ext / float(target_edge_length)))
+        cap = 12
+    else:
+        base_n = int(seed_density)
+        cap = 12
+    base_n = max(2, min(cap, base_n))
+
+    rel = np.maximum(ext / max_ext, 1e-12)
+    nxyz = np.maximum(1, np.rint(base_n * rel).astype(int))
+    nx, ny, nz = (int(nxyz[0]), int(nxyz[1]), int(nxyz[2]))
+
+    xs = np.linspace(bbox_min[0], bbox_max[0], nx + 1)
+    ys = np.linspace(bbox_min[1], bbox_max[1], ny + 1)
+    zs = np.linspace(bbox_min[2], bbox_max[2], nz + 1)
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
+    pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+
+    def vid(i: int, j: int, k: int) -> int:
+        return i * ((ny + 1) * (nz + 1)) + j * (nz + 1) + k
+
+    tets: list[list[int]] = []
+    for i in range(nx):
+        for j in range(ny):
+            for k in range(nz):
+                v000 = vid(i, j, k)
+                v100 = vid(i + 1, j, k)
+                v010 = vid(i, j + 1, k)
+                v110 = vid(i + 1, j + 1, k)
+                v001 = vid(i, j, k + 1)
+                v101 = vid(i + 1, j, k + 1)
+                v011 = vid(i, j + 1, k + 1)
+                v111 = vid(i + 1, j + 1, k + 1)
+                tets.extend([
+                    [v000, v100, v110, v111],
+                    [v000, v110, v010, v111],
+                    [v000, v010, v011, v111],
+                    [v000, v011, v001, v111],
+                    [v000, v001, v101, v111],
+                    [v000, v101, v100, v111],
+                ])
+    return pts, np.asarray(tets, dtype=np.int64), (nx, ny, nz)
 
 
 def generate_native_tet(
@@ -225,6 +334,72 @@ def generate_native_tet(
     F = np.asarray(faces, dtype=np.int64)
     if V.size == 0 or F.size == 0:
         return NativeTetResult(False, 0.0, message="빈 입력 mesh")
+
+    # Simple cubes/boxes are common GUI smoke-test geometry.  Running the full
+    # Delaunay + recovery stack on an 8-corner box can over-refine badly and
+    # introduce non-manifold duplicate faces, while a structured tet split
+    # preserves the six planes exactly.
+    if _is_axis_aligned_box_surface(V, F):
+        try:
+            from core.generator.native_tet.quality import (
+                compute_quality_grade as _grade,
+                snapshot as _qsnap,
+            )
+            pts_box, tets_box, grid_shape = _structured_box_tets(
+                V.min(axis=0),
+                V.max(axis=0),
+                target_edge_length=target_edge_length,
+                seed_density=seed_density,
+                target_cells=target_cells,
+            )
+            stats = PolyMeshWriter().write(pts_box, tets_box, case_dir)
+            (case_dir / "native_tet_box_fast_path.json").write_text(
+                json.dumps(
+                    {
+                        "bbox_min": [float(x) for x in V.min(axis=0)],
+                        "bbox_max": [float(x) for x in V.max(axis=0)],
+                        "grid_shape": [int(x) for x in grid_shape],
+                        "n_cells": int(tets_box.shape[0]),
+                        "n_points": int(pts_box.shape[0]),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            q = _qsnap(pts_box, tets_box)
+            grade = _grade(q.min_q, q.mean_q)
+            elapsed = time.perf_counter() - t0
+            log.info(
+                "native_tet_box_fast_path",
+                grid=grid_shape,
+                n_cells=int(tets_box.shape[0]),
+                n_points=int(pts_box.shape[0]),
+                min_q=round(float(q.min_q), 4),
+                mean_q=round(float(q.mean_q), 4),
+                grade=grade,
+            )
+            return NativeTetResult(
+                True,
+                elapsed,
+                n_cells=int(stats.get("num_cells", tets_box.shape[0])),
+                n_points=int(stats.get("num_points", pts_box.shape[0])),
+                message=(
+                    "native_tet box fast path OK — "
+                    f"grid={grid_shape}, cells={tets_box.shape[0]}, grade={grade}"
+                ),
+                tet_points=pts_box,
+                tets=tets_box,
+                quality=q,
+                quality_grade=grade,
+                cdt_ratio=1.0,
+                cdt_face_ratio=1.0,
+                plane_coverage=1.0,
+                plane_area_coverage=1.0,
+                hausdorff_relative=0.0,
+            )
+        except Exception as exc:
+            log.warning("native_tet_box_fast_path_failed", reason=str(exc)[:200])
 
     # BETA2833 (B-8) — env AUTO_TESSELL_USE_FTETWILD_LOOP=1 시 dedicated
     # ftetwild_main_loop 직접 호출 → 기존 mesher pipeline 우회. wildmesh parity

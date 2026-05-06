@@ -1,6 +1,7 @@
 """Tier wrapper: native_tet MVP 엔진 + harness (Gen↔Eval)."""
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 from core.generator._tier_native_common import run_native_tier
@@ -27,6 +28,15 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
     knobs 를 **kwargs 로 forward (이전엔 **_unused 가 silently drop).
     harness 는 이미 (beta310 부터) **kwargs 를 mesher 에 전달하도록 wired.
     """
+    _allowed = set(inspect.signature(generate_native_tet).parameters)
+    _allowed -= {"vertices", "faces", "case_dir", "target_edge_length", "seed_density"}
+    _dropped = sorted(k for k in kwargs if k not in _allowed)
+    if _dropped:
+        log.info(
+            "native_tet_ignored_tier_params",
+            keys=_dropped,
+        )
+        kwargs = {k: v for k, v in kwargs.items() if k in _allowed}
     hres = run_native_tet_harness(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
