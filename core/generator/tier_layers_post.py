@@ -17,12 +17,9 @@
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -167,314 +164,6 @@ def _extract_bl_phase2_stats(res) -> "Any | None":
         aniso_split_n_would_split=int(getattr(res, "aniso_split_n_would_split", 0) or 0),
         aniso_split_max_aspect_in=float(getattr(res, "aniso_split_max_aspect_in", 0.0) or 0.0),
     )
-
-
-def _face_normal(points: np.ndarray, face: list[int]) -> np.ndarray:
-    """Newell polygon normal."""
-    n = np.zeros(3, dtype=np.float64)
-    if len(face) < 3:
-        return n
-    for i in range(len(face)):
-        a = points[int(face[i])]
-        b = points[int(face[(i + 1) % len(face)])]
-        n[0] += (a[1] - b[1]) * (a[2] + b[2])
-        n[1] += (a[2] - b[2]) * (a[0] + b[0])
-        n[2] += (a[0] - b[0]) * (a[1] + b[1])
-    return n
-
-
-def _orient_face_outward(
-    points: np.ndarray,
-    face: list[int],
-    cell_vertices: list[int],
-) -> list[int]:
-    """Return face vertices ordered so the normal points away from cell center."""
-    if len(face) < 3 or len(cell_vertices) < 4:
-        return face
-    f = [int(v) for v in face]
-    cell_c = points[np.asarray(cell_vertices, dtype=np.int64)].mean(axis=0)
-    face_c = points[np.asarray(f, dtype=np.int64)].mean(axis=0)
-    n = _face_normal(points, f)
-    if float(np.dot(n, face_c - cell_c)) < 0.0:
-        return list(reversed(f))
-    return f
-
-
-def _read_tet_polymesh_cells(
-    case_dir: Path,
-) -> tuple[np.ndarray, list[list[int]], list[int], list[int], np.ndarray] | None:
-    """Read a pure-tet polyMesh and reconstruct cell vertex sets."""
-    try:
-        from core.utils.polymesh_reader import (  # noqa: PLC0415
-            parse_foam_faces,
-            parse_foam_labels,
-            parse_foam_points,
-        )
-    except Exception:
-        return None
-
-    poly_dir = case_dir / "constant" / "polyMesh"
-    points = np.asarray(parse_foam_points(poly_dir / "points"), dtype=np.float64)
-    faces = parse_foam_faces(poly_dir / "faces")
-    owner = [int(x) for x in parse_foam_labels(poly_dir / "owner")]
-    neighbour = [int(x) for x in parse_foam_labels(poly_dir / "neighbour")]
-    if points.size == 0 or not faces or not owner:
-        return None
-    n_cells = max(owner + neighbour) + 1 if neighbour else max(owner) + 1
-    cell_sets: list[set[int]] = [set() for _ in range(n_cells)]
-    for fi, face in enumerate(faces):
-        if fi >= len(owner):
-            break
-        cell_sets[owner[fi]].update(int(v) for v in face)
-        if fi < len(neighbour):
-            cell_sets[neighbour[fi]].update(int(v) for v in face)
-    if any(len(vs) != 4 for vs in cell_sets):
-        return None
-    tets = np.asarray([sorted(vs) for vs in cell_sets], dtype=np.int64)
-    return points, faces, owner, neighbour, tets
-
-
-def _geometric_thickness(first: float, growth: float, n_layers: int) -> float:
-    vals = [float(first) * (float(growth) ** i) for i in range(max(1, int(n_layers)))]
-    return float(sum(vals))
-
-
-def _run_cfmesh_tet_shrink_bl(
-    case_dir: Path,
-    *,
-    requested_layers: int,
-    num_layers: int,
-    growth_ratio: float,
-    first_thickness: float,
-) -> tuple[Any | None, str]:
-    """cfMesh-style BL for pure tet polyMesh.
-
-    The core idea mirrors cfMesh's volume-mesh post-process: shrink the existing
-    tet core boundary inward, then fill the gap between the original wall faces
-    and the moved inner faces with prism cells.  The inner prism triangles share
-    the exact remapped core boundary faces, so no artificial internal boundary
-    patch remains for the viewer or evaluator.
-    """
-    try:
-        from core.generator.polymesh_writer import (  # noqa: PLC0415
-            _TET_FACES,
-            _normalize_tet_winding,
-            write_generic_polymesh,
-        )
-        from core.layers.native_bl import NativeBLResult  # noqa: PLC0415
-    except Exception as exc:
-        return None, f"cfmesh tet BL import 실패: {exc}"
-
-    parsed = _read_tet_polymesh_cells(case_dir)
-    if parsed is None:
-        return None, "pure tet polyMesh 재구성 실패"
-    points, faces, owner, neighbour, tets = parsed
-    n_internal = len(neighbour)
-    boundary_faces = [
-        (fi, list(map(int, faces[fi])))
-        for fi in range(n_internal, len(faces))
-        if len(faces[fi]) == 3
-    ]
-    if not boundary_faces:
-        return None, "boundary triangle 없음"
-
-    bmin = points.min(axis=0)
-    bmax = points.max(axis=0)
-    ext = bmax - bmin
-    diag = float(np.linalg.norm(ext))
-    if diag <= 0.0:
-        return None, "bbox invalid"
-    thicknesses = [
-        float(first_thickness) * (float(growth_ratio) ** i)
-        for i in range(max(1, int(num_layers)))
-    ]
-    total_thickness = float(sum(thicknesses))
-    max_allowed = float(np.min(ext)) * 0.35
-    total_thickness = min(float(total_thickness), max_allowed)
-    if total_thickness <= 0.0:
-        return None, "BL thickness invalid"
-    if total_thickness < float(sum(thicknesses)):
-        scale = total_thickness / max(float(sum(thicknesses)), 1e-30)
-        thicknesses = [float(t) * scale for t in thicknesses]
-    cumulative = np.concatenate([
-        np.array([0.0], dtype=np.float64),
-        np.cumsum(np.asarray(thicknesses, dtype=np.float64)),
-    ])
-
-    cell_centers = np.asarray(
-        [points[tet].mean(axis=0) for tet in tets],
-        dtype=np.float64,
-    )
-    vertex_outward: dict[int, np.ndarray] = {}
-    for fi, face in boundary_faces:
-        n = _face_normal(points, face)
-        n_norm = float(np.linalg.norm(n))
-        if n_norm <= 1e-30:
-            continue
-        face_c = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
-        owner_cell = int(owner[fi]) if fi < len(owner) else -1
-        if 0 <= owner_cell < len(cell_centers):
-            if float(np.dot(n, face_c - cell_centers[owner_cell])) < 0.0:
-                n = -n
-        for vid in face:
-            prev = vertex_outward.get(int(vid))
-            vertex_outward[int(vid)] = n.copy() if prev is None else prev + n
-
-    mesh_center = points.mean(axis=0)
-    boundary_vertices = sorted({int(v) for _, face in boundary_faces for v in face})
-    new_points = points.tolist()
-    directions: dict[int, np.ndarray] = {}
-    for vid in boundary_vertices:
-        p = points[int(vid)]
-        outward = vertex_outward.get(int(vid), np.zeros(3, dtype=np.float64))
-        norm = float(np.linalg.norm(outward))
-        if norm <= 1e-30:
-            inward = mesh_center - p
-            norm = float(np.linalg.norm(inward))
-            if norm <= 1e-30:
-                inward = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-                norm = 1.0
-        else:
-            inward = -outward
-        directions[int(vid)] = inward / max(norm, 1e-30)
-
-    layer_ids: list[dict[int, int]] = [{int(v): int(v) for v in boundary_vertices}]
-    for layer_idx in range(1, len(cumulative)):
-        ids: dict[int, int] = {}
-        dist = float(cumulative[layer_idx])
-        for vid in boundary_vertices:
-            q = points[int(vid)] + directions[int(vid)] * dist
-            ids[int(vid)] = len(new_points)
-            new_points.append(q.tolist())
-        layer_ids.append(ids)
-    out_points = np.asarray(new_points, dtype=np.float64)
-
-    remapped_tets = np.asarray(
-        [[layer_ids[-1].get(int(v), int(v)) for v in tet] for tet in tets],
-        dtype=np.int64,
-    )
-    remapped_tets = _normalize_tet_winding(out_points, remapped_tets)
-    tet_faces = np.asarray(_TET_FACES, dtype=np.int64)
-    cell_faces: list[list[list[int]]] = remapped_tets[:, tet_faces].tolist()
-
-    n_prisms = 0
-    max_base_edge = 0.0
-    min_height = float("inf")
-    for _fi, face in boundary_faces:
-        if any(int(v) not in layer_ids[-1] for v in face):
-            continue
-        face_vids = [int(v) for v in face]
-        for layer_idx in range(len(layer_ids) - 1):
-            outer = [layer_ids[layer_idx][v] for v in face_vids]
-            inner = [layer_ids[layer_idx + 1][v] for v in face_vids]
-            cell_vertices = outer + inner
-            prism_faces = [
-                outer,
-                [inner[0], inner[2], inner[1]],
-                [outer[0], inner[0], inner[1], outer[1]],
-                [outer[1], inner[1], inner[2], outer[2]],
-                [outer[2], inner[2], inner[0], outer[0]],
-            ]
-            cell_faces.append([
-                _orient_face_outward(out_points, f, cell_vertices)
-                for f in prism_faces
-            ])
-            tri = out_points[np.asarray(outer, dtype=np.int64)]
-            edge_lengths = [
-                float(np.linalg.norm(tri[(i + 1) % 3] - tri[i]))
-                for i in range(3)
-            ]
-            heights = [
-                float(np.linalg.norm(out_points[inner[i]] - out_points[outer[i]]))
-                for i in range(3)
-            ]
-            max_base_edge = max(max_base_edge, max(edge_lengths))
-            min_height = min(min_height, *(h for h in heights if h > 1e-15))
-            n_prisms += 1
-
-    if n_prisms == 0:
-        return None, "prism cell 생성 실패"
-
-    # BETA2885 — CFD-grade quality improvement loop on interior tets.
-    # BL 정점 (모든 layer 의 outer/inner cap vertices) 은 lock — prism cell 구조
-    # 그대로 유지. 내부 tet 만 multistage AMIPS smoothing → max_skewness 감소.
-    # Hu et al. 2020 (fTetWild §3.3) — α 점진 진행 (0.5→1.0→2.0) 으로 sliver 회피.
-    try:
-        from core.generator.native_tet.amips import smooth_amips_multistage
-        _locked: set[int] = set()
-        for _lyr in layer_ids:
-            for _vid_new in _lyr.values():
-                _locked.add(int(_vid_new))
-        _locked_arr = np.asarray(sorted(_locked), dtype=np.int64)
-        # Multistage: α 0.5 → 1.0 → 2.0 (각 1 iter). sliver 점진 제거.
-        _amips_res, _smoothed_pts = smooth_amips_multistage(
-            out_points, remapped_tets,
-            locked_vertex_ids=_locked_arr,
-            alphas=(0.5, 1.0, 2.0),
-            n_iter_per=2,
-        )
-        if _smoothed_pts is not None and _smoothed_pts.shape == out_points.shape:
-            log.info(
-                "bl_post_amips_smooth",
-                n_locked=len(_locked),
-                n_moved=int(_amips_res.n_moved),
-                energy_before=round(float(_amips_res.energy_before), 3),
-                energy_after=round(float(_amips_res.energy_after), 3),
-                energy_reduction_pct=round(
-                    (_amips_res.energy_before - _amips_res.energy_after)
-                    / max(_amips_res.energy_before, 1e-30) * 100, 2,
-                ),
-                max_disp=round(float(_amips_res.max_disp), 6),
-            )
-            out_points = _smoothed_pts
-    except Exception as _amips_exc:
-        log.debug("bl_post_amips_smooth_skipped", error=str(_amips_exc))
-
-    stats = write_generic_polymesh(out_points, cell_faces, case_dir)
-    max_ar = float(max_base_edge / max(min_height, 1e-15))
-    result = NativeBLResult(
-        success=True,
-        elapsed=0.0,
-        n_wall_faces=len(boundary_faces),
-        n_wall_verts=len(boundary_vertices),
-        n_prism_cells=n_prisms,
-        n_new_points=len(out_points) - len(points),
-        total_thickness=total_thickness,
-        message=(
-            "cfMesh-style tet shrink BL OK — "
-            f"{n_prisms} prism cells inserted, core boundary moved inward "
-            f"{total_thickness:.6g}, no bl_internal_domain patch."
-        ),
-        n_degenerate_prisms=0,
-        max_aspect_ratio=max_ar,
-        wall_preserve_max_diff=0.0,
-        wall_preserve_max_diff_rel=0.0,
-        wall_preserve_n_drift=0,
-        wall_preserve_within_envelope=True,
-    )
-    payload = {
-        "algorithm": "cfmesh_tet_shrink_extrude",
-        "n_wall_faces": int(result.n_wall_faces),
-        "n_wall_verts": int(result.n_wall_verts),
-        "n_prism_cells": int(result.n_prism_cells),
-        "n_new_points": int(result.n_new_points),
-        "requested_layers": int(requested_layers),
-        "used_layers": int(num_layers),
-        "total_thickness": float(result.total_thickness),
-        "max_aspect_ratio": float(result.max_aspect_ratio),
-        "writer_stats": {k: int(v) for k, v in stats.items()},
-        "wall_preserve": {
-            "max_diff": 0.0,
-            "max_diff_rel": 0.0,
-            "n_drift": 0,
-            "within_envelope": True,
-        },
-    }
-    (case_dir / "native_bl_quality.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    return result, result.message
 
 
 def _ensure_minimal_controldict(case_dir: Path) -> None:
@@ -1630,45 +1319,18 @@ class LayersPostGenerator:
             "post_layers_growth_ratio",
             getattr(bl, "growth_ratio", 1.2) or 1.2,
         ))
-        # BETA2880 — first_thickness 자동 스케일.
-        # 사용자 QA: GUI 에서 layer=3 으로 했는데 시각적으로 1 layer 처럼 보임.
-        # 원인: BLConfig default 0.001 + target_cell × 0.05 fallback (= 0.001) 이
-        # cube (bbox=1.0~1.7) 에 대해 너무 얇음. 3 layer 총 두께 0.36% → 시각적
-        # 으로 분간 불가.
-        # 새 정책: bbox_diag × 0.012 와 target_cell × 0.5 중 큰 값을 default 로.
-        #   cube bbox=1.73 → 1.73 × 0.012 = 0.021 → 3 layer 총합 0.076 = 7.6% 가시.
-        #   target_cell=0.02 → 0.02 × 0.5 = 0.01 → 3 layer 총합 0.036 = 3.6% 가시.
-        #   ⇒ max(0.021, 0.01) = 0.021 채택. 사용자 명시 first_thickness 가 더 크면 그쪽 사용.
+        # BETA2877 — first_thickness default 가 0.001 인데 큰 도메인 (bbox > 1) 에서
+        # 너무 얇아 aspect ratio > 50 으로 모든 prism 이 거부됨 (test_cube: aspect
+        # 1100~1400). target_cell_size 의 5% 로 fallback → 평균 base 길이 대비
+        # aspect ≈ 20 으로 거부되지 않음. strategist 가 0.001 (BL_DEFAULT_T0_FRACTION)
+        # 같은 작은 절대값을 넣었어도 target × 0.05 가 이보다 크면 그쪽을 채택.
         _strategy_t = getattr(strategy.surface_mesh, "target_cell_size", 0.0) if strategy.surface_mesh else 0.0
         _bl_first = getattr(bl, "first_layer_thickness", 0.0) or 0.0
-        # bbox_diag — strategy.domain 에서 추정, 실패 시 polyMesh points
-        _bbox_diag = 0.0
-        try:
-            _dom = getattr(strategy, "domain", None)
-            if _dom is not None and getattr(_dom, "min", None) and getattr(_dom, "max", None):
-                _bbox_diag = float(
-                    sum((float(_dom.max[i]) - float(_dom.min[i])) ** 2 for i in range(3)) ** 0.5
-                )
-        except Exception:
-            _bbox_diag = 0.0
-        if _bbox_diag <= 0.0:
-            try:
-                from core.utils.polymesh_reader import parse_foam_points as _pfp
-                _pts_path = case_dir / "constant" / "polyMesh" / "points"
-                if _pts_path.exists():
-                    import numpy as _np_bd
-                    _pts = _np_bd.array(_pfp(_pts_path))
-                    _ext = _pts.max(axis=0) - _pts.min(axis=0)
-                    _bbox_diag = float(_np_bd.linalg.norm(_ext))
-            except Exception:
-                pass
-        _autom_bbox = _bbox_diag * 0.012 if _bbox_diag > 0.0 else 0.0
-        _autom_cell = float(_strategy_t) * 0.5 if _strategy_t > 0.0 else 0.0
-        _autom = max(_autom_bbox, _autom_cell)
+        _autom = float(_strategy_t) * 0.05 if _strategy_t > 0.0 else 0.0
         if _autom > _bl_first:
             log.info("bl_first_thickness_auto_scaled",
                      prev=_bl_first, new=_autom,
-                     bbox_diag=_bbox_diag, target_cell=_strategy_t)
+                     target_cell=_strategy_t)
             _bl_first = _autom
         if _bl_first <= 0.0:
             _bl_first = 0.001
@@ -1727,9 +1389,8 @@ class LayersPostGenerator:
                 ok, msg = bool(_res.success), str(_res.message)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
-            # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 가능한 wedge 를
-            # tet 로 분할. sharp/corner topology 에서는 품질 우선으로 mixed tet+prism
-            # BL 을 허용한다.
+            # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
+            # 분할. 결과는 전체 tet mesh.
             try:
                 from core.layers.native_bl import BLConfig, generate_native_bl
                 from core.layers.tet_bl_subdivide import (
@@ -1738,90 +1399,11 @@ class LayersPostGenerator:
             except Exception as exc:
                 ok, msg = False, f"tet_bl 유틸 import 실패: {exc}"
             else:
-                _box_safe_layers = num_layers
-                _box_marker = case_dir / "native_tet_box_fast_path.json"
-                _box_marker_exists = _box_marker.exists()
-                if _box_marker_exists:
-                    if int(num_layers) > 1:
-                        _box_safe_layers = 1
-                        log.info(
-                            "native_tet_box_bl_lcr_clamp",
-                            requested_layers=int(num_layers),
-                            used_layers=_box_safe_layers,
-                            reason="sharp box native_bl corner quality",
-                        )
-                    try:
-                        _meta = json.loads(_box_marker.read_text(encoding="utf-8"))
-                        _bmin = np.asarray(_meta["bbox_min"], dtype=np.float64)
-                        _bmax = np.asarray(_meta["bbox_max"], dtype=np.float64)
-                        _grid = np.maximum(
-                            np.asarray(
-                                _meta.get("grid_shape", (1, 1, 1)),
-                                dtype=np.float64,
-                            ),
-                            1.0,
-                        )
-                        _min_base_edge = float(np.min((_bmax - _bmin) / _grid))
-                        _box_first = _min_base_edge * 0.12
-                        if _box_first > first_thickness:
-                            log.info(
-                                "native_tet_box_bl_first_thickness_bump",
-                                previous=first_thickness,
-                                new=_box_first,
-                                min_base_edge=_min_base_edge,
-                            )
-                            first_thickness = _box_first
-                    except Exception as exc:
-                        log.debug(
-                            "native_tet_box_bl_marker_read_failed",
-                            reason=str(exc)[:120],
-                        )
-                _cf_res, _cf_msg = _run_cfmesh_tet_shrink_bl(
-                    case_dir,
-                    requested_layers=int(num_layers),
-                    num_layers=int(_box_safe_layers),
-                    growth_ratio=float(growth_ratio),
-                    first_thickness=float(first_thickness),
-                )
-                if _cf_res is not None and bool(_cf_res.success):
-                    _bl_p2 = _extract_bl_phase2_stats(_cf_res)
-                    if _bl_p2 is not None and _box_safe_layers < int(num_layers):
-                        _bl_p2.lcr_max_reduction = (
-                            int(num_layers) - int(_box_safe_layers)
-                        )
-                        _bl_p2.lcr_min_layers_used = int(_box_safe_layers)
-                    ok = True
-                    _prefix = ""
-                    if _box_safe_layers < int(num_layers):
-                        _prefix = (
-                            f"box BL LCR clamp: {int(num_layers)} -> "
-                            f"{int(_box_safe_layers)} layer for quality\n"
-                        )
-                    msg = f"{_prefix}{_cf_msg}"
-                    elapsed = time.monotonic() - t_start
-                    log.info(
-                        "tier_layers_post_success",
-                        engine="cfmesh_tet_shrink",
-                        msg=msg,
-                        elapsed=elapsed,
-                    )
-                    return TierAttempt(
-                        tier=self.TIER_NAME, status="success",
-                        time_seconds=elapsed,
-                        native_bl_phase2=_bl_p2,
-                    )
-                log.warning(
-                    "cfmesh_tet_shrink_bl_failed",
-                    msg=str(_cf_msg)[:200],
-                )
-                cfg_bl = _build_bl_config(BLConfig, params, _box_safe_layers,
+                cfg_bl = _build_bl_config(BLConfig, params, num_layers,
                                           growth_ratio, first_thickness,
                                           quality_level=_quality_level)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
-                if _bl_p2 is not None and _box_safe_layers < int(num_layers):
-                    _bl_p2.lcr_max_reduction = int(num_layers) - int(_box_safe_layers)
-                    _bl_p2.lcr_min_layers_used = int(_box_safe_layers)
                 if not _res.success:
                     ok, msg = False, f"native_bl 단계 실패: {_res.message}"
                 else:
@@ -1830,23 +1412,14 @@ class LayersPostGenerator:
                     # first_thickness=0.0001 → aspect ≈ 1600) 의 prism 도 통과.
                     # fine 은 100 (Garimella 2003 권장 50 보다 살짝 완화) 유지.
                     _ql = str(_quality_level or "").lower()
-                    _ac = (
-                        2000.0 if _ql == "draft"
-                        else (500.0 if _ql == "standard" else 100.0)
-                    )
+                    _ac = 2000.0 if _ql == "draft" else (500.0 if _ql == "standard" else 100.0)
                     _ac = float(params.get("tet_bl_aspect_cap", _ac))
                     _res2 = subdivide_prism_layers_to_tet(
                         case_dir, backup_original=False, aspect_cap=_ac,
                     )
                     ok = bool(_res2.success)
-                    _prefix = ""
-                    if _box_safe_layers < int(num_layers):
-                        _prefix = (
-                            f"box BL LCR clamp: {int(num_layers)} -> "
-                            f"{int(_box_safe_layers)} layer for quality\n"
-                        )
                     msg = (
-                        f"{_prefix}{_res.message}\n{_res2.message}"
+                        f"{_res.message}\n{_res2.message}"
                         if ok
                         else f"subdivide 실패: {_res2.message}"
                     )
