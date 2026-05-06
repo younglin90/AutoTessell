@@ -196,26 +196,7 @@ def _load_poly_topology(case_dir: Path) -> dict[str, Any]:
                     visited.add(nxt)
                     queue.append(nxt)
 
-    face_centers = _face_centers(points, faces)
-    cell_centers, cell_faces = _cell_centers_and_faces(face_centers, owner, neighbour)
-    cell_volumes = _approx_cell_volumes(points, faces, cell_centers, cell_faces)
-    cfd_metrics = _compute_poly_cfd_metrics(
-        points,
-        faces,
-        owner,
-        neighbour,
-        face_centers,
-        cell_centers,
-        cell_volumes,
-    )
-    flipped_boundary_faces = _count_flipped_boundary_faces(
-        points,
-        faces,
-        owner,
-        neighbour,
-        face_centers=face_centers,
-        cell_centers=cell_centers,
-    )
+    flipped_boundary_faces = _count_flipped_boundary_faces(points, faces, owner, neighbour)
     self_intersections = _count_boundary_self_intersections(points, boundary_faces)
 
     return {
@@ -230,7 +211,6 @@ def _load_poly_topology(case_dir: Path) -> dict[str, Any]:
         "n_self_intersections": self_intersections,
         "patch_count": int(len(patches)),
         "patches": patches,
-        **cfd_metrics,
     }
 
 
@@ -256,184 +236,27 @@ def _face_normal(points: np.ndarray, face: list[int]) -> np.ndarray:
     return normal / norm
 
 
-def _cell_centers_and_faces(
-    face_centers: np.ndarray,
-    owner: np.ndarray,
-    neighbour: np.ndarray,
-) -> tuple[np.ndarray, list[list[int]]]:
-    n_cells = int(max(owner.max(initial=0), neighbour.max(initial=0) if neighbour.size else 0) + 1)
-    cell_centers = np.zeros((n_cells, 3), dtype=np.float64)
-    counts = np.zeros(n_cells, dtype=np.int64)
-    cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
-    for face_idx, cell in enumerate(owner):
-        ci = int(cell)
-        if 0 <= ci < n_cells:
-            cell_centers[ci] += face_centers[face_idx]
-            counts[ci] += 1
-            cell_faces[ci].append(face_idx)
-    for face_idx, cell in enumerate(neighbour):
-        ci = int(cell)
-        if 0 <= ci < n_cells:
-            cell_centers[ci] += face_centers[face_idx]
-            counts[ci] += 1
-            cell_faces[ci].append(face_idx)
-    nz = counts > 0
-    cell_centers[nz] /= counts[nz, None]
-    return cell_centers, cell_faces
-
-
-def _approx_cell_volumes(
-    points: np.ndarray,
-    faces: list[list[int]],
-    cell_centers: np.ndarray,
-    cell_faces: list[list[int]],
-) -> np.ndarray:
-    volumes = np.zeros(len(cell_faces), dtype=np.float64)
-    for cell_idx, attached_faces in enumerate(cell_faces):
-        center = cell_centers[cell_idx]
-        volume = 0.0
-        for face_idx in attached_faces:
-            unique = list(dict.fromkeys(faces[face_idx]))
-            if len(unique) < 3:
-                continue
-            verts = points[np.asarray(unique, dtype=np.int64)]
-            base = verts[0]
-            for i in range(1, len(verts) - 1):
-                volume += abs(float(np.dot(base - center, np.cross(verts[i] - center, verts[i + 1] - center)))) / 6.0
-        volumes[cell_idx] = volume
-    return volumes
-
-
-def _face_warpage(points: np.ndarray, face: list[int]) -> float:
-    unique = list(dict.fromkeys(face))
-    if len(unique) <= 3:
-        return 0.0
-    verts = points[np.asarray(unique, dtype=np.int64)]
-    normal = _face_normal(points, unique)
-    if float(np.linalg.norm(normal)) <= 0.0:
-        return math.inf
-    center = verts.mean(axis=0)
-    diameter = float(np.linalg.norm(verts.max(axis=0) - verts.min(axis=0)))
-    if diameter <= 1e-30:
-        return math.inf
-    return float(np.max(np.abs((verts - center) @ normal)) / diameter)
-
-
-def _project_face_2d(points: np.ndarray, face: list[int]) -> np.ndarray | None:
-    unique = list(dict.fromkeys(face))
-    if len(unique) < 3:
-        return None
-    normal = _face_normal(points, unique)
-    if float(np.linalg.norm(normal)) <= 0.0:
-        return None
-    drop_axis = int(np.argmax(np.abs(normal)))
-    verts = points[np.asarray(unique, dtype=np.int64)]
-    return np.delete(verts, drop_axis, axis=1)
-
-
-def _polygon_signed_area_2d(poly: np.ndarray) -> float:
-    x = poly[:, 0]
-    y = poly[:, 1]
-    return float(0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
-
-
-def _face_concavity_deg(points: np.ndarray, face: list[int]) -> float:
-    poly = _project_face_2d(points, face)
-    if poly is None or len(poly) < 4:
-        return 0.0
-    area = _polygon_signed_area_2d(poly)
-    if abs(area) <= 1e-30:
-        return 0.0
-    orient = 1.0 if area > 0.0 else -1.0
-    max_excess = 0.0
-    for i in range(len(poly)):
-        prev_pt = poly[i - 1]
-        cur = poly[i]
-        next_pt = poly[(i + 1) % len(poly)]
-        edge_a = cur - prev_pt
-        edge_b = next_pt - cur
-        cross_z = float(edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0])
-        if orient * cross_z >= -1e-14:
-            continue
-        v1 = prev_pt - cur
-        v2 = next_pt - cur
-        denom = float(np.linalg.norm(v1) * np.linalg.norm(v2))
-        if denom <= 1e-30:
-            continue
-        dot = float(np.clip(np.dot(v1, v2) / denom, -1.0, 1.0))
-        smaller = math.acos(dot)
-        interior = (2.0 * math.pi) - smaller
-        max_excess = max(max_excess, math.degrees(max(0.0, interior - math.pi)))
-    return float(max_excess)
-
-
-def _compute_poly_cfd_metrics(
-    points: np.ndarray,
-    faces: list[list[int]],
-    owner: np.ndarray,
-    neighbour: np.ndarray,
-    face_centers: np.ndarray,
-    cell_centers: np.ndarray,
-    cell_volumes: np.ndarray,
-) -> dict[str, float]:
-    max_warpage = 0.0
-    max_concavity = 0.0
-    for face in faces:
-        max_warpage = max(max_warpage, _face_warpage(points, face))
-        max_concavity = max(max_concavity, _face_concavity_deg(points, face))
-
-    min_face_weight = 0.5
-    min_vol_ratio = 1.0
-    max_expansion_ratio = 1.0
-    for face_idx, nei in enumerate(neighbour):
-        own = int(owner[face_idx]) if face_idx < owner.size else -1
-        nb = int(nei)
-        if own < 0 or nb < 0 or own >= len(cell_centers) or nb >= len(cell_centers):
-            min_face_weight = min(min_face_weight, 0.0)
-            min_vol_ratio = min(min_vol_ratio, 0.0)
-            max_expansion_ratio = max(max_expansion_ratio, math.inf)
-            continue
-        delta = cell_centers[nb] - cell_centers[own]
-        denom = float(np.dot(delta, delta))
-        if denom <= 1e-30:
-            min_face_weight = min(min_face_weight, 0.0)
-        else:
-            t = float(np.dot(face_centers[face_idx] - cell_centers[own], delta) / denom)
-            min_face_weight = min(min_face_weight, max(0.0, min(t, 1.0 - t)))
-
-        v0 = float(cell_volumes[own]) if own < len(cell_volumes) else 0.0
-        v1 = float(cell_volumes[nb]) if nb < len(cell_volumes) else 0.0
-        if v0 <= 1e-30 or v1 <= 1e-30:
-            min_vol_ratio = min(min_vol_ratio, 0.0)
-            max_expansion_ratio = max(max_expansion_ratio, math.inf)
-        else:
-            ratio = min(v0, v1) / max(v0, v1)
-            min_vol_ratio = min(min_vol_ratio, ratio)
-            max_expansion_ratio = max(max_expansion_ratio, (1.0 / ratio) ** (1.0 / 3.0))
-
-    return {
-        "max_concavity": float(max_concavity),
-        "min_face_weight": float(min_face_weight),
-        "min_vol_ratio": float(min_vol_ratio),
-        "max_expansion_ratio": float(max_expansion_ratio),
-        "max_face_warpage": float(max_warpage),
-    }
-
-
 def _count_flipped_boundary_faces(
     points: np.ndarray,
     faces: list[list[int]],
     owner: np.ndarray,
     neighbour: np.ndarray,
-    face_centers: np.ndarray | None = None,
-    cell_centers: np.ndarray | None = None,
 ) -> int:
     n_internal = int(neighbour.size)
-    if face_centers is None:
-        face_centers = _face_centers(points, faces)
-    if cell_centers is None:
-        cell_centers, _ = _cell_centers_and_faces(face_centers, owner, neighbour)
-    n_cells = int(len(cell_centers))
+    n_cells = int(max(owner.max(initial=0), neighbour.max(initial=0) if neighbour.size else 0) + 1)
+    centers = _face_centers(points, faces)
+    cell_centers = np.zeros((n_cells, 3), dtype=np.float64)
+    counts = np.zeros(n_cells, dtype=np.int64)
+    for face_idx, cell in enumerate(owner):
+        if 0 <= int(cell) < n_cells:
+            cell_centers[int(cell)] += centers[face_idx]
+            counts[int(cell)] += 1
+    for face_idx, cell in enumerate(neighbour):
+        if 0 <= int(cell) < n_cells:
+            cell_centers[int(cell)] += centers[face_idx]
+            counts[int(cell)] += 1
+    nz = counts > 0
+    cell_centers[nz] /= counts[nz, None]
 
     flipped = 0
     for face_idx in range(n_internal, len(faces)):
@@ -443,7 +266,7 @@ def _count_flipped_boundary_faces(
         normal = _face_normal(points, faces[face_idx])
         if float(np.linalg.norm(normal)) <= 0.0:
             continue
-        outward = face_centers[face_idx] - cell_centers[cell]
+        outward = centers[face_idx] - cell_centers[cell]
         if float(np.dot(normal, outward)) < -1e-12:
             flipped += 1
     return flipped
@@ -627,13 +450,11 @@ def _classify(
     row["max_concavity"] = _first_float(
         cm.get("max_concavity"),
         add.get("max_concavity"),
-        topology.get("max_concavity"),
         default=math.inf,
     )
     row["min_face_weight"] = _first_float(
         cm.get("min_face_weight"),
         add.get("min_face_weight"),
-        topology.get("min_face_weight"),
         default=math.inf,
     )
     max_adj_vol_ratio = _first_float(
@@ -645,7 +466,6 @@ def _classify(
     row["min_vol_ratio"] = _first_float(
         cm.get("min_vol_ratio"),
         add.get("min_vol_ratio"),
-        topology.get("min_vol_ratio"),
         default=(1.0 / max_adj_vol_ratio if max_adj_vol_ratio not in (0.0, math.inf) else math.inf),
     )
     row["max_expansion_ratio"] = _first_float(
@@ -653,14 +473,12 @@ def _classify(
         add.get("max_expansion_ratio"),
         bl_stats.get("max_expansion_ratio"),
         config.get("growth_ratio"),
-        topology.get("max_expansion_ratio"),
         default=math.inf,
     )
     row["max_face_warpage"] = _first_float(
         cm.get("max_face_warpage"),
         add.get("max_face_warpage"),
         add.get("max_face_twist"),
-        topology.get("max_face_warpage"),
         default=math.inf,
     )
     row["hausdorff_relative"] = _as_float(fidelity.get("hausdorff_relative"))
@@ -668,39 +486,16 @@ def _classify(
     row["surface_area_deviation_percent"] = _as_float(
         fidelity.get("surface_area_deviation_percent")
     )
-    row["fidelity_rms"] = _first_float(
-        fidelity.get("distance_rms"),
-        fidelity.get("d_rms"),
-        row["hausdorff_distance"],
-        default=math.inf,
-    )
-    row["fidelity_p95"] = _first_float(
-        fidelity.get("distance_p95"),
-        fidelity.get("d_95"),
-        row["hausdorff_distance"],
-        default=math.inf,
-    )
-    row["fidelity_p99"] = _first_float(
-        fidelity.get("distance_p99"),
-        fidelity.get("d_99"),
-        row["hausdorff_distance"],
-        default=math.inf,
-    )
+    row["fidelity_rms"] = _first_float(fidelity.get("distance_rms"), fidelity.get("d_rms"), default=math.inf)
+    row["fidelity_p95"] = _first_float(fidelity.get("distance_p95"), fidelity.get("d_95"), default=math.inf)
+    row["fidelity_p99"] = _first_float(fidelity.get("distance_p99"), fidelity.get("d_99"), default=math.inf)
     row["normal_deviation_max_deg"] = _first_float(
         fidelity.get("normal_deviation_max_deg"),
         fidelity.get("max_normal_deviation_deg"),
-        0.0 if topology.get("available") and _as_int(topology.get("n_flipped_faces")) == 0 else 180.0,
         default=math.inf,
     )
     row["feature_preservation_score"] = _first_float(
         fidelity.get("feature_preservation_score"),
-        1.0
-        if (
-            row["hausdorff_relative"] <= MAX_HAUSDORFF_REL
-            and topology.get("available")
-            and _as_int(topology.get("n_open_edges")) == 0
-        )
-        else 0.0,
         default=math.inf,
     )
     row["n_self_intersect_pre"] = fidelity.get("n_self_intersect_pre")
