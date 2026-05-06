@@ -23,6 +23,8 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 TARGET_CELLS = int(os.environ.get("AUTO_TESSELL_VERIFY_MAX_CELLS", "10000"))
 BL_LAYERS = int(os.environ.get("AUTO_TESSELL_VERIFY_BL_LAYERS", "3"))
 QUALITY = os.environ.get("AUTO_TESSELL_VERIFY_QUALITY", "fine")
