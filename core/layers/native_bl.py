@@ -1534,6 +1534,136 @@ def _cell_centres_from_faces(
     return centres
 
 
+def _merge_skewed_bl_internal_quads(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    boundary_entries: list[dict[str, Any]],
+    *,
+    base_n_cells: int,
+    skew_threshold: float = 4.0,
+) -> tuple[list[list[int]], list[int], list[int], list[dict[str, Any]], int]:
+    """Merge BL prism cells across feature-edge seams with invalid skew.
+
+    At sharp cube-like feature edges, two layer prisms can share a quad whose
+    face centre is not between the two cell centres. Keeping that seam as an
+    internal face creates OpenFOAM-style skewness O(10-40). cfMesh avoids this
+    by treating feature-edge layer junctions as polyhedral corner cells. This
+    pass applies the same idea narrowly: only BL-BL quad faces whose skewness
+    already exceeds the internal skewness gate are removed, and their adjacent
+    cells are unioned.
+    """
+    n_internal = len(neighbour)
+    if n_internal <= 0 or not faces:
+        return faces, owner, neighbour, boundary_entries, 0
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_cells_cur = int(owner_arr.max()) + 1 if owner_arr.size else 0
+    if nbr_arr.size:
+        n_cells_cur = max(n_cells_cur, int(nbr_arr.max()) + 1)
+    if n_cells_cur <= base_n_cells:
+        return faces, owner, neighbour, boundary_entries, 0
+
+    centres = _cell_centres_from_faces(
+        points, faces, owner_arr, nbr_arr, n_cells_cur,
+    )
+    face_centres = np.zeros((len(faces), 3), dtype=np.float64)
+    for fi, face in enumerate(faces):
+        face_centres[fi] = points[face].mean(axis=0)
+
+    parent = list(range(n_cells_cur))
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a: int, b: int) -> None:
+        ra = _find(a)
+        rb = _find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    n_marked = 0
+    for fi in range(n_internal):
+        own = int(owner_arr[fi])
+        nbr = int(nbr_arr[fi])
+        if own < base_n_cells or nbr < base_n_cells:
+            continue
+        if len(faces[fi]) != 4:
+            continue
+        d = centres[nbr] - centres[own]
+        d_mag = float(np.linalg.norm(d))
+        if d_mag <= 1e-30:
+            continue
+        diff = face_centres[fi] - centres[own]
+        t = float(np.dot(diff, d) / (d_mag * d_mag))
+        proj = centres[own] + t * d
+        skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
+        if skew > skew_threshold:
+            _union(own, nbr)
+            n_marked += 1
+
+    if n_marked == 0:
+        return faces, owner, neighbour, boundary_entries, 0
+
+    int_faces: list[list[int]] = []
+    int_owner_roots: list[int] = []
+    int_nbr_roots: list[int] = []
+    removed = 0
+    for fi in range(n_internal):
+        own_root = _find(int(owner_arr[fi]))
+        nbr_root = _find(int(nbr_arr[fi]))
+        if own_root == nbr_root:
+            removed += 1
+            continue
+        int_faces.append(faces[fi])
+        int_owner_roots.append(own_root)
+        int_nbr_roots.append(nbr_root)
+
+    bnd_faces: list[list[int]] = []
+    bnd_owner_roots: list[int] = []
+    cursor = n_internal
+    for entry in boundary_entries:
+        nf = int(entry.get("nFaces", 0))
+        for fi in range(cursor, min(cursor + nf, len(faces))):
+            bnd_faces.append(faces[fi])
+            bnd_owner_roots.append(_find(int(owner_arr[fi])))
+        cursor += nf
+
+    used_cells = sorted(
+        set(int_owner_roots) | set(int_nbr_roots) | set(bnd_owner_roots)
+    )
+    remap = {old: new for new, old in enumerate(used_cells)}
+    out_faces = int_faces + bnd_faces
+    out_owner = [remap[c] for c in int_owner_roots]
+    out_nbr = [remap[c] for c in int_nbr_roots]
+    out_owner.extend(remap[c] for c in bnd_owner_roots)
+
+    out_boundary: list[dict[str, Any]] = []
+    start = len(int_faces)
+    for entry in boundary_entries:
+        nf = int(entry.get("nFaces", 0))
+        out_entry = dict(entry)
+        out_entry["startFace"] = start
+        out_entry["nFaces"] = nf
+        out_boundary.append(out_entry)
+        start += nf
+
+    log.info(
+        "native_bl_feature_edge_poly_merge",
+        n_marked=int(n_marked),
+        n_removed_internal_faces=int(removed),
+        n_cells_before=int(n_cells_cur),
+        n_cells_after=int(len(used_cells)),
+        skew_threshold=float(skew_threshold),
+    )
+    return out_faces, out_owner, out_nbr, out_boundary, removed
+
+
 def _build_edge_to_wall_faces(
     wall_face_indices: list[int], faces: list[list[int]],
 ) -> dict[tuple[int, int], list[int]]:
@@ -2270,6 +2400,27 @@ def generate_native_bl(
                 if cfg.first_thickness > 1e-30 else 1.0
             )
             combined_thick *= global_scale
+            if min_local is not None and min_local > 1e-30:
+                growth_sum = float(
+                    sum(cfg.growth_ratio ** i for i in range(cfg.num_layers))
+                )
+                if growth_sum > 1e-30:
+                    local_first_cap = max(
+                        min_local * 0.8,
+                        effective_first_thickness,
+                    ) / growth_sum
+                    before_cap_mean = float(combined_thick.mean())
+                    combined_thick = np.minimum(combined_thick, local_first_cap)
+                    if float(combined_thick.mean()) < before_cap_mean:
+                        log.info(
+                            "native_bl_bl3_local_safety_capped",
+                            component="native_bl",
+                            phase="BL3",
+                            min_local=round(float(min_local), 6),
+                            first_cap=round(float(local_first_cap), 6),
+                            mean_before=round(before_cap_mean, 6),
+                            mean_after=round(float(combined_thick.mean()), 6),
+                        )
             use_per_vertex_cum = True
             for vi_bl1, v in enumerate(wall_vert_indices):
                 ft = float(combined_thick[vi_bl1])
@@ -2606,7 +2757,7 @@ def generate_native_bl(
             owner-neighbour pair but emitting two triangular faces preserves the
             FVM topology and removes the non-planar face.
             """
-            return _face_parts(quad_, force_quad_split=True)
+            return _face_parts(quad_, force_quad_split=False)
 
         for wi_p, fi_p in enumerate(wall_face_indices):
             patch_idx_p = wall_orig_patch[fi_p]
@@ -2720,6 +2871,7 @@ def generate_native_bl(
     layer_point_ids: list[dict[int, int]] = []
     n_new_points = 0
     bl_side_count = 0
+    n_feature_edge_merged = 0
 
     for iteration in range(n_iterations):
         fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids = _run_prism_pass(
@@ -3020,6 +3172,39 @@ def generate_native_bl(
         except Exception as exc:
             log.debug("native_bl_force_snap_skipped", reason=str(exc)[:120])
 
+    if (
+        os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_POLY_MERGE", "1") != "0"
+        and final_points is not None
+        and final_faces
+        and final_nbr
+    ):
+        try:
+            (
+                final_faces,
+                final_owner,
+                final_nbr,
+                final_boundary_entries,
+                n_feature_edge_merged,
+            ) = _merge_skewed_bl_internal_quads(
+                final_points,
+                final_faces,
+                final_owner,
+                final_nbr,
+                final_boundary_entries,
+                base_n_cells=n_cells,
+                skew_threshold=float(
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_FEATURE_EDGE_MERGE_SKEW",
+                        "4.0",
+                    ),
+                ),
+            )
+        except Exception as exc:
+            log.debug(
+                "native_bl_feature_edge_poly_merge_skipped",
+                reason=str(exc)[:120],
+            )
+
     # 쓰기
     poly_dir.mkdir(parents=True, exist_ok=True)
     _write_points(poly_dir / "points", final_points)
@@ -3200,6 +3385,7 @@ def generate_native_bl(
             "n_wall_faces": int(n_wall_faces),
             "n_wall_verts": int(len(wall_vert_indices)),
             "n_prism_cells": int(n_prism_total),
+            "n_feature_edge_merged": int(n_feature_edge_merged),
             "n_new_points": int(n_new_points),
             "total_thickness": float(total),
             "bbox_diag": float(bbox_diag),
@@ -3278,6 +3464,7 @@ def generate_native_bl(
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
             f"total_thickness={total:.4g}, bbox={bbox_diag:.3g}, "
             f"bl_side_faces={bl_side_count}, "
+            f"feature_edge_merged={n_feature_edge_merged}, "
             f"degenerate={n_degen}/{n_prism_total}, max_ar={max_ar:.1f}."
         ),
     )

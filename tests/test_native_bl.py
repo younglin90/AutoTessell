@@ -21,7 +21,11 @@ import pytest
 
 from core.evaluator.native_checker import NativeMeshChecker
 from core.generator.polymesh_writer import write_generic_polymesh
-from core.layers.native_bl import BLConfig, generate_native_bl
+from core.layers.native_bl import (
+    BLConfig,
+    _merge_skewed_bl_internal_quads,
+    generate_native_bl,
+)
 from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
 
 
@@ -303,3 +307,73 @@ def test_native_bl_splits_warped_quad_faces_for_fvm_quality(tmp_path: Path) -> N
     assert chk.min_face_area > 0.0
     assert chk.max_concavity == 0.0
     assert chk.max_face_warpage <= 1e-12
+
+
+def test_native_bl_preserves_flat_side_quads_to_avoid_internal_skew(
+    tmp_path: Path,
+) -> None:
+    """Flat BL side quads must stay quads; forced split moves face centroids."""
+    _write_single_hex_quad_case(tmp_path)
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=3,
+            first_thickness=0.05,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    faces = parse_foam_faces(poly_dir / "faces")
+    neighbour = parse_foam_labels(poly_dir / "neighbour")
+    internal_faces = faces[:len(neighbour)]
+    assert any(len(face) == 4 for face in internal_faces)
+
+    chk = NativeMeshChecker().run(tmp_path)
+    assert chk.max_internal_skewness < 4.0
+    assert chk.min_face_weight > 0.0
+
+
+def test_native_bl_merges_skewed_feature_edge_seam_quads() -> None:
+    """Bad BL-BL feature-edge seams are removed as polyhedral corner cells."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.1],
+            [0.0, 0.0, 0.1],
+            [1.0, 0.633, 0.0],
+            [1.0, 0.633, 0.1],
+            [1.01, 0.633, 0.0],
+            [1.01, 0.633, 0.1],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2, 3],
+        [4, 5, 1, 0],
+        [6, 7, 2, 3],
+    ]
+    owner = [1, 1, 2]
+    neighbour = [2]
+    boundary = [{"name": "wall", "type": "wall", "nFaces": 2, "startFace": 1}]
+
+    out_faces, out_owner, out_nbr, out_boundary, n_removed = (
+        _merge_skewed_bl_internal_quads(
+            points,
+            faces,
+            owner,
+            neighbour,
+            boundary,
+            base_n_cells=1,
+            skew_threshold=4.0,
+        )
+    )
+
+    assert n_removed == 1
+    assert out_faces == faces[1:]
+    assert out_nbr == []
+    assert out_owner == [0, 0]
+    assert out_boundary[0]["startFace"] == 0
