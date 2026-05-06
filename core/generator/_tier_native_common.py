@@ -291,6 +291,9 @@ def run_native_tier(
         # beta2295: native_tet TetWild-lite knobs — _runner **kwargs forward
         # 도 함께 추가했고 (tier_native_tet.py beta2295) 이젠 GUI/CLI 도달.
         "target_cells",            # fTetWild target_num_cells 동등 (beta330)
+        "max_cells",               # CLI/verifier global cell budget
+        "bl_layers",               # post-layer budget reservation
+        "post_layers_num_layers",  # post-layer budget reservation
         "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)
         "enable_chunked_delaunay", # 자동 perf 스케일링 (beta1360)
         "enable_cdt_recovery",     # CDT envelope recovery (beta1370)

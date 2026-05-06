@@ -417,6 +417,10 @@ def generate_native_hex(
     case_dir: Path,
     *,
     target_edge_length: float | None = None,
+    target_cells: int | None = None,
+    max_cells: int | None = None,
+    bl_layers: int | None = None,
+    post_layers_num_layers: int | None = None,
     seed_density: int = 16,
     snap_boundary: bool = False,
     max_cells_per_axis: int = 50,
@@ -437,6 +441,7 @@ def generate_native_hex(
     # 호출은 환경변수 AUTO_TESSELL_HEX_BUFFER_LAYER 를 검사하므로 여기서
     # 환경변수 임시 설정하는 단발 wiring.
     hex_buffer_cells: int = 1,
+    **_unused: object,
 ) -> NativeHexResult:
     # C-PERF-3 / beta2388 — wall-clock soft budget 진단.
     # validator 발견: hard mesh #1 (V=3116) 의 fine hex 가 627s.
@@ -553,9 +558,43 @@ def generate_native_hex(
                 seed_density_eff=int(seed_density),
             )
 
+    _cell_budget = int(max_cells or target_cells or 0)
+    _budget_layers = int(post_layers_num_layers or bl_layers or 0)
+    _volume_budget = _cell_budget
+    if _cell_budget > 0 and _budget_layers > 0:
+        _volume_budget = max(
+            1,
+            int(float(_cell_budget) / (1.0 + 0.65 * float(_budget_layers))),
+        )
     h_pre = float(target_edge_length) if (
         target_edge_length is not None and target_edge_length > 0
     ) else diag_pre / max(1, int(seed_density))
+    if _cell_budget > 0 and h_pre > 0.0:
+        ext_pre = np.maximum(bmax_pre - bmin_pre, 1e-12)
+        refine_factor = 1 << max(0, int(n_levels) if adaptive else 0)
+        h_est = h_pre / float(refine_factor)
+        est_cells_pre = int(np.prod(np.maximum(np.ceil(ext_pre / h_est), 1)))
+        if est_cells_pre > _volume_budget:
+            h_budget = float(
+                (
+                    float(np.prod(ext_pre)) * float(refine_factor ** 3)
+                    / float(_volume_budget)
+                ) ** (1.0 / 3.0)
+            )
+            if h_budget > h_pre:
+                log.info(
+                    "native_hex_budget_edge_enlarged",
+                    target_cells=int(target_cells or 0),
+                    max_cells=int(max_cells or 0),
+                    est_cells=est_cells_pre,
+                    volume_budget=int(_volume_budget),
+                    budget_layers=int(_budget_layers),
+                    refinement_factor=int(refine_factor),
+                    edge_old=round(float(h_pre), 8),
+                    edge_new=round(float(h_budget), 8),
+                )
+                h_pre = h_budget
+                target_edge_length = h_budget
 
     # beta91: adaptive octree refinement (2-level, surface near → fine, interior → coarse)
     if adaptive:
