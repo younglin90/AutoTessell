@@ -1,4 +1,5 @@
 """native_hex MVP 엔진 회귀 테스트."""
+
 from __future__ import annotations
 
 import shutil
@@ -11,6 +12,7 @@ import pytest
 from core.analyzer.readers import read_stl
 from core.evaluator.native_checker import NativeMeshChecker
 from core.generator.native_hex import generate_native_hex
+from core.generator.native_hex.mesher import _estimate_bl_final_cells_from_cell_faces
 
 _REPO = Path(__file__).resolve().parents[1]
 SPHERE_STL = _REPO / "tests" / "benchmarks" / "sphere.stl"
@@ -31,7 +33,10 @@ def test_native_hex_sphere_produces_only_hexahedra(tmp_case_dir: Path) -> None:
         pytest.skip()
     m = read_stl(SPHERE_STL)
     res = generate_native_hex(
-        m.vertices, m.faces, tmp_case_dir, seed_density=10,
+        m.vertices,
+        m.faces,
+        tmp_case_dir,
+        seed_density=10,
     )
     assert res.success, res.message
     assert res.n_cells > 0
@@ -90,6 +95,35 @@ def test_native_hex_adaptive_snap_uses_fine_cell_cap(tmp_case_dir: Path) -> None
     assert chk.max_aspect_ratio < 2.0
 
 
+def test_native_hex_bl_final_cell_estimator_counts_boundary_faces() -> None:
+    """BL final-cell estimator must count only faces with one owner."""
+    # Two adjacent unit hexes share one internal quad. Boundary faces:
+    # 6 + 6 - 2 shared references = 10 unique wall faces.
+    c0 = [
+        [0, 3, 2, 1],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [3, 7, 6, 2],
+        [0, 4, 7, 3],
+        [1, 2, 6, 5],
+    ]
+    c1 = [
+        [1, 2, 10, 9],
+        [5, 13, 14, 6],
+        [1, 9, 13, 5],
+        [2, 6, 14, 10],
+        [1, 5, 6, 2],
+        [9, 10, 14, 13],
+    ]
+    base, boundary, final = _estimate_bl_final_cells_from_cell_faces(
+        [c0, c1],
+        n_layers=3,
+    )
+    assert base == 2
+    assert boundary == 10
+    assert final == 32
+
+
 def test_native_hex_polymesh_files_exist(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
         pytest.skip()
@@ -106,10 +140,16 @@ def test_native_hex_denser_grid_more_cells(tmp_case_dir: Path) -> None:
         pytest.skip()
     m = read_stl(SPHERE_STL)
     r1 = generate_native_hex(
-        m.vertices, m.faces, tmp_case_dir / "coarse", seed_density=6,
+        m.vertices,
+        m.faces,
+        tmp_case_dir / "coarse",
+        seed_density=6,
     )
     r2 = generate_native_hex(
-        m.vertices, m.faces, tmp_case_dir / "fine", seed_density=14,
+        m.vertices,
+        m.faces,
+        tmp_case_dir / "fine",
+        seed_density=14,
     )
     assert r1.success and r2.success
     assert r2.n_cells > r1.n_cells
@@ -132,7 +172,9 @@ def test_native_hex_max_cells_per_axis_honored(tmp_case_dir: Path) -> None:
     m = read_stl(SPHERE_STL)
     V, F = m.vertices, m.faces
     res = generate_native_hex(
-        V, F, tmp_case_dir,
+        V,
+        F,
+        tmp_case_dir,
         target_edge_length=0.001,  # 매우 작은 값 → cap 에 반드시 걸림
         max_cells_per_axis=5,
     )
@@ -148,12 +190,18 @@ def test_native_hex_larger_cap_allows_more_cells(tmp_case_dir: Path) -> None:
     m = read_stl(SPHERE_STL)
     V, F = m.vertices, m.faces
     r_small = generate_native_hex(
-        V, F, tmp_case_dir / "a",
-        target_edge_length=0.01, max_cells_per_axis=8,
+        V,
+        F,
+        tmp_case_dir / "a",
+        target_edge_length=0.01,
+        max_cells_per_axis=8,
     )
     r_large = generate_native_hex(
-        V, F, tmp_case_dir / "b",
-        target_edge_length=0.01, max_cells_per_axis=30,
+        V,
+        F,
+        tmp_case_dir / "b",
+        target_edge_length=0.01,
+        max_cells_per_axis=30,
     )
     assert r_small.success and r_large.success
     assert r_large.n_cells > r_small.n_cells
@@ -182,7 +230,11 @@ def test_native_hex_small_bbox_auto_escalate(tmp_case_dir: Path) -> None:
     # 사용자 지정 target_edge_length 는 auto-escalate가 금지돼 동일 실험에서 실패해야 함.
     diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0)))
     res_manual = generate_native_hex(
-        V, F, tmp_case_dir / "manual", seed_density=1, target_edge_length=diag,
+        V,
+        F,
+        tmp_case_dir / "manual",
+        seed_density=1,
+        target_edge_length=diag,
     )
     assert not res_manual.success
     assert "inside hex 0" in res_manual.message
@@ -208,7 +260,11 @@ def test_native_hex_escalate_recovers_when_cap_binding(tmp_case_dir: Path) -> No
     )
     F = np.array([[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]], dtype=np.int64)
     res = generate_native_hex(
-        V, F, tmp_case_dir, seed_density=2, max_cells_per_axis=4,
+        V,
+        F,
+        tmp_case_dir,
+        seed_density=2,
+        max_cells_per_axis=4,
     )
     # 회복 — auto-escalate 가 cap 도 raise 해서 적어도 1 cell 도달.
     assert res.success, res.message
@@ -224,6 +280,7 @@ def test_octree_buffer_layer_extends_level_transition() -> None:
     from core.generator.native_hex.octree import (
         _add_buffer_layer_between_levels,
     )
+
     # 5×5×5 concentric: center L=3, 1-ring L=2, 외곽 L=1 (이미 2:1 balance).
     levels: dict[tuple[int, int, int], int] = {}
     for i in range(5):
@@ -250,6 +307,7 @@ def test_octree_buffer_layer_zero_passes_is_noop() -> None:
     from core.generator.native_hex.octree import (
         _add_buffer_layer_between_levels,
     )
+
     levels = {(0, 0, 0): 3, (1, 0, 0): 2, (2, 0, 0): 1}
     out = _add_buffer_layer_between_levels(levels, n_buffer=0)
     assert out == levels

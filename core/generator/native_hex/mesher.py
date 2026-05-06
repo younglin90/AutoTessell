@@ -1,4 +1,5 @@
 """native_hex MVP 메쉬 생성기 — uniform hex grid + inside filter."""
+
 from __future__ import annotations
 
 import os
@@ -17,11 +18,13 @@ log = get_logger(__name__)
 # Mirrors PERF3/4 (R113/R114) tet adjacency cache.  Default ON.
 # Set AUTO_TESSELL_HEX_CACHE_OFF=1 to disable.
 
+
 class _HexAdjCache(NamedTuple):
     """Cached adjacency maps for a hex mesh."""
-    face_map: "dict[tuple[int, int, int, int], list[int]]"   # sorted-face → [cell_idx, ...]
-    edge_nbrs: "list[set[int]]"                               # vertex → neighbour vertex set
-    boundary_verts: "set[int]"                                # vertices on boundary faces
+
+    face_map: "dict[tuple[int, int, int, int], list[int]]"  # sorted-face → [cell_idx, ...]
+    edge_nbrs: "list[set[int]]"  # vertex → neighbour vertex set
+    boundary_verts: "set[int]"  # vertices on boundary faces
 
 
 _hex_adj_cache: tuple[bytes, _HexAdjCache] | None = None  # (key, cache)
@@ -34,6 +37,7 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
     return cached result without rebuilding.
     """
     import os as _os_cache
+
     global _hex_adj_cache
 
     if not _os_cache.environ.get("AUTO_TESSELL_HEX_CACHE_OFF"):
@@ -52,12 +56,12 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
         _HEX_FACES_IDX = np.array(_HEX_FACES, dtype=np.int64)  # (6, 4)
         # gather all face vertices: (n_cells, 6, 4)
         faces_arr = np.sort(
-            hex_cells[:, _HEX_FACES_IDX].reshape(-1, 4), axis=1,
+            hex_cells[:, _HEX_FACES_IDX].reshape(-1, 4),
+            axis=1,
         )
         ci_face = np.repeat(np.arange(n_cells, dtype=np.int64), 6)
         order_hf = np.lexsort(
-            (faces_arr[:, 3], faces_arr[:, 2],
-             faces_arr[:, 1], faces_arr[:, 0]),
+            (faces_arr[:, 3], faces_arr[:, 2], faces_arr[:, 1], faces_arr[:, 0]),
         )
         f_s = faces_arr[order_hf]
         ci_s = ci_face[order_hf]
@@ -67,8 +71,7 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
         sizes_hf = ends_hf - starts_hf
         face_map = {}
         for s, e in zip(starts_hf.tolist(), ends_hf.tolist()):
-            k = (int(f_s[s, 0]), int(f_s[s, 1]),
-                 int(f_s[s, 2]), int(f_s[s, 3]))
+            k = (int(f_s[s, 0]), int(f_s[s, 1]), int(f_s[s, 2]), int(f_s[s, 3]))
             face_map[k] = ci_s[s:e].tolist()
 
         # boundary vertices: faces with exactly 1 owner.
@@ -80,28 +83,39 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
     # edge neighbour map for Laplacian smooth
     # C-PERF-52 / beta2503 — vectorize via flat src/dst (24 directed edges
     # per hex = 12 pairs × 2 dirs) + sort + bincount-offset + np.unique.
-    _EDGE_PAIRS = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
-                   (0,4),(1,5),(2,6),(3,7)]
+    _EDGE_PAIRS = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ]
     n_pts = int(hex_cells.max()) + 1 if n_cells > 0 else 0
     if n_cells == 0:
         edge_nbrs: list[set[int]] = [set() for _ in range(n_pts)]
     else:
-        ep_arr = np.array(_EDGE_PAIRS, dtype=np.int64)         # (12, 2)
+        ep_arr = np.array(_EDGE_PAIRS, dtype=np.int64)  # (12, 2)
         # both directions: (24, 2) per hex
-        ep_dir = np.concatenate([ep_arr, ep_arr[:, [1, 0]]])   # (24, 2)
+        ep_dir = np.concatenate([ep_arr, ep_arr[:, [1, 0]]])  # (24, 2)
         src_en = hex_cells[:, ep_dir[:, 0]].reshape(-1).astype(np.int64)
         dst_en = hex_cells[:, ep_dir[:, 1]].reshape(-1).astype(np.int64)
         order_en = np.argsort(src_en, kind="stable")
-        src_s = src_en[order_en]; dst_s = dst_en[order_en]
+        src_s = src_en[order_en]
+        dst_s = dst_en[order_en]
         counts_en = np.bincount(src_s, minlength=n_pts)
         offs_en = np.concatenate(([0], np.cumsum(counts_en).astype(np.int64)))
         edge_nbrs = [
-            set(np.unique(dst_s[offs_en[i]:offs_en[i + 1]]).tolist())
-            for i in range(n_pts)
+            set(np.unique(dst_s[offs_en[i] : offs_en[i + 1]]).tolist()) for i in range(n_pts)
         ]
 
-    result = _HexAdjCache(face_map=face_map, edge_nbrs=edge_nbrs,
-                          boundary_verts=boundary_verts)
+    result = _HexAdjCache(face_map=face_map, edge_nbrs=edge_nbrs, boundary_verts=boundary_verts)
 
     if not _os_cache.environ.get("AUTO_TESSELL_HEX_CACHE_OFF"):
         key = hex_cells.tobytes()
@@ -119,9 +133,9 @@ class NativeHexResult:
     n_faces: int = 0
     message: str = ""
     # beta88: 볼륨 커버리지 통계
-    fill_ratio: float = 0.0   # kept_cells / total_grid_cells (stair-step 품질 지표)
+    fill_ratio: float = 0.0  # kept_cells / total_grid_cells (stair-step 품질 지표)
     grid_shape: tuple[int, int, int] = (0, 0, 0)
-    n_grid_total: int = 0      # inside filter 이전 전체 grid cell 수
+    n_grid_total: int = 0  # inside filter 이전 전체 grid cell 수
     # X1 (beta1640) — checkMesh-style quality + grade.
     quality_grade: str = "?"
     max_non_orthogonality_deg: float = -1.0
@@ -153,12 +167,12 @@ class NativeHexResult:
 #   left    (0,4,7,3) normal -x
 #   right   (1,2,6,5) normal +x
 _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
-    (0, 3, 2, 1),   # bottom -z
-    (4, 5, 6, 7),   # top    +z
-    (0, 1, 5, 4),   # front  -y
-    (3, 7, 6, 2),   # back   +y
-    (0, 4, 7, 3),   # left   -x
-    (1, 2, 6, 5),   # right  +x
+    (0, 3, 2, 1),  # bottom -z
+    (4, 5, 6, 7),  # top    +z
+    (0, 1, 5, 4),  # front  -y
+    (3, 7, 6, 2),  # back   +y
+    (0, 4, 7, 3),  # left   -x
+    (1, 2, 6, 5),  # right  +x
 )
 
 
@@ -166,7 +180,9 @@ from core.utils.geometry import inside_winding_number as _inside_winding_number
 
 
 def _write_polymesh_hex(
-    vertices: np.ndarray, hexes: np.ndarray, case_dir: Path,
+    vertices: np.ndarray,
+    hexes: np.ndarray,
+    case_dir: Path,
 ) -> dict[str, int]:
     """hex (N, 8) array → OpenFOAM polyMesh (``write_generic_polymesh`` wrapper).
 
@@ -180,6 +196,32 @@ def _write_polymesh_hex(
         cell_faces.append(faces)
 
     return write_generic_polymesh(vertices, cell_faces, case_dir)
+
+
+def _estimate_bl_final_cells_from_cell_faces(
+    cell_faces: list[list[list[int]]],
+    *,
+    n_layers: int,
+) -> tuple[int, int, int]:
+    """Estimate final hex+BL cell count before writing polyMesh.
+
+    Native BL inserts one prism per wall face per layer. For the octree path
+    wall faces are the cell faces referenced by exactly one volume cell.
+    """
+    n_base = int(len(cell_faces))
+    layers = max(0, int(n_layers))
+    if n_base <= 0 or layers <= 0:
+        return n_base, 0, n_base
+
+    face_counts: dict[tuple[int, ...], int] = {}
+    for faces_of_cell in cell_faces:
+        for face in faces_of_cell:
+            if len(face) < 3:
+                continue
+            key = tuple(sorted(int(v) for v in face))
+            face_counts[key] = face_counts.get(key, 0) + 1
+    n_boundary = sum(1 for count in face_counts.values() if count == 1)
+    return n_base, int(n_boundary), int(n_base + n_boundary * layers)
 
 
 # VAL2 (beta2148) — global negative-volume hex cell validation (3-engine defensive parity).
@@ -200,6 +242,7 @@ def validate_hex_cell_volumes(
         (hex_cells_fixed, n_flipped, n_degenerate)
     """
     import os as _os  # noqa: PLC0415
+
     if _os.environ.get("AUTO_TESSELL_VAL2_OFF"):
         return hex_cells, 0, 0
 
@@ -212,14 +255,17 @@ def validate_hex_cell_volumes(
 
     # 6-tet decomposition of a hex (local vertex indices).
     # Standard decomposition into 5 or 6 tets; use 6-tet fan from vertex 0.
-    _HEX_TETS = np.array([
-        [0, 1, 3, 4],
-        [1, 2, 3, 6],
-        [3, 4, 6, 7],
-        [1, 4, 5, 6],
-        [1, 3, 4, 6],
-        [0, 3, 4, 7],  # unused but keeps symmetry; use first 5 only
-    ], dtype=np.int64)
+    _HEX_TETS = np.array(
+        [
+            [0, 1, 3, 4],
+            [1, 2, 3, 6],
+            [3, 4, 6, 7],
+            [1, 4, 5, 6],
+            [1, 3, 4, 6],
+            [0, 3, 4, 7],  # unused but keeps symmetry; use first 5 only
+        ],
+        dtype=np.int64,
+    )
 
     def _hex_signed_vol(cell: np.ndarray) -> float:
         """Signed volume of hex via 5-tet decomposition."""
@@ -240,9 +286,10 @@ def validate_hex_cell_volumes(
     n_degenerate = 0
     # C-PERF-54 / beta2505 — bulk pre-compute volumes, only loop over negative.
     if n > 0:
-        _5T = np.array([[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]],
-                       dtype=np.int64)
-        verts = pts[hex_cells[:, _5T]]                         # (N, 5, 4, 3)
+        _5T = np.array(
+            [[0, 1, 3, 4], [1, 2, 3, 6], [3, 4, 6, 7], [1, 4, 5, 6], [1, 3, 4, 6]], dtype=np.int64
+        )
+        verts = pts[hex_cells[:, _5T]]  # (N, 5, 4, 3)
         v0_b = verts[:, :, 0, :]
         v1_b = verts[:, :, 1, :] - v0_b
         v2_b = verts[:, :, 2, :] - v0_b
@@ -280,6 +327,7 @@ def validate_hex_cell_volumes(
 def _count_neg_vol_hex(hex_pts: np.ndarray, hex_cells: np.ndarray) -> int:
     """Count hex cells with negative signed volume (5-tet decomposition). Read-only."""
     import os as _os_v3
+
     if _os_v3.environ.get("AUTO_TESSELL_HEX_VAL3_OFF"):
         return 0
     if hex_cells is None or len(hex_cells) == 0:
@@ -288,16 +336,18 @@ def _count_neg_vol_hex(hex_pts: np.ndarray, hex_cells: np.ndarray) -> int:
     cells = np.asarray(hex_cells, dtype=np.int64)
     # Vectorized 5-tet signed-volume sum over all cells.
     # _5TETS local indices: (5, 4)
-    _5T = np.array([[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]], dtype=np.int64)
+    _5T = np.array(
+        [[0, 1, 3, 4], [1, 2, 3, 6], [3, 4, 6, 7], [1, 4, 5, 6], [1, 3, 4, 6]], dtype=np.int64
+    )
     # verts shape: (N, 5, 4, 3)
-    verts = pts[cells[:, _5T]]          # (N, 5, 4, 3)
-    v0 = verts[:, :, 0, :]             # (N, 5, 3)
-    v1 = verts[:, :, 1, :] - v0        # (N, 5, 3)
-    v2 = verts[:, :, 2, :] - v0        # (N, 5, 3)
-    v3 = verts[:, :, 3, :] - v0        # (N, 5, 3)
-    cross = np.cross(v2, v3)            # (N, 5, 3)
-    dot = (v1 * cross).sum(axis=2)     # (N, 5)
-    vol = dot.sum(axis=1)               # (N,)
+    verts = pts[cells[:, _5T]]  # (N, 5, 4, 3)
+    v0 = verts[:, :, 0, :]  # (N, 5, 3)
+    v1 = verts[:, :, 1, :] - v0  # (N, 5, 3)
+    v2 = verts[:, :, 2, :] - v0  # (N, 5, 3)
+    v3 = verts[:, :, 3, :] - v0  # (N, 5, 3)
+    cross = np.cross(v2, v3)  # (N, 5, 3)
+    dot = (v1 * cross).sum(axis=2)  # (N, 5)
+    vol = dot.sum(axis=1)  # (N,)
     return int((vol < 0.0).sum())
 
 
@@ -449,6 +499,7 @@ def generate_native_hex(
     # (실제 cancel 은 아직 없음 — 후속 카드에서 graceful early-exit 추가).
     # 현재는 측정만 — bench 결과 분석에 활용.
     import os as _os_hex_budget
+
     _hex_budget_log_threshold = float(
         _os_hex_budget.environ.get("AUTO_TESSELL_HEX_BUDGET_LOG_S", "120"),
     )
@@ -486,6 +537,7 @@ def generate_native_hex(
             from core.preprocessor.native_repair.self_intersect import (
                 detect_self_intersections as _det_si_hex,
             )
+
             _r_si = _det_si_hex(V, F)
             _pre_mesh_si_count = int(_r_si.n_intersections)
             if _r_si.has_self_intersection:
@@ -501,20 +553,26 @@ def generate_native_hex(
     # Botsch & Kobbelt 2004 isotropic remesh — gated by edge_length_ratio > 100
     # or n_faces > 200 000. Default ON; set AUTO_TESSELL_PRE3_HEX_OFF=1 to disable.
     import os as _os_hex
+
     if not _os_hex.environ.get("AUTO_TESSELL_PRE3_HEX_OFF") and F.shape[0] >= 100:
         try:
-            _pre3_edges = np.concatenate([
-                V[F[:, 0]] - V[F[:, 1]],
-                V[F[:, 1]] - V[F[:, 2]],
-                V[F[:, 2]] - V[F[:, 0]],
-            ], axis=0)
+            _pre3_edges = np.concatenate(
+                [
+                    V[F[:, 0]] - V[F[:, 1]],
+                    V[F[:, 1]] - V[F[:, 2]],
+                    V[F[:, 2]] - V[F[:, 0]],
+                ],
+                axis=0,
+            )
             _pre3_lens = np.linalg.norm(_pre3_edges, axis=1)
             _pre3_lens = _pre3_lens[_pre3_lens > 0]
             _pre3_ratio = float(_pre3_lens.max() / _pre3_lens.min()) if len(_pre3_lens) > 0 else 0.0
             _pre3_nf = int(F.shape[0])
             if _pre3_ratio > 100.0 or _pre3_nf > 200_000:
                 from core.preprocessor.native_remesh import isotropic_remesh
-                _pre3_bmin = V.min(axis=0); _pre3_bmax = V.max(axis=0)
+
+                _pre3_bmin = V.min(axis=0)
+                _pre3_bmax = V.max(axis=0)
                 _pre3_diag = float(np.linalg.norm(_pre3_bmax - _pre3_bmin))
                 _pre3_target = _pre3_diag / 100.0
                 V_pre3, F_pre3 = isotropic_remesh(V, F, target_edge_length=_pre3_target)
@@ -537,13 +595,14 @@ def generate_native_hex(
         except Exception as _pre3_exc:
             log.warning("pre3_hex_remesh_failed", reason=str(_pre3_exc))
 
-    bmin_pre = V.min(axis=0); bmax_pre = V.max(axis=0)
+    bmin_pre = V.min(axis=0)
+    bmax_pre = V.max(axis=0)
     diag_pre = float(np.linalg.norm(bmax_pre - bmin_pre))
 
     # BETA2820: small-bbox pre-flight seed_density bump (proactive, before grid build).
     # diag_pre < THRESH 이고 target_edge_length user-set 이 아니면 seed_density 를 pre-bump.
     _sbp_on = os.environ.get("AUTO_TESSELL_HEX_SMALL_BBOX_PREFLIGHT", "1") != "0"
-    _te_user_set_pre = (target_edge_length is not None and float(target_edge_length) > 0)
+    _te_user_set_pre = target_edge_length is not None and float(target_edge_length) > 0
     if _sbp_on and not _te_user_set_pre:
         _THRESH = float(os.environ.get("AUTO_TESSELL_HEX_SMALL_BBOX_THRESH", "1.0"))
         if 1e-9 < diag_pre < _THRESH:
@@ -565,19 +624,16 @@ def generate_native_hex(
         # cfMesh-style BL budgeting: BL cells scale with boundary area (O(n^2)),
         # not volume cells (O(n^3)). The old 3.5/layer divisor over-reserved for
         # BL and made simple BL3 cubes land below the 0.5*target lower gate.
-        _bl_budget_per_layer = float(
-            os.environ.get("AUTO_TESSELL_HEX_BL_BUDGET_PER_LAYER", "1.2")
-        )
+        _bl_budget_per_layer = float(os.environ.get("AUTO_TESSELL_HEX_BL_BUDGET_PER_LAYER", "1.2"))
         _volume_budget = max(
             1,
-            int(
-                float(_cell_budget)
-                / (1.0 + _bl_budget_per_layer * float(_budget_layers))
-            ),
+            int(float(_cell_budget) / (1.0 + _bl_budget_per_layer * float(_budget_layers))),
         )
-    h_pre = float(target_edge_length) if (
-        target_edge_length is not None and target_edge_length > 0
-    ) else diag_pre / max(1, int(seed_density))
+    h_pre = (
+        float(target_edge_length)
+        if (target_edge_length is not None and target_edge_length > 0)
+        else diag_pre / max(1, int(seed_density))
+    )
     if _cell_budget > 0 and h_pre > 0.0:
         ext_pre = np.maximum(bmax_pre - bmin_pre, 1e-12)
         refine_factor = 1 << max(0, int(n_levels) if adaptive else 0)
@@ -585,10 +641,8 @@ def generate_native_hex(
         est_cells_pre = int(np.prod(np.maximum(np.ceil(ext_pre / h_est), 1)))
         if est_cells_pre > _volume_budget:
             h_budget = float(
-                (
-                    float(np.prod(ext_pre)) * float(refine_factor ** 3)
-                    / float(_volume_budget)
-                ) ** (1.0 / 3.0)
+                (float(np.prod(ext_pre)) * float(refine_factor**3) / float(_volume_budget))
+                ** (1.0 / 3.0)
             )
             if h_budget > h_pre:
                 log.info(
@@ -609,17 +663,107 @@ def generate_native_hex(
     if adaptive:
         try:
             from core.generator.native_hex.octree import build_octree_hex_cells  # noqa: PLC0415
+
             # P2.4 / beta2313 — hex_buffer_cells kwarg → env var 로 octree 에 전달.
             import os as _os_hbc
+
             _prev_buf = _os_hbc.environ.get("AUTO_TESSELL_HEX_BUFFER_LAYER")
             _os_hbc.environ["AUTO_TESSELL_HEX_BUFFER_LAYER"] = str(int(hex_buffer_cells))
             try:
                 oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
-                    V, F, bmin_pre, bmax_pre, h_pre,
+                    V,
+                    F,
+                    bmin_pre,
+                    bmax_pre,
+                    h_pre,
                     max_cells_per_axis=max_cells_per_axis,
                     n_levels=n_levels,
                     refinement_distance_factor=refinement_distance_factor,
                 )
+                _rebudget_on = (
+                    os.environ.get("AUTO_TESSELL_HEX_FINAL_REBUDGET", "1") != "0"
+                    and _cell_budget > 0
+                    and _budget_layers > 0
+                    and len(oct_cells) > 0
+                )
+                if _rebudget_on:
+                    _low_ratio = float(os.environ.get("AUTO_TESSELL_HEX_FINAL_LOW_RATIO", "0.5"))
+                    _high_ratio = float(os.environ.get("AUTO_TESSELL_HEX_FINAL_HIGH_RATIO", "2.0"))
+                    _target_low = max(1, int(round(float(_cell_budget) * _low_ratio)))
+                    _target_high = max(
+                        _target_low,
+                        int(round(float(_cell_budget) * _high_ratio)),
+                    )
+                    _passes = max(
+                        0,
+                        int(os.environ.get("AUTO_TESSELL_HEX_FINAL_REBUDGET_PASSES", "2")),
+                    )
+                    _exp = max(
+                        1.0,
+                        float(os.environ.get("AUTO_TESSELL_HEX_FINAL_REBUDGET_EXP", "2.35")),
+                    )
+                    for _rb_pass in range(_passes):
+                        _base_n, _bnd_n, _est_final = _estimate_bl_final_cells_from_cell_faces(
+                            oct_cells,
+                            n_layers=int(_budget_layers),
+                        )
+                        if _target_low <= _est_final <= _target_high:
+                            break
+                        if _est_final > _target_high:
+                            _target_final = max(
+                                1.0,
+                                float(_target_high) * 0.9,
+                            )
+                            _factor = (float(_est_final) / _target_final) ** (1.0 / _exp)
+                            _factor = min(max(_factor, 1.03), 1.85)
+                        else:
+                            _target_final = max(
+                                1.0,
+                                float(_target_low) * 1.1,
+                            )
+                            _factor = (float(max(_est_final, 1)) / _target_final) ** (1.0 / _exp)
+                            _factor = max(min(_factor, 0.97), 0.55)
+                        _h_next = float(h_pre) * float(_factor)
+                        if not np.isfinite(_h_next) or _h_next <= 0:
+                            break
+                        if abs(_h_next / max(float(h_pre), 1e-30) - 1.0) < 0.02:
+                            break
+                        log.info(
+                            "native_hex_final_rebudget",
+                            pass_index=int(_rb_pass + 1),
+                            base_cells=int(_base_n),
+                            boundary_faces=int(_bnd_n),
+                            estimated_final_cells=int(_est_final),
+                            target_low=int(_target_low),
+                            target_high=int(_target_high),
+                            budget_layers=int(_budget_layers),
+                            edge_old=round(float(h_pre), 8),
+                            edge_new=round(float(_h_next), 8),
+                        )
+                        h_pre = float(_h_next)
+                        target_edge_length = float(_h_next)
+                        oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
+                            V,
+                            F,
+                            bmin_pre,
+                            bmax_pre,
+                            h_pre,
+                            max_cells_per_axis=max_cells_per_axis,
+                            n_levels=n_levels,
+                            refinement_distance_factor=refinement_distance_factor,
+                        )
+                    _base_n, _bnd_n, _est_final = _estimate_bl_final_cells_from_cell_faces(
+                        oct_cells,
+                        n_layers=int(_budget_layers),
+                    )
+                    log.info(
+                        "native_hex_final_rebudget_done",
+                        base_cells=int(_base_n),
+                        boundary_faces=int(_bnd_n),
+                        estimated_final_cells=int(_est_final),
+                        target_low=int(_target_low),
+                        target_high=int(_target_high),
+                    )
             finally:
                 # 환경변수 복원 — 외부 caller 영향 0.
                 if _prev_buf is None:
@@ -633,40 +777,57 @@ def generate_native_hex(
                         from core.generator.native_hex.snap import (  # noqa: PLC0415
                             snap_to_surface_iterative,
                         )
+
                         h_snap = h_pre / float(1 << max(0, int(n_levels)))
                         oct_pts, snap_stats_it = snap_to_surface_iterative(
-                            oct_pts, V, F, h_snap,
-                            n_iter=snap_iterations, relax=0.5,
+                            oct_pts,
+                            V,
+                            F,
+                            h_snap,
+                            n_iter=snap_iterations,
+                            relax=0.5,
                         )
                         log.info(
                             "native_hex_iterative_snap_applied",
                             n_iter=snap_iterations,
-                            **{k: v for k, v in snap_stats_it.items()
-                               if k != "n_snapped_per_iter"},
+                            **{k: v for k, v in snap_stats_it.items() if k != "n_snapped_per_iter"},
                         )
                     except Exception as exc:
                         log.warning("native_hex_iterative_snap_failed", error=str(exc))
 
                 from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
                 from core.generator.tier_layers_post import (  # noqa: PLC0415
-                    _ensure_minimal_controldict, _write_minimal_fv_dicts,
+                    _ensure_minimal_controldict,
+                    _write_minimal_fv_dicts,
                 )
+
                 _ensure_minimal_controldict(case_dir)
                 _write_minimal_fv_dicts(case_dir)
                 stats = write_generic_polymesh(oct_pts, oct_cells, case_dir)
                 n_t = int(stats["num_cells"])
-                fill = n_t / max(1, oct_stats["n_coarse"] + oct_stats["n_fine"] +
-                                 (oct_stats["fine_grid"][0] * oct_stats["fine_grid"][1] *
-                                  oct_stats["fine_grid"][2] - oct_stats["n_fine"]))
+                fill = n_t / max(
+                    1,
+                    oct_stats["n_coarse"]
+                    + oct_stats["n_fine"]
+                    + (
+                        oct_stats["fine_grid"][0]
+                        * oct_stats["fine_grid"][1]
+                        * oct_stats["fine_grid"][2]
+                        - oct_stats["n_fine"]
+                    ),
+                )
                 return NativeHexResult(
                     success=True,
                     elapsed=time.perf_counter() - t0,
                     n_cells=n_t,
                     n_points=int(stats["num_points"]),
                     n_faces=int(stats["num_faces"]),
-                    fill_ratio=float(oct_stats["n_total"]) / max(
-                        1, oct_stats["fine_grid"][0] *
-                        oct_stats["fine_grid"][1] * oct_stats["fine_grid"][2],
+                    fill_ratio=float(oct_stats["n_total"])
+                    / max(
+                        1,
+                        oct_stats["fine_grid"][0]
+                        * oct_stats["fine_grid"][1]
+                        * oct_stats["fine_grid"][2],
                     ),
                     grid_shape=tuple(oct_stats["grid_shape"]),
                     n_grid_total=oct_stats["n_coarse"] + oct_stats["n_fine"],
@@ -681,10 +842,11 @@ def generate_native_hex(
         except Exception as exc:
             log.warning("native_hex_octree_failed", error=str(exc), fallback="uniform grid")
 
-    bmin = V.min(axis=0); bmax = V.max(axis=0)
+    bmin = V.min(axis=0)
+    bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))
     # P1 (beta2232): target_edge_length 가 사용자 명시인지 플래그 저장.
-    _p1_te_user_set = (target_edge_length is not None and float(target_edge_length) > 0)
+    _p1_te_user_set = target_edge_length is not None and float(target_edge_length) > 0
     if target_edge_length is None or target_edge_length <= 0:
         target_edge_length = diag / max(1, int(seed_density))
     h = float(target_edge_length)
@@ -692,13 +854,16 @@ def generate_native_hex(
     # 각 축별 grid size — max_cells_per_axis 로 제한 (과도한 셀 방지)
     cap = max(1, int(max_cells_per_axis))
     nxyz_req = np.maximum(
-        np.ceil((bmax - bmin) / h).astype(int), 1,
+        np.ceil((bmax - bmin) / h).astype(int),
+        1,
     )
     nxyz = np.minimum(nxyz_req, cap)
     if np.any(nxyz_req > cap):
         log.warning(
             "native_hex_grid_capped",
-            requested=nxyz_req.tolist(), capped=nxyz.tolist(), cap=cap,
+            requested=nxyz_req.tolist(),
+            capped=nxyz.tolist(),
+            cap=cap,
             target_edge=h,
             hint="max_cells_per_axis 늘리거나 target_edge_length 증가 권장",
         )
@@ -712,21 +877,25 @@ def generate_native_hex(
     grid_pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
 
     # Vectorized hex cell vertex index construction (OpenFOAM order)
-    ny1 = ny + 1; nz1 = nz + 1
+    ny1 = ny + 1
+    nz1 = nz + 1
     _ia = np.arange(nx, dtype=np.int64)
     _ja = np.arange(ny, dtype=np.int64)
     _ka = np.arange(nz, dtype=np.int64)
     _CI, _CJ, _CK = np.meshgrid(_ia, _ja, _ka, indexing="ij")
     _base_c = _CI.ravel() * (ny1 * nz1) + _CJ.ravel() * nz1 + _CK.ravel()
     # 8 vertex offsets (di,dj,dk): OpenFOAM hex order p0..p7
-    _od = np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],
-                    [0,0,1],[1,0,1],[1,1,1],[0,1,1]], dtype=np.int64)
+    _od = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        dtype=np.int64,
+    )
     _voff = _od[:, 0] * (ny1 * nz1) + _od[:, 1] * nz1 + _od[:, 2]  # (8,)
     hexes_all = (_base_c[:, None] + _voff[None, :]).astype(np.int64)  # (N, 8)
 
     if hexes_all.shape[0] == 0:
         return NativeHexResult(
-            False, time.perf_counter() - t0,
+            False,
+            time.perf_counter() - t0,
             message="grid 가 비어있음 (target_edge_length 가 bbox 보다 큼)",
             n_self_intersect_pre=_pre_mesh_si_count,
         )
@@ -775,7 +944,8 @@ def generate_native_hex(
                 _new_cap = int(cap * (_cap_factor ** (_retry + 1)))
                 # grid 재생성 (line 525-556 의 inline 코드 reproduction).
                 _nxyz_req = np.maximum(
-                    np.ceil((bmax - bmin) / _new_h).astype(int), 1,
+                    np.ceil((bmax - bmin) / _new_h).astype(int),
+                    1,
                 )
                 _nxyz = np.minimum(_nxyz_req, _new_cap)
                 _nx, _ny, _nz = int(_nxyz[0]), int(_nxyz[1]), int(_nxyz[2])
@@ -784,14 +954,26 @@ def generate_native_hex(
                 _zs = np.linspace(bmin[2], bmax[2], _nz + 1)
                 _X, _Y, _Z = np.meshgrid(_xs, _ys, _zs, indexing="ij")
                 _grid_pts2 = np.stack([_X.ravel(), _Y.ravel(), _Z.ravel()], axis=1)
-                _ny1 = _ny + 1; _nz1 = _nz + 1
+                _ny1 = _ny + 1
+                _nz1 = _nz + 1
                 _ia = np.arange(_nx, dtype=np.int64)
                 _ja = np.arange(_ny, dtype=np.int64)
                 _ka = np.arange(_nz, dtype=np.int64)
                 _CI, _CJ, _CK = np.meshgrid(_ia, _ja, _ka, indexing="ij")
                 _base_c = _CI.ravel() * (_ny1 * _nz1) + _CJ.ravel() * _nz1 + _CK.ravel()
-                _od = np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],
-                                [0,0,1],[1,0,1],[1,1,1],[0,1,1]], dtype=np.int64)
+                _od = np.array(
+                    [
+                        [0, 0, 0],
+                        [1, 0, 0],
+                        [1, 1, 0],
+                        [0, 1, 0],
+                        [0, 0, 1],
+                        [1, 0, 1],
+                        [1, 1, 1],
+                        [0, 1, 1],
+                    ],
+                    dtype=np.int64,
+                )
                 _voff = _od[:, 0] * (_ny1 * _nz1) + _od[:, 1] * _nz1 + _od[:, 2]
                 _hexes_all2 = (_base_c[:, None] + _voff[None, :]).astype(np.int64)
                 if _hexes_all2.shape[0] == 0:
@@ -803,20 +985,21 @@ def generate_native_hex(
                 # _smallhex_floor OR is >=1.5× pre. 0→k 은 항상 채택.
                 _post_n = int(_kept2.shape[0])
                 _accept_escalate = (
-                    _pre_kept == 0 and _post_n > 0
-                ) or (
-                    _post_n >= _smallhex_floor
-                ) or (
-                    _post_n >= int(_pre_kept * 1.5) and _post_n > _pre_kept
+                    (_pre_kept == 0 and _post_n > 0)
+                    or (_post_n >= _smallhex_floor)
+                    or (_post_n >= int(_pre_kept * 1.5) and _post_n > _pre_kept)
                 )
                 if _accept_escalate:
                     log.info(
                         "native_hex_p1_auto_escalate",
                         seed_density_old=int(seed_density),
                         seed_density_new=_new_sd,
-                        cap_old=int(cap), cap_new=int(_new_cap),
-                        retry=_retry + 1, n_kept=int(_kept2.shape[0]),
-                        pre_kept=_pre_kept, smallhex_floor=_smallhex_floor,
+                        cap_old=int(cap),
+                        cap_new=int(_new_cap),
+                        retry=_retry + 1,
+                        n_kept=int(_kept2.shape[0]),
+                        pre_kept=_pre_kept,
+                        smallhex_floor=_smallhex_floor,
                     )
                     grid_pts = _grid_pts2
                     hexes = _kept2
@@ -828,7 +1011,8 @@ def generate_native_hex(
                     break
         if kept.shape[0] == 0:
             return NativeHexResult(
-                False, time.perf_counter() - t0,
+                False,
+                time.perf_counter() - t0,
                 message="inside hex 0 — target_edge_length 조정 필요",
                 n_self_intersect_pre=_pre_mesh_si_count,
             )
@@ -862,7 +1046,10 @@ def generate_native_hex(
                 prev_no = 0.0
 
             final_pts, snap_stats = snap_hex_boundary_to_surface(
-                final_pts, V, F, target_edge=h,
+                final_pts,
+                V,
+                F,
+                target_edge=h,
                 preserve_features=preserve_features,
                 feature_angle_deg=feature_angle_deg,
             )
@@ -876,9 +1063,8 @@ def generate_native_hex(
                 new_q = hex_quality_report(final_pts, final_hexes)
                 new_skew = new_q.max_skewness
                 new_no = float(getattr(new_q, "max_non_orthogonality_deg", 0.0))
-                _revert = (
-                    (prev_skew >= 0 and new_skew > prev_skew + 4.0)
-                    or (new_no >= 89.0 and (prev_no < 70.0 or prev_no - new_no < -20.0))
+                _revert = (prev_skew >= 0 and new_skew > prev_skew + 4.0) or (
+                    new_no >= 89.0 and (prev_no < 70.0 or prev_no - new_no < -20.0)
                 )
                 if _revert:
                     log.warning(
@@ -900,6 +1086,7 @@ def generate_native_hex(
             from core.generator.native_hex.quality import (  # noqa: PLC0415
                 hex_quality_report,
             )
+
             # HEX_CACHE: boundary_verts + edge_nbrs from cache.
             _sm_adj = _build_hex_adjacency(final_hexes)
             boundary_v: set[int] = _sm_adj.boundary_verts
@@ -922,7 +1109,8 @@ def generate_native_hex(
                 if new_skew_sm > prev_skew_sm + 2.0:
                     log.warning(
                         "native_hex_post_smooth_revert",
-                        prev=round(prev_skew_sm, 3), new=round(new_skew_sm, 3),
+                        prev=round(prev_skew_sm, 3),
+                        new=round(new_skew_sm, 3),
                     )
                     final_pts = prev_pts_sm
                 else:
@@ -947,10 +1135,7 @@ def generate_native_hex(
     # default ∞ (no cap). hard mesh 에서 600s+ 걸리던 케이스 사용자 control.
     _t_www7 = __import__("time").perf_counter()
     _www7_budget_s = float(_os_hex_budget.environ.get("AUTO_TESSELL_HEX_WWW7_BUDGET_S", "0"))
-    if (
-        _www7_budget_s > 0
-        and __import__("time").perf_counter() - _hex_t_start > _www7_budget_s
-    ):
+    if _www7_budget_s > 0 and __import__("time").perf_counter() - _hex_t_start > _www7_budget_s:
         log.warning(
             "native_hex_www7_budget_skipped",
             elapsed_s=round(__import__("time").perf_counter() - _hex_t_start, 1),
@@ -959,63 +1144,77 @@ def generate_native_hex(
     elif final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
         try:
             from core.generator.native_hex.snap import snap_to_feature_edges  # noqa: PLC0415
+
             final_pts, www7_stats = snap_to_feature_edges(
-                final_pts, final_hexes, V, F,
+                final_pts,
+                final_hexes,
+                V,
+                F,
                 top_k=200,
                 feature_angle_deg=30.0,
             )
             if www7_stats.get("n_snapped", 0) > 0 or "skipped" not in www7_stats:
-                log.info("native_hex_www7_done", **{
-                    k: v for k, v in www7_stats.items()
-                })
+                log.info("native_hex_www7_done", **{k: v for k, v in www7_stats.items()})
         except Exception as exc:
             log.debug("native_hex_www7_skipped", reason=str(exc))
 
     _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
-    log.info("native_hex_neg_vol_track", pass_name="WWW7", n_neg=_val3_n, delta=_val3_n - _val3_prev)
+    log.info(
+        "native_hex_neg_vol_track", pass_name="WWW7", n_neg=_val3_n, delta=_val3_n - _val3_prev
+    )
     _val3_prev = _val3_n
     log.info(
         "native_hex_pass_timing",
-        pass_name="WWW7", dt_ms=int((__import__("time").perf_counter() - _t_www7) * 1000),
+        pass_name="WWW7",
+        dt_ms=int((__import__("time").perf_counter() - _t_www7) * 1000),
     )
 
     # HEX_QUALITY1 (beta2137) — non-ortho local post-pass (snappyHexMesh postSnap analog).
     # env AUTO_TESSELL_HEX_QUALITY1_OFF disables. Default ON.
     import os as _os  # noqa: PLC0415
+
     # C-PERF-11 / beta2430 — HEX_QUALITY1 pass timing (perf attribution).
     _t_hq1 = __import__("time").perf_counter()
-    if (
-        final_hexes.shape[0] >= 50
-        and not _os.environ.get("AUTO_TESSELL_HEX_QUALITY1_OFF")
-    ):
+    if final_hexes.shape[0] >= 50 and not _os.environ.get("AUTO_TESSELL_HEX_QUALITY1_OFF"):
         try:
             final_pts = _reduce_nonortho_post(final_pts, final_hexes)
         except Exception as exc:
             log.debug("native_hex_quality1_skipped", reason=str(exc))
 
     _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
-    log.info("native_hex_neg_vol_track", pass_name="HEX_QUALITY1", n_neg=_val3_n, delta=_val3_n - _val3_prev)
+    log.info(
+        "native_hex_neg_vol_track",
+        pass_name="HEX_QUALITY1",
+        n_neg=_val3_n,
+        delta=_val3_n - _val3_prev,
+    )
     _val3_prev = _val3_n
     log.info(
         "native_hex_pass_timing",
-        pass_name="HEX_QUALITY1", dt_ms=int((__import__("time").perf_counter() - _t_hq1) * 1000),
+        pass_name="HEX_QUALITY1",
+        dt_ms=int((__import__("time").perf_counter() - _t_hq1) * 1000),
     )
 
     # VAL2 (beta2148) — negative-volume hex validation (default ON).
     try:
         final_hexes, _val2_flipped, _val2_degen = validate_hex_cell_volumes(
-            final_pts, final_hexes,
+            final_pts,
+            final_hexes,
         )
     except Exception as _val2_exc:
         log.debug("native_hex_val2_skipped", reason=str(_val2_exc))
 
     _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
-    log.info("native_hex_neg_vol_track", pass_name="VAL2_post", n_neg=_val3_n, delta=_val3_n - _val3_prev)
+    log.info(
+        "native_hex_neg_vol_track", pass_name="VAL2_post", n_neg=_val3_n, delta=_val3_n - _val3_prev
+    )
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
-        _ensure_minimal_controldict, _write_minimal_fv_dicts,
+        _ensure_minimal_controldict,
+        _write_minimal_fv_dicts,
     )
+
     _ensure_minimal_controldict(case_dir)
     _write_minimal_fv_dicts(case_dir)
 
@@ -1023,7 +1222,8 @@ def generate_native_hex(
         stats = _write_polymesh_hex(final_pts, final_hexes, case_dir)
     except Exception as exc:
         return NativeHexResult(
-            False, time.perf_counter() - t0,
+            False,
+            time.perf_counter() - t0,
             message=f"polyMesh 쓰기 실패: {exc}",
             n_self_intersect_pre=_pre_mesh_si_count,
         )
@@ -1033,20 +1233,27 @@ def generate_native_hex(
     if _fill < 0.3:
         log.info(
             "native_hex_low_fill_ratio",
-            fill_ratio=_fill, n_kept=_n_kept, n_grid_total=n_grid_total,
+            fill_ratio=_fill,
+            n_kept=_n_kept,
+            n_grid_total=n_grid_total,
             hint="target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선",
         )
 
     # X1 (beta1640) — checkMesh-style quality + plane_coverage + grade.
     grade = "?"
-    max_no = -1.0; mean_no = -1.0
-    max_sk = -1.0; mean_sk = -1.0
+    max_no = -1.0
+    mean_no = -1.0
+    max_sk = -1.0
+    mean_sk = -1.0
     max_asp = -1.0
-    plane_cov = -1.0; plane_area = -1.0
+    plane_cov = -1.0
+    plane_area = -1.0
     try:
         from core.generator.native_hex.quality import (
-            hex_quality_report, hex_quality_grade,
+            hex_quality_report,
+            hex_quality_grade,
         )
+
         q = hex_quality_report(final_pts, final_hexes)
         grade = hex_quality_grade(q)
         max_no = q.max_non_orthogonality_deg
@@ -1067,22 +1274,23 @@ def generate_native_hex(
 
     try:
         from core.generator.native_tet.plane_coverage import (
-            _triangle_planes_and_areas, _group_by_plane,
+            _triangle_planes_and_areas,
+            _group_by_plane,
         )
+
         # hex boundary face (1-owner) 추출 → 2 triangle 로 분할.
         # C-PERF-53 / beta2504 — vectorize via lexsort group sizes.
         bnd_tris: list[list[int]] = []
         if final_hexes.shape[0] > 0:
-            _HF_IDX = np.array(_HEX_FACES, dtype=np.int64)              # (6, 4)
-            faces_v = final_hexes[:, _HF_IDX].reshape(-1, 4)            # (6C, 4)
+            _HF_IDX = np.array(_HEX_FACES, dtype=np.int64)  # (6, 4)
+            faces_v = final_hexes[:, _HF_IDX].reshape(-1, 4)  # (6C, 4)
             faces_sorted = np.sort(faces_v, axis=1)
             ci_arr = np.repeat(np.arange(final_hexes.shape[0]), 6)
             order_bf = np.lexsort(
-                (faces_sorted[:, 3], faces_sorted[:, 2],
-                 faces_sorted[:, 1], faces_sorted[:, 0]),
+                (faces_sorted[:, 3], faces_sorted[:, 2], faces_sorted[:, 1], faces_sorted[:, 0]),
             )
             fs_s = faces_sorted[order_bf]
-            faces_orig = faces_v[order_bf]                              # for actual quad verts
+            faces_orig = faces_v[order_bf]  # for actual quad verts
             ci_s = ci_arr[order_bf]
             diff_bf = np.r_[True, np.any(fs_s[1:] != fs_s[:-1], axis=1)]
             starts_bf = np.where(diff_bf)[0]
@@ -1098,12 +1306,18 @@ def generate_native_hex(
             in_unit, in_off, in_area = _triangle_planes_and_areas(V, F)
             bn_unit, bn_off, bn_area = _triangle_planes_and_areas(final_pts, B_tri)
             in_groups = _group_by_plane(
-                in_unit, in_off,
-                normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+                in_unit,
+                in_off,
+                normal_tol=5e-2,
+                offset_rel_tol=5e-3,
+                bbox_diag=bbox_diag,
             )
             bn_groups = _group_by_plane(
-                bn_unit, bn_off,
-                normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+                bn_unit,
+                bn_off,
+                normal_tol=5e-2,
+                offset_rel_tol=5e-3,
+                bbox_diag=bbox_diag,
             )
             n_in = len(in_groups)
             n_covered = 0
@@ -1121,9 +1335,7 @@ def generate_native_hex(
                         ratio = min(a_b, a_in) / max(a_in, 1e-30)
                         total_match_area += ratio * a_in
             plane_cov = n_covered / max(n_in, 1) if n_in else 1.0
-            plane_area = (
-                total_match_area / total_in_area if total_in_area > 0 else 1.0
-            )
+            plane_area = total_match_area / total_in_area if total_in_area > 0 else 1.0
     except Exception as exc:
         log.debug("native_hex_plane_cov_skipped", reason=str(exc))
 
@@ -1144,7 +1356,8 @@ def generate_native_hex(
     if _hex_elapsed > _hex_budget_log_threshold:
         log.warning(
             "native_hex_wall_clock_high",
-            component="native_hex", phase="beta2388",
+            component="native_hex",
+            phase="beta2388",
             elapsed_s=round(_hex_elapsed, 1),
             threshold_s=_hex_budget_log_threshold,
             n_cells=_n_kept,
@@ -1155,16 +1368,15 @@ def generate_native_hex(
     _n_surface_v_hex = int(np.asarray(vertices).shape[0])
     _hex_suspect = bool(
         _n_kept > 0
-        and (
-            (_n_surface_v_hex >= 100 and _n_kept < _n_surface_v_hex // 32)
-            or _n_kept < 50
-        )
+        and ((_n_surface_v_hex >= 100 and _n_kept < _n_surface_v_hex // 32) or _n_kept < 50)
     )
     if _hex_suspect:
         log.warning(
             "native_hex_mesh_integrity_suspect",
-            component="native_hex", phase="beta2407",
-            n_cells=_n_kept, n_surface_v=_n_surface_v_hex,
+            component="native_hex",
+            phase="beta2407",
+            n_cells=_n_kept,
+            n_surface_v=_n_surface_v_hex,
             ratio=round(_n_kept / max(1, _n_surface_v_hex), 4),
         )
     return NativeHexResult(
