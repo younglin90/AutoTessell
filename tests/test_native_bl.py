@@ -16,10 +16,13 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from core.evaluator.native_checker import NativeMeshChecker
+from core.generator.polymesh_writer import write_generic_polymesh
 from core.layers.native_bl import BLConfig, generate_native_bl
+from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
 
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -218,3 +221,65 @@ def test_native_bl_wall_preserve_within_envelope(sphere_baseline: Path) -> None:
     assert res.wall_preserve_n_drift == 0
     # Wall preservation must hold on a real BL run with prisms.
     assert res.n_prism_cells > 0
+
+
+def _write_single_hex_quad_case(case_dir: Path) -> None:
+    """단일 hexahedron polyMesh. Boundary wall face 는 모두 quad."""
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    cell_faces = [[
+        [0, 3, 2, 1],  # z-
+        [4, 5, 6, 7],  # z+
+        [0, 1, 5, 4],  # y-
+        [1, 2, 6, 5],  # x+
+        [2, 3, 7, 6],  # y+
+        [3, 0, 4, 7],  # x-
+    ]]
+    write_generic_polymesh(
+        V, cell_faces, case_dir,
+        patch_name="wall", patch_type="wall",
+    )
+
+
+def test_native_bl_quad_wall_replaces_original_polygon_faces(tmp_path: Path) -> None:
+    """quad wall fan-triangulation 후 원본 quad boundary face 를 남기지 않는다."""
+    _write_single_hex_quad_case(tmp_path)
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=1,
+            first_thickness=0.05,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success
+    assert res.n_wall_faces == 12
+    assert res.n_prism_cells == 12
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    faces = parse_foam_faces(poly_dir / "faces")
+    neighbour = parse_foam_labels(poly_dir / "neighbour")
+    boundary_faces = faces[len(neighbour):]
+    assert boundary_faces
+    assert all(len(face) == 3 for face in boundary_faces)
+
+
+def test_native_bl_quad_wall_prefilter_does_not_drop_all_layers(tmp_path: Path) -> None:
+    """작은 raw first_thickness 가 BL3 보정 전에 모든 quad fan face 를 거부하지 않는다."""
+    _write_single_hex_quad_case(tmp_path)
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=3,
+            first_thickness=0.0002732960680837174,
+            aspect_ratio_threshold=300.0,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success
+    assert res.n_wall_faces == 12
+    assert res.n_prism_cells == 36

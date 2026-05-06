@@ -1643,12 +1643,14 @@ def generate_native_bl(
             n_faces=_n_faces,
         )
         wall_face_indices = [fi for fi in wall_face_indices if 0 <= fi < _n_faces]
+    replaced_polygon_wall_faces: set[int] = set()
     non_tri = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     if non_tri:
         log.info(
             "native_bl_polygon_wall_fan_triangulate", component="native_bl",
             n_polygon=len(non_tri), phase="beta89",
         )
+        replaced_polygon_wall_faces = set(non_tri)
         # 합성 tri face 를 faces 리스트 끝에 추가 (원본 faces 는 보존)
         synth_start = len(faces)
         for fi in non_tri:
@@ -2094,10 +2096,28 @@ def generate_native_bl(
     # HEX_BL1 — pre-filter wall_face_indices via aspect+collision guard (Garimella 2003 §3).
     # Mirrors POL_BL1 (voronoi.py) and TET_BL1 (tet_bl_subdivide.py) pattern.
     try:
+        _wall_faces_before_guard = list(wall_face_indices)
+        # The later BL1/BL3 pass can enlarge too-thin raw first thicknesses using
+        # local edge length. Keep this prefilter as a degenerate-face guard, not
+        # as a strict final prism-quality gate, otherwise quad fan walls can be
+        # rejected before the corrective thickness pass runs.
+        _guard_aspect = max(float(cfg.aspect_ratio_threshold), 10000.0)
         wall_face_indices, _n_rej_asp, _n_rej_col = _hex_bl1_prism_guard(
             wall_face_indices, faces, points, vnorm, cfg.first_thickness,
-            aspect_threshold=cfg.aspect_ratio_threshold,
+            aspect_threshold=_guard_aspect,
         )
+        if (
+            _wall_faces_before_guard
+            and len(wall_face_indices) < int(0.95 * len(_wall_faces_before_guard))
+        ):
+            log.info(
+                "hex_bl_guard_relaxed",
+                n_before=len(_wall_faces_before_guard),
+                n_after=len(wall_face_indices),
+                aspect_threshold_pre=cfg.aspect_ratio_threshold,
+                aspect_threshold_used=_guard_aspect,
+                reason="prefilter would remove too much wall before BL3 thickness correction",
+            )
         # Rebuild dependent sets after filtering.
         # BL_FIX (beta2238): wall_face_indices 에서 모든 vertex 가 vnorm 에
         # 없는 face 제거 — _ltri (line 1641) 의 KeyError 회피.
@@ -2502,7 +2522,7 @@ def generate_native_bl(
             nf_p = int(patch_p["nFaces"])
             for k_p in range(nf_p):
                 fi_p = start_p + k_p
-                if fi_p in wall_set:
+                if fi_p in wall_set or fi_p in replaced_polygon_wall_faces:
                     continue
                 # C-BL-4 / beta2432 — patch-level face index 안전 가드.
                 # validator: hard mesh 의 patch 가 stale startFace+nFaces 로
