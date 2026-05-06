@@ -50,7 +50,7 @@ MAX_ASPECT_RATIO = float(os.environ.get("AUTO_TESSELL_VERIFY_MAX_ASPECT_RATIO", 
 MAX_EXPANSION_RATIO = float(os.environ.get("AUTO_TESSELL_VERIFY_MAX_EXPANSION_RATIO", "1.5"))
 MAX_HAUSDORFF_REL = float(os.environ.get("AUTO_TESSELL_VERIFY_MAX_HAUSDORFF_REL", "0.02"))
 MAX_AREA_DEV_PCT = float(os.environ.get("AUTO_TESSELL_VERIFY_MAX_AREA_DEV_PCT", "2.0"))
-SI_FACE_CAP = int(os.environ.get("AUTO_TESSELL_VERIFY_SI_FACE_CAP", "5000"))
+SI_FACE_CAP = int(os.environ.get("AUTO_TESSELL_VERIFY_SI_FACE_CAP", "50000"))
 
 ENGINES: dict[str, tuple[str, str]] = {
     "tet": ("tet", "wildmesh"),

@@ -78,6 +78,18 @@ def test_multiple_inside_points_cube() -> None:
     assert mask.all()
 
 
+def test_cube_diagonal_grid_centroids_are_inside() -> None:
+    """Ray가 face triangulation diagonal을 밟는 grid centroid도 inside."""
+    V, F = _unit_cube_mesh()
+    c = (np.arange(22, dtype=np.float64) + 0.5) / 22.0
+    X, Y, Z = np.meshgrid(c, c, c, indexing="ij")
+    pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+
+    mask = inside_winding_number(pts, V, F)
+
+    assert int(mask.sum()) == pts.shape[0]
+
+
 def test_sphere_inside_and_outside() -> None:
     """unit sphere 중심 / 먼 점 / 반지름 근처 점 분류 (off-axis)."""
     V, F = _icosphere(subdivisions=2, radius=1.0)

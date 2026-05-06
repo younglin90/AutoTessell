@@ -44,6 +44,24 @@ def test_shared_vertex_not_flagged_as_intersection() -> None:
     assert not r.has_self_intersection
 
 
+def test_perpendicular_adjacent_grid_faces_not_flagged() -> None:
+    """Plane-crossing alone is not a self-intersection."""
+    V = np.array([
+        [0.0, 0.0, 0.0],
+        [0.0, 0.1, 0.0],
+        [0.1, 0.1, 0.0],
+        [0.1, 0.0, 0.0],
+        [0.2, 0.0, 0.0],
+        [0.2, 0.0, 0.1],
+    ], dtype=np.float64)
+    # First triangle is on z=0, second on y=0. Their planes cross, but the
+    # finite triangles do not overlap. This pattern appears on voxelized cube
+    # boundary faces when each quad is fan-triangulated.
+    F = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)
+    r = detect_self_intersections(V, F)
+    assert not r.has_self_intersection
+
+
 def test_large_mesh_uses_kdtree_path() -> None:
     """beta2323 — n_faces > max_pairs_for_o_n_squared 일 때 KDTree O(M log M).
 

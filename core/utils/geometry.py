@@ -33,10 +33,21 @@ def inside_winding_number(
     Returns:
         (N,) bool array — True = inside surface.
     """
-    Q = np.asarray(query, dtype=np.float64)
+    Q = np.asarray(query, dtype=np.float64).copy()
     N = Q.shape[0]
     if N == 0 or F.size == 0:
         return np.zeros(N, dtype=bool)
+
+    # Ray casting is ambiguous when the ray passes exactly through a triangle
+    # edge/vertex.  Axis-aligned cube STLs are a common case: centroids with
+    # y == z hit the diagonal shared by the two triangles on the +x face and
+    # get double-counted as outside.  Cast from a deterministically jittered
+    # copy of the query point so the geometric point is unchanged at mesh scale
+    # but exact edge hits are avoided.
+    bbox_diag = float(np.linalg.norm(np.asarray(V, dtype=np.float64).max(axis=0) - np.asarray(V, dtype=np.float64).min(axis=0)))
+    jitter = max(bbox_diag * 1e-10, 1e-12)
+    Q[:, 1] += jitter * 0.754877666
+    Q[:, 2] += jitter * 0.569840291
 
     v0 = V[F[:, 0]]; v1 = V[F[:, 1]]; v2 = V[F[:, 2]]
     edge1 = v1 - v0

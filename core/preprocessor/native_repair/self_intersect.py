@@ -123,10 +123,43 @@ def _tri_tri_intersect(
     if (da > eps).all() or (da < -eps).all():
         return False
 
-    # Each plane crosses the other triangle: at least one intersection
-    # interval exists on each. Returning True is sufficient for detection
-    # (정밀한 segment-segment overlap 은 차후 카드에서 강화).
-    return True
+    def _segment_hits_tri(
+        p0: np.ndarray,
+        p1: np.ndarray,
+        t0: np.ndarray,
+        t1: np.ndarray,
+        t2: np.ndarray,
+    ) -> bool:
+        """Möller-Trumbore segment-triangle hit test."""
+        direction = p1 - p0
+        e1_s = t1 - t0
+        e2_s = t2 - t0
+        pvec_s = np.cross(direction, e2_s)
+        det_s = float(np.dot(e1_s, pvec_s))
+        if abs(det_s) < eps:
+            return False
+        inv_det_s = 1.0 / det_s
+        tvec_s = p0 - t0
+        u_s = float(np.dot(tvec_s, pvec_s)) * inv_det_s
+        if u_s < -eps or u_s > 1.0 + eps:
+            return False
+        qvec_s = np.cross(tvec_s, e1_s)
+        v_s = float(np.dot(direction, qvec_s)) * inv_det_s
+        if v_s < -eps or (u_s + v_s) > 1.0 + eps:
+            return False
+        t_s = float(np.dot(e2_s, qvec_s)) * inv_det_s
+        return -eps <= t_s <= 1.0 + eps
+
+    # Precise non-coplanar test: one triangle intersects the other iff at
+    # least one edge segment pierces the opposite triangle.  The earlier
+    # plane-crossing shortcut over-reported normal adjacent cube faces.
+    for p0, p1 in ((a0, a1), (a1, a2), (a2, a0)):
+        if _segment_hits_tri(p0, p1, b0, b1, b2):
+            return True
+    for p0, p1 in ((b0, b1), (b1, b2), (b2, b0)):
+        if _segment_hits_tri(p0, p1, a0, a1, a2):
+            return True
+    return False
 
 
 def _kdtree_overlap_pairs(
