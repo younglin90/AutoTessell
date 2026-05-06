@@ -26,6 +26,23 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+def _install_polymesh_only(src_case: Path, dst_case: Path) -> None:
+    """Install generated polyMesh without deleting pipeline metadata.
+
+    The orchestrator stores ``geometry_report.json`` and the preprocessed STL
+    under the case directory before generation.  Deleting the whole case here
+    makes later fidelity checks look "missing" even when the mesh exists.
+    """
+    src_poly = src_case / "constant" / "polyMesh"
+    if not src_poly.is_dir():
+        raise FileNotFoundError(f"polyMesh 없음: {src_poly}")
+    dst_poly = dst_case / "constant" / "polyMesh"
+    if dst_poly.exists():
+        shutil.rmtree(dst_poly)
+    dst_poly.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_poly, dst_poly)
+
+
 @dataclass
 class PolyHarnessResult:
     success: bool
@@ -207,9 +224,8 @@ def run_native_poly_harness(
 
             if passed:
                 # 최종 case_dir 로 이동
-                if case_dir.exists():
-                    shutil.rmtree(case_dir)
-                shutil.copytree(tmp_dual, case_dir)
+                _install_polymesh_only(tmp_dual, case_dir)
+                shutil.rmtree(tmp_dual, ignore_errors=True)
                 return PolyHarnessResult(
                     success=True,
                     elapsed=time.perf_counter() - t0,
@@ -232,9 +248,7 @@ def run_native_poly_harness(
 
     # 모든 iter 실패 — 가장 품질 좋은 결과 복사 (best effort)
     if best_case_bytes is not None and best_case_bytes.exists():
-        if case_dir.exists():
-            shutil.rmtree(case_dir)
-        shutil.copytree(best_case_bytes, case_dir)
+        _install_polymesh_only(best_case_bytes, case_dir)
         shutil.rmtree(best_case_bytes, ignore_errors=True)
     return PolyHarnessResult(
         success=False,
