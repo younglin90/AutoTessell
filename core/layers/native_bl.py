@@ -2101,7 +2101,7 @@ def generate_native_bl(
         # local edge length. Keep this prefilter as a degenerate-face guard, not
         # as a strict final prism-quality gate, otherwise quad fan walls can be
         # rejected before the corrective thickness pass runs.
-        _guard_aspect = max(float(cfg.aspect_ratio_threshold), 10000.0)
+        _guard_aspect = max(float(cfg.aspect_ratio_threshold), 1.0e12)
         wall_face_indices, _n_rej_asp, _n_rej_col = _hex_bl1_prism_guard(
             wall_face_indices, faces, points, vnorm, cfg.first_thickness,
             aspect_threshold=_guard_aspect,
