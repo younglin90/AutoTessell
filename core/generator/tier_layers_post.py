@@ -1446,7 +1446,7 @@ class LayersPostGenerator:
                         "post_layers_max_total_ratio", 0.3,
                     )),
                     apply_bulk_dual=bool(params.get(
-                        "post_layers_apply_bulk_dual", True,
+                        "post_layers_apply_bulk_dual", False,
                     )),
                     dual_feature_angle=float(params.get(
                         "post_layers_dual_feature_angle", 30.0,

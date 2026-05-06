@@ -22,6 +22,8 @@ TIER_NAME = "tier_native_poly"
 def _runner(vertices, faces, case_dir, *, target_edge_length=None,
             seed_density=10, max_iter=3,
             n_lloyd=2, auto_escalate=True, auto_escalate_max=4,
+            target_cells=None, max_cells=None,
+            bl_layers=0, post_layers_num_layers=0,
             **_unused):
     """harness 우선, 실패 시 scipy Voronoi fallback.
 
@@ -30,6 +32,28 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
     beta2294: voronoi fallback 의 n_lloyd / auto_escalate / auto_escalate_max
     파라미터를 명시 forward (이전엔 **_unused 로 silently dropped).
     """
+    _cell_budget = int(max_cells or target_cells or 0)
+    _n_layers = int(post_layers_num_layers or bl_layers or 0)
+    if _cell_budget > 0 and _n_layers > 0:
+        log.info(
+            "native_poly_budget_prefers_hex_base",
+            target_cells=int(target_cells or 0),
+            max_cells=int(max_cells or 0),
+            bl_layers=int(_n_layers),
+        )
+        return generate_native_poly_voronoi(
+            vertices, faces, case_dir,
+            target_edge_length=target_edge_length,
+            seed_density=int(seed_density),
+            n_lloyd=int(n_lloyd),
+            auto_escalate=bool(auto_escalate),
+            auto_escalate_max=int(auto_escalate_max),
+            target_cells=target_cells,
+            max_cells=max_cells,
+            bl_layers=int(_n_layers),
+            prefer_hex_for_budget=True,
+        )
+
     hres = run_native_poly_harness(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
@@ -48,6 +72,9 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
         n_lloyd=int(n_lloyd),
         auto_escalate=bool(auto_escalate),
         auto_escalate_max=int(auto_escalate_max),
+        target_cells=target_cells,
+        max_cells=max_cells,
+        bl_layers=int(_n_layers),
     )
 
 

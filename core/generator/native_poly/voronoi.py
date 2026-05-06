@@ -1135,6 +1135,10 @@ def generate_native_poly_voronoi(
     n_lloyd: int = 2,
     auto_escalate: bool = True,
     auto_escalate_max: int = 4,
+    target_cells: int | None = None,
+    max_cells: int | None = None,
+    bl_layers: int = 0,
+    prefer_hex_for_budget: bool = False,
 ) -> NativePolyResult:
     """bbox 내부 균일 seed + 3D Lloyd CVT 정제 + scipy Voronoi → polyhedral cell.
 
@@ -1181,6 +1185,30 @@ def generate_native_poly_voronoi(
         except Exception:
             pass
         return r
+
+    if prefer_hex_for_budget and int(max_cells or target_cells or 0) > 0:
+        try:
+            r_hex_budget = _hex_to_poly_fallback(
+                vertices,
+                faces,
+                case_dir,
+                seed_density=int(seed_density),
+                escalate_max=6,
+                target_cells=target_cells,
+                max_cells=max_cells,
+                bl_layers=int(bl_layers),
+            )
+            if r_hex_budget.success and r_hex_budget.n_cells > 2:
+                log.info(
+                    "native_poly_budget_hex_base_selected",
+                    cells=int(r_hex_budget.n_cells),
+                    target_cells=int(target_cells or 0),
+                    max_cells=int(max_cells or 0),
+                    bl_layers=int(bl_layers),
+                )
+                return _inject_si(r_hex_budget)
+        except Exception as exc:
+            log.warning("native_poly_budget_hex_base_failed", reason=str(exc)[:120])
 
     # P1.4 / beta2314 — quadric error decimation (G&H 1997) wiring for poly.
     # native_tet (beta2308) 와 동일 패턴 — 50k+ face 입력 자동 단순화 →
@@ -1375,6 +1403,8 @@ def generate_native_poly_voronoi(
             tmp_case.mkdir(parents=True, exist_ok=True)
             r_hex = _hex_to_poly_fallback(
                 vertices, faces, tmp_case, seed_density=int(seed_density),
+                target_cells=target_cells, max_cells=max_cells,
+                bl_layers=int(bl_layers),
             )
             if r_hex.success and r_hex.n_cells > 2:
                 candidates.append(
@@ -1492,6 +1522,8 @@ def generate_native_poly_voronoi(
                 final_r = _hex_to_poly_fallback(
                     vertices, faces, case_dir,
                     seed_density=int(seed_density),
+                    target_cells=target_cells, max_cells=max_cells,
+                    bl_layers=int(bl_layers),
                 )
                 if final_r.success and final_r.n_cells > 2:
                     log.warning(
@@ -1647,6 +1679,9 @@ def _hex_to_poly_fallback(
     vertices: np.ndarray, faces: np.ndarray, case_dir: Path,
     *, seed_density: int = 12,
     escalate_max: int = 4,
+    target_cells: int | None = None,
+    max_cells: int | None = None,
+    bl_layers: int = 0,
 ) -> NativePolyResult:
     """FF1 (beta1730) — voronoi base 가 fail 한 형상에서 native_hex 결과를
     polyhedral 표현으로 변환해 fallback.
@@ -1663,6 +1698,46 @@ def _hex_to_poly_fallback(
     t0 = _time.perf_counter()
     # KK5 (beta1890) — seed_density escalate. 작은 mesh 에서 hex grid 가
     # bbox 보다 커서 inside cell 0 인 케이스 자동 회복.
+    _budget = int(max_cells or target_cells or 0)
+    _layers = max(0, int(bl_layers or 0))
+    _hex_target = 0
+    _hex_grid_budget = 0
+    _hex_edge = None
+    if _budget > 0:
+        # The final poly+BL count is dominated by n_layers * boundary faces.
+        # Aim the cfMesh-style base at about 18% of the requested total; for a
+        # Cartesian-ish base this usually lands final BL meshes in the 0.5x-2x
+        # verifier band without creating tens of thousands of wall prisms.
+        _hex_target = max(128, int(0.18 * float(_budget)))
+        _fill_guess = 0.5
+        _hex_grid_budget = max(_hex_target, int(float(_hex_target) / _fill_guess))
+        try:
+            _ext = np.maximum(
+                np.asarray(vertices, dtype=np.float64).max(axis=0)
+                - np.asarray(vertices, dtype=np.float64).min(axis=0),
+                1e-12,
+            )
+            _bbox_vol = float(np.prod(_ext))
+            _hex_edge = float((_bbox_vol * _fill_guess / float(_hex_target)) ** (1.0 / 3.0))
+        except Exception:
+            _hex_edge = None
+    log.info(
+        "native_poly_hex_base_budget",
+        target_cells=int(target_cells or 0),
+        max_cells=int(max_cells or 0),
+        bl_layers=int(_layers),
+        hex_target_cells=int(_hex_target),
+        hex_grid_budget=int(_hex_grid_budget),
+        hex_edge=round(float(_hex_edge), 8) if _hex_edge else None,
+    )
+    def _boundary_faces_for_case(_case_dir: Path) -> int:
+        try:
+            from core.utils.polymesh_reader import parse_foam_boundary  # noqa: PLC0415
+            patches = parse_foam_boundary(_case_dir / "constant" / "polyMesh" / "boundary")
+            return int(sum(int(p.get("nFaces", 0)) for p in patches))
+        except Exception:
+            return 0
+
     cur_sd = int(seed_density)
     r_hex = None
     for _att in range(int(escalate_max)):
@@ -1671,8 +1746,60 @@ def _hex_to_poly_fallback(
             seed_density=cur_sd,
             snap_boundary=True, snap_iterations=2,
             max_cells_per_axis=60,
+            target_edge_length=_hex_edge,
+            target_cells=_hex_grid_budget or None,
+            max_cells=_hex_grid_budget or None,
+            bl_layers=0,
         )
         if r_hex.success and r_hex.n_cells > 2:
+            _bfaces = _boundary_faces_for_case(case_dir)
+            # native_bl sees both sides of the boundary-face representation for
+            # these hex-poly bases, so accepted wall faces are approximately
+            # 2x the boundary-file nFaces count.
+            _pred_final = int(r_hex.n_cells) + int(_layers) * 2 * int(_bfaces)
+            _low = int(0.5 * float(_budget)) if _budget > 0 else 0
+            _high = int(2.0 * float(_budget)) if _budget > 0 else 0
+            if (
+                _budget > 0
+                and _layers > 0
+                and _bfaces > 0
+                and _hex_edge is not None
+                and _att < int(escalate_max) - 1
+            ):
+                if _pred_final > _high:
+                    _factor = max(1.05, float(_pred_final / max(_high, 1)) ** (1.0 / 3.0))
+                    _hex_edge = float(_hex_edge) * _factor
+                    log.info(
+                        "native_poly_hex_base_rebudget",
+                        reason="predicted_over_budget",
+                        attempt=int(_att),
+                        cells=int(r_hex.n_cells),
+                        boundary_faces=int(_bfaces),
+                        predicted_final=int(_pred_final),
+                        high=int(_high),
+                        edge_new=round(float(_hex_edge), 8),
+                    )
+                    continue
+                if _pred_final < _low:
+                    _factor = min(0.8, float(_pred_final / max(_low, 1)) ** (1.0 / 3.0))
+                    _hex_edge = max(float(_hex_edge) * _factor, 1e-12)
+                    log.info(
+                        "native_poly_hex_base_rebudget",
+                        reason="predicted_under_budget",
+                        attempt=int(_att),
+                        cells=int(r_hex.n_cells),
+                        boundary_faces=int(_bfaces),
+                        predicted_final=int(_pred_final),
+                        low=int(_low),
+                        edge_new=round(float(_hex_edge), 8),
+                    )
+                    continue
+            log.info(
+                "native_poly_hex_base_budget_done",
+                cells=int(r_hex.n_cells),
+                boundary_faces=int(_bfaces),
+                predicted_final=int(_pred_final),
+            )
             break
         cur_sd = max(int(cur_sd * 1.6), cur_sd + 6)
     if r_hex is None or not r_hex.success or r_hex.n_cells <= 2:
