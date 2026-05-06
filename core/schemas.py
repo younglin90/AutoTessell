@@ -355,6 +355,17 @@ class CheckMeshResult(BaseModel):
     severely_non_ortho_faces: int
     failed_checks: int
     mesh_ok: bool
+    # OpenFOAM checkMesh-style supplementary quality fields.  Defaults keep
+    # older tests/fixtures valid; NativeMeshChecker populates them for real
+    # polyMesh evaluations.
+    max_boundary_skewness: float | None = None
+    max_internal_skewness: float | None = None
+    max_concavity: float | None = None
+    min_face_weight: float | None = None
+    min_vol_ratio: float | None = None
+    max_adjacent_volume_ratio: float | None = None
+    max_face_warpage: float | None = None
+    max_cell_size_growth_ratio: float | None = None
 
 
 class CellVolumeStats(BaseModel):
@@ -399,12 +410,19 @@ class AdditionalMetrics(BaseModel):
     cell_volume_stats: CellVolumeStats | None = None
     boundary_layer: BoundaryLayerStats | None = None
     native_bl_phase2: NativeBLPhase2Stats | None = None
+    max_cell_size_growth_ratio: float | None = None
+    max_expansion_ratio: float | None = None
 
 
 class GeometryFidelity(BaseModel):
     hausdorff_distance: float
     hausdorff_relative: float
     surface_area_deviation_percent: float
+    distance_rms: float | None = None
+    distance_p95: float | None = None
+    distance_p99: float | None = None
+    normal_deviation_max_deg: float | None = None
+    feature_preservation_score: float | None = None
     # beta2333 — Möller 1997 self-intersect count (P2.6 chain). None = 측정
     # 안 됨 (>5000 face). 0 = clean. >0 = 입력 wall surface 에 SI 존재.
     n_self_intersect_pre: int | None = None

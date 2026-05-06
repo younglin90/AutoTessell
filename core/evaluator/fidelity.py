@@ -194,6 +194,7 @@ def _native_sample_surface(
     faces,
     n_samples: int,
     seed: int = 0,
+    return_index: bool = False,
 ):
     """면적 가중 barycentric sampling.
 
@@ -207,11 +208,15 @@ def _native_sample_surface(
 
     Returns:
         (n_samples, 3) float64 — 표면 상의 무작위 점.
+        If ``return_index`` is true, also returns sampled face indices.
     """
     import numpy as np  # noqa: PLC0415
 
     if len(faces) == 0 or n_samples <= 0:
-        return np.zeros((0, 3), dtype=np.float64)
+        pts = np.zeros((0, 3), dtype=np.float64)
+        if return_index:
+            return pts, np.zeros((0,), dtype=np.int64)
+        return pts
 
     v0 = vertices[faces[:, 0]]
     v1 = vertices[faces[:, 1]]
@@ -220,7 +225,10 @@ def _native_sample_surface(
     areas = 0.5 * np.linalg.norm(cross, axis=1)
     total = float(areas.sum())
     if total <= 0.0:
-        return np.zeros((0, 3), dtype=np.float64)
+        pts = np.zeros((0, 3), dtype=np.float64)
+        if return_index:
+            return pts, np.zeros((0,), dtype=np.int64)
+        return pts
 
     weights = areas / total
     rng = np.random.default_rng(seed)
@@ -236,7 +244,10 @@ def _native_sample_surface(
     p0 = vertices[faces[face_idx, 0]]
     p1 = vertices[faces[face_idx, 1]]
     p2 = vertices[faces[face_idx, 2]]
-    return (w0[:, None] * p0 + w1[:, None] * p1 + w2[:, None] * p2).astype(np.float64)
+    samples = (w0[:, None] * p0 + w1[:, None] * p1 + w2[:, None] * p2).astype(np.float64)
+    if return_index:
+        return samples, face_idx.astype(np.int64)
+    return samples
 
 
 def _native_kdist_chunked(
@@ -269,6 +280,37 @@ def _native_kdist_chunked(
         if local > max_min_d2:
             max_min_d2 = local
     return float(np.sqrt(max_min_d2))
+
+
+def _native_knn_chunked(
+    query,
+    reference,
+    pair_limit: int = 10_000_000,
+):
+    """Return nearest-neighbour distances and reference indices."""
+    import numpy as np  # noqa: PLC0415
+
+    query = np.asarray(query, dtype=np.float64)
+    reference = np.asarray(reference, dtype=np.float64)
+    m = len(query)
+    n = len(reference)
+    if m == 0 or n == 0:
+        return (
+            np.zeros((m,), dtype=np.float64),
+            np.zeros((m,), dtype=np.int64),
+        )
+
+    chunk = max(1, pair_limit // max(n, 1))
+    out_d2 = np.empty((m,), dtype=np.float64)
+    out_idx = np.empty((m,), dtype=np.int64)
+    for start in range(0, m, chunk):
+        end = min(start + chunk, m)
+        diff = query[start:end, None, :] - reference[None, :, :]
+        d2 = np.einsum("ijk,ijk->ij", diff, diff)
+        idx = np.argmin(d2, axis=1)
+        out_idx[start:end] = idx
+        out_d2[start:end] = d2[np.arange(end - start), idx]
+    return np.sqrt(out_d2), out_idx
 
 
 # ---------------------------------------------------------------------------
@@ -328,8 +370,9 @@ class GeometryFidelityChecker:
         if boundary is None:
             raise ValueError("polyMesh 경계면 추출 실패 — polyMesh 없거나 파싱 불가")
 
-        # 3. Hausdorff 거리 계산 (점 샘플링 기반)
-        hausdorff = self._compute_hausdorff(original, boundary)
+        # 3. Surface distance distribution (점 샘플링 기반)
+        distance_stats = self._compute_surface_distance_stats(original, boundary)
+        hausdorff = float(distance_stats["hausdorff_distance"])
 
         # 4. 표면적 편차
         area_deviation = (
@@ -369,6 +412,11 @@ class GeometryFidelityChecker:
             hausdorff_distance=hausdorff,
             hausdorff_relative=hausdorff_relative,
             surface_area_deviation_percent=area_deviation,
+            distance_rms=float(distance_stats["distance_rms"]),
+            distance_p95=float(distance_stats["distance_p95"]),
+            distance_p99=float(distance_stats["distance_p99"]),
+            normal_deviation_max_deg=float(distance_stats["normal_deviation_max_deg"]),
+            feature_preservation_score=float(distance_stats["feature_preservation_score"]),
             n_self_intersect_pre=n_si_pre,
         )
 
@@ -474,6 +522,96 @@ class GeometryFidelityChecker:
     # ------------------------------------------------------------------
     # Hausdorff 거리 계산
     # ------------------------------------------------------------------
+
+    def _compute_surface_distance_stats(
+        self,
+        mesh_a: trimesh.Trimesh,
+        mesh_b: trimesh.Trimesh,
+    ) -> dict[str, float]:
+        """Sample bidirectional distances and normal deviation statistics."""
+        import numpy as np  # noqa: PLC0415
+
+        n = self.N_SAMPLES
+        if mesh_a.area <= 0 or mesh_b.area <= 0:
+            return {
+                "hausdorff_distance": 0.0,
+                "distance_rms": 0.0,
+                "distance_p95": 0.0,
+                "distance_p99": 0.0,
+                "normal_deviation_max_deg": 0.0,
+                "feature_preservation_score": 1.0,
+            }
+
+        try:
+            samples_a, face_idx_a = _native_sample_surface(
+                np.asarray(mesh_a.vertices, dtype=np.float64),
+                np.asarray(mesh_a.faces, dtype=np.int64),
+                n_samples=n,
+                seed=0,
+                return_index=True,
+            )
+            samples_b, face_idx_b = _native_sample_surface(
+                np.asarray(mesh_b.vertices, dtype=np.float64),
+                np.asarray(mesh_b.faces, dtype=np.int64),
+                n_samples=n,
+                seed=1,
+                return_index=True,
+            )
+            d_ab, nn_ab = _native_knn_chunked(samples_a, samples_b)
+            d_ba, nn_ba = _native_knn_chunked(samples_b, samples_a)
+        except Exception as exc:  # noqa: BLE001
+            log.info("surface_distance_native_failed_falling_back", error=str(exc))
+            from scipy.spatial import cKDTree  # noqa: PLC0415
+
+            samples_a, face_idx_a = mesh_a.sample(n, return_index=True)
+            samples_b, face_idx_b = mesh_b.sample(n, return_index=True)
+            samples_a = np.asarray(samples_a, dtype=np.float64)
+            samples_b = np.asarray(samples_b, dtype=np.float64)
+            face_idx_a = np.asarray(face_idx_a, dtype=np.int64)
+            face_idx_b = np.asarray(face_idx_b, dtype=np.int64)
+            tree_b = cKDTree(samples_b)
+            d_ab, nn_ab = tree_b.query(samples_a)
+            tree_a = cKDTree(samples_a)
+            d_ba, nn_ba = tree_a.query(samples_b)
+
+        all_d = np.concatenate([np.asarray(d_ab), np.asarray(d_ba)])
+        if all_d.size == 0:
+            all_d = np.zeros((1,), dtype=np.float64)
+
+        normal_angles: list[np.ndarray] = []
+        try:
+            normals_a = np.asarray(mesh_a.face_normals, dtype=np.float64)
+            normals_b = np.asarray(mesh_b.face_normals, dtype=np.float64)
+            if normals_a.size and normals_b.size and len(face_idx_a) and len(face_idx_b):
+                na = normals_a[np.asarray(face_idx_a, dtype=np.int64)]
+                nb = normals_b[np.asarray(face_idx_b, dtype=np.int64)[np.asarray(nn_ab, dtype=np.int64)]]
+                dot_ab = np.clip(np.abs(np.einsum("ij,ij->i", na, nb)), 0.0, 1.0)
+                normal_angles.append(np.degrees(np.arccos(dot_ab)))
+
+                nb2 = normals_b[np.asarray(face_idx_b, dtype=np.int64)]
+                na2 = normals_a[np.asarray(face_idx_a, dtype=np.int64)[np.asarray(nn_ba, dtype=np.int64)]]
+                dot_ba = np.clip(np.abs(np.einsum("ij,ij->i", nb2, na2)), 0.0, 1.0)
+                normal_angles.append(np.degrees(np.arccos(dot_ba)))
+        except Exception:
+            normal_angles = []
+
+        if normal_angles:
+            all_angles = np.concatenate(normal_angles)
+            normal_max = float(np.nanmax(all_angles)) if all_angles.size else 0.0
+            normal_p95 = float(np.nanpercentile(all_angles, 95)) if all_angles.size else 0.0
+        else:
+            normal_max = 0.0
+            normal_p95 = 0.0
+
+        feature_score = float(np.clip(1.0 - normal_p95 / 90.0, 0.0, 1.0))
+        return {
+            "hausdorff_distance": float(np.nanmax(all_d)),
+            "distance_rms": float(np.sqrt(np.nanmean(all_d * all_d))),
+            "distance_p95": float(np.nanpercentile(all_d, 95)),
+            "distance_p99": float(np.nanpercentile(all_d, 99)),
+            "normal_deviation_max_deg": normal_max,
+            "feature_preservation_score": feature_score,
+        }
 
     def _compute_hausdorff(
         self,

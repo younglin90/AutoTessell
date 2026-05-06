@@ -669,6 +669,13 @@ class PipelineOrchestrator:
         eval_start = time.perf_counter()
         checkmesh = self._checker.run(case_dir)
         metrics = self._metrics.compute(case_dir)
+        try:
+            growth = getattr(checkmesh, "max_cell_size_growth_ratio", None)
+            if growth is not None:
+                metrics.max_cell_size_growth_ratio = float(growth)
+                metrics.max_expansion_ratio = float(growth)
+        except Exception:
+            pass
         # beta76: inject BL Phase 2 stats passed from tier_layers_post.
         if bl_phase2_stats is not None:
             metrics.native_bl_phase2 = bl_phase2_stats

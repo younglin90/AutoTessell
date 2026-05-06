@@ -174,6 +174,11 @@ class NativeMeshChecker:
         max_skewness = self._compute_skewness(
             face_centres, cell_centres, owner, neighbour, n_internal
         )
+        max_internal_skewness = float(max_skewness)
+        max_boundary_skewness = self._compute_boundary_skewness(
+            face_centres, face_normals, cell_centres, owner, n_internal
+        )
+        max_skewness = max(max_internal_skewness, max_boundary_skewness)
 
         # ------------------------------------------------------------------
         # 6. Cell volumes (signed divergence theorem)
@@ -194,6 +199,22 @@ class NativeMeshChecker:
         # 8. Min face area
         # ------------------------------------------------------------------
         min_face_area = float(face_areas.min()) if len(face_areas) > 0 else 0.0
+        max_concavity, max_face_warpage = self._compute_face_concavity_warpage(
+            points, raw_faces, face_normals, face_areas, face_centres
+        )
+        (
+            min_face_weight,
+            min_vol_ratio,
+            max_adjacent_volume_ratio,
+            max_cell_size_growth_ratio,
+        ) = self._compute_face_weight_volume_ratio(
+            face_centres,
+            cell_centres,
+            owner,
+            neighbour,
+            cell_volumes,
+            n_internal,
+        )
 
         # ------------------------------------------------------------------
         # 9. Min cell volume / volume stats
@@ -253,6 +274,14 @@ class NativeMeshChecker:
             severely_non_ortho_faces=int(severe_count),
             failed_checks=int(failed_checks),
             mesh_ok=mesh_ok,
+            max_boundary_skewness=float(max_boundary_skewness),
+            max_internal_skewness=float(max_internal_skewness),
+            max_concavity=float(max_concavity),
+            min_face_weight=float(min_face_weight),
+            min_vol_ratio=float(min_vol_ratio),
+            max_adjacent_volume_ratio=float(max_adjacent_volume_ratio),
+            max_face_warpage=float(max_face_warpage),
+            max_cell_size_growth_ratio=float(max_cell_size_growth_ratio),
         )
 
         # ------------------------------------------------------------------
@@ -481,6 +510,159 @@ class NativeMeshChecker:
         skewness = skew_dist / d_mag[valid]
 
         return float(skewness.max())
+
+    @staticmethod
+    def _compute_boundary_skewness(
+        face_centres: np.ndarray,
+        face_normals: np.ndarray,
+        cell_centres: np.ndarray,
+        owner: np.ndarray,
+        n_internal: int,
+    ) -> float:
+        """Approximate OpenFOAM boundary-face skewness.
+
+        For a good boundary face, the owner-cell centre projected along the
+        face normal lands near the face centre.  The normalized tangential miss
+        gives a scale-free boundary skewness estimate.
+        """
+        if len(face_centres) <= n_internal:
+            return 0.0
+        b_idx = np.arange(n_internal, len(face_centres), dtype=np.int64)
+        if b_idx.size == 0:
+            return 0.0
+        own = owner[b_idx]
+        valid = (own >= 0) & (own < len(cell_centres))
+        if not np.any(valid):
+            return 0.0
+        b_idx = b_idx[valid]
+        own = own[valid]
+        fc = face_centres[b_idx]
+        cc = cell_centres[own]
+        n = face_normals[b_idx]
+        n_mag = np.linalg.norm(n, axis=1)
+        valid_n = n_mag > 1e-30
+        if not np.any(valid_n):
+            return 0.0
+        fc = fc[valid_n]
+        cc = cc[valid_n]
+        n = n[valid_n] / n_mag[valid_n, np.newaxis]
+        to_face = fc - cc
+        normal_dist = np.einsum("ij,ij->i", to_face, n)
+        proj = cc + normal_dist[:, np.newaxis] * n
+        denom = np.maximum(np.abs(normal_dist), 1e-30)
+        skew = np.linalg.norm(fc - proj, axis=1) / denom
+        if skew.size == 0:
+            return 0.0
+        return float(np.nanmax(skew))
+
+    @staticmethod
+    def _compute_face_concavity_warpage(
+        points: np.ndarray,
+        faces: list[list[int]],
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+        face_centres: np.ndarray,
+    ) -> tuple[float, float]:
+        """Return max concavity degrees and max warpage ratio.
+
+        The warpage estimate mirrors OpenFOAM faceFlatness: compare the
+        magnitude of the polygon area vector with the sum of triangle area
+        magnitudes around the face centre.  Warpage is exported as
+        ``1 - flatness`` so planar faces are zero.
+        """
+        max_concavity = 0.0
+        max_warpage = 0.0
+        for facei, face in enumerate(faces):
+            if len(face) < 3:
+                max_warpage = max(max_warpage, 1.0)
+                continue
+            verts = points[np.asarray(face, dtype=np.int64)]
+            if len(face) > 3:
+                fc = face_centres[facei]
+                sum_a = 0.0
+                for i in range(len(face)):
+                    a = verts[i]
+                    b = verts[(i + 1) % len(face)]
+                    tri_n = 0.5 * np.cross(b - a, fc - a)
+                    sum_a += float(np.linalg.norm(tri_n))
+                if sum_a > 1e-30:
+                    flatness = float(face_areas[facei]) / sum_a
+                    max_warpage = max(max_warpage, max(0.0, 1.0 - flatness))
+
+                n = face_normals[facei]
+                n_norm = float(np.linalg.norm(n))
+                if n_norm > 1e-30:
+                    n = n / n_norm
+                    signs: list[float] = []
+                    for i in range(len(face)):
+                        prev_p = verts[(i - 1) % len(face)]
+                        cur_p = verts[i]
+                        next_p = verts[(i + 1) % len(face)]
+                        cross = np.cross(cur_p - prev_p, next_p - cur_p)
+                        s = float(np.dot(cross, n))
+                        if abs(s) > 1e-14:
+                            signs.append(s)
+                    if signs:
+                        ref = 1.0 if sum(1 for s in signs if s >= 0.0) >= len(signs) / 2 else -1.0
+                        if any(s * ref < -1e-14 for s in signs):
+                            # OpenFOAM reports face concavity in degrees.  A
+                            # sign reversal is already over the accepted 80 deg
+                            # gate, so use a conservative hard-fail value.
+                            max_concavity = max(max_concavity, 180.0)
+        return float(max_concavity), float(max_warpage)
+
+    @staticmethod
+    def _compute_face_weight_volume_ratio(
+        face_centres: np.ndarray,
+        cell_centres: np.ndarray,
+        owner: np.ndarray,
+        neighbour: np.ndarray,
+        cell_volumes: np.ndarray,
+        n_internal: int,
+    ) -> tuple[float, float, float, float]:
+        """Compute OpenFOAM-style interpolation weight and volume-ratio stats."""
+        if n_internal <= 0 or len(cell_volumes) == 0:
+            return 1.0, 1.0, 1.0, 1.0
+        own = owner[:n_internal]
+        nbr = neighbour[:n_internal]
+        valid = (
+            (own >= 0)
+            & (nbr >= 0)
+            & (own < len(cell_centres))
+            & (nbr < len(cell_centres))
+            & (own < len(cell_volumes))
+            & (nbr < len(cell_volumes))
+        )
+        if not np.any(valid):
+            return 1.0, 1.0, 1.0, 1.0
+        own = own[valid]
+        nbr = nbr[valid]
+        fc = face_centres[:n_internal][valid]
+        co = cell_centres[own]
+        cn = cell_centres[nbr]
+        d = cn - co
+        d2 = np.einsum("ij,ij->i", d, d)
+        valid_d = d2 > 1e-30
+        if np.any(valid_d):
+            t = np.einsum("ij,ij->i", fc[valid_d] - co[valid_d], d[valid_d]) / d2[valid_d]
+            weights = np.minimum(t, 1.0 - t)
+            min_face_weight = float(np.nanmin(weights)) if weights.size else 1.0
+        else:
+            min_face_weight = 1.0
+
+        vo = np.abs(cell_volumes[own])
+        vn = np.abs(cell_volumes[nbr])
+        valid_v = (vo > 1e-30) & (vn > 1e-30)
+        if not np.any(valid_v):
+            return min_face_weight, 0.0, float("inf"), float("inf")
+        ratios = np.maximum(vo[valid_v], vn[valid_v]) / np.maximum(
+            np.minimum(vo[valid_v], vn[valid_v]),
+            1e-30,
+        )
+        max_adjacent = float(np.nanmax(ratios)) if ratios.size else 1.0
+        min_vol_ratio = float(1.0 / max(max_adjacent, 1.0))
+        max_growth = float(max_adjacent ** (1.0 / 3.0))
+        return min_face_weight, min_vol_ratio, max_adjacent, max_growth
 
     # ------------------------------------------------------------------
     # Cell volumes (divergence theorem)
