@@ -422,6 +422,62 @@ def write_generic_polymesh(
     )
 
     vertices_arr = np.asarray(vertices, dtype=np.float64)
+    bbox_diag = float(np.linalg.norm(vertices_arr.max(axis=0) - vertices_arr.min(axis=0))) if len(vertices_arr) else 0.0
+    area_eps = max((bbox_diag * 1e-12) ** 2, 1e-30)
+
+    def _clean_face_for_write(face: Sequence[int]) -> list[int] | None:
+        cleaned: list[int] = []
+        seen: set[int] = set()
+        for raw_v in face:
+            v = int(raw_v)
+            if cleaned and cleaned[-1] == v:
+                continue
+            if v in seen:
+                continue
+            cleaned.append(v)
+            seen.add(v)
+        if len(cleaned) >= 2 and cleaned[-1] == cleaned[0]:
+            cleaned.pop()
+        if len(cleaned) < 3:
+            return None
+        pts = vertices_arr[np.asarray(cleaned, dtype=np.int64)]
+        base = pts[0]
+        area = 0.0
+        for i in range(1, len(cleaned) - 1):
+            area += 0.5 * float(np.linalg.norm(np.cross(
+                pts[i] - base, pts[i + 1] - base,
+            )))
+        if area <= area_eps:
+            return None
+        return cleaned
+
+    cleaned_cells: list[list[list[int]]] = []
+    n_cells_dropped = 0
+    n_faces_dropped = 0
+    for faces_of_cell in cell_faces:
+        out_faces: list[list[int]] = []
+        drop_cell = False
+        for f in faces_of_cell:
+            cf = _clean_face_for_write(f)
+            if cf is None:
+                drop_cell = True
+                n_faces_dropped += 1
+                break
+            out_faces.append(cf)
+        if drop_cell or len(out_faces) < 4:
+            n_cells_dropped += 1
+            continue
+        cleaned_cells.append(out_faces)
+    if n_cells_dropped or n_faces_dropped:
+        logger.info(
+            "generic_polymesh_degenerate_cells_dropped",
+            n_cells_in=len(cell_faces),
+            n_cells_out=len(cleaned_cells),
+            n_cells_dropped=int(n_cells_dropped),
+            n_faces_dropped=int(n_faces_dropped),
+        )
+    cell_faces = cleaned_cells
+
     poly_dir = case_dir / "constant" / "polyMesh"
     poly_dir.mkdir(parents=True, exist_ok=True)
     _ensure_minimal_controldict(case_dir)
@@ -432,8 +488,6 @@ def write_generic_polymesh(
     for ci, faces_of_cell in enumerate(cell_faces):
         for f in faces_of_cell:
             verts = [int(v) for v in f]
-            if len(verts) < 3:
-                continue
             key = tuple(sorted(verts))
             face_map[key].append((ci, verts))
 
@@ -495,9 +549,63 @@ def write_generic_polymesh(
         )
 
     n_internal = len(sorted_int_faces)
-    final_faces = sorted_int_faces + [boundary_faces[i] for i in bnd_order]
-    final_owner = sorted_int_owner + [boundary_owner[i] for i in bnd_order]
+    sorted_bnd_faces = [boundary_faces[i] for i in bnd_order]
+    sorted_bnd_owner = [boundary_owner[i] for i in bnd_order]
+    final_faces = sorted_int_faces + sorted_bnd_faces
+    final_owner = sorted_int_owner + sorted_bnd_owner
     final_nbr = sorted_int_nbr
+
+    # PMW2 — auto boundary patch segmentation by feature dihedral.
+    # 패치 그룹화 결과는 BFS 순서로 face index 가 scattered. OpenFOAM polyMesh 는
+    # patch[i].startFace + nFaces == patch[i+1].startFace 의 contiguous 제약이
+    # 있으므로, 그룹화 후 boundary 영역을 patch 별로 재정렬해야 한다.
+    n_bnd = len(final_faces) - n_internal
+    _pmw2_active = (
+        not _PMW2_OFF
+        and n_bnd > 100
+    )
+    boundary_entries: list[dict[str, Any]]
+    if _pmw2_active:
+        patches = _segment_boundary_by_features(
+            final_faces, vertices_arr, n_internal, dihedral_deg=30.0
+        )
+        if len(patches) > 1:
+            # BETA2881 — patch 별 face indices 를 contiguous 위치로 재배치.
+            # 기존 코드는 startFace=pidxs[0] 만 기록했고 face 자체는 그대로 두어
+            # PyVista/OpenFOAMReader 가 "inconsistent start face" 로 거부.
+            new_bnd_faces: list[list[int]] = []
+            new_bnd_owner: list[int] = []
+            new_bnd_starts: list[int] = []
+            cursor = n_internal
+            for _pname, pidxs in patches:
+                new_bnd_starts.append(cursor)
+                for abs_fi in pidxs:
+                    rel = abs_fi - n_internal
+                    new_bnd_faces.append(sorted_bnd_faces[rel])
+                    new_bnd_owner.append(sorted_bnd_owner[rel])
+                cursor += len(pidxs)
+            # 재정렬된 boundary 적용.
+            final_faces = sorted_int_faces + new_bnd_faces
+            final_owner = sorted_int_owner + new_bnd_owner
+            boundary_entries = [
+                {
+                    "name": pname,
+                    "type": patch_type,
+                    "nFaces": len(pidxs),
+                    "startFace": st,
+                }
+                for (pname, pidxs), st in zip(patches, new_bnd_starts)
+            ]
+        else:
+            boundary_entries = [
+                {"name": patch_name, "type": patch_type,
+                 "nFaces": n_bnd, "startFace": n_internal}
+            ]
+    else:
+        boundary_entries = [
+            {"name": patch_name, "type": patch_type,
+             "nFaces": n_bnd, "startFace": n_internal}
+        ]
 
     n_faces = len(final_faces)
     owner_note = (
@@ -518,45 +626,6 @@ def write_generic_polymesh(
         np.array(final_nbr, dtype=np.int64),
         "neighbour",
     )
-    # PMW2 — auto boundary patch segmentation by feature dihedral
-    n_bnd = len(final_faces) - n_internal
-    _pmw2_active = (
-        not _PMW2_OFF
-        and n_bnd > 100
-    )
-    if _pmw2_active:
-        patches = _segment_boundary_by_features(
-            final_faces, vertices_arr, n_internal, dihedral_deg=30.0
-        )
-        # only replace single-patch path if multiple patches detected
-        if len(patches) > 1:
-            boundary_entries = [
-                {
-                    "name": pname,
-                    "type": patch_type,
-                    "nFaces": len(pidxs),
-                    "startFace": pidxs[0],
-                }
-                for pname, pidxs in patches
-            ]
-        else:
-            boundary_entries = [
-                {
-                    "name": patch_name,
-                    "type": patch_type,
-                    "nFaces": n_bnd,
-                    "startFace": n_internal,
-                }
-            ]
-    else:
-        boundary_entries = [
-            {
-                "name": patch_name,
-                "type": patch_type,
-                "nFaces": n_bnd,
-                "startFace": n_internal,
-            }
-        ]
     _write_boundary(poly_dir / "boundary", boundary_entries)
 
     return {
@@ -710,4 +779,3 @@ class PolyMeshWriter:
                 + "}\n"
                 + _FOOTER
             )
-

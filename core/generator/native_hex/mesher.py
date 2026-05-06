@@ -564,7 +564,7 @@ def generate_native_hex(
     if _cell_budget > 0 and _budget_layers > 0:
         _volume_budget = max(
             1,
-            int(float(_cell_budget) / (1.0 + 0.65 * float(_budget_layers))),
+            int(float(_cell_budget) / (1.0 + 3.5 * float(_budget_layers))),
         )
     h_pre = float(target_edge_length) if (
         target_edge_length is not None and target_edge_length > 0

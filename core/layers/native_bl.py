@@ -162,10 +162,23 @@ def _hex_bl1_prism_guard(
     # Use bottom-face centroids as bounding-sphere centres with radius = first_thickness.
     # Lightweight: O(n_wall_faces) only.
     _wall_face_centroids: list[np.ndarray] = []
+    _wall_face_centroid_ids: list[int] = []
     for fi in wall_face_indices:
         _vs = faces[fi]
         if len(_vs) >= 3:
             _wall_face_centroids.append(points[_vs].mean(axis=0))
+            _wall_face_centroid_ids.append(int(fi))
+    _centroid_tree = None
+    _centroid_arr = np.asarray(_wall_face_centroids, dtype=np.float64)
+    _centroid_face_to_pos = {
+        int(fi): i for i, fi in enumerate(_wall_face_centroid_ids)
+    }
+    if _centroid_arr.shape[0] >= 128:
+        try:
+            from scipy.spatial import cKDTree  # noqa: PLC0415
+            _centroid_tree = cKDTree(_centroid_arr)
+        except Exception as _tree_exc:
+            _log.debug("hex_bl_prism_guard_kdtree_skipped", reason=str(_tree_exc)[:120])
 
     accepted: list[int] = []
     n_rej_asp = 0
@@ -208,10 +221,18 @@ def _hex_bl1_prism_guard(
         # any OTHER wall face centroid (bounding-sphere approximation).
         _top_c = top_pts.mean(axis=0)
         _collision = False
-        for _wc in _wall_face_centroids:
-            if float(np.linalg.norm(_top_c - _wc)) < first_thickness * 0.5:
-                _collision = True
-                break
+        _radius = first_thickness * 0.5
+        if _centroid_tree is not None:
+            _own_pos = _centroid_face_to_pos.get(int(fi), -1)
+            _hits = _centroid_tree.query_ball_point(_top_c, r=_radius)
+            _collision = any(int(h) != _own_pos for h in _hits)
+        else:
+            for _ci, _wc in enumerate(_wall_face_centroids):
+                if _wall_face_centroid_ids[_ci] == int(fi):
+                    continue
+                if float(np.linalg.norm(_top_c - _wc)) < _radius:
+                    _collision = True
+                    break
         if _collision:
             n_rej_col += 1
             _log.debug("hex_bl_prism_rejected_collision", face=fi)
@@ -1222,6 +1243,7 @@ def _compute_collision_distance(
     vnorm: dict[int, np.ndarray],
     *,
     max_tris: int = 20000,
+    max_search_distance: float | None = None,
 ) -> dict[int, float]:
     """각 wall vertex 에서 inward normal 방향으로 가장 가까운 "다른 wall face"
     까지의 거리. 자기 자신이 포함된 face 는 skip.
@@ -1259,6 +1281,65 @@ def _compute_collision_distance(
     wall_v_arr = np.array(wall_vert_indices, dtype=np.int64)
     origins = points[wall_v_arr]                                       # (R, 3)
     dirs = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64)  # (R, 3)
+
+    # cfMesh-style local front collision pruning: for BL safety we only need
+    # intersections closer than the generated layer thickness.  A centroid KDTree
+    # keeps the exact ray-triangle test but avoids the old all-rays × all-faces
+    # matrix on large wall meshes.
+    if max_search_distance is not None and np.isfinite(max_search_distance):
+        search = float(max_search_distance)
+        if search > 0.0 and R * T >= 1_000_000:
+            try:
+                from scipy.spatial import cKDTree  # noqa: PLC0415
+
+                tri_centers = tri_verts.mean(axis=1)
+                tri_radii = np.linalg.norm(
+                    tri_verts - tri_centers[:, None, :], axis=2,
+                ).max(axis=1)
+                radius = search + float(tri_radii.max(initial=0.0))
+                tree = cKDTree(tri_centers)
+                candidate_lists = tree.query_ball_point(origins, r=radius)
+                out: dict[int, float] = {}
+                n_candidates = 0
+                n_nonempty = 0
+                for ri, cand in enumerate(candidate_lists):
+                    if not cand:
+                        continue
+                    cand_arr = np.asarray(cand, dtype=np.int64)
+                    n_candidates += int(cand_arr.size)
+                    n_nonempty += 1
+                    v = int(wall_v_arr[ri])
+                    c_face_ids = tri_face_ids[cand_arr]
+                    exclude = (
+                        (c_face_ids[:, 0] == v)
+                        | (c_face_ids[:, 1] == v)
+                        | (c_face_ids[:, 2] == v)
+                    )[None, :]
+                    t_min = _ray_triangle_min_distance(
+                        origins[ri:ri + 1],
+                        dirs[ri:ri + 1],
+                        tri_verts[cand_arr],
+                        exclude,
+                        chunk_size=1,
+                    )[0]
+                    if np.isfinite(t_min) and float(t_min) <= search:
+                        out[v] = float(t_min)
+                log.info(
+                    "native_bl_collision_local_pruned",
+                    component="native_bl", phase="Phase2",
+                    n_rays=int(R), n_tris=int(T),
+                    n_nonempty=int(n_nonempty),
+                    avg_candidates=round(
+                        float(n_candidates) / max(1, int(R)), 2,
+                    ),
+                    search_distance=round(search, 8),
+                )
+                return out
+            except Exception as _local_exc:
+                log.debug(
+                    "native_bl_collision_local_prune_skipped",
+                    reason=str(_local_exc)[:120],
+                )
 
     # exclude: vertex v 가 tri 에 포함되면 True. broadcasting 으로 O(R+T).
     # (R, 1) == (1, T, 3) → (R, T, 3) — too big? No: R, T up to 2만 → R*T=4e8 bools = 400MB.
@@ -1816,7 +1897,7 @@ def generate_native_bl(
             if _edge_lens:
                 _mean_edge = float(np.mean(_edge_lens))
                 _aspect_cap_first = _mean_edge / _aspect_target
-                if thicknesses[0] > _aspect_cap_first and thicknesses[0] > 0:
+                if 0 < thicknesses[0] < _aspect_cap_first:
                     _scale_aspect = _aspect_cap_first / float(thicknesses[0])
                     thicknesses *= _scale_aspect
                     total = float(thicknesses.sum())
@@ -1892,6 +1973,9 @@ def generate_native_bl(
         if not _ml_used:
             collision_dist = _compute_collision_distance(
                 points, faces, wall_face_indices, wall_vert_indices, vnorm,
+                max_search_distance=(
+                    total / max(float(cfg.collision_safety_factor), 1e-12)
+                ) * 1.05,
             )
         if collision_dist:
             safety = float(cfg.collision_safety_factor)
@@ -2708,7 +2792,13 @@ def generate_native_bl(
     _hex_layers_per_face: dict[int, int] = {}  # fi -> n_accepted_layers
     _hex_layers_n_rej_asp = 0
     _hex_layers_n_rej_col = 0
-    if _HEX_LAYERS_N >= 1 and wall_face_indices and layer_point_ids:
+    _hex_layers_cap = int(os.environ.get("AUTO_TESSELL_HEX_LAYERS_FACE_CAP", "3000"))
+    if (
+        _HEX_LAYERS_N >= 1
+        and wall_face_indices
+        and layer_point_ids
+        and len(wall_face_indices) <= _hex_layers_cap
+    ):
         try:
             _glt_thicknesses = _geometric_layer_thickness(
                 cfg.first_thickness, _HEX_LAYERS_N, growth_ratio=cfg.growth_ratio,
@@ -2798,6 +2888,13 @@ def generate_native_bl(
             )
         except Exception as _hle:
             log.info("hex_layers_skipped", reason=str(_hle)[:120])
+    elif _HEX_LAYERS_N >= 1 and len(wall_face_indices) > _hex_layers_cap:
+        log.info(
+            "hex_layers_skipped_large",
+            n_wall_faces=int(len(wall_face_indices)),
+            cap=int(_hex_layers_cap),
+            reason="diagnostic per-layer guard would be quadratic",
+        )
 
     # backup
     if cfg.backup_original:
