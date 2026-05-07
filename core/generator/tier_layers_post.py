@@ -71,10 +71,14 @@ def _build_bl_config(
     _fa_default = defaults.feature_angle_deg
     _csf_default = defaults.collision_safety_factor
     _ar_default = defaults.aspect_ratio_threshold
+    _fr_default = defaults.feature_reduction_ratio
     if _ql == "fine":
         _fa_default = 30.0
         _csf_default = 0.4
         _ar_default = 300.0
+        # SMESH-style viscous layers avoid abrupt per-vertex height jumps at
+        # feature edges; collision safety still handles actual bottlenecks.
+        _fr_default = 1.0
 
     # beta2287: in-engine y+ flow params (CLI / 미래 GUI auto-y+).
     _typ = params.get("bl_target_y_plus")
@@ -107,7 +111,7 @@ def _build_bl_config(
             params.get("bl_feature_angle_deg", _fa_default),
         ),
         feature_reduction_ratio=float(
-            params.get("bl_feature_reduction_ratio", defaults.feature_reduction_ratio),
+            params.get("bl_feature_reduction_ratio", _fr_default),
         ),
         quality_check_enabled=_coerce_bool(
             params.get("bl_quality_check_enabled"), defaults.quality_check_enabled,
