@@ -211,6 +211,7 @@ class NativeMeshChecker:
             max_cell_size_growth_ratio,
         ) = self._compute_face_weight_volume_ratio(
             face_centres,
+            face_normals,
             cell_centres,
             owner,
             neighbour,
@@ -657,6 +658,7 @@ class NativeMeshChecker:
     @staticmethod
     def _compute_face_weight_volume_ratio(
         face_centres: np.ndarray,
+        face_normals: np.ndarray,
         cell_centres: np.ndarray,
         owner: np.ndarray,
         neighbour: np.ndarray,
@@ -681,14 +683,19 @@ class NativeMeshChecker:
         own = own[valid]
         nbr = nbr[valid]
         fc = face_centres[:n_internal][valid]
+        fn = face_normals[:n_internal][valid]
         co = cell_centres[own]
         cn = cell_centres[nbr]
-        d = cn - co
-        d2 = np.einsum("ij,ij->i", d, d)
-        valid_d = d2 > 1e-30
-        if np.any(valid_d):
-            t = np.einsum("ij,ij->i", fc[valid_d] - co[valid_d], d[valid_d]) / d2[valid_d]
-            weights = np.minimum(t, 1.0 - t)
+        n_mag = np.linalg.norm(fn, axis=1)
+        valid_n = n_mag > 1e-30
+        if np.any(valid_n):
+            n_hat = fn[valid_n] / n_mag[valid_n, np.newaxis]
+            d_own = np.abs(np.einsum("ij,ij->i", n_hat, fc[valid_n] - co[valid_n]))
+            d_nei = np.abs(np.einsum("ij,ij->i", n_hat, cn[valid_n] - fc[valid_n]))
+            denom = d_own + d_nei
+            weights = np.ones_like(denom)
+            valid_d = denom > 1e-30
+            weights[valid_d] = np.minimum(d_own[valid_d], d_nei[valid_d]) / denom[valid_d]
             min_face_weight = float(np.nanmin(weights)) if weights.size else 1.0
         else:
             min_face_weight = 1.0
