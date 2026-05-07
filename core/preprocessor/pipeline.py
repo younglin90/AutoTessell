@@ -689,15 +689,39 @@ class Preprocessor:
                 pass
             mesh.fix_normals()
 
-        # 연결 컴포넌트가 여럿이면 최대 컴포넌트만 보존
+        # 연결 컴포넌트가 여럿이면 보통 작은 debris 를 버리고 최대 컴포넌트만
+        # 보존한다. 다만 hard STL repair/remesh 가 많은 열린 조각으로 나뉜 경우
+        # 최대 컴포넌트가 전체의 극히 일부일 수 있다. 그 상태에서 largest-only
+        # 로 줄이면 실제 형상을 거의 모두 잃고, downstream WildMesh 는 외부 도메인
+        # 껍데기만 메쉬화한다. 최대 컴포넌트가 절반 미만이면 fragmented input 으로
+        # 보고 전체 조각을 보존해 generator 의 자체 close/compound 단계에 맡긴다.
         try:
             components = mesh.split(only_watertight=False)
             if len(components) > 1:
-                log.info(
-                    "keep_largest_component",
-                    num_components=len(components),
+                total_component_faces = sum(len(c.faces) for c in components)
+                largest = max(components, key=lambda m: len(m.faces))
+                largest_faces = len(largest.faces)
+                largest_ratio = (
+                    float(largest_faces) / max(float(total_component_faces), 1.0)
                 )
-                mesh = max(components, key=lambda m: len(m.faces))
+                if largest_ratio >= 0.5:
+                    log.info(
+                        "keep_largest_component",
+                        num_components=len(components),
+                        largest_faces=largest_faces,
+                        total_faces=total_component_faces,
+                        largest_ratio=round(largest_ratio, 4),
+                    )
+                    mesh = largest
+                else:
+                    log.warning(
+                        "preserve_fragmented_components",
+                        num_components=len(components),
+                        largest_faces=largest_faces,
+                        total_faces=total_component_faces,
+                        largest_ratio=round(largest_ratio, 4),
+                        reason="largest_component_too_small",
+                    )
         except Exception:
             pass
 
