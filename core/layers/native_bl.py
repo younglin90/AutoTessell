@@ -2795,94 +2795,7 @@ def generate_native_bl(
         def _pcid(wi_: int, k_: int) -> int:
             return prism_cell_id_start + wi_ * cfg.num_layers + k_
 
-        prism_centre_cache: dict[tuple[int, int], np.ndarray] = {}
-
-        def _prism_cell_centre(wi_: int, layer_: int) -> np.ndarray:
-            key_ = (int(wi_), int(layer_))
-            cached_ = prism_centre_cache.get(key_)
-            if cached_ is not None:
-                return cached_
-            fi_c = wall_face_indices[wi_]
-            verts_c = list(_ltri(fi_c, layer_)) + list(_ltri(fi_c, layer_ + 1))
-            centre_ = fp[np.asarray(verts_c, dtype=np.int64)].mean(axis=0)
-            prism_centre_cache[key_] = centre_
-            return centre_
-
-        def _score_internal_side_split(
-            parts_: tuple[list[int], list[int]],
-            owner_c_: np.ndarray,
-            nbr_c_: np.ndarray,
-        ) -> float:
-            d_ = nbr_c_ - owner_c_
-            d2_ = float(np.dot(d_, d_))
-            dmag_ = float(np.sqrt(d2_))
-            if dmag_ <= 1e-30:
-                return float("inf")
-            worst_angle = 0.0
-            worst_weight_penalty = 0.0
-            for tri_ in parts_:
-                n_, area_ = _face_normal_area(fp, tri_)
-                if area_ <= 1e-30:
-                    return float("inf")
-                fc_ = fp[np.asarray(tri_, dtype=np.int64)].mean(axis=0)
-                nmag_ = float(np.linalg.norm(n_))
-                if nmag_ <= 1e-30:
-                    return float("inf")
-                cos_ = abs(float(np.dot(n_, d_))) / (nmag_ * dmag_)
-                angle_ = float(np.degrees(np.arccos(np.clip(cos_, 0.0, 1.0))))
-                t_ = float(np.dot(fc_ - owner_c_, d_) / d2_)
-                weight_ = min(t_, 1.0 - t_)
-                worst_angle = max(worst_angle, angle_)
-                worst_weight_penalty = max(
-                    worst_weight_penalty,
-                    max(0.0, 0.05 - weight_),
-                )
-            return worst_angle + worst_weight_penalty * 1000.0
-
-        def _score_boundary_side_split(
-            parts_: tuple[list[int], list[int]],
-            owner_c_: np.ndarray,
-        ) -> float:
-            worst_skew = 0.0
-            for tri_ in parts_:
-                n_, area_ = _face_normal_area(fp, tri_)
-                if area_ <= 1e-30:
-                    return float("inf")
-                fc_ = fp[np.asarray(tri_, dtype=np.int64)].mean(axis=0)
-                nmag_ = float(np.linalg.norm(n_))
-                if nmag_ <= 1e-30:
-                    return float("inf")
-                n_unit_ = n_ / nmag_
-                to_face_ = fc_ - owner_c_
-                normal_dist_ = float(np.dot(to_face_, n_unit_))
-                if abs(normal_dist_) <= 1e-30:
-                    return float("inf")
-                proj_ = owner_c_ + normal_dist_ * n_unit_
-                skew_ = float(np.linalg.norm(fc_ - proj_) / abs(normal_dist_))
-                worst_skew = max(worst_skew, skew_)
-            return worst_skew
-
-        def _quality_split_side_quad(
-            quad_: list[int],
-            owner_c_: np.ndarray,
-            nbr_c_: np.ndarray | None,
-        ) -> list[list[int]]:
-            q_ = [int(v) for v in quad_]
-            diag_02 = ([q_[0], q_[1], q_[2]], [q_[0], q_[2], q_[3]])
-            diag_13 = ([q_[0], q_[1], q_[3]], [q_[1], q_[2], q_[3]])
-            if nbr_c_ is not None:
-                score_02 = _score_internal_side_split(diag_02, owner_c_, nbr_c_)
-                score_13 = _score_internal_side_split(diag_13, owner_c_, nbr_c_)
-            else:
-                score_02 = _score_boundary_side_split(diag_02, owner_c_)
-                score_13 = _score_boundary_side_split(diag_13, owner_c_)
-            return list(diag_02 if score_02 <= score_13 else diag_13)
-
-        def _side_face_parts(
-            quad_: list[int],
-            owner_c_: np.ndarray,
-            nbr_c_: np.ndarray | None = None,
-        ) -> list[list[int]]:
+        def _side_face_parts(quad_: list[int]) -> list[list[int]]:
             """Return side-face polygons; split warped BL quads into triangles.
 
             BL side faces connect two layer edges. Around sharp/concave
@@ -2892,10 +2805,7 @@ def generate_native_bl(
             owner-neighbour pair but emitting two triangular faces preserves the
             FVM topology and removes the non-planar face.
             """
-            parts_ = _face_parts(quad_, force_quad_split=False)
-            if len(parts_) == 1:
-                return parts_
-            return _quality_split_side_quad(quad_, owner_c_, nbr_c_)
+            return _face_parts(quad_, force_quad_split=False)
 
         for wi_p, fi_p in enumerate(wall_face_indices):
             patch_idx_p = wall_orig_patch[fi_p]
@@ -2931,28 +2841,22 @@ def generate_native_bl(
                     iv_a_p = lp_ids[k_p + 1][va_p]
                     iv_b_p = lp_ids[k_p + 1][vb_p]
                     quad_p = [ov_a_p, iv_a_p, iv_b_p, ov_b_p]
-                    owner_c_p = _prism_cell_centre(wi_p, k_p)
 
                     if not other_p:
-                        for side_p in _side_face_parts(quad_p, owner_c_p):
+                        for side_p in _side_face_parts(quad_p):
                             p_bl_side_faces.append(side_p)
                             p_bl_side_owner.append(prism_cell_p)
                     else:
                         other_fi_p = other_p[0]
                         other_wi_p = wall_fi_to_wi.get(other_fi_p, -1)
                         if other_wi_p < 0:
-                            for side_p in _side_face_parts(quad_p, owner_c_p):
+                            for side_p in _side_face_parts(quad_p):
                                 p_bl_side_faces.append(side_p)
                                 p_bl_side_owner.append(prism_cell_p)
                             continue
                         nbr_prism_p = _pcid(other_wi_p, k_p)
-                        nbr_c_p = _prism_cell_centre(other_wi_p, k_p)
                         if prism_cell_p < nbr_prism_p:
-                            for side_p in _side_face_parts(
-                                quad_p,
-                                owner_c_p,
-                                nbr_c_p,
-                            ):
+                            for side_p in _side_face_parts(quad_p):
                                 p_int_faces.append(side_p)
                                 p_int_owner.append(prism_cell_p)
                                 p_int_nbr.append(nbr_prism_p)
