@@ -211,8 +211,6 @@ class NativeMeshChecker:
             max_cell_size_growth_ratio,
         ) = self._compute_face_weight_volume_ratio(
             face_centres,
-            face_normals,
-            face_areas,
             cell_centres,
             owner,
             neighbour,
@@ -663,22 +661,13 @@ class NativeMeshChecker:
     @staticmethod
     def _compute_face_weight_volume_ratio(
         face_centres: np.ndarray,
-        face_normals: np.ndarray,
-        face_areas: np.ndarray,
         cell_centres: np.ndarray,
         owner: np.ndarray,
         neighbour: np.ndarray,
         cell_volumes: np.ndarray,
         n_internal: int,
     ) -> tuple[float, float, float, float]:
-        """Compute OpenFOAM-style interpolation weight and volume-ratio stats.
-
-        OpenFOAM's polyMeshTools::faceWeights projects owner/neighbor
-        centre-to-face distances onto the face area vector, then reports
-        min(dOwn, dNei)/(dOwn + dNei).  Using the centre-line parameter instead
-        can produce negative weights for valid skewed BL faces, which is not
-        what checkMesh reports.
-        """
+        """Compute OpenFOAM-style interpolation weight and volume-ratio stats."""
         if n_internal <= 0 or len(cell_volumes) == 0:
             return 1.0, 1.0, 1.0, 1.0
         own = owner[:n_internal]
@@ -690,23 +679,20 @@ class NativeMeshChecker:
             & (nbr < len(cell_centres))
             & (own < len(cell_volumes))
             & (nbr < len(cell_volumes))
-            & (np.arange(n_internal) < len(face_normals))
-            & (np.arange(n_internal) < len(face_areas))
         )
         if not np.any(valid):
             return 1.0, 1.0, 1.0, 1.0
         own = own[valid]
         nbr = nbr[valid]
         fc = face_centres[:n_internal][valid]
-        fa = face_normals[:n_internal][valid] * face_areas[:n_internal][valid, np.newaxis]
         co = cell_centres[own]
         cn = cell_centres[nbr]
-        fa_mag = np.linalg.norm(fa, axis=1)
-        valid_d = fa_mag > 1e-30
+        d = cn - co
+        d2 = np.einsum("ij,ij->i", d, d)
+        valid_d = d2 > 1e-30
         if np.any(valid_d):
-            d_own = np.abs(np.einsum("ij,ij->i", fa[valid_d], fc[valid_d] - co[valid_d]))
-            d_nei = np.abs(np.einsum("ij,ij->i", fa[valid_d], cn[valid_d] - fc[valid_d]))
-            weights = np.minimum(d_own, d_nei) / (d_own + d_nei + 1e-300)
+            t = np.einsum("ij,ij->i", fc[valid_d] - co[valid_d], d[valid_d]) / d2[valid_d]
+            weights = np.minimum(t, 1.0 - t)
             min_face_weight = float(np.nanmin(weights)) if weights.size else 1.0
         else:
             min_face_weight = 1.0
