@@ -135,9 +135,11 @@ class NativeMeshChecker:
         # face_normals: (F, 3) unit normals; face_areas: (F,) scalar areas
 
         # ------------------------------------------------------------------
-        # 3. Cell centres (average of constituent face centres)
+        # 3. Cell centres
         # ------------------------------------------------------------------
-        cell_centres = self._compute_cell_centres(face_centres, owner, n_cells, neighbour)  # (C, 3)
+        cell_centres = self._compute_cell_centres_from_vertices(
+            points, raw_faces, owner, n_cells, neighbour,
+        )  # (C, 3)
 
         # ------------------------------------------------------------------
         # 3b. Face normal orientation 교정 — owner cell 중심에서 face centre 로
@@ -410,6 +412,47 @@ class NativeMeshChecker:
             np.add.at(counts, neighbour, 1)
         nonzero = counts > 0
         centres[nonzero] /= counts[nonzero, np.newaxis]
+        return centres
+
+    @staticmethod
+    def _compute_cell_centres_from_vertices(
+        points: np.ndarray,
+        faces: list[list[int]],
+        owner: np.ndarray,
+        n_cells: int,
+        neighbour: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Return cell centres as the mean of unique vertices per cell.
+
+        Boundary-layer cells are mostly prisms and general polyhedra.  The old
+        unweighted face-centre mean can bias centres toward split side faces,
+        inflating non-orthogonality, skewness, and face-weight estimates.  A
+        unique-vertex mean is still inexpensive, but tracks the geometric centre
+        of prism-like cells more closely.
+        """
+        if n_cells <= 0:
+            return np.zeros((0, 3), dtype=np.float64)
+        cell_vertices: list[set[int]] = [set() for _ in range(n_cells)]
+        n_internal = len(neighbour) if neighbour is not None else 0
+        for face_i, face in enumerate(faces):
+            if not face:
+                continue
+            own = int(owner[face_i]) if face_i < len(owner) else -1
+            if 0 <= own < n_cells:
+                cell_vertices[own].update(int(v) for v in face)
+            if face_i < n_internal and neighbour is not None:
+                nbr = int(neighbour[face_i])
+                if 0 <= nbr < n_cells:
+                    cell_vertices[nbr].update(int(v) for v in face)
+
+        centres = np.zeros((n_cells, 3), dtype=np.float64)
+        for cell_i, verts in enumerate(cell_vertices):
+            if not verts:
+                continue
+            idx = np.fromiter(verts, dtype=np.int64)
+            valid = (idx >= 0) & (idx < len(points))
+            if np.any(valid):
+                centres[cell_i] = points[idx[valid]].mean(axis=0)
         return centres
 
     # ------------------------------------------------------------------
