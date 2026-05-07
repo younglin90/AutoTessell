@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from itertools import permutations
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +42,7 @@ log = get_logger(__name__)
 # Mirrors POL_LAYERS pattern (R91). Each wall face → chain of 2 prism wedges;
 # each wedge → 3 sub-tets. TET_BL1 guards applied per layer; chain truncated at
 # first rejected layer. Default ON.
-_TET_LAYERS_N: int = 1
+_TET_LAYERS_N: int = 2
 
 
 @dataclass
@@ -60,14 +59,8 @@ def _identify_prism_cells(
     owner: np.ndarray,
     neighbour: np.ndarray,
     n_cells: int,
-    points: np.ndarray | None = None,
 ) -> tuple[list[int], dict[int, list[list[int]]]]:
-    """prism/wedge boundary-layer cells 식별.
-
-    Native BL may split warped side quads into triangle pairs.  Such cells are
-    still six-vertex wedges, but no longer match the old exact
-    ``2 triangle + 3 quad`` face count.  Recognise both forms so tet meshes can
-    use the prism-to-tet BL path instead of silently remaining tet+prism mixed.
+    """prism (= 정확히 2 triangle + 3 quad face 를 가진 cell) 식별.
 
     Returns:
         (prism_cell_ids, cell_face_verts_map)
@@ -81,106 +74,55 @@ def _identify_prism_cells(
 
     prism_cells: list[int] = []
     for cid, f_list in cell_faces.items():
-        verts = {int(v) for f in f_list for v in f}
-        if len(verts) != 6:
+        if len(f_list) != 5:
             continue
-        if any(len(f) not in (3, 4) for f in f_list):
-            continue
-        if _prism_vertex_pairs(f_list, points) is not None:
+        n_tri = sum(1 for f in f_list if len(f) == 3)
+        n_quad = sum(1 for f in f_list if len(f) == 4)
+        if n_tri == 2 and n_quad == 3:
             prism_cells.append(cid)
     return prism_cells, cell_faces
 
 
 def _prism_vertex_pairs(
     cell_face_verts: list[list[int]],
-    points: np.ndarray | None = None,
 ) -> tuple[list[int], list[int]] | None:
     """prism cell 의 outer/inner triangle vertex 쌍을 추출.
 
     각 outer vertex a_i 는 정확히 하나의 inner vertex b_i 와 3 개 quad face 중 2 개를
     공유한다 (quad 의 4 vertex 중 a_i 와 b_i 가 같이 등장).
 
-    If warped side quads were split into triangle pairs, fall back to selecting
-    the two disjoint, nearly parallel cap triangles and pair their vertices by
-    shortest geometric correspondence.
-
     Returns:
         (outer=[a0,a1,a2], inner=[b0,b1,b2]) — 인덱스 순서 맞춤. 실패시 None.
     """
     tris = [f for f in cell_face_verts if len(f) == 3]
     quads = [f for f in cell_face_verts if len(f) == 4]
+    if len(tris) != 2 or len(quads) != 3:
+        return None
 
-    if len(tris) == 2 and len(quads) == 3:
-        tri_a, tri_b = tris[0], tris[1]
-        outer_set = set(tri_a)
-        inner_set = set(tri_b)
-        if outer_set & inner_set:
-            # shared vertex 가 있으면 prism 이 아님
+    tri_a, tri_b = tris[0], tris[1]
+    outer_set = set(tri_a)
+    inner_set = set(tri_b)
+    if outer_set & inner_set:
+        # shared vertex 가 있으면 prism 이 아님
+        return None
+
+    # 각 outer vertex 가 어떤 inner vertex 와 pair 되는지 찾는다:
+    # - quad 에는 두 outer + 두 inner 정확히 포함.
+    # - outer a_i 가 포함된 quad 2 개 를 교집합 → inner vertex 1 개.
+    pair_map: dict[int, int] = {}
+    for a in tri_a:
+        quads_with_a = [set(q) for q in quads if a in q]
+        if len(quads_with_a) != 2:
             return None
+        inner_candidates = (quads_with_a[0] & quads_with_a[1]) & inner_set
+        if len(inner_candidates) != 1:
+            return None
+        pair_map[a] = next(iter(inner_candidates))
 
-        # 각 outer vertex 가 어떤 inner vertex 와 pair 되는지 찾는다:
-        # - quad 에는 두 outer + 두 inner 정확히 포함.
-        # - outer a_i 가 포함된 quad 2 개 를 교집합 → inner vertex 1 개.
-        pair_map: dict[int, int] = {}
-        for a in tri_a:
-            quads_with_a = [set(q) for q in quads if a in q]
-            if len(quads_with_a) != 2:
-                return None
-            inner_candidates = (quads_with_a[0] & quads_with_a[1]) & inner_set
-            if len(inner_candidates) != 1:
-                return None
-            pair_map[a] = next(iter(inner_candidates))
-
-        # tri_a 순서대로 inner 정렬
-        outer = list(tri_a)
-        inner = [pair_map[a] for a in outer]
-        return outer, inner
-
-    if points is None or len(tris) < 2:
-        return None
-
-    def _tri_normal_area(tri: list[int]) -> tuple[np.ndarray, float]:
-        p0, p1, p2 = points[np.asarray(tri, dtype=np.int64)]
-        n = np.cross(p1 - p0, p2 - p0)
-        mag = float(np.linalg.norm(n))
-        if mag <= 1e-30:
-            return np.zeros(3, dtype=np.float64), 0.0
-        return n / mag, 0.5 * mag
-
-    best: tuple[float, list[int], list[int]] | None = None
-    for i, tri_a in enumerate(tris):
-        set_a = set(tri_a)
-        for tri_b in tris[i + 1:]:
-            set_b = set(tri_b)
-            if set_a & set_b:
-                continue
-            if len(set_a | set_b) != 6:
-                continue
-            na, area_a = _tri_normal_area(tri_a)
-            nb, area_b = _tri_normal_area(tri_b)
-            if area_a <= 1e-30 or area_b <= 1e-30:
-                continue
-            parallel = abs(float(np.dot(na, nb)))
-            if parallel < 0.5:
-                continue
-            area_rel = abs(area_a - area_b) / max(area_a, area_b, 1e-30)
-            pa = points[np.asarray(tri_a, dtype=np.int64)]
-            best_perm: tuple[float, tuple[int, int, int]] | None = None
-            for perm in permutations(tri_b):
-                pb = points[np.asarray(perm, dtype=np.int64)]
-                dist = float(np.linalg.norm(pb - pa, axis=1).sum())
-                if best_perm is None or dist < best_perm[0]:
-                    best_perm = (dist, tuple(int(v) for v in perm))
-            if best_perm is None:
-                continue
-            scale = float(np.sqrt(max(area_a, area_b, 1e-30)))
-            score = parallel * 10.0 - area_rel - best_perm[0] / max(scale, 1e-30)
-            if best is None or score > best[0]:
-                best = (score, list(tri_a), list(best_perm[1]))
-
-    if best is None:
-        return None
-    return best[1], best[2]
+    # tri_a 순서대로 inner 정렬
+    outer = list(tri_a)
+    inner = [pair_map[a] for a in outer]
+    return outer, inner
 
 
 def subdivide_prism_layers_to_tet(
@@ -215,7 +157,7 @@ def subdivide_prism_layers_to_tet(
 
     # 1) prism cell 식별
     prism_cells, cell_faces_map = _identify_prism_cells(
-        faces, owner, neighbour, n_cells, points,
+        faces, owner, neighbour, n_cells,
     )
     if not prism_cells:
         return TetSubdivResult(
@@ -253,7 +195,7 @@ def subdivide_prism_layers_to_tet(
         return bool(np.linalg.norm(pt - centroid) < radius)
 
     for cid in prism_cells:
-        p = _prism_vertex_pairs(cell_faces_map[cid], points)
+        p = _prism_vertex_pairs(cell_faces_map[cid])
         if p is None:
             log.warning("prism_pair_extract_failed", cell=cid)
             continue
