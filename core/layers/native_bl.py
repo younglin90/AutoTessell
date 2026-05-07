@@ -81,49 +81,6 @@ def _local_thickness_factor(
     return factors
 
 
-def _local_front_collision_mask(
-    wall_points: np.ndarray,
-    wall_normals: np.ndarray,
-    search_distance: float,
-    *,
-    opposite_dot: float = -0.5,
-) -> np.ndarray:
-    """SMESH-style local front collision screen.
-
-    Opposite normals are only meaningful when the advancing fronts are close
-    enough to interact.  A global normal-dot test marks every closed surface as
-    colliding because the opposite side of the part usually has an opposite
-    normal.  Limit the test to vertices within the current layer-front distance.
-    """
-    n = int(wall_normals.shape[0])
-    mask = np.zeros(n, dtype=bool)
-    if n <= 1 or search_distance <= 1e-30:
-        return mask
-
-    try:
-        from scipy.spatial import cKDTree  # noqa: PLC0415
-
-        tree = cKDTree(wall_points)
-        for i, hits in enumerate(tree.query_ball_point(wall_points, r=search_distance)):
-            for j in hits:
-                if i == int(j):
-                    continue
-                if float(np.dot(wall_normals[i], wall_normals[int(j)])) < opposite_dot:
-                    mask[i] = True
-                    break
-        return mask
-    except Exception as exc:  # noqa: BLE001
-        log.debug("native_bl_local_front_collision_kdtree_skipped", reason=str(exc)[:120])
-
-    if n > 2000:
-        return mask
-    dots = wall_normals @ wall_normals.T
-    deltas = wall_points[:, None, :] - wall_points[None, :, :]
-    dists = np.linalg.norm(deltas, axis=2)
-    np.fill_diagonal(dists, np.inf)
-    return np.any((dots < opposite_dot) & (dists <= search_distance), axis=1)
-
-
 def _check_prism_front_collision(
     front_normals: np.ndarray,
     front_points: np.ndarray,
@@ -2562,39 +2519,16 @@ def generate_native_bl(
         """
         if _BL_QQQ4_LOCAL_THICKNESS and _BL_QQQ1_FRONT_COLLISION:
             try:
-                # vertex 단위 collision_mask: SMESH advancing-front 방식처럼
-                # 가까운 layer front 안에서만 반대 법선(dot<-0.5)을 collision으로 본다.
-                # 전역 normal-dot 검사는 닫힌 형상 전체를 거짓 collision 처리한다.
-                wall_v_arr = np.array(wall_vert_indices, dtype=np.int64)
+                # vertex 단위 collision_mask: 인접 wall vertex 와 법선이 거의 반대(dot<-0.5)
                 wall_vn = np.array([vnorm[v] for v in wall_vert_indices])
-                if use_per_v_cum_pass and vertex_cum_map_pass:
-                    _front_dist = max(
-                        (
-                            float(vertex_cum_map_pass[v][-1])
-                            for v in wall_vert_indices
-                            if v in vertex_cum_map_pass
-                        ),
-                        default=0.0,
-                    )
-                else:
-                    _front_dist = float(cum_pass[-1]) if len(cum_pass) else 0.0
-                coll_v = _local_front_collision_mask(
-                    points[wall_v_arr],
-                    wall_vn,
-                    _front_dist * 1.05,
-                )
+                dots_v = wall_vn @ wall_vn.T
+                np.fill_diagonal(dots_v, 0.0)
+                coll_v = (dots_v < -0.5).any(axis=1)  # shape (Nw,)
                 factors_w = _local_thickness_factor(coll_v, len(wall_vert_indices), thin_factor=0.5)
                 # vertex_scale_pass 와 merge (곱); local copy 로 caller 영향 차단
                 vertex_scale_pass = dict(vertex_scale_pass)
                 for vi_idx, v in enumerate(wall_vert_indices):
                     vertex_scale_pass[v] = vertex_scale_pass.get(v, 1.0) * float(factors_w[vi_idx])
-                if bool(coll_v.any()):
-                    log.info(
-                        "native_bl_local_front_collision_limited",
-                        n_limited=int(coll_v.sum()),
-                        n_wall_verts=int(len(wall_vert_indices)),
-                        search_distance=round(float(_front_dist * 1.05), 9),
-                    )
             except Exception as _exc:
                 import logging as _lg
                 _lg.getLogger(__name__).warning("native_bl_qqq5_skipped reason=%s", str(_exc)[:120])
