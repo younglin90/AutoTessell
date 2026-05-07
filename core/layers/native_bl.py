@@ -2014,6 +2014,7 @@ def generate_native_bl(
     tri_fis = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
     other_fis = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     min_local: float | None = None
+    local_dist_by_vertex: dict[int, float] = {}
     if tri_fis:
         F_tri = np.asarray([faces[fi] for fi in tri_fis], dtype=np.int64)
         own_tri = np.asarray([int(owner[fi]) for fi in tri_fis], dtype=np.int64)
@@ -2029,6 +2030,10 @@ def generate_native_bl(
             dist_arr = np.linalg.norm(own_pos - v_pos, axis=1)
             if dist_arr.size > 0:
                 min_local = float(dist_arr.min())
+                for v_i, d_i in zip(flat_v.tolist(), dist_arr.tolist(), strict=False):
+                    prev = local_dist_by_vertex.get(int(v_i))
+                    if prev is None or float(d_i) < prev:
+                        local_dist_by_vertex[int(v_i)] = float(d_i)
     # Polygon fallback for non-triangle wall faces.
     if other_fis:
         for fi_p in other_fis:
@@ -2039,6 +2044,9 @@ def generate_native_bl(
                     d = float(np.linalg.norm(cell_centres[own_p] - points[v_int]))
                     if min_local is None or d < min_local:
                         min_local = d
+                    prev = local_dist_by_vertex.get(v_int)
+                    if prev is None or d < prev:
+                        local_dist_by_vertex[v_int] = d
     if min_local is not None:
         # C-BL-21 / beta2456 — local_cap floor 를 effective_first_thickness 사용.
         # 이전: cfg.first_thickness (raw) — auto-bump 시 (예: 1e-3 → bbox*1e-3)
@@ -2448,11 +2456,77 @@ def generate_native_bl(
                 if cfg.first_thickness > 1e-30 else 1.0
             )
             combined_thick *= global_scale
-            if min_local is not None and min_local > 1e-30:
-                growth_sum = float(
-                    sum(cfg.growth_ratio ** i for i in range(cfg.num_layers))
-                )
-                if growth_sum > 1e-30:
+            growth_sum = float(
+                sum(cfg.growth_ratio ** i for i in range(cfg.num_layers))
+            )
+            if growth_sum > 1e-30:
+                if local_dist_by_vertex:
+                    local_dist_arr = np.asarray(
+                        [
+                            local_dist_by_vertex.get(int(v), np.nan)
+                            for v in wall_vert_indices
+                        ],
+                        dtype=np.float64,
+                    )
+                    valid_local = np.isfinite(local_dist_arr) & (local_dist_arr > 1e-30)
+                    if valid_local.any():
+                        smesh_ratio = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_SMESH_THICK_TO_ELEM_RATIO",
+                                "0.6",
+                            )
+                        )
+                        safety_ratio = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_SMESH_LOCAL_SAFETY_RATIO",
+                                "0.8",
+                            )
+                        )
+                        smesh_ratio = max(0.0, min(smesh_ratio, safety_ratio))
+                        local_first_target = np.maximum(
+                            local_dist_arr * smesh_ratio,
+                            effective_first_thickness,
+                        ) / growth_sum
+                        local_first_cap = np.maximum(
+                            local_dist_arr * safety_ratio,
+                            effective_first_thickness,
+                        ) / growth_sum
+                        before_smesh_mean = float(combined_thick.mean())
+                        before_smesh_min = float(combined_thick.min())
+                        before_smesh_max = float(combined_thick.max())
+                        updated = combined_thick.copy()
+                        updated[valid_local] = np.minimum(
+                            np.maximum(
+                                combined_thick[valid_local],
+                                local_first_target[valid_local],
+                            ),
+                            local_first_cap[valid_local],
+                        )
+                        n_raised = int(
+                            np.count_nonzero(updated > combined_thick + 1e-12)
+                        )
+                        n_capped = int(
+                            np.count_nonzero(updated < combined_thick - 1e-12)
+                        )
+                        combined_thick = updated
+                        if n_raised > 0 or n_capped > 0:
+                            log.info(
+                                "native_bl_smesh_local_length",
+                                component="native_bl",
+                                phase="BL3/SMESH",
+                                thick_to_elem_ratio=round(float(smesh_ratio), 4),
+                                safety_ratio=round(float(safety_ratio), 4),
+                                n_valid=int(valid_local.sum()),
+                                n_raised=n_raised,
+                                n_capped=n_capped,
+                                first_min_before=round(before_smesh_min, 6),
+                                first_mean_before=round(before_smesh_mean, 6),
+                                first_max_before=round(before_smesh_max, 6),
+                                first_min_after=round(float(combined_thick.min()), 6),
+                                first_mean_after=round(float(combined_thick.mean()), 6),
+                                first_max_after=round(float(combined_thick.max()), 6),
+                            )
+                elif min_local is not None and min_local > 1e-30:
                     local_first_cap = max(
                         min_local * 0.8,
                         effective_first_thickness,
