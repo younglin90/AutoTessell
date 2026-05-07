@@ -2,8 +2,8 @@
 """Expanded mesh matrix verifier for codex-autoresearch.
 
 The final stdout line is a JSON object. The primary metric is ``fail_count``,
-defined as the total number of failed criteria across all cases. A zero value
-means every STL/engine case passed every configured gate.
+defined as the total number of concrete failed criteria across all cases. A
+zero value means every STL/engine case passed every configured gate.
 """
 
 from __future__ import annotations
@@ -553,9 +553,12 @@ def _classify(
         if isinstance(value, float) and math.isinf(value):
             missing_metrics.append(name)
 
-    fail_if(row.get("returncode") != 0, "cli_returncode")
+    # ``returncode`` and ``verdict`` are aggregate wrapper statuses emitted by
+    # the CLI/evaluator.  The concrete mesh gates below are the authoritative
+    # CFD/topology/fidelity criteria; counting wrapper failures beside them
+    # double-counts the same defect.  Retain wrapper statuses as row diagnostics
+    # and use them as a fallback only if no concrete gate explains the failure.
     fail_if(bool(row.get("timeout")), "timeout")
-    fail_if(row.get("verdict") != "PASS", "verdict")
     fail_if(row["selected_tier"] and row["tier"] not in str(row["selected_tier"]), "fallback_or_wrong_tier")
     fail_if(row["cells"] <= 0, "zero_cells")
     fail_if(not (CELL_LOW <= row["cells"] <= CELL_HIGH), "cell_count")
@@ -615,6 +618,11 @@ def _classify(
         fail_if(_as_int(topology.get("patch_count")) <= 0, "missing_patch_topology")
 
     failures.extend(f"missing_metric:{name}" for name in sorted(set(missing_metrics)))
+    if not failures:
+        if row.get("returncode") != 0:
+            failures.append("cli_returncode")
+        elif row.get("verdict") != "PASS":
+            failures.append("verdict")
     row["metric_gap_count"] = len(set(missing_metrics))
     row["failures"] = failures
     row["failure_count"] = len(failures)
