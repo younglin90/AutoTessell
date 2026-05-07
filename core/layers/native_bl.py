@@ -1574,9 +1574,6 @@ def _merge_skewed_bl_internal_quads(
         face_centres[fi] = points[face].mean(axis=0)
 
     parent = list(range(n_cells_cur))
-    non_ortho_threshold = float(
-        os.environ.get("AUTO_TESSELL_BL_INTERNAL_MERGE_NON_ORTHO", "65.0")
-    )
 
     def _find(x: int) -> int:
         while parent[x] != x:
@@ -1596,28 +1593,17 @@ def _merge_skewed_bl_internal_quads(
         nbr = int(nbr_arr[fi])
         if own < base_n_cells or nbr < base_n_cells:
             continue
-        face = faces[fi]
+        if len(faces[fi]) != 4:
+            continue
         d = centres[nbr] - centres[own]
         d_mag = float(np.linalg.norm(d))
         if d_mag <= 1e-30:
             continue
-
-        merge_face = False
-        if len(face) == 4:
-            diff = face_centres[fi] - centres[own]
-            t = float(np.dot(diff, d) / (d_mag * d_mag))
-            proj = centres[own] + t * d
-            skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
-            merge_face = skew > skew_threshold
-
-        n_hat, area = _face_normal_area(points, face)
-        if area > 1e-30:
-            cos_theta = abs(float(np.dot(n_hat, d))) / d_mag
-            angle_deg = float(np.degrees(np.arccos(np.clip(cos_theta, 0.0, 1.0))))
-            if angle_deg > non_ortho_threshold:
-                merge_face = True
-
-        if merge_face:
+        diff = face_centres[fi] - centres[own]
+        t = float(np.dot(diff, d) / (d_mag * d_mag))
+        proj = centres[own] + t * d
+        skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
+        if skew > skew_threshold:
             _union(own, nbr)
             n_marked += 1
 
@@ -1674,7 +1660,6 @@ def _merge_skewed_bl_internal_quads(
         n_cells_before=int(n_cells_cur),
         n_cells_after=int(len(used_cells)),
         skew_threshold=float(skew_threshold),
-        non_ortho_threshold=float(non_ortho_threshold),
     )
     return out_faces, out_owner, out_nbr, out_boundary, removed
 
