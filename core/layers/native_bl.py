@@ -1664,6 +1664,54 @@ def _merge_skewed_bl_internal_quads(
     return out_faces, out_owner, out_nbr, out_boundary, removed
 
 
+def _orient_boundary_faces_outward(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+) -> int:
+    """Reverse boundary face winding when the face normal points into owner.
+
+    SMESH/cfMesh-style BL operations repeatedly rebuild shell topology; the
+    final write pass must preserve the OpenFOAM convention that boundary face
+    normals point outward from their owner cell.
+    """
+    n_internal = len(neighbour)
+    if n_internal >= len(faces):
+        return 0
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    if owner_arr.size != len(faces):
+        return 0
+
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    max_cell = int(owner_arr.max(initial=-1))
+    if nbr_arr.size:
+        max_cell = max(max_cell, int(nbr_arr.max(initial=-1)))
+    if max_cell < 0:
+        return 0
+
+    centres = _cell_centres_from_faces(
+        points, faces, owner_arr, nbr_arr, max_cell + 1,
+    )
+    n_reversed = 0
+    for fi in range(n_internal, len(faces)):
+        own = int(owner_arr[fi])
+        if own < 0 or own >= len(centres):
+            continue
+        face = faces[fi]
+        if len(face) < 3:
+            continue
+        normal, area = _face_normal_area(points, face)
+        if area <= 1e-30:
+            continue
+        face_centre = _face_centroid(points, face)
+        if float(np.dot(normal, face_centre - centres[own])) < -1e-12:
+            faces[fi] = list(reversed(face))
+            n_reversed += 1
+    return n_reversed
+
+
 def _build_edge_to_wall_faces(
     wall_face_indices: list[int], faces: list[list[int]],
 ) -> dict[tuple[int, int], list[int]]:
@@ -3202,6 +3250,27 @@ def generate_native_bl(
         except Exception as exc:
             log.debug(
                 "native_bl_feature_edge_poly_merge_skipped",
+                reason=str(exc)[:120],
+            )
+
+    n_boundary_faces_reoriented = 0
+    if final_points is not None and final_faces and final_owner:
+        try:
+            n_boundary_faces_reoriented = _orient_boundary_faces_outward(
+                final_points,
+                final_faces,
+                final_owner,
+                final_nbr,
+            )
+            if n_boundary_faces_reoriented > 0:
+                log.info(
+                    "native_bl_boundary_faces_oriented",
+                    component="native_bl",
+                    n_reversed=int(n_boundary_faces_reoriented),
+                )
+        except Exception as exc:
+            log.debug(
+                "native_bl_boundary_face_orient_skipped",
                 reason=str(exc)[:120],
             )
 
