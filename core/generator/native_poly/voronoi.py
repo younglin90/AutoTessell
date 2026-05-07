@@ -1193,7 +1193,7 @@ def generate_native_poly_voronoi(
                 faces,
                 case_dir,
                 seed_density=int(seed_density),
-                escalate_max=6,
+                escalate_max=8,
                 target_cells=target_cells,
                 max_cells=max_cells,
                 bl_layers=int(bl_layers),
