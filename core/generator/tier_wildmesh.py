@@ -56,10 +56,10 @@ except Exception:
 
 # 파라미터 안전 범위 — 범위 밖은 clamp + warning log
 _PARAM_RANGES: dict[str, tuple[float, float]] = {
-    "epsilon":       (0.0001, 0.1),    # 너무 작으면 timeout, 너무 크면 형상 손상
-    "edge_length_r": (0.005, 0.2),     # 너무 작으면 OOM, 너무 크면 저해상도
-    "stop_quality":  (3.0, 100.0),     # fTetWild 내부 수렴 안정 범위
-    "max_its":       (10.0, 500.0),    # 10 미만 덜수렴, 500 초과 과부하
+    "epsilon": (0.0001, 0.1),  # 너무 작으면 timeout, 너무 크면 형상 손상
+    "edge_length_r": (0.005, 0.2),  # 너무 작으면 OOM, 너무 크면 저해상도
+    "stop_quality": (3.0, 100.0),  # fTetWild 내부 수렴 안정 범위
+    "max_its": (10.0, 500.0),  # 10 미만 덜수렴, 500 초과 과부하
 }
 
 
@@ -135,23 +135,23 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     # - epsilon 0.001,  edge_length_r 0.05  → TetWild 매칭, 15s PASS (sweet spot)
     _defaults: dict[str, dict[str, Any]] = {
         # draft: 단순 형상 빠른 통과 — cube/box 기준
-        "draft":    {"stop_quality": 20.0, "max_its": 40,  "epsilon": 0.002,  "edge_length_r": 0.06},
+        "draft": {"stop_quality": 20.0, "max_its": 40, "epsilon": 0.002, "edge_length_r": 0.06},
         # standard: TetWild 매칭 — 복잡 형상(knot, gear 등) 첫 시도 PASS
-        "standard": {"stop_quality": 10.0, "max_its": 80,  "epsilon": 0.001,  "edge_length_r": 0.05},
+        "standard": {"stop_quality": 10.0, "max_its": 80, "epsilon": 0.001, "edge_length_r": 0.05},
         # fine: standard 보다 tight 하되 fTetWild 수렴 가능한 한계
-        "fine":     {"stop_quality": 6.0,  "max_its": 120, "epsilon": 0.0005, "edge_length_r": 0.03},
+        "fine": {"stop_quality": 6.0, "max_its": 120, "epsilon": 0.0005, "edge_length_r": 0.03},
     }
     d = _defaults.get(quality_level, _defaults["standard"])
-    raw_stop = float(params.get("wildmesh_stop_quality",  d["stop_quality"]))
-    raw_max_its = int(params.get("wildmesh_max_its",      d["max_its"]))
-    raw_eps = float(params.get("wildmesh_epsilon",        d["epsilon"]))
-    raw_edge = float(params.get("wildmesh_edge_length_r",
-                                params.get("wildmesh_edge_length",
-                                           d["edge_length_r"])))
+    raw_stop = float(params.get("wildmesh_stop_quality", d["stop_quality"]))
+    raw_max_its = int(params.get("wildmesh_max_its", d["max_its"]))
+    raw_eps = float(params.get("wildmesh_epsilon", d["epsilon"]))
+    raw_edge = float(
+        params.get("wildmesh_edge_length_r", params.get("wildmesh_edge_length", d["edge_length_r"]))
+    )
     return {
-        "stop_quality":  _clamp_param("stop_quality", raw_stop),
-        "max_its":       int(_clamp_param("max_its", float(raw_max_its))),
-        "epsilon":       _clamp_param("epsilon", raw_eps),
+        "stop_quality": _clamp_param("stop_quality", raw_stop),
+        "max_its": int(_clamp_param("max_its", float(raw_max_its))),
+        "epsilon": _clamp_param("epsilon", raw_eps),
         "edge_length_r": _clamp_param("edge_length_r", raw_edge),
     }
 
@@ -159,10 +159,10 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
 def _tet_boundary_faces_vec(tet_f: np.ndarray) -> np.ndarray:
     """Return (N,3) array of boundary triangle faces (appear exactly once)."""
     # Build all 4 face combos per tet via index gather — no Python loop
-    idx = np.array([[0,1,2],[0,1,3],[0,2,3],[1,2,3]], dtype=np.int64)  # (4,3)
+    idx = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=np.int64)  # (4,3)
     # tet_f: (T,4) → all_tris: (4T,3)
     all_tris = tet_f[:, idx].reshape(-1, 3)  # (4T,3)
-    all_tris_s = np.sort(all_tris, axis=1)   # sort each row for canonical key
+    all_tris_s = np.sort(all_tris, axis=1)  # sort each row for canonical key
     keys = all_tris_s[:, 0] * 1_000_000_007 + all_tris_s[:, 1] * 1_000_003 + all_tris_s[:, 2]
     unique_keys, counts = np.unique(keys, return_counts=True)
     boundary_mask = counts == 1
@@ -189,9 +189,9 @@ def _snap_boundary_to_surface(
 ) -> np.ndarray:
     """tet mesh 경계 정점을 원본 표면에 snap해 잔류 형상 편차를 제거한다."""
     try:
-        bbox_diag = float(np.linalg.norm(
-            np.array(orig_surf.bounds[1]) - np.array(orig_surf.bounds[0])
-        ))
+        bbox_diag = float(
+            np.linalg.norm(np.array(orig_surf.bounds[1]) - np.array(orig_surf.bounds[0]))
+        )
         snap_threshold = epsilon * bbox_diag * 3.0
 
         bv_indices = _boundary_vertices(tet_f)
@@ -222,15 +222,16 @@ def _snap_boundary_to_surface(
 def _hausdorff_log(orig_surf: Any, tet_v: np.ndarray, tet_f: np.ndarray) -> None:
     try:
         import trimesh as _trimesh
+
         btris = _tet_boundary_faces_vec(tet_f)
         if len(btris) == 0:
             return
         tet_surf = _trimesh.Trimesh(vertices=tet_v, faces=btris)
         pts = tet_surf.sample(min(500, len(tet_surf.faces)))
         _, dists, _ = orig_surf.nearest.on_surface(pts)
-        bbox_diag = float(np.linalg.norm(
-            np.array(orig_surf.bounds[1]) - np.array(orig_surf.bounds[0])
-        ))
+        bbox_diag = float(
+            np.linalg.norm(np.array(orig_surf.bounds[1]) - np.array(orig_surf.bounds[0]))
+        )
         h_ratio = float(np.max(dists)) / max(bbox_diag, 1e-9)
         logger.info(
             "wildmesh_hausdorff",
@@ -356,7 +357,9 @@ np.savez(
         ),
         "all_mesh": bool(params.get("wildmesh_all_mesh", False)),
         # 로그
-        "log_level": int(params.get("wildmesh_log_level", 0 if params.get("wildmesh_mute_log") else 2)),
+        "log_level": int(
+            params.get("wildmesh_log_level", 0 if params.get("wildmesh_mute_log") else 2)
+        ),
     }
     # stage / stop_p 는 사용자 지정 시만 포함 (버전 호환성)
     if "wildmesh_stage" in params:
@@ -440,17 +443,18 @@ class TierWildMeshGenerator:
 
         if not _HAS_WILDMESHING:
             elapsed = time.monotonic() - t_start
-            msg = (
-                "wildmeshing 미설치. "
-                "설치: pip install wildmeshing"
-            )
+            msg = "wildmeshing 미설치. " "설치: pip install wildmeshing"
             logger.warning("tier_wildmesh_import_failed", hint=msg)
-            return TierAttempt(tier=TIER_NAME, status="failed", time_seconds=elapsed, error_message=msg)
+            return TierAttempt(
+                tier=TIER_NAME, status="failed", time_seconds=elapsed, error_message=msg
+            )
 
         if not preprocessed_path.exists():
             elapsed = time.monotonic() - t_start
             return TierAttempt(
-                tier=TIER_NAME, status="failed", time_seconds=elapsed,
+                tier=TIER_NAME,
+                status="failed",
+                time_seconds=elapsed,
                 error_message=f"전처리 파일을 찾을 수 없습니다: {preprocessed_path}",
             )
 
@@ -460,7 +464,9 @@ class TierWildMeshGenerator:
             elapsed = time.monotonic() - t_start
             logger.exception("tier_wildmesh_failed", error=str(exc))
             return TierAttempt(
-                tier=TIER_NAME, status="failed", time_seconds=elapsed,
+                tier=TIER_NAME,
+                status="failed",
+                time_seconds=elapsed,
                 error_message=f"tier_wildmesh 실행 실패: {exc}",
             )
 
@@ -481,20 +487,21 @@ class TierWildMeshGenerator:
         p = _get_quality_params(quality_level, params)
         snap_boundary = str(params.get("wildmesh_snap_boundary", "true")).lower() != "false"
 
-        logger.info("tier_wildmesh_params", quality_level=quality_level, snap_boundary=snap_boundary, **p)
+        logger.info(
+            "tier_wildmesh_params", quality_level=quality_level, snap_boundary=snap_boundary, **p
+        )
 
         # 표면 로드 및 닫기
         surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
         # strict_watertight: 사용자가 off로 명시하면 기존처럼 경고만 (기본 on)
-        strict_watertight = str(
-            params.get("wildmesh_strict_watertight", "true")
-        ).lower() != "false"
+        strict_watertight = str(params.get("wildmesh_strict_watertight", "true")).lower() != "false"
         if not surf.is_watertight:
             logger.info("wildmesh_pre_close_open_surface")
             surf.fill_holes()
             if not surf.is_watertight:
                 try:
                     import pymeshfix
+
                     mf = pymeshfix.MeshFix(surf.vertices, surf.faces)
                     mf.repair()
                     surf = _trimesh.Trimesh(vertices=mf.points, faces=mf.faces)
@@ -571,10 +578,13 @@ class TierWildMeshGenerator:
                 _passes = 0
                 while _n_in < _n_target and _passes < _max_subdiv:
                     _v_new, _f_new = _trimesh.remesh.subdivide(
-                        _surf_to_use.vertices, _surf_to_use.faces,
+                        _surf_to_use.vertices,
+                        _surf_to_use.faces,
                     )
                     _surf_to_use = _trimesh.Trimesh(
-                        vertices=_v_new, faces=_f_new, process=False,
+                        vertices=_v_new,
+                        faces=_f_new,
+                        process=False,
                     )
                     _n_in = int(len(_surf_to_use.faces))
                     _passes += 1
@@ -590,51 +600,112 @@ class TierWildMeshGenerator:
             vertices = np.asarray(_surf_to_use.vertices, dtype=np.float64)
             faces = np.asarray(_surf_to_use.faces, dtype=np.int32)
 
-        # 동적 timeout — 메쉬 크기 기반. 큰 메쉬일수록 비례 증가.
-        # 사용자 override 는 wildmesh_timeout 로 가능 (상한 30분).
-        timeout_sec = _compute_timeout(quality_level, int(len(faces)), params)
+        def _run_wildmesh_once(p_run: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+            # 동적 timeout — 메쉬 크기 기반. 큰 메쉬일수록 비례 증가.
+            # 사용자 override 는 wildmesh_timeout 로 가능 (상한 30분).
+            timeout_sec = _compute_timeout(quality_level, int(len(faces)), params)
 
-        logger.info("wildmesh_tetrahedralize_start", timeout=timeout_sec)
-        # BETA2822 — verify-script parity wire-in: cached wrapper 호출 (default ON).
-        # 같은 (V, F, params) 입력 → SHA256 cache key 일치 → bit-identical 결과.
-        # subprocess 는 cache miss 시 fallback 으로 유지.
-        _use_cached = os.environ.get("AUTO_TESSELL_WILDMESH_USE_CACHED", "1") == "1"
-        tet_v = tet_f = None
-        if _use_cached:
-            try:
-                from core.generator.native_tet.wildmesh_native_wrapper import (
-                    generate_via_wildmeshing_cached,
-                )
-                _cache_dir = os.environ.get(
-                    "AUTO_TESSELL_WILDMESH_CACHE_DIR",
-                    str(Path.home() / ".cache" / "autotessell" / "wildmesh"),
-                )
-                Path(_cache_dir).mkdir(parents=True, exist_ok=True)
-                tet_v, tet_f, _r = generate_via_wildmeshing_cached(
-                    np.asarray(vertices, dtype=np.float64),
-                    np.asarray(faces, dtype=np.int64),
-                    cache_dir=_cache_dir,
-                    stop_quality=float(p["stop_quality"]),
-                    edge_length_r=float(p["edge_length_r"]),
-                    epsilon=float(p["epsilon"]),
-                    max_its=int(p["max_its"]),
-                )
-                logger.info(
-                    "wildmesh_cached_wrapper_used",
-                    cache_dir=_cache_dir,
-                    cache_hit=getattr(_r, "from_cache", False),
-                    n_tets=int(tet_f.shape[0]) if tet_f is not None else 0,
-                )
-            except Exception as e:
-                logger.debug("wildmesh_cached_wrapper_failed", error=str(e))
-                tet_v = tet_f = None
-        if tet_v is None or tet_f is None or tet_f.shape[0] == 0:
-            tet_v, tet_f, _tags = _run_tetrahedralize_subprocess(
-                vertices,
-                faces,
-                {**params, **p},
-                timeout_sec,
+            logger.info(
+                "wildmesh_tetrahedralize_start",
+                timeout=timeout_sec,
+                edge_length_r=float(p_run["edge_length_r"]),
             )
+            # BETA2822 — verify-script parity wire-in: cached wrapper 호출 (default ON).
+            # 같은 (V, F, params) 입력 → SHA256 cache key 일치 → bit-identical 결과.
+            # subprocess 는 cache miss 시 fallback 으로 유지.
+            _use_cached = os.environ.get("AUTO_TESSELL_WILDMESH_USE_CACHED", "1") == "1"
+            tet_v_once = tet_f_once = None
+            if _use_cached:
+                try:
+                    from core.generator.native_tet.wildmesh_native_wrapper import (
+                        generate_via_wildmeshing_cached,
+                    )
+
+                    _cache_dir = os.environ.get(
+                        "AUTO_TESSELL_WILDMESH_CACHE_DIR",
+                        str(Path.home() / ".cache" / "autotessell" / "wildmesh"),
+                    )
+                    Path(_cache_dir).mkdir(parents=True, exist_ok=True)
+                    tet_v_once, tet_f_once, _r = generate_via_wildmeshing_cached(
+                        np.asarray(vertices, dtype=np.float64),
+                        np.asarray(faces, dtype=np.int64),
+                        cache_dir=_cache_dir,
+                        stop_quality=float(p_run["stop_quality"]),
+                        edge_length_r=float(p_run["edge_length_r"]),
+                        epsilon=float(p_run["epsilon"]),
+                        max_its=int(p_run["max_its"]),
+                    )
+                    logger.info(
+                        "wildmesh_cached_wrapper_used",
+                        cache_dir=_cache_dir,
+                        cache_hit=getattr(_r, "from_cache", False),
+                        n_tets=int(tet_f_once.shape[0]) if tet_f_once is not None else 0,
+                    )
+                except Exception as e:
+                    logger.debug("wildmesh_cached_wrapper_failed", error=str(e))
+                    tet_v_once = tet_f_once = None
+            if tet_v_once is None or tet_f_once is None or tet_f_once.shape[0] == 0:
+                tet_v_once, tet_f_once, _tags = _run_tetrahedralize_subprocess(
+                    vertices,
+                    faces,
+                    {**params, **p_run},
+                    timeout_sec,
+                )
+            return tet_v_once, tet_f_once
+
+        tet_v, tet_f = _run_wildmesh_once(p)
+
+        _cell_budget = int(params.get("max_cells") or params.get("target_cells") or 0)
+        _rebudget_on = (
+            os.environ.get("AUTO_TESSELL_WILDMESH_CELL_REBUDGET", "1") != "0"
+            and _cell_budget > 0
+            and tet_f is not None
+            and tet_f.shape[0] > 0
+        )
+        if _rebudget_on:
+            _target_low = max(1, int(round(float(_cell_budget) * 0.5)))
+            _target_high = max(_target_low, int(round(float(_cell_budget) * 2.0)))
+            _budget_layers = int(
+                params.get("post_layers_num_layers") or params.get("bl_layers") or 0
+            )
+            _passes = max(
+                0,
+                int(os.environ.get("AUTO_TESSELL_WILDMESH_CELL_REBUDGET_PASSES", "2")),
+            )
+            for _rb_pass in range(_passes):
+                _n_tets = int(tet_f.shape[0])
+                _n_boundary_tris = (
+                    int(_tet_boundary_faces_vec(tet_f).shape[0]) if _budget_layers > 0 else 0
+                )
+                _est_final_cells = _n_tets + _n_boundary_tris * max(0, _budget_layers)
+                if _target_low <= _est_final_cells <= _target_high:
+                    break
+                if _est_final_cells > _target_high:
+                    _target = max(1.0, float(_target_high) * 0.9)
+                    _factor = (float(_est_final_cells) / _target) ** (1.0 / 3.0)
+                    _factor = min(max(_factor, 1.05), 2.0)
+                else:
+                    _target = max(1.0, float(_target_low) * 1.1)
+                    _factor = (float(max(_est_final_cells, 1)) / _target) ** (1.0 / 3.0)
+                    _factor = max(min(_factor, 0.95), 0.5)
+                _edge_old = float(p["edge_length_r"])
+                _edge_new = float(_clamp_param("edge_length_r", _edge_old * _factor))
+                if abs(_edge_new / max(_edge_old, 1e-30) - 1.0) < 0.02:
+                    break
+                p = {**p, "edge_length_r": _edge_new}
+                logger.info(
+                    "wildmesh_cell_rebudget",
+                    pass_index=int(_rb_pass + 1),
+                    n_tets=int(_n_tets),
+                    boundary_triangles=int(_n_boundary_tris),
+                    estimated_final_cells=int(_est_final_cells),
+                    budget_layers=int(_budget_layers),
+                    target_low=int(_target_low),
+                    target_high=int(_target_high),
+                    edge_old=round(_edge_old, 8),
+                    edge_new=round(_edge_new, 8),
+                )
+                tet_v, tet_f = _run_wildmesh_once(p)
 
         logger.info(
             "wildmesh_tetrahedralize_done",
