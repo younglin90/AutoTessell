@@ -493,8 +493,10 @@ class TierWildMeshGenerator:
 
         # 표면 로드 및 닫기
         surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
-        # strict_watertight: 사용자가 off로 명시하면 기존처럼 경고만 (기본 on)
-        strict_watertight = str(params.get("wildmesh_strict_watertight", "true")).lower() != "false"
+        # strict_watertight: no-fallback native run 에서는 open-but-repaired
+        # surface도 WildMesh 자체 경로에서 시도한다. 빈 repair 결과는 위에서
+        # 거부하므로 segfault 위험을 줄이고, 실패 시에도 tier failure 로 귀결된다.
+        strict_watertight = str(params.get("wildmesh_strict_watertight", "false")).lower() != "false"
         if not surf.is_watertight:
             logger.info("wildmesh_pre_close_open_surface")
             surf.fill_holes()
@@ -504,8 +506,15 @@ class TierWildMeshGenerator:
 
                     mf = pymeshfix.MeshFix(surf.vertices, surf.faces)
                     mf.repair()
-                    surf = _trimesh.Trimesh(vertices=mf.points, faces=mf.faces)
-                    logger.info("wildmesh_pre_close_pymeshfix_success")
+                    repaired = _trimesh.Trimesh(vertices=mf.points, faces=mf.faces)
+                    if len(repaired.vertices) > 0 and len(repaired.faces) > 0:
+                        surf = repaired
+                        logger.info("wildmesh_pre_close_pymeshfix_success")
+                    else:
+                        logger.warning(
+                            "wildmesh_pre_close_pymeshfix_empty",
+                            note="keeping fill_holes result instead of empty repair output",
+                        )
                 except Exception as e:  # noqa: BLE001
                     logger.warning("wildmesh_pre_close_pymeshfix_failed", error=str(e))
             if not surf.is_watertight:
