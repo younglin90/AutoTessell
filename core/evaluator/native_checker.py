@@ -283,7 +283,11 @@ class NativeMeshChecker:
             min_vol_ratio=float(min_vol_ratio),
             max_adjacent_volume_ratio=float(max_adjacent_volume_ratio),
             max_face_warpage=float(max_face_warpage),
-            max_cell_size_growth_ratio=float(max_cell_size_growth_ratio),
+            # Adjacent volume jumps are reported explicitly above.  Do not also
+            # export cube-root(volume ratio) as a linear expansion metric: that
+            # double-counts the same check and over-penalizes anisotropic BL
+            # prism stacks where volume is intentionally dominated by thickness.
+            max_cell_size_growth_ratio=None,
         )
 
         # ------------------------------------------------------------------
