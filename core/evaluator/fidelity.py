@@ -574,6 +574,27 @@ class GeometryFidelityChecker:
             tree_a = cKDTree(samples_a)
             d_ba, nn_ba = tree_a.query(samples_b)
 
+        # Sample-to-sample Hausdorff overestimates exact coincident surfaces
+        # because the nearest random sample is not generally the nearest point
+        # on the opposite triangle.  When trimesh proximity support is present,
+        # tighten the estimate with point-to-triangle distances, but clamp only
+        # downward so this refinement cannot introduce new fidelity failures.
+        try:
+            from trimesh.proximity import closest_point  # noqa: PLC0415
+
+            _, exact_ab, _ = closest_point(mesh_b, samples_a)
+            _, exact_ba, _ = closest_point(mesh_a, samples_b)
+            d_ab = np.minimum(
+                np.asarray(d_ab, dtype=np.float64),
+                np.asarray(exact_ab, dtype=np.float64),
+            )
+            d_ba = np.minimum(
+                np.asarray(d_ba, dtype=np.float64),
+                np.asarray(exact_ba, dtype=np.float64),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("surface_distance_exact_refine_skipped", error=str(exc)[:120])
+
         all_d = np.concatenate([np.asarray(d_ab), np.asarray(d_ba)])
         if all_d.size == 0:
             all_d = np.zeros((1,), dtype=np.float64)
