@@ -679,7 +679,7 @@ class TierWildMeshGenerator:
             )
             _passes = max(
                 0,
-                int(os.environ.get("AUTO_TESSELL_WILDMESH_CELL_REBUDGET_PASSES", "6")),
+                int(os.environ.get("AUTO_TESSELL_WILDMESH_CELL_REBUDGET_PASSES", "8")),
             )
             for _rb_pass in range(_passes):
                 _n_tets = int(tet_f.shape[0])
