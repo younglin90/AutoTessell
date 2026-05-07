@@ -2406,10 +2406,12 @@ def generate_native_bl(
             # BL3: relative first thickness (ratio × local mean edge length)
             # C-BL-7 / beta2553 — env-gated ratio for 3a.1 (per-vertex ft tuning).
             # AUTO_TESSELL_BL_REL_RATIO=0.5 (or 0.7) → larger ft on coarse wall
-            # → max_aspect 감소. default 0.3 = cfMesh standard.
+            # → max_aspect 감소. default 0.03 keeps BL3 below the local medial
+            # shrink cap for coarse cut-cell walls, reducing SMESH-style shrink
+            # distortion while preserving the requested layer count.
             import os as _os_bl3
             _bl_rel_ratio = float(
-                _os_bl3.environ.get("AUTO_TESSELL_BL_REL_RATIO", "0.3")
+                _os_bl3.environ.get("AUTO_TESSELL_BL_REL_RATIO", "0.03")
             )
             rel_thick = _relative_first_thickness(
                 points, wall_surface_faces, wall_vert_indices,
@@ -2435,8 +2437,8 @@ def generate_native_bl(
                 _rel_min = float(rel_thick.min())
                 log.info(
                     "native_bl_relative_thickness", component="native_bl", phase="BL3",
-                    ratio=0.3,
-                    mean_local_edge=round(_rel_mean / 0.3, 6),
+                    ratio=_bl_rel_ratio,
+                    mean_local_edge=round(_rel_mean / max(_bl_rel_ratio, 1e-30), 6),
                     rel_thickness_min=round(_rel_min, 6),
                     rel_thickness_mean=round(_rel_mean, 6),
                 )
