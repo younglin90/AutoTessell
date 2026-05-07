@@ -1783,6 +1783,14 @@ def _hex_to_poly_fallback(
                 if _pred_final < _low:
                     _factor = min(0.8, float(_pred_final / max(_low, 1)) ** (1.0 / 3.0))
                     _hex_edge = max(float(_hex_edge) * _factor, 1e-12)
+                    if _hex_grid_budget > 0 and _factor < 1.0:
+                        _hex_grid_budget = min(
+                            216000,
+                            max(
+                                int(_hex_grid_budget) + 1,
+                                int(np.ceil(float(_hex_grid_budget) / max(_factor ** 3, 1e-9))),
+                            ),
+                        )
                     log.info(
                         "native_poly_hex_base_rebudget",
                         reason="predicted_under_budget",
@@ -1791,6 +1799,7 @@ def _hex_to_poly_fallback(
                         boundary_faces=int(_bfaces),
                         predicted_final=int(_pred_final),
                         low=int(_low),
+                        grid_budget_new=int(_hex_grid_budget),
                         edge_new=round(float(_hex_edge), 8),
                     )
                     continue
