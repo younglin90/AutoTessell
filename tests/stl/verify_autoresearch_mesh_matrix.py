@@ -303,7 +303,22 @@ def _count_boundary_self_intersections(
         return None
 
 
-def _extract_input_components(geometry_report: dict[str, Any]) -> int | None:
+def _extract_input_components(
+    geometry_report: dict[str, Any],
+    preprocessed_report: dict[str, Any],
+) -> int | None:
+    value = _dig(
+        preprocessed_report,
+        "preprocessing_summary",
+        "final_validation",
+        "num_connected_components",
+    )
+    try:
+        out = int(value)
+        if out > 0:
+            return out
+    except Exception:
+        pass
     value = _dig(geometry_report, "geometry", "surface", "num_connected_components")
     try:
         return int(value)
@@ -412,7 +427,6 @@ def _classify(
     generator_log: dict[str, Any],
     topology: dict[str, Any],
 ) -> dict[str, Any]:
-    del preprocessed_report
     summary = quality_report.get("evaluation_summary") or {}
     cm = summary.get("checkmesh") or {}
     fidelity = summary.get("geometry_fidelity") or {}
@@ -522,7 +536,7 @@ def _classify(
         aniso_split.get("n_examined") or phase2.get("aniso_split_n_examined") or 0
     )
     row["topology"] = topology
-    input_components = _extract_input_components(geometry_report)
+    input_components = _extract_input_components(geometry_report, preprocessed_report)
     row["input_components"] = input_components
 
     failures: list[str] = []

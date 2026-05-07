@@ -187,6 +187,7 @@ class FinalValidation(BaseModel):
     is_watertight: bool
     is_manifold: bool
     num_faces: int
+    num_connected_components: int | None = None
     min_face_area: float
     max_edge_length_ratio: float
 

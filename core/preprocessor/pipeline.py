@@ -752,11 +752,13 @@ class Preprocessor:
             # v0.4.0-beta19: native topology 로 is_watertight / is_manifold 판정 통일.
             is_watertight = bool(_T.is_watertight(F))
             is_manifold = bool(_T.is_manifold(F))
+            num_components = int(_T.num_connected_components(F)) if len(F) else 0
 
             final_validation = FinalValidation(
                 is_watertight=is_watertight,
                 is_manifold=is_manifold,
                 num_faces=len(mesh.faces),
+                num_connected_components=num_components,
                 min_face_area=min_face_area,
                 max_edge_length_ratio=max_edge_ratio,
             )
