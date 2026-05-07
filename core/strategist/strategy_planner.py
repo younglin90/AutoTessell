@@ -287,7 +287,12 @@ class StrategyPlanner:
         # 3. 유동 타입 결정
         flow_type = geometry_report.flow_estimation.type
         if flow_type not in ("external", "internal"):
-            flow_type = "external"  # 알 수 없으면 외부 유동으로 보수적 처리
+            # STL/mesh inputs without an explicit flow hint are usually object
+            # surfaces needing volume fill, even when damaged/open.  Defaulting
+            # unknown open surfaces to an external farfield domain makes BL run
+            # on the domain box and destroys geometry-fidelity checks.  Users
+            # who need wind-tunnel wrapping can still request external flow.
+            flow_type = "internal"
 
         # 3.5. 형상 복잡도 분석
         complexity_score = ComplexityAnalyzer.analyze(geometry_report)
