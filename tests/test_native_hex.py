@@ -95,10 +95,10 @@ def test_native_hex_adaptive_snap_uses_fine_cell_cap(tmp_case_dir: Path) -> None
     assert chk.max_aspect_ratio < 2.0
 
 
-def test_native_hex_bl_final_cell_estimator_counts_boundary_faces() -> None:
-    """BL final-cell estimator must count only faces with one owner."""
+def test_native_hex_bl_final_cell_estimator_counts_boundary_facets() -> None:
+    """BL final-cell estimator must fan quads into two prism facets."""
     # Two adjacent unit hexes share one internal quad. Boundary faces:
-    # 6 + 6 - 2 shared references = 10 unique wall faces.
+    # 6 + 6 - 2 shared references = 10 unique wall quads = 20 BL facets.
     c0 = [
         [0, 3, 2, 1],
         [4, 5, 6, 7],
@@ -115,13 +115,14 @@ def test_native_hex_bl_final_cell_estimator_counts_boundary_faces() -> None:
         [1, 5, 6, 2],
         [9, 10, 14, 13],
     ]
-    base, boundary, final = _estimate_bl_final_cells_from_cell_faces(
+    base, boundary, facets, final = _estimate_bl_final_cells_from_cell_faces(
         [c0, c1],
         n_layers=3,
     )
     assert base == 2
     assert boundary == 10
-    assert final == 32
+    assert facets == 20
+    assert final == 62
 
 
 def test_native_hex_polymesh_files_exist(tmp_case_dir: Path) -> None:

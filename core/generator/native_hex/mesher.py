@@ -202,16 +202,17 @@ def _estimate_bl_final_cells_from_cell_faces(
     cell_faces: list[list[list[int]]],
     *,
     n_layers: int,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     """Estimate final hex+BL cell count before writing polyMesh.
 
-    Native BL inserts one prism per wall face per layer. For the octree path
-    wall faces are the cell faces referenced by exactly one volume cell.
+    Native BL triangulates polygonal wall faces and inserts one prism per
+    triangle per layer. For hex walls that means two prism cells per quad per
+    layer, not one.
     """
     n_base = int(len(cell_faces))
     layers = max(0, int(n_layers))
     if n_base <= 0 or layers <= 0:
-        return n_base, 0, n_base
+        return n_base, 0, 0, n_base
 
     face_counts: dict[tuple[int, ...], int] = {}
     for faces_of_cell in cell_faces:
@@ -220,8 +221,19 @@ def _estimate_bl_final_cells_from_cell_faces(
                 continue
             key = tuple(sorted(int(v) for v in face))
             face_counts[key] = face_counts.get(key, 0) + 1
-    n_boundary = sum(1 for count in face_counts.values() if count == 1)
-    return n_base, int(n_boundary), int(n_base + n_boundary * layers)
+    n_boundary_faces = 0
+    n_boundary_facets = 0
+    for key, count in face_counts.items():
+        if count != 1:
+            continue
+        n_boundary_faces += 1
+        n_boundary_facets += max(1, len(key) - 2)
+    return (
+        n_base,
+        int(n_boundary_faces),
+        int(n_boundary_facets),
+        int(n_base + n_boundary_facets * layers),
+    )
 
 
 # VAL2 (beta2148) — global negative-volume hex cell validation (3-engine defensive parity).
@@ -703,7 +715,12 @@ def generate_native_hex(
                         float(os.environ.get("AUTO_TESSELL_HEX_FINAL_REBUDGET_EXP", "2.35")),
                     )
                     for _rb_pass in range(_passes):
-                        _base_n, _bnd_n, _est_final = _estimate_bl_final_cells_from_cell_faces(
+                        (
+                            _base_n,
+                            _bnd_n,
+                            _bnd_facets_n,
+                            _est_final,
+                        ) = _estimate_bl_final_cells_from_cell_faces(
                             oct_cells,
                             n_layers=int(_budget_layers),
                         )
@@ -733,6 +750,7 @@ def generate_native_hex(
                             pass_index=int(_rb_pass + 1),
                             base_cells=int(_base_n),
                             boundary_faces=int(_bnd_n),
+                            boundary_facets=int(_bnd_facets_n),
                             estimated_final_cells=int(_est_final),
                             target_low=int(_target_low),
                             target_high=int(_target_high),
@@ -752,7 +770,12 @@ def generate_native_hex(
                             n_levels=n_levels,
                             refinement_distance_factor=refinement_distance_factor,
                         )
-                    _base_n, _bnd_n, _est_final = _estimate_bl_final_cells_from_cell_faces(
+                    (
+                        _base_n,
+                        _bnd_n,
+                        _bnd_facets_n,
+                        _est_final,
+                    ) = _estimate_bl_final_cells_from_cell_faces(
                         oct_cells,
                         n_layers=int(_budget_layers),
                     )
@@ -760,6 +783,7 @@ def generate_native_hex(
                         "native_hex_final_rebudget_done",
                         base_cells=int(_base_n),
                         boundary_faces=int(_bnd_n),
+                        boundary_facets=int(_bnd_facets_n),
                         estimated_final_cells=int(_est_final),
                         target_low=int(_target_low),
                         target_high=int(_target_high),
