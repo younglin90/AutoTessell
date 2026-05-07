@@ -313,171 +313,6 @@ def _native_knn_chunked(
     return np.sqrt(out_d2), out_idx
 
 
-def _point_triangle_distance_squared_batch(points, tri_a, tri_b, tri_c):
-    """Squared point-to-triangle distance for paired rows.
-
-    Vectorized form of the region tests from "Real-Time Collision Detection".
-    Each row in ``points`` is tested against the triangle from the same row in
-    ``tri_a`` / ``tri_b`` / ``tri_c``.
-    """
-    import numpy as np  # noqa: PLC0415
-
-    p = np.asarray(points, dtype=np.float64)
-    a = np.asarray(tri_a, dtype=np.float64)
-    b = np.asarray(tri_b, dtype=np.float64)
-    c = np.asarray(tri_c, dtype=np.float64)
-    out = np.empty((p.shape[0],), dtype=np.float64)
-    unresolved = np.ones((p.shape[0],), dtype=bool)
-
-    def _dot(u, v):
-        return np.einsum("ij,ij->i", u, v)
-
-    def _set(mask, closest):
-        idx = unresolved & mask
-        if np.any(idx):
-            d = p[idx] - closest[idx]
-            out[idx] = _dot(d, d)
-            unresolved[idx] = False
-
-    ab = b - a
-    ac = c - a
-    ap = p - a
-    d1 = _dot(ab, ap)
-    d2 = _dot(ac, ap)
-    _set((d1 <= 0.0) & (d2 <= 0.0), a)
-
-    bp = p - b
-    d3 = _dot(ab, bp)
-    d4 = _dot(ac, bp)
-    _set((d3 >= 0.0) & (d4 <= d3), b)
-
-    vc = d1 * d4 - d3 * d2
-    denom = np.where(np.abs(d1 - d3) > 1e-30, d1 - d3, 1.0)
-    v = d1 / denom
-    _set((vc <= 0.0) & (d1 >= 0.0) & (d3 <= 0.0), a + v[:, None] * ab)
-
-    cp = p - c
-    d5 = _dot(ab, cp)
-    d6 = _dot(ac, cp)
-    _set((d6 >= 0.0) & (d5 <= d6), c)
-
-    vb = d5 * d2 - d1 * d6
-    denom = np.where(np.abs(d2 - d6) > 1e-30, d2 - d6, 1.0)
-    w = d2 / denom
-    _set((vb <= 0.0) & (d2 >= 0.0) & (d6 <= 0.0), a + w[:, None] * ac)
-
-    va = d3 * d6 - d5 * d4
-    edge_bc = c - b
-    denom = (d4 - d3) + (d5 - d6)
-    denom = np.where(np.abs(denom) > 1e-30, denom, 1.0)
-    w = (d4 - d3) / denom
-    _set(
-        (va <= 0.0) & ((d4 - d3) >= 0.0) & ((d5 - d6) >= 0.0),
-        b + w[:, None] * edge_bc,
-    )
-
-    if np.any(unresolved):
-        denom = va + vb + vc
-        denom = np.where(np.abs(denom) > 1e-30, denom, 1.0)
-        v_face = vb / denom
-        w_face = vc / denom
-        closest = a + ab * v_face[:, None] + ac * w_face[:, None]
-        d = p[unresolved] - closest[unresolved]
-        out[unresolved] = _dot(d, d)
-
-    return out
-
-
-def _native_point_to_mesh_dist_chunked(
-    query,
-    vertices,
-    faces,
-    *,
-    pair_limit: int = 8_000_000,
-    k_candidates: int = 64,
-):
-    """Nearest point-to-triangle distance and nearest face index.
-
-    The previous fidelity path compared sampled points to sampled points, which
-    overestimated Hausdorff distance on geometrically identical but differently
-    triangulated surfaces.  This checks sampled points against mesh triangles.
-    A centroid KDTree narrows candidates; exact all-triangle mode remains
-    available through ``AUTO_TESSELL_FIDELITY_EXACT=1``.
-    """
-    import os  # noqa: PLC0415
-    import numpy as np  # noqa: PLC0415
-
-    q = np.asarray(query, dtype=np.float64)
-    verts = np.asarray(vertices, dtype=np.float64)
-    tri_idx = np.asarray(faces, dtype=np.int64)
-    if q.size == 0 or verts.size == 0 or tri_idx.size == 0:
-        return (
-            np.zeros((len(q),), dtype=np.float64),
-            np.zeros((len(q),), dtype=np.int64),
-        )
-
-    tris = verts[tri_idx]
-    n_tri = int(tris.shape[0])
-    exact = os.environ.get("AUTO_TESSELL_FIDELITY_EXACT", "0") == "1"
-
-    if exact:
-        best_d2 = np.full((len(q),), np.inf, dtype=np.float64)
-        best_idx = np.zeros((len(q),), dtype=np.int64)
-        chunk = max(1, pair_limit // max(n_tri, 1))
-        all_idx = np.arange(n_tri, dtype=np.int64)
-        for start in range(0, len(q), chunk):
-            end = min(start + chunk, len(q))
-            cand = np.tile(all_idx, end - start)
-            p_rep = np.repeat(q[start:end], n_tri, axis=0)
-            d2 = _point_triangle_distance_squared_batch(
-                p_rep, tris[cand, 0], tris[cand, 1], tris[cand, 2],
-            ).reshape(end - start, n_tri)
-            local = np.argmin(d2, axis=1)
-            best_d2[start:end] = d2[np.arange(end - start), local]
-            best_idx[start:end] = local
-        return np.sqrt(best_d2), best_idx
-
-    try:
-        from scipy.spatial import cKDTree  # noqa: PLC0415
-
-        k = max(1, min(int(k_candidates), n_tri))
-        centroids = tris.mean(axis=1)
-        tree = cKDTree(centroids)
-        _, cand_idx = tree.query(q, k=k)
-        cand_idx = np.asarray(cand_idx, dtype=np.int64)
-        if cand_idx.ndim == 1:
-            cand_idx = cand_idx[:, None]
-
-        best_d2 = np.full((len(q),), np.inf, dtype=np.float64)
-        best_idx = np.zeros((len(q),), dtype=np.int64)
-        chunk = max(1, pair_limit // max(k, 1))
-        for start in range(0, len(q), chunk):
-            end = min(start + chunk, len(q))
-            cand = cand_idx[start:end]
-            flat_cand = cand.reshape(-1)
-            p_rep = np.repeat(q[start:end], cand.shape[1], axis=0)
-            d2 = _point_triangle_distance_squared_batch(
-                p_rep, tris[flat_cand, 0], tris[flat_cand, 1], tris[flat_cand, 2],
-            ).reshape(end - start, cand.shape[1])
-            local = np.argmin(d2, axis=1)
-            best_d2[start:end] = d2[np.arange(end - start), local]
-            best_idx[start:end] = cand[np.arange(end - start), local]
-        return np.sqrt(best_d2), best_idx
-    except Exception:
-        # Numpy-only exact fallback, chunked to cap memory.
-        old = os.environ.get("AUTO_TESSELL_FIDELITY_EXACT")
-        os.environ["AUTO_TESSELL_FIDELITY_EXACT"] = "1"
-        try:
-            return _native_point_to_mesh_dist_chunked(
-                q, verts, tri_idx, pair_limit=pair_limit, k_candidates=k_candidates,
-            )
-        finally:
-            if old is None:
-                os.environ.pop("AUTO_TESSELL_FIDELITY_EXACT", None)
-            else:
-                os.environ["AUTO_TESSELL_FIDELITY_EXACT"] = old
-
-
 # ---------------------------------------------------------------------------
 # GeometryFidelityChecker
 # ---------------------------------------------------------------------------
@@ -722,16 +557,8 @@ class GeometryFidelityChecker:
                 seed=1,
                 return_index=True,
             )
-            vertices_a = np.asarray(mesh_a.vertices, dtype=np.float64)
-            faces_a = np.asarray(mesh_a.faces, dtype=np.int64)
-            vertices_b = np.asarray(mesh_b.vertices, dtype=np.float64)
-            faces_b = np.asarray(mesh_b.faces, dtype=np.int64)
-            d_ab, nn_ab = _native_point_to_mesh_dist_chunked(
-                samples_a, vertices_b, faces_b,
-            )
-            d_ba, nn_ba = _native_point_to_mesh_dist_chunked(
-                samples_b, vertices_a, faces_a,
-            )
+            d_ab, nn_ab = _native_knn_chunked(samples_a, samples_b)
+            d_ba, nn_ba = _native_knn_chunked(samples_b, samples_a)
         except Exception as exc:  # noqa: BLE001
             log.info("surface_distance_native_failed_falling_back", error=str(exc))
             from scipy.spatial import cKDTree  # noqa: PLC0415
@@ -757,12 +584,12 @@ class GeometryFidelityChecker:
             normals_b = np.asarray(mesh_b.face_normals, dtype=np.float64)
             if normals_a.size and normals_b.size and len(face_idx_a) and len(face_idx_b):
                 na = normals_a[np.asarray(face_idx_a, dtype=np.int64)]
-                nb = normals_b[np.asarray(nn_ab, dtype=np.int64)]
+                nb = normals_b[np.asarray(face_idx_b, dtype=np.int64)[np.asarray(nn_ab, dtype=np.int64)]]
                 dot_ab = np.clip(np.abs(np.einsum("ij,ij->i", na, nb)), 0.0, 1.0)
                 normal_angles.append(np.degrees(np.arccos(dot_ab)))
 
                 nb2 = normals_b[np.asarray(face_idx_b, dtype=np.int64)]
-                na2 = normals_a[np.asarray(nn_ba, dtype=np.int64)]
+                na2 = normals_a[np.asarray(face_idx_a, dtype=np.int64)[np.asarray(nn_ba, dtype=np.int64)]]
                 dot_ba = np.clip(np.abs(np.einsum("ij,ij->i", nb2, na2)), 0.0, 1.0)
                 normal_angles.append(np.degrees(np.arccos(dot_ba)))
         except Exception:
@@ -817,17 +644,9 @@ class GeometryFidelityChecker:
                 np.asarray(mesh_b.faces, dtype=np.int64),
                 n_samples=n,
             )
-            d_ab, _ = _native_point_to_mesh_dist_chunked(
-                samples_a,
-                np.asarray(mesh_b.vertices, dtype=np.float64),
-                np.asarray(mesh_b.faces, dtype=np.int64),
-            )
-            d_ba, _ = _native_point_to_mesh_dist_chunked(
-                samples_b,
-                np.asarray(mesh_a.vertices, dtype=np.float64),
-                np.asarray(mesh_a.faces, dtype=np.int64),
-            )
-            return float(max(np.nanmax(d_ab), np.nanmax(d_ba)))
+            d_ab = _native_kdist_chunked(samples_a, samples_b)
+            d_ba = _native_kdist_chunked(samples_b, samples_a)
+            return float(max(d_ab, d_ba))
         except Exception as exc:  # noqa: BLE001
             # trimesh + scipy fallback (환경 문제 대비).
             log.info(
