@@ -143,3 +143,170 @@ def detect_junction_verts(
         junction_edges=junction_edges,
         face_normals=face_normals,
     )
+
+
+@dataclass
+class InnerVertResult:
+    """Result of per-face inner vertex generation.
+
+    new_points: original points + appended duplicates (no original verts moved).
+    face_inner_vert: (face_id, vert_id) -> inner_vert_id mapping.
+        For NON-junction verts: shared inner vert (one per wall vert v).
+        For JUNCTION verts: face-cluster-specific inner vert.
+    n_dup_verts: number of duplicate verts appended (junction clusters extra).
+    """
+
+    new_points: np.ndarray
+    face_inner_vert: dict[tuple[int, int], int]
+    n_dup_verts: int
+
+
+def _cluster_face_normals(
+    face_ids: list[int],
+    face_normals: dict[int, np.ndarray],
+    cos_thresh: float,
+) -> list[list[int]]:
+    """Greedy cluster face ids by normal similarity (cos >= cos_thresh).
+
+    Returns: list of clusters, each a list of face_ids belonging together.
+    """
+    clusters: list[list[int]] = []
+    cluster_means: list[np.ndarray] = []
+    for fi in face_ids:
+        if fi not in face_normals:
+            continue
+        n = face_normals[fi]
+        best_cl = -1
+        best_cos = -2.0
+        for ci, cmean in enumerate(cluster_means):
+            c = float(np.dot(n, cmean))
+            if c >= cos_thresh and c > best_cos:
+                best_cos = c
+                best_cl = ci
+        if best_cl >= 0:
+            clusters[best_cl].append(fi)
+            new_count = len(clusters[best_cl])
+            new_mean = (cluster_means[best_cl] * (new_count - 1) + n) / new_count
+            mag = float(np.linalg.norm(new_mean))
+            if mag > 1e-30:
+                new_mean = new_mean / mag
+            cluster_means[best_cl] = new_mean
+        else:
+            clusters.append([fi])
+            cluster_means.append(n.copy())
+    return clusters
+
+
+def generate_per_face_inner_verts(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    junction_info: JunctionInfo,
+    *,
+    vnorm: dict[int, np.ndarray] | None = None,
+    thickness: float = 0.001,
+    cluster_cos: float = 0.9,
+) -> InnerVertResult:
+    """Generate per-face inner vert positions with junction-aware duplication.
+
+    For each wall vert v:
+      - if v is a junction vert (in junction_info.junction_verts):
+          cluster adjacent face_normals (cos >= cluster_cos in same cluster)
+          each cluster gets its own duplicate inner vert at:
+              v - cluster_normal_avg × thickness
+          face_inner_vert[(f, v)] = cluster's inner vert
+      - else (smooth surface):
+          single shared inner vert at v - vnorm[v] × thickness
+          (vnorm provided externally; falls back to uniform avg if None)
+
+    The original wall verts are NOT moved. New inner verts are APPENDED to
+    points array. The mapping face_inner_vert tells each face's prism which
+    inner vert to use for each of its outer verts.
+
+    Args:
+        wall_face_indices: indices of wall faces.
+        faces: list of face vertex lists.
+        points: (N, 3) original vertex coordinates.
+        junction_info: result from detect_junction_verts.
+        vnorm: per-vert outward normal (for non-junction verts). If None,
+            uses uniform avg of adjacent face normals.
+        thickness: extrusion distance (positive: inward = -normal direction).
+        cluster_cos: face_normals with cos >= this go in same cluster
+            (default 0.9 ≈ 25°).
+
+    Returns:
+        InnerVertResult with new_points, face_inner_vert mapping, n_dup_verts.
+    """
+    face_normals = junction_info.face_normals
+    junction_verts = junction_info.junction_verts
+
+    # Build per-vert: list of adjacent face ids (only valid wall faces).
+    v_to_faces: dict[int, list[int]] = defaultdict(list)
+    for fi in wall_face_indices:
+        if fi not in face_normals:
+            continue
+        for v in faces[fi]:
+            v_to_faces[int(v)].append(fi)
+
+    new_points_list: list[np.ndarray] = list(points)
+    face_inner_vert: dict[tuple[int, int], int] = {}
+    n_pts_orig = len(points)
+    cursor = n_pts_orig
+
+    # Compute fallback vnorm (uniform avg) if not provided.
+    def _fallback_vnorm(v: int) -> np.ndarray:
+        f_list = v_to_faces.get(v, [])
+        if not f_list:
+            return np.zeros(3, dtype=np.float64)
+        n_sum = np.zeros(3, dtype=np.float64)
+        for fi in f_list:
+            n_sum = n_sum + face_normals[fi]
+        m = float(np.linalg.norm(n_sum))
+        if m < 1e-30:
+            return np.zeros(3, dtype=np.float64)
+        return n_sum / m
+
+    # For each wall vert: junction → cluster + dup; else → single shared.
+    # Track shared inner verts (non-junction).
+    shared_inner: dict[int, int] = {}
+
+    for v, f_list in v_to_faces.items():
+        if v in junction_verts:
+            # Cluster adj face_normals; each cluster gets its own dup.
+            clusters = _cluster_face_normals(f_list, face_normals, cluster_cos)
+            for cluster_face_ids in clusters:
+                # cluster mean normal (re-compute fresh).
+                ns = np.stack([face_normals[fi] for fi in cluster_face_ids], axis=0)
+                cmean = ns.mean(axis=0)
+                m = float(np.linalg.norm(cmean))
+                if m > 1e-30:
+                    cmean = cmean / m
+                # New inner vert at v - cmean × thickness
+                inner_pt = points[v] - cmean * thickness
+                new_points_list.append(inner_pt)
+                inner_id = cursor
+                cursor += 1
+                # Map every face in this cluster to this inner vert (for v).
+                for fi in cluster_face_ids:
+                    face_inner_vert[(fi, v)] = inner_id
+        else:
+            # Smooth — single shared inner vert.
+            if vnorm is not None and v in vnorm:
+                vn = np.asarray(vnorm[v], dtype=np.float64)
+            else:
+                vn = _fallback_vnorm(v)
+            inner_pt = points[v] - vn * thickness
+            new_points_list.append(inner_pt)
+            inner_id = cursor
+            cursor += 1
+            shared_inner[v] = inner_id
+            for fi in f_list:
+                face_inner_vert[(fi, v)] = inner_id
+
+    new_points = np.asarray(new_points_list, dtype=np.float64)
+    n_dup = cursor - n_pts_orig
+    return InnerVertResult(
+        new_points=new_points,
+        face_inner_vert=face_inner_vert,
+        n_dup_verts=n_dup,
+    )
