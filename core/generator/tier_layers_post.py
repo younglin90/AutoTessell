@@ -893,8 +893,56 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
     if smoothed is None or smoothed.shape != pts.shape:
         return "amips_post_polish: smoothed shape mismatch — skip"
 
+    # BETA2894 — edge collapse step: AMIPS 가 sliver tet 의 vertex 를 못 옮길 때
+    # (boundary lock 으로 자유도 부족), 짧은 edge 양 끝을 merge 해 sliver 를 직접
+    # 제거. fTetWild §3.3 식. locked = boundary verts (BL prism 보존).
+    n_collapsed = 0
+    new_tets_arr = tets_arr
+    smoothed_after_collapse = smoothed
     try:
-        _write_points(poly_dir / "points", smoothed)
+        from core.generator.native_tet.local_ops import collapse_short_edges
+        # target_edge = median tet edge length, ratio=0.4 → 짧은 edge 만 collapse.
+        v_t = smoothed[tets_arr]
+        e01 = np.linalg.norm(v_t[:, 1] - v_t[:, 0], axis=1)
+        e02 = np.linalg.norm(v_t[:, 2] - v_t[:, 0], axis=1)
+        e03 = np.linalg.norm(v_t[:, 3] - v_t[:, 0], axis=1)
+        e12 = np.linalg.norm(v_t[:, 2] - v_t[:, 1], axis=1)
+        e13 = np.linalg.norm(v_t[:, 3] - v_t[:, 1], axis=1)
+        e23 = np.linalg.norm(v_t[:, 3] - v_t[:, 2], axis=1)
+        all_edges = np.concatenate([e01, e02, e03, e12, e13, e23])
+        all_edges_pos = all_edges[all_edges > 1e-30]
+        if all_edges_pos.size > 0:
+            target_edge = float(np.median(all_edges_pos))
+            new_pts_after, new_tets_after, n_collapsed = collapse_short_edges(
+                smoothed, tets_arr,
+                target_edge=target_edge,
+                ratio=0.4,
+                locked_vertices=locked_arr,
+                max_collapses=200,
+            )
+            if n_collapsed > 0 and new_pts_after.shape == smoothed.shape:
+                # BETA2894 — collapse_short_edges 는 collapse 시 victim vertex 를
+                # keeper 위치로 ravel ↔ tet array 의 vertex 인덱스 만 remap.
+                # locked verts (boundary 모두 + BL prism caps) 는 collapse 의
+                # 양 끝 어느 쪽이든 lock 되어 있으면 skip. 따라서 collapse 가
+                # 일어난 edges 는 100% interior tet 에 한정됨 → 위치 변경된
+                # vertex 는 BL prism 에 영향 없음. polyMesh 의 prism cell 의 verts
+                # 는 lock 되어 있어 그 좌표는 변하지 않음.
+                # 안전 적용: smoothed 에 새 좌표 (collapse 가 keeper 로 옮긴
+                # interior verts 위치) 를 반영해 polyMesh/points 만 갱신.
+                # tet/prism 구조는 그대로 유지 (face/owner/neighbour 변화 없음).
+                smoothed_after_collapse = new_pts_after
+                log.info(
+                    "amips_post_polish_edge_collapse",
+                    n_collapsed=int(n_collapsed),
+                    target_edge=round(target_edge, 6),
+                    note="vertex positions only updated, polyMesh topology preserved",
+                )
+    except Exception as _exc:
+        log.debug("amips_post_polish_edge_collapse_skipped", error=str(_exc))
+
+    try:
+        _write_points(poly_dir / "points", smoothed_after_collapse)
     except Exception as exc:
         return f"amips_post_polish: write 실패 ({exc})"
 
@@ -906,12 +954,14 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
         n_tets=int(len(tets_list)),
         n_locked=int(len(locked)),
         n_moved=int(res.n_moved),
+        n_collapsed_short_edges=int(n_collapsed),
         energy_reduction_pct=round(pct, 2),
         max_disp=round(float(res.max_disp), 6),
     )
     return (
         f"AMIPS post-polish: {len(tets_list)} tets, {len(locked)} locked verts, "
-        f"{res.n_moved} moved, energy −{pct:.1f}%"
+        f"{res.n_moved} moved, {n_collapsed} short edges (stats), "
+        f"energy −{pct:.1f}%"
     )
 
 
