@@ -135,7 +135,10 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     # - epsilon 0.001,  edge_length_r 0.05  → TetWild 매칭, 15s PASS (sweet spot)
     _defaults: dict[str, dict[str, Any]] = {
         # draft: 단순 형상 빠른 통과 — cube/box 기준
-        "draft": {"stop_quality": 20.0, "max_its": 40, "epsilon": 0.002, "edge_length_r": 0.06},
+        # BETA2889 — iter 3: stop_quality 20→10, max_its 40→80, edge_length_r 0.06→0.04
+        # for better tet shape (less slivers). Trades 30-50% more bench time but
+        # reduces high-skew failures (medium_100322/323/330 skew 32-76).
+        "draft": {"stop_quality": 10.0, "max_its": 80, "epsilon": 0.002, "edge_length_r": 0.04},
         # standard: TetWild 매칭 — 복잡 형상(knot, gear 등) 첫 시도 PASS
         "standard": {"stop_quality": 10.0, "max_its": 80, "epsilon": 0.001, "edge_length_r": 0.05},
         # fine: standard 보다 tight 하되 fTetWild 수렴 가능한 한계
