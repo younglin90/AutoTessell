@@ -256,18 +256,24 @@ def _make_external_patch_classifier(domain: Any):
     tol = max(diag * 1e-5, 1e-12)
 
     def _classifier(face: list[int], pts: np.ndarray) -> tuple[str, str]:
-        # BETA2890 — centroid 만 검사하면 wildmesh 가 만든 spike triangle (1
-        # 정점이 body, 2 정점이 domain 코너) 의 centroid 가 안쪽에 떨어져
-        # body_wall 로 분류 → body_wall bbox 가 domain 전체로 확장 → fidelity
-        # hausdorff_relative=5.0 (false hard_fail). 모든 face vertex 의 좌표를
-        # 검사해 어느 하나라도 domain plane 위에 있으면 farfield.
+        # BETA2896 — strict (all-verts on same plane) + spike triangle handling
+        # 통합. medium_100045 (BL=0) + medium_100322 (spike) 둘 다 해결.
+        #
+        # face 가 farfield 이려면:
+        #   (a) 모든 vertex 가 같은 domain plane 위 (face 가 plane 자체) — 정상 bnd face
+        #   OR
+        #   (b) ≥2 vertex 가 같은 domain plane 위 (spike triangle 의 base 가 plane)
+        # 둘 다 face 가 사실상 domain box 측에 속함을 의미.
+        # 1 vertex 만 plane 에 있으면 body 의 sharp feature 가 우연히 plane 에 닿은 것 → body_wall.
         f_pts = pts[np.asarray(face, dtype=np.int64)]  # (N_v, 3)
-        on_domain = bool(
-            np.any(np.abs(f_pts - dmin[None, :]) <= tol)
-            or np.any(np.abs(f_pts - dmax[None, :]) <= tol)
-        )
-        if on_domain:
-            return "farfield", "patch"
+        if f_pts.shape[0] < 3:
+            return "body_wall", "wall"
+        for axis in range(3):
+            for plane in (dmin[axis], dmax[axis]):
+                on_plane = np.abs(f_pts[:, axis] - plane) <= tol
+                # ≥2 verts on this plane → farfield (covers normal + spike).
+                if int(on_plane.sum()) >= 2:
+                    return "farfield", "patch"
         return "body_wall", "wall"
 
     return _classifier

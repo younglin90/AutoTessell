@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RUN_ONE = Path(__file__).parent / "run_one.py"
 RESULTS_FILE = Path(__file__).parent / "last_results.json"
-PER_STL_TIMEOUT = 150  # seconds — hard meshes need more wildmesh time
+PER_STL_TIMEOUT = 240  # seconds — hard meshes + tighter classifier need more
 
 
 def _collect_stls() -> list[Path]:
