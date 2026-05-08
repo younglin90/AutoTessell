@@ -256,10 +256,15 @@ def _make_external_patch_classifier(domain: Any):
     tol = max(diag * 1e-5, 1e-12)
 
     def _classifier(face: list[int], pts: np.ndarray) -> tuple[str, str]:
-        c = pts[np.asarray(face, dtype=np.int64)].mean(axis=0)
+        # BETA2890 — centroid 만 검사하면 wildmesh 가 만든 spike triangle (1
+        # 정점이 body, 2 정점이 domain 코너) 의 centroid 가 안쪽에 떨어져
+        # body_wall 로 분류 → body_wall bbox 가 domain 전체로 확장 → fidelity
+        # hausdorff_relative=5.0 (false hard_fail). 모든 face vertex 의 좌표를
+        # 검사해 어느 하나라도 domain plane 위에 있으면 farfield.
+        f_pts = pts[np.asarray(face, dtype=np.int64)]  # (N_v, 3)
         on_domain = bool(
-            np.any(np.abs(c - dmin) <= tol)
-            or np.any(np.abs(c - dmax) <= tol)
+            np.any(np.abs(f_pts - dmin[None, :]) <= tol)
+            or np.any(np.abs(f_pts - dmax[None, :]) <= tol)
         )
         if on_domain:
             return "farfield", "patch"
