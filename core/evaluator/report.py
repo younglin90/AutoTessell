@@ -244,8 +244,12 @@ class EvaluationReporter:
                     and int(getattr(strategy.boundary_layers, "num_layers", 0)) > 0
                 )
                 if _bl_active:
-                    thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 8.0), 14.0)
-                    thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 7.0), 14.0)
+                    # BETA2893 — evaluator.md §4-A "max boundary skewness ≤ 20"
+                    # default PASS criterion. cfMesh / Pointwise / NUMECA 의 BL
+                    # prism corner cell 은 본질적으로 skew 18-20 까지 도달 가능.
+                    # tet bulk + BL combo 의 hard 20, soft 18 로 정렬.
+                    thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 8.0), 20.0)
+                    thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 7.0), 19.0)
 
         # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
         # 특성. octree refinement + surface snap 결과 surface 인접 cell 이 거의 평면
