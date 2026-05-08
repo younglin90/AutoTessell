@@ -2,11 +2,11 @@
   "running": false,
   "summary": {
     "n_total": 21,
-    "pass_count": 10,
+    "pass_count": 11,
     "bl_exact_count": 19,
-    "pass_rate_pct": 47.6,
+    "pass_rate_pct": 52.4,
     "bl_exact_rate_pct": 90.5,
-    "score": 1950.0
+    "score": 2050.0
   },
   "results": [
     {
@@ -18,9 +18,9 @@
       "n_prism": 2742,
       "bl_layers_actual": 3,
       "max_skew": 1.7773872370621506,
-      "max_non_ortho": 73.54039498307363,
+      "max_non_ortho": 84.51054005471306,
       "max_aspect": 85.91794256588321,
-      "elapsed": 13.8,
+      "elapsed": 14.0,
       "err": ""
     },
     {
@@ -31,10 +31,10 @@
       "n_wall_faces": 622,
       "n_prism": 1866,
       "bl_layers_actual": 3,
-      "max_skew": 3.8235540246037343,
+      "max_skew": 4.001990769312411,
       "max_non_ortho": 89.87424339081994,
       "max_aspect": 205.05125608072865,
-      "elapsed": 11.1,
+      "elapsed": 11.2,
       "err": ""
     },
     {
@@ -48,7 +48,7 @@
       "max_skew": 5.366124997110418,
       "max_non_ortho": 89.93263039644103,
       "max_aspect": 401.0843782929016,
-      "elapsed": 16.4,
+      "elapsed": 16.2,
       "err": ""
     },
     {
@@ -62,7 +62,7 @@
       "max_skew": 2.1488055557142136,
       "max_non_ortho": 88.69217350943973,
       "max_aspect": 76.57236574935563,
-      "elapsed": 10.0,
+      "elapsed": 9.7,
       "err": ""
     },
     {
@@ -74,9 +74,9 @@
       "n_prism": 3324,
       "bl_layers_actual": 3,
       "max_skew": 2.5560634869193133,
-      "max_non_ortho": 89.29206765485087,
+      "max_non_ortho": 89.72908971849843,
       "max_aspect": 240.67317971368854,
-      "elapsed": 13.9,
+      "elapsed": 13.6,
       "err": ""
     },
     {
@@ -90,7 +90,7 @@
       "max_skew": 2.855792239686485,
       "max_non_ortho": 89.9934305507761,
       "max_aspect": 186.08893651517127,
-      "elapsed": 16.7,
+      "elapsed": 16.5,
       "err": ""
     },
     {
@@ -104,7 +104,7 @@
       "max_skew": 16080.308192278226,
       "max_non_ortho": 89.95366288699486,
       "max_aspect": 55.96543251752144,
-      "elapsed": 26.1,
+      "elapsed": 25.7,
       "err": ""
     },
     {
@@ -118,7 +118,7 @@
       "max_skew": 916.7002565667474,
       "max_non_ortho": 89.97600214609949,
       "max_aspect": 60.432153301634294,
-      "elapsed": 25.8,
+      "elapsed": 25.4,
       "err": ""
     },
     {
@@ -132,7 +132,7 @@
       "max_skew": 2.6852797888680464,
       "max_non_ortho": 79.28726916836928,
       "max_aspect": 403.4147358195119,
-      "elapsed": 28.4,
+      "elapsed": 27.3,
       "err": ""
     },
     {
@@ -146,7 +146,7 @@
       "max_skew": 0.0,
       "max_non_ortho": 0.0,
       "max_aspect": 0.0,
-      "elapsed": 26.5,
+      "elapsed": 26.7,
       "err": "rc=-11 "
     },
     {
@@ -160,7 +160,7 @@
       "max_skew": 4.917670884580058,
       "max_non_ortho": 89.98649121497303,
       "max_aspect": 71.10226685363455,
-      "elapsed": 28.0,
+      "elapsed": 29.9,
       "err": ""
     },
     {
@@ -172,9 +172,9 @@
       "n_prism": 2808,
       "bl_layers_actual": 3,
       "max_skew": 2.9314330432812206,
-      "max_non_ortho": 88.6725169867684,
+      "max_non_ortho": 89.12196457005709,
       "max_aspect": 476.9298954907175,
-      "elapsed": 12.9,
+      "elapsed": 12.8,
       "err": ""
     },
     {
@@ -188,7 +188,7 @@
       "max_skew": 458.3473590600401,
       "max_non_ortho": 89.99994596254368,
       "max_aspect": 145.82692204929415,
-      "elapsed": 76.4,
+      "elapsed": 59.6,
       "err": ""
     },
     {
@@ -202,21 +202,21 @@
       "max_skew": 17.141548807705426,
       "max_non_ortho": 89.62742524612109,
       "max_aspect": 792.1889653236447,
-      "elapsed": 134.3,
+      "elapsed": 135.7,
       "err": ""
     },
     {
       "stl": "hard_100040.stl",
-      "ok": false,
-      "verdict": "FAIL",
+      "ok": true,
+      "verdict": "PASS",
       "n_cells": 9810,
       "n_wall_faces": 2090,
       "n_prism": 6270,
       "bl_layers_actual": 3,
-      "max_skew": 8.18778778198242,
-      "max_non_ortho": 83.65530413620311,
+      "max_skew": 2.9643120526538795,
+      "max_non_ortho": 82.22022152245187,
       "max_aspect": 253.4119724450237,
-      "elapsed": 24.1,
+      "elapsed": 28.5,
       "err": ""
     },
     {
@@ -244,7 +244,7 @@
       "max_skew": 3.7943149971631636,
       "max_non_ortho": 62.633943511160226,
       "max_aspect": 26.27451699097327,
-      "elapsed": 11.9,
+      "elapsed": 13.0,
       "err": ""
     },
     {
@@ -256,9 +256,9 @@
       "n_prism": 3144,
       "bl_layers_actual": 3,
       "max_skew": 2.4667408888005897,
-      "max_non_ortho": 88.8834327758403,
+      "max_non_ortho": 89.10536772193169,
       "max_aspect": 129.472426899884,
-      "elapsed": 13.6,
+      "elapsed": 15.0,
       "err": ""
     },
     {
@@ -270,9 +270,9 @@
       "n_prism": 747,
       "bl_layers_actual": 3,
       "max_skew": 32.09527043074674,
-      "max_non_ortho": 89.9358098453561,
+      "max_non_ortho": 89.93580984535615,
       "max_aspect": 620.4319701169148,
-      "elapsed": 16.6,
+      "elapsed": 18.4,
       "err": ""
     },
     {
@@ -286,7 +286,7 @@
       "max_skew": 45.8887985303528,
       "max_non_ortho": 89.8782367718658,
       "max_aspect": 723.470452096061,
-      "elapsed": 15.8,
+      "elapsed": 17.4,
       "err": ""
     },
     {
@@ -300,7 +300,7 @@
       "max_skew": 76.07653433204973,
       "max_non_ortho": 89.96454613295138,
       "max_aspect": 602.4361816080177,
-      "elapsed": 15.7,
+      "elapsed": 16.0,
       "err": ""
     }
   ]
