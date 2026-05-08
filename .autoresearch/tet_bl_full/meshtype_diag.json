@@ -1,0 +1,148 @@
+{
+  "results": [
+    {
+      "stl": "hard_100029.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier15_cfmesh",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 606,
+      "max_skew": 1.167998643310086,
+      "max_non_ortho": 89.95891504195966,
+      "elapsed": 135.4,
+      "err": ""
+    },
+    {
+      "stl": "hard_100029.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier1_snappy",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 52.5,
+      "err": ""
+    },
+    {
+      "stl": "hard_100029.stl",
+      "mesh_type": "poly",
+      "tier": "tier_voro_poly",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 28204,
+      "max_skew": 1.227566151087924e+16,
+      "max_non_ortho": 90.0,
+      "elapsed": 81.5,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017013.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier15_cfmesh",
+      "ok": false,
+      "verdict": "PASS_WITH_WARNINGS",
+      "n_cells": 104,
+      "max_skew": 0.6128153024043954,
+      "max_non_ortho": 69.13897639643343,
+      "elapsed": 24.7,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017013.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier1_snappy",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 7.4,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017013.stl",
+      "mesh_type": "poly",
+      "tier": "tier_voro_poly",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 10093,
+      "max_skew": 324028378396642.56,
+      "max_non_ortho": 90.0,
+      "elapsed": 35.1,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017014.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier15_cfmesh",
+      "ok": false,
+      "verdict": "PASS_WITH_WARNINGS",
+      "n_cells": 104,
+      "max_skew": 0.3671678201470894,
+      "max_non_ortho": 31.998625411755445,
+      "elapsed": 26.1,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017014.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier1_snappy",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 6.5,
+      "err": ""
+    },
+    {
+      "stl": "extreme_1017014.stl",
+      "mesh_type": "poly",
+      "tier": "tier_voro_poly",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 9786,
+      "max_skew": 699723380162122.2,
+      "max_non_ortho": 90.0,
+      "elapsed": 35.1,
+      "err": ""
+    },
+    {
+      "stl": "extreme_102308.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier15_cfmesh",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 6.1,
+      "err": ""
+    },
+    {
+      "stl": "extreme_102308.stl",
+      "mesh_type": "hex_dominant",
+      "tier": "tier1_snappy",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 5.9,
+      "err": ""
+    },
+    {
+      "stl": "extreme_102308.stl",
+      "mesh_type": "poly",
+      "tier": "tier_voro_poly",
+      "ok": false,
+      "verdict": "UNKNOWN",
+      "n_cells": 0,
+      "max_skew": 0.0,
+      "max_non_ortho": 0.0,
+      "elapsed": 81.1,
+      "err": ""
+    }
+  ]
+}
