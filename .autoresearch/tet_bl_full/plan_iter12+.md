@@ -215,3 +215,45 @@ Edge × 1.5, × 3.0: SIGSEGV 유지. Crash 가 fTetWild post-mesh_optimization (
 
 5/6 fails 가 동일한 fundamental: **pytetwild / fTetWild Python wrapper limitation**.
 
+
+---
+
+## iter 27 결과 — **NEW BEST 2700** (Plan goal 달성!)
+
+### KEY WIN: external→internal aspect-aware flow forcing
+`core/strategist/param_optimizer.py compute_domain`: bbox aspect (max/min) > 2.0 시 external→internal 강제.
+
+이유: external compound (body + factor×L padding) 의 bbox 가 body smallest dim 을 swamp → fTetWild edge_length > body_smallest → body lost.
+- medium_100045 (6×1.97×6, aspect 3.05): body_wall faces 가 z=-11 (compound 내 임의 위치) → z=0~6 (body 위) 로 정상화
+- skew 3.2→2.5, hausdorff_relative 4.45→ low, body fidelity OK
+
+### iter 28-30 시도 — 모두 discard
+
+| iter | 시도 | 결과 |
+|------|------|------|
+| 28 | aspect>5 + edge tighten | extreme STLs 더 나빠짐 |
+| 29 | no-BL viability check | extreme PASS, hard_100029 FAIL (area_dev) |
+| 30 | vnorm clustering at junction | **CATASTROPHE** (test_cube 1.6→10²⁷) |
+
+### iter 30 의 결정적 증명
+Vnorm 클러스터링은 inconsistency 생성 (shared vert 의 한 위치에 모든 adj face 가 의존). 이는 **vertex duplication** 외에 multi-patch junction 해결 불가능함의 결정적 증명.
+
+### 최종 잔여 4 fails
+| STL | Verdict | Root cause | Required fix |
+|-----|---------|------------|--------------|
+| hard_100029 | FAIL skew=260 | 63 wall patches multi-region junction | vertex duplication |
+| extreme_1017013 | FAIL skew=395 | 5 patches flat sheet (aspect 13, z=6.75) | vertex duplication + anisotropic |
+| extreme_1017014 | FAIL skew=349 | same | same |
+| extreme_102308 | CRASH | pytetwild SIGSEGV during 358k tet transfer | upstream wrapper fix |
+
+### 최종 점수
+**iter 27 = 2700 BEST** (17/21 PASS = 81.0%, 20/21 BL=3 = 95.2%)
+
+| Iter | Score | PASS | BL_exact | Δ |
+|------|-------|------|----------|---|
+| 11 baseline | 2500 | 15/21 | 20/21 | - |
+| 16 | 2600 | 16/21 | 20/21 | +100 |
+| **27** | **2700** | **17/21** | **20/21** | **+200 (+8%)** |
+
+**Plan goal 2700+ 달성 ✅**
+
