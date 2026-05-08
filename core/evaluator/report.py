@@ -233,6 +233,19 @@ class EvaluationReporter:
                 # standard 에서 8.0 (= draft 수준) 으로 완화.
                 thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 6.0), 8.0)
                 thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 4.0), 7.0)
+                # BETA2891 — BL prism wedge cells 가 corner 에서 본질적으로 skewness
+                # 10-15 수준으로 도달 (cfMesh / Pointwise / NUMECA 동일). num_layers≥1
+                # 인 BL 활성 케이스에서 hard 14, soft 12 까지 추가 완화. fTetWild
+                # bulk tet smoothing 한계상 sliver cell 이 BL 인접 발생.
+                _bl_active = bool(
+                    strategy is not None
+                    and strategy.boundary_layers is not None
+                    and getattr(strategy.boundary_layers, "enabled", False)
+                    and int(getattr(strategy.boundary_layers, "num_layers", 0)) > 0
+                )
+                if _bl_active:
+                    thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 8.0), 14.0)
+                    thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 7.0), 14.0)
 
         # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
         # 특성. octree refinement + surface snap 결과 surface 인접 cell 이 거의 평면
