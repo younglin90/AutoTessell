@@ -10,9 +10,9 @@ import re
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from core.generator.polymesh_writer import write_generic_polymesh
+from core.utils.polymesh_reader import parse_foam_boundary
 
 
 def test_single_tet_boundary_only(tmp_path: Path) -> None:
@@ -100,6 +100,34 @@ def test_boundary_patch_name_configurable(tmp_path: Path) -> None:
     assert "patch" in boundary_text
 
 
+def test_boundary_patch_classifier_splits_external_patches(tmp_path: Path) -> None:
+    """writer classifier 로 farfield/body_wall patch 를 별도 보존."""
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    cell_faces = [[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]]
+
+    def _classifier(face: list[int], pts: np.ndarray) -> tuple[str, str]:
+        centroid = pts[np.asarray(face, dtype=np.int64)].mean(axis=0)
+        if centroid[2] < 1e-12:
+            return "farfield", "patch"
+        return "body_wall", "wall"
+
+    write_generic_polymesh(
+        V,
+        cell_faces,
+        tmp_path,
+        boundary_patch_classifier=_classifier,
+    )
+    boundary = parse_foam_boundary(tmp_path / "constant" / "polyMesh" / "boundary")
+    by_name = {str(p["name"]): p for p in boundary}
+    assert by_name["farfield"]["nFaces"] == 1
+    assert by_name["body_wall"]["nFaces"] == 3
+    boundary_text = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
+    assert "farfield" in boundary_text
+    assert "type            patch;" in boundary_text
+    assert "body_wall" in boundary_text
+    assert "type            wall;" in boundary_text
+
+
 def test_system_files_written(tmp_path: Path) -> None:
     """write_generic_polymesh 가 최소 system/ (controlDict / fvSchemes / fvSolution)
     생성."""
@@ -147,7 +175,7 @@ def test_empty_cell_faces_produces_empty_polymesh(tmp_path: Path) -> None:
 
 
 def test_short_face_length_lt3_ignored(tmp_path: Path) -> None:
-    """vertex 수 < 3 인 face 는 무시."""
+    """vertex 수 < 3 인 face 를 가진 cell 은 degenerate 로 drop."""
     V = np.array([
         [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
     ], dtype=np.float64)
@@ -157,4 +185,5 @@ def test_short_face_length_lt3_ignored(tmp_path: Path) -> None:
         [0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3],
     ]]
     stats = write_generic_polymesh(V, cell_faces, tmp_path)
-    assert stats["num_faces"] == 4  # 유효 4 개만 기록
+    assert stats["num_cells"] == 0
+    assert stats["num_faces"] == 0

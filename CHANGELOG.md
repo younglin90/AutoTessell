@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0-beta2522] - 2026-05-05 — GUI cube tet+BL 품질 경로 안정화.
+
+- `native_tet` axis-aligned box fast path 추가: 8-corner cube/box 입력은 Delaunay
+  회복 대신 구조화 tet split로 생성해 plane coverage 1.0 / Hausdorff rel 0.0을
+  보존.
+- `tier_native_tet`가 GUI/공용 tier param 중 tet mesher 미지원 키(`snap_boundary`
+  등)를 harness 호출 전에 필터링해 GUI native_tet 경로가 TypeError로 중단되지
+  않도록 수정.
+- sharp box의 tet+BL post stage에서 기본 fine 5-layer를 quality-aware LCR로
+  1-layer까지 축소하고, 첫 layer 두께를 base tet edge 기준으로 자동 bump해 실제
+  BL prism이 생성되도록 조정.
+- tet BL post stage에 cfMesh식 shrink/extrude 경로 추가: `tier_wildmesh`가 만든
+  순수 tet core의 boundary vertex를 내부 offset surface로 치환하고 원 wall↔inner
+  surface 사이를 prism으로 채워 `bl_internal_domain` 내부 경계 패치 없이 GUI
+  표시/평가가 깨끗하게 통과.
+- `native_bl` aspect cap 조건을 수정해 이미 충분히 두꺼운 첫 layer를 얇게 줄여
+  aspect ratio를 악화시키던 회귀를 제거.
+
 ## [0.4.0-beta2521] - 2026-04-30 — STL writer single-buffer write 추가.
 
 - beta2521 — SI dump STL writer 가 per-tri f.write (5n 호출) → numpy 일괄 + bytearray

@@ -606,6 +606,46 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "빈값 = 자동 검출 (boundary classify). 명시 시 single patch."
             ),
         ),
+        EngineParamSpec(
+            "post_layers_wall_patch_names",
+            "SetFaces patches", "str", "",
+            doc=(
+                "native_bl 전용: BL 을 생성할 patch 이름 목록 (comma-separated).\n"
+                "SMESH SetFaces 의 patch 단위 버전. 빈값 = wall patch 자동 검출."
+            ),
+        ),
+        EngineParamSpec(
+            "post_layers_set_faces",
+            "SetFaces face ids", "str", "",
+            doc=(
+                "native_bl 전용: BL 을 생성할 OpenFOAM boundary face id 목록.\n"
+                "예: 120,121,122. 지정 시 patch 자동 선택 대신 이 face 만 사용."
+            ),
+        ),
+        EngineParamSpec(
+            "post_layers_ignore_faces",
+            "IgnoreFaces ids", "str", "",
+            doc=(
+                "native_bl 전용: BL 에서 제외할 OpenFOAM boundary face id 목록.\n"
+                "SetFaces/patch 선택 후 마지막에 제거된다."
+            ),
+        ),
+        EngineParamSpec(
+            "post_layers_ignore_patch_names",
+            "Ignore patches", "str", "",
+            doc=(
+                "native_bl 전용: BL 에서 제외할 patch 이름 목록.\n"
+                "external WildMesh 의 farfield/domain patch 제외에 사용."
+            ),
+        ),
+        EngineParamSpec(
+            "post_layers_ignore_patch_prefixes",
+            "Ignore patch prefixes", "str", "",
+            doc=(
+                "native_bl 전용: BL 에서 제외할 patch 이름 prefix 목록.\n"
+                "예: domain_,symmetry_ → 해당 prefix patch 전체 제외."
+            ),
+        ),
         # ─── beta2289 — native_bl Phase 2 collision/feature/quality (cfMesh/T-Rex 동등) ─
         EngineParamSpec(
             "bl_collision_safety",

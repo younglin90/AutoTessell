@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict, deque
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Sequence
+from typing import Any
 
 import numpy as np
 
@@ -384,6 +385,9 @@ def write_generic_polymesh(
     *,
     patch_name: str = "defaultWall",
     patch_type: str = "wall",
+    boundary_patch_classifier: Callable[
+        [list[int], np.ndarray], str | tuple[str, str] | None
+    ] | None = None,
 ) -> dict[str, int]:
     """Generic polyMesh writer — cell → list of face vertex lists.
 
@@ -565,7 +569,56 @@ def write_generic_polymesh(
         and n_bnd > 100
     )
     boundary_entries: list[dict[str, Any]]
-    if _pmw2_active:
+    if boundary_patch_classifier is not None and n_bnd > 0:
+        patch_groups: dict[tuple[str, str], list[int]] = {}
+        for rel_idx, face in enumerate(sorted_bnd_faces):
+            try:
+                cls = boundary_patch_classifier(face, vertices_arr)
+            except Exception as exc:
+                logger.debug(
+                    "polymesh_writer_patch_classifier_failed",
+                    rel_face=rel_idx,
+                    error=str(exc)[:120],
+                )
+                cls = None
+            if isinstance(cls, tuple):
+                pname = str(cls[0] or patch_name)
+                ptype = str(cls[1] or patch_type)
+            elif isinstance(cls, str) and cls:
+                pname = cls
+                ptype = patch_type
+            else:
+                pname = patch_name
+                ptype = patch_type
+            patch_groups.setdefault((pname, ptype), []).append(rel_idx)
+
+        new_bnd_faces = []
+        new_bnd_owner = []
+        boundary_entries = []
+        cursor = n_internal
+        for (pname, ptype), rel_indices in patch_groups.items():
+            start = cursor
+            for rel in rel_indices:
+                new_bnd_faces.append(sorted_bnd_faces[rel])
+                new_bnd_owner.append(sorted_bnd_owner[rel])
+            cursor += len(rel_indices)
+            boundary_entries.append({
+                "name": pname,
+                "type": ptype,
+                "nFaces": len(rel_indices),
+                "startFace": start,
+            })
+        final_faces = sorted_int_faces + new_bnd_faces
+        final_owner = sorted_int_owner + new_bnd_owner
+        logger.info(
+            "polymesh_writer_patch_classifier",
+            n_boundary_faces=n_bnd,
+            patches=[
+                {"name": e["name"], "type": e["type"], "nFaces": e["nFaces"]}
+                for e in boundary_entries
+            ],
+        )
+    elif _pmw2_active:
         patches = _segment_boundary_by_features(
             final_faces, vertices_arr, n_internal, dihedral_deg=30.0
         )
@@ -659,6 +712,10 @@ class PolyMeshWriter:
         vertices: np.ndarray,
         tets: np.ndarray,
         case_dir: Path,
+        *,
+        boundary_patch_classifier: Callable[
+            [list[int], np.ndarray], str | tuple[str, str] | None
+        ] | None = None,
     ) -> dict[str, int]:
         """Write OpenFOAM polyMesh from tet mesh arrays.
 
@@ -703,7 +760,12 @@ class PolyMeshWriter:
         # 직전 vectorize 카드의 잔존 회귀 (row.tolist() — row 가 list 라 AttributeError).
         cell_faces: list[list[list[int]]] = _all_face_verts.tolist()
 
-        stats = write_generic_polymesh(vertices, cell_faces, case_dir)
+        stats = write_generic_polymesh(
+            vertices,
+            cell_faces,
+            case_dir,
+            boundary_patch_classifier=boundary_patch_classifier,
+        )
 
         # Writer-specific system files (GAMG solver 등 tet 솔루션 설정) 덮어쓰기.
         # generic writer 의 최소 controlDict 는 generic 솔루션이므로, tet 전용

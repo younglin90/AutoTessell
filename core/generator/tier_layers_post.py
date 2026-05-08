@@ -43,6 +43,39 @@ def _coerce_bool(v: object, default: bool) -> bool:
     return default
 
 
+def _coerce_str_list(v: object) -> list[str] | None:
+    """tier-param list/string 값을 string list 로 정규화."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        parts = [p.strip() for p in v.replace(";", ",").split(",")]
+        out = [p for p in parts if p]
+        return out or None
+    if isinstance(v, (list, tuple, set)):
+        out = [str(p).strip() for p in v if str(p).strip()]
+        return out or None
+    s = str(v).strip()
+    return [s] if s else None
+
+
+def _coerce_int_list(v: object) -> list[int] | None:
+    """tier-param list/string 값을 int list 로 정규화."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        raw_parts = [p.strip() for p in v.replace(";", ",").split(",")]
+    elif isinstance(v, (list, tuple, set)):
+        raw_parts = [str(p).strip() for p in v]
+    else:
+        raw_parts = [str(v).strip()]
+    out: list[int] = []
+    for p in raw_parts:
+        if not p:
+            continue
+        out.append(int(p))
+    return out or None
+
+
 def _build_bl_config(
     bl_config_cls,
     params: dict,
@@ -86,7 +119,25 @@ def _build_bl_config(
         num_layers=int(num_layers),
         growth_ratio=float(growth_ratio),
         first_thickness=float(first_thickness),
-        wall_patch_names=params.get("post_layers_wall_patch_names"),
+        wall_patch_names=_coerce_str_list(
+            params.get("post_layers_wall_patch_names"),
+        ),
+        set_faces=_coerce_int_list(
+            params.get("post_layers_set_faces")
+            if "post_layers_set_faces" in params
+            else params.get("post_layers_set_face_ids")
+        ),
+        ignore_faces=_coerce_int_list(
+            params.get("post_layers_ignore_faces")
+            if "post_layers_ignore_faces" in params
+            else params.get("post_layers_ignore_face_ids")
+        ),
+        ignore_patch_names=_coerce_str_list(
+            params.get("post_layers_ignore_patch_names"),
+        ),
+        ignore_patch_prefixes=_coerce_str_list(
+            params.get("post_layers_ignore_patch_prefixes"),
+        ),
         backup_original=_coerce_bool(
             params.get("post_layers_backup_original"), True,
         ),

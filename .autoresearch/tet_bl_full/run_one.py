@@ -36,6 +36,7 @@ def main() -> int:
             res = PipelineOrchestrator().run(
                 input_path=stl, output_dir=case,
                 mesh_type="tet", quality_level="draft",
+                tier_hint="tier_wildmesh",
                 write_of_case=False,
                 tier_specific_params=tsp,
                 max_cells=int(target_cells * 1.5) if target_cells else None,

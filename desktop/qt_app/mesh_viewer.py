@@ -1221,10 +1221,58 @@ class InteractiveMeshViewer(QWidget):
             # combine()은 tet(타입10) + triangle(타입5)을 혼합해
             # 경계면을 이중 렌더링하고 z-fighting/음영 왜곡을 일으키므로 사용 안 함.
             if hasattr(mesh, "n_blocks") and mesh.n_blocks > 0:
-                # Block 0: 볼륨 셀 → extract_surface()로 외곽 면 추출
+                # Block 0: 볼륨 셀 → 외곽 face 추출.
                 block0 = mesh.GetBlock(0)
                 if block0 is not None and getattr(block0, "n_cells", 0) > 0:
                     try:
+                        # BETA2882 — BL prism (WEDGE=13) 또는 polyhedron (=42) 셀이
+                        # 일정 비율 이상이면 외곽만 추출하면 user 가 cube 외벽
+                        # 1 layer 만 본다고 오해. 이때는 x>0.5 영역을 clip 으로
+                        # 잘라내 BL prism cells 가 단면으로 보이게 default 렌더.
+                        # cell type 별 비율 확인.
+                        try:
+                            import numpy as _np_bl
+                            _ct = _np_bl.asarray(getattr(block0, "celltypes", []))
+                            _n = int(_ct.size) if _ct.size else 0
+                            _wedge_frac = float((_ct == 13).sum() / _n) if _n else 0.0
+                            _poly_frac  = float((_ct == 42).sum() / _n) if _n else 0.0
+                        except Exception:
+                            _wedge_frac = 0.0; _poly_frac = 0.0
+                        # WEDGE > 5% 또는 POLY > 5% → BL/poly 메시 — clip half +
+                        # extract_surface → PolyData. 단면이 visible 되어 BL
+                        # prism ring 이 보임. _render_mesh 의 isinstance check
+                        # 가 PolyData 를 그대로 두므로 detail 보존.
+                        if _wedge_frac > 0.05 or _poly_frac > 0.05:
+                            try:
+                                _bb = block0.bounds
+                                _xmid = (float(_bb[0]) + float(_bb[1])) / 2.0
+                                _clipped = block0.clip(
+                                    normal="x", origin=(_xmid, 0.0, 0.0),
+                                )
+                                if _clipped is not None and getattr(
+                                    _clipped, "n_cells", 0,
+                                ) > 0:
+                                    _surf_clip = _clipped.extract_surface(
+                                        algorithm="dataset_surface",
+                                    )
+                                    if _surf_clip is not None and getattr(
+                                        _surf_clip, "n_cells", 0,
+                                    ) > 0:
+                                        log.info(
+                                            "polymesh_default_clip_view",
+                                            wedge_frac=round(_wedge_frac, 3),
+                                            poly_frac=round(_poly_frac, 3),
+                                            clip_n_cells=int(_clipped.n_cells),
+                                            surf_n_cells=int(_surf_clip.n_cells),
+                                            note="BL/poly 메시 — clip half default 렌더",
+                                        )
+                                        return _surf_clip
+                            except Exception as _exc:
+                                log.debug(
+                                    "polymesh_clip_default_failed",
+                                    error=str(_exc),
+                                )
+                        # 일반 케이스 — 외곽 surface.
                         surface = block0.extract_surface()
                         if surface is not None and getattr(surface, "n_cells", 0) > 0:
                             return surface
@@ -1342,9 +1390,48 @@ class InteractiveMeshViewer(QWidget):
             # UnstructuredGrid (볼륨 메시)는 VTK plotter.clear() 후 재사용 시
             # dangling C++ 참조로 segfault가 발생한다. 표면을 추출해 PolyData로
             # 변환한 뒤 렌더링한다.
+            #
+            # BETA2882 — BL prism (WEDGE=13) 또는 polyhedron (=42) 셀이 일정
+            # 비율 이상이면, 외곽 surface 만 추출하면 user 가 cube 외벽 1 layer
+            # 만 본다고 오해 (BL cell 은 interior 라 surface 에서 제외됨).
+            # x=중앙 plane 으로 clip 한 후 surface 추출 → 단면이 보여 BL prism
+            # ring 들이 가시화. 모든 load 경로 (load_polymesh / preview_mesh /
+            # load_mesh) 가 _render_mesh 를 거치므로 여기 일괄 적용.
             try:
                 if isinstance(mesh, pv.UnstructuredGrid):
-                    mesh = mesh.extract_surface(algorithm="dataset_surface")
+                    try:
+                        import numpy as _np_bl
+                        _ct = _np_bl.asarray(getattr(mesh, "celltypes", []))
+                        _n = int(_ct.size) if _ct.size else 0
+                        _wedge_frac = float((_ct == 13).sum() / _n) if _n else 0.0
+                        _poly_frac  = float((_ct == 42).sum() / _n) if _n else 0.0
+                    except Exception:
+                        _wedge_frac = 0.0; _poly_frac = 0.0
+                    if _wedge_frac > 0.05 or _poly_frac > 0.05:
+                        try:
+                            _bb = mesh.bounds
+                            _xmid = (float(_bb[0]) + float(_bb[1])) / 2.0
+                            _clipped = mesh.clip(
+                                normal="x", origin=(_xmid, 0.0, 0.0),
+                            )
+                            if _clipped is not None and getattr(
+                                _clipped, "n_cells", 0,
+                            ) > 0:
+                                mesh = _clipped.extract_surface(
+                                    algorithm="dataset_surface",
+                                )
+                                log.info(
+                                    "render_mesh_auto_clip_for_bl",
+                                    wedge_frac=round(_wedge_frac, 3),
+                                    poly_frac=round(_poly_frac, 3),
+                                )
+                            else:
+                                mesh = mesh.extract_surface(algorithm="dataset_surface")
+                        except Exception as _exc:
+                            log.debug("auto_clip_failed", error=str(_exc))
+                            mesh = mesh.extract_surface(algorithm="dataset_surface")
+                    else:
+                        mesh = mesh.extract_surface(algorithm="dataset_surface")
             except Exception:
                 pass
 

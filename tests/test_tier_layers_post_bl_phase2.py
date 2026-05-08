@@ -56,6 +56,25 @@ def test_build_bl_config_phase1_wall_patch_names() -> None:
     assert cfg.wall_patch_names == ["wall1", "wall2"]
 
 
+def test_build_bl_config_smesh_set_ignore_faces() -> None:
+    cfg = _build_bl_config(
+        BLConfig,
+        {
+            "post_layers_wall_patch_names": "body_wall, nacelle",
+            "post_layers_set_faces": "10,11;12",
+            "post_layers_ignore_faces": [11, "13"],
+            "post_layers_ignore_patch_names": "farfield",
+            "post_layers_ignore_patch_prefixes": "domain_,symmetry_",
+        },
+        3, 1.2, 0.001,
+    )
+    assert cfg.wall_patch_names == ["body_wall", "nacelle"]
+    assert cfg.set_faces == [10, 11, 12]
+    assert cfg.ignore_faces == [11, 13]
+    assert cfg.ignore_patch_names == ["farfield"]
+    assert cfg.ignore_patch_prefixes == ["domain_", "symmetry_"]
+
+
 def test_build_bl_config_phase1_backup_override_false() -> None:
     cfg = _build_bl_config(
         BLConfig, {"post_layers_backup_original": False}, 3, 1.2, 0.001,

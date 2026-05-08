@@ -30,7 +30,7 @@ from core.layers.native_bl import (
 
 def test_blconfig_defaults() -> None:
     cfg = BLConfig()
-    assert cfg.num_layers == 3
+    assert cfg.num_layers == 5
     assert cfg.growth_ratio == pytest.approx(1.2)
     assert cfg.first_thickness == pytest.approx(0.001)
     assert cfg.wall_patch_names is None
@@ -201,6 +201,36 @@ def test_collect_wall_faces_no_wall() -> None:
     wfi, _, fmap = _collect_wall_faces(boundary, None)
     assert wfi == []
     assert fmap == {}
+
+
+def test_collect_wall_faces_set_faces_overrides_wall_detection() -> None:
+    """SMESH SetFaces: patch type 이 wall 이 아니어도 지정 face 만 선택."""
+    boundary = [
+        {"name": "farfield", "type": "patch", "startFace": 0, "nFaces": 2},
+        {"name": "body_wall", "type": "wall", "startFace": 2, "nFaces": 2},
+    ]
+    wfi, wpset, fmap = _collect_wall_faces(boundary, None, set_faces=[1, 3, 99])
+    assert wfi == [1, 3]
+    assert wpset == {0, 1}
+    assert fmap[1] == (0, 1)
+    assert fmap[3] == (1, 1)
+
+
+def test_collect_wall_faces_ignore_faces_and_patches() -> None:
+    """SMESH SetIgnoreFaces: patch/face exclude 가 마지막에 적용된다."""
+    boundary = [
+        {"name": "body_wall", "type": "wall", "startFace": 0, "nFaces": 3},
+        {"name": "farfield", "type": "wall", "startFace": 3, "nFaces": 2},
+    ]
+    wfi, wpset, fmap = _collect_wall_faces(
+        boundary,
+        None,
+        ignore_faces=[1],
+        ignore_patch_names=["farfield"],
+    )
+    assert wfi == [0, 2]
+    assert wpset == {0}
+    assert set(fmap) == {0, 2}
 
 
 # ---------------------------------------------------------------------------
@@ -416,10 +446,10 @@ def test_detect_feature_vertices_zero_angle_returns_empty() -> None:
 
 
 def test_blconfig_quality_check_defaults() -> None:
-    """beta65 — quality_check_enabled 기본 True, threshold=50.0."""
+    """beta65 — quality_check_enabled 기본 True, threshold=1000.0."""
     cfg = BLConfig()
     assert cfg.quality_check_enabled is True
-    assert cfg.aspect_ratio_threshold == pytest.approx(50.0)
+    assert cfg.aspect_ratio_threshold == pytest.approx(1000.0)
 
 
 def test_native_bl_result_quality_fields_defaults() -> None:

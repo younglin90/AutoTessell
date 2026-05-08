@@ -3734,6 +3734,21 @@ class AutoTessellWindow:  # type: ignore[misc]
                     )
                 except Exception:
                     pass
+            # BETA2883 — Evaluation FAIL (quality miss) 이어도 polyMesh 가 정상
+            # 생성됐으면 viewer 에 로드. 사용자 QA: BL FAIL 시 화면에 이전 mesh
+            # 가 그대로 남아 "BL 적용 안 됨" 으로 오해. polyMesh 존재시 새 결과
+            # 표시 + Quality 탭에서 FAIL 사유 확인 가능.
+            try:
+                out_dir = getattr(result, "output_dir", None) or self._output_dir
+                if out_dir is not None and self._mesh_viewer is not None:
+                    poly = Path(out_dir) / "constant" / "polyMesh"
+                    if poly.exists():
+                        self._log("[INFO] Quality FAIL 이지만 mesh 는 정상 — viewer 갱신")
+                        # Quality 탭 메트릭도 갱신.
+                        self._update_quality_from_result(result)
+                        self._async_export_then_load(Path(out_dir))
+            except Exception as _exc:
+                self._log(f"[WARN] FAIL 후 mesh 로드 실패: {_exc}")
             # 에러 복구 다이얼로그 — 패턴 매칭해 구체 가이드 제시
             self._show_error_recovery(str(err))
             # v0.4: Evaluator FAIL + auto_retry=off 에서 재시도 prompt

@@ -27,14 +27,14 @@ WildMesh는 fTetWild 알고리즘의 Python 바인딩이다.
 
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
+import os
 import signal
 import subprocess
 import sys
 import tempfile
 import time
-import os
 from pathlib import Path
 from typing import Any
 
@@ -241,6 +241,31 @@ def _hausdorff_log(orig_surf: Any, tet_v: np.ndarray, tet_f: np.ndarray) -> None
         )
     except Exception as e:
         logger.debug("wildmesh_hausdorff_skipped", error=str(e))
+
+
+def _make_external_patch_classifier(domain: Any):
+    """Classify external-flow tet boundary faces as farfield or body wall.
+
+    This is the writer-side half of the boolean/domain topology redesign. Once
+    the body surface is exposed as a tet boundary, faces on the domain box become
+    non-wall farfield patches and interior obstacle faces become body_wall.
+    """
+    dmin = np.array(domain.min, dtype=np.float64)
+    dmax = np.array(domain.max, dtype=np.float64)
+    diag = float(np.linalg.norm(dmax - dmin))
+    tol = max(diag * 1e-5, 1e-12)
+
+    def _classifier(face: list[int], pts: np.ndarray) -> tuple[str, str]:
+        c = pts[np.asarray(face, dtype=np.int64)].mean(axis=0)
+        on_domain = bool(
+            np.any(np.abs(c - dmin) <= tol)
+            or np.any(np.abs(c - dmax) <= tol)
+        )
+        if on_domain:
+            return "farfield", "patch"
+        return "body_wall", "wall"
+
+    return _classifier
 
 
 def _signal_name(returncode: int) -> str:
@@ -736,7 +761,15 @@ class TierWildMeshGenerator:
         # PolyMeshWriter로 polyMesh 변환
         logger.info("wildmesh_polymesh_write_start", case_dir=str(case_dir))
         writer = PolyMeshWriter()
-        mesh_stats = writer.write(tet_v, tet_f, case_dir)
+        patch_classifier = None
+        if flow_type == "external" and strategy.domain is not None:
+            patch_classifier = _make_external_patch_classifier(strategy.domain)
+        mesh_stats = writer.write(
+            tet_v,
+            tet_f,
+            case_dir,
+            boundary_patch_classifier=patch_classifier,
+        )
 
         elapsed = time.monotonic() - t_start
         logger.info("tier_wildmesh_success", elapsed=elapsed, mesh_stats=mesh_stats)

@@ -265,6 +265,13 @@ class BLConfig:
     first_thickness: float = 0.001
     # wall patch 식별: 이름/타입에 "wall" 포함 또는 명시 목록
     wall_patch_names: list[str] | None = None
+    # SMESH ViscousLayers 스타일 face selection.
+    # set_faces 가 주어지면 patch type/name 자동 선택 대신 해당 boundary face id
+    # 집합만 layer 대상이 된다. ignore_* 는 마지막에 항상 제외된다.
+    set_faces: list[int] | None = None
+    ignore_faces: list[int] | None = None
+    ignore_patch_names: list[str] | None = None
+    ignore_patch_prefixes: list[str] | None = None
     # 저장 시 기존 polyMesh 백업 (case_dir/constant/polyMesh_pre_bl/)
     backup_original: bool = True
     # Collision 방지용 최대 total thickness 비율 (bbox 대각선 대비)
@@ -1482,32 +1489,85 @@ def _write_boundary(path: Path, entries: list[dict[str, Any]]) -> None:
 def _collect_wall_faces(
     boundary: list[dict[str, Any]],
     wall_patch_names: list[str] | None,
+    *,
+    set_faces: list[int] | None = None,
+    ignore_faces: list[int] | None = None,
+    ignore_patch_names: list[str] | None = None,
+    ignore_patch_prefixes: list[str] | None = None,
 ) -> tuple[list[int], set[int], dict[int, tuple[int, int]]]:
-    """Wall patch 들의 face index 모음 + patch 매핑 반환.
+    """Wall / selected face index 모음 + patch 매핑 반환.
 
     Returns:
         (wall_face_indices,
          wall_patch_set (idx of patch),
          face_to_patch: {fi: (patch_idx, local_offset)})
     """
-    wall_face_indices: list[int] = []
-    face_to_patch: dict[int, tuple[int, int]] = {}
+    all_boundary_faces: dict[int, tuple[int, int]] = {}
+    patch_names_by_index: dict[int, str] = {}
+    patch_types_by_index: dict[int, str] = {}
     for pi, patch in enumerate(boundary):
         name = str(patch.get("name", ""))
-        kind = str(patch.get("type", "")).lower()
-        match = False
-        if wall_patch_names:
-            match = name in wall_patch_names
-        else:
-            match = "wall" in kind or "wall" in name.lower()
-        if not match:
-            continue
+        patch_names_by_index[pi] = name
+        patch_types_by_index[pi] = str(patch.get("type", ""))
         start = int(patch["startFace"])
         nf = int(patch["nFaces"])
         for k in range(nf):
-            fi = start + k
-            wall_face_indices.append(fi)
-            face_to_patch[fi] = (pi, k)
+            all_boundary_faces[start + k] = (pi, k)
+
+    ignore_name_set = {str(n) for n in (ignore_patch_names or [])}
+    ignore_prefixes = tuple(str(p) for p in (ignore_patch_prefixes or []) if str(p))
+    ignore_face_set = {int(fi) for fi in (ignore_faces or [])}
+    set_face_set = {int(fi) for fi in (set_faces or [])}
+
+    def _is_ignored_patch(pi: int) -> bool:
+        name = patch_names_by_index.get(pi, "")
+        return name in ignore_name_set or (
+            bool(ignore_prefixes) and name.startswith(ignore_prefixes)
+        )
+
+    selected: list[int] = []
+    if set_face_set:
+        for fi in sorted(set_face_set):
+            patch_info = all_boundary_faces.get(fi)
+            if patch_info is None:
+                continue
+            if _is_ignored_patch(patch_info[0]) or fi in ignore_face_set:
+                continue
+            selected.append(fi)
+    else:
+        for pi, patch in enumerate(boundary):
+            if _is_ignored_patch(pi):
+                continue
+            name = patch_names_by_index[pi]
+            kind = patch_types_by_index[pi].lower()
+            match = False
+            if wall_patch_names:
+                match = name in wall_patch_names
+            else:
+                match = "wall" in kind or "wall" in name.lower()
+            if not match:
+                continue
+            start = int(patch["startFace"])
+            nf = int(patch["nFaces"])
+            for k in range(nf):
+                fi = start + k
+                if fi in ignore_face_set:
+                    continue
+                selected.append(fi)
+
+    # Stable de-dup while preserving patch/face ordering.
+    wall_face_indices: list[int] = []
+    seen: set[int] = set()
+    face_to_patch: dict[int, tuple[int, int]] = {}
+    for fi in selected:
+        if fi in seen:
+            continue
+        patch_info = all_boundary_faces.get(fi)
+        if patch_info is None:
+            continue
+        seen.add(fi)
+        wall_face_indices.append(fi)
+        face_to_patch[fi] = patch_info
     return wall_face_indices, {p[0] for p in face_to_patch.values()}, face_to_patch
 
 
@@ -1797,7 +1857,21 @@ def generate_native_bl(
 
     # 2) Wall face 식별
     wall_face_indices, _, face_to_patch = _collect_wall_faces(
-        boundary, cfg.wall_patch_names,
+        boundary,
+        cfg.wall_patch_names,
+        set_faces=cfg.set_faces,
+        ignore_faces=cfg.ignore_faces,
+        ignore_patch_names=cfg.ignore_patch_names,
+        ignore_patch_prefixes=cfg.ignore_patch_prefixes,
+    )
+    log.info(
+        "native_bl_wall_selection",
+        component="native_bl",
+        n_selected=len(wall_face_indices),
+        set_faces=bool(cfg.set_faces),
+        n_ignore_faces=len(cfg.ignore_faces or []),
+        ignore_patch_names=cfg.ignore_patch_names or [],
+        ignore_patch_prefixes=cfg.ignore_patch_prefixes or [],
     )
     if not wall_face_indices:
         return NativeBLResult(
@@ -2309,6 +2383,36 @@ def generate_native_bl(
         )
     except Exception as _hex_bl1_exc:
         log.warning("hex_bl1_guard_skipped", reason=str(_hex_bl1_exc)[:120])
+
+    # SMESH-style layer-edge front topology. Default is diagnostic-only; strict
+    # mode can conservatively drop faces touching non-manifold layer-front edges.
+    try:
+        from core.layers.layer_front import build_layer_front
+
+        _front_strict = os.environ.get("AUTO_TESSELL_BL_FRONT_STRICT", "0") == "1"
+        _front = build_layer_front(
+            faces,
+            wall_face_indices,
+            strict_manifold=_front_strict,
+        )
+        if _front_strict and _front.ignored_faces:
+            wall_face_indices = list(_front.active_faces)
+            wall_set = set(wall_face_indices)
+            wall_vert_indices = list(_front.vertices)
+        log.info(
+            "native_bl_layer_front",
+            component="native_bl",
+            phase="SMESH_FRONT1",
+            n_faces=len(_front.active_faces),
+            n_ignored=len(_front.ignored_faces),
+            n_vertices=len(_front.vertices),
+            n_edges=len(_front.edges),
+            n_boundary_edges=_front.n_boundary_edges,
+            n_nonmanifold_edges=_front.n_nonmanifold_edges,
+            strict=_front_strict,
+        )
+    except Exception as _front_exc:
+        log.debug("native_bl_layer_front_skipped", reason=str(_front_exc)[:120])
 
     # 공유 캐시: wall_face_indices 기반 topology (loop 밖에서 한 번만 계산)
     n_wall_faces = len(wall_face_indices)
@@ -3492,6 +3596,11 @@ def generate_native_bl(
                 "num_layers": int(cfg.num_layers),
                 "growth_ratio": float(cfg.growth_ratio),
                 "first_thickness": float(cfg.first_thickness),
+                "wall_patch_names": cfg.wall_patch_names,
+                "set_faces": cfg.set_faces,
+                "ignore_faces": cfg.ignore_faces,
+                "ignore_patch_names": cfg.ignore_patch_names,
+                "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
                 "target_y_plus": cfg.target_y_plus,
                 "flow_fluid_preset": cfg.flow_fluid_preset,
             },
