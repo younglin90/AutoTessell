@@ -2,10 +2,10 @@
   "running": false,
   "summary": {
     "n_total": 21,
-    "pass_count": 11,
-    "bl_exact_count": 17,
-    "pass_rate_pct": 52.4,
-    "bl_exact_rate_pct": 81.0,
+    "pass_count": 10,
+    "bl_exact_count": 19,
+    "pass_rate_pct": 47.6,
+    "bl_exact_rate_pct": 90.5,
     "score": 1950.0
   },
   "results": [
@@ -20,7 +20,7 @@
       "max_skew": 1.7773872370621506,
       "max_non_ortho": 73.54039498307363,
       "max_aspect": 85.91794256588321,
-      "elapsed": 14.0,
+      "elapsed": 13.8,
       "err": ""
     },
     {
@@ -34,7 +34,7 @@
       "max_skew": 3.8235540246037343,
       "max_non_ortho": 89.87424339081994,
       "max_aspect": 205.05125608072865,
-      "elapsed": 11.4,
+      "elapsed": 11.1,
       "err": ""
     },
     {
@@ -48,7 +48,7 @@
       "max_skew": 5.366124997110418,
       "max_non_ortho": 89.93263039644103,
       "max_aspect": 401.0843782929016,
-      "elapsed": 15.7,
+      "elapsed": 16.4,
       "err": ""
     },
     {
@@ -62,7 +62,7 @@
       "max_skew": 2.1488055557142136,
       "max_non_ortho": 88.69217350943973,
       "max_aspect": 76.57236574935563,
-      "elapsed": 9.5,
+      "elapsed": 10.0,
       "err": ""
     },
     {
@@ -76,7 +76,7 @@
       "max_skew": 2.5560634869193133,
       "max_non_ortho": 89.29206765485087,
       "max_aspect": 240.67317971368854,
-      "elapsed": 13.1,
+      "elapsed": 13.9,
       "err": ""
     },
     {
@@ -90,7 +90,7 @@
       "max_skew": 2.855792239686485,
       "max_non_ortho": 89.9934305507761,
       "max_aspect": 186.08893651517127,
-      "elapsed": 15.8,
+      "elapsed": 16.7,
       "err": ""
     },
     {
@@ -104,7 +104,7 @@
       "max_skew": 16080.308192278226,
       "max_non_ortho": 89.95366288699486,
       "max_aspect": 55.96543251752144,
-      "elapsed": 24.5,
+      "elapsed": 26.1,
       "err": ""
     },
     {
@@ -118,7 +118,7 @@
       "max_skew": 916.7002565667474,
       "max_non_ortho": 89.97600214609949,
       "max_aspect": 60.432153301634294,
-      "elapsed": 24.5,
+      "elapsed": 25.8,
       "err": ""
     },
     {
@@ -132,7 +132,7 @@
       "max_skew": 2.6852797888680464,
       "max_non_ortho": 79.28726916836928,
       "max_aspect": 403.4147358195119,
-      "elapsed": 26.0,
+      "elapsed": 28.4,
       "err": ""
     },
     {
@@ -146,7 +146,7 @@
       "max_skew": 0.0,
       "max_non_ortho": 0.0,
       "max_aspect": 0.0,
-      "elapsed": 24.7,
+      "elapsed": 26.5,
       "err": "rc=-11 "
     },
     {
@@ -160,7 +160,7 @@
       "max_skew": 4.917670884580058,
       "max_non_ortho": 89.98649121497303,
       "max_aspect": 71.10226685363455,
-      "elapsed": 26.1,
+      "elapsed": 28.0,
       "err": ""
     },
     {
@@ -172,27 +172,55 @@
       "n_prism": 2808,
       "bl_layers_actual": 3,
       "max_skew": 2.9314330432812206,
-      "max_non_ortho": 88.17670212155096,
+      "max_non_ortho": 88.6725169867684,
       "max_aspect": 476.9298954907175,
-      "elapsed": 12.4,
+      "elapsed": 12.9,
       "err": ""
     },
     {
       "stl": "hard_100029.stl",
       "ok": false,
-      "verdict": "UNKNOWN",
-      "n_cells": 0,
-      "n_wall_faces": 0,
-      "n_prism": 0,
-      "bl_layers_actual": 0,
-      "max_skew": 0.0,
-      "max_non_ortho": 0.0,
-      "max_aspect": 0.0,
-      "elapsed": 40.5,
+      "verdict": "FAIL",
+      "n_cells": 21266,
+      "n_wall_faces": 5197,
+      "n_prism": 15591,
+      "bl_layers_actual": 3,
+      "max_skew": 458.3473590600401,
+      "max_non_ortho": 89.99994596254368,
+      "max_aspect": 145.82692204929415,
+      "elapsed": 76.4,
       "err": ""
     },
     {
       "stl": "hard_100030.stl",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 8650,
+      "n_wall_faces": 358,
+      "n_prism": 1074,
+      "bl_layers_actual": 3,
+      "max_skew": 17.141548807705426,
+      "max_non_ortho": 89.62742524612109,
+      "max_aspect": 792.1889653236447,
+      "elapsed": 134.3,
+      "err": ""
+    },
+    {
+      "stl": "hard_100040.stl",
+      "ok": false,
+      "verdict": "FAIL",
+      "n_cells": 9810,
+      "n_wall_faces": 2090,
+      "n_prism": 6270,
+      "bl_layers_actual": 3,
+      "max_skew": 8.18778778198242,
+      "max_non_ortho": 83.65530413620311,
+      "max_aspect": 253.4119724450237,
+      "elapsed": 24.1,
+      "err": ""
+    },
+    {
+      "stl": "hard_1004826.stl",
       "ok": false,
       "verdict": "TIMEOUT",
       "n_cells": 0,
@@ -202,36 +230,8 @@
       "max_skew": 0.0,
       "max_non_ortho": 0.0,
       "max_aspect": 0.0,
-      "elapsed": 90.0,
-      "err": "timeout_90s"
-    },
-    {
-      "stl": "hard_100040.stl",
-      "ok": true,
-      "verdict": "PASS",
-      "n_cells": 9810,
-      "n_wall_faces": 2090,
-      "n_prism": 6270,
-      "bl_layers_actual": 3,
-      "max_skew": 2.9643120526538795,
-      "max_non_ortho": 82.22022152245187,
-      "max_aspect": 253.4119724450237,
-      "elapsed": 25.0,
-      "err": ""
-    },
-    {
-      "stl": "hard_1004826.stl",
-      "ok": false,
-      "verdict": "CRASH",
-      "n_cells": 0,
-      "n_wall_faces": 0,
-      "n_prism": 0,
-      "bl_layers_actual": 0,
-      "max_skew": 0.0,
-      "max_non_ortho": 0.0,
-      "max_aspect": 0.0,
-      "elapsed": 71.2,
-      "err": "rc=-11 "
+      "elapsed": 150.0,
+      "err": "timeout_150s"
     },
     {
       "stl": "medium_100045.stl",
@@ -244,7 +244,7 @@
       "max_skew": 3.7943149971631636,
       "max_non_ortho": 62.633943511160226,
       "max_aspect": 26.27451699097327,
-      "elapsed": 13.3,
+      "elapsed": 11.9,
       "err": ""
     },
     {
@@ -256,7 +256,7 @@
       "n_prism": 3144,
       "bl_layers_actual": 3,
       "max_skew": 2.4667408888005897,
-      "max_non_ortho": 85.24339050961844,
+      "max_non_ortho": 88.8834327758403,
       "max_aspect": 129.472426899884,
       "elapsed": 13.6,
       "err": ""
@@ -272,7 +272,7 @@
       "max_skew": 32.09527043074674,
       "max_non_ortho": 89.9358098453561,
       "max_aspect": 620.4319701169148,
-      "elapsed": 20.4,
+      "elapsed": 16.6,
       "err": ""
     },
     {
@@ -286,7 +286,7 @@
       "max_skew": 45.8887985303528,
       "max_non_ortho": 89.8782367718658,
       "max_aspect": 723.470452096061,
-      "elapsed": 19.5,
+      "elapsed": 15.8,
       "err": ""
     },
     {
@@ -300,7 +300,7 @@
       "max_skew": 76.07653433204973,
       "max_non_ortho": 89.96454613295138,
       "max_aspect": 602.4361816080177,
-      "elapsed": 19.4,
+      "elapsed": 15.7,
       "err": ""
     }
   ]

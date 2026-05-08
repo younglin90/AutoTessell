@@ -797,6 +797,124 @@ def _copy_polymesh(src_case: Path, dst_case: Path) -> None:
     _write_minimal_fv_dicts(dst_case)
 
 
+def _amips_post_polish_polymesh(case_dir: Path) -> str:
+    """BETA2886 — BL 적용 후 polyMesh 읽어 interior tet 만 AMIPS smoothing.
+
+    boundary verts (모든 boundary face 의 vertex) 와 boundary 인접 한 단계 셀의
+    vertex 를 lock — BL prism / wall 위치 보존. interior tet 만 multistage
+    AMIPS smooth (Hu et al. 2020 fTetWild §3.3) 로 sliver / 고-skew 감소.
+
+    Returns:
+        다이어그노스틱 메시지. AMIPS 미적용 시 빈 문자열.
+    """
+    try:
+        import numpy as np
+        from core.utils.polymesh_reader import (
+            parse_foam_boundary, parse_foam_faces,
+            parse_foam_labels, parse_foam_points,
+        )
+        from core.layers.native_bl import _write_points
+        from core.generator.native_tet.amips import smooth_amips_multistage
+    except Exception as exc:
+        return f"amips_post_polish: imports 실패 ({exc})"
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    if not (poly_dir / "faces").exists():
+        return ""
+    try:
+        raw_pts = parse_foam_points(poly_dir / "points")
+        raw_faces = parse_foam_faces(poly_dir / "faces")
+        owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+        nbr = np.asarray(parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64)
+        bnd = parse_foam_boundary(poly_dir / "boundary")
+    except Exception as exc:
+        return f"amips_post_polish: parse 실패 ({exc})"
+
+    pts = np.asarray(raw_pts, dtype=np.float64)
+    faces = [list(f) for f in raw_faces]
+
+    # cell → list of face indices.
+    n_cells = (int(owner.max()) + 1) if len(owner) else 0
+    if len(nbr):
+        n_cells = max(n_cells, int(nbr.max()) + 1)
+    if n_cells == 0:
+        return ""
+    cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
+    n_internal = len(nbr)
+    for fi, oc in enumerate(owner):
+        cell_faces[int(oc)].append(int(fi))
+    for fi, nc in enumerate(nbr):
+        cell_faces[int(nc)].append(int(fi))
+
+    # 추출: 4 vertex / 4 face cell = tet.
+    tets_list: list[tuple[int, int, int, int]] = []
+    for cid, f_list in enumerate(cell_faces):
+        if len(f_list) != 4:
+            continue
+        vs: set[int] = set()
+        for fi in f_list:
+            vs.update(faces[fi])
+        if len(vs) == 4:
+            t = tuple(sorted(vs))
+            tets_list.append(t)
+    if not tets_list:
+        return "amips_post_polish: tet cell 없음 — skip"
+    tets_arr = np.asarray(tets_list, dtype=np.int64)
+
+    # boundary verts (모든 boundary face vertex) — lock.
+    locked: set[int] = set()
+    for fi in range(n_internal, len(faces)):
+        for v in faces[fi]:
+            locked.add(int(v))
+    locked_arr = np.asarray(sorted(locked), dtype=np.int64)
+
+    # BETA2887 — coordinate normalization for AMIPS.
+    # AMIPS energy = exp(α · D(T)). 큰 bbox (예: 1500) 에서는 D 가 huge →
+    # exp() overflow → finite energy 비교 불가 → n_moved=0. 좌표를 unit-bbox
+    # 로 정규화 후 smooth, 결과를 역정규화로 복원.
+    _bb_min = pts.min(0)
+    _bb_max = pts.max(0)
+    _bb_diag = float(np.linalg.norm(_bb_max - _bb_min))
+    if _bb_diag <= 0:
+        return "amips_post_polish: degenerate bbox"
+    pts_norm = (pts - _bb_min) / _bb_diag  # unit-bbox 로 정규화
+    try:
+        res, smoothed_norm = smooth_amips_multistage(
+            pts_norm, tets_arr,
+            locked_vertex_ids=locked_arr,
+            alphas=(0.5, 1.0, 2.0),
+            n_iter_per=2,
+        )
+        # 역정규화.
+        smoothed = smoothed_norm * _bb_diag + _bb_min if smoothed_norm is not None else None
+    except Exception as exc:
+        return f"amips_post_polish: smooth 실패 ({exc})"
+
+    if smoothed is None or smoothed.shape != pts.shape:
+        return "amips_post_polish: smoothed shape mismatch — skip"
+
+    try:
+        _write_points(poly_dir / "points", smoothed)
+    except Exception as exc:
+        return f"amips_post_polish: write 실패 ({exc})"
+
+    e_b = float(res.energy_before)
+    e_a = float(res.energy_after)
+    pct = (e_b - e_a) / max(e_b, 1e-30) * 100.0
+    log.info(
+        "amips_post_polish_applied",
+        n_tets=int(len(tets_list)),
+        n_locked=int(len(locked)),
+        n_moved=int(res.n_moved),
+        energy_reduction_pct=round(pct, 2),
+        max_disp=round(float(res.max_disp), 6),
+    )
+    return (
+        f"AMIPS post-polish: {len(tets_list)} tets, {len(locked)} locked verts, "
+        f"{res.n_moved} moved, energy −{pct:.1f}%"
+    )
+
+
 def _shrink_wall_inward(
     case_dir: Path, wall: str, total_thick: float,
 ) -> tuple[bool, str, float]:
@@ -1474,6 +1592,18 @@ class LayersPostGenerator:
                         if ok
                         else f"subdivide 실패: {_res2.message}"
                     )
+                    # BETA2886 — tet_bl_subdivide 후 AMIPS smoothing post-polish.
+                    # cfmesh_tet_shrink 에는 inline AMIPS 가 있지만, native_bl
+                    # path 에는 없어 medium_100322 등 external flow 에서 max_skew
+                    # 30+ 발생. polyMesh 읽어 boundary verts lock + interior
+                    # tet 만 multistage AMIPS smooth.
+                    if ok:
+                        try:
+                            _amips_msg = _amips_post_polish_polymesh(case_dir)
+                            if _amips_msg:
+                                msg = msg + "\n" + _amips_msg
+                        except Exception as _exc:
+                            log.debug("amips_post_polish_skipped", error=str(_exc))
         elif engine in ("poly_bl_transition", "poly_bl", "native_bl_poly"):
             # v0.4 mesh_type=poly 전용: native_bl 로 prism 삽입 + (옵션)
             # OpenFOAM polyDualMesh 로 bulk dual 변환.
