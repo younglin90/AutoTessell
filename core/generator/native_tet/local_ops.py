@@ -368,10 +368,6 @@ def _collapse_vectorized_single_pass(
     if not keeper_of:
         return pts, tets, 0
 
-    # BETA2895 — victim_of map 을 module-level dict 에 캐시 — 외부 caller
-    # (polyMesh reassembly) 가 직접 접근 가능하도록.
-    globals()["_LAST_COLLAPSE_VICTIM_OF"] = dict(victim_of)
-
     tets_new = tets.copy()
     for victim, keeper in victim_of.items():
         tets_new[tets_new == victim] = keeper
