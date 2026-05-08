@@ -814,11 +814,7 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
             parse_foam_labels, parse_foam_points,
         )
         from core.layers.native_bl import _write_points
-        # BETA2888 — smooth_amips (finite-diff, per-vertex edge-scaled step) 사용.
-        # smooth_amips_analytic 은 fixed step_init=0.1 (line-search 5 halve) 로
-        # 큰 도메인 mesh 에서 0% 진전. smooth_amips 는 1-ring avg edge × step_init
-        # 으로 vertex 별 자동 스케일.
-        from core.generator.native_tet.amips import smooth_amips
+        from core.generator.native_tet.amips import smooth_amips_multistage
     except Exception as exc:
         return f"amips_post_polish: imports 실패 ({exc})"
 
@@ -883,18 +879,12 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
         return "amips_post_polish: degenerate bbox"
     pts_norm = (pts - _bb_min) / _bb_diag  # unit-bbox 로 정규화
     try:
-        # 3 stage progression — fTetWild §3.3 alpha schedule.
-        smoothed_norm = pts_norm
-        n_moved_total = 0
-        for _alpha in (0.5, 1.0, 2.0):
-            res, smoothed_norm = smooth_amips(
-                smoothed_norm, tets_arr,
-                locked_vertex_ids=locked_arr,
-                n_iter=2,
-                alpha=float(_alpha),
-                step_init=0.1,  # × per-vertex 1-ring avg edge length
-            )
-            n_moved_total += int(res.n_moved)
+        res, smoothed_norm = smooth_amips_multistage(
+            pts_norm, tets_arr,
+            locked_vertex_ids=locked_arr,
+            alphas=(0.5, 1.0, 2.0),
+            n_iter_per=2,
+        )
         # 역정규화.
         smoothed = smoothed_norm * _bb_diag + _bb_min if smoothed_norm is not None else None
     except Exception as exc:
@@ -915,13 +905,13 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
         "amips_post_polish_applied",
         n_tets=int(len(tets_list)),
         n_locked=int(len(locked)),
-        n_moved=int(n_moved_total),
+        n_moved=int(res.n_moved),
         energy_reduction_pct=round(pct, 2),
         max_disp=round(float(res.max_disp), 6),
     )
     return (
         f"AMIPS post-polish: {len(tets_list)} tets, {len(locked)} locked verts, "
-        f"{n_moved_total} moved, energy −{pct:.1f}%"
+        f"{res.n_moved} moved, energy −{pct:.1f}%"
     )
 
 
