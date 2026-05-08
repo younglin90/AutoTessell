@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from core.layers.native_bl_vd import (
+    build_prism_cells,
     compute_face_normals,
     detect_junction_verts,
     generate_per_face_inner_verts,
@@ -199,3 +200,56 @@ def test_per_face_inner_verts_preserves_original_points():
     assert np.allclose(res.new_points[: len(points)], points)
     # Total length = orig + dup.
     assert len(res.new_points) == len(points) + res.n_dup_verts
+
+
+def test_build_prism_cells_flat_strip():
+    """Flat strip — 2 prism cells, 5 faces each, sharing nothing yet."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    inner = generate_per_face_inner_verts([0, 1], faces, points, info, thickness=0.1)
+    prisms = build_prism_cells([0, 1], faces, inner)
+    assert len(prisms.cell_face_verts) == 2
+    # Each prism has 5 faces.
+    for cf in prisms.cell_face_verts:
+        assert len(cf) == 5
+        # 2 tris + 3 quads.
+        n_tri = sum(1 for f in cf if len(f) == 3)
+        n_quad = sum(1 for f in cf if len(f) == 4)
+        assert n_tri == 2
+        assert n_quad == 3
+    # cell_to_wall_face mapping correct
+    assert prisms.cell_to_wall_face == [0, 1]
+
+
+def test_build_prism_cells_cube():
+    """Cube — 12 prism cells (one per wall triangle)."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    prisms = build_prism_cells(list(range(12)), faces, inner)
+    assert len(prisms.cell_face_verts) == 12
+    # Each prism: 2 tris + 3 quads.
+    for cf in prisms.cell_face_verts:
+        n_tri = sum(1 for f in cf if len(f) == 3)
+        n_quad = sum(1 for f in cf if len(f) == 4)
+        assert n_tri == 2 and n_quad == 3
+    # Bottom face (index 0) of prism 0 = original wall face 0 verts.
+    bottom_p0 = prisms.cell_face_verts[0][0]
+    assert bottom_p0 == faces[0]
+
+
+def test_build_prism_cells_rejects_non_triangle():
+    """Wall face with 4 verts → raises ValueError."""
+    points = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float64)
+    faces = [[0, 1, 2, 3]]  # quad wall face
+    # We can't run detect_junction_verts on a quad (it expects tri) but
+    # build_prism_cells should reject early.
+    info = detect_junction_verts([0], faces, points)
+    inner = generate_per_face_inner_verts([0], faces, points, info, thickness=0.1)
+    try:
+        build_prism_cells([0], faces, inner)
+        raise AssertionError("Expected ValueError for non-triangle wall face")
+    except ValueError as e:
+        assert "triangle" in str(e).lower()

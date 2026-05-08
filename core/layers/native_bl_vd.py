@@ -310,3 +310,86 @@ def generate_per_face_inner_verts(
         face_inner_vert=face_inner_vert,
         n_dup_verts=n_dup,
     )
+
+
+@dataclass
+class PrismCellsResult:
+    """Result of single-layer prism cell construction.
+
+    cell_face_verts[cell_id] = [face_verts_list, ...]
+        Each prism has 5 faces: bottom tri (wall), top tri (cap), 3 side quads.
+        Bottom tri ordered with outward winding (face_normal points away from
+        cell). Top tri opposite winding.
+
+    cell_to_wall_face: cell_id -> original wall_face_id (for diagnostic +
+        boundary patch tracking).
+    """
+
+    cell_face_verts: list[list[list[int]]]
+    cell_to_wall_face: list[int]
+
+
+def build_prism_cells(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    inner_result: InnerVertResult,
+) -> PrismCellsResult:
+    """Build single-layer prism cells using per-face inner verts.
+
+    For each wall face f with outer triangle (a0, a1, a2), construct a prism
+    cell with:
+      - bottom face: (a0, a1, a2) — wall (boundary patch)
+      - top face: (b0, b1, b2) where bi = face_inner_vert[(f, ai)]
+      - 3 side quads: (ai, ai+1, bi+1, bi) for i ∈ {0, 1, 2}
+
+    The bottom and top tri have opposite winding to ensure consistent outward
+    normals when treated as cell boundary.
+
+    Args:
+        wall_face_indices: indices of wall faces (each must be a triangle).
+        faces: list of face vertex lists.
+        inner_result: from generate_per_face_inner_verts.
+
+    Returns:
+        PrismCellsResult with cell_face_verts and cell_to_wall_face.
+
+    Raises:
+        ValueError: if any wall face is not a triangle (len != 3).
+    """
+    cell_face_verts: list[list[list[int]]] = []
+    cell_to_wall_face: list[int] = []
+
+    for fi in wall_face_indices:
+        f = faces[fi]
+        if len(f) != 3:
+            raise ValueError(
+                f"build_prism_cells requires triangle wall faces, "
+                f"got face {fi} with {len(f)} verts."
+            )
+        a0, a1, a2 = int(f[0]), int(f[1]), int(f[2])
+        # Inner verts (per-face). Must exist in mapping.
+        if (fi, a0) not in inner_result.face_inner_vert:
+            raise ValueError(f"Missing inner vert for face {fi} vert {a0}")
+        b0 = inner_result.face_inner_vert[(fi, a0)]
+        b1 = inner_result.face_inner_vert[(fi, a1)]
+        b2 = inner_result.face_inner_vert[(fi, a2)]
+
+        # 5 faces of prism wedge:
+        # Bottom tri (wall) — original orientation (a0, a1, a2)
+        # Top tri (cap toward bulk) — reverse: (b0, b2, b1) so normal opposite
+        # 3 side quads. Convention: each side quad has outward normal pointing
+        # away from cell. Quad (a0, a1, b1, b0) etc.
+        prism_faces = [
+            [a0, a1, a2],       # bottom (wall)
+            [b0, b2, b1],       # top (cap)
+            [a0, a1, b1, b0],   # side 0-1
+            [a1, a2, b2, b1],   # side 1-2
+            [a2, a0, b0, b2],   # side 2-0
+        ]
+        cell_face_verts.append(prism_faces)
+        cell_to_wall_face.append(int(fi))
+
+    return PrismCellsResult(
+        cell_face_verts=cell_face_verts,
+        cell_to_wall_face=cell_to_wall_face,
+    )
