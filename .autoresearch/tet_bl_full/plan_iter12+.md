@@ -190,3 +190,28 @@ evaluator.md threshold 20 → θ < 87°.
 
 iter 16 = **2600 BEST** preserved. 추가 fast iter 진전 불가, 본격 refactor 필요.
 
+
+---
+
+## iter 24-26 추가 — 새 카테고리 시도, 모두 discard
+
+### iter 24 (flat sheet edge adapt)
+extreme_1017013 skew **82264→1723 (47x ↓ 큰 개선)** but still > 20 threshold. extreme_1017014 worse, hard_100029 worse. Net 2600 same.
+
+### iter 25 (defensive pymeshfix)
+extreme_102308 SIGSEGV 유지. hard_100030 regress (skew 6→17).
+
+### iter 26 (coarsen edge for non-watertight)
+Edge × 1.5, × 3.0: SIGSEGV 유지. Crash 가 fTetWild post-mesh_optimization (Python wrapper data transfer 단계). Edge_length 와 무관. **Wrapper bug** (likely pytetwild np.array marshalling OOM).
+
+### 잔여 4 fail 의 재진단
+| STL | Failure | Root cause | Required fix |
+|-----|---------|------------|--------------|
+| hard_100029 | skew=260 | multi-patch junction θ=89.78° | vertex duplication |
+| extreme_1017013 | skew=82264 | flat sheet (z=6.7) | per-axis edge / anisotropic mesher |
+| extreme_1017014 | skew=627 | flat sheet | same |
+| extreme_102308 | SIGSEGV | pytetwild wrapper OOM during np.array transfer (358k tets) | upstream pytetwild fix |
+| medium_100045 | hausdorff | body lost in fTetWild output | per-region edge / vertex duplication |
+
+5/6 fails 가 동일한 fundamental: **pytetwild / fTetWild Python wrapper limitation**.
+
