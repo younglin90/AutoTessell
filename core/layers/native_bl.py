@@ -465,13 +465,44 @@ def compute_vertex_normals(
                 flip = (dot < 0) & valid_own & safe_area
                 n_arr[flip] = -n_arr[flip]
 
-        # Accumulate per-vertex weighted normals: sum(n * area) for each vertex.
-        contrib = n_arr * area_vec[:, None]  # (F, 3)
+        # BETA2901 — angle-weighted vnorm (Garimella 2003 §3, Max 1999).
+        # Area-weighted averaging biases vnorm toward large faces, but for BL
+        # extrusion we want vnorm ≈ face_normal of EACH adjacent face. With
+        # angle weighting, each face contributes proportionally to its apex
+        # angle at the vertex — a sliver face's acute corner has near-zero
+        # weight, reducing normal-direction noise. For BL prism centroid
+        # alignment with face_normal axis (boundary skew driver).
+        # Disable via env: AUTO_TESSELL_BL_ANGLE_WEIGHTED_VNORM=0
         n_pts = points.shape[0]
         accum = np.zeros((n_pts, 3), dtype=np.float64)
-        # Add contribution to all 3 vertices of each face.
-        for col in range(3):
-            np.add.at(accum, face_arr[:, col], contrib)
+        if os.environ.get("AUTO_TESSELL_BL_ANGLE_WEIGHTED_VNORM", "1") != "0":
+            # Compute angle at each vertex for each face.
+            # angle_at(vi) = arccos((e1·e2) / (|e1|·|e2|)) where e1,e2 are the
+            # two edges from vi.
+            e10 = v0 - v1; e12 = v2 - v1  # angle at v1
+            e20 = v0 - v2; e21 = v1 - v2  # angle at v2
+            e01 = v1 - v0; e02 = v2 - v0  # angle at v0
+            def _ang(a, b):
+                aa = np.linalg.norm(a, axis=1)
+                bb = np.linalg.norm(b, axis=1)
+                den = np.maximum(aa * bb, 1e-30)
+                cosv = np.clip(np.einsum("ij,ij->i", a, b) / den, -1.0, 1.0)
+                return np.arccos(cosv)
+            ang0 = _ang(e01, e02)  # at v0
+            ang1 = _ang(e10, e12)  # at v1
+            ang2 = _ang(e20, e21)  # at v2
+            # Per-face per-vertex weight = angle.
+            contrib0 = n_arr * ang0[:, None]
+            contrib1 = n_arr * ang1[:, None]
+            contrib2 = n_arr * ang2[:, None]
+            np.add.at(accum, face_arr[:, 0], contrib0)
+            np.add.at(accum, face_arr[:, 1], contrib1)
+            np.add.at(accum, face_arr[:, 2], contrib2)
+        else:
+            # Legacy area-weighted.
+            contrib = n_arr * area_vec[:, None]
+            for col in range(3):
+                np.add.at(accum, face_arr[:, col], contrib)
 
         # Normalize and convert to dict for API compat.
         norms = np.linalg.norm(accum, axis=1)
