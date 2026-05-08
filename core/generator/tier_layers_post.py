@@ -893,58 +893,218 @@ def _amips_post_polish_polymesh(case_dir: Path) -> str:
     if smoothed is None or smoothed.shape != pts.shape:
         return "amips_post_polish: smoothed shape mismatch — skip"
 
-    # BETA2894 — edge collapse step: AMIPS 가 sliver tet 의 vertex 를 못 옮길 때
-    # (boundary lock 으로 자유도 부족), 짧은 edge 양 끝을 merge 해 sliver 를 직접
-    # 제거. fTetWild §3.3 식. locked = boundary verts (BL prism 보존).
+    # BETA2895 — edge collapse + 안전 polyMesh reassembly.
+    # AMIPS 가 sliver tet 의 vertex 를 boundary lock 때문에 못 옮길 때,
+    # 짧은 edge 양 끝을 merge 해 sliver 를 토폴로지 단계에서 제거.
+    #
+    # locked vertex 정의 (확장):
+    #   1) 모든 boundary face 의 vertex (cube wall, BL outer/inner cap)
+    #   2) PLUS: 모든 non-tet cell (= prism wedge) 의 모든 vertex
+    # → collapse 양 끝 vertex 가 모두 unlocked 일 때만 합쳐짐 → interior
+    #   tet edge 만 collapse → BL prism / boundary 영향 0.
     n_collapsed = 0
-    new_tets_arr = tets_arr
     smoothed_after_collapse = smoothed
+    victim_of: dict[int, int] = {}
     try:
         from core.generator.native_tet.local_ops import collapse_short_edges
-        # target_edge = median tet edge length, ratio=0.4 → 짧은 edge 만 collapse.
+        # extended locked set: boundary + 모든 non-tet cell vertex
+        _ext_locked = set(int(v) for v in locked_arr)
+        for cid, f_list in enumerate(cell_faces):
+            if cid in {tid for tid, fl in enumerate(cell_faces) if len(fl) == 4}:
+                continue  # tet cells - skip
+            for fi in f_list:
+                _ext_locked.update(int(v) for v in faces[fi])
+        _ext_locked_arr = np.asarray(sorted(_ext_locked), dtype=np.int64)
+
         v_t = smoothed[tets_arr]
-        e01 = np.linalg.norm(v_t[:, 1] - v_t[:, 0], axis=1)
-        e02 = np.linalg.norm(v_t[:, 2] - v_t[:, 0], axis=1)
-        e03 = np.linalg.norm(v_t[:, 3] - v_t[:, 0], axis=1)
-        e12 = np.linalg.norm(v_t[:, 2] - v_t[:, 1], axis=1)
-        e13 = np.linalg.norm(v_t[:, 3] - v_t[:, 1], axis=1)
-        e23 = np.linalg.norm(v_t[:, 3] - v_t[:, 2], axis=1)
-        all_edges = np.concatenate([e01, e02, e03, e12, e13, e23])
-        all_edges_pos = all_edges[all_edges > 1e-30]
-        if all_edges_pos.size > 0:
-            target_edge = float(np.median(all_edges_pos))
+        e_all = np.concatenate([
+            np.linalg.norm(v_t[:, 1] - v_t[:, 0], axis=1),
+            np.linalg.norm(v_t[:, 2] - v_t[:, 0], axis=1),
+            np.linalg.norm(v_t[:, 3] - v_t[:, 0], axis=1),
+            np.linalg.norm(v_t[:, 2] - v_t[:, 1], axis=1),
+            np.linalg.norm(v_t[:, 3] - v_t[:, 1], axis=1),
+            np.linalg.norm(v_t[:, 3] - v_t[:, 2], axis=1),
+        ])
+        e_pos = e_all[e_all > 1e-30]
+        if e_pos.size > 0:
+            target_edge = float(np.median(e_pos))
             new_pts_after, new_tets_after, n_collapsed = collapse_short_edges(
                 smoothed, tets_arr,
                 target_edge=target_edge,
                 ratio=0.4,
-                locked_vertices=locked_arr,
-                max_collapses=200,
+                locked_vertices=_ext_locked_arr,
+                max_collapses=500,
             )
-            if n_collapsed > 0 and new_pts_after.shape == smoothed.shape:
-                # BETA2894 — collapse_short_edges 는 collapse 시 victim vertex 를
-                # keeper 위치로 ravel ↔ tet array 의 vertex 인덱스 만 remap.
-                # locked verts (boundary 모두 + BL prism caps) 는 collapse 의
-                # 양 끝 어느 쪽이든 lock 되어 있으면 skip. 따라서 collapse 가
-                # 일어난 edges 는 100% interior tet 에 한정됨 → 위치 변경된
-                # vertex 는 BL prism 에 영향 없음. polyMesh 의 prism cell 의 verts
-                # 는 lock 되어 있어 그 좌표는 변하지 않음.
-                # 안전 적용: smoothed 에 새 좌표 (collapse 가 keeper 로 옮긴
-                # interior verts 위치) 를 반영해 polyMesh/points 만 갱신.
-                # tet/prism 구조는 그대로 유지 (face/owner/neighbour 변화 없음).
+            if n_collapsed > 0:
+                import core.generator.native_tet.local_ops as _lo_mod
+                victim_of = dict(getattr(_lo_mod, "_LAST_COLLAPSE_VICTIM_OF", {}))
                 smoothed_after_collapse = new_pts_after
                 log.info(
                     "amips_post_polish_edge_collapse",
                     n_collapsed=int(n_collapsed),
+                    n_victim_keeper=len(victim_of),
                     target_edge=round(target_edge, 6),
-                    note="vertex positions only updated, polyMesh topology preserved",
                 )
     except Exception as _exc:
         log.debug("amips_post_polish_edge_collapse_skipped", error=str(_exc))
 
-    try:
-        _write_points(poly_dir / "points", smoothed_after_collapse)
-    except Exception as exc:
-        return f"amips_post_polish: write 실패 ({exc})"
+    # BETA2895 — victim → keeper remap 을 polyMesh 의 모든 face 에 적용.
+    # 결과: collapsed tet 가 면 공유 cell 들에서 자동 degenerate (face 가
+    # 2-vertex 로 줄어듦) → 해당 cell drop. 나머지 cell 의 face 는 keeper
+    # 위치 (smoothed_after_collapse) 로 자동 적용.
+    if victim_of:
+        try:
+            new_faces: list[list[int]] = []
+            face_remap: list[int] = []  # original_fi → new_fi (-1 if degenerate)
+            for fi, f in enumerate(faces):
+                f_remapped = [int(victim_of.get(int(v), int(v))) for v in f]
+                # 중복 인접 vertex 제거 (degenerate edge merged).
+                f_dedup: list[int] = []
+                for v in f_remapped:
+                    if not f_dedup or f_dedup[-1] != v:
+                        f_dedup.append(v)
+                # ring 의 끝과 시작이 같으면 그것도 합치기.
+                if len(f_dedup) > 1 and f_dedup[0] == f_dedup[-1]:
+                    f_dedup.pop()
+                if len(f_dedup) < 3:
+                    face_remap.append(-1)  # degenerate
+                else:
+                    face_remap.append(len(new_faces))
+                    new_faces.append(f_dedup)
+
+            n_face_dropped = sum(1 for x in face_remap if x == -1)
+            n_internal_new = sum(
+                1 for fi in range(n_internal) if face_remap[fi] >= 0
+            )
+            # remap owner / neighbour to new face numbering, drop dropped faces.
+            new_owner: list[int] = []
+            new_nbr: list[int] = []
+            for fi in range(n_internal):
+                if face_remap[fi] >= 0:
+                    new_owner.append(int(owner[fi]))
+                    new_nbr.append(int(nbr[fi]))
+            for fi in range(n_internal, len(faces)):
+                if face_remap[fi] >= 0:
+                    new_owner.append(int(owner[fi]))
+            # Cell removal: cells that lost too many faces.
+            # detect by counting faces per cell after drop.
+            new_cell_face_count = [0] * n_cells
+            for fi, fr in enumerate(face_remap):
+                if fr < 0:
+                    continue
+                new_cell_face_count[int(owner[fi])] += 1
+                if fi < n_internal:
+                    new_cell_face_count[int(nbr[fi])] += 1
+            valid_cells = [c for c in range(n_cells) if new_cell_face_count[c] >= 4]
+            if len(valid_cells) < n_cells:
+                log.info(
+                    "amips_post_polish_collapse_cell_drop",
+                    n_cells_before=n_cells,
+                    n_cells_after=len(valid_cells),
+                    n_dropped=n_cells - len(valid_cells),
+                    n_face_dropped=n_face_dropped,
+                )
+            # Cell renumbering map.
+            cell_remap = {old: new for new, old in enumerate(valid_cells)}
+            # Drop faces whose owner or neighbor is dropped.
+            final_faces: list[list[int]] = []
+            final_owner: list[int] = []
+            final_nbr: list[int] = []
+            # Reorder: internal first, then boundary.
+            internal_kept: list[tuple[list[int], int, int]] = []
+            boundary_kept: list[tuple[list[int], int, int]] = []  # (face, owner, patch_face_idx)
+            for fi in range(n_internal):
+                if face_remap[fi] < 0:
+                    continue
+                oc = int(owner[fi]); nc = int(nbr[fi])
+                if oc not in cell_remap or nc not in cell_remap:
+                    continue
+                internal_kept.append((new_faces[face_remap[fi]],
+                                      cell_remap[oc], cell_remap[nc]))
+            for fi in range(n_internal, len(faces)):
+                if face_remap[fi] < 0:
+                    continue
+                oc = int(owner[fi])
+                if oc not in cell_remap:
+                    continue
+                boundary_kept.append((new_faces[face_remap[fi]],
+                                      cell_remap[oc], fi))
+
+            # OpenFOAM 정렬: internal → owner asc, neighbour asc 로 sort.
+            import functools
+            internal_kept.sort(key=lambda x: (x[1], x[2]))
+            for f, oc, nc in internal_kept:
+                final_faces.append(f); final_owner.append(oc); final_nbr.append(nc)
+            # boundary: patch 별 contiguous 유지 — original patch 순서대로 + owner asc.
+            patch_groups: dict[str, list[tuple[list[int], int, int]]] = {}
+            for p in bnd:
+                patch_groups[str(p["name"])] = []
+            cumulative_start = 0
+            patch_starts: list[tuple[str, dict, int, int]] = []
+            for p in bnd:
+                pname = str(p["name"])
+                ps = int(p["startFace"])
+                pn = int(p["nFaces"])
+                pf = [bk for bk in boundary_kept if ps <= bk[2] < ps + pn]
+                pf.sort(key=lambda x: x[1])
+                patch_starts.append((pname, p, n_internal_new + cumulative_start, len(pf)))
+                cumulative_start += len(pf)
+                for f, oc, _ in pf:
+                    final_faces.append(f); final_owner.append(oc)
+
+            # Rebuild boundary with new startFace / nFaces.
+            new_bnd: list[dict] = []
+            for pname, p, sf, nf in patch_starts:
+                if nf == 0:
+                    continue
+                new_bnd.append({
+                    "name": pname,
+                    "type": p.get("type", "wall"),
+                    "nFaces": nf,
+                    "startFace": sf,
+                })
+
+            # Vertex compaction: keep only verts referenced by faces.
+            referenced = set()
+            for f in final_faces:
+                referenced.update(int(v) for v in f)
+            v_remap: dict[int, int] = {}
+            new_pts_arr = np.zeros((len(referenced), 3), dtype=np.float64)
+            for new_idx, old_idx in enumerate(sorted(referenced)):
+                v_remap[old_idx] = new_idx
+                new_pts_arr[new_idx] = smoothed_after_collapse[old_idx]
+            final_faces_remapped = [[v_remap[int(v)] for v in f] for f in final_faces]
+
+            # Write polyMesh.
+            from core.layers.native_bl import (
+                _write_faces as _wf, _write_labels as _wl,
+                _write_boundary as _wb, _write_points as _wp,
+            )
+            _wp(poly_dir / "points", new_pts_arr)
+            _wf(poly_dir / "faces", final_faces_remapped)
+            _wl(poly_dir / "owner",
+                np.asarray(final_owner, dtype=np.int64), "owner")
+            _wl(poly_dir / "neighbour",
+                np.asarray(final_nbr, dtype=np.int64), "neighbour")
+            _wb(poly_dir / "boundary", new_bnd)
+            log.info(
+                "amips_post_polish_collapse_polymesh_rewritten",
+                n_pts_before=int(pts.shape[0]),
+                n_pts_after=int(new_pts_arr.shape[0]),
+                n_cells_after=len(valid_cells),
+            )
+        except Exception as _exc:
+            log.debug("amips_post_polish_collapse_rewrite_failed", error=str(_exc))
+            # fallback: vertex 위치만 갱신
+            try:
+                _write_points(poly_dir / "points", smoothed_after_collapse)
+            except Exception:
+                pass
+    else:
+        try:
+            _write_points(poly_dir / "points", smoothed_after_collapse)
+        except Exception as exc:
+            return f"amips_post_polish: write 실패 ({exc})"
 
     e_b = float(res.energy_before)
     e_a = float(res.energy_after)
