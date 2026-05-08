@@ -147,3 +147,46 @@ hard_100030: max_internal_skewness=**2.71** (PASS), max_boundary_skewness=**80.7
 ### 결정적 다음 단계 — fast iter 영역 밖 (multi-day)
 **vertex duplication BL extrusion (cfMesh approach)**: per-face inner verts 로 cap 이 face_normal 축에 정확히 align → boundary skew = 0. native_bl.py 의 inner_pt 계산 + polyMesh 위상 재구성 필요.
 
+
+---
+
+## iter 21-23 추가 — 모두 discard, 수학적 한계 증명
+
+### iter 21 (AMIPS unlock bl_internal_domain): 2600 same
+AMIPS optimizes sliver-energy not boundary skew. Unlocking 한 vert 가 자유도 가지지만 energy landscape 가 face_normal alignment 로 push 안 함.
+
+### iter 22 (curvature thickness reduction): 2600 ~ same
+**핵심 수학**: BL prism boundary skew = **tan(θ)** where θ = angle(avg_vnorm, face_normal). 
+- drift ∝ thickness, d_mag ∝ thickness/2
+- skew = tan(θ), THICKNESS-INVARIANT
+- → iter 14 (× 9 thickness) 결과 설명: skew 변화 없음.
+
+### iter 23 (cos<0.3 face skew prediction guard): 2600 worse
+- 수학적: skew=20 = tan(87.1°), 즉 cos(face_normal,avg_vnorm) > 0.05 면 skew<20 PASS
+- hard_100029 의 worst face: skew=260 → θ=89.78° (cos<0.001!) — **almost orthogonal**
+- 이는 multi-patch junction vert 에서 vnorm 이 face_normal 과 거의 수직.
+- Partial face rejection 이 패치 경계 새 skew 유발 → fundamental.
+
+### 수학적 결론 (iter 22 finding)
+**skew = tan(θ)**
+| θ | skew |
+|---|------|
+| 30° | 0.58 |
+| 60° | 1.73 |
+| 80° | 5.67 |
+| 87° | 19.08 (≈ threshold) |
+| 89° | 57.3 |
+| 89.78° | 260 (hard_100029) |
+
+evaluator.md threshold 20 → θ < 87°.
+
+**Per-vertex normal extrusion 의 fundamental 한계**: 한 vert 가 여러 face 와 공유 → 단일 vnorm 으로 모든 face 와 angle 0 불가능. 다음 진짜 해결책은 vertex duplication (per-face inner vert) — cfMesh / Pointwise approach. Multi-day refactor.
+
+### 잔여 4 fails — fundamental limits
+- **hard_100029**: 63 wall patches multi-region junction → vnorm 이 face_normal 과 nearly orthogonal at junction verts
+- **extreme_1017013/14**: flat sheet mesher 단계
+- **extreme_102308**: SIGSEGV
+- **medium_100045**: body lost in fTetWild
+
+iter 16 = **2600 BEST** preserved. 추가 fast iter 진전 불가, 본격 refactor 필요.
+
