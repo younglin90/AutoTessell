@@ -148,7 +148,33 @@ class ParamOptimizer:
         ql_str = quality_level.value if hasattr(quality_level, "value") else str(quality_level)
         factors = _DOMAIN_FACTORS.get(ql_str, _DOMAIN_FACTORS["standard"])
 
-        if flow_type == "external":
+        # BETA2910 — external→internal force for highly asymmetric bodies.
+        # When body bbox aspect > 2, external compound bbox swamps the small
+        # body axes, causing fTetWild edge_length to exceed body smallest dim
+        # → body lost. Switch to internal flow (tight bbox + 10% margin).
+        # User opt-out: AUTO_TESSELL_EXTERNAL_ASPECT_FORCE_INTERNAL_OFF=1.
+        import os as _os_dom
+        _bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
+        _aspect_max = max(_bbox_dims) / max(min(_bbox_dims), 1e-9)
+        _force_internal = (
+            flow_type == "external"
+            and _aspect_max > 2.0
+            and _os_dom.environ.get(
+                "AUTO_TESSELL_EXTERNAL_ASPECT_FORCE_INTERNAL_OFF", "0"
+            ) != "1"
+        )
+        if _force_internal:
+            log.info(
+                "domain_external_aspect_force_internal",
+                bbox_aspect=round(_aspect_max, 2),
+                bbox_dims=[round(x, 4) for x in _bbox_dims],
+                reason="small body in external compound — body would be lost",
+            )
+            flow_type_eff = "internal"
+        else:
+            flow_type_eff = flow_type
+
+        if flow_type_eff == "external":
             us = (upstream if upstream is not None else factors[0]) * L * domain_scale
             ds = (downstream if downstream is not None else factors[1]) * L * domain_scale
             lat = (lateral if lateral is not None else factors[2]) * L * domain_scale
