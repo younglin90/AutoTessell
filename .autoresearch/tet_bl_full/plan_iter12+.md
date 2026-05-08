@@ -67,3 +67,31 @@ timeout 1800 python3 .autoresearch/tet_bl_full/verify.py 2>&1 | tee .autoresearc
 ```
 
 stdout final line is the score.
+
+---
+
+## iter 13/14 추가 발견 (2026-05-08 16:50)
+
+### iter 13 (3 시도, 모두 discard)
+- wall_aspect guard (50, 5): tet_bl_subdivide.py 에서 wall 자체 sliver 거부 시도. **0 reject** — wall 삼각형은 정상.
+- lateral cosine divergence (cos<0.95): twisted prism 검출. **0 reject** — BL prism 은 twisted 아님.
+- edge collapse default-off (BETA2899): degenerate cell 가능성 차단. **score 무변화** — BETA2894 이 skew driver 아님.
+
+### iter 14 (1 시도, discard)
+- wall_edge × 0.1 floor 로 first_thickness 적응 (× 9 for hard_100030). max_aspect 365→222 ↓. **max_skew 80.73 invariant**. medium_100330 PASS→FAIL regression.
+
+### Root cause confirmed (hard_100030 skew=80)
+- BL prism 자체가 아닌 **fTetWild bulk 의 sliver tet** 가 BL prism cap 옆에 위치. cell-cell d_mag 이 매우 작아 skew_dist/d_mag 폭증.
+- BL 파라미터 (first_thickness, growth_ratio, n_layers) 어느 것도 영향 없음 (sliver tet 는 BL 와 독립).
+- 해결: pre-BL 단계에서 fTetWild output 의 sliver tet 검출 후 refinement (edge split / vertex insertion) 필요. **non-trivial**, 다음 세션 영역.
+
+### medium_100330 fragility
+- iter 12b (× 3) 와 iter 14 (× 9) 모두 medium_100330 PASS→FAIL.
+- 1298 wall faces + aspect 646 (densest + highest aspect 중 하나) 조합이 BL 두께 변화에 매우 민감.
+- iter 11 의 first_thickness=auto-default 가 medium_100330 의 sweet spot. 어떤 scale-up 도 sliver 유발.
+
+### 다음 세션 advisable target
+1. **fTetWild output sliver detect + refine** (pre-BL): hard_100030/29 skew issue 해결 가능
+2. **per-STL fragility tracker**: medium_100330 같이 BL 파라미터 sweet spot 인 STL 은 변경 회피
+3. **sliver tet collapse with safe topology rebuild**: iter 9 미해결 영역
+
