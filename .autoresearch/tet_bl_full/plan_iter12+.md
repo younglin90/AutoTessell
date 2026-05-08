@@ -120,3 +120,30 @@ hard_100030: max_internal_skewness=**2.71** (PASS), max_boundary_skewness=**80.7
 2. **angle-weighted vnorm** (현재 area-weighted) 으로 face_normal 발산 감소 시도.
 3. **post-BL boundary skew correction**: prism 삽입 후 cell centroid 를 face_normal 축으로 강제 projection (cap inner vert 이동, neighbor 와 합의).
 
+
+---
+
+## iter 16 결과 — **NEW BEST 2600** (+100 from 2500)
+
+### KEY WIN: angle-weighted vnorm (Garimella 2003)
+`core/layers/native_bl.py:compute_vertex_normals`: area-weighted → angle-weighted (각 face contribution = sin(angle_at_v) of triangle).
+
+핵심 영향: **hard_100030 max_skew 80→6.4 PASS**. 다른 STL 모두 PASS 유지 또는 개선.
+- test_cube: 1.84→1.57 ↓
+- medium_100330: 13.8→4.16 ↓
+- medium_100322: 15.5→3.9 ↓
+
+### iter 17/18/19 attempt — 모두 discard
+- iter 17 (Laplacian smoothing): hard_100030 6→251 regression
+- iter 18 (angle² weighted): 양쪽 다 나쁨
+- iter 19 (selective Laplacian cos<0.9/0.7): 동일 regression
+
+### 잔여 4 fails 의 근본 한계
+- **hard_100029**: BL boundary skew 260 (1477→260 큰 개선 but >> 20 threshold). 5050 wall faces, 매우 curved → vnorm averaging 한계.
+- **extreme_1017013/14**: flat sheet, mesher 단계 문제
+- **extreme_102308**: SIGSEGV
+- **medium_100045**: PASS_WITH_WARNINGS (body lost in fTetWild)
+
+### 결정적 다음 단계 — fast iter 영역 밖 (multi-day)
+**vertex duplication BL extrusion (cfMesh approach)**: per-face inner verts 로 cap 이 face_normal 축에 정확히 align → boundary skew = 0. native_bl.py 의 inner_pt 계산 + polyMesh 위상 재구성 필요.
+
