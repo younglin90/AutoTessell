@@ -95,3 +95,28 @@ stdout final line is the score.
 2. **per-STL fragility tracker**: medium_100330 같이 BL 파라미터 sweet spot 인 STL 은 변경 회피
 3. **sliver tet collapse with safe topology rebuild**: iter 9 미해결 영역
 
+
+---
+
+## iter 15 결과 (2026-05-08 17:14)
+
+### KEY DISCOVERY (max_skew 분리 진단)
+hard_100030: max_internal_skewness=**2.71** (PASS), max_boundary_skewness=**80.73** (FAIL).
+즉 skew 폭증의 원인은 BL prism cell 의 boundary skewness 만이며, 그 원인은:
+
+**curved wall + per-vertex normal extrusion → cell centroid drifts from face_normal axis**
+- Per-vert vnorm (smooth extrusion) 으로 prism 만들면 cap centroid 가 face_normal 축에서 이탈.
+- Boundary skew = lateral_offset / normal_dist → curved wall 에서 폭증.
+
+### iter 15 시도 (face_normal vs avg(vnorm) divergence guard, 2 시도, 모두 discard)
+- cos<0.98: hard_100030 PASS (skew 80→16) ✓ but 6 STLs regress (partial BL 커버리지 → patchy boundary). 2500→2000.
+- cos<0.85: hard_100030 도 worse (skew 176). 2700+ score.
+
+### 부분 rejection 의 fundamental 문제
+일부 wall face 만 BL skip 하면 BL/non-BL 경계에서 새로운 skew 발생. 모든 face 는 BL 받거나 모두 skip 해야 일관된 mesh.
+
+### 다음 세션 권장 fix (multi-day)
+1. **face_normal 기반 uniform extrusion + vertex duplication** at face boundaries (cfMesh approach). per-face inner vert → cap on face_normal axis → boundary skew = 0.
+2. **angle-weighted vnorm** (현재 area-weighted) 으로 face_normal 발산 감소 시도.
+3. **post-BL boundary skew correction**: prism 삽입 후 cell centroid 를 face_normal 축으로 강제 projection (cap inner vert 이동, neighbor 와 합의).
+
