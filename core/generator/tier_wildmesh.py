@@ -572,6 +572,57 @@ def _extract_projected_silhouette_loops(
         return None
 
 
+def _axis_planar_cap_stats(
+    surf: Any,
+    axis: int,
+) -> dict[float, tuple[float, np.ndarray]]:
+    """Return planar cap area/centroid at the min/max coordinate for ``axis``."""
+    try:
+        from shapely.geometry import Polygon  # noqa: PLC0415
+        from shapely.ops import unary_union  # noqa: PLC0415
+    except Exception:
+        return {}
+
+    try:
+        vertices = np.asarray(surf.vertices, dtype=np.float64)
+        faces = np.asarray(surf.faces, dtype=np.int64)
+        if vertices.size == 0 or faces.size == 0:
+            return {}
+        values = vertices[:, axis]
+        min_axis = float(values.min())
+        max_axis = float(values.max())
+        span = max_axis - min_axis
+        if span <= 0.0:
+            return {}
+        bbox_diag = float(np.linalg.norm(np.asarray(surf.bounds[1]) - np.asarray(surf.bounds[0])))
+        tol = max(span * 1.0e-4, bbox_diag * 1.0e-6, 1.0e-12)
+        project_axes = [i for i in range(3) if i != axis]
+        out: dict[float, tuple[float, np.ndarray]] = {}
+        for plane in (min_axis, max_axis):
+            mask = np.all(np.abs(values[faces] - plane) <= tol, axis=1)
+            cap_faces = faces[mask]
+            polys = []
+            for tri in cap_faces:
+                poly = Polygon(vertices[np.asarray(tri, dtype=np.int64)][:, project_axes])
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                if not poly.is_empty and float(poly.area) > 1.0e-12:
+                    polys.append(poly)
+            if not polys:
+                continue
+            merged = unary_union(polys)
+            if not merged.is_valid:
+                merged = merged.buffer(0)
+            if merged.is_empty or float(merged.area) <= 1.0e-12:
+                continue
+            c = merged.centroid
+            out[plane] = (float(merged.area), np.asarray([float(c.x), float(c.y)]))
+        return out
+    except Exception as exc:
+        logger.debug("wildmesh_axis_cap_stats_skipped", error=str(exc))
+        return {}
+
+
 def _write_axis_extrusion_polymesh(
     surf: Any,
     case_dir: Path,
@@ -635,6 +686,7 @@ def _write_axis_extrusion_polymesh(
         polygon = polygon.buffer(0)
     if polygon.is_empty or float(polygon.area) <= 0.0:
         return None
+    section_scale_profile: tuple[np.ndarray, float, np.ndarray, float] | None = None
     if section_source == "cap":
         surf_area = float(getattr(surf, "area", 0.0) or 0.0)
         pred_area = 2.0 * float(polygon.area) + float(polygon.length) * abs(z1 - z0)
@@ -673,6 +725,28 @@ def _write_axis_extrusion_polymesh(
                             area_error_before=round(float(area_err), 4),
                             area_error_after=round(float(scaled_err), 4),
                             scale=round(float(scale), 4),
+                        )
+        if os.environ.get("AUTO_TESSELL_WILDMESH_CAP_TAPER", "1") != "0":
+            cap_stats = _axis_planar_cap_stats(surf, axis)
+            if len(cap_stats) == 2 and float(polygon.area) > 1.0e-12:
+                stat0 = cap_stats.get(float(z0))
+                stat1 = cap_stats.get(float(z1))
+                if stat0 is not None and stat1 is not None:
+                    a0, c0 = stat0
+                    a1, c1 = stat1
+                    s0 = float(np.sqrt(max(a0, 1.0e-30) / float(polygon.area)))
+                    s1 = float(np.sqrt(max(a1, 1.0e-30) / float(polygon.area)))
+                    s_min = min(s0, s1)
+                    s_max = max(s0, s1)
+                    if 0.2 <= s_min and s_max <= 5.0 and (s_max / max(s_min, 1.0e-30)) > 1.03:
+                        section_scale_profile = (c0, s0, c1, s1)
+                        logger.info(
+                            "wildmesh_axis_extrusion_cap_taper",
+                            axis=int(axis),
+                            scale0=round(s0, 4),
+                            scale1=round(s1, 4),
+                            area0=round(float(a0), 6),
+                            area1=round(float(a1), 6),
                         )
 
     num_z = max(2 * int(bl_layers) + 2, 10)
@@ -727,10 +801,22 @@ def _write_axis_extrusion_polymesh(
 
     z_values = np.linspace(float(z0), float(z1), num_z + 1)
     layered_points: list[np.ndarray] = []
+    base_centroid = np.asarray(
+        [float(polygon.centroid.x), float(polygon.centroid.y)],
+        dtype=np.float64,
+    )
     for z in z_values:
+        plane_xy = plane_points
+        if section_scale_profile is not None and abs(float(z1) - float(z0)) > 1.0e-30:
+            c0, s0, c1, s1 = section_scale_profile
+            t = (float(z) - float(z0)) / (float(z1) - float(z0))
+            t = min(1.0, max(0.0, t))
+            centre = (1.0 - t) * c0 + t * c1
+            scale_z = (1.0 - t) * float(s0) + t * float(s1)
+            plane_xy = centre[None, :] + (plane_points - base_centroid[None, :]) * scale_z
         layer = np.zeros((len(plane_points), 3), dtype=np.float64)
-        layer[:, project_axes[0]] = plane_points[:, 0]
-        layer[:, project_axes[1]] = plane_points[:, 1]
+        layer[:, project_axes[0]] = plane_xy[:, 0]
+        layer[:, project_axes[1]] = plane_xy[:, 1]
         layer[:, axis] = z
         layered_points.append(layer)
     points = np.vstack(layered_points)
