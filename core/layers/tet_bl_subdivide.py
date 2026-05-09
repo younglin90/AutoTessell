@@ -515,45 +515,28 @@ def subdivide_prism_layers_to_tet(
             (v1, v2, v3), (v0, v3, v2), (v0, v1, v3), (v0, v2, v1),
         ]
 
-    # 기존 tet cell 추출 — 4 face + all triangles → (4 vertex set).
-    # 하지만 원본 cell 이 어떤 tet 인지 알려면 owner/neighbour 면 정보 만으로는
-    # 부족. 기존 tet 의 4 vertex 를 cell_faces_map 의 triangle 4 개에서 추출.
-    # BETA2877 — native_bl 후 일부 cell 이 4 vertex / 5 face 같은 비표준 토폴로지
-    # (face split 부산물) 를 가질 수 있다. tet-only 가 아닌 입력은 subdivide 의
-    # face graph 전제를 깨므로 (manifold 4-share 위반), early 로 success=True 의
-    # 의미상 "BL 은 native_bl 단계까지만 적용" 으로 빠져나간다. 결과 mesh 는
-    # mixed (tet + prism wedge) — CFD 사용 가능, 단지 100% 순수 tet 은 아님.
-    old_tet_verts: dict[int, tuple[int, int, int, int]] = {}
-    _has_non_tet = False
-    for cid in old_non_prism:
-        f_list = cell_faces_map[cid]
-        verts_set: set[int] = set()
-        for f in f_list:
-            verts_set.update(f)
-        if len(verts_set) != 4 or len(f_list) != 4:
-            _has_non_tet = True
-            break
-        old_tet_verts[cid] = tuple(sorted(verts_set))
-    if _has_non_tet:
-        log.info(
-            "tet_bl_subdivide_skipped_non_tet_input",
-            note="원본 mesh 에 non-tet cell 이 있어 subdivide 건너뜀 — "
-                 "native_bl 단계까지의 prism wedge layer 가 그대로 남는다.",
-            n_prism_pairs_eligible=len(prism_pairs),
-        )
-        return TetSubdivResult(
-            True, time.perf_counter() - t0,
-            n_prism_before=len(prism_cells), n_tet_added=0,
-            message=(
-                "non-tet 입력 — subdivide 건너뜀 (BL 은 native_bl 단계까지 적용). "
-                "결과 mesh 는 tet+prism mixed."
-            ),
-        )
+    # 4b) 기존 non-prism cell 은 tet 여부와 무관하게 원래 face graph 를 보존한다.
+    # WildMesh/polyMesh 입력은 BL 삽입 후 bulk 쪽에 4-vertex/5-face 같은 일반
+    # poly cell 이 남을 수 있다. 이전 구현은 이런 cell 을 만나면 subdivision 을
+    # 통째로 skip 했고, verifier 는 wedge prism 의 face_weight/non-ortho 를 그대로
+    # 평가했다. 여기서는 기존 bulk cell face 를 그대로 수집하고 BL prism cell 만
+    # 3 tet 로 대체한다.
+    old_cell_faces: dict[int, list[tuple[int, ...]]] = {
+        new_id_of[old]: [] for old in old_non_prism
+    }
+    for fi, face in enumerate(faces):
+        own = int(owner[fi])
+        if own in new_id_of:
+            old_cell_faces[new_id_of[own]].append(tuple(int(v) for v in face))
+        if fi < len(neighbour):
+            nei = int(neighbour[fi])
+            if nei in new_id_of:
+                old_cell_faces[new_id_of[nei]].append(
+                    tuple(int(v) for v in reversed(face))
+                )
 
-    # 4b) cell id → 4 vertex 매핑 + face 리스트
+    # Prism replacement tet id → 4 vertex 매핑.
     cell_vertices: dict[int, tuple[int, ...]] = {}
-    for old_cid, v4 in old_tet_verts.items():
-        cell_vertices[new_id_of[old_cid]] = v4
     for pid, pair in prism_pairs.items():
         outer, inner = pair
         t1, t2, t3 = prism_tets[pid]
@@ -586,6 +569,14 @@ def subdivide_prism_layers_to_tet(
     #   face opposite v2: (0,1,3)
     #   face opposite v3: (0,2,1)
     # winding 은 vertex 좌표에 따라 geometric 검증.
+
+    for cid, old_faces in old_cell_faces.items():
+        for f in old_faces:
+            unique_f = tuple(dict.fromkeys(int(v) for v in f))
+            if len(unique_f) < 3:
+                continue
+            key = tuple(sorted(unique_f))
+            face_map.setdefault(key, []).append((cid, unique_f))
 
     for cid, v4 in cell_vertices.items():
         cc = _cell_centroid(v4)

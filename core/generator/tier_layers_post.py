@@ -1511,12 +1511,10 @@ class LayersPostGenerator:
             mt = getattr(mt_raw, "value", None) or str(mt_raw or "auto")
             mt = str(mt).lower()
             if mt == "tet":
-                # Exact tet+BL verification evaluates prism/wedge layer quality.
-                # The prism-to-tet converter is still available by explicit
-                # request, but on split-side native BL stacks it can leave the
-                # already-inserted mixed tet/prism mesh behind after subdivision
-                # failure.  Keep auto on the deterministic native BL path.
-                engine = "native_bl"
+                # Exact tet+BL verification should not leave wedge BL cells in
+                # the final tet path.  The converter preserves arbitrary bulk
+                # poly cells and only replaces BL prisms by tet cells.
+                engine = "tet_bl_subdivide"
             elif mt == "hex_dominant":
                 engine = "native_bl"
             elif mt == "poly":
