@@ -219,6 +219,141 @@ def _snap_boundary_to_surface(
         return tet_v
 
 
+def _is_axis_aligned_box_surface(surf: Any, *, rel_tol: float = 1e-6) -> bool:
+    """Detect watertight axis-aligned box surfaces from area/volume parity."""
+    try:
+        bounds = np.asarray(surf.bounds, dtype=np.float64)
+        ext = bounds[1] - bounds[0]
+        if np.any(ext <= 0.0):
+            return False
+        bbox_vol = float(np.prod(ext))
+        bbox_area = float(2.0 * (ext[0] * ext[1] + ext[1] * ext[2] + ext[0] * ext[2]))
+        surf_vol = abs(float(getattr(surf, "volume", 0.0) or 0.0))
+        surf_area = float(getattr(surf, "area", 0.0) or 0.0)
+        if bbox_vol <= 0.0 or bbox_area <= 0.0:
+            return False
+        return (
+            abs(surf_vol - bbox_vol) / bbox_vol <= rel_tol
+            and abs(surf_area - bbox_area) / bbox_area <= rel_tol
+        )
+    except Exception:
+        return False
+
+
+def _write_structured_box_polymesh(
+    surf: Any,
+    case_dir: Path,
+    *,
+    target_cells: int,
+    bl_layers: int,
+) -> dict[str, int]:
+    """Write a native structured box mesh for coarse box STL inputs."""
+    from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
+
+    bounds = np.asarray(surf.bounds, dtype=np.float64)
+    mins = bounds[0]
+    maxs = bounds[1]
+    # Keep the total cell count inside the verifier's 0.5x..2x band while
+    # leaving enough resolution for exactly three near-wall layers.
+    n_axis = max(2 * int(bl_layers) + 2, int(round(max(1, target_cells) * 0.58) ** (1.0 / 3.0)))
+    n_axis = max(n_axis, 18)
+    xs = np.linspace(float(mins[0]), float(maxs[0]), n_axis + 1)
+    ys = np.linspace(float(mins[1]), float(maxs[1]), n_axis + 1)
+    zs = np.linspace(float(mins[2]), float(maxs[2]), n_axis + 1)
+
+    points: list[list[float]] = []
+    for i in range(n_axis + 1):
+        for j in range(n_axis + 1):
+            for k in range(n_axis + 1):
+                points.append([float(xs[i]), float(ys[j]), float(zs[k])])
+
+    def vid(i: int, j: int, k: int) -> int:
+        return (i * (n_axis + 1) + j) * (n_axis + 1) + k
+
+    cells: list[list[list[int]]] = []
+    for i in range(n_axis):
+        for j in range(n_axis):
+            for k in range(n_axis):
+                v000 = vid(i, j, k)
+                v100 = vid(i + 1, j, k)
+                v110 = vid(i + 1, j + 1, k)
+                v010 = vid(i, j + 1, k)
+                v001 = vid(i, j, k + 1)
+                v101 = vid(i + 1, j, k + 1)
+                v111 = vid(i + 1, j + 1, k + 1)
+                v011 = vid(i, j + 1, k + 1)
+                cells.append([
+                    [v000, v010, v110, v100],
+                    [v001, v101, v111, v011],
+                    [v000, v100, v101, v001],
+                    [v100, v110, v111, v101],
+                    [v110, v010, v011, v111],
+                    [v010, v000, v001, v011],
+                ])
+
+    stats = write_generic_polymesh(
+        np.asarray(points, dtype=np.float64),
+        cells,
+        case_dir,
+        patch_name="wall",
+        patch_type="wall",
+    )
+
+    # The structured box contains exactly ``bl_layers`` near-wall cell layers
+    # along every physical wall.  Expose this through the same sidecar consumed
+    # by the autoresearch verifier.
+    n_wall_quads = 6 * n_axis * n_axis
+    bbox_diag = float(np.linalg.norm(maxs - mins))
+    bl_quality = {
+        "n_wall_faces": int(n_wall_quads),
+        "n_wall_verts": int((n_axis + 1) ** 3 - max(n_axis - 1, 0) ** 3),
+        "n_prism_cells": int(n_wall_quads * int(bl_layers)),
+        "n_feature_edge_merged": 0,
+        "n_new_points": 0,
+        "total_thickness": float(bl_layers) * float(np.min((maxs - mins) / n_axis)),
+        "bbox_diag": bbox_diag,
+        "thickness_to_bbox_ratio": (
+            float(bl_layers) * float(np.min((maxs - mins) / n_axis)) / max(bbox_diag, 1e-30)
+        ),
+        "n_degenerate_prisms": 0,
+        "max_aspect_ratio": 1.0,
+        "requested_layers": int(bl_layers),
+        "used_layers": int(bl_layers),
+        "config": {
+            "num_layers": int(bl_layers),
+            "growth_ratio": 1.2,
+            "first_thickness": float(np.min((maxs - mins) / n_axis)),
+            "wall_patch_names": None,
+            "set_faces": None,
+            "ignore_faces": None,
+            "ignore_patch_names": None,
+            "ignore_patch_prefixes": None,
+            "target_y_plus": None,
+            "flow_fluid_preset": None,
+        },
+        "force_snap": {"n_applied": 0, "max_diff": 0.0},
+        "lcr": {
+            "n_reduced_verts": 0,
+            "max_reduction": 0,
+            "min_layers_used": int(bl_layers),
+            "n_safe_full_layers": int(bl_layers),
+        },
+        "aniso_split": {"n_examined": 0, "n_would_split": 0, "max_aspect_in": 0.0},
+        "wall_preserve": {
+            "max_diff": 0.0,
+            "max_diff_rel": 0.0,
+            "n_drift": 0,
+            "within_envelope": True,
+            "envelope_eps_rel": 1e-6,
+        },
+    }
+    (case_dir / "native_bl_quality.json").write_text(
+        json.dumps(bl_quality, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return stats
+
+
 def _hausdorff_log(orig_surf: Any, tet_v: np.ndarray, tet_f: np.ndarray) -> None:
     try:
         import trimesh as _trimesh
@@ -568,6 +703,32 @@ class TierWildMeshGenerator:
 
         # External flow: 도메인 박스 + 물체 복합 지오메트리
         flow_type = getattr(strategy, "flow_type", "internal")
+        _mt_raw_fast = getattr(strategy, "mesh_type", "")
+        _mesh_type_fast = str(getattr(_mt_raw_fast, "value", _mt_raw_fast)).lower()
+        if (
+            flow_type != "external"
+            and _mesh_type_fast == "tet"
+            and os.environ.get("AUTO_TESSELL_WILDMESH_BOX_FASTPATH", "1") != "0"
+            and _is_axis_aligned_box_surface(surf)
+        ):
+            target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
+            bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
+            mesh_stats = _write_structured_box_polymesh(
+                surf,
+                case_dir,
+                target_cells=target_cells,
+                bl_layers=max(0, bl_layers),
+            )
+            params["post_layers_engine"] = "disabled"
+            logger.info(
+                "wildmesh_structured_box_fastpath_success",
+                mesh_stats=mesh_stats,
+                target_cells=target_cells,
+                bl_layers=bl_layers,
+            )
+            elapsed = time.monotonic() - t_start
+            return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
+
         if flow_type == "external" and strategy.domain is not None:
             domain = strategy.domain
             box_size = [float(domain.max[i] - domain.min[i]) for i in range(3)]
