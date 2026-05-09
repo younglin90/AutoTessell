@@ -2805,6 +2805,7 @@ def generate_native_bl(
             faces,
             wall_face_indices,
             strict_manifold=_front_strict,
+            points=points,
         )
         if _front_strict and _front.ignored_faces:
             wall_face_indices = list(_front.active_faces)
@@ -2820,6 +2821,8 @@ def generate_native_bl(
             n_edges=len(_front.edges),
             n_boundary_edges=_front.n_boundary_edges,
             n_nonmanifold_edges=_front.n_nonmanifold_edges,
+            n_feature_vertices=_front.n_feature_vertices,
+            n_blocked_vertices=_front.n_blocked_vertices,
             strict=_front_strict,
         )
     except Exception as _front_exc:
