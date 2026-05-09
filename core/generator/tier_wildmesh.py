@@ -722,7 +722,19 @@ class TierWildMeshGenerator:
                 _n_boundary_tris = (
                     int(_tet_boundary_faces_vec(tet_f).shape[0]) if _budget_layers > 0 else 0
                 )
-                _est_final_cells = _n_tets + _n_boundary_tris * max(0, _budget_layers)
+                _post_engine = str(params.get("post_layers_engine", "")).lower()
+                _mt_raw = getattr(strategy, "mesh_type", "")
+                _mesh_type = str(getattr(_mt_raw, "value", _mt_raw)).lower()
+                _tet_bl_subdivide_budget = (
+                    _budget_layers > 0
+                    and _mesh_type == "tet"
+                    and _post_engine in {"auto", "tet_bl_subdivide", "tet_bl", "native_bl_tet"}
+                )
+                _bl_cell_multiplier = 3 if _tet_bl_subdivide_budget else 1
+                _est_final_cells = (
+                    _n_tets
+                    + _n_boundary_tris * max(0, _budget_layers) * _bl_cell_multiplier
+                )
                 if _target_low <= _est_final_cells <= _target_high:
                     break
                 if _est_final_cells > _target_high:
@@ -745,6 +757,7 @@ class TierWildMeshGenerator:
                     boundary_triangles=int(_n_boundary_tris),
                     estimated_final_cells=int(_est_final_cells),
                     budget_layers=int(_budget_layers),
+                    bl_cell_multiplier=int(_bl_cell_multiplier),
                     target_low=int(_target_low),
                     target_high=int(_target_high),
                     edge_old=round(_edge_old, 8),
