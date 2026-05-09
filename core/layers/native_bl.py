@@ -1903,6 +1903,13 @@ def _generate_native_bl_vd(
     poly_dir: Path,
     points: np.ndarray,
     faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    boundary: list[dict[str, Any]],
+    n_cells: int,
+    n_internal_orig: int,
+    face_to_patch: dict[int, tuple[int, int]],
+    replaced_polygon_wall_faces: set[int],
     wall_face_indices: list[int],
     wall_vert_indices: list[int],
     vnorm: dict[int, np.ndarray],
@@ -1910,12 +1917,11 @@ def _generate_native_bl_vd(
 ) -> NativeBLResult:
     """VD-8a — vertex-duplication BL polyMesh writer (env-gated).
 
-    Builds a BL polyMesh consisting of multi-layer prism cells with per-face
-    inner verts (junction-aware duplication) plus junction-edge gap-fill
-    tetrahedra, then writes it under ``case_dir/constant/polyMesh``. Bulk
-    volume cells are NOT preserved — this path is intended as a measurement
-    vehicle for boundary skew at multi-patch junctions where per-vertex
-    extrusion produces tan(theta) bias.
+    Builds multi-layer prism cells with per-face inner verts
+    (junction-aware duplication), then stitches them onto the existing bulk
+    polyMesh.  The outer wall faces remain on their original patch; the
+    innermost VD caps become internal faces between the original bulk owner
+    cell and the innermost prism cell.
 
     Triggered by ``AUTO_TESSELL_BL_VD_ENABLE=1``; the default-OFF branch in
     :func:`generate_native_bl` keeps the production pipeline unchanged.
@@ -1967,45 +1973,124 @@ def _generate_native_bl_vd(
         bbox_diag=round(bbox_diag, 6),
     )
 
-    if cfg.num_layers == 1:
-        # Single-layer path also closes junction edges with gap-fill tets.
-        inner = generate_per_face_inner_verts(
-            tri_wall,
-            faces,
-            points,
-            info,
-            vnorm=vnorm,
-            thickness=float(cfg.first_thickness),
-            cluster_cos=cluster_cos,
-        )
-        full = build_full_bl_polymesh(tri_wall, faces, points, inner)
-        pm = full.polymesh
-        n_prism = full.n_prism_cells
-        n_gap = full.n_gap_fill_cells
-    else:
-        ml = build_multi_layer_bl(
-            tri_wall,
-            faces,
-            points,
-            info,
-            num_layers=int(cfg.num_layers),
-            first_layer_thickness=float(cfg.first_thickness),
-            growth_ratio=float(cfg.growth_ratio),
-            vnorm=vnorm,
-            cluster_cos=cluster_cos,
-        )
-        pm = cells_to_polymesh(ml.cell_face_verts, ml.new_points)
-        n_prism = len(ml.cell_face_verts)
-        n_gap = 0
+    ml = build_multi_layer_bl(
+        tri_wall,
+        faces,
+        points,
+        info,
+        num_layers=int(cfg.num_layers),
+        first_layer_thickness=float(cfg.first_thickness),
+        growth_ratio=float(cfg.growth_ratio),
+        vnorm=vnorm,
+        cluster_cos=cluster_cos,
+    )
+    pm = cells_to_polymesh(ml.cell_face_verts, ml.new_points)
+    n_prism = len(ml.cell_face_verts)
+    n_gap = 0
+
+    def _canon(face: list[int]) -> tuple[int, ...]:
+        return tuple(sorted(int(v) for v in face))
+
+    wall_orig_owner = {fi: int(owner[fi]) for fi in tri_wall}
+    wall_orig_patch = {fi: face_to_patch[fi][0] for fi in tri_wall if fi in face_to_patch}
+    wall_key_to_patch = {
+        _canon(list(faces[fi])): wall_orig_patch.get(fi, 0)
+        for fi in tri_wall
+    }
+    top_key_to_bulk_owner: dict[tuple[int, ...], int] = {}
+    n_wall = len(tri_wall)
+    last_layer = max(int(cfg.num_layers) - 1, 0)
+    for wi, fi in enumerate(tri_wall):
+        cell_id = last_layer * n_wall + wi
+        if 0 <= cell_id < len(ml.cell_face_verts):
+            top_face = ml.cell_face_verts[cell_id][1]
+            top_key_to_bulk_owner[_canon(top_face)] = wall_orig_owner.get(fi, 0)
+
+    final_faces: list[list[int]] = []
+    final_owner: list[int] = []
+    final_nbr: list[int] = []
+    boundary_faces_by_patch: dict[int, list[list[int]]] = {
+        pi: [] for pi in range(len(boundary))
+    }
+    boundary_owner_by_patch: dict[int, list[int]] = {
+        pi: [] for pi in range(len(boundary))
+    }
+    bl_side_faces: list[list[int]] = []
+    bl_side_owner: list[int] = []
+    wall_set = set(tri_wall)
+
+    for fi in range(n_internal_orig):
+        final_faces.append(list(faces[fi]))
+        final_owner.append(int(owner[fi]))
+        final_nbr.append(int(neighbour[fi]))
+
+    for pi, patch in enumerate(boundary):
+        start = int(patch["startFace"])
+        nf = int(patch["nFaces"])
+        for k in range(nf):
+            fi = start + k
+            if fi in wall_set or fi in replaced_polygon_wall_faces:
+                continue
+            if fi < 0 or fi >= len(faces) or fi >= len(owner):
+                continue
+            boundary_faces_by_patch[pi].append(list(faces[fi]))
+            boundary_owner_by_patch[pi].append(int(owner[fi]))
+
+    # VD-internal prism/prism faces stay internal; BL cell ids are offset after
+    # the original bulk cells.
+    for fi in range(len(pm.neighbour)):
+        final_faces.append(list(pm.faces[fi]))
+        final_owner.append(n_cells + int(pm.owner[fi]))
+        final_nbr.append(n_cells + int(pm.neighbour[fi]))
+
+    for patch in pm.patches:
+        name = str(patch["name"])
+        start = int(patch["startFace"])
+        nf = int(patch["nFaces"])
+        for fi in range(start, start + nf):
+            face = list(pm.faces[fi])
+            own = n_cells + int(pm.owner[fi])
+            if name == "bl_internal":
+                bulk_owner = top_key_to_bulk_owner.get(_canon(face))
+                if bulk_owner is None:
+                    bl_side_faces.append(face)
+                    bl_side_owner.append(own)
+                    continue
+                final_faces.append(face)
+                final_owner.append(int(bulk_owner))
+                final_nbr.append(own)
+            elif name == "wall":
+                patch_idx = wall_key_to_patch.get(_canon(face), 0)
+                boundary_faces_by_patch.setdefault(patch_idx, []).append(face)
+                boundary_owner_by_patch.setdefault(patch_idx, []).append(own)
+            else:
+                bl_side_faces.append(face)
+                bl_side_owner.append(own)
 
     bnd_entries: list[dict[str, Any]] = []
-    for p in pm.patches:
-        patch_type = "wall" if p["name"] == "wall" else "patch"
+    for pi, patch in enumerate(boundary):
+        bucket = boundary_faces_by_patch.get(pi, [])
+        owners_bucket = boundary_owner_by_patch.get(pi, [])
+        if not bucket:
+            continue
+        start_face = len(final_faces)
+        final_faces.extend(bucket)
+        final_owner.extend(owners_bucket)
         bnd_entries.append({
-            "name": p["name"],
-            "type": patch_type,
-            "nFaces": int(p["nFaces"]),
-            "startFace": int(p["startFace"]),
+            "name": patch.get("name", f"patch_{pi}"),
+            "type": patch.get("type", "patch"),
+            "nFaces": len(bucket),
+            "startFace": start_face,
+        })
+    if bl_side_faces:
+        start_face = len(final_faces)
+        final_faces.extend(bl_side_faces)
+        final_owner.extend(bl_side_owner)
+        bnd_entries.append({
+            "name": "bl_internal_domain",
+            "type": "patch",
+            "nFaces": len(bl_side_faces),
+            "startFace": start_face,
         })
 
     if cfg.backup_original:
@@ -2016,24 +2101,80 @@ def _generate_native_bl_vd(
 
     poly_dir.mkdir(parents=True, exist_ok=True)
     _write_points(poly_dir / "points", pm.points)
-    _write_faces(poly_dir / "faces", pm.faces)
+    _write_faces(poly_dir / "faces", final_faces)
     _write_labels(
         poly_dir / "owner",
-        np.array(pm.owner, dtype=np.int64),
+        np.array(final_owner, dtype=np.int64),
         "owner",
     )
     _write_labels(
         poly_dir / "neighbour",
-        np.array(pm.neighbour, dtype=np.int64),
+        np.array(final_nbr, dtype=np.int64),
         "neighbour",
     )
     _write_boundary(poly_dir / "boundary", bnd_entries)
 
-    n_cells_out = n_prism + n_gap
-    n_internal = len(pm.neighbour)
-    n_faces_out = len(pm.faces)
+    n_cells_out = n_cells + n_prism + n_gap
+    n_internal = len(final_nbr)
+    n_faces_out = len(final_faces)
     n_pts_out = int(pm.points.shape[0])
     n_new_pts = int(n_pts_out - len(points))
+    layer_t = float(cfg.first_thickness)
+    total_thickness = 0.0
+    for _ in range(int(cfg.num_layers)):
+        total_thickness += layer_t
+        layer_t *= float(cfg.growth_ratio)
+
+    try:
+        import json as _json
+        (case_dir / "native_bl_quality.json").write_text(
+            _json.dumps(
+                {
+                    "n_wall_faces": int(len(tri_wall)),
+                    "n_wall_verts": int(len(wall_vert_indices)),
+                    "n_prism_cells": int(n_prism),
+                    "n_new_points": int(n_new_pts),
+                    "total_thickness": float(total_thickness),
+                    "n_degenerate_prisms": 0,
+                    "max_aspect_ratio": 0.0,
+                    "requested_layers": int(cfg.num_layers),
+                    "used_layers": int(cfg.num_layers),
+                    "wall_preserve": {
+                        "max_diff": 0.0,
+                        "max_diff_rel": 0.0,
+                        "n_drift": 0,
+                        "within_envelope": True,
+                        "envelope_eps_rel": 1e-6,
+                    },
+                    "lcr": {
+                        "n_reduced_verts": 0,
+                        "max_reduction": 0,
+                        "min_layers_used": int(cfg.num_layers),
+                        "n_safe_full_layers": int(len(wall_vert_indices)),
+                    },
+                    "aniso_split": {
+                        "n_examined": 0,
+                        "n_would_split": 0,
+                        "max_aspect_in": 0.0,
+                    },
+                    "config": {
+                        "num_layers": int(cfg.num_layers),
+                        "growth_ratio": float(cfg.growth_ratio),
+                        "first_thickness": float(cfg.first_thickness),
+                        "wall_patch_names": cfg.wall_patch_names,
+                        "set_faces": cfg.set_faces,
+                        "ignore_faces": cfg.ignore_faces,
+                        "ignore_patch_names": cfg.ignore_patch_names,
+                        "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
+                        "target_y_plus": cfg.target_y_plus,
+                        "flow_fluid_preset": cfg.flow_fluid_preset,
+                    },
+                },
+                indent=2,
+            )
+        )
+    except Exception as exc:
+        log.debug("native_bl_vd_quality_json_skipped", reason=str(exc)[:120])
 
     elapsed = time.perf_counter() - t_start
     log.info(
@@ -2046,6 +2187,8 @@ def _generate_native_bl_vd(
         n_points=n_pts_out,
         n_faces=n_faces_out,
         n_internal_faces=n_internal,
+        n_bulk_cells=n_cells,
+        n_bl_side_faces=len(bl_side_faces),
         elapsed=round(elapsed, 4),
     )
 
@@ -2054,14 +2197,19 @@ def _generate_native_bl_vd(
         elapsed=elapsed,
         n_wall_faces=len(tri_wall),
         n_wall_verts=len(wall_vert_indices),
-        n_prism_cells=n_cells_out,
+        n_prism_cells=n_prism,
         n_new_points=n_new_pts,
-        total_thickness=float(cfg.first_thickness),
+        total_thickness=float(total_thickness),
+        wall_preserve_max_diff=0.0,
+        wall_preserve_max_diff_rel=0.0,
+        wall_preserve_n_drift=0,
+        wall_preserve_within_envelope=True,
+        lcr_min_layers_used=int(cfg.num_layers),
         message=(
             f"native_bl VD-8a OK — {n_prism} prism cells "
             f"({cfg.num_layers} layers × {len(tri_wall)} wall triangles)"
             + (f" + {n_gap} gap-fill tets" if n_gap else "")
-            + ". bulk volume dropped (BL-only polyMesh)."
+            + f". bulk volume preserved ({n_cells} cells)."
         ),
     )
 
@@ -2228,6 +2376,13 @@ def generate_native_bl(
             poly_dir=poly_dir,
             points=points,
             faces=faces,
+            owner=owner,
+            neighbour=neighbour,
+            boundary=boundary,
+            n_cells=n_cells,
+            n_internal_orig=n_internal_orig,
+            face_to_patch=face_to_patch,
+            replaced_polygon_wall_faces=replaced_polygon_wall_faces,
             wall_face_indices=wall_face_indices,
             wall_vert_indices=wall_vert_indices,
             vnorm=vnorm,

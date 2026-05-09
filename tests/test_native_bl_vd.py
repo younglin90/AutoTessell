@@ -994,8 +994,8 @@ def test_generate_native_bl_vd_env_gated_replaces_polymesh(
     Expectation:
       * res.success is True
       * VD message tag is present
-      * n_prism_cells == num_layers × 12 (no bulk cells; VD path drops the bulk)
-      * polyMesh on disk has wall + bl_internal + bl_internal_side patches
+      * n_prism_cells == num_layers × 12 while the original bulk cell is preserved
+      * polyMesh on disk has wall + bl_internal_domain patches
     """
     from core.layers.native_bl import BLConfig, generate_native_bl
     from core.utils.polymesh_reader import parse_foam_boundary
@@ -1022,8 +1022,7 @@ def test_generate_native_bl_vd_env_gated_replaces_polymesh(
     boundary = parse_foam_boundary(tmp_path / "constant" / "polyMesh" / "boundary")
     patch_names = {p["name"] for p in boundary}
     assert "wall" in patch_names
-    assert "bl_internal" in patch_names
-    assert "bl_internal_side" in patch_names
+    assert "bl_internal_domain" in patch_names
 
 
 def test_generate_native_bl_vd_env_default_off_keeps_existing_path(
