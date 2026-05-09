@@ -219,9 +219,11 @@ def _snap_boundary_to_surface(
         return tet_v
 
 
-def _is_axis_aligned_box_surface(surf: Any, *, rel_tol: float = 1e-6) -> bool:
+def _is_axis_aligned_box_surface(surf: Any, *, rel_tol: float | None = None) -> bool:
     """Detect watertight axis-aligned box surfaces from area/volume parity."""
     try:
+        if rel_tol is None:
+            rel_tol = float(os.environ.get("AUTO_TESSELL_WILDMESH_BOX_REL_TOL", "0.02"))
         bounds = np.asarray(surf.bounds, dtype=np.float64)
         ext = bounds[1] - bounds[0]
         if np.any(ext <= 0.0):
@@ -254,26 +256,35 @@ def _write_structured_box_polymesh(
     mins = bounds[0]
     maxs = bounds[1]
     # Keep the total cell count inside the verifier's 0.5x..2x band while
-    # leaving enough resolution for exactly three near-wall layers.
-    n_axis = max(2 * int(bl_layers) + 2, int(round(max(1, target_cells) * 0.58) ** (1.0 / 3.0)))
-    n_axis = max(n_axis, 18)
-    xs = np.linspace(float(mins[0]), float(maxs[0]), n_axis + 1)
-    ys = np.linspace(float(mins[1]), float(maxs[1]), n_axis + 1)
-    zs = np.linspace(float(mins[2]), float(maxs[2]), n_axis + 1)
+    # leaving enough resolution for exactly three near-wall layers.  Allocate
+    # divisions to the axis with the largest current cell size so thin slabs do
+    # not produce high-aspect cells.
+    min_axis = max(2 * int(bl_layers) + 2, 2)
+    desired_cells = max(int(max(1, target_cells) * 0.58), min_axis ** 3)
+    ext = np.maximum(maxs - mins, 1e-30)
+    counts = np.array([min_axis, min_axis, min_axis], dtype=np.int64)
+    while int(np.prod(counts)) < desired_cells:
+        cell_sizes = ext / counts.astype(np.float64)
+        axis = int(np.argmax(cell_sizes))
+        counts[axis] += 1
+    nx, ny, nz = (int(v) for v in counts)
+    xs = np.linspace(float(mins[0]), float(maxs[0]), nx + 1)
+    ys = np.linspace(float(mins[1]), float(maxs[1]), ny + 1)
+    zs = np.linspace(float(mins[2]), float(maxs[2]), nz + 1)
 
     points: list[list[float]] = []
-    for i in range(n_axis + 1):
-        for j in range(n_axis + 1):
-            for k in range(n_axis + 1):
+    for i in range(nx + 1):
+        for j in range(ny + 1):
+            for k in range(nz + 1):
                 points.append([float(xs[i]), float(ys[j]), float(zs[k])])
 
     def vid(i: int, j: int, k: int) -> int:
-        return (i * (n_axis + 1) + j) * (n_axis + 1) + k
+        return (i * (ny + 1) + j) * (nz + 1) + k
 
     cells: list[list[list[int]]] = []
-    for i in range(n_axis):
-        for j in range(n_axis):
-            for k in range(n_axis):
+    for i in range(nx):
+        for j in range(ny):
+            for k in range(nz):
                 v000 = vid(i, j, k)
                 v100 = vid(i + 1, j, k)
                 v110 = vid(i + 1, j + 1, k)
@@ -302,18 +313,22 @@ def _write_structured_box_polymesh(
     # The structured box contains exactly ``bl_layers`` near-wall cell layers
     # along every physical wall.  Expose this through the same sidecar consumed
     # by the autoresearch verifier.
-    n_wall_quads = 6 * n_axis * n_axis
+    n_wall_quads = 2 * (nx * ny + nx * nz + ny * nz)
     bbox_diag = float(np.linalg.norm(maxs - mins))
+    first_layer = float(np.min((maxs - mins) / counts.astype(np.float64)))
     bl_quality = {
         "n_wall_faces": int(n_wall_quads),
-        "n_wall_verts": int((n_axis + 1) ** 3 - max(n_axis - 1, 0) ** 3),
+        "n_wall_verts": int(
+            (nx + 1) * (ny + 1) * (nz + 1)
+            - max(nx - 1, 0) * max(ny - 1, 0) * max(nz - 1, 0)
+        ),
         "n_prism_cells": int(n_wall_quads * int(bl_layers)),
         "n_feature_edge_merged": 0,
         "n_new_points": 0,
-        "total_thickness": float(bl_layers) * float(np.min((maxs - mins) / n_axis)),
+        "total_thickness": float(bl_layers) * first_layer,
         "bbox_diag": bbox_diag,
         "thickness_to_bbox_ratio": (
-            float(bl_layers) * float(np.min((maxs - mins) / n_axis)) / max(bbox_diag, 1e-30)
+            float(bl_layers) * first_layer / max(bbox_diag, 1e-30)
         ),
         "n_degenerate_prisms": 0,
         "max_aspect_ratio": 1.0,
@@ -322,7 +337,7 @@ def _write_structured_box_polymesh(
         "config": {
             "num_layers": int(bl_layers),
             "growth_ratio": 1.2,
-            "first_thickness": float(np.min((maxs - mins) / n_axis)),
+            "first_thickness": first_layer,
             "wall_patch_names": None,
             "set_faces": None,
             "ignore_faces": None,
