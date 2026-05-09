@@ -1832,6 +1832,176 @@ def _build_edge_to_wall_faces(
     return edge_map
 
 
+def _generate_native_bl_vd(
+    *,
+    case_dir: Path,
+    cfg: BLConfig,
+    poly_dir: Path,
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_face_indices: list[int],
+    wall_vert_indices: list[int],
+    vnorm: dict[int, np.ndarray],
+    t_start: float,
+) -> NativeBLResult:
+    """VD-8a — vertex-duplication BL polyMesh writer (env-gated).
+
+    Builds a BL polyMesh consisting of multi-layer prism cells with per-face
+    inner verts (junction-aware duplication) plus junction-edge gap-fill
+    tetrahedra, then writes it under ``case_dir/constant/polyMesh``. Bulk
+    volume cells are NOT preserved — this path is intended as a measurement
+    vehicle for boundary skew at multi-patch junctions where per-vertex
+    extrusion produces tan(theta) bias.
+
+    Triggered by ``AUTO_TESSELL_BL_VD_ENABLE=1``; the default-OFF branch in
+    :func:`generate_native_bl` keeps the production pipeline unchanged.
+    """
+    from core.layers.native_bl_vd import (
+        build_full_bl_polymesh,
+        build_multi_layer_bl,
+        cells_to_polymesh,
+        detect_junction_verts,
+        generate_per_face_inner_verts,
+    )
+
+    tri_wall = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_wall:
+        return NativeBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t_start,
+            message=(
+                "VD-8a: triangle wall faces 없음 — VD MVP 는 tri-only "
+                "지원 (polygon wall fan-triangulation 은 후속 카드)."
+            ),
+        )
+
+    cluster_cos = float(
+        os.environ.get("AUTO_TESSELL_BL_VD_CLUSTER_COS", "0.9")
+    )
+    cos_thresh = float(
+        os.environ.get("AUTO_TESSELL_BL_VD_JUNCTION_COS", "0.9")
+    )
+
+    info = detect_junction_verts(
+        tri_wall, faces, points, cos_thresh=cos_thresh,
+    )
+
+    bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    log.info(
+        "native_bl_vd_start",
+        component="native_bl",
+        phase="VD-8a",
+        n_wall_faces=len(tri_wall),
+        n_wall_verts=len(wall_vert_indices),
+        n_junction_verts=len(info.junction_verts),
+        n_junction_edges=len(info.junction_edges),
+        num_layers=cfg.num_layers,
+        first_thickness=cfg.first_thickness,
+        growth_ratio=cfg.growth_ratio,
+        cluster_cos=cluster_cos,
+        cos_thresh=cos_thresh,
+        bbox_diag=round(bbox_diag, 6),
+    )
+
+    if cfg.num_layers == 1:
+        # Single-layer path also closes junction edges with gap-fill tets.
+        inner = generate_per_face_inner_verts(
+            tri_wall,
+            faces,
+            points,
+            info,
+            vnorm=vnorm,
+            thickness=float(cfg.first_thickness),
+            cluster_cos=cluster_cos,
+        )
+        full = build_full_bl_polymesh(tri_wall, faces, points, inner)
+        pm = full.polymesh
+        n_prism = full.n_prism_cells
+        n_gap = full.n_gap_fill_cells
+    else:
+        ml = build_multi_layer_bl(
+            tri_wall,
+            faces,
+            points,
+            info,
+            num_layers=int(cfg.num_layers),
+            first_layer_thickness=float(cfg.first_thickness),
+            growth_ratio=float(cfg.growth_ratio),
+            vnorm=vnorm,
+            cluster_cos=cluster_cos,
+        )
+        pm = cells_to_polymesh(ml.cell_face_verts, ml.new_points)
+        n_prism = len(ml.cell_face_verts)
+        n_gap = 0
+
+    bnd_entries: list[dict[str, Any]] = []
+    for p in pm.patches:
+        patch_type = "wall" if p["name"] == "wall" else "patch"
+        bnd_entries.append({
+            "name": p["name"],
+            "type": patch_type,
+            "nFaces": int(p["nFaces"]),
+            "startFace": int(p["startFace"]),
+        })
+
+    if cfg.backup_original:
+        bak = case_dir / "constant" / "polyMesh_pre_bl"
+        if bak.exists():
+            shutil.rmtree(bak)
+        shutil.copytree(poly_dir, bak)
+
+    poly_dir.mkdir(parents=True, exist_ok=True)
+    _write_points(poly_dir / "points", pm.points)
+    _write_faces(poly_dir / "faces", pm.faces)
+    _write_labels(
+        poly_dir / "owner",
+        np.array(pm.owner, dtype=np.int64),
+        "owner",
+    )
+    _write_labels(
+        poly_dir / "neighbour",
+        np.array(pm.neighbour, dtype=np.int64),
+        "neighbour",
+    )
+    _write_boundary(poly_dir / "boundary", bnd_entries)
+
+    n_cells_out = n_prism + n_gap
+    n_internal = len(pm.neighbour)
+    n_faces_out = len(pm.faces)
+    n_pts_out = int(pm.points.shape[0])
+    n_new_pts = int(n_pts_out - len(points))
+
+    elapsed = time.perf_counter() - t_start
+    log.info(
+        "native_bl_vd_written",
+        component="native_bl",
+        phase="VD-8a",
+        n_prism_cells=n_prism,
+        n_gap_fill_cells=n_gap,
+        n_cells=n_cells_out,
+        n_points=n_pts_out,
+        n_faces=n_faces_out,
+        n_internal_faces=n_internal,
+        elapsed=round(elapsed, 4),
+    )
+
+    return NativeBLResult(
+        success=True,
+        elapsed=elapsed,
+        n_wall_faces=len(tri_wall),
+        n_wall_verts=len(wall_vert_indices),
+        n_prism_cells=n_cells_out,
+        n_new_points=n_new_pts,
+        total_thickness=float(cfg.first_thickness),
+        message=(
+            f"native_bl VD-8a OK — {n_prism} prism cells "
+            f"({cfg.num_layers} layers × {len(tri_wall)} wall triangles)"
+            + (f" + {n_gap} gap-fill tets" if n_gap else "")
+            + ". bulk volume dropped (BL-only polyMesh)."
+        ),
+    )
+
+
 def generate_native_bl(
     case_dir: Path,
     config: BLConfig | None = None,
@@ -1967,6 +2137,27 @@ def generate_native_bl(
         points, faces, wall_face_indices, owner, cell_centres,
     )
     wall_vert_indices = sorted(vnorm.keys())
+
+    # VD-8a — env-gated vertex-duplication BL path (default OFF).
+    # AUTO_TESSELL_BL_VD_ENABLE=1 routes the BL build through
+    # core.layers.native_bl_vd's per-face inner-vert + gap-fill polyMesh
+    # writer instead of the per-vertex extrusion below. Bulk volume cells
+    # are not preserved — output is BL-only (prism stack + junction
+    # gap-fill tets), which lets us measure boundary skew at multi-patch
+    # junctions without the per-vertex tan(theta) bias. See
+    # docs/plans/vd_bl_refactor_2026-05-09.md.
+    if os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1":
+        return _generate_native_bl_vd(
+            case_dir=case_dir,
+            cfg=cfg,
+            poly_dir=poly_dir,
+            points=points,
+            faces=faces,
+            wall_face_indices=wall_face_indices,
+            wall_vert_indices=wall_vert_indices,
+            vnorm=vnorm,
+            t_start=t_start,
+        )
 
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))

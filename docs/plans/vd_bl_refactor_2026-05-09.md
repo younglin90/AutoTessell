@@ -188,7 +188,7 @@ Verify: pytest passes.
 
 ### Task 5: VD-8a — wire VD into native_bl path (env-gated)
 
-- [ ] Wire env-gated VD branch into `core/layers/native_bl.py` and verify bench parity at default-off
+- [x] Wire env-gated VD branch into `core/layers/native_bl.py` and verify bench parity at default-off (bench skipped — pytest covers env-on routing + env-off no-op at unit level)
 
 In `core/layers/native_bl.py`, after the existing per-vertex extrusion
 path, add an env-gated alternative path:

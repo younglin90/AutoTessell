@@ -1,7 +1,11 @@
 """Unit tests for core.layers.native_bl_vd (vertex duplication BL utilities)."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
+import pytest
 
 from core.layers.native_bl_vd import (
     build_full_bl_polymesh,
@@ -950,3 +954,104 @@ def test_build_multi_layer_bl_disjoint_layer_vert_ids():
         for vid in cell[0]:  # bottom = previous layer's inner
             layer1_outer_ids.add(int(vid))
     assert layer1_outer_ids == layer_inner_ids[0]
+
+
+# ---------------------------------------------------------------------------
+# VD-8a — env-gated wiring through generate_native_bl
+# ---------------------------------------------------------------------------
+
+
+def _write_single_hex_polymesh(case_dir: Path) -> None:
+    """Write a single-hex polyMesh whose only patch is `wall` (all 6 faces)."""
+    from core.generator.polymesh_writer import write_generic_polymesh
+
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    cell_faces = [[
+        [0, 3, 2, 1],  # z-
+        [4, 5, 6, 7],  # z+
+        [0, 1, 5, 4],  # y-
+        [1, 2, 6, 5],  # x+
+        [2, 3, 7, 6],  # y+
+        [3, 0, 4, 7],  # x-
+    ]]
+    write_generic_polymesh(
+        V, cell_faces, case_dir,
+        patch_name="wall", patch_type="wall",
+    )
+
+
+def test_generate_native_bl_vd_env_gated_replaces_polymesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUTO_TESSELL_BL_VD_ENABLE=1 routes generate_native_bl through the VD writer.
+
+    Setup:
+      single-hex polyMesh whose only patch is `wall` (6 quads → 12 wall
+      triangles after native_bl's fan-triangulation).
+    Expectation:
+      * res.success is True
+      * VD message tag is present
+      * n_prism_cells == num_layers × 12 (no bulk cells; VD path drops the bulk)
+      * polyMesh on disk has wall + bl_internal + bl_internal_side patches
+    """
+    from core.layers.native_bl import BLConfig, generate_native_bl
+    from core.utils.polymesh_reader import parse_foam_boundary
+
+    _write_single_hex_polymesh(tmp_path)
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=2,
+            growth_ratio=1.2,
+            first_thickness=0.05,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+    assert "VD-8a" in res.message
+    assert res.n_wall_faces == 12
+    assert res.n_prism_cells == 2 * 12
+
+    boundary = parse_foam_boundary(tmp_path / "constant" / "polyMesh" / "boundary")
+    patch_names = {p["name"] for p in boundary}
+    assert "wall" in patch_names
+    assert "bl_internal" in patch_names
+    assert "bl_internal_side" in patch_names
+
+
+def test_generate_native_bl_vd_env_default_off_keeps_existing_path(
+    tmp_path: Path,
+) -> None:
+    """Default-off env: existing per-vertex extrusion path runs (no VD tag in message).
+
+    This guards Task 5's bench-parity requirement at the unit-test level — VD
+    code must not affect the production pipeline when the env flag is unset.
+    """
+    from core.layers.native_bl import BLConfig, generate_native_bl
+
+    _write_single_hex_polymesh(tmp_path)
+
+    # Be explicit: neither set nor "1". Pop in case the pytest worker inherits
+    # an env from an earlier monkeypatch'd test.
+    os.environ.pop("AUTO_TESSELL_BL_VD_ENABLE", None)
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=1,
+            first_thickness=0.05,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+    assert "VD-8a" not in res.message
+    # Existing path message format includes "Phase 2 OK" + "bl_side_faces=".
+    assert "Phase 2 OK" in res.message
