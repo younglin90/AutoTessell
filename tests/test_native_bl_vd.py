@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from core.layers.native_bl_vd import (
+    build_full_bl_polymesh,
     build_gap_fill_cells,
     build_prism_cells,
     cells_to_polymesh,
@@ -555,3 +556,191 @@ def test_build_gap_fill_cells_returns_tet_face_verts_consistent():
         for v in verts:
             count = sum(1 for face in cell if v in face)
             assert count == 3
+
+
+def test_cells_to_polymesh_gap_fill_kind_routes_to_side_patch():
+    """cell_kinds='gap_fill' classifies every face as bl_internal_side."""
+    # One isolated tet (4 triangle faces) labelled gap_fill.
+    cell_face_verts = [[
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 1],
+        [1, 3, 2],
+    ]]
+    points = np.zeros((4, 3), dtype=np.float64)
+    pm = cells_to_polymesh(cell_face_verts, points, cell_kinds=["gap_fill"])
+    assert len(pm.faces) == 4
+    by_name = {p["name"]: p for p in pm.patches}
+    # Even face_idx 0/1 must NOT route to wall/bl_internal for gap_fill cells.
+    assert "wall" not in by_name
+    assert "bl_internal" not in by_name
+    assert by_name["bl_internal_side"]["nFaces"] == 4
+
+
+def test_cells_to_polymesh_cell_kinds_length_mismatch_raises():
+    cell_face_verts = [[[0, 1, 2]]]
+    points = np.zeros((3, 3), dtype=np.float64)
+    try:
+        cells_to_polymesh(cell_face_verts, points, cell_kinds=["prism", "gap_fill"])
+        raise AssertionError("Expected ValueError for length mismatch")
+    except ValueError as e:
+        assert "cell_kinds" in str(e)
+
+
+def test_build_full_bl_polymesh_flat_strip_no_gap():
+    """Flat strip — 2 prisms, no junctions, 0 gap-fill cells.
+
+    After triangulating side quads canonically, the shared diagonal side
+    becomes 2 internal triangle pairs (instead of 1 internal quad).
+    """
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    inner = generate_per_face_inner_verts([0, 1], faces, points, info, thickness=0.1)
+    result = build_full_bl_polymesh([0, 1], faces, points, inner)
+
+    assert result.n_prism_cells == 2
+    assert result.n_gap_fill_cells == 0
+    assert result.junction_edges == []
+
+    pm = result.polymesh
+    # Every face is now a triangle (prism quads triangulated, no quads remain).
+    for f in pm.faces:
+        assert len(f) == 3
+    # 2 internal faces from the canonical split of the shared side quad.
+    assert len(pm.neighbour) == 2
+    assert pm.owner[:2] == [0, 0]
+    assert pm.neighbour == [1, 1]
+
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 2  # bottom of each prism
+    assert by_name["bl_internal"]["nFaces"] == 2  # cap of each prism
+    # 2 prisms × 6 side triangles = 12; 2×2 internal occurrences => 8 boundary.
+    assert by_name["bl_internal_side"]["nFaces"] == 8
+
+
+def test_build_full_bl_polymesh_tent_one_junction_edge():
+    """Tent (2 perpendicular tris share an edge) → 1 junction → 2 gap tets.
+
+    Triangulated prism sides on the junction edge share with the gap-fill
+    tet faces — 4 internal faces (2 per (prism, tet) pair).
+    """
+    points = np.array([
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+    ], dtype=np.float64)
+    faces = [[0, 1, 2], [1, 0, 3]]
+    info = detect_junction_verts([0, 1], faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        [0, 1], faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    result = build_full_bl_polymesh([0, 1], faces, points, inner)
+
+    assert result.n_prism_cells == 2
+    assert result.n_gap_fill_cells == 2
+    assert result.junction_edges == [(0, 1)]
+
+    pm = result.polymesh
+    for f in pm.faces:
+        assert len(f) == 3
+    # Junction edge produces 2 internal pairs per (prism, tet) match → 4 total.
+    assert len(pm.neighbour) == 4
+
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 2  # 1 per prism
+    assert by_name["bl_internal"]["nFaces"] == 2  # 1 per prism
+    # Side patch: 8 prism (non-junction edges, all boundary) + 4 tet (unmatched
+    # tet triangles on the planar quad away from prism diagonal).
+    assert by_name["bl_internal_side"]["nFaces"] == 12
+
+    # Internal faces have owner < neighbour.
+    for o, n in zip(pm.owner[:4], pm.neighbour, strict=True):
+        assert o < n
+    # Each internal pair links a prism (cell_id < 2) with a gap-fill tet
+    # (cell_id ∈ {2, 3}), confirming the triangulation closes the gap.
+    for o, n in zip(pm.owner[:4], pm.neighbour, strict=True):
+        assert o < 2
+        assert n in (2, 3)
+
+
+def test_build_full_bl_polymesh_cube_no_open_prism_sides():
+    """Cube — every prism side face is paired (face-diag with sibling, junction
+    edge with gap-fill tet). Only boundary faces are wall, cap, and unmatched
+    tet faces forming the gap-fill closure on cube edges.
+    """
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    result = build_full_bl_polymesh(list(range(12)), faces, points, inner)
+
+    assert result.n_prism_cells == 12
+    assert result.n_gap_fill_cells == 24
+    assert len(result.junction_edges) == 12
+
+    pm = result.polymesh
+    for f in pm.faces:
+        assert len(f) == 3
+
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 12
+    assert by_name["bl_internal"]["nFaces"] == 12
+    # Internal: 6 face-diagonals × 2 internal triangle pairs = 12, plus 12
+    # cube edges × 4 prism↔tet pairs = 48. Total 60 internal faces.
+    assert len(pm.neighbour) == 60
+    # Side boundary: 24 gap-fill tets × 2 unmatched faces each = 48.
+    assert by_name["bl_internal_side"]["nFaces"] == 48
+    assert len(pm.faces) == 132  # 60 internal + 12 wall + 12 cap + 48 side
+
+    # Every internal face is shared between either two prisms or a prism and
+    # a gap-fill tet. The latter requires owner < 12 (prism) and neighbour
+    # in [12, 36) (gap-fill).
+    n_prism_prism = 0
+    n_prism_tet = 0
+    for o, n in zip(pm.owner[:60], pm.neighbour, strict=True):
+        assert o < n
+        if o < 12 and n < 12:
+            n_prism_prism += 1
+        elif o < 12 and n >= 12:
+            n_prism_tet += 1
+        else:
+            raise AssertionError(f"Unexpected internal owner/neighbour pair ({o}, {n})")
+    assert n_prism_prism == 12
+    assert n_prism_tet == 48
+
+
+def test_build_full_bl_polymesh_owner_lt_neighbour_invariant():
+    """All internal faces in the merged polyMesh satisfy owner < neighbour."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    result = build_full_bl_polymesh(list(range(12)), faces, points, inner)
+    pm = result.polymesh
+    for o, n in zip(pm.owner[: len(pm.neighbour)], pm.neighbour, strict=True):
+        assert o < n
+    # Owner array length matches faces; neighbour only the internal section.
+    assert len(pm.owner) == len(pm.faces)
+    assert len(pm.neighbour) <= len(pm.owner)
+
+
+def test_build_full_bl_polymesh_relaxed_cluster_no_junction_no_gap():
+    """cluster_cos=-1.0 collapses every junction → no gap-fill cells, no
+    junction edges; result is identical in cell count to the prism-only case
+    (with triangulated side quads)."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=-1.0,
+    )
+    result = build_full_bl_polymesh(list(range(12)), faces, points, inner)
+
+    assert result.n_prism_cells == 12
+    assert result.n_gap_fill_cells == 0
+    assert result.junction_edges == []
+    pm = result.polymesh
+    for f in pm.faces:
+        assert len(f) == 3

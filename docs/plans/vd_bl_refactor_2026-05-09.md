@@ -141,7 +141,7 @@ Verify: `timeout 60 python3 -m pytest tests/test_native_bl_vd.py -q`.
 
 ### Task 3: VD-6 — combined polyMesh for prisms + gap fill
 
-- [ ] Implement `build_full_bl_polymesh` + tests
+- [x] Implement `build_full_bl_polymesh` + tests
 
 Wire `build_prism_cells` + `build_gap_fill_cells` into a single
 `build_full_bl_polymesh()` that returns the merged polyMesh result.

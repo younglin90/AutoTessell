@@ -436,6 +436,8 @@ def _patch_for_face_idx(face_idx_in_cell: int) -> str:
 def cells_to_polymesh(
     cell_face_verts: list[list[list[int]]],
     points: np.ndarray,
+    *,
+    cell_kinds: list[str] | None = None,
 ) -> PolyMeshResult:
     """Convert per-cell face lists into OpenFOAM polyMesh format.
 
@@ -456,13 +458,31 @@ def cells_to_polymesh(
         cell_face_verts: per-cell list of face vertex lists (e.g. from
             build_prism_cells.cell_face_verts).
         points: (N, 3) vertex coordinates (passed through to result).
+        cell_kinds: optional per-cell kind tag controlling patch
+            classification. ``None`` (default) treats every cell as
+            ``"prism"`` (face 0 = wall, face 1 = bl_internal, rest =
+            bl_internal_side). ``"gap_fill"`` puts every face on the
+            bl_internal_side patch.
 
     Returns:
         PolyMeshResult.
 
     Raises:
-        ValueError: if any face appears in 3 or more cells (non-manifold).
+        ValueError: if any face appears in 3 or more cells (non-manifold)
+            or if ``cell_kinds`` length disagrees with cells.
     """
+    if cell_kinds is not None and len(cell_kinds) != len(cell_face_verts):
+        raise ValueError(
+            f"cell_kinds length {len(cell_kinds)} != cells "
+            f"{len(cell_face_verts)}"
+        )
+
+    def _patch_for(cell_id: int, face_idx: int) -> str:
+        kind = "prism" if cell_kinds is None else cell_kinds[cell_id]
+        if kind == "prism":
+            return _patch_for_face_idx(face_idx)
+        return "bl_internal_side"
+
     occurrences: dict[tuple[int, ...], list[tuple[int, int, list[int]]]] = (
         defaultdict(list)
     )
@@ -480,7 +500,7 @@ def cells_to_polymesh(
     for key, occs in occurrences.items():
         if len(occs) == 1:
             cell_id, face_idx, raw_verts = occs[0]
-            patch_name = _patch_for_face_idx(face_idx)
+            patch_name = _patch_for(cell_id, face_idx)
             if patch_name not in boundary_records:
                 boundary_records[patch_name] = []
             boundary_records[patch_name].append((cell_id, raw_verts))
@@ -659,4 +679,124 @@ def build_gap_fill_cells(
     return GapFillResult(
         cell_face_verts=cell_face_verts,
         junction_edges=filled_edges,
+    )
+
+
+def _triangulate_quad(quad: list[int]) -> list[list[int]]:
+    """Canonical triangulation of a 4-vertex quad face.
+
+    Splits along the diagonal connecting the lowest-id vertex of the quad to
+    its non-adjacent neighbour. Both incidences of the same shared quad
+    therefore pick identical triangles regardless of which cyclic ordering
+    each cell stored, which lets prism side quads share with adjacent
+    gap-fill tetrahedra at junction edges.
+    """
+    if len(quad) != 4:
+        raise ValueError(f"Expected 4-vert quad, got {len(quad)}: {quad}")
+    verts = [int(v) for v in quad]
+    min_pos = verts.index(min(verts))
+    a = verts[min_pos]
+    b = verts[(min_pos + 1) % 4]
+    c = verts[(min_pos + 2) % 4]
+    d = verts[(min_pos + 3) % 4]
+    return [[a, b, c], [a, c, d]]
+
+
+def _triangulate_prism_cell(prism_cell: list[list[int]]) -> list[list[int]]:
+    """Replace every 4-vertex side face in a prism cell with 2 triangles.
+
+    Triangle faces (wall + cap) pass through unchanged so the patch
+    classifier still sees face_idx 0 = wall, face_idx 1 = bl_internal in the
+    rebuilt cell. The remaining 6 indices belong to side triangles which all
+    classify as bl_internal_side.
+    """
+    out: list[list[int]] = []
+    for face in prism_cell:
+        if len(face) == 4:
+            out.extend(_triangulate_quad(face))
+        else:
+            out.append([int(v) for v in face])
+    return out
+
+
+@dataclass
+class FullBLResult:
+    """Combined polyMesh of prism BL cells and junction-edge gap-fill cells.
+
+    polymesh: PolyMeshResult covering both prism and gap-fill cells.
+    n_prism_cells: number of prism cells (first ``n_prism_cells`` entries in
+        the underlying cell list).
+    n_gap_fill_cells: number of tet gap-fill cells appended after prisms.
+    junction_edges: wall edges that produced gap-fill cells (from
+        ``build_gap_fill_cells``).
+    """
+
+    polymesh: PolyMeshResult
+    n_prism_cells: int
+    n_gap_fill_cells: int
+    junction_edges: list[tuple[int, int]]
+
+
+def build_full_bl_polymesh(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    inner_result: InnerVertResult,
+) -> FullBLResult:
+    """Build a unified polyMesh combining prism BL + junction gap-fill cells.
+
+    Pipeline:
+        1. ``build_prism_cells`` for the per-wall-triangle prism layer.
+        2. Triangulate every prism's 4-vertex side quad with a canonical
+           diagonal so adjacent prisms / gap-fill tets agree on the split.
+        3. ``build_gap_fill_cells`` for tetrahedra at junction edges where
+           the per-face inner-vertex duplication leaves a topology gap.
+        4. Concatenate cells (prisms first, gap-fills second) and run
+           ``cells_to_polymesh`` with per-cell kind tags so gap-fill faces
+           land on bl_internal_side instead of being misclassified as wall
+           or bl_internal.
+
+    The triangulation step is what lets prism side faces share with the
+    triangle faces of the gap-fill tets — without it the 4-vert quad and the
+    3-vert triangles never match and every junction edge stays open.
+
+    Args:
+        wall_face_indices: indices of wall faces in ``faces``.
+        faces: list of face vertex lists.
+        points: original (N, 3) coordinates (passed to ``build_gap_fill_cells``
+            for tet orientation; the polyMesh stores ``inner_result.new_points``).
+        inner_result: from ``generate_per_face_inner_verts``.
+
+    Returns:
+        FullBLResult.
+
+    Raises:
+        ValueError / NotImplementedError: bubbled from the underlying
+            builders if topology preconditions are violated.
+    """
+    prisms = build_prism_cells(wall_face_indices, faces, inner_result)
+    gap = build_gap_fill_cells(wall_face_indices, faces, points, inner_result)
+
+    triangulated_prism_cells = [
+        _triangulate_prism_cell(cell) for cell in prisms.cell_face_verts
+    ]
+    n_prism = len(triangulated_prism_cells)
+    n_gap = len(gap.cell_face_verts)
+
+    combined_cells: list[list[list[int]]] = (
+        triangulated_prism_cells + gap.cell_face_verts
+    )
+    cell_kinds = ["prism"] * n_prism + ["gap_fill"] * n_gap
+
+    pm = cells_to_polymesh(
+        combined_cells,
+        inner_result.new_points,
+        cell_kinds=cell_kinds,
+    )
+
+    return FullBLResult(
+        polymesh=pm,
+        n_prism_cells=n_prism,
+        n_gap_fill_cells=n_gap,
+        junction_edges=list(gap.junction_edges),
     )
