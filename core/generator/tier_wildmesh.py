@@ -810,6 +810,19 @@ def _write_axis_extrusion_polymesh(
             "envelope_eps_rel": 1e-6,
         },
     }
+    bl_quality["fastpath"] = {
+        "kind": "axis_extrusion",
+        "axis": int(axis),
+        "project_axes": [int(a) for a in project_axes],
+        "section_source": str(section_source),
+        "cap_loops": int(len(loops)),
+        "cap_holes": int(len(hole_loops)),
+        "section_area": float(polygon.area),
+        "section_perimeter": float(polygon.length),
+        "axis_length": float(abs(z1 - z0)),
+        "plane_triangles": int(len(plane_tris)),
+        "z_layers": int(num_z),
+    }
     (case_dir / "native_bl_quality.json").write_text(
         json.dumps(bl_quality, indent=2, sort_keys=True),
         encoding="utf-8",
