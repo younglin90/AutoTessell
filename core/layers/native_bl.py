@@ -2202,6 +2202,73 @@ def generate_native_bl(
     )
     wall_vert_indices = sorted(vnorm.keys())
 
+    # SMESH/cfMesh-style SetIgnoreFaces prefilter for tet BL robustness.
+    # If the owner-cell centre is almost tangential to a wall face normal,
+    # the inserted prism's innermost interface is very likely to trip
+    # maxNonOrtho/faceWeight.  Leave those faces as ordinary wall boundary
+    # faces instead of forcing a collapsed BL front through them.
+    if os.environ.get("AUTO_TESSELL_BL_OWNER_ORTHO_PREFILTER", "1") != "0":
+        try:
+            max_deg = float(
+                os.environ.get("AUTO_TESSELL_BL_OWNER_ORTHO_MAX_DEG", "70.0")
+            )
+            min_keep_ratio = float(
+                os.environ.get("AUTO_TESSELL_BL_OWNER_ORTHO_MIN_KEEP", "0.25")
+            )
+            scored: list[tuple[float, int]] = []
+            for fi in wall_face_indices:
+                if fi < 0 or fi >= len(faces) or fi >= len(owner):
+                    continue
+                face = faces[fi]
+                if len(face) < 3:
+                    continue
+                n, area = _face_normal_area(points, face)
+                if area <= 1e-30:
+                    continue
+                own = int(owner[fi])
+                if own < 0 or own >= len(cell_centres):
+                    continue
+                fc = _face_centroid(points, face)
+                axis = fc - cell_centres[own]
+                axis_n = float(np.linalg.norm(axis))
+                if axis_n <= 1e-30:
+                    continue
+                axis /= axis_n
+                if float(np.dot(n, axis)) < 0.0:
+                    n = -n
+                cosv = float(np.clip(np.dot(n, axis), -1.0, 1.0))
+                angle = float(np.degrees(np.arccos(cosv)))
+                scored.append((angle, fi))
+
+            if scored:
+                keep = [fi for angle, fi in scored if angle <= max_deg]
+                min_keep = max(1, int(np.ceil(len(scored) * min_keep_ratio)))
+                if len(keep) < min_keep:
+                    keep = [fi for _, fi in sorted(scored)[:min_keep]]
+                keep_set = set(keep)
+                if len(keep_set) < len(wall_face_indices):
+                    dropped = len(wall_face_indices) - len(keep_set)
+                    wall_face_indices = [fi for fi in wall_face_indices if fi in keep_set]
+                    vnorm = compute_vertex_normals(
+                        points, faces, wall_face_indices, owner, cell_centres,
+                    )
+                    wall_vert_indices = sorted(vnorm.keys())
+                    log.info(
+                        "native_bl_owner_ortho_prefilter",
+                        component="native_bl",
+                        phase="SMESH_SETIGNORE",
+                        n_before=len(scored),
+                        n_after=len(wall_face_indices),
+                        n_dropped=dropped,
+                        max_angle_deg=max_deg,
+                        worst_angle_deg=round(max(angle for angle, _ in scored), 2),
+                    )
+        except Exception as _ortho_exc:
+            log.debug(
+                "native_bl_owner_ortho_prefilter_skipped",
+                reason=str(_ortho_exc)[:120],
+            )
+
     # VD-8a — env-gated vertex-duplication BL path (default OFF).
     # AUTO_TESSELL_BL_VD_ENABLE=1 routes the BL build through
     # core.layers.native_bl_vd's per-face inner-vert + gap-fill polyMesh
