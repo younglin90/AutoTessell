@@ -1663,12 +1663,6 @@ def _merge_skewed_bl_internal_quads(
     face_centres = np.zeros((len(faces), 3), dtype=np.float64)
     for fi, face in enumerate(faces):
         face_centres[fi] = points[face].mean(axis=0)
-    non_ortho_threshold = float(
-        os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_MERGE_NON_ORTHO", "70.0")
-    )
-    face_weight_threshold = float(
-        os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_MERGE_FACE_WEIGHT", "0.05")
-    )
 
     parent = list(range(n_cells_cur))
 
@@ -1690,7 +1684,7 @@ def _merge_skewed_bl_internal_quads(
         nbr = int(nbr_arr[fi])
         if own < base_n_cells or nbr < base_n_cells:
             continue
-        if len(faces[fi]) < 3:
+        if len(faces[fi]) != 4:
             continue
         d = centres[nbr] - centres[own]
         d_mag = float(np.linalg.norm(d))
@@ -1700,31 +1694,7 @@ def _merge_skewed_bl_internal_quads(
         t = float(np.dot(diff, d) / (d_mag * d_mag))
         proj = centres[own] + t * d
         skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
-
-        face_pts = points[faces[fi]]
-        area_vec = np.zeros(3, dtype=np.float64)
-        p0 = face_pts[0]
-        for k in range(1, len(face_pts) - 1):
-            area_vec += np.cross(face_pts[k] - p0, face_pts[k + 1] - p0)
-        area_mag = float(np.linalg.norm(area_vec))
-        non_ortho = 0.0
-        face_weight = 1.0
-        if area_mag > 1e-30:
-            if float(np.dot(area_vec, face_centres[fi] - centres[own])) < 0.0:
-                area_vec = -area_vec
-            cosv = abs(float(np.dot(area_vec, d))) / (area_mag * d_mag)
-            non_ortho = float(np.degrees(np.arccos(np.clip(cosv, 0.0, 1.0))))
-            d_own = abs(float(np.dot(area_vec, face_centres[fi] - centres[own])))
-            d_nei = abs(float(np.dot(area_vec, centres[nbr] - face_centres[fi])))
-            denom = d_own + d_nei
-            if denom > 1e-300:
-                face_weight = min(d_own, d_nei) / denom
-
-        if (
-            skew > skew_threshold
-            or non_ortho > non_ortho_threshold
-            or face_weight < face_weight_threshold
-        ):
+        if skew > skew_threshold:
             _union(own, nbr)
             n_marked += 1
 
@@ -1781,8 +1751,6 @@ def _merge_skewed_bl_internal_quads(
         n_cells_before=int(n_cells_cur),
         n_cells_after=int(len(used_cells)),
         skew_threshold=float(skew_threshold),
-        non_ortho_threshold=float(non_ortho_threshold),
-        face_weight_threshold=float(face_weight_threshold),
     )
     return out_faces, out_owner, out_nbr, out_boundary, removed
 
