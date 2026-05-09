@@ -1196,7 +1196,7 @@ class TierWildMeshGenerator:
 
         if (
             _mesh_type_fast == "tet"
-            and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "1") != "0"
+            and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "0") != "0"
         ):
             target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
             bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
