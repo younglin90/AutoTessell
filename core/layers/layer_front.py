@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass(frozen=True)
 class LayerEdge:
@@ -21,6 +23,27 @@ class LayerEdge:
 
 
 @dataclass(frozen=True)
+class LayerVertex:
+    """SMESH-style advancement state for one source wall vertex.
+
+    This is the Python analogue of the per-node layer-edge graph used by
+    viscous-layer front methods: each wall vertex knows its adjacent wall
+    faces, incident front edges, neighbouring wall vertices and whether it is
+    geometrically blocked by a feature, boundary, or non-manifold front.
+    """
+
+    vertex: int
+    faces: tuple[int, ...]
+    edge_indices: tuple[int, ...]
+    neighbours: tuple[int, ...]
+    is_boundary: bool
+    is_nonmanifold: bool
+    is_feature: bool
+    is_blocked: bool
+    normal: tuple[float, float, float] | None
+
+
+@dataclass(frozen=True)
 class LayerFront:
     """Topology summary for a selected set of wall faces."""
 
@@ -30,6 +53,27 @@ class LayerFront:
     edges: tuple[LayerEdge, ...]
     n_boundary_edges: int
     n_nonmanifold_edges: int
+    layer_vertices: tuple[LayerVertex, ...] = ()
+    n_feature_vertices: int = 0
+    n_blocked_vertices: int = 0
+
+
+def _unit_face_normal(
+    faces: list[list[int]],
+    points: np.ndarray,
+    fi: int,
+) -> np.ndarray | None:
+    f = faces[fi]
+    if len(f) < 3:
+        return None
+    p0 = np.asarray(points[f[0]], dtype=np.float64)
+    p1 = np.asarray(points[f[1]], dtype=np.float64)
+    p2 = np.asarray(points[f[2]], dtype=np.float64)
+    n_raw = np.cross(p1 - p0, p2 - p0)
+    mag = float(np.linalg.norm(n_raw))
+    if mag < 1e-30:
+        return None
+    return n_raw / mag
 
 
 def build_layer_front(
@@ -37,6 +81,8 @@ def build_layer_front(
     candidate_faces: list[int],
     *,
     strict_manifold: bool = False,
+    points: np.ndarray | None = None,
+    feature_cos_thresh: float = 0.9,
 ) -> LayerFront:
     """Build an advancing-front topology view for selected wall faces.
 
@@ -45,6 +91,10 @@ def build_layer_front(
         candidate_faces: absolute face ids selected by wall patches / SetFaces.
         strict_manifold: if true, faces touching non-manifold front edges are
             moved to ignored_faces. Default is diagnostic-only.
+        points: optional mesh points. When supplied, per-vertex normals and
+            feature flags are computed from adjacent active face normals.
+        feature_cos_thresh: a source vertex is a feature if any adjacent active
+            face-normal pair has cosine below this threshold.
     """
     edge_to_faces: dict[tuple[int, int], list[int]] = {}
     face_edges: dict[int, list[tuple[int, int]]] = {}
@@ -78,6 +128,7 @@ def build_layer_front(
     verts = sorted({int(v) for fi in active for v in faces[fi]})
 
     edges: list[LayerEdge] = []
+    edge_index_by_key: dict[tuple[int, int], int] = {}
     n_boundary = 0
     n_nonmanifold = 0
     for edge, owners in sorted(edge_to_faces.items()):
@@ -88,6 +139,7 @@ def build_layer_front(
         is_nonmanifold = len(owners_active) > 2
         n_boundary += int(is_boundary)
         n_nonmanifold += int(is_nonmanifold)
+        edge_index_by_key[edge] = len(edges)
         edges.append(
             LayerEdge(
                 vertices=edge,
@@ -97,6 +149,73 @@ def build_layer_front(
             )
         )
 
+    face_normals: dict[int, np.ndarray] = {}
+    if points is not None:
+        for fi in active:
+            n = _unit_face_normal(faces, points, fi)
+            if n is not None:
+                face_normals[fi] = n
+
+    v_to_faces: dict[int, list[int]] = {v: [] for v in verts}
+    v_to_edge_indices: dict[int, list[int]] = {v: [] for v in verts}
+    v_to_neighbours: dict[int, set[int]] = {v: set() for v in verts}
+    for fi in active:
+        for v in faces[fi]:
+            if int(v) in v_to_faces:
+                v_to_faces[int(v)].append(int(fi))
+    for edge, ei in edge_index_by_key.items():
+        va, vb = edge
+        if va in v_to_edge_indices:
+            v_to_edge_indices[va].append(ei)
+            v_to_neighbours[va].add(vb)
+        if vb in v_to_edge_indices:
+            v_to_edge_indices[vb].append(ei)
+            v_to_neighbours[vb].add(va)
+
+    layer_vertices: list[LayerVertex] = []
+    for v in verts:
+        incident_edge_ids = tuple(sorted(v_to_edge_indices.get(v, [])))
+        incident_edges = [edges[ei] for ei in incident_edge_ids]
+        is_boundary = any(e.is_boundary for e in incident_edges)
+        is_nonmanifold = any(e.is_nonmanifold for e in incident_edges)
+
+        adj_face_ids = tuple(sorted(set(v_to_faces.get(v, []))))
+        normals = [face_normals[fi] for fi in adj_face_ids if fi in face_normals]
+        normal_tuple: tuple[float, float, float] | None = None
+        is_feature = False
+        if normals:
+            n_avg = np.sum(np.stack(normals, axis=0), axis=0)
+            mag = float(np.linalg.norm(n_avg))
+            if mag > 1e-30:
+                n_avg = n_avg / mag
+                normal_tuple = (
+                    float(n_avg[0]),
+                    float(n_avg[1]),
+                    float(n_avg[2]),
+                )
+            if len(normals) >= 2:
+                normal_stack = np.stack(normals, axis=0)
+                coss = normal_stack @ normal_stack.T
+                np.fill_diagonal(coss, 1.0)
+                is_feature = float(coss.min()) < float(feature_cos_thresh)
+
+        layer_vertices.append(
+            LayerVertex(
+                vertex=int(v),
+                faces=adj_face_ids,
+                edge_indices=incident_edge_ids,
+                neighbours=tuple(sorted(v_to_neighbours.get(v, set()))),
+                is_boundary=is_boundary,
+                is_nonmanifold=is_nonmanifold,
+                is_feature=is_feature,
+                is_blocked=bool(is_boundary or is_nonmanifold or is_feature),
+                normal=normal_tuple,
+            )
+        )
+
+    n_feature_vertices = sum(1 for v in layer_vertices if v.is_feature)
+    n_blocked_vertices = sum(1 for v in layer_vertices if v.is_blocked)
+
     return LayerFront(
         active_faces=active,
         ignored_faces=tuple(sorted(ignored)),
@@ -104,4 +223,7 @@ def build_layer_front(
         edges=tuple(edges),
         n_boundary_edges=n_boundary,
         n_nonmanifold_edges=n_nonmanifold,
+        layer_vertices=tuple(layer_vertices),
+        n_feature_vertices=int(n_feature_vertices),
+        n_blocked_vertices=int(n_blocked_vertices),
     )
