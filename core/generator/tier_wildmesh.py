@@ -594,14 +594,67 @@ def _write_axis_extrusion_polymesh(
     if np.any(extents <= 0.0):
         return None
 
-    cap_candidates: list[tuple[float, int, tuple[list[np.ndarray], list[int], tuple[float, float]]]] = []
+    cap_candidates: list[
+        tuple[
+            float,
+            float,
+            int,
+            tuple[list[np.ndarray], list[int], tuple[float, float]],
+        ]
+    ] = []
+    surf_area_for_axis = float(getattr(surf, "area", 0.0) or 0.0)
     for cand_axis in range(3):
         cand_cap = _extract_axis_extrusion_cap_loops(surf, cand_axis)
         if cand_cap is not None:
-            cap_candidates.append((float(extents[cand_axis]), int(cand_axis), cand_cap))
+            loops_c, _, (cz0, cz1) = cand_cap
+            area_err = 1.0
+            if surf_area_for_axis > 0.0 and loops_c:
+                try:
+                    loops_sorted = sorted(
+                        loops_c,
+                        key=lambda lp: abs(_signed_area_2d(lp)),
+                        reverse=True,
+                    )
+                    poly_c = Polygon(
+                        loops_sorted[0],
+                        holes=[
+                            lp.tolist()
+                            for lp in loops_sorted[1:]
+                            if len(lp) >= 3
+                        ],
+                    )
+                    if not poly_c.is_valid:
+                        poly_c = poly_c.buffer(0)
+                    if not poly_c.is_empty and float(poly_c.area) > 0.0:
+                        pred_area = (
+                            2.0 * float(poly_c.area)
+                            + float(poly_c.length) * abs(float(cz1) - float(cz0))
+                        )
+                        if pred_area > 0.0:
+                            area_err = abs(pred_area - surf_area_for_axis) / max(
+                                pred_area,
+                                surf_area_for_axis,
+                            )
+                except Exception:
+                    area_err = 1.0
+            cap_candidates.append((
+                float(extents[cand_axis]), float(area_err), int(cand_axis), cand_cap,
+            ))
 
     if cap_candidates:
-        _, axis, cap = min(cap_candidates, key=lambda item: item[0])
+        by_extent = min(cap_candidates, key=lambda item: item[0])
+        by_area = min(cap_candidates, key=lambda item: item[1])
+        chosen = by_extent
+        if by_extent[1] > 0.8 and by_area[1] < by_extent[1] * 0.5:
+            chosen = by_area
+            logger.info(
+                "wildmesh_axis_extrusion_area_axis_selected",
+                extent_axis=int(by_extent[2]),
+                extent_axis_area_error=round(float(by_extent[1]), 4),
+                area_axis=int(by_area[2]),
+                area_axis_error=round(float(by_area[1]), 4),
+            )
+        _, _, axis, cap = chosen
         section_source = "cap"
     else:
         axis = int(np.argmin(extents))
