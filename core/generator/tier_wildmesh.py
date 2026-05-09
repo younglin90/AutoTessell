@@ -572,6 +572,88 @@ def _extract_projected_silhouette_loops(
         return None
 
 
+def _axis_section_topology_summary(
+    surf: Any,
+    axis: int,
+    *,
+    n_samples: int = 5,
+) -> dict[str, Any]:
+    """Sample sweep-axis sections and summarize topology changes.
+
+    The axis-extrusion fastpath is only truly valid for constant-topology sweep
+    volumes.  This diagnostic metadata identifies cases where a planar cap
+    outline misses interior holes/components; later rewrite stages can use the
+    same signal to route into topology-aware decomposition.
+    """
+    summary: dict[str, Any] = {
+        "sample_count": int(max(0, n_samples)),
+        "usable_count": 0,
+        "polygon_counts": [],
+        "hole_counts": [],
+        "area_min": None,
+        "area_max": None,
+        "topology_stable": False,
+    }
+    try:
+        vertices = np.asarray(surf.vertices, dtype=np.float64)
+        if vertices.size == 0 or n_samples <= 0:
+            return summary
+        bounds = np.asarray(surf.bounds, dtype=np.float64)
+        z0 = float(bounds[0, axis])
+        z1 = float(bounds[1, axis])
+        span = z1 - z0
+        if span <= 0.0:
+            return summary
+        normal = np.zeros(3, dtype=np.float64)
+        normal[axis] = 1.0
+        polygon_counts: list[int] = []
+        hole_counts: list[int] = []
+        areas: list[float] = []
+        for t in np.linspace(0.1, 0.9, int(n_samples)):
+            origin = bounds.mean(axis=0)
+            origin[axis] = z0 + span * float(t)
+            section = surf.section(plane_origin=origin, plane_normal=normal)
+            if section is None:
+                polygon_counts.append(0)
+                hole_counts.append(0)
+                continue
+            path2d, _ = (
+                section.to_2D() if hasattr(section, "to_2D") else section.to_planar()
+            )
+            polygons = [
+                poly
+                for poly in (getattr(path2d, "polygons_full", []) or [])
+                if not poly.is_empty and float(poly.area) > 1.0e-12
+            ]
+            polygon_counts.append(int(len(polygons)))
+            hole_counts.append(int(sum(len(poly.interiors) for poly in polygons)))
+            if polygons:
+                areas.append(float(sum(poly.area for poly in polygons)))
+        usable = [count for count in polygon_counts if count > 0]
+        holes_usable = [
+            holes for count, holes in zip(polygon_counts, hole_counts, strict=False)
+            if count > 0
+        ]
+        summary.update(
+            {
+                "usable_count": int(len(usable)),
+                "polygon_counts": polygon_counts,
+                "hole_counts": hole_counts,
+                "area_min": float(min(areas)) if areas else None,
+                "area_max": float(max(areas)) if areas else None,
+                "topology_stable": bool(
+                    usable
+                    and len(usable) == int(n_samples)
+                    and len(set(usable)) == 1
+                    and len(set(holes_usable)) == 1
+                ),
+            }
+        )
+    except Exception as exc:
+        summary["error"] = str(exc)[:160]
+    return summary
+
+
 def _write_axis_extrusion_polymesh(
     surf: Any,
     case_dir: Path,
@@ -822,6 +904,7 @@ def _write_axis_extrusion_polymesh(
         "axis_length": float(abs(z1 - z0)),
         "plane_triangles": int(len(plane_tris)),
         "z_layers": int(num_z),
+        "section_topology": _axis_section_topology_summary(surf, axis),
     }
     (case_dir / "native_bl_quality.json").write_text(
         json.dumps(bl_quality, indent=2, sort_keys=True),
