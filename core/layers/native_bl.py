@@ -1701,6 +1701,7 @@ def _bl_bad_internal_face_histogram(
             "face_weight": 0,
             "degenerate": 0,
         },
+        "components": [],
         "worst_faces": [],
     }
     if len(neighbour) <= 0 or not faces or len(owner) == 0:
@@ -1722,6 +1723,7 @@ def _bl_bad_internal_face_histogram(
         n_cells_cur,
     )
     worst: list[dict[str, Any]] = []
+    bad_records: list[dict[str, Any]] = []
     for fi in range(int(len(neighbour))):
         own = int(owner_arr[fi])
         nbr = int(nbr_arr[fi])
@@ -1785,6 +1787,14 @@ def _bl_bad_internal_face_histogram(
                 "face_weight": float(face_weight),
             }
         )
+        bad_records.append(
+            {
+                "face": int(fi),
+                "owner": own,
+                "neighbour": nbr,
+                "class": pair_class,
+            }
+        )
 
     worst.sort(
         key=lambda item: (
@@ -1794,6 +1804,64 @@ def _bl_bad_internal_face_histogram(
         reverse=True,
     )
     summary["worst_faces"] = worst[: int(max_worst)]
+    if bad_records:
+        parent: dict[int, int] = {}
+
+        def _find_cell(cell: int) -> int:
+            parent.setdefault(cell, cell)
+            while parent[cell] != cell:
+                parent[cell] = parent[parent[cell]]
+                cell = parent[cell]
+            return cell
+
+        def _union_cell(a: int, b: int) -> None:
+            ra = _find_cell(a)
+            rb = _find_cell(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        for record in bad_records:
+            _union_cell(int(record["owner"]), int(record["neighbour"]))
+
+        components: dict[int, dict[str, Any]] = {}
+        for record in bad_records:
+            root = _find_cell(int(record["owner"]))
+            comp = components.setdefault(
+                root,
+                {
+                    "n_faces": 0,
+                    "n_cells": 0,
+                    "classes": {},
+                    "faces": [],
+                    "cells": set(),
+                },
+            )
+            comp["n_faces"] += 1
+            comp["classes"][record["class"]] = (
+                int(comp["classes"].get(record["class"], 0)) + 1
+            )
+            comp["faces"].append(int(record["face"]))
+            comp["cells"].add(int(record["owner"]))
+            comp["cells"].add(int(record["neighbour"]))
+
+        packed_components: list[dict[str, Any]] = []
+        for comp in components.values():
+            cells = sorted(int(c) for c in comp["cells"])
+            faces_comp = sorted(int(f) for f in comp["faces"])
+            packed_components.append(
+                {
+                    "n_faces": int(comp["n_faces"]),
+                    "n_cells": int(len(cells)),
+                    "classes": dict(comp["classes"]),
+                    "sample_faces": faces_comp[: int(max_worst)],
+                    "sample_cells": cells[: int(max_worst)],
+                }
+            )
+        packed_components.sort(
+            key=lambda item: (int(item["n_faces"]), int(item["n_cells"])),
+            reverse=True,
+        )
+        summary["components"] = packed_components[: int(max_worst)]
     return summary
 
 

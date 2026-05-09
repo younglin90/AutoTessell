@@ -220,6 +220,18 @@ creates near-tangent interface faces.
 - [x] Target `extreme_1017013` and exact `easy_100423`.
 - [x] No output behavior change.
 
+### BLR-2: local cavity component metadata
+
+- [x] Group bad internal faces into connected cell components.
+- [x] Record sample faces/cells per component for later cavity replacement.
+- [x] No output behavior change.
+
+### Discarded: direct bad-face union
+
+- [x] Tried env-gated prism-prism bad-face deletion/union.
+- [x] Discarded because `extreme_1017013` regressed max skewness from 3.69 to
+  50.22 and max aspect ratio from 93.8 to 120.0.
+
 ## Stop/Keep Rules
 
 Keep a task only if:

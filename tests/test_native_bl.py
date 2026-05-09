@@ -410,3 +410,7 @@ def test_native_bl_bad_internal_face_histogram_classifies_interfaces() -> None:
     assert hist["bad_by_class"]["bulk-prism"] == 1
     assert hist["bad_by_class"]["prism-prism"] == 1
     assert hist["bad_by_reason"]["degenerate"] == 2
+    assert hist["components"][0]["n_faces"] == 2
+    assert hist["components"][0]["n_cells"] == 3
+    assert hist["components"][0]["classes"]["bulk-prism"] == 1
+    assert hist["components"][0]["classes"]["prism-prism"] == 1
