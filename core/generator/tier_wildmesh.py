@@ -394,6 +394,24 @@ def _orient_cell_face_outward(
     return face
 
 
+def _triangle_boundary_vertices(tris: np.ndarray) -> np.ndarray:
+    """Return vertex ids on the open boundary of a 2D triangulation."""
+    from collections import defaultdict
+
+    edge_count: dict[tuple[int, int], int] = defaultdict(int)
+    for tri in np.asarray(tris, dtype=np.int64):
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            edge_count[(min(int(a), int(b)), max(int(a), int(b)))] += 1
+    verts: set[int] = set()
+    for (a, b), count in edge_count.items():
+        if count == 1:
+            verts.add(a)
+            verts.add(b)
+    if not verts:
+        return np.empty((0,), dtype=np.int64)
+    return np.asarray(sorted(verts), dtype=np.int64)
+
+
 def _extract_axis_extrusion_cap_loops(
     surf: Any,
     axis: int,
@@ -685,6 +703,58 @@ def _write_axis_extrusion_polymesh(
         layer[:, project_axes[1]] = plane_points[:, 1]
         layer[:, axis] = z
         layered_points.append(layer)
+
+    if os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_SURFACE_SNAP", "1") != "0":
+        try:
+            bbox_diag_snap = float(np.linalg.norm(extents))
+            sweep_area = 2.0 * float(polygon.area) + float(polygon.length) * abs(float(z1) - float(z0))
+            surf_area = float(getattr(surf, "area", 0.0) or 0.0)
+            sweep_area_err = (
+                abs(sweep_area - surf_area) / max(sweep_area, surf_area, 1.0e-30)
+                if surf_area > 0.0 and sweep_area > 0.0
+                else 0.0
+            )
+            should_snap = (
+                section_source == "projected_silhouette"
+                or (
+                    bool(getattr(surf, "is_watertight", False))
+                    and sweep_area_err > 0.05
+                )
+            )
+            if should_snap and bbox_diag_snap > 0.0:
+                boundary_vids = _triangle_boundary_vertices(plane_tris)
+                max_snap = bbox_diag_snap * float(
+                    os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_SURFACE_SNAP_REL", "0.25")
+                )
+                n_moved = 0
+                max_moved = 0.0
+                for k, layer in enumerate(layered_points):
+                    snap_ids = (
+                        np.arange(len(plane_points), dtype=np.int64)
+                        if k == 0 or k == len(layered_points) - 1
+                        else boundary_vids
+                    )
+                    if snap_ids.size == 0:
+                        continue
+                    closest, dists, _ = surf.nearest.on_surface(layer[snap_ids])
+                    dists = np.asarray(dists, dtype=np.float64)
+                    mask = np.isfinite(dists) & (dists <= max_snap)
+                    if not np.any(mask):
+                        continue
+                    layer[snap_ids[mask]] = np.asarray(closest, dtype=np.float64)[mask]
+                    n_moved += int(np.count_nonzero(mask))
+                    max_moved = max(max_moved, float(np.max(dists[mask])))
+                if n_moved:
+                    logger.info(
+                        "wildmesh_axis_extrusion_surface_snap",
+                        n_moved=n_moved,
+                        max_moved=round(max_moved, 6),
+                        max_moved_rel=round(max_moved / max(bbox_diag_snap, 1.0e-30), 6),
+                        section_source=section_source,
+                        sweep_area_error=round(float(sweep_area_err), 4),
+                    )
+        except Exception as exc:
+            logger.debug("wildmesh_axis_extrusion_surface_snap_skipped", error=str(exc))
     points = np.vstack(layered_points)
     n_plane = len(plane_points)
 
