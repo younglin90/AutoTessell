@@ -1619,6 +1619,25 @@ class LayersPostGenerator:
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
+                if ok:
+                    mt_raw = getattr(strategy, "mesh_type", None)
+                    mt = str(
+                        getattr(mt_raw, "value", None) or mt_raw or "auto"
+                    ).lower()
+                    if mt == "tet":
+                        import os as _os
+                        if _os.environ.get(
+                            "AUTO_TESSELL_NATIVE_BL_AMIPS_POST", "1"
+                        ) != "0":
+                            try:
+                                _amips_msg = _amips_post_polish_polymesh(case_dir)
+                                if _amips_msg:
+                                    msg = msg + "\n" + _amips_msg
+                            except Exception as _exc:
+                                log.debug(
+                                    "amips_post_polish_skipped",
+                                    error=str(_exc),
+                                )
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
             # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
             # 분할. 결과는 전체 tet mesh.
