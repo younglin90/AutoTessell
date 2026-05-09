@@ -216,9 +216,9 @@ creates near-tangent interface faces.
 
 ### BLR-1: record bad-face interface histogram
 
-- [ ] Add native BL metadata for failing internal face classes.
-- [ ] Target `extreme_1017013` and exact `easy_100423`.
-- [ ] No output behavior change.
+- [x] Add native BL metadata for failing internal face classes.
+- [x] Target `extreme_1017013` and exact `easy_100423`.
+- [x] No output behavior change.
 
 ## Stop/Keep Rules
 

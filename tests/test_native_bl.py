@@ -23,6 +23,7 @@ from core.evaluator.native_checker import NativeMeshChecker
 from core.generator.polymesh_writer import write_generic_polymesh
 from core.layers.native_bl import (
     BLConfig,
+    _bl_bad_internal_face_histogram,
     _merge_skewed_bl_internal_quads,
     generate_native_bl,
 )
@@ -377,3 +378,35 @@ def test_native_bl_merges_skewed_feature_edge_seam_quads() -> None:
     assert out_nbr == []
     assert out_owner == [0, 0]
     assert out_boundary[0]["startFace"] == 0
+
+
+def test_native_bl_bad_internal_face_histogram_classifies_interfaces() -> None:
+    """BL diagnostics classify bad faces by bulk/prism owner-neighbour type."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2], [0, 2, 1]]
+    owner = [0, 2]
+    neighbour = [2, 3]
+
+    hist = _bl_bad_internal_face_histogram(
+        points,
+        faces,
+        owner,
+        neighbour,
+        base_n_cells=2,
+        prism_cell_start=2,
+        prism_cell_end=4,
+    )
+
+    assert hist["n_internal_faces"] == 2
+    assert hist["total_by_class"]["bulk-prism"] == 1
+    assert hist["total_by_class"]["prism-prism"] == 1
+    assert hist["bad_by_class"]["bulk-prism"] == 1
+    assert hist["bad_by_class"]["prism-prism"] == 1
+    assert hist["bad_by_reason"]["degenerate"] == 2

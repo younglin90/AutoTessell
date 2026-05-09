@@ -1625,6 +1625,178 @@ def _cell_centres_from_faces(
     return centres
 
 
+def _classify_bl_cell_kind(
+    cell_id: int,
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+) -> str:
+    """Classify a cell id for BL interface diagnostics."""
+    cid = int(cell_id)
+    if cid < int(base_n_cells):
+        return "bulk"
+    if int(prism_cell_start) <= cid < int(prism_cell_end):
+        return "prism"
+    return "other"
+
+
+def _bl_pair_class(a: str, b: str) -> str:
+    if a == b:
+        return f"{a}-{b}"
+    if {a, b} == {"bulk", "prism"}:
+        return "bulk-prism"
+    if {a, b} == {"bulk", "other"}:
+        return "bulk-other"
+    if {a, b} == {"prism", "other"}:
+        return "prism-other"
+    return "other-other"
+
+
+def _face_normal_area(points: np.ndarray, face: list[int]) -> tuple[np.ndarray, float]:
+    pts = points[np.asarray(face, dtype=np.int64)]
+    if pts.shape[0] < 3:
+        return np.zeros(3, dtype=np.float64), 0.0
+    centre = pts.mean(axis=0)
+    normal = np.zeros(3, dtype=np.float64)
+    for i in range(pts.shape[0]):
+        normal += np.cross(pts[i] - centre, pts[(i + 1) % pts.shape[0]] - centre)
+    area = 0.5 * float(np.linalg.norm(normal))
+    return normal, area
+
+
+def _bl_bad_internal_face_histogram(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+    max_non_ortho_deg: float = 65.0,
+    min_face_weight: float = 0.05,
+    max_worst: int = 12,
+) -> dict[str, Any]:
+    """Summarize bad internal faces by bulk/prism interface class."""
+    classes = [
+        "bulk-bulk",
+        "bulk-prism",
+        "prism-prism",
+        "bulk-other",
+        "prism-other",
+        "other-other",
+    ]
+    summary: dict[str, Any] = {
+        "thresholds": {
+            "max_non_ortho_deg": float(max_non_ortho_deg),
+            "min_face_weight": float(min_face_weight),
+        },
+        "n_internal_faces": int(len(neighbour)),
+        "n_bad_faces": 0,
+        "total_by_class": {name: 0 for name in classes},
+        "bad_by_class": {name: 0 for name in classes},
+        "bad_by_reason": {
+            "non_ortho": 0,
+            "face_weight": 0,
+            "degenerate": 0,
+        },
+        "worst_faces": [],
+    }
+    if len(neighbour) <= 0 or not faces or len(owner) == 0:
+        return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_cells_cur = int(owner_arr.max()) + 1 if owner_arr.size else 0
+    if nbr_arr.size:
+        n_cells_cur = max(n_cells_cur, int(nbr_arr.max()) + 1)
+    if n_cells_cur <= 0:
+        return summary
+
+    centres = _cell_centres_from_faces(
+        points,
+        faces,
+        owner_arr,
+        nbr_arr,
+        n_cells_cur,
+    )
+    worst: list[dict[str, Any]] = []
+    for fi in range(int(len(neighbour))):
+        own = int(owner_arr[fi])
+        nbr = int(nbr_arr[fi])
+        own_kind = _classify_bl_cell_kind(
+            own,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        nbr_kind = _classify_bl_cell_kind(
+            nbr,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        pair_class = _bl_pair_class(own_kind, nbr_kind)
+        summary["total_by_class"][pair_class] = (
+            int(summary["total_by_class"].get(pair_class, 0)) + 1
+        )
+
+        face = faces[fi]
+        normal, area = _face_normal_area(points, face)
+        d = centres[nbr] - centres[own]
+        n_mag = float(np.linalg.norm(normal))
+        d_mag = float(np.linalg.norm(d))
+        if area <= 1e-30 or n_mag <= 1e-30 or d_mag <= 1e-30:
+            non_ortho = 180.0
+            face_weight = 0.0
+            degenerate = True
+        else:
+            cos_theta = abs(float(np.dot(normal, d)) / max(n_mag * d_mag, 1e-30))
+            cos_theta = min(1.0, max(0.0, cos_theta))
+            non_ortho = float(np.degrees(np.arccos(cos_theta)))
+            face_centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
+            t = float(np.dot(face_centre - centres[own], d) / max(d_mag * d_mag, 1e-30))
+            face_weight = min(t, 1.0 - t)
+            degenerate = False
+
+        bad_non_ortho = non_ortho > float(max_non_ortho_deg)
+        bad_weight = face_weight < float(min_face_weight)
+        if not (bad_non_ortho or bad_weight or degenerate):
+            continue
+
+        summary["n_bad_faces"] = int(summary["n_bad_faces"]) + 1
+        summary["bad_by_class"][pair_class] = (
+            int(summary["bad_by_class"].get(pair_class, 0)) + 1
+        )
+        if bad_non_ortho:
+            summary["bad_by_reason"]["non_ortho"] += 1
+        if bad_weight:
+            summary["bad_by_reason"]["face_weight"] += 1
+        if degenerate:
+            summary["bad_by_reason"]["degenerate"] += 1
+        worst.append(
+            {
+                "face": int(fi),
+                "owner": own,
+                "neighbour": nbr,
+                "class": pair_class,
+                "non_ortho_deg": float(non_ortho),
+                "face_weight": float(face_weight),
+            }
+        )
+
+    worst.sort(
+        key=lambda item: (
+            float(item["non_ortho_deg"]),
+            -float(item["face_weight"]),
+        ),
+        reverse=True,
+    )
+    summary["worst_faces"] = worst[: int(max_worst)]
+    return summary
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
@@ -3968,6 +4140,19 @@ def generate_native_bl(
     # case_dir/native_bl_quality.json 에 모든 메트릭 저장.
     try:
         import json as _json
+        bad_internal_face_histogram = (
+            _bl_bad_internal_face_histogram(
+                final_points,
+                final_faces,
+                final_owner,
+                final_nbr,
+                base_n_cells=n_cells,
+                prism_cell_start=prism_cell_id_start,
+                prism_cell_end=prism_cell_id_start + n_prism_total,
+            )
+            if final_points is not None and final_faces and final_owner
+            else {}
+        )
         quality_summary = {
             "n_wall_faces": int(n_wall_faces),
             "n_wall_verts": int(len(wall_vert_indices)),
@@ -4003,6 +4188,7 @@ def generate_native_bl(
                 "n_would_split": int(aniso_split_n_would),
                 "max_aspect_in": float(aniso_split_max_asp_in),
             },
+            "bad_internal_faces": bad_internal_face_histogram,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
