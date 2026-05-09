@@ -1066,10 +1066,7 @@ class TierWildMeshGenerator:
                 raw_path = Path(str(geom_report.get("file_info", {}).get("path", "")))
                 if raw_path.exists() and raw_path.resolve() != preprocessed_path.resolve():
                     raw_surf = _trimesh.load(str(raw_path), force="mesh")
-                    if flow_type == "external":
-                        extrusion_surfaces.insert(0, ("original", raw_surf))
-                    else:
-                        extrusion_surfaces.append(("original", raw_surf))
+                    extrusion_surfaces.append(("original", raw_surf))
             except Exception as exc:
                 logger.debug("wildmesh_axis_extrusion_original_load_skipped", error=str(exc))
 
