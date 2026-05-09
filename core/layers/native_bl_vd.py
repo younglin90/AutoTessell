@@ -1104,6 +1104,7 @@ def _build_multi_layer_gap_bridge_cells(
     wall_face_indices: list[int],
     faces: list[list[int]],
     multi_result: MultiLayerBLResult,
+    owner: np.ndarray | None = None,
 ) -> GapFillResult:
     """Build non-degenerate bridge cells between duplicated layer-edge flaps.
 
@@ -1182,24 +1183,38 @@ def _build_multi_layer_gap_bridge_cells(
                 continue
 
             inner_bridge = [i1v, i1w, i2w, i2v]
+            split_inner_bridge = (
+                os.environ.get("AUTO_TESSELL_BL_VD_MIXED_OWNER_EDGE_CUT", "0") == "1"
+                and owner is not None
+                and layer == int(multi_result.num_layers) - 1
+                and int(owner[f1]) != int(owner[f2])
+                and len({i1v, i1w, i2v}) == 3
+                and len({i1w, i2w, i2v}) == 3
+            )
             if layer == 0:
                 cell = [
                     side1,
                     list(reversed(side2)),
-                    inner_bridge,
                     [v, i2v, i1v],
                     [w, i1w, i2w],
                 ]
+                if split_inner_bridge:
+                    cell.extend([[i1v, i1w, i2v], [i1w, i2w, i2v]])
+                else:
+                    cell.insert(2, inner_bridge)
             else:
                 outer_bridge = [o1v, o2v, o2w, o1w]
                 cell = [
                     side1,
                     list(reversed(side2)),
                     outer_bridge,
-                    inner_bridge,
                     [o1v, i1v, i2v, o2v],
                     [o1w, o2w, i2w, i1w],
                 ]
+                if split_inner_bridge:
+                    cell.extend([[i1v, i1w, i2v], [i1w, i2w, i2v]])
+                else:
+                    cell.insert(3, inner_bridge)
             cell_face_verts.append(cell)
             filled_edges.append((v, w))
 
@@ -1365,7 +1380,12 @@ def build_bulk_preserving_multi_layer_full_bl_polymesh(
         vnorm=vnorm,
         cluster_cos=cluster_cos,
     )
-    gap = _build_multi_layer_gap_bridge_cells(wall_face_indices, faces, multi)
+    gap = _build_multi_layer_gap_bridge_cells(
+        wall_face_indices,
+        faces,
+        multi,
+        owner_arr,
+    )
 
     n_cells = int(owner_arr.max()) + 1 if len(owner_arr) else 0
     if len(neighbour_arr):
@@ -1437,8 +1457,6 @@ def build_bulk_preserving_multi_layer_full_bl_polymesh(
                 vertex_face_graph[int(vtx)][f2].add(f1)
             own1 = int(owner_arr[f1])
             own2 = int(owner_arr[f2])
-            if own1 != own2 or own1 < 0 or own1 >= len(bulk_cells):
-                continue
             m1 = _edge_vertex_map(f1, edge)
             m2 = _edge_vertex_map(f2, edge)
             v, w = int(edge[0]), int(edge[1])
@@ -1446,7 +1464,18 @@ def build_bulk_preserving_multi_layer_full_bl_polymesh(
             _o1w, i1w = m1[w]
             _o2v, i2v = m2[v]
             _o2w, i2w = m2[w]
-            bulk_cells[own1].append([i1v, i2v, i2w, i1w])
+            if own1 == own2:
+                if 0 <= own1 < len(bulk_cells):
+                    bulk_cells[own1].append([i1v, i2v, i2w, i1w])
+            elif (
+                os.environ.get("AUTO_TESSELL_BL_VD_MIXED_OWNER_EDGE_CUT", "0") == "1"
+                and 0 <= own1 < len(bulk_cells)
+                and 0 <= own2 < len(bulk_cells)
+                and len({i1v, i1w, i2v}) == 3
+                and len({i1w, i2w, i2v}) == 3
+            ):
+                bulk_cells[own1].append([i1v, i1w, i2v])
+                bulk_cells[own2].append([i1w, i2w, i2v])
 
         def _ordered_vertex_faces(v: int) -> list[int]:
             face_set = set(vertex_to_faces.get(v, set()))
