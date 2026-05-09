@@ -217,7 +217,7 @@ Verify:
 
 ### Task 6: VD-8b — per-STL VD enable list + bench validate
 
-- [ ] Implement `AUTO_TESSELL_BL_VD_FOR` filter and run bench validation
+- [x] Implement `AUTO_TESSELL_BL_VD_FOR` filter and run bench validation
 
 Add `AUTO_TESSELL_BL_VD_FOR=hard_100029,extreme_1017013,extreme_1017014`
 support so VD only activates on STLs known to need it. Default empty

@@ -1832,6 +1832,70 @@ def _build_edge_to_wall_faces(
     return edge_map
 
 
+def _read_input_stl_name(case_dir: Path) -> str:
+    """Return the input file basename from ``case_dir/geometry_report.json``.
+
+    Used by :func:`_vd_should_activate` to scope ``AUTO_TESSELL_BL_VD_FOR``
+    matching to the current STL. Empty string on any read/parse failure —
+    callers must treat that as "name unknown" and fall back to global gates.
+    """
+    try:
+        import json
+        gp = case_dir / "geometry_report.json"
+        if not gp.exists():
+            return ""
+        data = json.loads(gp.read_text())
+        path = data.get("file_info", {}).get("path", "")
+        if not path:
+            return ""
+        return Path(path).name
+    except Exception:
+        return ""
+
+
+def _vd_should_activate(case_dir: Path) -> bool:
+    """VD-8b — combined VD activation gate (VD_ENABLE + VD_FOR allow-list).
+
+    Decision table:
+      * VD_FOR unset / empty  → governed by ``VD_ENABLE`` ("1" → True).
+      * VD_FOR non-empty      → True only if any comma-separated token is a
+                                 substring of the input STL basename. The
+                                 STL name is read from
+                                 ``case_dir/geometry_report.json``; if the
+                                 sidecar is missing or malformed, returns
+                                 False (per-STL filter cannot match).
+
+    The two env vars compose so that the bench can run a single command
+    with ``AUTO_TESSELL_BL_VD_FOR=hard_100029,extreme_1017013`` to flip VD
+    on for those STLs only, without disturbing the rest of the 21-STL bench.
+    """
+    vd_for = os.environ.get("AUTO_TESSELL_BL_VD_FOR", "").strip()
+    if not vd_for:
+        return os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1"
+    tokens = [t.strip() for t in vd_for.split(",") if t.strip()]
+    if not tokens:
+        return os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1"
+    stl_name = _read_input_stl_name(case_dir)
+    if not stl_name:
+        log.info(
+            "native_bl_vd_for_no_stl_name",
+            component="native_bl", phase="VD-8b",
+            case_dir=str(case_dir),
+            vd_for=vd_for,
+        )
+        return False
+    matched = next((t for t in tokens if t in stl_name), None)
+    log.info(
+        "native_bl_vd_for_decision",
+        component="native_bl", phase="VD-8b",
+        stl_name=stl_name,
+        vd_for=vd_for,
+        matched=matched,
+        active=bool(matched),
+    )
+    return matched is not None
+
+
 def _generate_native_bl_vd(
     *,
     case_dir: Path,
@@ -2146,7 +2210,18 @@ def generate_native_bl(
     # gap-fill tets), which lets us measure boundary skew at multi-patch
     # junctions without the per-vertex tan(theta) bias. See
     # docs/plans/vd_bl_refactor_2026-05-09.md.
-    if os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1":
+    #
+    # VD-8b — AUTO_TESSELL_BL_VD_FOR refines activation to a comma-separated
+    # substring allow-list matched against the input STL filename (read from
+    # ``case_dir/geometry_report.json``). Semantics:
+    #   * VD_FOR unset/empty  → activation governed solely by VD_ENABLE.
+    #   * VD_FOR non-empty    → VD activates ONLY when STL name matches a
+    #                            token (VD_ENABLE is ignored in this mode so
+    #                            the bench can run a single command with one
+    #                            env var).
+    # This lets us enable VD per-STL (e.g. multi-patch junctions like
+    # hard_100029) without affecting the rest of the 21-STL bench.
+    if _vd_should_activate(case_dir):
         return _generate_native_bl_vd(
             case_dir=case_dir,
             cfg=cfg,

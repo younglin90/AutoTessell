@@ -89,9 +89,41 @@ for face f in wall_faces:
 - 21 STL 모두 PASS or PASS_WITH_WARNINGS 시도
 - 회귀 없음 보장 (test_cube etc.)
 
+### Step VD-8b (2026-05-09): per-STL VD allow-list
+
+`AUTO_TESSELL_BL_VD_FOR=token1,token2,...` 로 VD 활성화를 STL-단위로 좁힘.
+이전 VD-8a 의 global `VD_ENABLE=1` 은 21 STL 전체에 VD 를 켜므로,
+multi-patch junction 이 아닌 STL 들의 score 도 영향을 받았다. VD-8b 는
+이를 해결한다.
+
+활성화 결정 (`core/layers/native_bl.py::_vd_should_activate`):
+- VD_FOR unset / empty → VD_ENABLE 가 결정 (기존 VD-8a 동작 유지)
+- VD_FOR non-empty → 각 token 을 `case_dir/geometry_report.json` 의
+  `file_info.path` basename 에 substring 매칭. 하나라도 맞으면 VD on.
+  매칭 없으면 VD off (이 모드에서는 VD_ENABLE=1 무시).
+
+권장 사용 (VD 가 도움되는 4 STL 만):
+```bash
+AUTO_TESSELL_BL_VD_FOR=hard_100029,extreme_1017013,extreme_1017014 \
+  timeout 1800 python3 .autoresearch/tet_bl_full/verify.py 2>&1 | tail -3
+```
+
+2026-05-09 측정 (위 명령):
+- 18 unaffected STLs: 동일 결과 (필터 OFF → 기존 코드 경로).
+- hard_100029: max_skew 260+ → 11.68 (≈22× 개선) — VD math 검증.
+- extreme_1017013/14: max_skew 1144 / 400 (BL-only mesh, evaluator FAIL).
+- Aggregate score 2550 < baseline 2700 → 현 VD 경로는 bulk cell drop 으로
+  evaluator FAIL 가 우세. **다음 단계 (VD-9): VD prism+gap-fill 을 기존
+  bulk volume cell 과 stitch** 해야 score 가 baseline 위로 올라간다.
+  VD-8b 의 가치는 "필요한 STL 만 격리해서 VD 의 boundary-skew 효과를
+  단독 측정" 가능하게 한 것. VD_FOR 미설정 시 모든 21 STL 은 baseline
+  2700 그대로 (default-OFF 경로 보존).
+
 ## 환경 변수 (점진적 enable)
 
-- `AUTO_TESSELL_BL_VD_ENABLE=0` (default OFF) — 단계별 켜기
+- `AUTO_TESSELL_BL_VD_ENABLE=0` (default OFF) — 글로벌 VD on/off (VD-8a)
+- `AUTO_TESSELL_BL_VD_FOR=` (default empty) — STL 이름 substring allow-list (VD-8b);
+  non-empty 시 VD_ENABLE 보다 strict (= 매칭된 STL 만 VD)
 - `AUTO_TESSELL_BL_VD_JUNCTION_COS=0.9` — junction detection threshold
 - `AUTO_TESSELL_BL_VD_GAPFILL_MODE=tet|pyramid` — gap fill 방식
 

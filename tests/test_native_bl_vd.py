@@ -1055,3 +1055,153 @@ def test_generate_native_bl_vd_env_default_off_keeps_existing_path(
     assert "VD-8a" not in res.message
     # Existing path message format includes "Phase 2 OK" + "bl_side_faces=".
     assert "Phase 2 OK" in res.message
+
+
+# ---------------------------------------------------------------------------
+# VD-8b — AUTO_TESSELL_BL_VD_FOR per-STL allow-list filter
+# ---------------------------------------------------------------------------
+
+
+def _write_geometry_report(case_dir: Path, input_path: str) -> None:
+    """Write a minimal ``geometry_report.json`` so VD-8b can read the STL name."""
+    import json
+
+    case_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "file_info": {
+            "path": input_path,
+            "format": "STL",
+            "file_size_bytes": 0,
+            "detected_encoding": "binary",
+            "is_cad_brep": False,
+            "is_surface_mesh": True,
+            "is_volume_mesh": False,
+        }
+    }
+    (case_dir / "geometry_report.json").write_text(json.dumps(payload))
+
+
+def test_vd_should_activate_default_off(tmp_path, monkeypatch):
+    """No env vars set → VD inactive (preserves bench parity at default)."""
+    from core.layers.native_bl import _vd_should_activate
+
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_ENABLE", raising=False)
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_FOR", raising=False)
+    assert _vd_should_activate(tmp_path) is False
+
+
+def test_vd_should_activate_enable_only(tmp_path, monkeypatch):
+    """VD_ENABLE=1, VD_FOR unset → VD active (existing VD-8a behavior)."""
+    from core.layers.native_bl import _vd_should_activate
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_FOR", raising=False)
+    assert _vd_should_activate(tmp_path) is True
+
+
+def test_vd_should_activate_for_matches_stl_name(tmp_path, monkeypatch):
+    """VD_FOR with matching token + valid geometry_report.json → VD active."""
+    from core.layers.native_bl import _vd_should_activate
+
+    _write_geometry_report(tmp_path, "/inputs/hard_100029.stl")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "hard_100029,extreme_1017013")
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_ENABLE", raising=False)
+    assert _vd_should_activate(tmp_path) is True
+
+
+def test_vd_should_activate_for_no_match_stays_off(tmp_path, monkeypatch):
+    """VD_FOR set but STL name does not match any token → VD inactive."""
+    from core.layers.native_bl import _vd_should_activate
+
+    _write_geometry_report(tmp_path, "/inputs/test_cube.stl")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "hard_100029,extreme_1017013")
+    # Even if VD_ENABLE=1 is set, VD_FOR is the stricter mode → still off.
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    assert _vd_should_activate(tmp_path) is False
+
+
+def test_vd_should_activate_for_substring_match(tmp_path, monkeypatch):
+    """Tokens are substring-matched against the STL basename."""
+    from core.layers.native_bl import _vd_should_activate
+
+    _write_geometry_report(tmp_path, "/data/extreme_1017014_decimated.stl")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "extreme_1017014")
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_ENABLE", raising=False)
+    assert _vd_should_activate(tmp_path) is True
+
+
+def test_vd_should_activate_for_missing_geometry_report_off(tmp_path, monkeypatch):
+    """VD_FOR set but case_dir has no geometry_report.json → VD inactive."""
+    from core.layers.native_bl import _vd_should_activate
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "hard_100029")
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_ENABLE", raising=False)
+    assert _vd_should_activate(tmp_path) is False
+
+
+def test_vd_should_activate_for_empty_string_falls_back_to_enable(tmp_path, monkeypatch):
+    """Empty VD_FOR is treated as unset (fall through to VD_ENABLE)."""
+    from core.layers.native_bl import _vd_should_activate
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    assert _vd_should_activate(tmp_path) is True
+
+
+def test_vd_should_activate_for_whitespace_only_falls_back(tmp_path, monkeypatch):
+    """A VD_FOR value of only whitespace/commas is treated as empty."""
+    from core.layers.native_bl import _vd_should_activate
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", " ,  , ")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    assert _vd_should_activate(tmp_path) is True
+
+
+def test_vd_for_filter_routes_through_generate_native_bl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: VD_FOR with matching STL name routes generate_native_bl
+    through the VD writer (sanity check that the filter wires into the
+    public entry point, not just the helper)."""
+    from core.layers.native_bl import BLConfig, generate_native_bl
+
+    _write_single_hex_polymesh(tmp_path)
+    _write_geometry_report(tmp_path, "/inputs/hard_100029.stl")
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "hard_100029")
+    monkeypatch.delenv("AUTO_TESSELL_BL_VD_ENABLE", raising=False)
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=2, growth_ratio=1.2, first_thickness=0.05,
+            collision_safety=False, backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+    assert "VD-8a" in res.message  # VD path was taken
+
+
+def test_vd_for_no_match_keeps_existing_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: VD_FOR with no matching STL name leaves the per-vertex path
+    untouched, even if VD_ENABLE=1 (VD_FOR is the stricter gate)."""
+    from core.layers.native_bl import BLConfig, generate_native_bl
+
+    _write_single_hex_polymesh(tmp_path)
+    _write_geometry_report(tmp_path, "/inputs/test_cube.stl")
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_FOR", "hard_100029")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=1, first_thickness=0.05,
+            collision_safety=False, backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+    assert "VD-8a" not in res.message
+    assert "Phase 2 OK" in res.message
