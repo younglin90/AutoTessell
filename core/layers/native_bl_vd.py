@@ -484,13 +484,27 @@ def cells_to_polymesh(
             return _patch_for_face_idx(face_idx)
         return "bl_internal_side"
 
+    def _clean_face_vertices(raw_verts: list[int]) -> list[int]:
+        """Drop repeated vertices that would emit zero-area polyMesh faces."""
+        clean: list[int] = []
+        for raw_v in raw_verts:
+            v = int(raw_v)
+            if not clean or clean[-1] != v:
+                clean.append(v)
+        if len(clean) > 1 and clean[0] == clean[-1]:
+            clean.pop()
+        return clean
+
     occurrences: dict[tuple[int, ...], list[tuple[int, int, list[int]]]] = (
         defaultdict(list)
     )
     for cell_id, cf in enumerate(cell_face_verts):
         for face_idx, raw_verts in enumerate(cf):
-            key = tuple(sorted(int(v) for v in raw_verts))
-            occurrences[key].append((cell_id, face_idx, list(int(v) for v in raw_verts)))
+            verts = _clean_face_vertices(list(int(v) for v in raw_verts))
+            if len(verts) < 3 or len(set(verts)) < 3:
+                continue
+            key = tuple(sorted(verts))
+            occurrences[key].append((cell_id, face_idx, verts))
 
     internal_records: list[tuple[int, int, list[int]]] = []
     # boundary buckets keyed by patch name to honor ordering convention.

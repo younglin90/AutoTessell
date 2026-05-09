@@ -400,6 +400,26 @@ def test_cells_to_polymesh_rejects_three_way_share():
         assert "non-manifold" in msg or "3" in msg
 
 
+def test_cells_to_polymesh_skips_repeated_vertex_degenerate_faces():
+    """Repeated-vertex faces are zero-area artifacts and must not be emitted."""
+    cell_face_verts = [
+        [
+            [0, 1, 2],
+            [3, 3, 4, 4],
+            [5, 6, 6],
+        ],
+    ]
+    points = np.zeros((7, 3), dtype=np.float64)
+
+    pm = cells_to_polymesh(cell_face_verts, points)
+
+    assert pm.faces == [[0, 1, 2]]
+    assert pm.owner == [0]
+    assert pm.neighbour == []
+    assert pm.patches[0]["name"] == "wall"
+    assert pm.patches[0]["nFaces"] == 1
+
+
 def test_cells_to_polymesh_owner_winding_from_lower_cell():
     """Owner cell winding is preserved; neighbour cell's reversed copy ignored.
 
