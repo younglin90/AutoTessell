@@ -1171,6 +1171,23 @@ class TierWildMeshGenerator:
         _mt_raw_fast = getattr(strategy, "mesh_type", "")
         _mesh_type_fast = str(getattr(_mt_raw_fast, "value", _mt_raw_fast)).lower()
         if (
+            flow_type == "external"
+            and _mesh_type_fast == "tet"
+            and os.environ.get("AUTO_TESSELL_WILDMESH_TET_BL_BODY_ONLY", "1") != "0"
+            and int(params.get("post_layers_num_layers") or params.get("bl_layers") or 0) > 0
+            and str(params.get("post_layers_engine", "auto")).lower()
+            in {"auto", "native_bl", "native", "python_bl", "tet_bl_subdivide", "tet_bl"}
+        ):
+            # For the strict tet+BL path the input STL itself is the wall surface
+            # whose fidelity is evaluated.  Meshing a wind-tunnel compound here
+            # can bury that body surface as an internal interface, leaving no
+            # wall patch for BL and making Hausdorff compare the domain box.
+            flow_type = "internal"
+            logger.info(
+                "wildmesh_tet_bl_external_body_only",
+                reason="preserve_input_surface_as_wall_for_tet_bl",
+            )
+        if (
             flow_type != "external"
             and _mesh_type_fast == "tet"
             and os.environ.get("AUTO_TESSELL_WILDMESH_BOX_FASTPATH", "1") != "0"
