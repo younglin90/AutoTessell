@@ -725,36 +725,6 @@ def _write_axis_extrusion_polymesh(
         layer[:, project_axes[1]] = plane_points[:, 1]
         layer[:, axis] = z
         layered_points.append(layer)
-    if (
-        section_source == "cap"
-        and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_CAP_SNAP", "1") != "0"
-        and len(layered_points) >= 2
-    ):
-        try:
-            bbox_diag_snap = float(np.linalg.norm(extents))
-            max_snap = bbox_diag_snap * float(
-                os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_CAP_SNAP_REL", "0.025")
-            )
-            n_moved = 0
-            max_moved = 0.0
-            for layer in (layered_points[0], layered_points[-1]):
-                closest, dists, _ = surf.nearest.on_surface(layer)
-                dists = np.asarray(dists, dtype=np.float64)
-                mask = np.isfinite(dists) & (dists <= max_snap)
-                if not np.any(mask):
-                    continue
-                layer[mask] = np.asarray(closest, dtype=np.float64)[mask]
-                n_moved += int(np.count_nonzero(mask))
-                max_moved = max(max_moved, float(np.max(dists[mask])))
-            if n_moved:
-                logger.info(
-                    "wildmesh_axis_extrusion_cap_snap",
-                    n_moved=n_moved,
-                    max_moved=round(max_moved, 6),
-                    max_moved_rel=round(max_moved / max(bbox_diag_snap, 1.0e-30), 6),
-                )
-        except Exception as exc:
-            logger.debug("wildmesh_axis_extrusion_cap_snap_skipped", error=str(exc))
     points = np.vstack(layered_points)
     n_plane = len(plane_points)
 
