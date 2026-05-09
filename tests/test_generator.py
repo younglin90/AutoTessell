@@ -529,6 +529,61 @@ class TestTierGracefulFail:
         assert p["epsilon"] == 0.001
         assert p["edge_length_r"] == 0.04
 
+    def test_tier_wildmesh_section_topology_detects_hole(self) -> None:
+        """Axis-section metadata must see stable interior holes missed by caps."""
+        import numpy as np
+
+        trimesh = pytest.importorskip("trimesh")
+        from core.generator.tier_wildmesh import _axis_section_topology_summary
+
+        outer = [
+            (-1.0, -1.0),
+            (1.0, -1.0),
+            (1.0, 1.0),
+            (-1.0, 1.0),
+        ]
+        inner = [
+            (-0.4, -0.4),
+            (0.4, -0.4),
+            (0.4, 0.4),
+            (-0.4, 0.4),
+        ]
+        vertices = np.array(
+            [(x, y, 0.0) for x, y in outer + inner]
+            + [(x, y, 1.0) for x, y in outer + inner],
+            dtype=np.float64,
+        )
+
+        faces: list[list[int]] = []
+
+        def add_quad(a: int, b: int, c: int, d: int) -> None:
+            faces.append([a, b, c])
+            faces.append([a, c, d])
+
+        # Outer walls.
+        for i in range(4):
+            j = (i + 1) % 4
+            add_quad(i, j, 8 + j, 8 + i)
+        # Inner walls, reversed so the tube cavity is a hole.
+        for i in range(4):
+            j = (i + 1) % 4
+            add_quad(4 + i, 12 + i, 12 + j, 4 + j)
+        # Bottom and top annular caps.
+        for i in range(4):
+            j = (i + 1) % 4
+            add_quad(i, 4 + i, 4 + j, j)
+            add_quad(8 + i, 8 + j, 12 + j, 12 + i)
+
+        mesh = trimesh.Trimesh(vertices=vertices, faces=np.asarray(faces), process=False)
+        summary = _axis_section_topology_summary(mesh, axis=2, n_samples=3)
+
+        assert summary["usable_count"] == 3
+        assert summary["polygon_counts"] == [1, 1, 1]
+        assert summary["hole_counts"] == [1, 1, 1]
+        assert summary["topology_stable"] is True
+        assert summary["area_min"] == pytest.approx(3.36)
+        assert summary["area_max"] == pytest.approx(3.36)
+
     def test_tier_wildmesh_registered_in_pipeline(self) -> None:
         """tier_wildmesh가 _TIER_REGISTRY에 등록되어 있어야 한다."""
         from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
