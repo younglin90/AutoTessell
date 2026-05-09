@@ -904,7 +904,7 @@ class TierWildMeshGenerator:
                 _tet_bl_subdivide_budget = (
                     _budget_layers > 0
                     and _mesh_type == "tet"
-                    and _post_engine in {"auto", "tet_bl_subdivide", "tet_bl", "native_bl_tet"}
+                    and _post_engine in {"tet_bl_subdivide", "tet_bl", "native_bl_tet"}
                 )
                 _bl_cell_multiplier = 3 if _tet_bl_subdivide_budget else 1
                 _est_final_cells = (
