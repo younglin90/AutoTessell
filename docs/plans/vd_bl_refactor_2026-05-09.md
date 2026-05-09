@@ -105,7 +105,7 @@ Verify: `timeout 60 python3 -m pytest tests/test_native_bl_vd.py -q`.
 
 ### Task 2: VD-5 — gap-filling cells at junction edges
 
-- [ ] Implement `build_gap_fill_cells` + tests
+- [x] Implement `build_gap_fill_cells` + tests
 
 Add `build_gap_fill_cells(wall_face_indices, faces, points, inner_result)`
 that closes the topology hole at junction edges where adjacent prisms

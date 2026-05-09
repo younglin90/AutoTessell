@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from core.layers.native_bl_vd import (
+    build_gap_fill_cells,
     build_prism_cells,
     cells_to_polymesh,
     compute_face_normals,
@@ -424,3 +425,133 @@ def test_cells_to_polymesh_cube_internal_diagonals():
     # All internal faces have owner < neighbour.
     for o, n in zip(pm.owner[:6], pm.neighbour, strict=True):
         assert o < n
+
+
+def test_build_gap_fill_cells_flat_strip_no_junctions():
+    """Flat strip — both face normals coplanar → no junction edges → no gap fill."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    inner = generate_per_face_inner_verts([0, 1], faces, points, info, thickness=0.1)
+    gap = build_gap_fill_cells([0, 1], faces, points, inner)
+    assert gap.cell_face_verts == []
+    assert gap.junction_edges == []
+
+
+def test_build_gap_fill_cells_cube_perpendicular_edges():
+    """Cube with cluster_cos=0.5 — 12 cube edges are junctions, 6 face diagonals are not.
+
+    Each junction edge produces 2 tetrahedra → 24 gap-fill cells total.
+    The 6 face diagonals connect coplanar tris (same cluster) so vi1==vi2 and
+    wi1==wi2, ruling them out as junction edges.
+    """
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    gap = build_gap_fill_cells(list(range(12)), faces, points, inner)
+
+    assert len(gap.junction_edges) == 12
+    assert len(gap.cell_face_verts) == 24
+    # Each gap-fill cell is a tetrahedron: 4 triangle faces.
+    for cell in gap.cell_face_verts:
+        assert len(cell) == 4
+        for face in cell:
+            assert len(face) == 3
+    # Junction edges are exactly the 12 cube edges (ordered with v < w).
+    expected_cube_edges = {
+        (0, 1), (0, 3), (0, 4),
+        (1, 2), (1, 5),
+        (2, 3), (2, 6),
+        (3, 7),
+        (4, 5), (4, 7),
+        (5, 6),
+        (6, 7),
+    }
+    assert set(gap.junction_edges) == expected_cube_edges
+
+
+def test_build_gap_fill_cells_cube_relaxed_cluster_no_junctions():
+    """cluster_cos=-1.0 collapses every corner to one inner vert → no junction edges."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=-1.0,
+    )
+    gap = build_gap_fill_cells(list(range(12)), faces, points, inner)
+    assert gap.cell_face_verts == []
+    assert gap.junction_edges == []
+
+
+def test_build_gap_fill_cells_three_way_edge_raises():
+    """3 wall faces sharing one edge → NotImplementedError."""
+    points = np.array([
+        [0, 0, 0], [1, 0, 0],         # shared edge endpoints
+        [0, 1, 0], [0, 0, 1], [-1, 0, 0],
+    ], dtype=np.float64)
+    faces = [
+        [0, 1, 2],
+        [0, 1, 3],
+        [0, 1, 4],
+    ]
+    info = detect_junction_verts([0, 1, 2], faces, points)
+    inner = generate_per_face_inner_verts([0, 1, 2], faces, points, info, thickness=0.1)
+    try:
+        build_gap_fill_cells([0, 1, 2], faces, points, inner)
+        raise AssertionError("Expected NotImplementedError for 3-way edge")
+    except NotImplementedError as e:
+        msg = str(e).lower()
+        assert "3+" in msg or "fan" in msg
+
+
+def test_build_gap_fill_cells_tent_one_junction_edge():
+    """Two triangles meeting at 90° along a shared edge → 1 junction edge → 2 tets."""
+    # Edge (0, 1) on the x-axis. Tri f0 in xy plane (normal +z),
+    # tri f1 in xz plane (normal -y). They share edge (0, 1).
+    points = np.array([
+        [0, 0, 0],   # 0 — shared endpoint
+        [1, 0, 0],   # 1 — shared endpoint
+        [0, 1, 0],   # 2 — apex of f0 (+y)
+        [0, 0, 1],   # 3 — apex of f1 (+z)
+    ], dtype=np.float64)
+    faces = [
+        [0, 1, 2],   # normal +z
+        [1, 0, 3],   # normal +y → wait let's recompute
+    ]
+    # cross(p1-p0, p2-p0) for f0 = cross((1,0,0), (0,1,0)) = (0,0,1) → +z OK
+    # for f1 [1,0,3]: cross((0-1,0,0), (0-1,0,1)) = cross((-1,0,0),(-1,0,1))
+    #   = (0*1 - 0*0, 0*(-1) - (-1)*1, (-1)*0 - 0*(-1)) = (0, 1, 0) → +y
+    # So normals are +z (f0) and +y (f1), perpendicular → junction edge (0,1).
+    info = detect_junction_verts([0, 1], faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        [0, 1], faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    gap = build_gap_fill_cells([0, 1], faces, points, inner)
+    assert gap.junction_edges == [(0, 1)]
+    assert len(gap.cell_face_verts) == 2
+    # Each tet contains v=0 and w=1 in every cell's vertex set.
+    for cell in gap.cell_face_verts:
+        cell_verts = set()
+        for face in cell:
+            cell_verts.update(face)
+        assert {0, 1}.issubset(cell_verts)
+
+
+def test_build_gap_fill_cells_returns_tet_face_verts_consistent():
+    """Each gap-fill cell's 4 triangles cover exactly 4 distinct verts (a tet)."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    gap = build_gap_fill_cells(list(range(12)), faces, points, inner)
+    for cell in gap.cell_face_verts:
+        verts = set()
+        for face in cell:
+            verts.update(face)
+        # A tetrahedron has 4 distinct vertices.
+        assert len(verts) == 4
+        # Each vertex appears in exactly 3 of the 4 triangles.
+        for v in verts:
+            count = sum(1 for face in cell if v in face)
+            assert count == 3

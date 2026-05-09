@@ -535,3 +535,128 @@ def cells_to_polymesh(
         neighbour=out_neighbour,
         patches=patches,
     )
+
+
+@dataclass
+class GapFillResult:
+    """Result of gap-fill cell construction at junction edges.
+
+    cell_face_verts[cell_id] = [face_verts_list, ...]
+        Each gap-fill cell is a tetrahedron: 4 triangle faces.
+
+    junction_edges: list of wall edges (v_min, v_max) that produced gap-fill
+        cells (i.e. all four inner verts distinct). Each edge contributes 2
+        consecutive cells in cell_face_verts.
+    """
+
+    cell_face_verts: list[list[list[int]]]
+    junction_edges: list[tuple[int, int]]
+
+
+def _tet_faces(
+    a: int, b: int, c: int, d: int, points: np.ndarray
+) -> list[list[int]]:
+    """Return the four triangle faces of a tetrahedron (a, b, c, d).
+
+    If the signed volume is negative, swap c and d so the tet has positive
+    orientation; faces are then emitted with outward-pointing winding
+    relative to the cell centroid. For polyMesh face matching this is
+    cosmetic (the canonical key sorts verts), but consistent winding lets
+    boundary patches behave correctly downstream.
+    """
+    pa = points[a]
+    pb = points[b]
+    pc = points[c]
+    pd = points[d]
+    sv = float(np.dot(np.cross(pb - pa, pc - pa), pd - pa))
+    if sv < 0:
+        c, d = d, c
+    return [
+        [b, c, d],
+        [a, d, c],
+        [a, b, d],
+        [a, c, b],
+    ]
+
+
+def build_gap_fill_cells(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    inner_result: InnerVertResult,
+) -> GapFillResult:
+    """Build gap-fill tetrahedral cells at junction edges.
+
+    For each wall edge (v, w) shared by exactly 2 wall faces (f1, f2):
+      * Look up vi1 = inner[(f1, v)], wi1 = inner[(f1, w)],
+        vi2 = inner[(f2, v)], wi2 = inner[(f2, w)].
+      * If all four are distinct, the edge is a junction edge and we insert
+        two tetrahedra to close the topological gap between the two prism
+        side flaps:
+          tet A: (v, w, wi1, vi1)
+          tet B: (v, w, vi2, wi2)
+      * Otherwise (any inner vert shared between f1 and f2 at v or w) the
+        adjacent prisms already share a side face — no gap to fill.
+
+    Edges shared by 3+ wall faces are non-manifold for our current builder;
+    we raise NotImplementedError so future iterations can add fan
+    triangulation if a real STL needs it.
+
+    Args:
+        wall_face_indices: indices of wall faces.
+        faces: list of face vertex lists.
+        points: (N, 3) coordinates including duplicated inner verts (used
+            only to orient the tet faces consistently).
+        inner_result: from generate_per_face_inner_verts.
+
+    Returns:
+        GapFillResult.
+
+    Raises:
+        NotImplementedError: if any wall edge is shared by 3 or more faces.
+    """
+    edge_to_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for fi in wall_face_indices:
+        f = faces[fi]
+        n_v = len(f)
+        for i in range(n_v):
+            v0 = int(f[i])
+            v1 = int(f[(i + 1) % n_v])
+            key = (min(v0, v1), max(v0, v1))
+            edge_to_faces[key].append(int(fi))
+
+    cell_face_verts: list[list[list[int]]] = []
+    filled_edges: list[tuple[int, int]] = []
+
+    for edge, f_list in edge_to_faces.items():
+        if len(f_list) > 2:
+            raise NotImplementedError(
+                f"3+ wall faces share edge {edge} (n_faces={len(f_list)}); "
+                "fan triangulation for non-manifold junctions is not "
+                "implemented in this iteration."
+            )
+        if len(f_list) != 2:
+            continue
+        v, w = edge
+        f1, f2 = f_list[0], f_list[1]
+        vi1 = inner_result.face_inner_vert.get((f1, v))
+        wi1 = inner_result.face_inner_vert.get((f1, w))
+        vi2 = inner_result.face_inner_vert.get((f2, v))
+        wi2 = inner_result.face_inner_vert.get((f2, w))
+        if vi1 is None or wi1 is None or vi2 is None or wi2 is None:
+            continue
+        if len({vi1, wi1, vi2, wi2}) < 4:
+            continue
+
+        cell_face_verts.append(
+            _tet_faces(int(v), int(w), int(wi1), int(vi1), inner_result.new_points)
+        )
+        cell_face_verts.append(
+            _tet_faces(int(v), int(w), int(vi2), int(wi2), inner_result.new_points)
+        )
+        filled_edges.append((int(v), int(w)))
+
+    return GapFillResult(
+        cell_face_verts=cell_face_verts,
+        junction_edges=filled_edges,
+    )
