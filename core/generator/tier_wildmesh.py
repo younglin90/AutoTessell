@@ -593,15 +593,23 @@ def _write_axis_extrusion_polymesh(
     extents = bounds[1] - bounds[0]
     if np.any(extents <= 0.0):
         return None
-    axis = int(np.argmin(extents))
-    cap = _extract_axis_extrusion_cap_loops(surf, axis)
-    if cap is None:
+
+    cap_candidates: list[tuple[float, int, tuple[list[np.ndarray], list[int], tuple[float, float]]]] = []
+    for cand_axis in range(3):
+        cand_cap = _extract_axis_extrusion_cap_loops(surf, cand_axis)
+        if cand_cap is not None:
+            cap_candidates.append((float(extents[cand_axis]), int(cand_axis), cand_cap))
+
+    if cap_candidates:
+        _, axis, cap = min(cap_candidates, key=lambda item: item[0])
+        section_source = "cap"
+    else:
+        axis = int(np.argmin(extents))
         cap = _extract_projected_silhouette_loops(surf, axis)
         if cap is None:
             return None
         section_source = "projected_silhouette"
-    else:
-        section_source = "cap"
+
     loops, project_axes, (z0, z1) = cap
     if not loops:
         return None
