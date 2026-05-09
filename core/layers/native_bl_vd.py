@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+import os
 
 import numpy as np
 
@@ -1132,6 +1133,7 @@ def _build_multi_layer_gap_bridge_cells(
     n_wall = len(wall_face_indices)
     cell_face_verts: list[list[list[int]]] = []
     filled_edges: list[tuple[int, int]] = []
+    vertex_face_graph: dict[int, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
 
     def _edge_vertex_map(fi: int, layer: int, edge: tuple[int, int]) -> dict[int, tuple[int, int]]:
         pos = face_pos[fi]
@@ -1161,6 +1163,9 @@ def _build_multi_layer_gap_bridge_cells(
         f1, f2 = int(f_list[0]), int(f_list[1])
         if f1 not in face_pos or f2 not in face_pos:
             continue
+        for vtx in edge:
+            vertex_face_graph[int(vtx)][f1].add(f2)
+            vertex_face_graph[int(vtx)][f2].add(f1)
 
         for layer in range(int(multi_result.num_layers)):
             m1 = _edge_vertex_map(f1, layer, edge)
@@ -1197,6 +1202,102 @@ def _build_multi_layer_gap_bridge_cells(
                 ]
             cell_face_verts.append(cell)
             filled_edges.append((v, w))
+
+    if os.environ.get("AUTO_TESSELL_BL_VD_VERTEX_FILL", "0") == "1":
+        vertex_to_faces: dict[int, set[int]] = defaultdict(set)
+        for fi in wall_face_indices:
+            for v in faces[fi]:
+                vertex_to_faces[int(v)].add(int(fi))
+
+        def _ordered_vertex_faces(v: int) -> list[int]:
+            face_set = set(vertex_to_faces.get(v, set()))
+            if len(face_set) < 3:
+                return []
+            graph = vertex_face_graph.get(v, {})
+            if not graph:
+                return []
+            endpoints = [f for f in face_set if len(graph.get(f, set()) & face_set) == 1]
+            start = min(endpoints or list(face_set))
+            order: list[int] = []
+            prev: int | None = None
+            cur = start
+            for _ in range(len(face_set) + 2):
+                if cur in order:
+                    break
+                order.append(cur)
+                nxts = [
+                    n for n in sorted(graph.get(cur, set()))
+                    if n in face_set and n != prev
+                ]
+                nxt = next((n for n in nxts if n not in order), None)
+                if nxt is None:
+                    break
+                prev, cur = cur, nxt
+            if len(order) != len(face_set):
+                return []
+            return order
+
+        def _face_vertex_pair(fi: int, layer: int, v: int) -> tuple[int, int] | None:
+            try:
+                local = [int(x) for x in faces[fi]].index(int(v))
+            except ValueError:
+                return None
+            cell_idx = layer * n_wall + face_pos[int(fi)]
+            cell = multi_result.cell_face_verts[cell_idx]
+            outer = int(cell[0][local])
+            top = cell[1]
+            inner_by_local = [int(top[0]), int(top[2]), int(top[1])]
+            return outer, inner_by_local[local]
+
+        def _dedupe_ring(ids: list[int]) -> list[int]:
+            out: list[int] = []
+            for vid in ids:
+                if not out or out[-1] != int(vid):
+                    out.append(int(vid))
+            if len(out) > 1 and out[0] == out[-1]:
+                out.pop()
+            return out
+
+        for vtx in sorted(vertex_to_faces):
+            ordered_faces = _ordered_vertex_faces(vtx)
+            if len(ordered_faces) < 3:
+                continue
+            for layer in range(int(multi_result.num_layers)):
+                pairs = [
+                    _face_vertex_pair(fi, layer, vtx)
+                    for fi in ordered_faces
+                ]
+                if any(pair is None for pair in pairs):
+                    continue
+                outer_ids = _dedupe_ring([int(pair[0]) for pair in pairs if pair is not None])
+                inner_ids = _dedupe_ring([int(pair[1]) for pair in pairs if pair is not None])
+                if len(inner_ids) < 3 or len(set(inner_ids)) != len(inner_ids):
+                    continue
+                if layer == 0:
+                    cell = [
+                        [int(vtx), inner_ids[(i + 1) % len(inner_ids)], inner_ids[i]]
+                        for i in range(len(inner_ids))
+                    ]
+                    cell.append(list(inner_ids))
+                else:
+                    if (
+                        len(outer_ids) != len(inner_ids)
+                        or len(outer_ids) < 3
+                        or len(set(outer_ids)) != len(outer_ids)
+                    ):
+                        continue
+                    cell = [
+                        [
+                            outer_ids[i],
+                            inner_ids[i],
+                            inner_ids[(i + 1) % len(inner_ids)],
+                            outer_ids[(i + 1) % len(outer_ids)],
+                        ]
+                        for i in range(len(inner_ids))
+                    ]
+                    cell.append(list(outer_ids))
+                    cell.append(list(reversed(inner_ids)))
+                cell_face_verts.append(cell)
 
     return GapFillResult(
         cell_face_verts=cell_face_verts,
@@ -1285,6 +1386,129 @@ def build_bulk_preserving_multi_layer_full_bl_polymesh(
         # orientation [i0, i1, i2].
         return [int(top[0]), int(top[2]), int(top[1])]
 
+    def _bulk_cut_topology() -> None:
+        """Add VD edge/vertex cut faces to same-owner boundary bulk cells.
+
+        The duplicated BL bridge cells expose innermost edge and vertex caps at
+        the shrunken bulk interface.  A preserved bulk cell must include those
+        cut faces too; replacing only the original wall triangle leaves the BL
+        bridge caps as open boundary faces.
+        """
+        if os.environ.get("AUTO_TESSELL_BL_VD_VERTEX_FILL", "0") != "1":
+            return
+        if int(multi.num_layers) < 1:
+            return
+
+        edge_to_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+        edge_local_index: dict[tuple[int, int, int], int] = {}
+        vertex_to_faces: dict[int, set[int]] = defaultdict(set)
+        vertex_face_graph: dict[int, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
+        for fi in wall_face_indices:
+            f = [int(v) for v in faces[fi]]
+            for v in f:
+                vertex_to_faces[int(v)].add(int(fi))
+            for i, v0 in enumerate(f):
+                v1 = f[(i + 1) % len(f)]
+                key = (min(v0, v1), max(v0, v1))
+                edge_to_faces[key].append(int(fi))
+                edge_local_index[(int(fi), key[0], key[1])] = i
+
+        last_layer = int(multi.num_layers) - 1
+
+        def _edge_vertex_map(fi: int, edge: tuple[int, int]) -> dict[int, tuple[int, int]]:
+            pos = face_pos[int(fi)]
+            cell_idx = last_layer * n_wall + pos
+            side_idx = edge_local_index[(int(fi), edge[0], edge[1])]
+            side = [int(v) for v in multi.cell_face_verts[cell_idx][2 + side_idx]]
+            f = [int(v) for v in faces[int(fi)]]
+            local = side_idx
+            start = f[local]
+            end = f[(local + 1) % len(f)]
+            return {start: (side[0], side[3]), end: (side[1], side[2])}
+
+        for edge, f_list in edge_to_faces.items():
+            if len(f_list) != 2:
+                continue
+            f1, f2 = int(f_list[0]), int(f_list[1])
+            if f1 not in face_pos or f2 not in face_pos:
+                continue
+            for vtx in edge:
+                vertex_face_graph[int(vtx)][f1].add(f2)
+                vertex_face_graph[int(vtx)][f2].add(f1)
+            own1 = int(owner_arr[f1])
+            own2 = int(owner_arr[f2])
+            if own1 != own2 or own1 < 0 or own1 >= len(bulk_cells):
+                continue
+            m1 = _edge_vertex_map(f1, edge)
+            m2 = _edge_vertex_map(f2, edge)
+            v, w = int(edge[0]), int(edge[1])
+            _o1v, i1v = m1[v]
+            _o1w, i1w = m1[w]
+            _o2v, i2v = m2[v]
+            _o2w, i2w = m2[w]
+            bulk_cells[own1].append([i1v, i2v, i2w, i1w])
+
+        def _ordered_vertex_faces(v: int) -> list[int]:
+            face_set = set(vertex_to_faces.get(v, set()))
+            if len(face_set) < 3:
+                return []
+            owners = {int(owner_arr[fi]) for fi in face_set}
+            if len(owners) != 1:
+                return []
+            graph = vertex_face_graph.get(v, {})
+            if not graph:
+                return []
+            endpoints = [f for f in face_set if len(graph.get(f, set()) & face_set) == 1]
+            start = min(endpoints or list(face_set))
+            order: list[int] = []
+            prev: int | None = None
+            cur = start
+            for _ in range(len(face_set) + 2):
+                if cur in order:
+                    break
+                order.append(cur)
+                nxts = [
+                    n for n in sorted(graph.get(cur, set()))
+                    if n in face_set and n != prev
+                ]
+                nxt = next((n for n in nxts if n not in order), None)
+                if nxt is None:
+                    break
+                prev, cur = cur, nxt
+            if len(order) != len(face_set):
+                return []
+            return order
+
+        def _inner_vertex_for_face(fi: int, v: int) -> int | None:
+            try:
+                local = [int(x) for x in faces[int(fi)]].index(int(v))
+            except ValueError:
+                return None
+            pos = face_pos[int(fi)]
+            cell_idx = last_layer * n_wall + pos
+            top = multi.cell_face_verts[cell_idx][1]
+            inner_by_local = [int(top[0]), int(top[2]), int(top[1])]
+            return inner_by_local[local]
+
+        for vtx in sorted(vertex_to_faces):
+            ordered = _ordered_vertex_faces(vtx)
+            if len(ordered) < 3:
+                continue
+            owner_cell = int(owner_arr[ordered[0]])
+            if owner_cell < 0 or owner_cell >= len(bulk_cells):
+                continue
+            ring = [_inner_vertex_for_face(fi, vtx) for fi in ordered]
+            if any(vid is None for vid in ring):
+                continue
+            clean_ring: list[int] = []
+            for vid in ring:
+                if not clean_ring or clean_ring[-1] != int(vid):
+                    clean_ring.append(int(vid))
+            if len(clean_ring) > 1 and clean_ring[0] == clean_ring[-1]:
+                clean_ring.pop()
+            if len(clean_ring) >= 3 and len(set(clean_ring)) == len(clean_ring):
+                bulk_cells[owner_cell].append(list(clean_ring))
+
     for fi, raw_face in enumerate(faces):
         own = int(owner_arr[fi])
         if own < 0 or own >= n_cells:
@@ -1301,6 +1525,8 @@ def build_bulk_preserving_multi_layer_full_bl_polymesh(
             if nbr < 0 or nbr >= n_cells:
                 raise ValueError(f"neighbour cell out of range for face {fi}: {nbr}")
             bulk_cells[nbr].append(list(reversed(face)))
+
+    _bulk_cut_topology()
 
     prism_cells = [[list(face) for face in cell] for cell in multi.cell_face_verts]
     n_prism = len(prism_cells)

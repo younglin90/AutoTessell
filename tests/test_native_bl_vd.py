@@ -1216,6 +1216,77 @@ def test_generate_native_bl_vd_preserve_bulk_env_keeps_bulk_cell(
     assert quality["wall_preserve"]["max_diff_rel"] == 0.0
 
 
+def test_generate_native_bl_vd_vertex_fill_closes_single_tet_topology(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """VD vertex/bulk cut faces close the simple tetrahedral bulk interface."""
+    from collections import Counter, defaultdict
+
+    from core.layers.native_bl import BLConfig, generate_native_bl
+    from core.utils.polymesh_reader import (
+        parse_foam_boundary,
+        parse_foam_faces,
+        parse_foam_labels,
+    )
+
+    _write_single_tet_polymesh(tmp_path)
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_PRESERVE_BULK", "1")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_VERTEX_FILL", "1")
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=1,
+            growth_ratio=1.2,
+            first_thickness=0.03,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    faces = [list(map(int, f)) for f in parse_foam_faces(poly_dir / "faces")]
+    neighbour = parse_foam_labels(poly_dir / "neighbour")
+    boundary = parse_foam_boundary(poly_dir / "boundary")
+    boundary_faces = faces[len(neighbour):]
+
+    edge_counts: Counter[tuple[int, int]] = Counter()
+    face_graph: defaultdict[int, set[int]] = defaultdict(set)
+    edge_to_faces: defaultdict[tuple[int, int], list[int]] = defaultdict(list)
+    for local_idx, face in enumerate(boundary_faces):
+        for a, b in zip(face, face[1:] + face[:1]):
+            edge = (a, b) if a < b else (b, a)
+            edge_counts[edge] += 1
+            edge_to_faces[edge].append(local_idx)
+    for attached in edge_to_faces.values():
+        if len(attached) >= 2:
+            for face_idx in attached:
+                face_graph[face_idx].update(j for j in attached if j != face_idx)
+
+    visited: set[int] = set()
+    components = 0
+    for start in range(len(boundary_faces)):
+        if start in visited:
+            continue
+        components += 1
+        stack = [start]
+        visited.add(start)
+        while stack:
+            cur = stack.pop()
+            for nxt in face_graph.get(cur, ()):
+                if nxt not in visited:
+                    visited.add(nxt)
+                    stack.append(nxt)
+
+    assert sum(1 for count in edge_counts.values() if count == 1) == 0
+    assert sum(1 for count in edge_counts.values() if count > 2) == 0
+    assert components == 1
+    assert {p["name"] for p in boundary} == {"wall"}
+
+
 def test_generate_native_bl_vd_env_default_off_keeps_existing_path(
     tmp_path: Path,
 ) -> None:
