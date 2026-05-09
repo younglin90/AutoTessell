@@ -1135,6 +1135,7 @@ def _build_multi_layer_gap_bridge_cells(
     cell_face_verts: list[list[list[int]]] = []
     filled_edges: list[tuple[int, int]] = []
     vertex_face_graph: dict[int, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
+    bridge_face_counts: dict[tuple[int, ...], int] = defaultdict(int)
 
     def _edge_vertex_map(fi: int, layer: int, edge: tuple[int, int]) -> dict[int, tuple[int, int]]:
         pos = face_pos[fi]
@@ -1215,10 +1216,22 @@ def _build_multi_layer_gap_bridge_cells(
                     cell.extend([[i1v, i1w, i2v], [i1w, i2w, i2v]])
                 else:
                     cell.insert(3, inner_bridge)
+            cell_keys = [tuple(sorted(int(v) for v in face)) for face in cell]
+            if len(set(cell_keys)) != len(cell_keys):
+                continue
+            if any(bridge_face_counts[key] >= 2 for key in cell_keys):
+                continue
             cell_face_verts.append(cell)
+            for key in cell_keys:
+                bridge_face_counts[key] += 1
             filled_edges.append((v, w))
 
     if os.environ.get("AUTO_TESSELL_BL_VD_VERTEX_FILL", "0") == "1":
+        face_counts: dict[tuple[int, ...], int] = defaultdict(int)
+        for cell in cell_face_verts:
+            for raw_face in cell:
+                face_counts[tuple(sorted(int(v) for v in raw_face))] += 1
+
         vertex_to_faces: dict[int, set[int]] = defaultdict(set)
         for fi in wall_face_indices:
             for v in faces[fi]:
@@ -1312,7 +1325,15 @@ def _build_multi_layer_gap_bridge_cells(
                     ]
                     cell.append(list(outer_ids))
                     cell.append(list(reversed(inner_ids)))
+                keys = [tuple(sorted(int(v) for v in face)) for face in cell]
+                side_keys = keys[:len(inner_ids)]
+                if any(face_counts[key] != 1 for key in side_keys):
+                    continue
+                if any(face_counts[key] >= 2 for key in keys):
+                    continue
                 cell_face_verts.append(cell)
+                for key in keys:
+                    face_counts[key] += 1
 
     return GapFillResult(
         cell_face_verts=cell_face_verts,
