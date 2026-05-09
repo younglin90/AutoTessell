@@ -654,6 +654,65 @@ def _axis_section_topology_summary(
     return summary
 
 
+def _classify_axis_section_topology(
+    section_topology: dict[str, Any] | None,
+    *,
+    cap_loop_count: int,
+    cap_hole_count: int,
+    area_variation_tol: float = 0.08,
+) -> str:
+    """Classify whether the cap-based sweep fastpath is topologically safe."""
+    if not section_topology or cap_loop_count <= 0 or cap_hole_count < 0:
+        return "unsafe_sweep"
+
+    sample_count = int(section_topology.get("sample_count") or 0)
+    usable_count = int(section_topology.get("usable_count") or 0)
+    polygon_counts = [
+        int(v) for v in (section_topology.get("polygon_counts") or [])
+    ]
+    hole_counts = [int(v) for v in (section_topology.get("hole_counts") or [])]
+    if (
+        sample_count <= 0
+        or usable_count <= 0
+        or usable_count < sample_count
+        or len(polygon_counts) < sample_count
+        or len(hole_counts) < sample_count
+        or any(count <= 0 for count in polygon_counts[:sample_count])
+    ):
+        return "unsafe_sweep"
+
+    if not bool(section_topology.get("topology_stable")):
+        return "changing_section_sweep"
+
+    area_min = section_topology.get("area_min")
+    area_max = section_topology.get("area_max")
+    if area_min is None or area_max is None:
+        return "unsafe_sweep"
+    area_min_f = float(area_min)
+    area_max_f = float(area_max)
+    if area_min_f <= 0.0 or area_max_f <= 0.0:
+        return "unsafe_sweep"
+    area_variation = (area_max_f - area_min_f) / max(area_max_f, 1.0e-30)
+
+    section_polygon_count = int(polygon_counts[0])
+    section_hole_count = int(hole_counts[0])
+    cap_polygon_count = max(1, int(cap_loop_count) - int(cap_hole_count))
+    if (
+        section_polygon_count == cap_polygon_count
+        and section_hole_count == int(cap_hole_count)
+        and area_variation <= float(area_variation_tol)
+    ):
+        return "constant_prism"
+
+    if (
+        section_polygon_count == cap_polygon_count
+        and section_hole_count != int(cap_hole_count)
+    ):
+        return "stable_hole_sweep"
+
+    return "changing_section_sweep"
+
+
 def _write_axis_extrusion_polymesh(
     surf: Any,
     case_dir: Path,
@@ -892,6 +951,7 @@ def _write_axis_extrusion_polymesh(
             "envelope_eps_rel": 1e-6,
         },
     }
+    section_topology = _axis_section_topology_summary(surf, axis)
     bl_quality["fastpath"] = {
         "kind": "axis_extrusion",
         "axis": int(axis),
@@ -904,7 +964,12 @@ def _write_axis_extrusion_polymesh(
         "axis_length": float(abs(z1 - z0)),
         "plane_triangles": int(len(plane_tris)),
         "z_layers": int(num_z),
-        "section_topology": _axis_section_topology_summary(surf, axis),
+        "section_topology": section_topology,
+        "section_topology_class": _classify_axis_section_topology(
+            section_topology,
+            cap_loop_count=int(len(loops)),
+            cap_hole_count=int(len(hole_loops)),
+        ),
     }
     (case_dir / "native_bl_quality.json").write_text(
         json.dumps(bl_quality, indent=2, sort_keys=True),

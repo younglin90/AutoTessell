@@ -196,10 +196,10 @@ creates near-tangent interface faces.
 
 ### TAW-1: implement section topology classifier
 
-- [ ] Add `_classify_axis_section_topology(...)`.
-- [ ] Add unit tests for `constant_prism`, `stable_hole_sweep`, and
+- [x] Add `_classify_axis_section_topology(...)`.
+- [x] Add unit tests for `constant_prism`, `stable_hole_sweep`, and
   `changing_section_sweep`.
-- [ ] No mesh output behavior change.
+- [x] No mesh output behavior change.
 
 ### TAW-2: add guarded candidate validation wrapper
 

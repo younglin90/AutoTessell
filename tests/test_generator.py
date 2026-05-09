@@ -584,6 +584,71 @@ class TestTierGracefulFail:
         assert summary["area_min"] == pytest.approx(3.36)
         assert summary["area_max"] == pytest.approx(3.36)
 
+    def test_tier_wildmesh_axis_section_topology_classification(self) -> None:
+        """Axis sweep classifier separates safe caps from topology rewrites."""
+        from core.generator.tier_wildmesh import _classify_axis_section_topology
+
+        constant = {
+            "sample_count": 3,
+            "usable_count": 3,
+            "polygon_counts": [1, 1, 1],
+            "hole_counts": [0, 0, 0],
+            "area_min": 1.0,
+            "area_max": 1.02,
+            "topology_stable": True,
+        }
+        assert (
+            _classify_axis_section_topology(
+                constant,
+                cap_loop_count=1,
+                cap_hole_count=0,
+            )
+            == "constant_prism"
+        )
+
+        stable_hole = {
+            **constant,
+            "hole_counts": [1, 1, 1],
+            "area_min": 0.8,
+            "area_max": 0.81,
+        }
+        assert (
+            _classify_axis_section_topology(
+                stable_hole,
+                cap_loop_count=1,
+                cap_hole_count=0,
+            )
+            == "stable_hole_sweep"
+        )
+
+        changing = {
+            **constant,
+            "polygon_counts": [1, 2, 1],
+            "topology_stable": False,
+        }
+        assert (
+            _classify_axis_section_topology(
+                changing,
+                cap_loop_count=1,
+                cap_hole_count=0,
+            )
+            == "changing_section_sweep"
+        )
+
+        unsafe = {
+            **constant,
+            "usable_count": 2,
+            "polygon_counts": [1, 0, 1],
+        }
+        assert (
+            _classify_axis_section_topology(
+                unsafe,
+                cap_loop_count=1,
+                cap_hole_count=0,
+            )
+            == "unsafe_sweep"
+        )
+
     def test_tier_wildmesh_registered_in_pipeline(self) -> None:
         """tier_wildmesh가 _TIER_REGISTRY에 등록되어 있어야 한다."""
         from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
