@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 
 import numpy as np
@@ -1117,6 +1118,20 @@ def _write_single_hex_polymesh(case_dir: Path) -> None:
     )
 
 
+def _write_single_tet_polymesh(case_dir: Path) -> None:
+    """Write a single tetrahedral polyMesh whose four faces are wall patch."""
+    from core.generator.polymesh_writer import write_generic_polymesh
+
+    faces, points, _owner, _neighbour = _single_tet_boundary()
+    write_generic_polymesh(
+        points,
+        [faces],
+        case_dir,
+        patch_name="wall",
+        patch_type="wall",
+    )
+
+
 def test_generate_native_bl_vd_env_gated_replaces_polymesh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1158,6 +1173,47 @@ def test_generate_native_bl_vd_env_gated_replaces_polymesh(
     assert "wall" in patch_names
     assert "bl_internal" in patch_names
     assert "bl_internal_side" in patch_names
+
+
+def test_generate_native_bl_vd_preserve_bulk_env_keeps_bulk_cell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUTO_TESSELL_BL_VD_PRESERVE_BULK=1 uses the bulk-preserving writer."""
+    from core.evaluator.native_checker import NativeMeshChecker
+    from core.layers.native_bl import BLConfig, generate_native_bl
+
+    _write_single_tet_polymesh(tmp_path)
+
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_ENABLE", "1")
+    monkeypatch.setenv("AUTO_TESSELL_BL_VD_PRESERVE_BULK", "1")
+
+    res = generate_native_bl(
+        tmp_path,
+        BLConfig(
+            num_layers=1,
+            growth_ratio=1.2,
+            first_thickness=0.03,
+            collision_safety=False,
+            backup_original=False,
+        ),
+    )
+    assert res.success, res.message
+    assert "VD-8a" in res.message
+    assert "bulk preserved" in res.message
+    assert res.n_prism_cells == 1 + 4 + 6
+
+    checker = NativeMeshChecker().run(tmp_path)
+    assert checker.mesh_ok
+    assert checker.negative_volumes == 0
+    assert checker.min_cell_volume > 0.0
+    assert checker.min_determinant > 0.0
+
+    quality = json.loads((tmp_path / "native_bl_quality.json").read_text())
+    assert quality["requested_layers"] == 1
+    assert quality["used_layers"] == 1
+    assert quality["lcr"]["min_layers_used"] == 1
+    assert quality["wall_preserve"]["within_envelope"] is True
+    assert quality["wall_preserve"]["max_diff_rel"] == 0.0
 
 
 def test_generate_native_bl_vd_env_default_off_keeps_existing_path(

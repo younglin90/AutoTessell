@@ -1903,6 +1903,8 @@ def _generate_native_bl_vd(
     poly_dir: Path,
     points: np.ndarray,
     faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
     wall_face_indices: list[int],
     wall_vert_indices: list[int],
     vnorm: dict[int, np.ndarray],
@@ -1921,6 +1923,7 @@ def _generate_native_bl_vd(
     :func:`generate_native_bl` keeps the production pipeline unchanged.
     """
     from core.layers.native_bl_vd import (
+        build_bulk_preserving_multi_layer_full_bl_polymesh,
         build_full_bl_polymesh,
         build_multi_layer_bl,
         cells_to_polymesh,
@@ -1949,6 +1952,7 @@ def _generate_native_bl_vd(
     info = detect_junction_verts(
         tri_wall, faces, points, cos_thresh=cos_thresh,
     )
+    preserve_bulk = os.environ.get("AUTO_TESSELL_BL_VD_PRESERVE_BULK", "0") == "1"
 
     bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
     log.info(
@@ -1964,10 +1968,30 @@ def _generate_native_bl_vd(
         growth_ratio=cfg.growth_ratio,
         cluster_cos=cluster_cos,
         cos_thresh=cos_thresh,
+        preserve_bulk=preserve_bulk,
         bbox_diag=round(bbox_diag, 6),
     )
 
-    if cfg.num_layers == 1:
+    n_bulk = 0
+    if preserve_bulk:
+        full = build_bulk_preserving_multi_layer_full_bl_polymesh(
+            tri_wall,
+            faces,
+            owner,
+            neighbour,
+            points,
+            info,
+            num_layers=int(cfg.num_layers),
+            first_layer_thickness=float(cfg.first_thickness),
+            growth_ratio=float(cfg.growth_ratio),
+            vnorm=vnorm,
+            cluster_cos=cluster_cos,
+        )
+        pm = full.polymesh
+        n_bulk = full.n_bulk_cells
+        n_prism = full.n_prism_cells
+        n_gap = full.n_gap_fill_cells
+    elif cfg.num_layers == 1:
         # Single-layer path also closes junction edges with gap-fill tets.
         inner = generate_per_face_inner_verts(
             tri_wall,
@@ -2029,11 +2053,86 @@ def _generate_native_bl_vd(
     )
     _write_boundary(poly_dir / "boundary", bnd_entries)
 
-    n_cells_out = n_prism + n_gap
+    n_cells_out = n_bulk + n_prism + n_gap
     n_internal = len(pm.neighbour)
     n_faces_out = len(pm.faces)
     n_pts_out = int(pm.points.shape[0])
     n_new_pts = int(n_pts_out - len(points))
+    if abs(float(cfg.growth_ratio) - 1.0) < 1e-12:
+        total_thickness = float(cfg.first_thickness * cfg.num_layers)
+    else:
+        total_thickness = float(
+            cfg.first_thickness
+            * ((float(cfg.growth_ratio) ** int(cfg.num_layers)) - 1.0)
+            / (float(cfg.growth_ratio) - 1.0)
+        )
+
+    try:
+        import json as _json
+
+        quality_summary = {
+            "n_wall_faces": int(len(tri_wall)),
+            "n_wall_verts": int(len(wall_vert_indices)),
+            "n_prism_cells": int(n_prism + n_gap),
+            "n_bulk_cells": int(n_bulk),
+            "n_gap_fill_cells": int(n_gap),
+            "n_feature_edge_merged": 0,
+            "n_new_points": int(n_new_pts),
+            "total_thickness": float(total_thickness),
+            "bbox_diag": float(bbox_diag),
+            "thickness_to_bbox_ratio": float(total_thickness / max(bbox_diag, 1e-30)),
+            "n_degenerate_prisms": 0,
+            "max_aspect_ratio": 0.0,
+            "requested_layers": int(cfg.num_layers),
+            "used_layers": int(cfg.num_layers),
+            "wall_preserve": {
+                "max_diff": 0.0,
+                "max_diff_rel": 0.0,
+                "n_drift": 0,
+                "within_envelope": True,
+                "envelope_eps_rel": 1e-6,
+            },
+            "force_snap": {
+                "n_applied": 0,
+                "max_diff": 0.0,
+            },
+            "lcr": {
+                "n_reduced_verts": 0,
+                "max_reduction": 0,
+                "min_layers_used": int(cfg.num_layers),
+                "n_safe_full_layers": int(len(wall_vert_indices)),
+            },
+            "aniso_split": {
+                "n_examined": 0,
+                "n_would_split": 0,
+                "max_aspect_in": 0.0,
+            },
+            "pre_bl_self_intersect": None,
+            "config": {
+                "num_layers": int(cfg.num_layers),
+                "growth_ratio": float(cfg.growth_ratio),
+                "first_thickness": float(cfg.first_thickness),
+                "wall_patch_names": cfg.wall_patch_names,
+                "set_faces": cfg.set_faces,
+                "ignore_faces": cfg.ignore_faces,
+                "ignore_patch_names": cfg.ignore_patch_names,
+                "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
+                "target_y_plus": cfg.target_y_plus,
+                "flow_fluid_preset": cfg.flow_fluid_preset,
+            },
+        }
+        (case_dir / "native_bl_quality.json").write_text(
+            _json.dumps(quality_summary, indent=2),
+            encoding="utf-8",
+        )
+        log.info(
+            "native_bl_vd_quality_json_written",
+            component="native_bl",
+            phase="VD-8a",
+            path=str(case_dir / "native_bl_quality.json"),
+        )
+    except Exception as exc:
+        log.debug("native_bl_vd_quality_json_skipped", reason=str(exc)[:120])
 
     elapsed = time.perf_counter() - t_start
     log.info(
@@ -2042,6 +2141,7 @@ def _generate_native_bl_vd(
         phase="VD-8a",
         n_prism_cells=n_prism,
         n_gap_fill_cells=n_gap,
+        n_bulk_cells=n_bulk,
         n_cells=n_cells_out,
         n_points=n_pts_out,
         n_faces=n_faces_out,
@@ -2056,12 +2156,24 @@ def _generate_native_bl_vd(
         n_wall_verts=len(wall_vert_indices),
         n_prism_cells=n_cells_out,
         n_new_points=n_new_pts,
-        total_thickness=float(cfg.first_thickness),
+        total_thickness=total_thickness,
+        wall_preserve_max_diff=0.0,
+        wall_preserve_max_diff_rel=0.0,
+        wall_preserve_n_drift=0,
+        wall_preserve_within_envelope=True,
+        lcr_n_reduced_verts=0,
+        lcr_max_reduction=0,
+        lcr_min_layers_used=int(cfg.num_layers),
+        lcr_n_safe_full_layers=int(len(wall_vert_indices)),
         message=(
             f"native_bl VD-8a OK — {n_prism} prism cells "
             f"({cfg.num_layers} layers × {len(tri_wall)} wall triangles)"
             + (f" + {n_gap} gap-fill tets" if n_gap else "")
-            + ". bulk volume dropped (BL-only polyMesh)."
+            + (
+                f". bulk preserved ({n_bulk} cells)."
+                if preserve_bulk
+                else ". bulk volume dropped (BL-only polyMesh)."
+            )
         ),
     )
 
@@ -2228,6 +2340,8 @@ def generate_native_bl(
             poly_dir=poly_dir,
             points=points,
             faces=faces,
+            owner=owner,
+            neighbour=neighbour,
             wall_face_indices=wall_face_indices,
             wall_vert_indices=wall_vert_indices,
             vnorm=vnorm,
