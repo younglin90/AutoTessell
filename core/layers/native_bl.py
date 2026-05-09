@@ -3206,8 +3206,6 @@ def generate_native_bl(
             owner-neighbour pair but emitting two triangular faces preserves the
             FVM topology and removes the non-planar face.
             """
-            if os.environ.get("AUTO_TESSELL_BL_KEEP_SIDE_QUADS", "1") != "0":
-                return [quad_]
             return _face_parts(quad_, force_quad_split=False)
 
         for wi_p, fi_p in enumerate(wall_face_indices):
