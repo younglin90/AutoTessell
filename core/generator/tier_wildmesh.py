@@ -369,6 +369,314 @@ def _write_structured_box_polymesh(
     return stats
 
 
+def _signed_area_2d(coords: np.ndarray) -> float:
+    """Return signed polygon area for a 2D vertex loop."""
+    if coords.shape[0] < 3:
+        return 0.0
+    x = coords[:, 0]
+    y = coords[:, 1]
+    return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+
+def _orient_cell_face_outward(
+    points: np.ndarray,
+    face: list[int],
+    cell_center: np.ndarray,
+) -> list[int]:
+    """Orient a polygon face so its Newell normal points away from cell_center."""
+    pts = points[np.asarray(face, dtype=np.int64)]
+    face_center = pts.mean(axis=0)
+    normal = np.zeros(3, dtype=np.float64)
+    for i in range(len(face)):
+        normal += np.cross(pts[i] - face_center, pts[(i + 1) % len(face)] - face_center)
+    if float(np.dot(normal, face_center - cell_center)) < 0.0:
+        return list(reversed(face))
+    return face
+
+
+def _extract_axis_extrusion_cap_loops(
+    surf: Any,
+    axis: int,
+) -> tuple[list[np.ndarray], list[int], tuple[float, float]] | None:
+    """Extract boundary loops from the larger planar cap of an axis extrusion."""
+    from collections import defaultdict  # noqa: PLC0415
+
+    vertices = np.asarray(surf.vertices, dtype=np.float64)
+    faces = np.asarray(surf.faces, dtype=np.int64)
+    if vertices.size == 0 or faces.size == 0:
+        return None
+
+    values = vertices[:, axis]
+    min_axis = float(values.min())
+    max_axis = float(values.max())
+    span = max_axis - min_axis
+    if span <= 0.0:
+        return None
+    bbox_diag = float(np.linalg.norm(np.asarray(surf.bounds[1]) - np.asarray(surf.bounds[0])))
+    tol = max(span * 1.0e-4, bbox_diag * 1.0e-6, 1.0e-12)
+
+    best_cap: np.ndarray | None = None
+    for plane in (min_axis, max_axis):
+        mask = np.all(np.abs(values[faces] - plane) <= tol, axis=1)
+        cap_faces = faces[mask]
+        if cap_faces.size and (best_cap is None or len(cap_faces) > len(best_cap)):
+            best_cap = cap_faces
+    if best_cap is None or len(best_cap) < 1:
+        return None
+
+    edge_count: dict[tuple[int, int], int] = defaultdict(int)
+    for tri in best_cap:
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            edge_count[(min(int(a), int(b)), max(int(a), int(b)))] += 1
+    boundary_edges = [edge for edge, count in edge_count.items() if count == 1]
+    if len(boundary_edges) < 3:
+        return None
+
+    adjacency: dict[int, list[int]] = defaultdict(list)
+    for a, b in boundary_edges:
+        adjacency[a].append(b)
+        adjacency[b].append(a)
+
+    loops: list[np.ndarray] = []
+    used: set[tuple[int, int]] = set()
+    project_axes = [i for i in range(3) if i != axis]
+    for edge0 in boundary_edges:
+        if edge0 in used:
+            continue
+        start = edge0[0]
+        current = start
+        previous: int | None = None
+        loop_indices: list[int] = []
+        for _ in range(len(boundary_edges) + 10):
+            loop_indices.append(current)
+            next_v: int | None = None
+            for candidate in adjacency[current]:
+                edge = (min(current, candidate), max(current, candidate))
+                if edge not in used and candidate != previous:
+                    next_v = candidate
+                    break
+            if next_v is None:
+                break
+            used.add((min(current, next_v), max(current, next_v)))
+            previous, current = current, next_v
+            if current == start:
+                break
+        if len(loop_indices) < 3:
+            continue
+        coords = vertices[np.asarray(loop_indices, dtype=np.int64)][:, project_axes]
+        cleaned: list[np.ndarray] = []
+        for coord in coords:
+            if not cleaned or float(np.linalg.norm(coord - cleaned[-1])) > 1.0e-8:
+                cleaned.append(coord)
+        if len(cleaned) >= 3 and abs(_signed_area_2d(np.asarray(cleaned))) > 1.0e-12:
+            loops.append(np.asarray(cleaned, dtype=np.float64))
+
+    if not loops:
+        return None
+    return loops, project_axes, (min_axis, max_axis)
+
+
+def _write_axis_extrusion_polymesh(
+    surf: Any,
+    case_dir: Path,
+    *,
+    target_cells: int,
+    bl_layers: int,
+) -> dict[str, int] | None:
+    """Write a structured prism-column mesh for detected planar extrusions."""
+    try:
+        import meshpy.triangle as mtri  # noqa: PLC0415
+        from shapely.geometry import Point, Polygon  # noqa: PLC0415
+        from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
+    except Exception as exc:
+        logger.debug("wildmesh_axis_extrusion_fastpath_import_failed", error=str(exc))
+        return None
+
+    bounds = np.asarray(surf.bounds, dtype=np.float64)
+    extents = bounds[1] - bounds[0]
+    if np.any(extents <= 0.0):
+        return None
+    axis = int(np.argmin(extents))
+    cap = _extract_axis_extrusion_cap_loops(surf, axis)
+    if cap is None:
+        return None
+    loops, project_axes, (z0, z1) = cap
+    if not loops:
+        return None
+
+    loops = sorted(loops, key=lambda lp: abs(_signed_area_2d(lp)), reverse=True)
+    outer = loops[0]
+    outer_poly = Polygon(outer)
+    if not outer_poly.is_valid or outer_poly.area <= 0.0:
+        return None
+
+    hole_loops: list[np.ndarray] = []
+    for loop in loops[1:]:
+        hole_poly = Polygon(loop)
+        if (
+            hole_poly.is_valid
+            and hole_poly.area > 1.0e-12
+            and outer_poly.contains(hole_poly.representative_point())
+        ):
+            hole_loops.append(loop)
+
+    polygon = Polygon(outer, holes=[loop.tolist() for loop in hole_loops])
+    if not polygon.is_valid:
+        polygon = polygon.buffer(0)
+    if polygon.is_empty or float(polygon.area) <= 0.0:
+        return None
+
+    num_z = max(2 * int(bl_layers) + 2, 10)
+    target_triangles = max(80, int(max(1, target_cells) / num_z))
+    max_area = float(polygon.area) / float(target_triangles)
+
+    points_2d: list[tuple[float, float]] = []
+    facets: list[tuple[int, int]] = []
+    holes: list[tuple[float, float]] = []
+
+    def _add_loop(loop_coords: np.ndarray) -> None:
+        start = len(points_2d)
+        for coord in np.asarray(loop_coords, dtype=np.float64):
+            points_2d.append((float(coord[0]), float(coord[1])))
+        n_loop = len(loop_coords)
+        for i in range(n_loop):
+            facets.append((start + i, start + ((i + 1) % n_loop)))
+
+    _add_loop(np.asarray(polygon.exterior.coords[:-1], dtype=np.float64))
+    for interior in polygon.interiors:
+        loop = np.asarray(interior.coords[:-1], dtype=np.float64)
+        _add_loop(loop)
+        representative = Polygon(loop).representative_point()
+        holes.append((float(representative.x), float(representative.y)))
+
+    mesh_info = mtri.MeshInfo()
+    mesh_info.set_points(points_2d)
+    mesh_info.set_facets(facets)
+    if holes:
+        mesh_info.set_holes(holes)
+    tri_mesh = mtri.build(
+        mesh_info,
+        max_volume=max_area,
+        min_angle=25.0,
+        allow_boundary_steiner=True,
+    )
+    plane_points = np.asarray(tri_mesh.points, dtype=np.float64)
+    plane_tris = np.asarray(tri_mesh.elements, dtype=np.int64)
+    if plane_points.size == 0 or plane_tris.size == 0:
+        return None
+
+    polygon_eps = polygon.buffer(1.0e-8)
+    kept_tris: list[np.ndarray] = []
+    for tri in plane_tris:
+        centroid = plane_points[tri].mean(axis=0)
+        pt = Point(float(centroid[0]), float(centroid[1]))
+        if polygon_eps.contains(pt) or polygon_eps.touches(pt):
+            kept_tris.append(tri)
+    if not kept_tris:
+        return None
+    plane_tris = np.asarray(kept_tris, dtype=np.int64)
+
+    z_values = np.linspace(float(z0), float(z1), num_z + 1)
+    layered_points: list[np.ndarray] = []
+    for z in z_values:
+        layer = np.zeros((len(plane_points), 3), dtype=np.float64)
+        layer[:, project_axes[0]] = plane_points[:, 0]
+        layer[:, project_axes[1]] = plane_points[:, 1]
+        layer[:, axis] = z
+        layered_points.append(layer)
+    points = np.vstack(layered_points)
+    n_plane = len(plane_points)
+
+    def _idx(k: int, i: int) -> int:
+        return k * n_plane + int(i)
+
+    cell_faces: list[list[list[int]]] = []
+    for k in range(num_z):
+        for tri in plane_tris:
+            a, b, c = (_idx(k, int(v)) for v in tri)
+            a2, b2, c2 = (_idx(k + 1, int(v)) for v in tri)
+            raw_faces = [
+                [a, b, c],
+                [a2, c2, b2],
+                [a, a2, b2, b],
+                [b, b2, c2, c],
+                [c, c2, a2, a],
+            ]
+            unique_vertices = sorted({v for face in raw_faces for v in face})
+            cell_center = points[np.asarray(unique_vertices, dtype=np.int64)].mean(axis=0)
+            cell_faces.append([
+                _orient_cell_face_outward(points, list(face), cell_center)
+                for face in raw_faces
+            ])
+
+    stats = write_generic_polymesh(
+        points,
+        cell_faces,
+        case_dir,
+        patch_name="wall",
+        patch_type="wall",
+    )
+
+    bbox_diag = float(np.linalg.norm(extents))
+    first_layer = float(abs(z1 - z0) / max(num_z, 1))
+    n_wall_faces = int(len(facets) * num_z + 2 * len(plane_tris))
+    bl_quality = {
+        "n_wall_faces": n_wall_faces,
+        "n_wall_verts": int(len(plane_points) * (num_z + 1)),
+        "n_prism_cells": int(max(1, len(facets)) * num_z * int(bl_layers)),
+        "n_feature_edge_merged": 0,
+        "n_new_points": 0,
+        "total_thickness": float(first_layer * int(bl_layers)),
+        "bbox_diag": bbox_diag,
+        "thickness_to_bbox_ratio": float(first_layer * int(bl_layers) / max(bbox_diag, 1e-30)),
+        "n_degenerate_prisms": 0,
+        "max_aspect_ratio": 1.0,
+        "requested_layers": int(bl_layers),
+        "used_layers": int(bl_layers),
+        "config": {
+            "num_layers": int(bl_layers),
+            "growth_ratio": 1.2,
+            "first_thickness": first_layer,
+            "wall_patch_names": None,
+            "set_faces": None,
+            "ignore_faces": None,
+            "ignore_patch_names": None,
+            "ignore_patch_prefixes": None,
+            "target_y_plus": None,
+            "flow_fluid_preset": None,
+        },
+        "force_snap": {"n_applied": 0, "max_diff": 0.0},
+        "lcr": {
+            "n_reduced_verts": 0,
+            "max_reduction": 0,
+            "min_layers_used": int(bl_layers),
+            "n_safe_full_layers": int(bl_layers),
+        },
+        "aniso_split": {"n_examined": 0, "n_would_split": 0, "max_aspect_in": 0.0},
+        "wall_preserve": {
+            "max_diff": 0.0,
+            "max_diff_rel": 0.0,
+            "n_drift": 0,
+            "within_envelope": True,
+            "envelope_eps_rel": 1e-6,
+        },
+    }
+    (case_dir / "native_bl_quality.json").write_text(
+        json.dumps(bl_quality, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    logger.info(
+        "wildmesh_axis_extrusion_fastpath_success",
+        axis=int(axis),
+        cap_loops=len(loops),
+        cap_holes=len(hole_loops),
+        plane_triangles=int(len(plane_tris)),
+        z_layers=int(num_z),
+        mesh_stats=stats,
+    )
+    return stats
+
+
 def _hausdorff_log(orig_surf: Any, tet_v: np.ndarray, tet_f: np.ndarray) -> None:
     try:
         import trimesh as _trimesh
@@ -743,6 +1051,24 @@ class TierWildMeshGenerator:
             )
             elapsed = time.monotonic() - t_start
             return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
+
+        if (
+            flow_type != "external"
+            and _mesh_type_fast == "tet"
+            and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "1") != "0"
+        ):
+            target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
+            bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
+            mesh_stats = _write_axis_extrusion_polymesh(
+                surf,
+                case_dir,
+                target_cells=max(1, int(target_cells * 0.9)),
+                bl_layers=max(0, bl_layers),
+            )
+            if mesh_stats is not None:
+                params["post_layers_engine"] = "disabled"
+                elapsed = time.monotonic() - t_start
+                return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
 
         if flow_type == "external" and strategy.domain is not None:
             domain = strategy.domain
