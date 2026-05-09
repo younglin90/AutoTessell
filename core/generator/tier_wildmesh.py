@@ -582,6 +582,7 @@ def _write_axis_extrusion_polymesh(
     """Write a structured prism-column mesh for detected planar extrusions."""
     try:
         import meshpy.triangle as mtri  # noqa: PLC0415
+        from shapely import affinity  # noqa: PLC0415
         from shapely.geometry import Point, Polygon  # noqa: PLC0415
         from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
     except Exception as exc:
@@ -626,6 +627,45 @@ def _write_axis_extrusion_polymesh(
         polygon = polygon.buffer(0)
     if polygon.is_empty or float(polygon.area) <= 0.0:
         return None
+    if section_source == "cap":
+        surf_area = float(getattr(surf, "area", 0.0) or 0.0)
+        pred_area = 2.0 * float(polygon.area) + float(polygon.length) * abs(z1 - z0)
+        if surf_area > 0.0 and pred_area > 0.0:
+            area_err = abs(pred_area - surf_area) / max(pred_area, surf_area)
+            min_err = float(os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_SCALE_MIN_ERR", "0.02"))
+            max_delta = float(os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_SCALE_MAX_DELTA", "0.22"))
+            if area_err > min_err:
+                a = 2.0 * float(polygon.area)
+                b = float(polygon.length) * abs(z1 - z0)
+                disc = b * b + 4.0 * a * surf_area
+                scale = (-b + float(np.sqrt(disc))) / (2.0 * a) if disc > 0.0 and a > 0.0 else 1.0
+                if abs(scale - 1.0) <= max_delta:
+                    centre = polygon.centroid
+                    scaled = affinity.scale(
+                        polygon,
+                        xfact=float(scale),
+                        yfact=float(scale),
+                        origin=(float(centre.x), float(centre.y)),
+                    )
+                    if not scaled.is_valid:
+                        scaled = scaled.buffer(0)
+                    scaled_area = 2.0 * float(scaled.area) + float(scaled.length) * abs(z1 - z0)
+                    scaled_err = (
+                        abs(scaled_area - surf_area) / max(scaled_area, surf_area)
+                        if scaled_area > 0.0 else area_err
+                    )
+                    if (
+                        not scaled.is_empty
+                        and getattr(scaled, "geom_type", "") == "Polygon"
+                        and scaled_err < area_err
+                    ):
+                        polygon = scaled
+                        logger.info(
+                            "wildmesh_axis_extrusion_section_scaled",
+                            area_error_before=round(float(area_err), 4),
+                            area_error_after=round(float(scaled_err), 4),
+                            scale=round(float(scale), 4),
+                        )
 
     num_z = max(2 * int(bl_layers) + 2, 10)
     target_triangles = max(80, int(max(1, target_cells) / num_z))
