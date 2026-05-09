@@ -473,59 +473,6 @@ def _extract_axis_extrusion_cap_loops(
 
     if not loops:
         return None
-
-    # A planar cap loop alone is not enough to prove that the whole body is an
-    # extrusion.  Several bench STLs have small planar end caps but curved or
-    # stepped side walls; sweeping the cap produces excellent cell quality but
-    # fails the evaluator's true surface-area/Hausdorff gates.  Accept this
-    # fast path only when the sweep area matches the input surface area.
-    try:
-        from shapely.geometry import Polygon  # noqa: PLC0415
-
-        sorted_loops = sorted(loops, key=lambda lp: abs(_signed_area_2d(lp)), reverse=True)
-        outer_poly = Polygon(sorted_loops[0])
-        if not outer_poly.is_valid:
-            repaired = outer_poly.buffer(0)
-            if hasattr(repaired, "geoms"):
-                polys = [geom for geom in repaired.geoms if getattr(geom, "geom_type", "") == "Polygon"]
-                outer_poly = max(polys, key=lambda geom: float(geom.area)) if polys else repaired
-            else:
-                outer_poly = repaired
-        if (
-            outer_poly.is_empty
-            or getattr(outer_poly, "geom_type", "") != "Polygon"
-            or float(outer_poly.area) <= 0.0
-        ):
-            return None
-
-        hole_coords: list[list[list[float]]] = []
-        for loop in sorted_loops[1:]:
-            hole_poly = Polygon(loop)
-            if (
-                hole_poly.is_valid
-                and float(hole_poly.area) > 1.0e-12
-                and outer_poly.contains(hole_poly.representative_point())
-            ):
-                hole_coords.append(loop.tolist())
-        section_poly = Polygon(np.asarray(outer_poly.exterior.coords[:-1]), holes=hole_coords)
-        if not section_poly.is_valid:
-            section_poly = section_poly.buffer(0)
-        surf_area = float(getattr(surf, "area", 0.0) or 0.0)
-        predicted_area = 2.0 * float(section_poly.area) + float(section_poly.length) * span
-        if surf_area > 0.0 and predicted_area > 0.0:
-            area_err = abs(predicted_area - surf_area) / max(surf_area, predicted_area)
-            max_err = float(os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_AREA_TOL", "0.025"))
-            if area_err > max_err:
-                logger.info(
-                    "wildmesh_axis_extrusion_cap_rejected",
-                    area_error=round(float(area_err), 4),
-                    predicted_area=round(float(predicted_area), 6),
-                    surface_area=round(float(surf_area), 6),
-                    tolerance=max_err,
-                )
-                return None
-    except Exception as exc:
-        logger.debug("wildmesh_axis_extrusion_area_check_skipped", error=str(exc))
     return loops, project_axes, (min_axis, max_axis)
 
 
