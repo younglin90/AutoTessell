@@ -476,77 +476,6 @@ def _extract_axis_extrusion_cap_loops(
     return loops, project_axes, (min_axis, max_axis)
 
 
-def _extract_projected_silhouette_polygon(surf: Any, axis: int) -> Any | None:
-    """Return the projected 2D silhouette polygon for an axis sweep.
-
-    The cap-loop fast path is exact for true plate/extrusion inputs, but many
-    Thingiverse benchmark models only have a tiny planar end cap.  Sweeping
-    that cap across the whole bbox creates large Hausdorff and area errors.
-    For those cases, the orthographic triangle projection is a better
-    conservative section while preserving the same low-orthogonality column
-    topology.
-    """
-    try:
-        from shapely.geometry import MultiPolygon, Polygon  # noqa: PLC0415
-        from shapely.ops import unary_union  # noqa: PLC0415
-    except Exception:
-        return None
-
-    try:
-        vertices = np.asarray(surf.vertices, dtype=np.float64)
-        faces = np.asarray(surf.faces, dtype=np.int64)
-        project_axes = [i for i in range(3) if i != axis]
-        polys: list[Any] = []
-        for tri in faces:
-            coords = vertices[np.asarray(tri, dtype=np.int64)][:, project_axes]
-            poly = Polygon(coords)
-            if not poly.is_valid:
-                poly = poly.buffer(0)
-            if not poly.is_empty and float(poly.area) > 1.0e-12:
-                polys.append(poly)
-        if not polys:
-            return None
-        merged = unary_union(polys)
-        if merged.is_empty:
-            return None
-        if isinstance(merged, MultiPolygon):
-            parts = [p for p in merged.geoms if not p.is_empty and float(p.area) > 1.0e-12]
-            if not parts:
-                return None
-            total_area = float(sum(float(p.area) for p in parts))
-            largest = max(parts, key=lambda p: float(p.area))
-            # Multiple comparable projected islands would generate disconnected
-            # volume regions and trip the topology gate.  Keep the silhouette
-            # fallback for effectively single-component projections only.
-            if total_area <= 0.0 or float(largest.area) / total_area < 0.985:
-                return None
-            merged = largest
-        if not isinstance(merged, Polygon):
-            return None
-        if not merged.is_valid:
-            merged = merged.buffer(0)
-        if merged.is_empty or float(merged.area) <= 1.0e-12:
-            return None
-        return merged
-    except Exception as exc:
-        logger.debug("wildmesh_projected_silhouette_skipped", error=str(exc))
-        return None
-
-
-def _extrusion_integral_errors(surf: Any, polygon: Any, length: float) -> tuple[float, float]:
-    """Return relative volume and surface-area errors for a swept section."""
-    try:
-        vol_ref = abs(float(getattr(surf, "volume", 0.0) or 0.0))
-        area_ref = float(getattr(surf, "area", 0.0) or 0.0)
-        vol_pred = float(polygon.area) * float(length)
-        area_pred = 2.0 * float(polygon.area) + float(polygon.length) * float(length)
-        vol_err = abs(vol_ref - vol_pred) / max(vol_ref, vol_pred, 1.0e-30)
-        area_err = abs(area_ref - area_pred) / max(area_ref, area_pred, 1.0e-30)
-        return float(vol_err), float(area_err)
-    except Exception:
-        return float("inf"), float("inf")
-
-
 def _write_axis_extrusion_polymesh(
     surf: Any,
     case_dir: Path,
@@ -596,27 +525,6 @@ def _write_axis_extrusion_polymesh(
         polygon = polygon.buffer(0)
     if polygon.is_empty or float(polygon.area) <= 0.0:
         return None
-
-    polygon_source = "cap"
-    silhouette = _extract_projected_silhouette_polygon(surf, axis)
-    if silhouette is not None and float(silhouette.area) > float(polygon.area) * 1.05:
-        length = abs(float(z1) - float(z0))
-        cap_vol_err, cap_area_err = _extrusion_integral_errors(surf, polygon, length)
-        sil_vol_err, sil_area_err = _extrusion_integral_errors(surf, silhouette, length)
-        # Prefer the projected silhouette only when it materially improves the
-        # integral surface match.  This keeps true plate/extrusion cases on the
-        # exact cap path while improving non-prismatic bench models where a
-        # tiny end cap was previously swept across the whole body.
-        if sil_area_err + 0.05 < cap_area_err and sil_vol_err <= cap_vol_err + 0.35:
-            logger.info(
-                "wildmesh_axis_extrusion_projected_silhouette_selected",
-                cap_area_error=round(float(cap_area_err), 4),
-                silhouette_area_error=round(float(sil_area_err), 4),
-                cap_volume_error=round(float(cap_vol_err), 4),
-                silhouette_volume_error=round(float(sil_vol_err), 4),
-            )
-            polygon = silhouette
-            polygon_source = "projected_silhouette"
 
     num_z = max(2 * int(bl_layers) + 2, 10)
     target_triangles = max(80, int(max(1, target_cells) / num_z))
@@ -762,7 +670,6 @@ def _write_axis_extrusion_polymesh(
         axis=int(axis),
         cap_loops=len(loops),
         cap_holes=len(hole_loops),
-        section_source=polygon_source,
         plane_triangles=int(len(plane_tris)),
         z_layers=int(num_z),
         mesh_stats=stats,
