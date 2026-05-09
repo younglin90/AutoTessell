@@ -11,6 +11,8 @@ from core.layers.native_bl_vd import (
     build_full_bl_polymesh,
     build_gap_fill_cells,
     build_multi_layer_bl,
+    build_multi_layer_full_bl_polymesh,
+    build_multi_layer_gap_fill_cells,
     build_prism_cells,
     cells_to_polymesh,
     compute_face_normals,
@@ -889,6 +891,49 @@ def test_build_multi_layer_bl_cube_3_layers_polymesh_caps_internal():
     cap_patch = by_name["bl_internal"]
     for o in pm.owner[cap_patch["startFace"] : cap_patch["startFace"] + cap_patch["nFaces"]]:
         assert 24 <= o < 36
+
+
+def test_build_multi_layer_gap_fill_cube_3_layers_closes_each_layer():
+    """Cube 3-layer VD: each cube edge gets 2 gap tets per layer."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    multi = build_multi_layer_bl(
+        list(range(12)), faces, points, info,
+        num_layers=3, first_layer_thickness=0.05, growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+    gap = build_multi_layer_gap_fill_cells(list(range(12)), faces, multi)
+
+    assert len(gap.cell_face_verts) == 12 * 3 * 2
+    assert len(gap.junction_edges) == 12 * 3
+    for cell in gap.cell_face_verts:
+        assert len(cell) == 4
+        assert all(len(face) == 3 for face in cell)
+
+
+def test_build_multi_layer_full_bl_polymesh_cube_3_layers_reduces_side_open_faces():
+    """Combined multi-layer VD has prism/gap internal matches on each layer."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    result = build_multi_layer_full_bl_polymesh(
+        list(range(12)), faces, points, info,
+        num_layers=3, first_layer_thickness=0.05, growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+
+    assert result.n_prism_cells == 36
+    assert result.n_gap_fill_cells == 72
+    by_name = {p["name"]: p for p in result.polymesh.patches}
+    assert by_name["wall"]["nFaces"] == 12
+    assert by_name["bl_internal"]["nFaces"] == 12
+    # Previously multi-layer VD left 72 prism side quads open.  With per-layer
+    # gap-fill, those side quads are triangulated and paired to closure tets;
+    # only the closure tets' outer triangles remain on the side patch.
+    assert by_name["bl_internal_side"]["nFaces"] == 72 * 2
+    # 42 prism/prism internal faces from the no-gap multi-layer stack, plus
+    # prism/gap matches and a small number of gap/gap matches across layer
+    # transitions.
+    assert len(result.polymesh.neighbour) == 204
 
 
 def test_build_multi_layer_bl_invalid_args():

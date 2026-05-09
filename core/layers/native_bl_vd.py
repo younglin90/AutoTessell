@@ -959,3 +959,124 @@ def build_multi_layer_bl(
         num_layers=num_layers,
         layer_thicknesses=layer_thicknesses,
     )
+
+
+def build_multi_layer_gap_fill_cells(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    multi_result: MultiLayerBLResult,
+) -> GapFillResult:
+    """Build per-layer gap-fill tetrahedra for duplicated junction side quads.
+
+    ``build_gap_fill_cells()`` closes a single-layer junction by adding two
+    tetrahedra whose faces match the canonical triangulation of each prism side
+    flap.  For a multi-layer stack, the same closure is needed independently at
+    every layer because layer k's outer vertices are face-specific duplicates
+    once k > 0.
+    """
+    face_pos = {int(fi): i for i, fi in enumerate(wall_face_indices)}
+    edge_to_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    edge_local_index: dict[tuple[int, int, int], int] = {}
+    for fi in wall_face_indices:
+        f = faces[fi]
+        n_v = len(f)
+        for i in range(n_v):
+            v0 = int(f[i])
+            v1 = int(f[(i + 1) % n_v])
+            key = (min(v0, v1), max(v0, v1))
+            edge_to_faces[key].append(int(fi))
+            edge_local_index[(int(fi), key[0], key[1])] = i
+
+    n_wall = len(wall_face_indices)
+    cell_face_verts: list[list[list[int]]] = []
+    filled_edges: list[tuple[int, int]] = []
+
+    for edge, f_list in edge_to_faces.items():
+        if len(f_list) > 2:
+            raise NotImplementedError(
+                f"3+ wall faces share edge {edge} (n_faces={len(f_list)}); "
+                "fan triangulation for non-manifold junctions is not "
+                "implemented in this iteration."
+            )
+        if len(f_list) != 2:
+            continue
+        f1, f2 = int(f_list[0]), int(f_list[1])
+        if f1 not in face_pos or f2 not in face_pos:
+            continue
+        for layer in range(int(multi_result.num_layers)):
+            c1 = layer * n_wall + face_pos[f1]
+            c2 = layer * n_wall + face_pos[f2]
+            if c1 >= len(multi_result.cell_face_verts) or c2 >= len(multi_result.cell_face_verts):
+                continue
+            i1 = edge_local_index.get((f1, edge[0], edge[1]))
+            i2 = edge_local_index.get((f2, edge[0], edge[1]))
+            if i1 is None or i2 is None:
+                continue
+            side1 = list(multi_result.cell_face_verts[c1][2 + i1])
+            side2 = list(multi_result.cell_face_verts[c2][2 + i2])
+            if tuple(sorted(side1)) == tuple(sorted(side2)):
+                continue
+            if len(set(side1)) == 4:
+                cell_face_verts.append(
+                    _tet_faces(side1[0], side1[1], side1[2], side1[3], multi_result.new_points)
+                )
+            if len(set(side2)) == 4:
+                cell_face_verts.append(
+                    _tet_faces(side2[0], side2[1], side2[2], side2[3], multi_result.new_points)
+                )
+            if len(set(side1)) == 4 or len(set(side2)) == 4:
+                filled_edges.append((int(edge[0]), int(edge[1])))
+
+    return GapFillResult(
+        cell_face_verts=cell_face_verts,
+        junction_edges=filled_edges,
+    )
+
+
+def build_multi_layer_full_bl_polymesh(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    junction_info: JunctionInfo,
+    *,
+    num_layers: int,
+    first_layer_thickness: float,
+    growth_ratio: float = 1.0,
+    vnorm: dict[int, np.ndarray] | None = None,
+    cluster_cos: float = 0.9,
+) -> FullBLResult:
+    """Build a multi-layer VD BL polyMesh with per-layer junction closures."""
+    multi = build_multi_layer_bl(
+        wall_face_indices,
+        faces,
+        points,
+        junction_info,
+        num_layers=num_layers,
+        first_layer_thickness=first_layer_thickness,
+        growth_ratio=growth_ratio,
+        vnorm=vnorm,
+        cluster_cos=cluster_cos,
+    )
+    gap = build_multi_layer_gap_fill_cells(
+        wall_face_indices,
+        faces,
+        multi,
+    )
+    prism_cells = [
+        _triangulate_prism_cell(cell) for cell in multi.cell_face_verts
+    ]
+    n_prism = len(prism_cells)
+    n_gap = len(gap.cell_face_verts)
+    combined_cells = prism_cells + gap.cell_face_verts
+    cell_kinds = ["prism"] * n_prism + ["gap_fill"] * n_gap
+    pm = cells_to_polymesh(
+        combined_cells,
+        multi.new_points,
+        cell_kinds=cell_kinds,
+    )
+    return FullBLResult(
+        polymesh=pm,
+        n_prism_cells=n_prism,
+        n_gap_fill_cells=n_gap,
+        junction_edges=list(gap.junction_edges),
+    )
