@@ -203,10 +203,10 @@ creates near-tangent interface faces.
 
 ### TAW-2: add guarded candidate validation wrapper
 
-- [ ] Build fastpath candidates in a temporary case directory.
-- [ ] Run native checker + fidelity before replacing the real `polyMesh`.
-- [ ] Reject unsafe candidates without writing partial output.
-- [ ] Default behavior unchanged until a replacement candidate is enabled.
+- [x] Build fastpath candidates in a temporary case directory.
+- [x] Run native checker + fidelity before replacing the real `polyMesh`.
+- [x] Reject unsafe candidates without writing partial output.
+- [x] Default behavior unchanged until a replacement candidate is enabled.
 
 ### TAW-3: implement stable-hole sweep candidate behind env flag
 

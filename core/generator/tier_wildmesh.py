@@ -30,6 +30,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -713,6 +714,146 @@ def _classify_axis_section_topology(
     return "changing_section_sweep"
 
 
+def _validate_axis_extrusion_candidate_case(
+    candidate_case: Path,
+    *,
+    reference_stl: Path | None,
+    bbox_diag: float,
+    max_non_ortho: float = 85.0,
+    max_skewness: float = 8.0,
+    min_determinant: float = 0.001,
+    max_hausdorff_relative: float = 0.10,
+    max_area_deviation_percent: float = 20.0,
+) -> dict[str, Any]:
+    """Run local quality gates before a generated fastpath candidate is used."""
+    result: dict[str, Any] = {"accepted": False, "checks": {}}
+    try:
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        check = NativeMeshChecker().run(candidate_case)
+        result["checks"]["native"] = {
+            "mesh_ok": bool(check.mesh_ok),
+            "failed_checks": int(check.failed_checks),
+            "negative_volumes": int(check.negative_volumes),
+            "min_cell_volume": float(check.min_cell_volume),
+            "min_face_area": float(check.min_face_area),
+            "min_determinant": float(check.min_determinant),
+            "max_non_orthogonality": float(check.max_non_orthogonality),
+            "max_skewness": float(check.max_skewness),
+        }
+        native_ok = (
+            bool(check.mesh_ok)
+            and int(check.failed_checks) == 0
+            and int(check.negative_volumes) == 0
+            and float(check.min_cell_volume) > 0.0
+            and float(check.min_face_area) > 0.0
+            and float(check.min_determinant) >= float(min_determinant)
+            and float(check.max_non_orthogonality) <= float(max_non_ortho)
+            and float(check.max_skewness) <= float(max_skewness)
+        )
+
+        fidelity_ok = True
+        if reference_stl is not None and Path(reference_stl).exists():
+            from core.evaluator.fidelity import GeometryFidelityChecker  # noqa: PLC0415
+
+            fidelity = GeometryFidelityChecker().compute(
+                Path(reference_stl),
+                candidate_case,
+                max(float(bbox_diag), 1.0e-30),
+            )
+            if fidelity is None:
+                fidelity_ok = False
+                result["checks"]["fidelity"] = {"computed": False}
+            else:
+                result["checks"]["fidelity"] = {
+                    "computed": True,
+                    "hausdorff_relative": float(fidelity.hausdorff_relative),
+                    "surface_area_deviation_percent": float(
+                        fidelity.surface_area_deviation_percent
+                    ),
+                }
+                fidelity_ok = (
+                    float(fidelity.hausdorff_relative)
+                    <= float(max_hausdorff_relative)
+                    and float(fidelity.surface_area_deviation_percent)
+                    <= float(max_area_deviation_percent)
+                )
+
+        result["accepted"] = bool(native_ok and fidelity_ok)
+    except Exception as exc:  # noqa: BLE001
+        result["error"] = str(exc)[:240]
+    return result
+
+
+def _replace_case_with_axis_candidate(candidate_case: Path, case_dir: Path) -> None:
+    """Copy an accepted temporary fastpath candidate into the real case."""
+    src_poly = candidate_case / "constant" / "polyMesh"
+    if not src_poly.is_dir():
+        raise FileNotFoundError(f"candidate polyMesh missing: {src_poly}")
+    dst_poly = case_dir / "constant" / "polyMesh"
+    if dst_poly.exists():
+        shutil.rmtree(dst_poly)
+    dst_poly.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_poly, dst_poly)
+
+    for name in ("native_bl_quality.json",):
+        src = candidate_case / name
+        if src.exists():
+            shutil.copy2(src, case_dir / name)
+
+
+def _write_axis_extrusion_polymesh_guarded(
+    surf: Any,
+    case_dir: Path,
+    *,
+    target_cells: int,
+    bl_layers: int,
+    reference_stl: Path | None = None,
+) -> dict[str, int] | None:
+    """Write an axis-extrusion mesh directly or via a validated temp case."""
+    if os.environ.get("AUTO_TESSELL_WILDMESH_VALIDATE_FASTPATH", "0") != "1":
+        return _write_axis_extrusion_polymesh(
+            surf,
+            case_dir,
+            target_cells=target_cells,
+            bl_layers=bl_layers,
+        )
+
+    bbox_diag = float(
+        np.linalg.norm(np.asarray(surf.bounds[1]) - np.asarray(surf.bounds[0]))
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="wildmesh_axis_candidate_",
+        dir=str(case_dir.parent),
+    ) as tmp_name:
+        candidate_case = Path(tmp_name)
+        stats = _write_axis_extrusion_polymesh(
+            surf,
+            candidate_case,
+            target_cells=target_cells,
+            bl_layers=bl_layers,
+        )
+        if stats is None:
+            return None
+        validation = _validate_axis_extrusion_candidate_case(
+            candidate_case,
+            reference_stl=reference_stl,
+            bbox_diag=bbox_diag,
+        )
+        if not bool(validation.get("accepted")):
+            logger.info(
+                "wildmesh_axis_extrusion_candidate_rejected",
+                validation=validation,
+            )
+            return None
+        _replace_case_with_axis_candidate(candidate_case, case_dir)
+        logger.info(
+            "wildmesh_axis_extrusion_candidate_accepted",
+            validation=validation,
+        )
+        return stats
+
+
 def _write_axis_extrusion_polymesh(
     surf: Any,
     case_dir: Path,
@@ -1386,7 +1527,9 @@ class TierWildMeshGenerator:
         ):
             target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
             bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
-            extrusion_surfaces: list[tuple[str, Any]] = [("preprocessed", surf)]
+            extrusion_surfaces: list[tuple[str, Any, Path | None]] = [
+                ("preprocessed", surf, preprocessed_path)
+            ]
             try:
                 geom_report = json.loads(
                     (case_dir / "geometry_report.json").read_text(encoding="utf-8")
@@ -1394,16 +1537,17 @@ class TierWildMeshGenerator:
                 raw_path = Path(str(geom_report.get("file_info", {}).get("path", "")))
                 if raw_path.exists() and raw_path.resolve() != preprocessed_path.resolve():
                     raw_surf = _trimesh.load(str(raw_path), force="mesh")
-                    extrusion_surfaces.append(("original", raw_surf))
+                    extrusion_surfaces.append(("original", raw_surf, raw_path))
             except Exception as exc:
                 logger.debug("wildmesh_axis_extrusion_original_load_skipped", error=str(exc))
 
-            for source_name, extrusion_surf in extrusion_surfaces:
-                mesh_stats = _write_axis_extrusion_polymesh(
+            for source_name, extrusion_surf, reference_stl in extrusion_surfaces:
+                mesh_stats = _write_axis_extrusion_polymesh_guarded(
                     extrusion_surf,
                     case_dir,
                     target_cells=max(1, int(target_cells * 0.9)),
                     bl_layers=max(0, bl_layers),
+                    reference_stl=reference_stl,
                 )
                 if mesh_stats is not None:
                     params["post_layers_engine"] = "disabled"
