@@ -210,9 +210,9 @@ creates near-tangent interface faces.
 
 ### TAW-3: implement stable-hole sweep candidate behind env flag
 
-- [ ] `AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP=1`
-- [ ] Target `easy_100423`.
-- [ ] Must reject rather than regress if side-surface guards fail.
+- [x] `AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP=1`
+- [x] Target `easy_100423`.
+- [x] Must reject rather than regress if side-surface guards fail.
 
 ### BLR-1: record bad-face interface histogram
 

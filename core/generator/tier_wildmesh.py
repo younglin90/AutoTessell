@@ -802,6 +802,260 @@ def _replace_case_with_axis_candidate(candidate_case: Path, case_dir: Path) -> N
             shutil.copy2(src, case_dir / name)
 
 
+def _section_polygon_at_axis_fraction(
+    surf: Any,
+    axis: int,
+    fraction: float,
+) -> tuple[Any, np.ndarray, tuple[float, float]] | None:
+    """Return the largest axis section polygon and its 2D-to-3D transform."""
+    try:
+        vertices = np.asarray(surf.vertices, dtype=np.float64)
+        if vertices.size == 0:
+            return None
+        bounds = np.asarray(surf.bounds, dtype=np.float64)
+        z0 = float(bounds[0, axis])
+        z1 = float(bounds[1, axis])
+        span = z1 - z0
+        if span <= 0.0:
+            return None
+        normal = np.zeros(3, dtype=np.float64)
+        normal[axis] = 1.0
+        origin = bounds.mean(axis=0)
+        origin[axis] = z0 + span * float(fraction)
+        section = surf.section(plane_origin=origin, plane_normal=normal)
+        if section is None:
+            return None
+        path2d, to_3d = (
+            section.to_2D() if hasattr(section, "to_2D") else section.to_planar()
+        )
+        polygons = [
+            poly
+            for poly in (getattr(path2d, "polygons_full", []) or [])
+            if not poly.is_empty and float(poly.area) > 1.0e-12
+        ]
+        if not polygons:
+            return None
+        polygon = max(polygons, key=lambda poly: float(poly.area))
+        return polygon, np.asarray(to_3d, dtype=np.float64), (z0, z1)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("wildmesh_axis_section_polygon_failed", error=str(exc))
+        return None
+
+
+def _make_axis_extrusion_surface_from_section_polygon(
+    polygon: Any,
+    to_3d: np.ndarray,
+    *,
+    axis: int,
+    z0: float,
+    z1: float,
+) -> Any | None:
+    """Build a synthetic constant-section surface from an interior section."""
+    try:
+        import meshpy.triangle as mtri  # noqa: PLC0415
+        import trimesh as _trimesh  # noqa: PLC0415
+        from shapely.geometry import Polygon  # noqa: PLC0415
+    except Exception as exc:
+        logger.debug("wildmesh_stable_hole_surface_import_failed", error=str(exc))
+        return None
+
+    points_2d: list[tuple[float, float]] = []
+    facets: list[tuple[int, int]] = []
+    holes: list[tuple[float, float]] = []
+
+    def _add_loop(coords: np.ndarray) -> None:
+        start = len(points_2d)
+        for coord in np.asarray(coords, dtype=np.float64):
+            points_2d.append((float(coord[0]), float(coord[1])))
+        n_loop = len(coords)
+        for i in range(n_loop):
+            facets.append((start + i, start + ((i + 1) % n_loop)))
+
+    _add_loop(np.asarray(polygon.exterior.coords[:-1], dtype=np.float64))
+    for interior in polygon.interiors:
+        loop = np.asarray(interior.coords[:-1], dtype=np.float64)
+        if loop.shape[0] < 3:
+            continue
+        _add_loop(loop)
+        representative = Polygon(loop).representative_point()
+        holes.append((float(representative.x), float(representative.y)))
+    if not points_2d or not facets:
+        return None
+
+    mesh_info = mtri.MeshInfo()
+    mesh_info.set_points(points_2d)
+    mesh_info.set_facets(facets)
+    if holes:
+        mesh_info.set_holes(holes)
+    tri_mesh = mtri.build(mesh_info, min_angle=25.0, allow_boundary_steiner=False)
+    plane_points = np.asarray(tri_mesh.points, dtype=np.float64)
+    plane_tris = np.asarray(tri_mesh.elements, dtype=np.int64)
+    if plane_points.size == 0 or plane_tris.size == 0:
+        return None
+
+    hom = np.column_stack(
+        [
+            plane_points[:, 0],
+            plane_points[:, 1],
+            np.zeros(len(plane_points), dtype=np.float64),
+            np.ones(len(plane_points), dtype=np.float64),
+        ]
+    )
+    mid_points = (np.asarray(to_3d, dtype=np.float64) @ hom.T).T[:, :3]
+    bottom = mid_points.copy()
+    top = mid_points.copy()
+    bottom[:, axis] = float(z0)
+    top[:, axis] = float(z1)
+    vertices = np.vstack([bottom, top])
+    n_plane = len(plane_points)
+
+    faces: list[list[int]] = []
+    for tri in plane_tris:
+        a, b, c = (int(v) for v in tri)
+        faces.append([a, c, b])
+        faces.append([n_plane + a, n_plane + b, n_plane + c])
+    for a_raw, b_raw in facets:
+        a = int(a_raw)
+        b = int(b_raw)
+        faces.append([a, b, n_plane + b])
+        faces.append([a, n_plane + b, n_plane + a])
+
+    return _trimesh.Trimesh(
+        vertices=vertices,
+        faces=np.asarray(faces, dtype=np.int64),
+        process=False,
+    )
+
+
+def _select_stable_hole_sweep_surface(surf: Any) -> tuple[Any, dict[str, Any]] | None:
+    """Create a synthetic sweep surface for stable interior-hole sections."""
+    try:
+        bounds = np.asarray(surf.bounds, dtype=np.float64)
+        extents = bounds[1] - bounds[0]
+        candidates: list[tuple[float, int, tuple[list[np.ndarray], list[int], tuple[float, float]]]] = []
+        for axis in range(3):
+            cap = _extract_axis_extrusion_cap_loops(surf, axis)
+            if cap is not None:
+                candidates.append((float(extents[axis]), int(axis), cap))
+        if not candidates:
+            return None
+        for _, axis, cap in sorted(candidates, key=lambda item: item[0]):
+            loops, _, _ = cap
+            loops = sorted(loops, key=lambda lp: abs(_signed_area_2d(lp)), reverse=True)
+            cap_holes = 0
+            try:
+                from shapely.geometry import Polygon  # noqa: PLC0415
+
+                outer_poly = Polygon(loops[0])
+                for loop in loops[1:]:
+                    hole_poly = Polygon(loop)
+                    if (
+                        hole_poly.is_valid
+                        and hole_poly.area > 1.0e-12
+                        and outer_poly.contains(hole_poly.representative_point())
+                    ):
+                        cap_holes += 1
+            except Exception:
+                cap_holes = max(0, len(loops) - 1)
+            topology = _axis_section_topology_summary(surf, axis)
+            topology_class = _classify_axis_section_topology(
+                topology,
+                cap_loop_count=int(len(loops)),
+                cap_hole_count=int(cap_holes),
+            )
+            if topology_class != "stable_hole_sweep":
+                continue
+            section = _section_polygon_at_axis_fraction(surf, axis, 0.5)
+            if section is None:
+                continue
+            polygon, to_3d, (z0, z1) = section
+            if len(getattr(polygon, "interiors", [])) <= 0:
+                continue
+            stable_surface = _make_axis_extrusion_surface_from_section_polygon(
+                polygon,
+                to_3d,
+                axis=axis,
+                z0=z0,
+                z1=z1,
+            )
+            if stable_surface is None:
+                continue
+            return stable_surface, {
+                "axis": int(axis),
+                "section_topology": topology,
+                "section_topology_class": topology_class,
+                "source": "mid_section_constant_hole_sweep",
+            }
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("wildmesh_stable_hole_sweep_selection_failed", error=str(exc))
+    return None
+
+
+def _write_stable_hole_sweep_candidate(
+    surf: Any,
+    case_dir: Path,
+    *,
+    target_cells: int,
+    bl_layers: int,
+    reference_stl: Path | None,
+) -> dict[str, int] | None:
+    """Try a stable-hole sweep candidate and accept only if local gates pass."""
+    if os.environ.get("AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP", "0") != "1":
+        return None
+    selected = _select_stable_hole_sweep_surface(surf)
+    if selected is None:
+        return None
+    stable_surface, metadata = selected
+    bbox_diag = float(
+        np.linalg.norm(np.asarray(surf.bounds[1]) - np.asarray(surf.bounds[0]))
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="wildmesh_stable_hole_candidate_",
+        dir=str(case_dir.parent),
+    ) as tmp_name:
+        candidate_case = Path(tmp_name)
+        stats = _write_axis_extrusion_polymesh(
+            stable_surface,
+            candidate_case,
+            target_cells=target_cells,
+            bl_layers=bl_layers,
+            forced_axis=int(metadata["axis"]),
+        )
+        if stats is None:
+            return None
+        validation = _validate_axis_extrusion_candidate_case(
+            candidate_case,
+            reference_stl=reference_stl,
+            bbox_diag=bbox_diag,
+        )
+        if not bool(validation.get("accepted")):
+            logger.info(
+                "wildmesh_stable_hole_sweep_candidate_rejected",
+                metadata=metadata,
+                validation=validation,
+            )
+            return None
+        quality_path = candidate_case / "native_bl_quality.json"
+        if quality_path.exists():
+            try:
+                quality = json.loads(quality_path.read_text(encoding="utf-8"))
+                quality.setdefault("fastpath", {})
+                quality["fastpath"]["stable_hole_candidate"] = metadata
+                quality_path.write_text(
+                    json.dumps(quality, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("wildmesh_stable_hole_metadata_write_failed", error=str(exc))
+        _replace_case_with_axis_candidate(candidate_case, case_dir)
+        logger.info(
+            "wildmesh_stable_hole_sweep_candidate_accepted",
+            metadata=metadata,
+            validation=validation,
+        )
+        return stats
+
+
 def _write_axis_extrusion_polymesh_guarded(
     surf: Any,
     case_dir: Path,
@@ -860,6 +1114,7 @@ def _write_axis_extrusion_polymesh(
     *,
     target_cells: int,
     bl_layers: int,
+    forced_axis: int | None = None,
 ) -> dict[str, int] | None:
     """Write a structured prism-column mesh for detected planar extrusions."""
     try:
@@ -876,21 +1131,28 @@ def _write_axis_extrusion_polymesh(
     if np.any(extents <= 0.0):
         return None
 
-    cap_candidates: list[tuple[float, int, tuple[list[np.ndarray], list[int], tuple[float, float]]]] = []
-    for cand_axis in range(3):
-        cand_cap = _extract_axis_extrusion_cap_loops(surf, cand_axis)
-        if cand_cap is not None:
-            cap_candidates.append((float(extents[cand_axis]), int(cand_axis), cand_cap))
-
-    if cap_candidates:
-        _, axis, cap = min(cap_candidates, key=lambda item: item[0])
-        section_source = "cap"
-    else:
-        axis = int(np.argmin(extents))
-        cap = _extract_projected_silhouette_loops(surf, axis)
+    if forced_axis is not None:
+        axis = int(forced_axis)
+        cap = _extract_axis_extrusion_cap_loops(surf, axis)
         if cap is None:
             return None
-        section_source = "projected_silhouette"
+        section_source = "cap"
+    else:
+        cap_candidates: list[tuple[float, int, tuple[list[np.ndarray], list[int], tuple[float, float]]]] = []
+        for cand_axis in range(3):
+            cand_cap = _extract_axis_extrusion_cap_loops(surf, cand_axis)
+            if cand_cap is not None:
+                cap_candidates.append((float(extents[cand_axis]), int(cand_axis), cand_cap))
+
+        if cap_candidates:
+            _, axis, cap = min(cap_candidates, key=lambda item: item[0])
+            section_source = "cap"
+        else:
+            axis = int(np.argmin(extents))
+            cap = _extract_projected_silhouette_loops(surf, axis)
+            if cap is None:
+                return None
+            section_source = "projected_silhouette"
 
     loops, project_axes, (z0, z1) = cap
     if not loops:
@@ -1542,13 +1804,21 @@ class TierWildMeshGenerator:
                 logger.debug("wildmesh_axis_extrusion_original_load_skipped", error=str(exc))
 
             for source_name, extrusion_surf, reference_stl in extrusion_surfaces:
-                mesh_stats = _write_axis_extrusion_polymesh_guarded(
+                mesh_stats = _write_stable_hole_sweep_candidate(
                     extrusion_surf,
                     case_dir,
                     target_cells=max(1, int(target_cells * 0.9)),
                     bl_layers=max(0, bl_layers),
                     reference_stl=reference_stl,
                 )
+                if mesh_stats is None:
+                    mesh_stats = _write_axis_extrusion_polymesh_guarded(
+                        extrusion_surf,
+                        case_dir,
+                        target_cells=max(1, int(target_cells * 0.9)),
+                        bl_layers=max(0, bl_layers),
+                        reference_stl=reference_stl,
+                    )
                 if mesh_stats is not None:
                     params["post_layers_engine"] = "disabled"
                     logger.info(

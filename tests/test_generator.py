@@ -690,7 +690,7 @@ class TestTierGracefulFail:
 
         from core.generator import tier_wildmesh
 
-        def fake_write(_surf, candidate_case, *, target_cells, bl_layers):
+        def fake_write(_surf, candidate_case, *, target_cells, bl_layers, **_kwargs):
             poly_dir = candidate_case / "constant" / "polyMesh"
             poly_dir.mkdir(parents=True)
             (poly_dir / "points").write_text("points", encoding="utf-8")
@@ -740,7 +740,7 @@ class TestTierGracefulFail:
 
         from core.generator import tier_wildmesh
 
-        def fake_write(_surf, candidate_case, *, target_cells, bl_layers):
+        def fake_write(_surf, candidate_case, *, target_cells, bl_layers, **_kwargs):
             poly_dir = candidate_case / "constant" / "polyMesh"
             poly_dir.mkdir(parents=True)
             (poly_dir / "points").write_text("points", encoding="utf-8")
@@ -765,6 +765,135 @@ class TestTierGracefulFail:
                 case_dir,
                 target_cells=100,
                 bl_layers=3,
+            )
+
+        assert stats is None
+        assert not (case_dir / "constant" / "polyMesh").exists()
+
+    def test_tier_wildmesh_stable_hole_candidate_env_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        """Stable-hole candidate is inert unless explicitly enabled."""
+        import os
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from core.generator import tier_wildmesh
+
+        surf = SimpleNamespace(bounds=np.asarray([[0, 0, 0], [1, 1, 1]], dtype=float))
+        with patch.dict(
+            os.environ,
+            {"AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP": "0"},
+        ), patch.object(tier_wildmesh, "_select_stable_hole_sweep_surface") as selector:
+            stats = tier_wildmesh._write_stable_hole_sweep_candidate(
+                surf,
+                tmp_path / "case",
+                target_cells=100,
+                bl_layers=3,
+                reference_stl=None,
+            )
+
+        assert stats is None
+        selector.assert_not_called()
+
+    def test_tier_wildmesh_stable_hole_candidate_accepts_temp_case(
+        self, tmp_path: Path
+    ) -> None:
+        """Accepted stable-hole candidates copy metadata and polyMesh atomically."""
+        import os
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from core.generator import tier_wildmesh
+
+        def fake_write(_surf, candidate_case, *, target_cells, bl_layers, **_kwargs):
+            poly_dir = candidate_case / "constant" / "polyMesh"
+            poly_dir.mkdir(parents=True)
+            (poly_dir / "points").write_text("points", encoding="utf-8")
+            (candidate_case / "native_bl_quality.json").write_text(
+                json.dumps({"fastpath": {}}),
+                encoding="utf-8",
+            )
+            return {"num_cells": 9}
+
+        surf = SimpleNamespace(bounds=np.asarray([[0, 0, 0], [1, 1, 1]], dtype=float))
+        stable = SimpleNamespace(bounds=np.asarray([[0, 0, 0], [1, 1, 1]], dtype=float))
+        case_dir = tmp_path / "case"
+        metadata = {"axis": 2, "section_topology_class": "stable_hole_sweep"}
+        with patch.dict(
+            os.environ,
+            {"AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP": "1"},
+        ), patch.object(
+            tier_wildmesh,
+            "_select_stable_hole_sweep_surface",
+            return_value=(stable, metadata),
+        ), patch.object(
+            tier_wildmesh,
+            "_write_axis_extrusion_polymesh",
+            side_effect=fake_write,
+        ), patch.object(
+            tier_wildmesh,
+            "_validate_axis_extrusion_candidate_case",
+            return_value={"accepted": True},
+        ):
+            stats = tier_wildmesh._write_stable_hole_sweep_candidate(
+                surf,
+                case_dir,
+                target_cells=100,
+                bl_layers=3,
+                reference_stl=None,
+            )
+
+        assert stats == {"num_cells": 9}
+        quality = json.loads(
+            (case_dir / "native_bl_quality.json").read_text(encoding="utf-8")
+        )
+        assert quality["fastpath"]["stable_hole_candidate"] == metadata
+
+    def test_tier_wildmesh_stable_hole_candidate_rejects_temp_case(
+        self, tmp_path: Path
+    ) -> None:
+        """Rejected stable-hole candidates do not replace the real case."""
+        import os
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from core.generator import tier_wildmesh
+
+        def fake_write(_surf, candidate_case, *, target_cells, bl_layers, **_kwargs):
+            poly_dir = candidate_case / "constant" / "polyMesh"
+            poly_dir.mkdir(parents=True)
+            (poly_dir / "points").write_text("points", encoding="utf-8")
+            return {"num_cells": 9}
+
+        surf = SimpleNamespace(bounds=np.asarray([[0, 0, 0], [1, 1, 1]], dtype=float))
+        stable = SimpleNamespace(bounds=np.asarray([[0, 0, 0], [1, 1, 1]], dtype=float))
+        case_dir = tmp_path / "case"
+        with patch.dict(
+            os.environ,
+            {"AUTO_TESSELL_WILDMESH_STABLE_HOLE_SWEEP": "1"},
+        ), patch.object(
+            tier_wildmesh,
+            "_select_stable_hole_sweep_surface",
+            return_value=(stable, {"axis": 2, "section_topology_class": "stable_hole_sweep"}),
+        ), patch.object(
+            tier_wildmesh,
+            "_write_axis_extrusion_polymesh",
+            side_effect=fake_write,
+        ), patch.object(
+            tier_wildmesh,
+            "_validate_axis_extrusion_candidate_case",
+            return_value={"accepted": False},
+        ):
+            stats = tier_wildmesh._write_stable_hole_sweep_candidate(
+                surf,
+                case_dir,
+                target_cells=100,
+                bl_layers=3,
+                reference_stl=None,
             )
 
         assert stats is None
