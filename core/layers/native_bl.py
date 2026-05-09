@@ -1273,6 +1273,56 @@ def _detect_feature_vertices(
     return feature_verts
 
 
+def _detect_feature_edges(
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_face_indices: list[int],
+    feature_angle_deg: float = 45.0,
+) -> set[tuple[int, int]]:
+    """Return wall edges whose adjacent face normals exceed the feature angle."""
+    if feature_angle_deg <= 0 or not wall_face_indices:
+        return set()
+    tri_items = [(fi, faces[fi]) for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_items:
+        return set()
+
+    face_ids = np.asarray([item[0] for item in tri_items], dtype=np.int64)
+    F_arr = np.asarray([item[1] for item in tri_items], dtype=np.int64)
+    v0 = points[F_arr[:, 0]]
+    v1 = points[F_arr[:, 1]]
+    v2 = points[F_arr[:, 2]]
+    nrm = np.cross(v1 - v0, v2 - v0)
+    nlen = np.linalg.norm(nrm, axis=1, keepdims=True)
+    valid = nlen[:, 0] > 1e-30
+    n_unit = np.zeros_like(nrm)
+    n_unit[valid] = nrm[valid] / nlen[valid]
+
+    edge_to_local_faces: dict[tuple[int, int], list[int]] = {}
+    for local_i, tri in enumerate(F_arr):
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            key = (int(a), int(b)) if int(a) < int(b) else (int(b), int(a))
+            edge_to_local_faces.setdefault(key, []).append(local_i)
+
+    cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+    feature_edges: set[tuple[int, int]] = set()
+    for edge, local_faces in edge_to_local_faces.items():
+        if len(local_faces) != 2:
+            continue
+        f0, f1 = local_faces
+        if not (valid[f0] and valid[f1]):
+            continue
+        if float(np.dot(n_unit[f0], n_unit[f1])) < cos_thresh:
+            feature_edges.add(edge)
+    if feature_edges:
+        log.info(
+            "native_bl_feature_edges_detected",
+            n_feature_edges=len(feature_edges),
+            angle_deg=float(feature_angle_deg),
+            n_wall_faces=len(face_ids),
+        )
+    return feature_edges
+
+
 def _compute_collision_distance(
     points: np.ndarray,
     faces: list[list[int]],
@@ -2468,10 +2518,18 @@ def generate_native_bl(
 
     # 4d) beta64 feature lock — sharp edge vertex 는 layer thickness 를 축소.
     feature_verts: set[int] = set()
+    feature_edges: set[tuple[int, int]] = set()
     if cfg.feature_lock:
         feature_verts = _detect_feature_vertices(
             points, faces, wall_face_indices, cfg.feature_angle_deg,
         )
+        if (
+            not replaced_polygon_wall_faces
+            and os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_DISCONTINUITY", "1") != "0"
+        ):
+            feature_edges = _detect_feature_edges(
+                points, faces, wall_face_indices, cfg.feature_angle_deg,
+            )
         if feature_verts:
             log.info(
                 "native_bl_feature_lock", component="native_bl", phase="Phase2",
@@ -3244,6 +3302,15 @@ def generate_native_bl(
                     quad_p = [ov_a_p, iv_a_p, iv_b_p, ov_b_p]
 
                     if not other_p:
+                        for side_p in _side_face_parts(quad_p):
+                            p_bl_side_faces.append(side_p)
+                            p_bl_side_owner.append(prism_cell_p)
+                    elif edge_key_p in feature_edges:
+                        # cfMesh allowDiscontinuity-style treatment: across a
+                        # sharp feature edge, do not force adjacent BL prisms
+                        # to share an internal side face with poor
+                        # non-orthogonality.  Each side becomes an internal
+                        # domain boundary instead.
                         for side_p in _side_face_parts(quad_p):
                             p_bl_side_faces.append(side_p)
                             p_bl_side_owner.append(prism_cell_p)
