@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from core.layers.layer_front import build_layer_front
+from core.layers.layer_front import build_layer_front, check_layer_point_move
 
 
 def test_layer_front_counts_boundary_and_shared_edges() -> None:
@@ -93,3 +93,47 @@ def test_layer_front_marks_cube_corners_as_geometric_features() -> None:
     assert all(lv.is_feature for lv in front.layer_vertices)
     assert by_vertex[0].faces == (0, 1, 4, 5, 8, 9)
     assert by_vertex[0].neighbours == (1, 2, 3, 4, 5, 7)
+
+
+def test_layer_point_move_check_accepts_non_degenerate_move() -> None:
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    result = check_layer_point_move(
+        points,
+        0,
+        np.array([-0.1, -0.1, -0.1], dtype=np.float64),
+        [(1, 2, 3)],
+    )
+
+    assert result.accepted
+    assert result.n_checked == 1
+    assert result.min_abs_volume_after > result.min_abs_volume_before
+
+
+def test_layer_point_move_check_rejects_orientation_flip() -> None:
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    result = check_layer_point_move(
+        points,
+        0,
+        np.array([0.5, 0.5, 0.5], dtype=np.float64),
+        [(1, 2, 3)],
+        require_non_decreasing=False,
+    )
+
+    assert not result.accepted
+    assert result.reason == "orientation_flip"

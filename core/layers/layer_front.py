@@ -58,6 +58,110 @@ class LayerFront:
     n_blocked_vertices: int = 0
 
 
+@dataclass(frozen=True)
+class LayerMoveCheck:
+    """Validity result for a proposed layer-edge point move."""
+
+    accepted: bool
+    min_abs_volume_before: float
+    min_abs_volume_after: float
+    n_checked: int
+    reason: str = ""
+
+
+def _tet_volume6(
+    moving: np.ndarray,
+    a: np.ndarray,
+    b: np.ndarray,
+    c: np.ndarray,
+) -> float:
+    return float(np.dot(np.cross(a - moving, b - moving), c - moving))
+
+
+def check_layer_point_move(
+    points: np.ndarray,
+    moving_vertex: int,
+    candidate: np.ndarray,
+    simplices: list[tuple[int, int, int]],
+    *,
+    min_abs_volume: float = 1e-14,
+    require_non_decreasing: bool = True,
+) -> LayerMoveCheck:
+    """Check whether a layer-edge move preserves local simplex validity.
+
+    This mirrors the guard used by advancing-layer methods before accepting a
+    smoothed layer-edge position: all incident simplex orientations must remain
+    forward and sufficiently non-degenerate.  ``simplices`` are the three
+    stationary vertex ids around ``moving_vertex``.
+    """
+    if not simplices:
+        return LayerMoveCheck(
+            accepted=False,
+            min_abs_volume_before=0.0,
+            min_abs_volume_after=0.0,
+            n_checked=0,
+            reason="no_simplices",
+        )
+
+    pts = np.asarray(points, dtype=np.float64)
+    cur = pts[int(moving_vertex)]
+    cand = np.asarray(candidate, dtype=np.float64)
+    before_abs: list[float] = []
+    after_abs: list[float] = []
+    for a_i, b_i, c_i in simplices:
+        a = pts[int(a_i)]
+        b = pts[int(b_i)]
+        c = pts[int(c_i)]
+        vol_before = _tet_volume6(cur, a, b, c)
+        vol_after = _tet_volume6(cand, a, b, c)
+        abs_before = abs(vol_before)
+        abs_after = abs(vol_after)
+        before_abs.append(abs_before)
+        after_abs.append(abs_after)
+        if abs_before <= min_abs_volume:
+            return LayerMoveCheck(
+                accepted=False,
+                min_abs_volume_before=float(min(before_abs)),
+                min_abs_volume_after=float(min(after_abs)),
+                n_checked=len(before_abs),
+                reason="degenerate_before",
+            )
+        if abs_after <= min_abs_volume:
+            return LayerMoveCheck(
+                accepted=False,
+                min_abs_volume_before=float(min(before_abs)),
+                min_abs_volume_after=float(min(after_abs)),
+                n_checked=len(before_abs),
+                reason="degenerate_after",
+            )
+        if vol_before * vol_after <= 0.0:
+            return LayerMoveCheck(
+                accepted=False,
+                min_abs_volume_before=float(min(before_abs)),
+                min_abs_volume_after=float(min(after_abs)),
+                n_checked=len(before_abs),
+                reason="orientation_flip",
+            )
+
+    min_before = float(min(before_abs))
+    min_after = float(min(after_abs))
+    if require_non_decreasing and min_after < min_before:
+        return LayerMoveCheck(
+            accepted=False,
+            min_abs_volume_before=min_before,
+            min_abs_volume_after=min_after,
+            n_checked=len(before_abs),
+            reason="volume_decreased",
+        )
+
+    return LayerMoveCheck(
+        accepted=True,
+        min_abs_volume_before=min_before,
+        min_abs_volume_after=min_after,
+        n_checked=len(before_abs),
+    )
+
+
 def _unit_face_normal(
     faces: list[list[int]],
     points: np.ndarray,
