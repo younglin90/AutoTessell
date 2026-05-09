@@ -800,3 +800,162 @@ def build_full_bl_polymesh(
         n_gap_fill_cells=n_gap,
         junction_edges=list(gap.junction_edges),
     )
+
+
+@dataclass
+class MultiLayerBLResult:
+    """Stack of prism BL layers with caps shared between adjacent layers.
+
+    cell_face_verts: per-cell face vertex lists. Cells are ordered by layer
+        (layer 0 first, then layer 1, …) and within a layer by the position
+        of the originating wall face in ``wall_face_indices``.
+    cell_to_wall_face: cell_id -> wall face index (the originating wall face).
+    cell_to_layer: cell_id -> 0-based layer index.
+    new_points: original points + appended per-layer inner verts. Layer 0's
+        inner verts start at ``len(points)``; subsequent layers' inner verts
+        follow contiguously.
+    num_layers: same as input.
+    layer_thicknesses: cumulative thickness from the wall to each layer's
+        inner cap (length == num_layers).
+    """
+
+    cell_face_verts: list[list[list[int]]]
+    cell_to_wall_face: list[int]
+    cell_to_layer: list[int]
+    new_points: np.ndarray
+    num_layers: int
+    layer_thicknesses: list[float]
+
+
+def build_multi_layer_bl(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    junction_info: JunctionInfo,
+    *,
+    num_layers: int,
+    first_layer_thickness: float,
+    growth_ratio: float = 1.0,
+    vnorm: dict[int, np.ndarray] | None = None,
+    cluster_cos: float = 0.9,
+) -> MultiLayerBLResult:
+    """Build N stacked prism BL layers above the wall.
+
+    Per-face inner verts are produced fresh for every layer using
+    ``generate_per_face_inner_verts`` at the cumulative thickness from the
+    wall, so the junction-aware clustering applied at layer 0 carries through
+    to every subsequent layer. Vertex ids in different layers are disjoint.
+
+    Each layer's inner cap is shared with the next layer's outer base (same
+    vertex ids), so ``cells_to_polymesh`` automatically classifies the
+    intermediate caps as internal faces. Only layer 0's bottom is a
+    ``wall`` boundary; only layer N-1's top is a ``bl_internal`` boundary.
+
+    Args:
+        wall_face_indices: indices of triangle wall faces.
+        faces: list of face vertex lists.
+        points: (N, 3) original vertex coordinates.
+        junction_info: from ``detect_junction_verts``.
+        num_layers: number of layers in the stack (>= 1).
+        first_layer_thickness: thickness of the first layer (> 0).
+        growth_ratio: per-layer thickness multiplier (> 0). Layer k's
+            thickness equals ``first_layer_thickness * growth_ratio ** k``.
+        vnorm: optional per-vert smooth normal (passed through to
+            ``generate_per_face_inner_verts`` for non-junction verts).
+        cluster_cos: cluster threshold for junction inner vert duplication.
+
+    Returns:
+        MultiLayerBLResult.
+
+    Raises:
+        ValueError: if num_layers, first_layer_thickness or growth_ratio is
+            non-positive, or if any wall face is not a triangle.
+    """
+    if num_layers < 1:
+        raise ValueError(f"num_layers must be >= 1, got {num_layers}")
+    if first_layer_thickness <= 0:
+        raise ValueError(
+            f"first_layer_thickness must be > 0, got {first_layer_thickness}"
+        )
+    if growth_ratio <= 0:
+        raise ValueError(f"growth_ratio must be > 0, got {growth_ratio}")
+
+    layer_thicknesses: list[float] = []
+    t_cum = 0.0
+    layer_t = first_layer_thickness
+    for _ in range(num_layers):
+        t_cum += layer_t
+        layer_thicknesses.append(t_cum)
+        layer_t *= growth_ratio
+
+    n_orig = len(points)
+    combined_points: list[np.ndarray] = [
+        np.asarray(p, dtype=np.float64) for p in points
+    ]
+    layer_inner_maps: list[dict[tuple[int, int], int]] = []
+
+    for t_total in layer_thicknesses:
+        local_res = generate_per_face_inner_verts(
+            wall_face_indices,
+            faces,
+            points,
+            junction_info,
+            vnorm=vnorm,
+            thickness=t_total,
+            cluster_cos=cluster_cos,
+        )
+        offset = len(combined_points) - n_orig
+        layer_map: dict[tuple[int, int], int] = {
+            key: vid + offset for key, vid in local_res.face_inner_vert.items()
+        }
+        for row in local_res.new_points[n_orig:]:
+            combined_points.append(np.asarray(row, dtype=np.float64))
+        layer_inner_maps.append(layer_map)
+
+    new_points = np.asarray(combined_points, dtype=np.float64)
+
+    cell_face_verts: list[list[list[int]]] = []
+    cell_to_wall_face: list[int] = []
+    cell_to_layer: list[int] = []
+
+    for k_idx in range(num_layers):
+        outer_map = layer_inner_maps[k_idx - 1] if k_idx > 0 else None
+        inner_map = layer_inner_maps[k_idx]
+
+        for fi in wall_face_indices:
+            f = faces[fi]
+            if len(f) != 3:
+                raise ValueError(
+                    f"build_multi_layer_bl requires triangle wall faces, "
+                    f"got face {fi} with {len(f)} verts."
+                )
+            a0, a1, a2 = int(f[0]), int(f[1]), int(f[2])
+            if outer_map is None:
+                o0, o1, o2 = a0, a1, a2
+            else:
+                o0 = outer_map[(fi, a0)]
+                o1 = outer_map[(fi, a1)]
+                o2 = outer_map[(fi, a2)]
+            i0 = inner_map[(fi, a0)]
+            i1 = inner_map[(fi, a1)]
+            i2 = inner_map[(fi, a2)]
+
+            prism_faces = [
+                [o0, o1, o2],
+                [i0, i2, i1],
+                [o0, o1, i1, i0],
+                [o1, o2, i2, i1],
+                [o2, o0, i0, i2],
+            ]
+            cell_face_verts.append(prism_faces)
+            cell_to_wall_face.append(int(fi))
+            cell_to_layer.append(k_idx)
+
+    return MultiLayerBLResult(
+        cell_face_verts=cell_face_verts,
+        cell_to_wall_face=cell_to_wall_face,
+        cell_to_layer=cell_to_layer,
+        new_points=new_points,
+        num_layers=num_layers,
+        layer_thicknesses=layer_thicknesses,
+    )

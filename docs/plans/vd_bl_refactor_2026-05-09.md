@@ -164,7 +164,7 @@ Verify: pytest unit tests pass.
 
 ### Task 4: VD-7 — multi-layer BL stack with per-face dup
 
-- [ ] Implement `build_multi_layer_bl` + tests
+- [x] Implement `build_multi_layer_bl` + tests
 
 Extend the single-layer prism builder so a stack of N layers can be
 emitted. Each layer's outer = previous layer's inner; thickness grows

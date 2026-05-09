@@ -6,6 +6,7 @@ import numpy as np
 from core.layers.native_bl_vd import (
     build_full_bl_polymesh,
     build_gap_fill_cells,
+    build_multi_layer_bl,
     build_prism_cells,
     cells_to_polymesh,
     compute_face_normals,
@@ -744,3 +745,208 @@ def test_build_full_bl_polymesh_relaxed_cluster_no_junction_no_gap():
     pm = result.polymesh
     for f in pm.faces:
         assert len(f) == 3
+
+
+def test_build_multi_layer_bl_n1_matches_build_prism_cells():
+    """num_layers=1 must produce cells identical to build_prism_cells."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    inner = generate_per_face_inner_verts(
+        [0, 1], faces, points, info, thickness=0.1
+    )
+    prisms = build_prism_cells([0, 1], faces, inner)
+
+    multi = build_multi_layer_bl(
+        [0, 1], faces, points, info,
+        num_layers=1, first_layer_thickness=0.1,
+    )
+    assert multi.num_layers == 1
+    assert multi.layer_thicknesses == [0.1]
+    assert multi.cell_to_wall_face == prisms.cell_to_wall_face
+    assert multi.cell_to_layer == [0, 0]
+    assert len(multi.cell_face_verts) == len(prisms.cell_face_verts)
+    for c1, c2 in zip(multi.cell_face_verts, prisms.cell_face_verts, strict=True):
+        assert c1 == c2
+    # Inner vert positions match too — same thickness, same junction info.
+    assert np.allclose(multi.new_points, inner.new_points)
+
+
+def test_build_multi_layer_bl_layer_thicknesses_geometric():
+    """Cumulative layer thicknesses follow the geometric progression."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    result = build_multi_layer_bl(
+        [0, 1], faces, points, info,
+        num_layers=4, first_layer_thickness=0.1, growth_ratio=2.0,
+    )
+    expected = [0.1, 0.3, 0.7, 1.5]
+    assert len(result.layer_thicknesses) == 4
+    for got, exp in zip(result.layer_thicknesses, expected, strict=True):
+        assert abs(got - exp) < 1e-12
+
+
+def test_build_multi_layer_bl_inner_pt_positions_match_thickness():
+    """Each layer's inner verts sit at -cumulative_thickness × face_normal."""
+    points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
+    faces = [[0, 1, 2]]  # outward normal +z
+    info = detect_junction_verts([0], faces, points)
+    result = build_multi_layer_bl(
+        [0], faces, points, info,
+        num_layers=3, first_layer_thickness=0.1, growth_ratio=2.0,
+    )
+    # 3 cells, one per layer; cell k's top tri is cell_face_verts[k][1].
+    pts = result.new_points
+    expected_z = [-0.1, -0.3, -0.7]
+    for k, ez in enumerate(expected_z):
+        top = result.cell_face_verts[k][1]
+        for vid in top:
+            assert np.isclose(pts[vid][2], ez, atol=1e-9)
+
+
+def test_build_multi_layer_bl_cap_sharing_flat_strip():
+    """Layer K top must share canonical face with layer K+1 bottom."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    result = build_multi_layer_bl(
+        [0, 1], faces, points, info,
+        num_layers=3, first_layer_thickness=0.1, growth_ratio=1.5,
+    )
+    cells = result.cell_face_verts
+    # 6 cells = 3 layers × 2 wall faces. Layer k cells = [2k, 2k+1].
+    for k in range(2):
+        for w in range(2):
+            top_k = cells[k * 2 + w][1]
+            bot_kp1 = cells[(k + 1) * 2 + w][0]
+            assert sorted(top_k) == sorted(bot_kp1)
+
+
+def test_build_multi_layer_bl_cube_3_layers_36_cells():
+    """Cube with 3 layers: 12 wall faces × 3 = 36 prism cells."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    result = build_multi_layer_bl(
+        list(range(12)), faces, points, info,
+        num_layers=3, first_layer_thickness=0.05, growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+    assert result.num_layers == 3
+    assert len(result.cell_face_verts) == 36
+    assert len(result.cell_to_wall_face) == 36
+    assert len(result.cell_to_layer) == 36
+    assert result.cell_to_layer == [0] * 12 + [1] * 12 + [2] * 12
+    # Each layer's wall-face mapping matches the input order.
+    for k in range(3):
+        assert result.cell_to_wall_face[k * 12 : (k + 1) * 12] == list(range(12))
+    # Each prism has 2 tris + 3 quads.
+    for cf in result.cell_face_verts:
+        n_tri = sum(1 for f in cf if len(f) == 3)
+        n_quad = sum(1 for f in cf if len(f) == 4)
+        assert n_tri == 2 and n_quad == 3
+
+
+def test_build_multi_layer_bl_cube_3_layers_polymesh_caps_internal():
+    """Cube 3-layer polymesh: intermediate caps internal, only outer wall/cap boundary.
+
+    Counts (cluster_cos=0.5):
+      Internal faces:
+        - 6 face-diagonal side quads per layer × 3 layers = 18
+        - 12 cap faces × 2 layer-to-layer transitions = 24
+        Total internal = 42
+      Boundary faces:
+        - wall: 12 (layer 0 bottom)
+        - bl_internal: 12 (layer 2 top)
+        - bl_internal_side: 24 boundary side quads per layer × 3 = 72
+    """
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    result = build_multi_layer_bl(
+        list(range(12)), faces, points, info,
+        num_layers=3, first_layer_thickness=0.05, growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+    pm = cells_to_polymesh(result.cell_face_verts, result.new_points)
+
+    assert len(pm.neighbour) == 42
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 12
+    assert by_name["bl_internal"]["nFaces"] == 12
+    assert by_name["bl_internal_side"]["nFaces"] == 72
+    assert len(pm.faces) == 138
+
+    # Owner < neighbour invariant on internal faces.
+    for o, n in zip(pm.owner[:42], pm.neighbour, strict=True):
+        assert o < n
+
+    # Wall faces (layer 0 bottoms) all have owner in layer 0 cells [0, 12).
+    wall_patch = by_name["wall"]
+    for o in pm.owner[wall_patch["startFace"] : wall_patch["startFace"] + wall_patch["nFaces"]]:
+        assert 0 <= o < 12
+    # bl_internal faces (layer 2 tops) all have owner in layer 2 cells [24, 36).
+    cap_patch = by_name["bl_internal"]
+    for o in pm.owner[cap_patch["startFace"] : cap_patch["startFace"] + cap_patch["nFaces"]]:
+        assert 24 <= o < 36
+
+
+def test_build_multi_layer_bl_invalid_args():
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    bad_kwargs = [
+        dict(num_layers=0, first_layer_thickness=0.1, growth_ratio=1.0),
+        dict(num_layers=-1, first_layer_thickness=0.1, growth_ratio=1.0),
+        dict(num_layers=2, first_layer_thickness=0.0, growth_ratio=1.0),
+        dict(num_layers=2, first_layer_thickness=-0.1, growth_ratio=1.0),
+        dict(num_layers=2, first_layer_thickness=0.1, growth_ratio=0.0),
+        dict(num_layers=2, first_layer_thickness=0.1, growth_ratio=-1.0),
+    ]
+    for kw in bad_kwargs:
+        try:
+            build_multi_layer_bl([0, 1], faces, points, info, **kw)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected ValueError for kwargs={kw}")
+
+
+def test_build_multi_layer_bl_rejects_non_triangle():
+    points = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float64)
+    faces = [[0, 1, 2, 3]]
+    info = detect_junction_verts([0], faces, points)
+    try:
+        build_multi_layer_bl(
+            [0], faces, points, info,
+            num_layers=2, first_layer_thickness=0.1,
+        )
+    except ValueError as e:
+        assert "triangle" in str(e).lower()
+    else:
+        raise AssertionError("Expected ValueError for non-triangle wall face")
+
+
+def test_build_multi_layer_bl_disjoint_layer_vert_ids():
+    """Inner verts of different layers must occupy disjoint id ranges."""
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    result = build_multi_layer_bl(
+        list(range(12)), faces, points, info,
+        num_layers=3, first_layer_thickness=0.05, growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+    n_orig = len(points)
+    layer_inner_ids: list[set[int]] = [set(), set(), set()]
+    for cell_idx, cell in enumerate(result.cell_face_verts):
+        layer = result.cell_to_layer[cell_idx]
+        # face_idx 1 = top; collects this layer's inner ids.
+        for vid in cell[1]:
+            assert vid >= n_orig  # all inner verts are appended
+            layer_inner_ids[layer].add(int(vid))
+    # Pairwise disjoint.
+    assert layer_inner_ids[0].isdisjoint(layer_inner_ids[1])
+    assert layer_inner_ids[1].isdisjoint(layer_inner_ids[2])
+    assert layer_inner_ids[0].isdisjoint(layer_inner_ids[2])
+    # Layer 1 outer (= layer 0 inner) ids appear in layer 1 cells' bottom faces.
+    layer1_outer_ids: set[int] = set()
+    for cell_idx, cell in enumerate(result.cell_face_verts):
+        if result.cell_to_layer[cell_idx] != 1:
+            continue
+        for vid in cell[0]:  # bottom = previous layer's inner
+            layer1_outer_ids.add(int(vid))
+    assert layer1_outer_ids == layer_inner_ids[0]
