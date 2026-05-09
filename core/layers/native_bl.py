@@ -1641,11 +1641,9 @@ def _merge_skewed_bl_internal_quads(
     face centre is not between the two cell centres. Keeping that seam as an
     internal face creates OpenFOAM-style skewness O(10-40). cfMesh avoids this
     by treating feature-edge layer junctions as polyhedral corner cells. This
-    pass applies the same idea narrowly: BL-BL quad faces whose skewness already
-    exceeds the internal skewness gate are removed, and their adjacent cells are
-    unioned. Warped BL side quads may be emitted as two triangles earlier in the
-    pipeline, so triangular BL-BL seams with severe non-orthogonality or a bad
-    interpolation face weight use the same union path.
+    pass applies the same idea narrowly: only BL-BL quad faces whose skewness
+    already exceeds the internal skewness gate are removed, and their adjacent
+    cells are unioned.
     """
     n_internal = len(neighbour)
     if n_internal <= 0 or not faces:
@@ -1680,62 +1678,23 @@ def _merge_skewed_bl_internal_quads(
         if ra != rb:
             parent[rb] = ra
 
-    merge_non_ortho_threshold = float(
-        os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_MERGE_NON_ORTHO", "70.0")
-    )
-    merge_face_weight_threshold = float(
-        os.environ.get("AUTO_TESSELL_BL_FEATURE_EDGE_MERGE_FACE_WEIGHT", "0.05")
-    )
-
     n_marked = 0
-    n_marked_skew = 0
-    n_marked_non_ortho = 0
-    n_marked_face_weight = 0
     for fi in range(n_internal):
         own = int(owner_arr[fi])
         nbr = int(nbr_arr[fi])
         if own < base_n_cells or nbr < base_n_cells:
             continue
+        if len(faces[fi]) != 4:
+            continue
         d = centres[nbr] - centres[own]
         d_mag = float(np.linalg.norm(d))
         if d_mag <= 1e-30:
             continue
-
-        should_merge = False
-        if len(faces[fi]) == 4:
-            diff = face_centres[fi] - centres[own]
-            t = float(np.dot(diff, d) / (d_mag * d_mag))
-            proj = centres[own] + t * d
-            skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
-            if skew > skew_threshold:
-                should_merge = True
-                n_marked_skew += 1
-        elif len(faces[fi]) == 3:
-            n_hat, area = _face_normal_area(points, faces[fi])
-            if area > 1e-30:
-                cos_theta = abs(float(np.dot(d, n_hat))) / d_mag
-                angle = float(np.degrees(np.arccos(np.clip(cos_theta, 0.0, 1.0))))
-                if (
-                    merge_non_ortho_threshold > 0.0
-                    and angle > merge_non_ortho_threshold
-                ):
-                    should_merge = True
-                    n_marked_non_ortho += 1
-
-                area_vec = n_hat * area
-                d_own = abs(float(np.dot(area_vec, face_centres[fi] - centres[own])))
-                d_nei = abs(float(np.dot(area_vec, centres[nbr] - face_centres[fi])))
-                denom = d_own + d_nei
-                if denom > 1e-300:
-                    face_weight = min(d_own, d_nei) / denom
-                    if (
-                        merge_face_weight_threshold > 0.0
-                        and face_weight < merge_face_weight_threshold
-                    ):
-                        should_merge = True
-                        n_marked_face_weight += 1
-
-        if should_merge:
+        diff = face_centres[fi] - centres[own]
+        t = float(np.dot(diff, d) / (d_mag * d_mag))
+        proj = centres[own] + t * d
+        skew = float(np.linalg.norm(face_centres[fi] - proj) / d_mag)
+        if skew > skew_threshold:
             _union(own, nbr)
             n_marked += 1
 
@@ -1792,11 +1751,6 @@ def _merge_skewed_bl_internal_quads(
         n_cells_before=int(n_cells_cur),
         n_cells_after=int(len(used_cells)),
         skew_threshold=float(skew_threshold),
-        non_ortho_threshold=float(merge_non_ortho_threshold),
-        face_weight_threshold=float(merge_face_weight_threshold),
-        n_marked_skew=int(n_marked_skew),
-        n_marked_non_ortho=int(n_marked_non_ortho),
-        n_marked_face_weight=int(n_marked_face_weight),
     )
     return out_faces, out_owner, out_nbr, out_boundary, removed
 
