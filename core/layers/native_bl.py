@@ -28,6 +28,7 @@ Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95). 반복
 """
 from __future__ import annotations
 
+import json
 import os
 
 import shutil
@@ -2651,6 +2652,31 @@ def generate_native_bl(
         # as a strict final prism-quality gate, otherwise quad fan walls can be
         # rejected before the corrective thickness pass runs.
         _guard_aspect = max(float(cfg.aspect_ratio_threshold), 1.0e12)
+        if os.environ.get("AUTO_TESSELL_BL_OPEN_SURFACE_PREFILTER", "1") != "0":
+            try:
+                _prep_path = Path(case_dir) / "preprocessed_report.json"
+                _prep = json.loads(_prep_path.read_text(encoding="utf-8"))
+                _fv = (
+                    _prep.get("preprocessing_summary", {})
+                    .get("final_validation", {})
+                )
+                if _fv.get("is_watertight") is False:
+                    _guard_aspect = float(
+                        os.environ.get(
+                            "AUTO_TESSELL_BL_OPEN_SURFACE_ASPECT_CAP",
+                            cfg.aspect_ratio_threshold,
+                        )
+                    )
+                    log.info(
+                        "native_bl_open_surface_prefilter_enabled",
+                        aspect_threshold=_guard_aspect,
+                        reason="preprocessed surface is not watertight",
+                    )
+            except Exception as _prep_exc:
+                log.debug(
+                    "native_bl_open_surface_prefilter_skipped",
+                    reason=str(_prep_exc)[:120],
+                )
         wall_face_indices, _n_rej_asp, _n_rej_col = _hex_bl1_prism_guard(
             wall_face_indices, faces, points, vnorm, cfg.first_thickness,
             aspect_threshold=_guard_aspect,
