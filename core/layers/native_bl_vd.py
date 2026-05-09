@@ -1304,6 +1304,10 @@ def _build_multi_layer_gap_bridge_cells(
             ordered_faces = _ordered_vertex_faces(vtx)
             if len(ordered_faces) < 3:
                 continue
+            if owner is not None:
+                owners = {int(owner[int(fi)]) for fi in ordered_faces}
+                if len(owners) != 1:
+                    continue
             for layer in range(int(multi_result.num_layers)):
                 pairs = [
                     _face_vertex_pair(fi, layer, vtx)
