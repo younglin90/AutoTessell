@@ -1016,11 +1016,6 @@ def build_multi_layer_gap_fill_cells(
             side2 = list(multi_result.cell_face_verts[c2][2 + i2])
             if tuple(sorted(side1)) == tuple(sorted(side2)):
                 continue
-            if len(side1) == 4 and len(side2) == 4:
-                tris1 = {tuple(sorted(t)) for t in _triangulate_quad(side1)}
-                tris2 = {tuple(sorted(t)) for t in _triangulate_quad(side2)}
-                if tris1 & tris2:
-                    continue
             if len(set(side1)) == 4:
                 cell_face_verts.append(
                     _tet_faces(side1[0], side1[1], side1[2], side1[3], multi_result.new_points)
