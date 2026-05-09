@@ -393,3 +393,145 @@ def build_prism_cells(
         cell_face_verts=cell_face_verts,
         cell_to_wall_face=cell_to_wall_face,
     )
+
+
+@dataclass
+class PolyMeshResult:
+    """OpenFOAM-style polyMesh result built from cell_face_verts.
+
+    points: passed through (no re-ordering).
+    faces: list of vertex lists. Internal faces appear first (sorted by
+        (owner, neighbour)), then boundary faces grouped by patch in the
+        order: wall, bl_internal, bl_internal_side.
+    owner: face_id -> cell_id (length == len(faces)).
+    neighbour: face_id -> cell_id (length == n_internal_faces). Boundary
+        faces have no entry; OpenFOAM convention.
+    patches: list of dicts with name, startFace, nFaces (only patches with
+        at least one face are included).
+    """
+
+    points: np.ndarray
+    faces: list[list[int]]
+    owner: list[int]
+    neighbour: list[int]
+    patches: list[dict]
+
+
+_PATCH_ORDER = ("wall", "bl_internal", "bl_internal_side")
+
+
+def _patch_for_face_idx(face_idx_in_cell: int) -> str:
+    """Single-layer prism patch hint from face index inside cell.
+
+    face_idx 0 = bottom tri (wall), 1 = top tri (bl_internal),
+    2/3/4 = side quads (bl_internal_side).
+    """
+    if face_idx_in_cell == 0:
+        return "wall"
+    if face_idx_in_cell == 1:
+        return "bl_internal"
+    return "bl_internal_side"
+
+
+def cells_to_polymesh(
+    cell_face_verts: list[list[list[int]]],
+    points: np.ndarray,
+) -> PolyMeshResult:
+    """Convert per-cell face lists into OpenFOAM polyMesh format.
+
+    Algorithm:
+    1. Canonical key per face = tuple(sorted(verts)).
+    2. Collect occurrences per key: list[(cell_id, face_idx_in_cell, raw_verts)].
+    3. 2 occurrences → internal face. owner = min(cells), neighbour = max(cells).
+       Use raw_verts from the OWNER (lower-cell) occurrence to preserve outward
+       winding from the owner cell.
+    4. 1 occurrence → boundary face. Patch from face_idx_in_cell.
+    5. 3+ occurrences → ValueError (manifold violation).
+
+    Order:
+      * internal faces first, sorted by (owner, neighbour)
+      * boundary faces grouped: wall, bl_internal, bl_internal_side
+
+    Args:
+        cell_face_verts: per-cell list of face vertex lists (e.g. from
+            build_prism_cells.cell_face_verts).
+        points: (N, 3) vertex coordinates (passed through to result).
+
+    Returns:
+        PolyMeshResult.
+
+    Raises:
+        ValueError: if any face appears in 3 or more cells (non-manifold).
+    """
+    occurrences: dict[tuple[int, ...], list[tuple[int, int, list[int]]]] = (
+        defaultdict(list)
+    )
+    for cell_id, cf in enumerate(cell_face_verts):
+        for face_idx, raw_verts in enumerate(cf):
+            key = tuple(sorted(int(v) for v in raw_verts))
+            occurrences[key].append((cell_id, face_idx, list(int(v) for v in raw_verts)))
+
+    internal_records: list[tuple[int, int, list[int]]] = []
+    # boundary buckets keyed by patch name to honor ordering convention.
+    boundary_records: dict[str, list[tuple[int, list[int]]]] = {
+        name: [] for name in _PATCH_ORDER
+    }
+
+    for key, occs in occurrences.items():
+        if len(occs) == 1:
+            cell_id, face_idx, raw_verts = occs[0]
+            patch_name = _patch_for_face_idx(face_idx)
+            if patch_name not in boundary_records:
+                boundary_records[patch_name] = []
+            boundary_records[patch_name].append((cell_id, raw_verts))
+        elif len(occs) == 2:
+            (c0, _idx0, verts0), (c1, _idx1, verts1) = occs
+            if c0 == c1:
+                # Same cell appears twice with same face — ill-formed.
+                raise ValueError(
+                    f"Face {key} appears twice in same cell {c0}; "
+                    f"cell topology is malformed."
+                )
+            owner = min(c0, c1)
+            neighbour = max(c0, c1)
+            owner_verts = verts0 if c0 == owner else verts1
+            internal_records.append((owner, neighbour, owner_verts))
+        else:
+            raise ValueError(
+                f"Face {key} shared by {len(occs)} cells "
+                f"(cells={[occ[0] for occ in occs]}); "
+                f"non-manifold topology — refusing to build polyMesh."
+            )
+
+    internal_records.sort(key=lambda r: (r[0], r[1]))
+
+    out_faces: list[list[int]] = []
+    out_owner: list[int] = []
+    out_neighbour: list[int] = []
+    for owner, neighbour, verts in internal_records:
+        out_faces.append(list(verts))
+        out_owner.append(owner)
+        out_neighbour.append(neighbour)
+
+    patches: list[dict] = []
+    for patch_name in _PATCH_ORDER:
+        bucket = boundary_records.get(patch_name, [])
+        if not bucket:
+            continue
+        start_face = len(out_faces)
+        for cell_id, verts in bucket:
+            out_faces.append(list(verts))
+            out_owner.append(cell_id)
+        patches.append({
+            "name": patch_name,
+            "startFace": start_face,
+            "nFaces": len(bucket),
+        })
+
+    return PolyMeshResult(
+        points=points,
+        faces=out_faces,
+        owner=out_owner,
+        neighbour=out_neighbour,
+        patches=patches,
+    )

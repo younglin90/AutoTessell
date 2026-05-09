@@ -5,6 +5,7 @@ import numpy as np
 
 from core.layers.native_bl_vd import (
     build_prism_cells,
+    cells_to_polymesh,
     compute_face_normals,
     detect_junction_verts,
     generate_per_face_inner_verts,
@@ -253,3 +254,173 @@ def test_build_prism_cells_rejects_non_triangle():
         raise AssertionError("Expected ValueError for non-triangle wall face")
     except ValueError as e:
         assert "triangle" in str(e).lower()
+
+
+def test_cells_to_polymesh_single_prism():
+    """Single prism — 5 boundary faces, 0 internal, all patches present."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0], faces, points)
+    inner = generate_per_face_inner_verts([0], faces, points, info, thickness=0.1)
+    prisms = build_prism_cells([0], faces, inner)
+    pm = cells_to_polymesh(prisms.cell_face_verts, inner.new_points)
+
+    assert len(pm.faces) == 5
+    assert len(pm.owner) == 5
+    assert len(pm.neighbour) == 0  # no internal
+    # Owner is always cell 0.
+    assert all(o == 0 for o in pm.owner)
+    # Patches: wall=1, bl_internal=1, bl_internal_side=3.
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 1
+    assert by_name["bl_internal"]["nFaces"] == 1
+    assert by_name["bl_internal_side"]["nFaces"] == 3
+    # Patch ordering wall → bl_internal → bl_internal_side.
+    names = [p["name"] for p in pm.patches]
+    assert names == ["wall", "bl_internal", "bl_internal_side"]
+    # startFace contiguous: wall starts at 0, bl_internal at 1, side at 2.
+    assert by_name["wall"]["startFace"] == 0
+    assert by_name["bl_internal"]["startFace"] == 1
+    assert by_name["bl_internal_side"]["startFace"] == 2
+
+
+def test_cells_to_polymesh_flat_strip_one_internal():
+    """Flat strip (2 prisms, no junctions) — 1 internal side quad shared."""
+    faces, points = _flat_strip_faces()
+    info = detect_junction_verts([0, 1], faces, points)
+    inner = generate_per_face_inner_verts([0, 1], faces, points, info, thickness=0.1)
+    prisms = build_prism_cells([0, 1], faces, inner)
+    pm = cells_to_polymesh(prisms.cell_face_verts, inner.new_points)
+
+    # Internal face count: 1 (the diagonal side quad shared by both prisms).
+    assert len(pm.neighbour) == 1
+    # Internal face is a quad (4 verts), not a triangle.
+    internal_face = pm.faces[0]
+    assert len(internal_face) == 4
+    # Owner = cell 0 (lower id), neighbour = cell 1.
+    assert pm.owner[0] == 0
+    assert pm.neighbour[0] == 1
+
+    # Boundary faces: 2 prisms × 5 - 2 (the shared quad counted twice) = 8.
+    n_boundary = len(pm.faces) - 1
+    assert n_boundary == 8
+
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 2  # bottom of each prism
+    assert by_name["bl_internal"]["nFaces"] == 2  # top of each prism
+    # Side quads: 3 per prism × 2 prisms - 2 (the shared one counted twice) = 4.
+    assert by_name["bl_internal_side"]["nFaces"] == 4
+
+    # Patch startFace continuous after internal section.
+    assert by_name["wall"]["startFace"] == 1
+    assert by_name["bl_internal"]["startFace"] == 1 + 2
+    assert by_name["bl_internal_side"]["startFace"] == 1 + 2 + 2
+
+
+def test_cells_to_polymesh_internal_sorted_by_owner_neighbour():
+    """Internal faces are emitted sorted by (owner, neighbour)."""
+    # Construct 3 cells where each pair shares a face.
+    # Cell 0: faces {A, B, C, X}; Cell 1: faces {D, E, F, X, Y}; Cell 2: {G, Y, Z, ...}
+    # X shared by cells 0&1, Y by cells 1&2 → expected order [(0,1,X),(1,2,Y)].
+    cell_face_verts = [
+        [
+            [0, 1, 2],          # A bottom
+            [10, 12, 11],       # B top
+            [0, 1, 11, 10],     # C side
+            [1, 2, 12, 11],     # X side (shared with cell 1)
+        ],
+        [
+            [2, 5, 4],          # D bottom
+            [12, 14, 15],       # E top
+            [2, 5, 15, 14],     # F side
+            [1, 2, 12, 11],     # X (shared with cell 0; same set as above)
+            [5, 4, 16, 15],     # Y side (shared with cell 2)
+        ],
+        [
+            [4, 7, 8],          # G bottom
+            [14, 18, 17],       # cap
+            [4, 7, 17, 16],     # side
+            [5, 4, 16, 15],     # Y (shared with cell 1; same set)
+            [7, 8, 18, 17],     # side
+        ],
+    ]
+    points = np.zeros((20, 3), dtype=np.float64)
+    pm = cells_to_polymesh(cell_face_verts, points)
+    # 2 internal faces (X, Y).
+    assert len(pm.neighbour) == 2
+    # Order sorted by (owner, neighbour) → [(0,1), (1,2)].
+    assert pm.owner[:2] == [0, 1]
+    assert pm.neighbour == [1, 2]
+
+
+def test_cells_to_polymesh_rejects_three_way_share():
+    """Face shared by 3+ cells → ValueError (non-manifold)."""
+    shared_face = [0, 1, 2]
+    cell_face_verts = [
+        [shared_face, [3, 4, 5]],
+        [shared_face, [6, 7, 8]],
+        [shared_face, [9, 10, 11]],
+    ]
+    points = np.zeros((12, 3), dtype=np.float64)
+    try:
+        cells_to_polymesh(cell_face_verts, points)
+        raise AssertionError("Expected ValueError for 3-way shared face")
+    except ValueError as e:
+        msg = str(e).lower()
+        assert "non-manifold" in msg or "3" in msg
+
+
+def test_cells_to_polymesh_owner_winding_from_lower_cell():
+    """Owner cell winding is preserved; neighbour cell's reversed copy ignored.
+
+    Two cells share a face. Cell 0 has it as [1, 2, 3]; cell 1 has [3, 2, 1].
+    Stored face must be [1, 2, 3] (owner=cell 0).
+    """
+    cell_face_verts = [
+        [
+            [0, 4, 5],       # padding face (unique)
+            [1, 2, 3],       # shared, owner winding
+        ],
+        [
+            [3, 2, 1],       # same face reversed (neighbour winding)
+            [6, 7, 8],       # padding (unique)
+        ],
+    ]
+    points = np.zeros((10, 3), dtype=np.float64)
+    pm = cells_to_polymesh(cell_face_verts, points)
+    assert len(pm.neighbour) == 1
+    # First face is internal — verify winding matches owner cell 0.
+    assert pm.faces[0] == [1, 2, 3]
+    assert pm.owner[0] == 0
+    assert pm.neighbour[0] == 1
+
+
+def test_cells_to_polymesh_cube_internal_diagonals():
+    """Cube — 12 prisms.
+
+    With cluster_cos=0.5, two coplanar triangles on each cube face cluster
+    together (cos=1 ≥ 0.5), so they share inner verts on the diagonal edge.
+    That produces 1 shared side quad per cube face → 6 internal faces total.
+    """
+    faces, points = _cube_faces()
+    info = detect_junction_verts(list(range(12)), faces, points, cos_thresh=0.9)
+    inner = generate_per_face_inner_verts(
+        list(range(12)), faces, points, info, thickness=0.1, cluster_cos=0.5,
+    )
+    prisms = build_prism_cells(list(range(12)), faces, inner)
+    pm = cells_to_polymesh(prisms.cell_face_verts, inner.new_points)
+
+    # 12 prisms × 5 faces = 60 occurrences. 6 internal pairs → 6 unique internal
+    # faces and 60-12=48 boundary faces. Total unique = 54.
+    assert len(pm.neighbour) == 6
+    assert len(pm.faces) == 54
+    by_name = {p["name"]: p for p in pm.patches}
+    assert by_name["wall"]["nFaces"] == 12
+    assert by_name["bl_internal"]["nFaces"] == 12
+    # 12 prisms × 3 sides = 36 side occurrences. 6 internal pairs → 12 of those
+    # are internal occurrences. Boundary side faces = 36 - 12 = 24.
+    assert by_name["bl_internal_side"]["nFaces"] == 24
+    # Owner array length matches faces; neighbour only first 6.
+    assert len(pm.owner) == 54
+    # All internal faces have owner < neighbour.
+    for o, n in zip(pm.owner[:6], pm.neighbour, strict=True):
+        assert o < n
