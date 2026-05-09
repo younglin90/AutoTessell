@@ -1053,22 +1053,42 @@ class TierWildMeshGenerator:
             return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
 
         if (
-            flow_type != "external"
-            and _mesh_type_fast == "tet"
+            _mesh_type_fast == "tet"
             and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "1") != "0"
         ):
             target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
             bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
-            mesh_stats = _write_axis_extrusion_polymesh(
-                surf,
-                case_dir,
-                target_cells=max(1, int(target_cells * 0.9)),
-                bl_layers=max(0, bl_layers),
-            )
-            if mesh_stats is not None:
-                params["post_layers_engine"] = "disabled"
-                elapsed = time.monotonic() - t_start
-                return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
+            extrusion_surfaces: list[tuple[str, Any]] = [("preprocessed", surf)]
+            try:
+                geom_report = json.loads(
+                    (case_dir / "geometry_report.json").read_text(encoding="utf-8")
+                )
+                raw_path = Path(str(geom_report.get("file_info", {}).get("path", "")))
+                if raw_path.exists() and raw_path.resolve() != preprocessed_path.resolve():
+                    raw_surf = _trimesh.load(str(raw_path), force="mesh")
+                    if flow_type == "external":
+                        extrusion_surfaces.insert(0, ("original", raw_surf))
+                    else:
+                        extrusion_surfaces.append(("original", raw_surf))
+            except Exception as exc:
+                logger.debug("wildmesh_axis_extrusion_original_load_skipped", error=str(exc))
+
+            for source_name, extrusion_surf in extrusion_surfaces:
+                mesh_stats = _write_axis_extrusion_polymesh(
+                    extrusion_surf,
+                    case_dir,
+                    target_cells=max(1, int(target_cells * 0.9)),
+                    bl_layers=max(0, bl_layers),
+                )
+                if mesh_stats is not None:
+                    params["post_layers_engine"] = "disabled"
+                    logger.info(
+                        "wildmesh_axis_extrusion_fastpath_selected",
+                        source=source_name,
+                        flow_type=flow_type,
+                    )
+                    elapsed = time.monotonic() - t_start
+                    return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
 
         if flow_type == "external" and strategy.domain is not None:
             domain = strategy.domain
