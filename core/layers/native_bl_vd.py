@@ -737,6 +737,23 @@ class FullBLResult:
     junction_edges: list[tuple[int, int]]
 
 
+@dataclass
+class BulkPreservingFullBLResult:
+    """Combined polyMesh preserving original bulk cells plus VD BL cells.
+
+    ``n_bulk_cells`` original volume cells are emitted first, followed by
+    prism layer cells and gap-fill cells.  Wall boundary faces of the original
+    bulk are replaced by the innermost VD cap, so the bulk remains attached to
+    the new BL stack instead of being dropped.
+    """
+
+    polymesh: PolyMeshResult
+    n_bulk_cells: int
+    n_prism_cells: int
+    n_gap_fill_cells: int
+    junction_edges: list[tuple[int, int]]
+
+
 def build_full_bl_polymesh(
     wall_face_indices: list[int],
     faces: list[list[int]],
@@ -1076,6 +1093,232 @@ def build_multi_layer_full_bl_polymesh(
     )
     return FullBLResult(
         polymesh=pm,
+        n_prism_cells=n_prism,
+        n_gap_fill_cells=n_gap,
+        junction_edges=list(gap.junction_edges),
+    )
+
+
+def _build_multi_layer_gap_bridge_cells(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    multi_result: MultiLayerBLResult,
+) -> GapFillResult:
+    """Build non-degenerate bridge cells between duplicated layer-edge flaps.
+
+    The earlier gap-fill tet formulation is topologically useful for face
+    matching tests, but each tet is built from a single prism side quad and is
+    therefore geometrically flat.  Bulk-preserving BL needs actual volume.  This
+    helper inserts one bridge polyhedron per junction edge per layer:
+
+    * layer 0: triangular-prism-like cell with two prism side quads, one inner
+      quad and two triangular end caps;
+    * layer k>0: hexahedron-like cell connecting the previous layer bridge face
+      to the current layer bridge face.
+    """
+    face_pos = {int(fi): i for i, fi in enumerate(wall_face_indices)}
+    edge_to_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    edge_local_index: dict[tuple[int, int, int], int] = {}
+    for fi in wall_face_indices:
+        f = faces[fi]
+        n_v = len(f)
+        for i in range(n_v):
+            v0 = int(f[i])
+            v1 = int(f[(i + 1) % n_v])
+            key = (min(v0, v1), max(v0, v1))
+            edge_to_faces[key].append(int(fi))
+            edge_local_index[(int(fi), key[0], key[1])] = i
+
+    n_wall = len(wall_face_indices)
+    cell_face_verts: list[list[list[int]]] = []
+    filled_edges: list[tuple[int, int]] = []
+
+    def _edge_vertex_map(fi: int, layer: int, edge: tuple[int, int]) -> dict[int, tuple[int, int]]:
+        pos = face_pos[fi]
+        cell_idx = layer * n_wall + pos
+        side_idx = edge_local_index[(fi, edge[0], edge[1])]
+        side = [int(v) for v in multi_result.cell_face_verts[cell_idx][2 + side_idx]]
+        f = faces[fi]
+        local = side_idx
+        start = int(f[local])
+        end = int(f[(local + 1) % len(f)])
+        # side convention from build_multi_layer_bl:
+        # [outer_start, outer_end, inner_end, inner_start].
+        return {
+            start: (side[0], side[3]),
+            end: (side[1], side[2]),
+        }
+
+    for edge, f_list in edge_to_faces.items():
+        if len(f_list) > 2:
+            raise NotImplementedError(
+                f"3+ wall faces share edge {edge} (n_faces={len(f_list)}); "
+                "fan triangulation for non-manifold junctions is not "
+                "implemented in this iteration."
+            )
+        if len(f_list) != 2:
+            continue
+        f1, f2 = int(f_list[0]), int(f_list[1])
+        if f1 not in face_pos or f2 not in face_pos:
+            continue
+
+        for layer in range(int(multi_result.num_layers)):
+            m1 = _edge_vertex_map(f1, layer, edge)
+            m2 = _edge_vertex_map(f2, layer, edge)
+            v, w = int(edge[0]), int(edge[1])
+            o1v, i1v = m1[v]
+            o1w, i1w = m1[w]
+            o2v, i2v = m2[v]
+            o2w, i2w = m2[w]
+
+            side1 = [o1v, o1w, i1w, i1v]
+            side2 = [o2v, o2w, i2w, i2v]
+            if tuple(sorted(side1)) == tuple(sorted(side2)):
+                continue
+
+            inner_bridge = [i1v, i1w, i2w, i2v]
+            if layer == 0:
+                cell = [
+                    side1,
+                    list(reversed(side2)),
+                    inner_bridge,
+                    [v, i2v, i1v],
+                    [w, i1w, i2w],
+                ]
+            else:
+                outer_bridge = [o1v, o2v, o2w, o1w]
+                cell = [
+                    side1,
+                    list(reversed(side2)),
+                    outer_bridge,
+                    inner_bridge,
+                    [o1v, i1v, i2v, o2v],
+                    [o1w, o2w, i2w, i1w],
+                ]
+            cell_face_verts.append(cell)
+            filled_edges.append((v, w))
+
+    return GapFillResult(
+        cell_face_verts=cell_face_verts,
+        junction_edges=filled_edges,
+    )
+
+
+def build_bulk_preserving_multi_layer_full_bl_polymesh(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    points: np.ndarray,
+    junction_info: JunctionInfo,
+    *,
+    num_layers: int,
+    first_layer_thickness: float,
+    growth_ratio: float = 1.0,
+    vnorm: dict[int, np.ndarray] | None = None,
+    cluster_cos: float = 0.9,
+) -> BulkPreservingFullBLResult:
+    """Build VD BL while preserving the existing bulk cell topology.
+
+    This is the first bulk-preserving form of the VD refactor.  It reconstructs
+    the original bulk cells from OpenFOAM ``faces/owner/neighbour`` and replaces
+    each selected wall boundary face with the innermost VD cap face.  The VD
+    prism stack and junction gap-fill cells are appended after those bulk cells,
+    then the whole cell set is converted to a fresh polyMesh.
+
+    Scope:
+      * wall faces must be triangles;
+      * non-wall boundary faces, if any, are retained as generic side patch
+        faces by ``cells_to_polymesh``.  The tet+BL bench target uses closed
+        body meshes where all boundary faces are wall faces.
+    """
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+    if len(owner_arr) != len(faces):
+        raise ValueError(
+            f"owner length {len(owner_arr)} != number of faces {len(faces)}"
+        )
+    if len(neighbour_arr) > len(faces):
+        raise ValueError(
+            f"neighbour length {len(neighbour_arr)} > number of faces {len(faces)}"
+        )
+
+    wall_set = {int(fi) for fi in wall_face_indices}
+    for fi in wall_set:
+        if fi < 0 or fi >= len(faces):
+            raise ValueError(f"wall face index out of range: {fi}")
+        if len(faces[fi]) != 3:
+            raise ValueError(
+                "bulk-preserving VD currently requires triangle wall faces; "
+                f"face {fi} has {len(faces[fi])} vertices"
+            )
+
+    multi = build_multi_layer_bl(
+        wall_face_indices,
+        faces,
+        points,
+        junction_info,
+        num_layers=num_layers,
+        first_layer_thickness=first_layer_thickness,
+        growth_ratio=growth_ratio,
+        vnorm=vnorm,
+        cluster_cos=cluster_cos,
+    )
+    gap = _build_multi_layer_gap_bridge_cells(wall_face_indices, faces, multi)
+
+    n_cells = int(owner_arr.max()) + 1 if len(owner_arr) else 0
+    if len(neighbour_arr):
+        n_cells = max(n_cells, int(neighbour_arr.max()) + 1)
+    bulk_cells: list[list[list[int]]] = [[] for _ in range(n_cells)]
+
+    face_pos = {int(fi): i for i, fi in enumerate(wall_face_indices)}
+    n_wall = len(wall_face_indices)
+
+    def _innermost_cap_for_wall_face(fi: int) -> list[int]:
+        pos = face_pos[int(fi)]
+        cell_idx = (int(num_layers) - 1) * n_wall + pos
+        top = list(multi.cell_face_verts[cell_idx][1])
+        if len(top) != 3:
+            raise ValueError(f"VD innermost cap for face {fi} is not triangular")
+        # ``build_multi_layer_bl`` stores prism top as [i0, i2, i1] so it is
+        # outward for the prism.  The bulk-side face needs the original wall
+        # orientation [i0, i1, i2].
+        return [int(top[0]), int(top[2]), int(top[1])]
+
+    for fi, raw_face in enumerate(faces):
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_cells:
+            raise ValueError(f"owner cell out of range for face {fi}: {own}")
+
+        if fi in wall_set:
+            bulk_cells[own].append(_innermost_cap_for_wall_face(fi))
+            continue
+
+        face = [int(v) for v in raw_face]
+        bulk_cells[own].append(face)
+        if fi < len(neighbour_arr):
+            nbr = int(neighbour_arr[fi])
+            if nbr < 0 or nbr >= n_cells:
+                raise ValueError(f"neighbour cell out of range for face {fi}: {nbr}")
+            bulk_cells[nbr].append(list(reversed(face)))
+
+    prism_cells = [[list(face) for face in cell] for cell in multi.cell_face_verts]
+    n_prism = len(prism_cells)
+    n_gap = len(gap.cell_face_verts)
+    combined_cells = bulk_cells + prism_cells + gap.cell_face_verts
+    cell_kinds = (
+        ["bulk"] * len(bulk_cells)
+        + ["prism"] * n_prism
+        + ["gap_fill"] * n_gap
+    )
+    pm = cells_to_polymesh(
+        combined_cells,
+        multi.new_points,
+        cell_kinds=cell_kinds,
+    )
+    return BulkPreservingFullBLResult(
+        polymesh=pm,
+        n_bulk_cells=len(bulk_cells),
         n_prism_cells=n_prism,
         n_gap_fill_cells=n_gap,
         junction_edges=list(gap.junction_edges),

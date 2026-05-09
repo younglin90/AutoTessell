@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from core.layers.native_bl_vd import (
+    build_bulk_preserving_multi_layer_full_bl_polymesh,
     build_full_bl_polymesh,
     build_gap_fill_cells,
     build_multi_layer_bl,
@@ -19,6 +20,26 @@ from core.layers.native_bl_vd import (
     detect_junction_verts,
     generate_per_face_inner_verts,
 )
+
+
+def _single_tet_boundary() -> tuple[list[list[int]], np.ndarray, np.ndarray, np.ndarray]:
+    """One tetrahedral bulk cell represented by its four boundary faces."""
+    points = np.array([
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+    ], dtype=np.float64)
+    # Outward faces for tet (0, 1, 2, 3).
+    faces = [
+        [1, 2, 3],
+        [0, 3, 2],
+        [0, 1, 3],
+        [0, 2, 1],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    return faces, points, owner, neighbour
 
 
 def _cube_faces() -> tuple[list[list[int]], np.ndarray]:
@@ -934,6 +955,74 @@ def test_build_multi_layer_full_bl_polymesh_cube_3_layers_reduces_side_open_face
     # prism/gap matches and a small number of gap/gap matches across layer
     # transitions.
     assert len(result.polymesh.neighbour) == 204
+
+
+def test_build_bulk_preserving_multi_layer_full_bl_keeps_original_tet_cell():
+    """Bulk-preserving VD replaces wall faces with inner caps, not the bulk."""
+    faces, points, owner, neighbour = _single_tet_boundary()
+    wall_faces = list(range(4))
+    info = detect_junction_verts(wall_faces, faces, points, cos_thresh=0.9)
+
+    result = build_bulk_preserving_multi_layer_full_bl_polymesh(
+        wall_faces,
+        faces,
+        owner,
+        neighbour,
+        points,
+        info,
+        num_layers=1,
+        first_layer_thickness=0.05,
+        growth_ratio=1.2,
+        cluster_cos=0.5,
+    )
+
+    assert result.n_bulk_cells == 1
+    assert result.n_prism_cells == 4
+    assert result.n_gap_fill_cells == 6
+    n_total_cells = max(result.polymesh.owner + result.polymesh.neighbour) + 1
+    assert n_total_cells == 1 + 4 + 6
+
+    by_name = {p["name"]: p for p in result.polymesh.patches}
+    assert by_name["wall"]["nFaces"] == 4
+    # The innermost BL caps are shared with the original bulk cell, so they
+    # must be internal faces rather than an exposed bl_internal boundary.
+    assert "bl_internal" not in by_name
+    assert "bl_internal_side" in by_name
+
+    # Four bulk-to-prism cap faces: owner is the preserved bulk cell 0 and
+    # neighbours are the four appended prism cells [1, 4].
+    cap_neighbours = {
+        n for o, n in zip(
+            result.polymesh.owner[: len(result.polymesh.neighbour)],
+            result.polymesh.neighbour,
+            strict=True,
+        )
+        if o == 0
+    }
+    assert cap_neighbours == {1, 2, 3, 4}
+
+
+def test_build_bulk_preserving_multi_layer_full_bl_rejects_polygon_wall_face():
+    """The first bulk-preserving VD step is intentionally tri-wall only."""
+    points = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+    ], dtype=np.float64)
+    faces = [[0, 1, 2, 3]]
+    owner = np.array([0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    info = detect_junction_verts([0], faces, points, cos_thresh=0.9)
+
+    with pytest.raises(ValueError, match="triangle wall faces"):
+        build_bulk_preserving_multi_layer_full_bl_polymesh(
+            [0],
+            faces,
+            owner,
+            neighbour,
+            points,
+            info,
+            num_layers=1,
+            first_layer_thickness=0.05,
+        )
 
 
 def test_build_multi_layer_bl_invalid_args():
