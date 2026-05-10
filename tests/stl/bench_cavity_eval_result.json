@@ -14,9 +14,9 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 0,
-      "elapsed_s": 124.524,
+      "elapsed_s": 81.213,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Aspect Ratio                2237.1        < 1000  FAIL",
+      "first_fail_metric": "",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 332,
@@ -78,15 +78,21 @@
         "min_q": 0.006344908097919803
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 199,
+        "max_reduction": 0.009017491007042128,
+        "n_wall_verts": 454
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 0,
-      "elapsed_s": 121.517,
+      "elapsed_s": 110.874,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    89.5\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.3\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
@@ -148,15 +154,21 @@
         "min_q": 0.0020434466134299093
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 179,
+        "max_reduction": 0.3792719359810235,
+        "n_wall_verts": 625
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/easy_100423.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100423",
       "returncode": 0,
-      "elapsed_s": 314.322,
+      "elapsed_s": 289.508,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Aspect Ratio               11879.6        < 1000  FAIL",
+      "first_fail_metric": "Max Aspect Ratio                1187.9        < 1000  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 746,
@@ -218,15 +230,21 @@
         "min_q": 0.0054206995227039775
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 516,
+        "max_reduction": 0.008875853595079888,
+        "n_wall_verts": 922
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/easy_100643.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100643",
       "returncode": 0,
-      "elapsed_s": 114.814,
+      "elapsed_s": 79.343,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    89.9\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.6\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 277,
@@ -288,15 +306,21 @@
         "min_q": 0.013697920168142495
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 222,
+        "max_reduction": 0.21681403510647151,
+        "n_wall_verts": 544
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/easy_101170.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101170",
       "returncode": 0,
-      "elapsed_s": 77.102,
+      "elapsed_s": 41.028,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    80.6\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    81.3\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 450,
@@ -358,15 +382,21 @@
         "min_q": 0.00680386502067923
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 283,
+        "max_reduction": 0.12941945019045975,
+        "n_wall_verts": 607
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/easy_101187.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101187",
       "returncode": 0,
-      "elapsed_s": 111.193,
+      "elapsed_s": 39.841,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    81.0\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    82.1\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 661,
@@ -428,15 +458,21 @@
         "min_q": 0.0009309952517128216
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 388,
+        "max_reduction": 0.13112033468285728,
+        "n_wall_verts": 847
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/extreme_1017013.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017013",
       "returncode": 0,
-      "elapsed_s": 110.709,
+      "elapsed_s": 48.494,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    84.0\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.7\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 275,
@@ -498,15 +534,21 @@
         "min_q": 0.007480417059731935
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 204,
+        "max_reduction": 0.06751326300000159,
+        "n_wall_verts": 463
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/extreme_1017014.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017014",
-      "returncode": 1,
-      "elapsed_s": 91.787,
-      "evaluator_verdict": "FAIL",
-      "first_fail_metric": "Max Skewness                      6.84         < 6.0  FAIL",
+      "returncode": 0,
+      "elapsed_s": 36.825,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    80.4\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 261,
@@ -568,15 +610,21 @@
         "min_q": 0.012859038736263208
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 178,
+        "max_reduction": 0.06751326300000163,
+        "n_wall_verts": 412
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/extreme_1017017.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017017",
       "returncode": 1,
-      "elapsed_s": 150.154,
+      "elapsed_s": 132.78,
       "evaluator_verdict": "FAIL",
-      "first_fail_metric": "Max Non-Ortho                    88.9\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    88.8\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 286,
@@ -638,15 +686,21 @@
         "min_q": 0.0021026186152744053
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 260,
+        "max_reduction": 0.10685253499471624,
+        "n_wall_verts": 604
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/extreme_102308.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_102308",
-      "returncode": 1,
-      "elapsed_s": 110.601,
-      "evaluator_verdict": "FAIL",
-      "first_fail_metric": "Max Aspect Ratio                1239.2        < 1000  FAIL",
+      "returncode": 0,
+      "elapsed_s": 42.391,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    87.8\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 289,
@@ -708,15 +762,21 @@
         "min_q": 0.0014922818957287176
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 216,
+        "max_reduction": 0.005206530000000206,
+        "n_wall_verts": 481
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/extreme_1037019.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1037019",
       "returncode": 0,
-      "elapsed_s": 117.286,
+      "elapsed_s": 99.901,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Aspect Ratio                2057.2        < 1000  FAIL",
+      "first_fail_metric": "",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 355,
@@ -778,15 +838,21 @@
         "min_q": 0.0011148081266839922
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 259,
+        "max_reduction": 0.08655227189987495,
+        "n_wall_verts": 548
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/hard_100027.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100027",
       "returncode": 0,
-      "elapsed_s": 114.051,
+      "elapsed_s": 107.183,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    82.0\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    82.3\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 273,
@@ -848,15 +914,21 @@
         "min_q": 0.0010403295700590796
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 210,
+        "max_reduction": 0.06805047000001423,
+        "n_wall_verts": 606
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/hard_100029.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100029",
       "returncode": 0,
-      "elapsed_s": 120.239,
+      "elapsed_s": 109.288,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    89.4\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.5\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 247,
@@ -918,15 +990,21 @@
         "min_q": 0.003775662040534229
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 100,
+        "max_reduction": 0.2730372375404573,
+        "n_wall_verts": 645
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/hard_100030.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100030",
       "returncode": 1,
-      "elapsed_s": 85.179,
+      "elapsed_s": 69.767,
       "evaluator_verdict": "FAIL",
-      "first_fail_metric": "Max Non-Ortho                    89.9\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    90.0\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 337,
@@ -988,15 +1066,21 @@
         "min_q": 0.0024289800006308624
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 344,
+        "max_reduction": 0.12102490846614947,
+        "n_wall_verts": 608
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/hard_100040.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100040",
       "returncode": 0,
-      "elapsed_s": 91.121,
+      "elapsed_s": 35.001,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    85.1\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.5\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 301,
@@ -1058,15 +1142,21 @@
         "min_q": 0.005055778779361942
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 231,
+        "max_reduction": 0.1216571400000008,
+        "n_wall_verts": 464
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/hard_1004826.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_1004826",
       "returncode": 1,
-      "elapsed_s": 105.603,
+      "elapsed_s": 104.822,
       "evaluator_verdict": "FAIL",
-      "first_fail_metric": "Max Non-Ortho                    87.6\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    87.5\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 266,
@@ -1128,15 +1218,21 @@
         "min_q": 0.01244729405893516
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 252,
+        "max_reduction": 0.027378132750000863,
+        "n_wall_verts": 490
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/medium_100045.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100045",
       "returncode": 0,
-      "elapsed_s": 205.861,
+      "elapsed_s": 206.503,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    88.8\u00b0         < 80\u00b0  FAIL",
+      "first_fail_metric": "Max Non-Ortho                    88.9\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 487,
@@ -1198,13 +1294,19 @@
         "min_q": 0.0016948779530503294
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 373,
+        "max_reduction": 0.004877201027184263,
+        "n_wall_verts": 829
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/medium_100077.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100077",
       "returncode": 0,
-      "elapsed_s": 89.829,
+      "elapsed_s": 74.585,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {
@@ -1268,15 +1370,21 @@
         "min_q": 0.01730907022509579
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 260,
+        "max_reduction": 0.006563398645422183,
+        "n_wall_verts": 551
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/medium_100322.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100322",
       "returncode": 0,
-      "elapsed_s": 109.781,
+      "elapsed_s": 107.877,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Min Determinant                 0.0000       > 0.001  FAIL",
+      "first_fail_metric": "Min Determinant                 0.0002       > 0.001  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 237,
@@ -1338,15 +1446,21 @@
         "min_q": 0.00016815590998484704
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 270,
+        "max_reduction": 0.10707106224656716,
+        "n_wall_verts": 592
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/medium_100323.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100323",
       "returncode": 0,
-      "elapsed_s": 113.493,
+      "elapsed_s": 114.039,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "",
+      "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 243,
@@ -1408,15 +1522,21 @@
         "min_q": 0.01056567175067628
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 285,
+        "max_reduction": 0.13428143734449646,
+        "n_wall_verts": 621
+      },
       "bl_path": "main"
     },
     {
       "stl": "tests/stl/thingi10k_bench20/medium_100330.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100330",
-      "returncode": 0,
-      "elapsed_s": 139.57,
-      "evaluator_verdict": "PASS",
-      "first_fail_metric": "Max Non-Ortho                    86.1\u00b0         < 80\u00b0  FAIL",
+      "returncode": 1,
+      "elapsed_s": 133.276,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.1\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 246,
@@ -1478,6 +1598,12 @@
         "min_q": 0.0002564800997440028
       },
       "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 334,
+        "max_reduction": 0.04586467500000045,
+        "n_wall_verts": 645
+      },
       "bl_path": "main"
     }
   ]

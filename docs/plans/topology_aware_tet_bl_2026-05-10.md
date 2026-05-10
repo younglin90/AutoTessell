@@ -1377,6 +1377,52 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
+### BLR-9c-d (s-3) — final 21-STL re-bench at floor=0.5
+
+**Final result with floor=0.5: 17/21 PASS = 81 %**
+(baseline 12/21 = 57 %, anti-invert cap with floor=0.05 = 16/21 = 76 %).
+
+::
+
+    PASS 17:
+      test_cube,         easy_100034,        easy_100423,
+      easy_100643,       easy_101170,        easy_101187,
+      extreme_1017013,   extreme_1017014✓,   extreme_102308✓,
+      extreme_1037019,   hard_100027,        hard_100029,
+      hard_100040,       medium_100045,      medium_100077,
+      medium_100322,     medium_100323
+        ✓ = newly converted by floor=0.5 (was FAIL at 0.05)
+
+    FAIL 4:
+      extreme_1017017    1 neg_vol + skew 29   (cap-independent)
+      hard_100030        1 neg_vol + skew 1166 (extreme upstream)
+      hard_1004826       1 neg_vol             (cap-independent)
+      medium_100330      1 neg_vol             (regressed at floor=0.5,
+                                                was PASS at 0.05)
+
+Cumulative anti-invert cap impact (across the entire sub-series):
+
+::
+
+    baseline:                 12/21 PASS  (57 %)
+    cap floor=0.05 (v2):      16/21 PASS  (76 %)  +4 PASS
+    cap floor=0.50 (v3):      17/21 PASS  (81 %)  +5 PASS
+
+Mesh aspect ratio dramatically improved at floor=0.5 (10x lower
+across all STLs):
+
+::
+
+    test_cube:        2237 → 224
+    easy_100034:      2753 → 275
+    easy_100423:     11879 → 1188
+    easy_100643:      1628 → 163
+    easy_101170:      4680 → 468
+    easy_101187:      4254 → 426
+
+This was the dominant cosmetic concern at floor=0.05; it's
+essentially resolved.
+
 ### BLR-9c-d (s-1) — floor sweep on the 2 cap-induced FAILs
 
 The 2 ``aspect+surface_dev`` FAILs (extreme_1017014, extreme_102308)
