@@ -257,6 +257,15 @@ creates near-tangent interface faces.
   separately from generated bulk-prism and prism-prism BL defects.
 - [x] No output behavior change.
 
+### BLR-7: tet wall-cavity replacement eligibility
+
+- [x] Record how many selected wall owner cells are simple tetrahedra with
+  exactly one wall face.
+- [x] Record blocked owner cells with multi-wall or non-tet topology so the
+  closed advancing-layer refill can choose between simple local replacement and
+  general front/block/refill.
+- [x] No output behavior change.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.

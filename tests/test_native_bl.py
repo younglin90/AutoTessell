@@ -27,6 +27,7 @@ from core.layers.native_bl import (
     _bl_bad_internal_face_histogram,
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
+    _tet_wall_cavity_eligibility,
     generate_native_bl,
 )
 from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
@@ -94,6 +95,7 @@ def test_native_bl_inserts_prism_cells(sphere_baseline: Path) -> None:
     pre_bl = quality["pre_bl_bad_internal_faces"]
     assert pre_bl["n_internal_faces"] >= 0
     assert "bulk-bulk" in pre_bl["total_by_class"]
+    assert "coverage_single_wall_tet" in quality["tet_wall_cavity"]
 
 
 def test_native_bl_manifold_has_no_bl_side(sphere_baseline: Path) -> None:
@@ -481,6 +483,32 @@ def test_native_bl_bad_component_records_closed_cavity_shell() -> None:
     assert shell["small_closed_cavity_candidate"] is True
     assert shell["agglomerate_probe"]["n_interface_faces"] == 0
     assert shell["agglomerate_probe"]["passes"] is True
+
+
+def test_native_bl_tet_wall_cavity_marks_single_wall_tet_owner() -> None:
+    """BL cavity diagnostics identify local tet owner-cell replacement targets."""
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = [0, 0, 0, 0]
+    neighbour: list[int] = []
+
+    summary = _tet_wall_cavity_eligibility(
+        faces,
+        owner,
+        neighbour,
+        [0],
+        n_cells=1,
+    )
+
+    assert summary["n_wall_owner_cells"] == 1
+    assert summary["n_single_wall_owner_cells"] == 1
+    assert summary["n_single_wall_tet_owner_cells"] == 1
+    assert summary["coverage_single_wall_tet"] == 1.0
+    assert summary["sample_single_wall_tet_cells"] == [0]
 
 
 def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:

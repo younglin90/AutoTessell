@@ -2153,6 +2153,112 @@ def _bl_bad_internal_face_histogram(
     return summary
 
 
+def _tet_wall_cavity_eligibility(
+    faces: list[list[int]],
+    owner: list[int] | np.ndarray,
+    neighbour: list[int] | np.ndarray,
+    wall_face_indices: list[int],
+    *,
+    n_cells: int,
+    sample_cap: int = 16,
+) -> dict[str, Any]:
+    """Summarize wall-owner cells eligible for local tet cavity replacement.
+
+    A simple closed advancing-layer refill is only topologically local when a
+    wall owner is a tetrahedron and owns exactly one selected wall face.  Cells
+    with multiple wall faces, non-tet topology, or stale wall-face ids need the
+    more general SMESH-style front/block/refill path.
+    """
+    summary: dict[str, Any] = {
+        "n_cells": int(max(0, n_cells)),
+        "n_wall_faces": int(len(wall_face_indices)),
+        "n_wall_owner_cells": 0,
+        "n_single_wall_owner_cells": 0,
+        "n_single_wall_tet_owner_cells": 0,
+        "n_multi_wall_owner_cells": 0,
+        "n_non_tet_owner_cells": 0,
+        "coverage_single_wall_tet": 0.0,
+        "sample_single_wall_tet_cells": [],
+        "sample_blocked_cells": [],
+    }
+    if n_cells <= 0 or not wall_face_indices or len(owner) == 0:
+        return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    cell_vertices: list[set[int]] = [set() for _ in range(int(n_cells))]
+    cell_face_counts = [0 for _ in range(int(n_cells))]
+    for fi, face in enumerate(faces):
+        verts = {int(v) for v in face}
+        if fi < len(owner_arr):
+            own = int(owner_arr[fi])
+            if 0 <= own < n_cells:
+                cell_vertices[own].update(verts)
+                cell_face_counts[own] += 1
+        if fi < len(nbr_arr):
+            nbr = int(nbr_arr[fi])
+            if 0 <= nbr < n_cells:
+                cell_vertices[nbr].update(verts)
+                cell_face_counts[nbr] += 1
+
+    wall_faces_by_owner: dict[int, list[int]] = {}
+    stale_wall_faces = 0
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            stale_wall_faces += 1
+            continue
+        own = int(owner_arr[fi])
+        if 0 <= own < n_cells:
+            wall_faces_by_owner.setdefault(own, []).append(int(fi))
+
+    single_tet: list[int] = []
+    blocked: list[dict[str, Any]] = []
+    for cid, wall_faces in wall_faces_by_owner.items():
+        n_wall = len(wall_faces)
+        is_tet = len(cell_vertices[cid]) == 4 and cell_face_counts[cid] == 4
+        if n_wall == 1:
+            summary["n_single_wall_owner_cells"] += 1
+            if is_tet:
+                summary["n_single_wall_tet_owner_cells"] += 1
+                single_tet.append(int(cid))
+            else:
+                summary["n_non_tet_owner_cells"] += 1
+                if len(blocked) < sample_cap:
+                    blocked.append(
+                        {
+                            "cell": int(cid),
+                            "reason": "non_tet",
+                            "n_wall_faces": int(n_wall),
+                            "n_vertices": int(len(cell_vertices[cid])),
+                            "n_faces": int(cell_face_counts[cid]),
+                        }
+                    )
+        else:
+            summary["n_multi_wall_owner_cells"] += 1
+            if len(blocked) < sample_cap:
+                blocked.append(
+                    {
+                        "cell": int(cid),
+                        "reason": "multi_wall_faces",
+                        "n_wall_faces": int(n_wall),
+                        "n_vertices": int(len(cell_vertices[cid])),
+                        "n_faces": int(cell_face_counts[cid]),
+                    }
+                )
+
+    n_wall_owner = len(wall_faces_by_owner)
+    summary["n_wall_owner_cells"] = int(n_wall_owner)
+    summary["n_stale_wall_faces"] = int(stale_wall_faces)
+    summary["coverage_single_wall_tet"] = (
+        float(summary["n_single_wall_tet_owner_cells"]) / float(n_wall_owner)
+        if n_wall_owner > 0
+        else 0.0
+    )
+    summary["sample_single_wall_tet_cells"] = single_tet[: int(sample_cap)]
+    summary["sample_blocked_cells"] = blocked
+    return summary
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
@@ -3423,6 +3529,16 @@ def generate_native_bl(
         wall_orig_patch[fi] = face_to_patch[fi][0]
 
     wall_set = set(wall_face_indices)
+    try:
+        tet_wall_cavity_eligibility = _tet_wall_cavity_eligibility(
+            faces,
+            owner,
+            neighbour,
+            wall_face_indices,
+            n_cells=n_cells,
+        )
+    except Exception as exc:  # noqa: BLE001
+        tet_wall_cavity_eligibility = {"error": str(exc)[:160]}
 
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
@@ -4559,6 +4675,7 @@ def generate_native_bl(
             },
             "bad_internal_faces": bad_internal_face_histogram,
             "pre_bl_bad_internal_faces": pre_bl_bad_internal_face_histogram,
+            "tet_wall_cavity": tet_wall_cavity_eligibility,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
