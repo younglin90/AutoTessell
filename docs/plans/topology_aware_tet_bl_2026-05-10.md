@@ -703,11 +703,42 @@ worth attempting on a given STL.
 
 ### BLR-9c-d (l) — non-ortho 77 / shape 30 audit
 
-- [ ] BLR-9c-d (l-1): re-bench with the fine non-ortho histogram
-  to see whether the new 77 rejected components cluster just
-  past 80° (cap lift to 85° / 90° likely safe) or scatter to
-  much higher values (geometry pathology).  Mirror the BLR-9c-d-j-1
-  audit pattern.
+- [x] BLR-9c-d (l-1): added ``non_ortho_fine_hist`` (bins
+  [70, 75) / [75, 80) / [80, 85) / [85, 90) / >90) and
+  ``worst_non_ortho_kind_hist`` (fan_fan / fan_shell_closure /
+  shell_closure_shell_closure / none / other) to the aggregator
+  summary; per-component records carry ``worst_non_ortho_kind``.
+  ``_check_cavity_fan_tet_pair_non_ortho`` now also returns
+  ``worst_pair_indices``.  Surfaced through both
+  ``generate_native_bl`` and ``_generate_native_bl_vd``.
+
+  **Bench audit (test_cube + easy_100034, q_min 0.05,
+  non_ortho 80°)**:
+
+  ::
+
+      non_ortho > 70 deg fine bins (combined):
+        [70, 75) 54  [75, 80) 76  [80, 85) 59  [85, 90) 30  >90 0
+      Worst-non-ortho-pair kind (all 861 components):
+        fan_fan                       341
+        fan_shell_closure               0
+        shell_closure_shell_closure   519
+        none                            1
+
+  - [80, 85) is the largest bin past the cap (59 components):
+    lifting the cap to 85° recovers ~59 of 77 currently-rejected;
+    to 90° recovers all 89 above-70° components.
+  - 60 % of all components have their worst pair coming from two
+    closure tets — closure pairs tend to meet at wide angles by
+    construction (apex-to-shell-face fan triangulation).  Fan-fan
+    is 40 %.  No fan-closure pairs because the two paths use
+    disjoint inner-point id spaces (fan tets index the
+    BLR-9c-c-i inner triangles, closure tets index polyMesh-space
+    appended verts).
+
+- [ ] BLR-9c-d (l-2): bench at non_ortho 85° to confirm the
+  histogram-predicted recovery (~59 components).  Stop at 85°
+  for now — going to 90° would erase the gate's signal.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

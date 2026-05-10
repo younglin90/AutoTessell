@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 57.848,
+      "elapsed_s": 57.161,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
@@ -31,6 +31,20 @@
           "70_80": 101,
           "80_90": 62,
           "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 42,
+          "75_80": 59,
+          "80_85": 48,
+          "85_90": 14,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 311,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 339,
+          "none": 1,
+          "other": 0
         },
         "skew_hist": {
           "le_1": 620,
@@ -68,7 +82,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 105.399,
+      "elapsed_s": 103.038,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
@@ -85,6 +99,20 @@
           "70_80": 29,
           "80_90": 27,
           "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 12,
+          "75_80": 17,
+          "80_85": 11,
+          "85_90": 16,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 30,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 180,
+          "none": 0,
+          "other": 0
         },
         "skew_hist": {
           "le_1": 175,

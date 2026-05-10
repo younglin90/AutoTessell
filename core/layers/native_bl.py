@@ -3508,6 +3508,7 @@ def _check_cavity_fan_tet_pair_non_ortho(
         "mean_angle_deg": 0.0,
         "n_above_threshold": 0,
         "bad_pair_indices": [],
+        "worst_pair_indices": None,
     }
     if not fan_tets or len(fan_tets) < 2:
         return out
@@ -3550,6 +3551,7 @@ def _check_cavity_fan_tet_pair_non_ortho(
             edge_owners.setdefault(key, []).append(k)
 
     angles: list[float] = []
+    pair_keys: list[tuple[int, int]] = []
     bad_pairs: list[tuple[int, int]] = []
     seen_pairs: set[tuple[int, int]] = set()
     for (u, v), owners in edge_owners.items():
@@ -3577,6 +3579,7 @@ def _check_cavity_fan_tet_pair_non_ortho(
                     cos_theta = min(1.0, max(0.0, cos_theta))
                     angle_deg = float(np.degrees(np.arccos(cos_theta)))
                 angles.append(angle_deg)
+                pair_keys.append(key)
                 if angle_deg > non_ortho_threshold_deg:
                     bad_pairs.append(key)
 
@@ -3590,6 +3593,9 @@ def _check_cavity_fan_tet_pair_non_ortho(
     out["mean_angle_deg"] = float(arr.mean())
     out["n_above_threshold"] = int(np.sum(arr > non_ortho_threshold_deg))
     out["bad_pair_indices"] = bad_pairs
+    if pair_keys:
+        argmax = int(np.argmax(arr))
+        out["worst_pair_indices"] = pair_keys[argmax]
     return out
 
 
@@ -4085,6 +4091,21 @@ def _evaluate_cavity_component_candidates(
             "le_30": 0, "30_60": 0, "60_70": 0, "70_80": 0,
             "80_90": 0, "gt_90": 0,
         },
+        # BLR-9c-d-l-1 — fine bins for the >70° band so we can tell
+        # whether reject_bad_non_ortho components cluster just past
+        # the cap (recoverable by softening) or scatter to the high
+        # end (real geometry pathology).
+        "non_ortho_fine_hist": {
+            "70_75": 0, "75_80": 0, "80_85": 0, "85_90": 0, "gt_90": 0,
+        },
+        # Worst-non-ortho-pair kind across all components.
+        "worst_non_ortho_kind_hist": {
+            "fan_fan": 0,
+            "fan_shell_closure": 0,
+            "shell_closure_shell_closure": 0,
+            "none": 0,
+            "other": 0,
+        },
         "skew_hist": {
             "le_1": 0, "1_2": 0, "2_4": 0, "4_8": 0, "gt_8": 0,
         },
@@ -4193,6 +4214,25 @@ def _evaluate_cavity_component_candidates(
         n_fan_bad_non_ortho = int(
             len(non_ortho_check.get("bad_pair_indices", []))
         )
+        # BLR-9c-d-l-1 — classify the worst-non-ortho pair by the
+        # ``kind`` of its two transition tets so later sub-steps can
+        # target the right helper (fan-fan = inner triangle motion;
+        # closure-closure = shell-face fan triangulation; mixed =
+        # interface between the two paths).
+        worst_no_kind = "none"
+        wp = non_ortho_check.get("worst_pair_indices")
+        if (
+            wp is not None
+            and len(wp) == 2
+            and 0 <= int(wp[0]) < len(all_tets)
+            and 0 <= int(wp[1]) < len(all_tets)
+        ):
+            ka = str(all_tets[int(wp[0])].get("kind", "fan"))
+            kb = str(all_tets[int(wp[1])].get("kind", "fan"))
+            if ka == kb:
+                worst_no_kind = f"{ka}_{kb}"
+            else:
+                worst_no_kind = "_".join(sorted([ka, kb]))
         skew_check = _check_cavity_fan_tet_pair_skewness(
             all_tets, apex_xyz, extended_inner
         )
@@ -4257,6 +4297,7 @@ def _evaluate_cavity_component_candidates(
                 non_ortho_check.get("mean_angle_deg", 0.0)
             ),
             "n_fan_pair_bad_non_ortho": n_fan_bad_non_ortho,
+            "worst_non_ortho_kind": worst_no_kind,
             "fan_pair_max_skew": float(
                 skew_check.get("max_skew", 0.0)
             ),
@@ -4297,8 +4338,24 @@ def _evaluate_cavity_component_candidates(
             summary["non_ortho_hist"]["80_90"] += 1
         else:
             summary["non_ortho_hist"]["gt_90"] += 1
+        if _max_no > 70.0:
+            if _max_no <= 75.0:
+                summary["non_ortho_fine_hist"]["70_75"] += 1
+            elif _max_no <= 80.0:
+                summary["non_ortho_fine_hist"]["75_80"] += 1
+            elif _max_no <= 85.0:
+                summary["non_ortho_fine_hist"]["80_85"] += 1
+            elif _max_no <= 90.0:
+                summary["non_ortho_fine_hist"]["85_90"] += 1
+            else:
+                summary["non_ortho_fine_hist"]["gt_90"] += 1
         if _max_no > summary["max_non_ortho_deg"]:
             summary["max_non_ortho_deg"] = _max_no
+        _wno_kind = comp_record.get("worst_non_ortho_kind", "none")
+        if _wno_kind in summary["worst_non_ortho_kind_hist"]:
+            summary["worst_non_ortho_kind_hist"][_wno_kind] += 1
+        else:
+            summary["worst_non_ortho_kind_hist"]["other"] += 1
 
         _max_sk = float(comp_record["fan_pair_max_skew"])
         if _max_sk <= 1.0:
@@ -5101,6 +5158,12 @@ def _generate_native_bl_vd(
                 )
             vd_tet_cavity_eval_diag["non_ortho_hist"] = dict(
                 _vd_summary.get("non_ortho_hist", {})
+            )
+            vd_tet_cavity_eval_diag["non_ortho_fine_hist"] = dict(
+                _vd_summary.get("non_ortho_fine_hist", {})
+            )
+            vd_tet_cavity_eval_diag["worst_non_ortho_kind_hist"] = dict(
+                _vd_summary.get("worst_non_ortho_kind_hist", {})
             )
             vd_tet_cavity_eval_diag["skew_hist"] = dict(
                 _vd_summary.get("skew_hist", {})
@@ -6415,6 +6478,14 @@ def generate_native_bl(
                         ),
                         "non_ortho_hist": dict(
                             _eval_summary.get("non_ortho_hist", {})
+                        ),
+                        "non_ortho_fine_hist": dict(
+                            _eval_summary.get("non_ortho_fine_hist", {})
+                        ),
+                        "worst_non_ortho_kind_hist": dict(
+                            _eval_summary.get(
+                                "worst_non_ortho_kind_hist", {}
+                            )
                         ),
                         "skew_hist": dict(
                             _eval_summary.get("skew_hist", {})
