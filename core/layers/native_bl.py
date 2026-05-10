@@ -3996,6 +3996,7 @@ def _evaluate_cavity_component_candidates(
     first_thickness: float,
     *,
     sharp_cos_thresh: float = 0.9,
+    non_ortho_threshold_deg: float = 70.0,
 ) -> dict[str, Any]:
     """BLR-9c-d: aggregate per-cavity-component evaluation.
 
@@ -4150,7 +4151,8 @@ def _evaluate_cavity_component_candidates(
         )
         n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
         non_ortho_check = _check_cavity_fan_tet_pair_non_ortho(
-            all_tets, apex_xyz, extended_inner
+            all_tets, apex_xyz, extended_inner,
+            non_ortho_threshold_deg=non_ortho_threshold_deg,
         )
         n_fan_bad_non_ortho = int(
             len(non_ortho_check.get("bad_pair_indices", []))
@@ -5009,6 +5011,12 @@ def _generate_native_bl_vd(
                 np.asarray(neighbour, dtype=np.int64),
                 list(wall_face_indices),
             )
+            _vd_non_ortho_thresh = float(
+                os.environ.get(
+                    "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
+                    "70.0",
+                )
+            )
             _vd_summary = _evaluate_cavity_component_candidates(
                 components=_vd_components,
                 points=np.asarray(points, dtype=np.float64),
@@ -5018,6 +5026,7 @@ def _generate_native_bl_vd(
                 wall_face_indices=list(wall_face_indices),
                 motion_dirs=_vd_motion_dirs,
                 first_thickness=float(cfg.first_thickness),
+                non_ortho_threshold_deg=_vd_non_ortho_thresh,
             )
             for _key in (
                 "n_components", "n_accepted",
@@ -6283,6 +6292,12 @@ def generate_native_bl(
                         neighbour,
                         list(wall_face_indices),
                     )
+                    _eval_non_ortho_thresh = float(
+                        os.environ.get(
+                            "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
+                            "70.0",
+                        )
+                    )
                     _eval_summary = _evaluate_cavity_component_candidates(
                         components=_eval_components,
                         points=np.asarray(points, dtype=np.float64),
@@ -6292,6 +6307,7 @@ def generate_native_bl(
                         wall_face_indices=list(wall_face_indices),
                         motion_dirs=motion_dirs,
                         first_thickness=float(cfg.first_thickness),
+                        non_ortho_threshold_deg=_eval_non_ortho_thresh,
                     )
                     tet_cavity_eval_diag = {
                         "enabled": True,

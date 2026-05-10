@@ -634,9 +634,34 @@ worth attempting on a given STL.
   blows past 90°, so lifting the gate to 80° (or making it env-
   configurable) recovers ~130 of the 180 currently rejected
   components without admitting numerical pathology.
-- [ ] BLR-9c-d (j-2): wire ``AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG``
-  through ``_evaluate_cavity_component_candidates`` → ``_check_cavity_fan_tet_pair_non_ortho``
-  with default 70.0; bench at 80.0 to measure recovered accept count.
+- [x] BLR-9c-d (j-2): ``_evaluate_cavity_component_candidates``
+  takes ``non_ortho_threshold_deg`` (default 70.0) and forwards
+  it to ``_check_cavity_fan_tet_pair_non_ortho``.  Both
+  ``generate_native_bl`` and ``_generate_native_bl_vd`` read the
+  env flag ``AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG`` (default
+  70.0) and pass through.  The bench harness sets the env to
+  80.0 by default (overridable via
+  ``AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG``).  **Bench at 80°
+  (test_cube + easy_100034)**:
+
+  ::
+
+      before:  861 components, 630 accept (73 %),
+               180 reject_bad_non_ortho.
+      after:   861 components, 742 accept (86 %),
+               68 reject_bad_non_ortho.
+
+  +112 components recovered; matches the histogram prediction.
+
+### BLR-9c-d (k) — shape gate audit / Q-floor relaxation
+
+- [ ] BLR-9c-d (k-1): the q_min histogram showed 51 components
+  with ``Q < 0.1`` (37 in easy_100034 alone, 14 in test_cube).
+  Surface a finer-grained histogram and ``q_min_argmin``
+  per-component so we know whether the slivers cluster on a
+  specific topology pattern (e.g. tet-on-quad-shell closure
+  triangles) before deciding whether to accept a softer Q floor
+  or rebuild the closure tets.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

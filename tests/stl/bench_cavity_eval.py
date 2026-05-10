@@ -88,6 +88,15 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     # eval helpers entirely (see tier_wildmesh.py:1828, 1852).
     env["AUTO_TESSELL_WILDMESH_BOX_FASTPATH"] = "0"
     env["AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH"] = "0"
+    # BLR-9c-d-j-2 — non-ortho cap configurable; default to 80° to
+    # match what downstream evaluators tolerate on transition cells
+    # (the bench audit at 70° showed angles cluster in 70-90° band
+    # without ever blowing past 90°).  Override via env to bench
+    # other thresholds.
+    env.setdefault(
+        "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
+        os.environ.get("AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG", "80"),
+    )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
     env.setdefault("AUTO_TESSELL_LCR_OFF", "1")
