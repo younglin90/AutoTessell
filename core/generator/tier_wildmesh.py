@@ -786,15 +786,34 @@ def _validate_axis_extrusion_candidate_case(
 
 
 def _replace_case_with_axis_candidate(candidate_case: Path, case_dir: Path) -> None:
-    """Copy an accepted temporary fastpath candidate into the real case."""
+    """Copy an accepted temporary fastpath candidate into the real case.
+
+    Stage the new polyMesh into a sibling directory before swapping the live
+    one, so a failed copy does not leave the case without any polyMesh.
+    """
     src_poly = candidate_case / "constant" / "polyMesh"
     if not src_poly.is_dir():
         raise FileNotFoundError(f"candidate polyMesh missing: {src_poly}")
     dst_poly = case_dir / "constant" / "polyMesh"
-    if dst_poly.exists():
-        shutil.rmtree(dst_poly)
     dst_poly.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src_poly, dst_poly)
+    staging = dst_poly.with_name(dst_poly.name + ".axis_candidate")
+    if staging.exists():
+        shutil.rmtree(staging)
+    shutil.copytree(src_poly, staging)
+    if dst_poly.exists():
+        backup = dst_poly.with_name(dst_poly.name + ".axis_replaced")
+        if backup.exists():
+            shutil.rmtree(backup)
+        dst_poly.rename(backup)
+        try:
+            staging.rename(dst_poly)
+        except Exception:
+            backup.rename(dst_poly)
+            raise
+        else:
+            shutil.rmtree(backup, ignore_errors=True)
+    else:
+        staging.rename(dst_poly)
 
     for name in ("native_bl_quality.json",):
         src = candidate_case / name
@@ -1178,6 +1197,8 @@ def _write_axis_extrusion_polymesh(
     if not polygon.is_valid:
         polygon = polygon.buffer(0)
     if polygon.is_empty or float(polygon.area) <= 0.0:
+        return None
+    if not isinstance(polygon, Polygon):
         return None
     if section_source == "cap":
         surf_area = float(getattr(surf, "area", 0.0) or 0.0)

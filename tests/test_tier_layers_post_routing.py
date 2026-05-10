@@ -1,7 +1,7 @@
 """beta34 — LayersPostGenerator auto-engine 라우팅 회귀 테스트.
 
 engine="auto" + mesh_type 조합에 따라 올바른 BL 엔진이 선택되는지 (tet →
-tet_bl_subdivide, hex_dominant → native_bl, poly → poly_bl_transition) 검증.
+native_bl, hex_dominant → native_bl, poly → poly_bl_transition) 검증.
 
 실제 엔진 실행은 비용이 커서 logic 만 검증 — monkeypatch 로 각 runner 를
 capture.
@@ -63,7 +63,7 @@ def test_disabled_engine_skips_gracefully(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("mt,expected_engine_contains", [
-    ("tet", "tet_bl_subdivide"),
+    ("tet", "native_bl"),
     ("hex_dominant", "native_bl"),
     ("poly", "poly_bl_transition"),
 ])

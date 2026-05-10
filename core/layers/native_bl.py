@@ -1886,18 +1886,6 @@ def _bl_cavity_shell_summary(
     return summary
 
 
-def _face_normal_area(points: np.ndarray, face: list[int]) -> tuple[np.ndarray, float]:
-    pts = points[np.asarray(face, dtype=np.int64)]
-    if pts.shape[0] < 3:
-        return np.zeros(3, dtype=np.float64), 0.0
-    centre = pts.mean(axis=0)
-    normal = np.zeros(3, dtype=np.float64)
-    for i in range(pts.shape[0]):
-        normal += np.cross(pts[i] - centre, pts[(i + 1) % pts.shape[0]] - centre)
-    area = 0.5 * float(np.linalg.norm(normal))
-    return normal, area
-
-
 def _bl_bad_internal_face_histogram(
     points: np.ndarray,
     faces: list[list[int]],
@@ -2179,6 +2167,7 @@ def _tet_wall_cavity_eligibility(
         "n_non_tet_owner_cells": 0,
         "coverage_single_wall_tet": 0.0,
         "sample_single_wall_tet_cells": [],
+        "single_wall_tet_cells": [],
         "sample_blocked_cells": [],
     }
     if n_cells <= 0 or not wall_face_indices or len(owner) == 0:
@@ -2255,6 +2244,7 @@ def _tet_wall_cavity_eligibility(
         else 0.0
     )
     summary["sample_single_wall_tet_cells"] = single_tet[: int(sample_cap)]
+    summary["single_wall_tet_cells"] = list(single_tet)
     summary["sample_blocked_cells"] = blocked
     return summary
 
@@ -3658,12 +3648,14 @@ def generate_native_bl(
     )
     _bl_owner_centre_eligible_cells: set[int] = set()
     if isinstance(tet_wall_cavity_eligibility, dict):
-        _bl_owner_centre_eligible_cells = {
-            int(c)
-            for c in tet_wall_cavity_eligibility.get(
+        _eligible_source = tet_wall_cavity_eligibility.get(
+            "single_wall_tet_cells"
+        )
+        if _eligible_source is None:
+            _eligible_source = tet_wall_cavity_eligibility.get(
                 "sample_single_wall_tet_cells", []
             )
-        }
+        _bl_owner_centre_eligible_cells = {int(c) for c in _eligible_source}
     owner_centre_motion_diag: dict[str, Any] = {
         "enabled": bool(_bl_owner_centre_motion_enabled),
         "n_eligible_owner_cells": int(len(_bl_owner_centre_eligible_cells)),
