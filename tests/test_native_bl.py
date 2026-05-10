@@ -30,6 +30,7 @@ from core.layers.native_bl import (
     _apply_tet_cavity_replacement_plan,
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
+    _compute_cavity_centroid,
     _detect_wall_owner_cavity_components,
     _extract_cavity_component_boundary,
     _owner_centre_wall_motion,
@@ -1429,6 +1430,63 @@ def test_native_bl_split_cavity_inner_ids_at_sharp_corners_empty() -> None:
     assert out["sharp_verts"] == {}
     assert out["inner_points"].shape == (0, 3)
     assert out["face_inner_ids"] == []
+
+
+def test_native_bl_compute_cavity_centroid_single_tet() -> None:
+    """BLR-9c-c-iii-a — single-cell cavity centroid is the mean of
+    that cell's 4 unique vertices."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [0, 3, 1], [1, 3, 2], [2, 3, 0]]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([-1, -1, -1, -1], dtype=np.int64)
+
+    apex = _compute_cavity_centroid({0}, faces, points, owner, neighbour)
+    np.testing.assert_allclose(apex, points.mean(axis=0), atol=1e-12)
+
+
+def test_native_bl_compute_cavity_centroid_two_tets_shared_face() -> None:
+    """Two-cell cavity centroid is the mean of the union of their
+    vertices (shared verts only count once)."""
+    points = np.array(
+        [
+            [0, 0, 0], [1, 0, 0], [0, 1, 0],
+            [0, 0, 1], [1, 1, 1],
+        ],
+        dtype=np.float64,
+    )
+    # Cell 0 verts: 0,1,2,3 ; cell 1 verts: 0,1,2,4 — union = {0,1,2,3,4}.
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+        [0, 1, 4],
+        [1, 2, 4],
+        [2, 0, 4],
+    ]
+    owner = np.array([0, 0, 0, 0, 1, 1, 1], dtype=np.int64)
+    neighbour = np.array([-1, -1, -1, -1, -1, -1, -1], dtype=np.int64)
+
+    apex = _compute_cavity_centroid(
+        {0, 1}, faces, points, owner, neighbour
+    )
+    np.testing.assert_allclose(
+        apex, points[[0, 1, 2, 3, 4]].mean(axis=0), atol=1e-12
+    )
+
+
+def test_native_bl_compute_cavity_centroid_empty() -> None:
+    """Empty component → zero apex (defensive)."""
+    apex = _compute_cavity_centroid(
+        set(),
+        [[0, 1, 2]],
+        np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64),
+        np.array([0], dtype=np.int64),
+        np.array([], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(apex, np.zeros(3))
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:

@@ -3136,6 +3136,42 @@ def _split_cavity_inner_ids_at_sharp_corners(
     }
 
 
+def _compute_cavity_centroid(
+    component: set[int] | frozenset[int] | list[int] | tuple[int, ...],
+    faces: list[list[int]],
+    points: np.ndarray,
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+) -> np.ndarray:
+    """BLR-9c-c-iii-a: cavity apex = mean of all unique vertices owned by
+    cells in the component.
+
+    Used by BLR-9c-c-iii-b as the apex of the transition tets that fill
+    the volume between each prism cap (BLR-9c-c-ii output) and the
+    cavity's interior.  Returns a ``(3,)`` ndarray; an all-zero vector
+    when the component is empty.
+    """
+    comp_set = {int(c) for c in component}
+    if not comp_set:
+        return np.zeros(3, dtype=np.float64)
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    n_total = int(owner_arr.size)
+
+    vert_ids: set[int] = set()
+    for fi in range(n_total):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi]) if fi < n_internal else -1
+        if own in comp_set or (nbr >= 0 and nbr in comp_set):
+            for v in faces[fi]:
+                vert_ids.add(int(v))
+    if not vert_ids:
+        return np.zeros(3, dtype=np.float64)
+    pts = np.asarray(points, dtype=np.float64)
+    return pts[sorted(vert_ids)].mean(axis=0)
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

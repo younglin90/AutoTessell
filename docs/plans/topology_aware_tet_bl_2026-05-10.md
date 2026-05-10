@@ -421,7 +421,14 @@ worth attempting on a given STL.
       VD refactor's per-face inner verts, applied per cavity
       component.  No mesh mutation.
     * [ ] 9c-c-iii: transition cell synthesis between the prism
-      caps and the component's external_internal shell.
+      caps and the component's external_internal shell.  Sub-staged:
+        - [x] 9c-c-iii-a: cavity apex = mean of all unique vertices
+          owned by component cells (`_compute_cavity_centroid`).
+        - [ ] 9c-c-iii-b: per-cap fan tets (apex + prism inner
+          triangle).
+        - [ ] 9c-c-iii-c: external_internal-shell coverage check
+          (every cavity outer face must end up adjacent to a
+          transition cell).
 - [ ] BLR-9c-d: per-component validity gates (determinant, face
   weight, non-orthogonality) and bench acceptance.
 
