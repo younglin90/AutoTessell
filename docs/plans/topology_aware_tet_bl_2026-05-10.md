@@ -1377,13 +1377,20 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
-### BLR-9c-d (p-18) — milestone summary
+### BLR-9c-d (p-18) — milestone summary (CORRECTED)
 
 After BLR-9c-d-(p-9) through (q-3) the 21-STL bench at draft
-sits at **18/21 PASS = 86 %** (baseline 12/21 = 57 %), a
-+6-case / +28-percentage-point gain delivered by the
+sits at **16/21 PASS = 76 %** (baseline 12/21 = 57 %), a
++4-case / +19-percentage-point gain delivered by the
 anti-invert cap chain (per-vertex + global-uniform +
 joint-cell + safe-flip post-process).
+
+**Note**: an earlier draft of this section reported 18/21 = 86 %
+based on the classifier's hard-only verdict (which missed the
+``surface_area_deviation`` soft check the production evaluator
+uses).  The TSV scraped from the CLI's actual verdict line
+shows 5 FAILs.  The production verdict is the user-facing
+truth.
 
 The remaining 3 FAILs all share the **8-face inverted
 polyhedron** pattern.  Two diagnoses ruled out:
