@@ -1208,7 +1208,22 @@ smoothing) before they can pass.
                               cap-induced max_aspect or
                               upstream surface_area_dev)
   - Worst:    13-14/21 PASS (cap mostly converts hard
-                              FAIL to soft FAIL)  In regions
+                              FAIL to soft FAIL)
+
+**Early evidence (smoke tests, cap ON)**:
+  - extreme_102308:    hard_fails 4 → 0, but 2 soft fails
+                       (max_aspect 1239 + surface_dev 48%) →
+                       still FAIL.
+  - extreme_1017013:   hard_fails was 1 (neg_vol=9) → cap ON
+                       → hard_fails 0, soft 1 →
+                       **PASS_WITH_WARNINGS** ✓
+  - test_cube (already PASS):
+                       hard_fails 0, soft 1 (max_aspect 2237)
+                       → PASS_WITH_WARNINGS ✓ (no regression)
+
+Of the 5 cap-fixable candidates, 2 smoke-tested so far:
+1 PASS_WITH_WARNINGS, 1 FAIL (upstream surface_dev).
+Realistic projection of **14-15/21 PASS** stands.  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the
