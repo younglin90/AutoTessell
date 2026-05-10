@@ -1377,18 +1377,41 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
-- [ ] BLR-9c-d (q-3): post-BL polyhedron inversion check.
-  After native_bl writes the polyMesh, scan all cells for
-  ``signed_vol < -ε``.  For each inverted cell:
-    - If 8-face poly with junction merge tag: try
-      *un-merging* (revert the junction merge for that
-      vertex), accept if the new arrangement has all
-      positive cells.
-    - Else: try winding flip on owner-side faces (the
-      iterative renumberMesh approach earlier failed because
-      the test mesh had pure geometric inversion; on bench
-      polyhedra this might be different).
-  Default OFF; only fires when env flag is on.  After
+- [x] BLR-9c-d (q-3): added
+  ``core/utils/polymesh_orient_safe.fix_inverted_cells_safely``
+  — a single-iteration single-face-flip post-process that
+  for each inverted cell tries every owner face and accepts
+  the flip only when the cell becomes positive AND the
+  neighbour stays positive.  Differs from BLR-9c-d-p-8 (which
+  cascaded) because it is one iteration and protects
+  neighbours.
+
+  **Smoke test on hard_1004826** (one of the 3 cap-residual
+  FAILs):
+
+  ::
+
+      n_inverted_pre   4   (the polyMesh actually has 4 cells
+                            with vol < 0, not the 1 the
+                            production checker reports)
+      n_flipped        1   (one face flip fixed one cell)
+      n_inverted_post  3   (3 polyhedra remain inverted)
+      n_unrecoverable  3   (no safe single-face flip works)
+
+  The 3 unrecoverable cells correspond to the truly inverted
+  polyhedra (-0.58, -2.29, plus one near-zero) where the
+  geometry — not just winding — is broken.  Single-face flip
+  can't recover those.  The production checker still reports
+  "1 neg_vol" (its threshold filters near-zero), so the
+  bench verdict on hard_1004826 stays FAIL.
+
+  Helper kept as a future tool; not wired into the
+  production pipeline.  Real fix needs either:
+    a) Skip the BL junction-edge merger that produced the
+       8-face polyhedra at problematic corners
+       (smaller-but-valid mesh).
+    b) Geometric repair of inverted polyhedra (split into
+       sub-tets that don't span the offending face plane).  After
   prism cells are emitted, run a final signed-volume check
   on every prism and either flip its winding or skip it.
   This catches the residual neg_vol cells the pre-BL cap
