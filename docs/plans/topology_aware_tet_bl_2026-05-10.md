@@ -1131,7 +1131,45 @@ Native_bl is missing a post-extrusion guard.
     the ``epsilon`` envelope at draft (0.002).  The cap
     doesn't touch this.
 
-  - [ ] BLR-9c-d (p-14): once the 21-STL re-bench completes,
+  - [x] BLR-9c-d (p-14) — fundamental cap trade-off
+    documented.  Per-STL deep-dive on test_cube.stl with cap
+    ON shows the global scaling math:
+
+    ::
+
+        max_reduction      0.017
+        max(|mag|)         0.018  (worst-case wall-vert with
+                                    inflated extrusion)
+        global_ratio       0.056   (just above the 0.05 floor)
+        199/454 verts      forced to 5.6 % of original thickness
+        max_aspect_ratio   2237  (was 111 without cap, 20x worse)
+
+    The cap eliminated the negative_volumes hard fail but
+    1 outlier vert with critical cap = 0.001 forced *every*
+    wall vert to scale down to ~5.6 %.  The mesh still PASSES
+    (PASS_WITH_WARNINGS, only 1 soft fail on max_aspect) but
+    is cosmetically much thinner than user requested.
+
+    **Fundamental observation**: global uniform scaling
+    sacrifices BL thickness everywhere to accommodate the
+    worst-case vert.  The proper fix is *spatial* — only
+    reduce extrusion in the vicinity of each problematic
+    vert, not globally.  This requires the per-vertex cap
+    approach BLR-9c-d-p-10 already showed creates
+    inhomogeneous prisms (max_aspect 1e9) at the boundary
+    between capped and un-capped regions.
+
+  - [ ] BLR-9c-d (p-15): hybrid spatial cap.  For each wall
+    vert, if its cap is finite, propagate a SMOOTH scale field
+    via Laplacian / distance-weighted blending so the
+    transition between capped and un-capped regions is
+    gradual.  All wall verts share a *continuous* scale field
+    (no sharp jumps) which keeps prism cells well-shaped.
+    Heavy-lifting compared to current implementation; defer
+    until cap=ON 21-STL bench finishes and we know how many
+    cases the global cap actually fixes.
+
+  - [ ] BLR-9c-d (p-16): once the 21-STL re-bench completes,
     classify which cases:
       a) flip to PASS with cap (clean win)
       b) stay FAIL but on different soft criteria (cap traded
