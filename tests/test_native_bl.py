@@ -1722,6 +1722,12 @@ def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() ->
     assert rec["n_wall_faces"] == 4
     assert rec["n_shell_faces"] == 0
     assert rec["decision"] == "accept"
+    # BLR-9c-d-c — det fields populated and consistent with `accept`.
+    assert "n_fan_pos_det" in rec
+    assert "n_fan_neg_det" in rec
+    assert "n_fan_degenerate_det" in rec
+    assert rec["n_fan_bad_indices"] == 0
+    assert rec["fan_worst_abs_det"] > 0.0
 
 
 def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:
@@ -1771,6 +1777,64 @@ def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects()
     assert rec["decision"] == "reject_uncovered_shell"
     assert out["n_rejected_uncovered_shell"] == 1
     assert out["n_accepted"] == 0
+
+
+def test_native_bl_evaluate_cavity_component_candidates_reject_bad_det() -> None:
+    """BLR-9c-d-c — wall-only component (no external_internal shell)
+    whose fan tets are *all* degenerate (apex coincides with all inner
+    triangles within tolerance) ends up flagged ``reject_bad_det``,
+    not ``accept``.
+
+    Construction: a single wall-owner cell whose 4 wall faces enclose
+    a tet, with all motion directions and ``first_thickness`` set to
+    zero so ``inner_points`` exactly coincide with the wall vertices.
+    The cavity centroid (apex) is the mean of those four wall
+    vertices; we then force the test fixture into degeneracy by
+    placing all four wall vertices on a common plane that includes
+    the centroid — this collapses every fan-tet's signed determinant
+    to zero, which is what the bad_det gate is designed to catch.
+    """
+    # All four "tet" vertices coplanar (z = 0) ⇒ centroid also has
+    # z = 0 ⇒ every fan tet has zero signed volume.
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 1],
+        [1, 3, 2],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    motion_dirs = {i: np.zeros(3) for i in range(4)}
+    out = _evaluate_cavity_component_candidates(
+        components=[{0}],
+        points=points,
+        faces=faces,
+        owner=owner,
+        neighbour=neighbour,
+        wall_face_indices=[0, 1, 2, 3],
+        motion_dirs=motion_dirs,
+        first_thickness=0.0,
+    )
+    assert out["n_components"] == 1
+    rec = out["components"][0]
+    # Wall-only ⇒ no external_internal shell.
+    assert rec["n_shell_faces"] == 0
+    assert rec["n_shell_uncovered"] == 0
+    # All fan tets degenerate.
+    assert rec["n_fan_bad_indices"] >= 1
+    assert rec["decision"] == "reject_bad_det"
+    assert out["n_rejected_bad_det"] == 1
+    assert out["n_accepted"] == 0
+    assert out["n_rejected_uncovered_shell"] == 0
 
 
 def test_native_bl_check_cavity_fan_tet_determinants_empty() -> None:

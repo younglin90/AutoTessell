@@ -3434,13 +3434,21 @@ def _evaluate_cavity_component_candidates(
     - BLR-9c-c-iii-a ``_compute_cavity_centroid``
     - BLR-9c-c-iii-b ``_build_cavity_fan_transition_tets``
     - BLR-9c-c-iii-c ``_check_cavity_shell_coverage``
+    - BLR-9c-d-b    ``_check_cavity_fan_tet_determinants``
 
     Each component records its sizing (cells / wall / shell / internal),
     inner-point count after sharp-corner duplication, sharp vertex
-    count, fan-tet count, uncovered shell-face count, and a decision:
+    count, fan-tet count, uncovered shell-face count, fan-det stats,
+    and a decision:
 
-    - ``"accept"`` when ``n_shell_uncovered == 0``;
-    - ``"reject_uncovered_shell"`` otherwise.
+    - ``"accept"`` when both shell coverage and fan-tet
+      determinants pass.
+    - ``"reject_uncovered_shell"`` when ``n_shell_uncovered > 0``.
+      This takes precedence — a leaking cavity shell is a topology
+      bug we must close before quality matters.
+    - ``"reject_bad_det"`` when the shell is fully covered but at
+      least one fan tet has a degenerate or sign-flipped
+      determinant (BLR-9c-d-b ``bad_indices``).
 
     Pure aggregation; no mesh mutation.  Returns::
 
@@ -3448,6 +3456,7 @@ def _evaluate_cavity_component_candidates(
             "n_components": int,
             "n_accepted":   int,
             "n_rejected_uncovered_shell": int,
+            "n_rejected_bad_det": int,
             "components": [
                 {
                     "cells": [...],
@@ -3459,6 +3468,11 @@ def _evaluate_cavity_component_candidates(
                     "n_sharp_verts": int,
                     "n_fan_tets": int,
                     "n_shell_uncovered": int,
+                    "n_fan_pos_det": int,
+                    "n_fan_neg_det": int,
+                    "n_fan_degenerate_det": int,
+                    "n_fan_bad_indices": int,
+                    "fan_worst_abs_det": float,
                     "decision": str,
                 },
                 ...
@@ -3469,6 +3483,7 @@ def _evaluate_cavity_component_candidates(
         "n_components": 0,
         "n_accepted": 0,
         "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
         "components": [],
     }
     if not components:
@@ -3489,18 +3504,22 @@ def _evaluate_cavity_component_candidates(
         split = _split_cavity_inner_ids_at_sharp_corners(
             triangles, smooth, cos_thresh=sharp_cos_thresh
         )
-        # Apex coords are not stored per-component yet; include count
-        # 1 if the component has any cells (BLR-9c-c-iii-b will mint
-        # the apex point at apply time using this position).
-        _ = _compute_cavity_centroid(
+        apex_xyz = _compute_cavity_centroid(
             comp_set, faces, pts, owner, neighbour
         )
         fan_tets = _build_cavity_fan_transition_tets(triangles, split)
         coverage = _check_cavity_shell_coverage(boundary, fan_tets, faces)
         n_uncovered = int(len(coverage.get("uncovered", [])))
-        decision = (
-            "accept" if n_uncovered == 0 else "reject_uncovered_shell"
+        det_check = _check_cavity_fan_tet_determinants(
+            fan_tets, apex_xyz, split["inner_points"]
         )
+        n_fan_bad = int(len(det_check.get("bad_indices", [])))
+        if n_uncovered > 0:
+            decision = "reject_uncovered_shell"
+        elif n_fan_bad > 0:
+            decision = "reject_bad_det"
+        else:
+            decision = "accept"
 
         comp_record = {
             "cells": sorted(comp_set),
@@ -3514,13 +3533,24 @@ def _evaluate_cavity_component_candidates(
             "n_sharp_verts": int(split.get("n_split", 0)),
             "n_fan_tets": int(len(fan_tets)),
             "n_shell_uncovered": n_uncovered,
+            "n_fan_pos_det": int(det_check.get("n_pos_det", 0)),
+            "n_fan_neg_det": int(det_check.get("n_neg_det", 0)),
+            "n_fan_degenerate_det": int(
+                det_check.get("n_degenerate_det", 0)
+            ),
+            "n_fan_bad_indices": n_fan_bad,
+            "fan_worst_abs_det": float(
+                det_check.get("worst_abs_det", 0.0)
+            ),
             "decision": decision,
         }
         summary["components"].append(comp_record)
         if decision == "accept":
             summary["n_accepted"] += 1
-        else:
+        elif decision == "reject_uncovered_shell":
             summary["n_rejected_uncovered_shell"] += 1
+        elif decision == "reject_bad_det":
+            summary["n_rejected_bad_det"] += 1
 
     return summary
 

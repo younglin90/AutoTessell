@@ -450,9 +450,14 @@ worth attempting on a given STL.
   ``n_degenerate_det``, and a Klingner-style minority-sign rule that
   flags flipped fan triangles relative to the rest of the component.
   Pure helper; aggregator wire-in deferred to BLR-9c-d (c).
-- [ ] BLR-9c-d (c): wire the BLR-9c-d-b determinant gate into
-  ``_evaluate_cavity_component_candidates`` so a component is rejected
-  when its fan-tet ``bad_indices`` is non-empty.
+- [x] BLR-9c-d (c): aggregator wire-in. The fan-tet det check is now
+  invoked inside ``_evaluate_cavity_component_candidates``; a
+  component with non-empty ``bad_indices`` is reported as
+  ``reject_bad_det``.  Decision precedence: shell coverage first,
+  then determinant.  New summary key ``n_rejected_bad_det`` and per-
+  component fields ``n_fan_pos_det`` / ``n_fan_neg_det`` /
+  ``n_fan_degenerate_det`` / ``n_fan_bad_indices`` /
+  ``fan_worst_abs_det``.
 - [ ] BLR-9c-d (d): face weight + non-orthogonality validity gates
   layered on top of the aggregator and bench acceptance.
 
