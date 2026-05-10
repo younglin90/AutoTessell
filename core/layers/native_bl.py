@@ -2703,6 +2703,83 @@ def _build_tet_cavity_replacement_plan(
     return plan
 
 
+def _detect_wall_owner_cavity_components(
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+    *,
+    n_cells: int | None = None,
+) -> list[set[int]]:
+    """BLR-9c-a: connected wall-owner cell components via internal faces.
+
+    Returns a list of cell-id sets, each set being the connected component
+    of wall-owner cells reachable through internal faces.  This is the
+    structural primitive BLR-9c will use to drive a multi-cell cavity
+    refill: one prism stack per component, transition cells filling the
+    cavity boundary.
+
+    A "wall owner" is any cell that owns at least one face listed in
+    ``wall_face_indices``.  Two wall-owner cells are in the same
+    component iff there is an internal face between them whose owner and
+    neighbour are both wall-owner cells (transitively).
+
+    The function performs only union-find on the cell graph; it never
+    mutates the polyMesh and never inspects ``faces`` or ``points``.
+    Single-tet wall owners (BLR-7 eligible cells) appear here as size-1
+    components.  Multi-cell components are exactly the BLR-9c targets
+    that BLR-9b's simple rewrite has been refusing.
+    """
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+    if owner_arr.size == 0:
+        return []
+    if n_cells is None:
+        max_own = int(owner_arr.max()) if owner_arr.size > 0 else -1
+        max_nbr = (
+            int(neighbour_arr.max()) if neighbour_arr.size > 0 else -1
+        )
+        n_cells = max(max_own, max_nbr) + 1
+    if n_cells <= 0:
+        return []
+
+    wall_owner_set: set[int] = set()
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= owner_arr.size:
+            continue
+        own = int(owner_arr[fi])
+        if 0 <= own < n_cells:
+            wall_owner_set.add(own)
+    if not wall_owner_set:
+        return []
+
+    # Union-find restricted to wall-owner cells.
+    parent = {c: c for c in wall_owner_set}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    for fi in range(n_internal):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi])
+        if own in wall_owner_set and nbr in wall_owner_set:
+            union(own, nbr)
+
+    groups: dict[int, set[int]] = {}
+    for c in wall_owner_set:
+        r = find(c)
+        groups.setdefault(r, set()).add(c)
+    return [groups[r] for r in sorted(groups.keys())]
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

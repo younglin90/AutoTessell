@@ -29,6 +29,7 @@ from core.layers.native_bl import (
     _merge_skewed_bl_internal_quads,
     _apply_tet_cavity_replacement_plan,
     _build_tet_cavity_replacement_plan,
+    _detect_wall_owner_cavity_components,
     _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
     _tet_wall_cavity_replacement_probe,
@@ -1022,6 +1023,64 @@ def test_native_bl_replacement_plan_rejects_wall_owner_with_internal_neighbour()
     assert plan["new_cells"] == []
     assert plan["n_rejected_neighbour_internal"] == 1
     assert plan["rejected"]["neighbour_internal"] == [0]
+
+
+def test_native_bl_detect_wall_owner_cavity_components_isolated() -> None:
+    """BLR-9c-a — two wall-owner cells with no internal connection
+    form two size-1 components."""
+    # 4 cells, 2 wall faces (cell 0 and cell 2), no internal face links
+    # the two wall-owner cells. Cells 1, 3 are non-wall.
+    owner = np.array([0, 0, 1, 2, 2, 3], dtype=np.int64)
+    neighbour = np.array([-1, -1, -1, -1, -1, -1], dtype=np.int64)
+    wall_face_indices = [0, 3]  # owner=0 and owner=2
+
+    comps = _detect_wall_owner_cavity_components(
+        owner, neighbour, wall_face_indices, n_cells=4
+    )
+    assert len(comps) == 2
+    assert {0} in comps
+    assert {2} in comps
+
+
+def test_native_bl_detect_wall_owner_cavity_components_connected() -> None:
+    """Two wall-owner cells (0 and 1) sharing an internal face
+    collapse into one size-2 component."""
+    # owner / neighbour pair on face 1 → cells 0 and 1 sharing.
+    owner = np.array([0, 0, 1], dtype=np.int64)
+    neighbour = np.array([-1, 1, -1], dtype=np.int64)
+    # Face 0 = owner=0 wall, face 2 = owner=1 wall.  Both cells own
+    # a wall face → wall_owner_set = {0, 1}.  Face 1 is internal
+    # (owner=0, neighbour=1) → union.
+    wall_face_indices = [0, 2]
+
+    comps = _detect_wall_owner_cavity_components(
+        owner, neighbour, wall_face_indices, n_cells=2
+    )
+    assert len(comps) == 1
+    assert comps[0] == {0, 1}
+
+
+def test_native_bl_detect_wall_owner_cavity_components_excludes_non_wall_path() -> None:
+    """A non-wall cell sitting between two wall owners must NOT bridge
+    them into one component (only direct wall-owner ↔ wall-owner
+    internal faces count)."""
+    # 3 cells: 0 (wall), 1 (non-wall), 2 (wall).
+    # Faces:
+    #   0: boundary, owner=0 wall
+    #   1: internal, owner=0 nbr=1
+    #   2: internal, owner=1 nbr=2
+    #   3: boundary, owner=2 wall
+    owner = np.array([0, 0, 1, 2], dtype=np.int64)
+    neighbour = np.array([-1, 1, 2, -1], dtype=np.int64)
+    wall_face_indices = [0, 3]
+
+    comps = _detect_wall_owner_cavity_components(
+        owner, neighbour, wall_face_indices, n_cells=3
+    )
+    # Cell 1 is NOT a wall owner so the path 0—1—2 is broken.
+    assert len(comps) == 2
+    assert {0} in comps
+    assert {2} in comps
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:

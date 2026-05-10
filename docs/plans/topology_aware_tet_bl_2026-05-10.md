@@ -375,6 +375,27 @@ worth attempting on a given STL.
   the flag-on bench must show a strict reduction in tet failed
   cases vs. the BLR-8 baseline.
 
+#### Task 2c: BLR-9c — multi-cell cavity refill (in progress)
+
+- [x] BLR-9c-a: wall-owner cavity component detector
+  (`_detect_wall_owner_cavity_components`).  Returns connected
+  components of wall-owner cells via internal faces using
+  union-find.  Single-tet wall owners surface as size-1
+  components (BLR-7 / BLR-9b targets); larger components are the
+  multi-cell cavities BLR-9b's simple rewrite has been refusing
+  via the BLR-9b-iii guard, and are exactly the cavities BLR-9c
+  needs to refill.  No mesh mutation; pure structural
+  classification on owner/neighbour/wall_face_indices.
+- [ ] BLR-9c-b: per-component cavity boundary extraction — for
+  each cavity component, list the boundary faces visible to
+  surrounding (non-wall) cells.  These define the closed surface
+  the multi-cell refill must respect.
+- [ ] BLR-9c-c: per-component refill candidate generator (prism
+  stacks plus transition cells filling between the prism caps and
+  the cavity's outer boundary).
+- [ ] BLR-9c-d: per-component validity gates (determinant, face
+  weight, non-orthogonality) and bench acceptance.
+
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
   to delete each eligible wall-owner tet, insert the layer-1 prism
