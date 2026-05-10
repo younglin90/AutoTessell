@@ -5618,6 +5618,28 @@ def generate_native_bl(
         "n_new_points_total": 0,
     }
 
+    # BLR-9c-d-g — env-gated cavity-component aggregator (default
+    # OFF, no writer impact).  When ``AUTO_TESSELL_BL_TET_CAVITY_EVAL=1``
+    # the BLR-9c-a → 9c-d helpers run on the live wall-owner cavity
+    # components and their per-component verdicts (accept /
+    # reject_uncovered_shell / reject_bad_det / reject_bad_shape /
+    # reject_bad_non_ortho / reject_bad_skewness) plus aggregate
+    # counts are surfaced in ``native_bl_quality.tet_cavity_eval``.
+    # Pure read-only — the rest of the BL pipeline is untouched.
+    _bl_tet_cavity_eval_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_EVAL", "0") == "1"
+    )
+    tet_cavity_eval_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_eval_enabled),
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+    }
+
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
     vertex_cum_map: dict[int, np.ndarray] = {}
@@ -5903,6 +5925,61 @@ def generate_native_bl(
                     tet_cavity_replace_diag = {
                         "enabled": True,
                         "wired_to_writer": False,
+                        "error": str(exc)[:160],
+                    }
+
+            # BLR-9c-d-g — read-only cavity-component evaluation.
+            if _bl_tet_cavity_eval_enabled:
+                try:
+                    nonlocal tet_cavity_eval_diag
+                    _eval_components = _detect_wall_owner_cavity_components(
+                        owner,
+                        neighbour,
+                        list(wall_face_indices),
+                    )
+                    _eval_summary = _evaluate_cavity_component_candidates(
+                        components=_eval_components,
+                        points=np.asarray(points, dtype=np.float64),
+                        faces=faces,
+                        owner=np.asarray(owner, dtype=np.int64),
+                        neighbour=np.asarray(neighbour, dtype=np.int64),
+                        wall_face_indices=list(wall_face_indices),
+                        motion_dirs=motion_dirs,
+                        first_thickness=float(cfg.first_thickness),
+                    )
+                    tet_cavity_eval_diag = {
+                        "enabled": True,
+                        "n_components": int(
+                            _eval_summary.get("n_components", 0)
+                        ),
+                        "n_accepted": int(
+                            _eval_summary.get("n_accepted", 0)
+                        ),
+                        "n_rejected_uncovered_shell": int(
+                            _eval_summary.get(
+                                "n_rejected_uncovered_shell", 0
+                            )
+                        ),
+                        "n_rejected_bad_det": int(
+                            _eval_summary.get("n_rejected_bad_det", 0)
+                        ),
+                        "n_rejected_bad_shape": int(
+                            _eval_summary.get("n_rejected_bad_shape", 0)
+                        ),
+                        "n_rejected_bad_non_ortho": int(
+                            _eval_summary.get(
+                                "n_rejected_bad_non_ortho", 0
+                            )
+                        ),
+                        "n_rejected_bad_skewness": int(
+                            _eval_summary.get(
+                                "n_rejected_bad_skewness", 0
+                            )
+                        ),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    tet_cavity_eval_diag = {
+                        "enabled": True,
                         "error": str(exc)[:160],
                     }
 
@@ -6866,6 +6943,7 @@ def generate_native_bl(
             "owner_centre_motion": owner_centre_motion_diag,
             "tet_cavity_probe": tet_cavity_probe_diag,
             "tet_cavity_replace": tet_cavity_replace_diag,
+            "tet_cavity_eval": tet_cavity_eval_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
