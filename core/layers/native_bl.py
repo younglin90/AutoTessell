@@ -3411,6 +3411,146 @@ def _check_cavity_fan_tet_determinants(
     return out
 
 
+def _check_cavity_fan_tet_pair_non_ortho(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    non_ortho_threshold_deg: float = 70.0,
+) -> dict[str, Any]:
+    """BLR-9c-d-e-1: per-pair non-orthogonality of adjacent fan tets.
+
+    The OpenFOAM ``checkMesh`` non-orthogonality angle is the angle
+    between an internal face's area-weighted normal and the line
+    that connects the owner and neighbour cell centroids.  ESI's
+    `OpenFOAM-v2406` flags any face above ~70° as a quality failure.
+
+    For the BLR-9c cavity replacement, the new *internal* faces
+    inside a single component are precisely the lateral triangles
+    ``(apex, i_a, i_b)`` shared by two adjacent fan tets in the fan
+    structure.  Two fan tets are adjacent iff they share two of the
+    three inner-triangle indices.  Each such pair contributes one
+    internal face whose non-orthogonality we can measure right now,
+    before any mesh mutation, using:
+
+    - face centroid ``c_f = (apex + p_a + p_b) / 3``
+    - face normal   ``n_f = (p_a − apex) × (p_b − apex)`` (un-normalized,
+      magnitude = 2 × triangle area)
+    - owner cell centroid  ``c_O = mean(fan_tet_O.verts)``
+    - neighbour cell centroid ``c_N = mean(fan_tet_N.verts)``
+    - cell-to-cell vector ``d = c_N − c_O``
+    - cosθ = |n_f · d| / (|n_f| · |d|)
+    - non-ortho angle = arccos(cosθ) in degrees
+
+    Pure helper, no mesh mutation.  BLR-9c-d-e-2 will wire it into
+    ``_evaluate_cavity_component_candidates``.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_pairs``               adjacent-fan-tet pairs found
+    - ``angles_deg``            ``np.ndarray`` shape ``(n_pairs,)``
+    - ``max_angle_deg``         maximum non-ortho across all pairs
+                                (0.0 if no pairs)
+    - ``mean_angle_deg``        arithmetic mean (0.0 if no pairs)
+    - ``n_above_threshold``     pairs with angle > threshold
+    - ``bad_pair_indices``      ``list[tuple[int, int]]`` fan-tet
+                                index pairs whose angle exceeds the
+                                threshold
+    """
+    out: dict[str, Any] = {
+        "n_pairs": 0,
+        "angles_deg": np.empty(0, dtype=np.float64),
+        "max_angle_deg": 0.0,
+        "mean_angle_deg": 0.0,
+        "n_above_threshold": 0,
+        "bad_pair_indices": [],
+    }
+    if not fan_tets or len(fan_tets) < 2:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    # Per-fan: triple of inner indices and centroid.
+    n = len(fan_tets)
+    inner_triples: list[tuple[int, int, int] | None] = []
+    centroids = np.zeros((n, 3), dtype=np.float64)
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        if len(verts) != 4 or verts[0] != -1:
+            inner_triples.append(None)
+            continue
+        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
+        if (
+            i0 < 0
+            or i1 < 0
+            or i2 < 0
+            or i0 >= inner.shape[0]
+            or i1 >= inner.shape[0]
+            or i2 >= inner.shape[0]
+        ):
+            inner_triples.append(None)
+            continue
+        inner_triples.append((i0, i1, i2))
+        centroids[k] = (apex + inner[i0] + inner[i1] + inner[i2]) / 4.0
+
+    # Edge → list[fan_idx] map keyed on sorted inner-pair.
+    edge_owners: dict[tuple[int, int], list[int]] = {}
+    for k, triple in enumerate(inner_triples):
+        if triple is None:
+            continue
+        a, b, c = triple
+        for u, v in ((a, b), (b, c), (a, c)):
+            key = (min(u, v), max(u, v))
+            edge_owners.setdefault(key, []).append(k)
+
+    angles: list[float] = []
+    bad_pairs: list[tuple[int, int]] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for (u, v), owners in edge_owners.items():
+        if len(owners) < 2:
+            continue
+        for i in range(len(owners)):
+            for j in range(i + 1, len(owners)):
+                p_o, p_n = owners[i], owners[j]
+                key = (min(p_o, p_n), max(p_o, p_n))
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                p_a, p_b = inner[u], inner[v]
+                # Internal face = (apex, p_a, p_b)
+                n_f = np.cross(p_a - apex, p_b - apex)
+                d_vec = centroids[p_n] - centroids[p_o]
+                n_norm = float(np.linalg.norm(n_f))
+                d_norm = float(np.linalg.norm(d_vec))
+                if n_norm < 1e-30 or d_norm < 1e-30:
+                    angle_deg = 90.0   # degenerate ⇒ treat as fully oblique
+                else:
+                    cos_theta = float(
+                        abs(np.dot(n_f, d_vec)) / (n_norm * d_norm)
+                    )
+                    cos_theta = min(1.0, max(0.0, cos_theta))
+                    angle_deg = float(np.degrees(np.arccos(cos_theta)))
+                angles.append(angle_deg)
+                if angle_deg > non_ortho_threshold_deg:
+                    bad_pairs.append(key)
+
+    if not angles:
+        return out
+
+    arr = np.asarray(angles, dtype=np.float64)
+    out["n_pairs"] = int(arr.shape[0])
+    out["angles_deg"] = arr
+    out["max_angle_deg"] = float(arr.max())
+    out["mean_angle_deg"] = float(arr.mean())
+    out["n_above_threshold"] = int(np.sum(arr > non_ortho_threshold_deg))
+    out["bad_pair_indices"] = bad_pairs
+    return out
+
+
 def _check_cavity_fan_tet_shape_quality(
     fan_tets: list[dict[str, Any]],
     apex_xyz: np.ndarray | list[float],

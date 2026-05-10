@@ -475,8 +475,22 @@ worth attempting on a given STL.
   helper internally swaps the last two indices of any tet whose
   signed volume is negative so Q-shape only measures shape, not
   orientation (the determinant gate already covers orientation).
-- [ ] BLR-9c-d (e): face weight + non-orthogonality validity gates
-  (per-component) and bench acceptance.
+- [x] BLR-9c-d (e-1): adjacent fan-tet pair non-orthogonality
+  helper ``_check_cavity_fan_tet_pair_non_ortho``.  Builds an
+  inner-edge → fan-tet map; for every pair of fan tets sharing two
+  inner indices it computes ``arccos(|n_f · d| / (|n_f| · |d|))``
+  where ``n_f = (p_a − apex) × (p_b − apex)`` is the shared face
+  normal and ``d = c_N − c_O`` is the cell-to-cell vector — i.e.
+  the OpenFOAM ``checkMesh`` non-orthogonality definition.  Returns
+  ``angles_deg``, ``max_angle_deg``, ``n_above_threshold``,
+  ``bad_pair_indices``.  Default threshold 70°.  Pure helper;
+  aggregator wire-in deferred to BLR-9c-d (e-2).
+- [ ] BLR-9c-d (e-2): wire ``_check_cavity_fan_tet_pair_non_ortho``
+  into ``_evaluate_cavity_component_candidates`` with a new
+  ``reject_bad_non_ortho`` decision label and
+  ``n_rejected_bad_non_ortho`` summary field.
+- [ ] BLR-9c-d (f): face weight (skewness) gate, completing the
+  per-component validity battery; then bench acceptance.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

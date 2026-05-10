@@ -32,6 +32,7 @@ from core.layers.native_bl import (
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
     _check_cavity_fan_tet_determinants,
+    _check_cavity_fan_tet_pair_non_ortho,
     _check_cavity_fan_tet_shape_quality,
     _check_cavity_shell_coverage,
     _compute_cavity_centroid,
@@ -1960,6 +1961,105 @@ def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_flagged() 
     assert out["n_neg_det"] >= 1
     # The minority-sign tet (index 2 here) must be reported.
     assert 2 in out["bad_indices"]
+
+
+def test_native_bl_check_cavity_fan_tet_pair_non_ortho_empty_or_singleton() -> None:
+    """BLR-9c-d-e-1 — fewer than two fan tets ⇒ no internal pair to
+    measure ⇒ zero record."""
+    apex = np.zeros(3)
+    inner_points = np.eye(3)
+    out_empty = _check_cavity_fan_tet_pair_non_ortho([], apex, inner_points)
+    assert out_empty["n_pairs"] == 0
+    assert out_empty["max_angle_deg"] == 0.0
+    assert out_empty["bad_pair_indices"] == []
+    out_one = _check_cavity_fan_tet_pair_non_ortho(
+        [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}], apex, inner_points
+    )
+    assert out_one["n_pairs"] == 0
+    assert out_one["bad_pair_indices"] == []
+
+
+def test_native_bl_check_cavity_fan_tet_pair_non_ortho_two_tets_share_edge() -> None:
+    """BLR-9c-d-e-1 — two fan tets that share two inner indices form
+    one adjacent pair; the helper measures one non-ortho angle."""
+    apex = np.array([0.0, 0.0, 1.0])     # apex above the xy-plane
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.5, -1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        # Triangle 1: indices 0, 1, 2
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        # Triangle 2: indices 0, 1, 3 — shares edge (0, 1) with tri 1
+        {"face_id": 1, "tet_verts": [-1, 0, 1, 3]},
+    ]
+    out = _check_cavity_fan_tet_pair_non_ortho(fan_tets, apex, inner_points)
+    assert out["n_pairs"] == 1
+    assert out["angles_deg"].shape == (1,)
+    assert 0.0 <= out["max_angle_deg"] <= 90.0
+    assert out["mean_angle_deg"] == out["max_angle_deg"]
+
+
+def test_native_bl_check_cavity_fan_tet_pair_non_ortho_no_shared_edge() -> None:
+    """BLR-9c-d-e-1 — two fan tets that share no inner edge ⇒ no
+    pair counted."""
+    apex = np.zeros(3)
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    # Two disjoint inner triangles — no shared inner edge.
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 3, 4, 5]},
+    ]
+    out = _check_cavity_fan_tet_pair_non_ortho(fan_tets, apex, inner_points)
+    assert out["n_pairs"] == 0
+    assert out["bad_pair_indices"] == []
+
+
+def test_native_bl_check_cavity_fan_tet_pair_non_ortho_threshold_flagged() -> None:
+    """BLR-9c-d-e-1 — a pair whose angle exceeds the threshold ends
+    up in ``bad_pair_indices``.  Use an asymmetric fixture so the
+    cell-to-cell vector is not parallel to the shared face normal,
+    yielding a positive non-orthogonality angle."""
+    apex = np.array([0.0, 0.0, 1.0])
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        # Triangle 1: indices 0, 1, 2
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        # Triangle 2: indices 1, 3, 2 — shares edge (1, 2) with tri 1
+        {"face_id": 1, "tet_verts": [-1, 1, 3, 2]},
+    ]
+    # Picking 10° as an aggressive cap forces the resulting ~35°
+    # pair angle into the bad list.
+    out = _check_cavity_fan_tet_pair_non_ortho(
+        fan_tets, apex, inner_points, non_ortho_threshold_deg=10.0
+    )
+    assert out["n_pairs"] == 1
+    assert out["max_angle_deg"] > 10.0
+    assert out["n_above_threshold"] == 1
+    assert len(out["bad_pair_indices"]) == 1
 
 
 def test_native_bl_check_cavity_fan_tet_shape_quality_empty() -> None:
