@@ -400,7 +400,15 @@ worth attempting on a given STL.
       vanish on rewrite.  No mesh mutation.
 - [ ] BLR-9c-c: per-component refill candidate generator (prism
   stacks plus transition cells filling between the prism caps and
-  the cavity's outer boundary).
+  the cavity's outer boundary).  Sub-staged:
+    * [x] 9c-c-i: prism inner-triangle predictor
+      (`_build_cavity_prism_inner_triangles`).  Per-face inner
+      coordinates (no shared-vertex collapse yet).
+    * [ ] 9c-c-ii: shared-vertex inner-id stitching across the
+      component (so adjacent prisms can share their cap edge in
+      the smooth case, and duplicate at sharp corners).
+    * [ ] 9c-c-iii: transition cell synthesis between the prism
+      caps and the component's external_internal shell.
 - [ ] BLR-9c-d: per-component validity gates (determinant, face
   weight, non-orthogonality) and bench acceptance.
 

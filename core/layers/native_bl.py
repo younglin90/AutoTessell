@@ -2854,6 +2854,71 @@ def _extract_cavity_component_boundary(
     }
 
 
+def _build_cavity_prism_inner_triangles(
+    component_wall_faces: list[int],
+    points: np.ndarray,
+    faces: list[list[int]],
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+) -> list[dict[str, Any]]:
+    """BLR-9c-c-i: predicted inner triangle per wall face of a cavity component.
+
+    For each ``face_id`` in ``component_wall_faces`` (a subset of the
+    polyMesh's wall faces, restricted to the cavity component by
+    BLR-9c-a + BLR-9c-b), compute the prism inner triangle as
+    ``points[v] + motion_dirs[v] * first_thickness`` for each vertex
+    ``v``.  Returns a list of dicts so BLR-9c-c-ii can stitch shared
+    vertices into per-face inner ids in a separate pass.
+
+    Each entry contains:
+
+    - ``face_id``: the original wall face id.
+    - ``outer_verts``: ``[v0, v1, v2]`` — wall face vertex order
+      preserved.
+    - ``inner_xyz``: ``np.ndarray`` of shape ``(3, 3)`` — inner
+      triangle coordinates, row order matching ``outer_verts``.
+
+    Faces missing a motion direction or with non-triangle topology
+    are skipped silently — BLR-9c-c-ii will detect missing entries
+    and abort the refill for the affected component.
+
+    No mesh mutation; pure prediction.
+    """
+    if not component_wall_faces or motion_dirs is None:
+        return []
+    out: list[dict[str, Any]] = []
+    pts = np.asarray(points, dtype=np.float64)
+    for fi in component_wall_faces:
+        if fi < 0 or fi >= len(faces):
+            continue
+        f = faces[fi]
+        if len(f) != 3:
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = np.asarray(motion_dirs[v0], dtype=np.float64).reshape(3)
+            d1 = np.asarray(motion_dirs[v1], dtype=np.float64).reshape(3)
+            d2 = np.asarray(motion_dirs[v2], dtype=np.float64).reshape(3)
+        except KeyError:
+            continue
+        inner_xyz = np.stack(
+            [
+                pts[v0] + d0 * float(first_thickness),
+                pts[v1] + d1 * float(first_thickness),
+                pts[v2] + d2 * float(first_thickness),
+            ],
+            axis=0,
+        )
+        out.append(
+            {
+                "face_id": int(fi),
+                "outer_verts": [v0, v1, v2],
+                "inner_xyz": inner_xyz,
+            }
+        )
+    return out
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

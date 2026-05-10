@@ -28,6 +28,7 @@ from core.layers.native_bl import (
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
     _apply_tet_cavity_replacement_plan,
+    _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
     _detect_wall_owner_cavity_components,
     _extract_cavity_component_boundary,
@@ -1141,6 +1142,88 @@ def test_native_bl_extract_cavity_component_boundary_external_internal_face() ->
     assert out["internal_faces"] == []
     # Face 1 crosses the component boundary → external_internal.
     assert out["external_internal_faces"] == [1]
+
+
+def test_native_bl_build_cavity_prism_inner_triangles_two_faces() -> None:
+    """BLR-9c-c-i — two wall faces sharing edge (1, 2) yield 2
+    independent entries; shared verts are NOT collapsed at this
+    stage (BLR-9c-c-ii handles per-vertex sharing)."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    # Two coplanar wall triangles sharing edge (1, 2).
+    faces = [[0, 1, 2], [1, 3, 2]]
+    motion_dirs = {
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        3: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    triangles = _build_cavity_prism_inner_triangles(
+        [0, 1], points, faces, motion_dirs, first_thickness=0.05
+    )
+    assert len(triangles) == 2
+    # First triangle: outer (0, 1, 2), inner = those + 0.05 z.
+    assert triangles[0]["face_id"] == 0
+    assert triangles[0]["outer_verts"] == [0, 1, 2]
+    np.testing.assert_allclose(
+        triangles[0]["inner_xyz"],
+        np.array([[0, 0, 0.05], [1, 0, 0.05], [0, 1, 0.05]], dtype=np.float64),
+        atol=1e-12,
+    )
+    # Second triangle: outer (1, 3, 2).
+    assert triangles[1]["face_id"] == 1
+    assert triangles[1]["outer_verts"] == [1, 3, 2]
+    np.testing.assert_allclose(
+        triangles[1]["inner_xyz"],
+        np.array([[1, 0, 0.05], [1, 1, 0.05], [0, 1, 0.05]], dtype=np.float64),
+        atol=1e-12,
+    )
+
+
+def test_native_bl_build_cavity_prism_inner_triangles_skips_missing_motion() -> None:
+    """Wall face with a vertex missing from ``motion_dirs`` is dropped
+    silently — BLR-9c-c-ii will detect the missing entry."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [1, 3, 2]]
+    motion_dirs = {  # vertex 3 deliberately missing
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    triangles = _build_cavity_prism_inner_triangles(
+        [0, 1], points, faces, motion_dirs, first_thickness=0.05
+    )
+    assert len(triangles) == 1
+    assert triangles[0]["face_id"] == 0
+
+
+def test_native_bl_build_cavity_prism_inner_triangles_disabled() -> None:
+    """``motion_dirs=None`` or empty face list yields an empty result."""
+    pts = np.zeros((3, 3), dtype=np.float64)
+    faces = [[0, 1, 2]]
+    assert (
+        _build_cavity_prism_inner_triangles(
+            [0], pts, faces, None, first_thickness=0.05
+        )
+        == []
+    )
+    assert (
+        _build_cavity_prism_inner_triangles(
+            [], pts, faces, {0: np.zeros(3)}, first_thickness=0.05
+        )
+        == []
+    )
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
