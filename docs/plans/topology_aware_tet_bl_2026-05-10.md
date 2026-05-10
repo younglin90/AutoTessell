@@ -301,6 +301,48 @@ creates near-tangent interface faces.
 - [x] Target exact WildMesh cases where bulk is mostly clean but
   generated bulk-prism / prism-prism interfaces dominate.
 
+### Task 2: BLR-9 — env-gated single-tet wall cavity replacement candidate
+
+- [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
+  `sample_single_wall_tet_cells`, the simple-tet eligible owners)
+  to delete each eligible wall-owner tet, insert the layer-1 prism
+  in its place, and refill the freed cavity with a checked
+  transition tet (apex = original tet centroid; base = new prism
+  inner triangle). Default OFF behind
+  `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0`.
+- [ ] When ON: only act on the cells in
+  `tet_wall_cavity.sample_single_wall_tet_cells` (already capped by
+  BLR-7); skip blocked cells. For each candidate compute the
+  determinant, face weight, and non-orthogonality of the
+  transition tet against the post-prism mesh. Reject the
+  replacement if any of those would fall outside evaluator gates.
+- [ ] Record per-pass diagnostics under
+  `native_bl_quality.tet_wall_cavity.replacement_pass`:
+  `n_candidates`, `n_applied`, `n_rejected_quality`,
+  `n_rejected_topology`, `mean_transition_det`,
+  `max_transition_non_ortho`.
+- [ ] Add a unit test in `tests/test_native_bl.py` that builds a
+  small one-tet wall fixture (the same shape used by the BLR-8
+  test) and verifies:
+    1. with the env flag OFF the polyMesh is unchanged;
+    2. with the env flag ON the prism replaces the original tet
+       and the transition tet has positive determinant and
+       single-cell-bounded vertex displacements;
+    3. invalid cells (multi-wall or non-tet owners) are skipped
+       even when the flag is ON.
+- [ ] Files: `core/layers/native_bl.py`,
+  `tests/test_native_bl.py`,
+  `docs/plans/topology_aware_tet_bl_2026-05-10.md` (mark
+  checkbox `[x]` when done).
+- [ ] Verify (atomic; do NOT block on the bench):
+    - `python3 -m py_compile core/layers/native_bl.py
+       tests/test_native_bl.py`
+    - `python3 -m pytest tests/test_native_bl.py -q`
+    - Optional bench, env ON vs OFF; record any retained-failure
+      delta in the commit body. Keep the change only when the
+      flag-on bench shows a strict reduction in tet failed cases
+      vs. the BLR-8 baseline.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.
