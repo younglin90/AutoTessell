@@ -249,6 +249,14 @@ creates near-tangent interface faces.
   output mutation.
 - [x] No output behavior change.
 
+### BLR-6: pre-BL bulk quality classifier
+
+- [x] Record the same bad-internal-face histogram on the input bulk mesh before
+  BL mutation.
+- [x] Classify pre-existing bulk-bulk non-orthogonality / face-weight defects
+  separately from generated bulk-prism and prism-prism BL defects.
+- [x] No output behavior change.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.

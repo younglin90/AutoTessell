@@ -1910,6 +1910,7 @@ def _bl_bad_internal_face_histogram(
     max_non_ortho_deg: float = 65.0,
     min_face_weight: float = 0.05,
     max_worst: int = 12,
+    include_components: bool = True,
 ) -> dict[str, Any]:
     """Summarize bad internal faces by bulk/prism interface class."""
     classes = [
@@ -2037,7 +2038,7 @@ def _bl_bad_internal_face_histogram(
         reverse=True,
     )
     summary["worst_faces"] = worst[: int(max_worst)]
-    if bad_records:
+    if bad_records and bool(include_components):
         parent: dict[int, int] = {}
 
         def _find_cell(cell: int) -> int:
@@ -2836,6 +2837,19 @@ def generate_native_bl(
     cell_centres = _cell_centres_from_faces(
         points, faces, owner, neighbour, n_cells,
     )
+    try:
+        pre_bl_bad_internal_face_histogram = _bl_bad_internal_face_histogram(
+            points,
+            faces,
+            owner,
+            neighbour,
+            base_n_cells=n_cells,
+            prism_cell_start=n_cells,
+            prism_cell_end=n_cells,
+            include_components=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        pre_bl_bad_internal_face_histogram = {"error": str(exc)[:160]}
     vnorm = compute_vertex_normals(
         points, faces, wall_face_indices, owner, cell_centres,
     )
@@ -4544,6 +4558,7 @@ def generate_native_bl(
                 "max_aspect_in": float(aniso_split_max_asp_in),
             },
             "bad_internal_faces": bad_internal_face_histogram,
+            "pre_bl_bad_internal_faces": pre_bl_bad_internal_face_histogram,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,

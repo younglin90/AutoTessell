@@ -10,6 +10,7 @@ layer 를 topology/orientation 올바르게 삽입하는지 검증.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -89,6 +90,10 @@ def test_native_bl_inserts_prism_cells(sphere_baseline: Path) -> None:
     assert res.n_prism_cells == res.n_wall_faces * 3
     assert res.total_thickness > 0
     assert res.n_new_points > 0
+    quality = json.loads((sphere_baseline / "native_bl_quality.json").read_text())
+    pre_bl = quality["pre_bl_bad_internal_faces"]
+    assert pre_bl["n_internal_faces"] >= 0
+    assert "bulk-bulk" in pre_bl["total_by_class"]
 
 
 def test_native_bl_manifold_has_no_bl_side(sphere_baseline: Path) -> None:
