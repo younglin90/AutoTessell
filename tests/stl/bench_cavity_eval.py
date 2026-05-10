@@ -95,7 +95,7 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     # other thresholds.
     env.setdefault(
         "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
-        os.environ.get("AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG", "80"),
+        os.environ.get("AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG", "85"),
     )
     # BLR-9c-d-k-2 — Q-min cap configurable; default to 0.05 since
     # the BLR-9c-d-k-1 audit showed the rejected components cluster

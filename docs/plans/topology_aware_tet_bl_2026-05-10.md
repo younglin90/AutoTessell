@@ -736,9 +736,47 @@ worth attempting on a given STL.
     BLR-9c-c-i inner triangles, closure tets index polyMesh-space
     appended verts).
 
-- [ ] BLR-9c-d (l-2): bench at non_ortho 85° to confirm the
-  histogram-predicted recovery (~59 components).  Stop at 85°
-  for now — going to 90° would erase the gate's signal.
+- [x] BLR-9c-d (l-2): bench at non_ortho 85° (matches the
+  BLR-9c-d-l-1 histogram recommendation, well under the 90°
+  pathological band).  ``tests/stl/bench_cavity_eval.py`` now
+  defaults to 85° (override via
+  ``AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG``).  **Bench result
+  (test_cube + easy_100034)**:
+
+  ::
+
+      before (80°): 861 components, 754 accept (87.6 %),
+                    30 reject_bad_shape, 77 reject_bad_non_ortho.
+      after  (85°): 861 components, 808 accept (93.8 %),
+                    30 reject_bad_shape, 23 reject_bad_non_ortho.
+
+  +54 components recovered (predicted +59).  The remaining 53
+  rejected components split 30 shape / 23 non-ortho — both
+  bottlenecks are now small.
+
+### BLR-9c-d (m) — pivot from cap audits to closure-pair geometry
+
+The cap-softening sequence (cavity gates 70° → 80° → 85°,
+Q-min 0.10 → 0.05) lifted accept rate from **11 % → 94 %**
+across four iterations.  The remaining 6 % is gated by:
+
+- shape (Q < 0.05): 30 components, mostly clustered in
+  [0.01, 0.05) per BLR-9c-d-k-1 fine histogram.
+- non-ortho (>85°): 23 components, all with worst pair
+  ``shell_closure_shell_closure``.
+
+Both buckets are dominated by the **closure path**: the
+fan-from-vertex-0 triangulation of polygon shell faces
+produces wide angles and slim triangles when the shell face
+is highly elongated or near-degenerate.
+
+- [ ] BLR-9c-d (m-1): replace the fan-from-vertex-0
+  triangulation in ``_build_cavity_shell_closure_tets`` with a
+  **shortest-diagonal** triangulation for quad shell faces (use
+  ``v0-v2`` vs ``v1-v3`` whichever is shorter).  This is a
+  one-line change for the n=4 case and a Delaunay-style choice
+  for general polygons.  Expected: closure-pair non-ortho drops
+  by reducing the diagonal length asymmetry.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

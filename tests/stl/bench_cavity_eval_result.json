@@ -2,11 +2,11 @@
   "totals": {
     "n_stls": 2,
     "n_components": 861,
-    "n_accepted": 754,
+    "n_accepted": 808,
     "n_rejected_uncovered_shell": 0,
     "n_rejected_bad_det": 0,
     "n_rejected_bad_shape": 30,
-    "n_rejected_bad_non_ortho": 77,
+    "n_rejected_bad_non_ortho": 23,
     "n_rejected_bad_skewness": 0
   },
   "rows": [
@@ -14,15 +14,15 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 57.161,
+      "elapsed_s": 56.084,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
-        "n_accepted": 584,
+        "n_accepted": 631,
         "n_rejected_uncovered_shell": 0,
         "n_rejected_bad_det": 0,
         "n_rejected_bad_shape": 7,
-        "n_rejected_bad_non_ortho": 60,
+        "n_rejected_bad_non_ortho": 13,
         "n_rejected_bad_skewness": 0,
         "non_ortho_hist": {
           "le_30": 209,
@@ -82,15 +82,15 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 103.038,
+      "elapsed_s": 105.043,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
-        "n_accepted": 170,
+        "n_accepted": 177,
         "n_rejected_uncovered_shell": 0,
         "n_rejected_bad_det": 0,
         "n_rejected_bad_shape": 23,
-        "n_rejected_bad_non_ortho": 17,
+        "n_rejected_bad_non_ortho": 10,
         "n_rejected_bad_skewness": 0,
         "non_ortho_hist": {
           "le_30": 38,
