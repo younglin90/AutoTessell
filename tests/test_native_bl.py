@@ -418,3 +418,57 @@ def test_native_bl_bad_internal_face_histogram_classifies_interfaces() -> None:
     assert hist["components"][0]["faces"] == [0, 1]
     assert hist["components"][0]["cells"] == [0, 2, 3]
     assert hist["components"][0]["n_inside_internal_faces"] == 2
+    assert hist["components"][0]["cavity_shell"]["n_boundary_faces"] == 0
+
+
+def test_native_bl_bad_component_records_closed_cavity_shell() -> None:
+    """Small bad components expose a closed cavity shell for later local refill."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],  # internal face between the selected bulk/prism cells
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+        [0, 1, 4],
+        [1, 2, 4],
+        [2, 0, 4],
+    ]
+    owner = [0, 0, 0, 0, 2, 2, 2]
+    neighbour = [2]
+
+    hist = _bl_bad_internal_face_histogram(
+        points,
+        faces,
+        owner,
+        neighbour,
+        base_n_cells=2,
+        prism_cell_start=2,
+        prism_cell_end=3,
+        max_non_ortho_deg=-1.0,
+    )
+
+    comp = hist["components"][0]
+    shell = comp["cavity_shell"]
+    assert comp["cells"] == [0, 2]
+    assert shell["cell_kinds"] == {"bulk": 1, "prism": 1}
+    assert shell["n_internal_faces"] == 1
+    assert shell["n_boundary_faces"] == 6
+    assert shell["n_physical_boundary_faces"] == 6
+    assert shell["boundary_by_class"] == {
+        "bulk-physical": 3,
+        "prism-physical": 3,
+    }
+    assert shell["n_open_edges"] == 0
+    assert shell["n_nonmanifold_edges"] == 0
+    assert shell["n_duplicate_boundary_faces"] == 0
+    assert shell["is_closed_2manifold"] is True
+    assert shell["small_closed_cavity_candidate"] is True

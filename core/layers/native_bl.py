@@ -1653,6 +1653,157 @@ def _bl_pair_class(a: str, b: str) -> str:
     return "other-other"
 
 
+def _bl_cavity_shell_summary(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    cell_ids: set[int],
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+    sample_cap: int = 16,
+) -> dict[str, Any]:
+    """Summarize the closed boundary shell of a selected bad-cell cavity.
+
+    SMESH viscous layers treat a failing layer front as a local cavity problem:
+    remove affected volume cells, keep the closed cavity boundary, then refill
+    with validated transition cells. This helper does not mutate the mesh; it
+    records whether a bad-face component has a usable closed boundary shell.
+    """
+    cell_set = {int(c) for c in cell_ids}
+    summary: dict[str, Any] = {
+        "n_cells": int(len(cell_set)),
+        "cell_kinds": {},
+        "n_boundary_faces": 0,
+        "n_internal_faces": 0,
+        "n_physical_boundary_faces": 0,
+        "boundary_by_class": {},
+        "n_boundary_vertices": 0,
+        "n_boundary_edges": 0,
+        "n_open_edges": 0,
+        "n_nonmanifold_edges": 0,
+        "n_duplicate_boundary_faces": 0,
+        "min_boundary_face_area": 0.0,
+        "total_boundary_area": 0.0,
+        "is_closed_2manifold": False,
+        "small_closed_cavity_candidate": False,
+        "sample_boundary_faces": [],
+    }
+    if not cell_set:
+        return summary
+
+    for cid in sorted(cell_set):
+        kind = _classify_bl_cell_kind(
+            cid,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        summary["cell_kinds"][kind] = int(summary["cell_kinds"].get(kind, 0)) + 1
+
+    edge_use: dict[tuple[int, int], int] = {}
+    face_keys: set[tuple[int, ...]] = set()
+    vertices: set[int] = set()
+    boundary_face_ids: list[int] = []
+    min_area = float("inf")
+    total_area = 0.0
+
+    for fi, own_raw in enumerate(owner):
+        own = int(own_raw)
+        own_in = own in cell_set
+        nbr = int(neighbour[fi]) if fi < len(neighbour) else None
+        nbr_in = bool(nbr is not None and nbr in cell_set)
+        if own_in and nbr_in:
+            summary["n_internal_faces"] = int(summary["n_internal_faces"]) + 1
+            continue
+        if not (own_in or nbr_in):
+            continue
+
+        boundary_face_ids.append(int(fi))
+        summary["n_boundary_faces"] = int(summary["n_boundary_faces"]) + 1
+        face = faces[fi]
+        key = tuple(sorted(int(v) for v in face))
+        if key in face_keys:
+            summary["n_duplicate_boundary_faces"] = (
+                int(summary["n_duplicate_boundary_faces"]) + 1
+            )
+        face_keys.add(key)
+
+        _, area = _face_normal_area(points, face)
+        min_area = min(min_area, float(area))
+        total_area += float(area)
+
+        for v in face:
+            vertices.add(int(v))
+        for i, v0 in enumerate(face):
+            v1 = face[(i + 1) % len(face)]
+            e = (int(v0), int(v1))
+            if e[0] > e[1]:
+                e = (e[1], e[0])
+            edge_use[e] = int(edge_use.get(e, 0)) + 1
+
+        if nbr is None:
+            inside = own
+            inside_kind = _classify_bl_cell_kind(
+                inside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            bkey = f"{inside_kind}-physical"
+            summary["n_physical_boundary_faces"] = (
+                int(summary["n_physical_boundary_faces"]) + 1
+            )
+        else:
+            inside = own if own_in else int(nbr)
+            outside = int(nbr) if own_in else own
+            inside_kind = _classify_bl_cell_kind(
+                inside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            outside_kind = _classify_bl_cell_kind(
+                outside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            bkey = _bl_pair_class(inside_kind, outside_kind)
+        summary["boundary_by_class"][bkey] = (
+            int(summary["boundary_by_class"].get(bkey, 0)) + 1
+        )
+
+    open_edges = sum(1 for count in edge_use.values() if count == 1)
+    nonmanifold_edges = sum(1 for count in edge_use.values() if count > 2)
+    summary["n_boundary_vertices"] = int(len(vertices))
+    summary["n_boundary_edges"] = int(len(edge_use))
+    summary["n_open_edges"] = int(open_edges)
+    summary["n_nonmanifold_edges"] = int(nonmanifold_edges)
+    summary["min_boundary_face_area"] = (
+        0.0 if min_area == float("inf") else float(min_area)
+    )
+    summary["total_boundary_area"] = float(total_area)
+    summary["is_closed_2manifold"] = bool(
+        summary["n_boundary_faces"] > 0
+        and summary["n_duplicate_boundary_faces"] == 0
+        and summary["min_boundary_face_area"] > 1e-30
+        and open_edges == 0
+        and nonmanifold_edges == 0
+    )
+    summary["small_closed_cavity_candidate"] = bool(
+        summary["is_closed_2manifold"]
+        and summary["n_cells"] <= int(
+            os.environ.get("AUTO_TESSELL_BL_CAVITY_SMALL_CELL_CAP", "64")
+        )
+        and int(summary["cell_kinds"].get("prism", 0)) > 0
+    )
+    summary["sample_boundary_faces"] = boundary_face_ids[: int(sample_cap)]
+    return summary
+
+
 def _face_normal_area(points: np.ndarray, face: list[int]) -> tuple[np.ndarray, float]:
     pts = points[np.asarray(face, dtype=np.int64)]
     if pts.shape[0] < 3:
@@ -1881,6 +2032,17 @@ def _bl_bad_internal_face_histogram(
                     n_physical_boundary += 1
             id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
             include_full = len(cells) <= id_cap and len(faces_comp) <= id_cap
+            cavity_shell = _bl_cavity_shell_summary(
+                points,
+                faces,
+                owner_arr,
+                nbr_arr,
+                cell_set,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+                sample_cap=max_worst,
+            )
             packed_components.append(
                 {
                     "n_faces": int(comp["n_faces"]),
@@ -1897,6 +2059,7 @@ def _bl_bad_internal_face_histogram(
                     "sample_cells": cells[: int(max_worst)],
                     "faces": faces_comp if include_full else [],
                     "cells": cells if include_full else [],
+                    "cavity_shell": cavity_shell,
                 }
             )
         packed_components.sort(

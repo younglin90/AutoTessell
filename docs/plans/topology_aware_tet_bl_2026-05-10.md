@@ -232,6 +232,14 @@ creates near-tangent interface faces.
 - [x] Record inside/internal and cavity-boundary face counts by interface class.
 - [x] No output behavior change.
 
+### BLR-4: closed cavity shell metadata
+
+- [x] For each bad-face component, summarize the selected-cell boundary shell.
+- [x] Record boundary vertex/edge counts, open/non-manifold edges, duplicate
+  faces, physical/interface boundary class counts, and closed-shell candidate
+  status.
+- [x] No output behavior change.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.
