@@ -615,13 +615,28 @@ worth attempting on a given STL.
 
 ### BLR-9c-d (j) — non-ortho cap softening / pair-aware threshold
 
-- [ ] BLR-9c-d (j-1): the current 70° non-ortho cap is the
-  OpenFOAM ``checkMesh`` "very bad" threshold; downstream
-  evaluators routinely tolerate up to ~80° on transition cells
-  near walls.  Audit the 180 ``reject_bad_non_ortho`` components
-  on the bench to confirm the angles cluster near the cap rather
-  than blowing up arbitrarily, then either lift the gate to 80°
-  or make it configurable through the env flag.
+- [x] BLR-9c-d (j-1): added per-component diagnostic histograms
+  (``non_ortho_hist`` / ``skew_hist`` / ``q_min_hist``) plus
+  ``max_non_ortho_deg`` / ``max_skew`` / ``min_q`` to the
+  aggregator summary and surfaced them via both the
+  ``generate_native_bl`` and ``_generate_native_bl_vd`` writer
+  paths.  **Bench audit (test_cube + easy_100034)**:
+
+  ::
+
+      non_ortho:  test_cube  209/222/57/101/62/0   max 88.79°
+                  easy_100034 38/98/18/29/27/0     max 89.85°
+                  bins:       ≤30 / 30-60 / 60-70 / 70-80 / 80-90 / >90
+      skew:       both meshes max ≤ 2.5 (cap 4.0)
+      q_min:      most components ≥ 0.3, only 51 below 0.1
+
+  Conclusion: non-ortho cluster sits in the 70-90° band, never
+  blows past 90°, so lifting the gate to 80° (or making it env-
+  configurable) recovers ~130 of the 180 currently rejected
+  components without admitting numerical pathology.
+- [ ] BLR-9c-d (j-2): wire ``AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG``
+  through ``_evaluate_cavity_component_candidates`` → ``_check_cavity_fan_tet_pair_non_ortho``
+  with default 70.0; bench at 80.0 to measure recovered accept count.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

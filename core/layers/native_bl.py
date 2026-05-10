@@ -4075,6 +4075,23 @@ def _evaluate_cavity_component_candidates(
         "n_rejected_bad_shape": 0,
         "n_rejected_bad_non_ortho": 0,
         "n_rejected_bad_skewness": 0,
+        # BLR-9c-d-j-1 — diagnostic histograms across all components
+        # so callers can spot whether reject buckets cluster just past
+        # the threshold (cap likely too tight) or scatter to extreme
+        # values (real geometry pathology).
+        "non_ortho_hist": {
+            "le_30": 0, "30_60": 0, "60_70": 0, "70_80": 0,
+            "80_90": 0, "gt_90": 0,
+        },
+        "skew_hist": {
+            "le_1": 0, "1_2": 0, "2_4": 0, "4_8": 0, "gt_8": 0,
+        },
+        "q_min_hist": {
+            "ge_0p3": 0, "0p1_0p3": 0, "0p01_0p1": 0, "lt_0p01": 0,
+        },
+        "max_non_ortho_deg": 0.0,
+        "max_skew": 0.0,
+        "min_q": 1.0,
         "components": [],
     }
     if not components:
@@ -4225,6 +4242,49 @@ def _evaluate_cavity_component_candidates(
             summary["n_rejected_bad_non_ortho"] += 1
         elif decision == "reject_bad_skewness":
             summary["n_rejected_bad_skewness"] += 1
+
+        # Accumulate diagnostic histograms.
+        _max_no = float(comp_record["fan_pair_max_non_ortho_deg"])
+        if _max_no <= 30.0:
+            summary["non_ortho_hist"]["le_30"] += 1
+        elif _max_no <= 60.0:
+            summary["non_ortho_hist"]["30_60"] += 1
+        elif _max_no <= 70.0:
+            summary["non_ortho_hist"]["60_70"] += 1
+        elif _max_no <= 80.0:
+            summary["non_ortho_hist"]["70_80"] += 1
+        elif _max_no <= 90.0:
+            summary["non_ortho_hist"]["80_90"] += 1
+        else:
+            summary["non_ortho_hist"]["gt_90"] += 1
+        if _max_no > summary["max_non_ortho_deg"]:
+            summary["max_non_ortho_deg"] = _max_no
+
+        _max_sk = float(comp_record["fan_pair_max_skew"])
+        if _max_sk <= 1.0:
+            summary["skew_hist"]["le_1"] += 1
+        elif _max_sk <= 2.0:
+            summary["skew_hist"]["1_2"] += 1
+        elif _max_sk <= 4.0:
+            summary["skew_hist"]["2_4"] += 1
+        elif _max_sk <= 8.0:
+            summary["skew_hist"]["4_8"] += 1
+        else:
+            summary["skew_hist"]["gt_8"] += 1
+        if _max_sk > summary["max_skew"]:
+            summary["max_skew"] = _max_sk
+
+        _q_min = float(comp_record["fan_q_min"])
+        if _q_min >= 0.3:
+            summary["q_min_hist"]["ge_0p3"] += 1
+        elif _q_min >= 0.1:
+            summary["q_min_hist"]["0p1_0p3"] += 1
+        elif _q_min >= 0.01:
+            summary["q_min_hist"]["0p01_0p1"] += 1
+        else:
+            summary["q_min_hist"]["lt_0p01"] += 1
+        if _q_min < summary["min_q"]:
+            summary["min_q"] = _q_min
 
     return summary
 
@@ -4968,6 +5028,24 @@ def _generate_native_bl_vd(
                 vd_tet_cavity_eval_diag[_key] = int(
                     _vd_summary.get(_key, 0)
                 )
+            vd_tet_cavity_eval_diag["non_ortho_hist"] = dict(
+                _vd_summary.get("non_ortho_hist", {})
+            )
+            vd_tet_cavity_eval_diag["skew_hist"] = dict(
+                _vd_summary.get("skew_hist", {})
+            )
+            vd_tet_cavity_eval_diag["q_min_hist"] = dict(
+                _vd_summary.get("q_min_hist", {})
+            )
+            vd_tet_cavity_eval_diag["max_non_ortho_deg"] = float(
+                _vd_summary.get("max_non_ortho_deg", 0.0)
+            )
+            vd_tet_cavity_eval_diag["max_skew"] = float(
+                _vd_summary.get("max_skew", 0.0)
+            )
+            vd_tet_cavity_eval_diag["min_q"] = float(
+                _vd_summary.get("min_q", 1.0)
+            )
         except Exception as exc:  # noqa: BLE001
             vd_tet_cavity_eval_diag = {
                 "enabled": True,
@@ -6243,6 +6321,24 @@ def generate_native_bl(
                             _eval_summary.get(
                                 "n_rejected_bad_skewness", 0
                             )
+                        ),
+                        "non_ortho_hist": dict(
+                            _eval_summary.get("non_ortho_hist", {})
+                        ),
+                        "skew_hist": dict(
+                            _eval_summary.get("skew_hist", {})
+                        ),
+                        "q_min_hist": dict(
+                            _eval_summary.get("q_min_hist", {})
+                        ),
+                        "max_non_ortho_deg": float(
+                            _eval_summary.get("max_non_ortho_deg", 0.0)
+                        ),
+                        "max_skew": float(
+                            _eval_summary.get("max_skew", 0.0)
+                        ),
+                        "min_q": float(
+                            _eval_summary.get("min_q", 1.0)
                         ),
                     }
                 except Exception as exc:  # noqa: BLE001

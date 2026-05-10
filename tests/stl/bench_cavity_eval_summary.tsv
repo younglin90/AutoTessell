@@ -1,3 +1,3 @@
 stl	returncode	elapsed_s	bl_path	n_components	n_accepted	n_rejected_uncovered_shell	n_rejected_bad_det	n_rejected_bad_shape	n_rejected_bad_non_ortho	n_rejected_bad_skewness
-test_cube.stl	1	59.334	main	651	482	0	0	14	155	0
-tests/stl/thingi10k_bench20/easy_100034.stl	1	111.221	main	210	148	0	0	37	25	0
+test_cube.stl	1	60.426	main	651	482	0	0	14	155	0
+tests/stl/thingi10k_bench20/easy_100034.stl	1	107.408	main	210	148	0	0	37	25	0

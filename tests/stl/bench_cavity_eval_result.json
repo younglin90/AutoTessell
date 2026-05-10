@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 59.334,
+      "elapsed_s": 60.426,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
@@ -23,7 +23,31 @@
         "n_rejected_bad_det": 0,
         "n_rejected_bad_shape": 14,
         "n_rejected_bad_non_ortho": 155,
-        "n_rejected_bad_skewness": 0
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 209,
+          "30_60": 222,
+          "60_70": 57,
+          "70_80": 101,
+          "80_90": 62,
+          "gt_90": 0
+        },
+        "skew_hist": {
+          "le_1": 620,
+          "1_2": 31,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 312,
+          "0p1_0p3": 325,
+          "0p01_0p1": 14,
+          "lt_0p01": 0
+        },
+        "max_non_ortho_deg": 88.78667589232185,
+        "max_skew": 1.3279396988858834,
+        "min_q": 0.014938855321832669
       },
       "fastpath": null,
       "bl_path": "main"
@@ -32,7 +56,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 111.221,
+      "elapsed_s": 107.408,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
@@ -41,7 +65,31 @@
         "n_rejected_bad_det": 0,
         "n_rejected_bad_shape": 37,
         "n_rejected_bad_non_ortho": 25,
-        "n_rejected_bad_skewness": 0
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 38,
+          "30_60": 98,
+          "60_70": 18,
+          "70_80": 29,
+          "80_90": 27,
+          "gt_90": 0
+        },
+        "skew_hist": {
+          "le_1": 175,
+          "1_2": 32,
+          "2_4": 3,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 42,
+          "0p1_0p3": 131,
+          "0p01_0p1": 35,
+          "lt_0p01": 2
+        },
+        "max_non_ortho_deg": 89.84899145442255,
+        "max_skew": 2.458029108169462,
+        "min_q": 0.002104092267560701
       },
       "fastpath": null,
       "bl_path": "main"
