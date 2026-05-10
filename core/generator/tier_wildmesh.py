@@ -146,7 +146,15 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     d = _defaults.get(quality_level, _defaults["standard"])
     raw_stop = float(params.get("wildmesh_stop_quality", d["stop_quality"]))
     raw_max_its = int(params.get("wildmesh_max_its", d["max_its"]))
-    raw_eps = float(params.get("wildmesh_epsilon", d["epsilon"]))
+    # U-5 (2026-05-11) — env override for pytetwild envelope size.
+    # Tightening epsilon reduces ``surface_area_deviation`` on inputs
+    # with dense small features (e.g. hard_100030 STL).  Trade-off:
+    # tighter epsilon costs more iterations.
+    _env_eps = os.environ.get("AUTO_TESSELL_WILDMESH_EPSILON", "").strip()
+    if _env_eps:
+        raw_eps = float(_env_eps)
+    else:
+        raw_eps = float(params.get("wildmesh_epsilon", d["epsilon"]))
     raw_edge = float(
         params.get("wildmesh_edge_length_r", params.get("wildmesh_edge_length", d["edge_length_r"]))
     )
