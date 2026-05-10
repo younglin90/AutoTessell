@@ -3796,13 +3796,20 @@ def _build_cavity_shell_closure_tets(
                 np.diff(np.vstack([face_pts, face_pts[:1]]), axis=0),
                 axis=1,
             )
-            mean_edge = float(edge_lens.mean()) if edge_lens.size else 1.0
+            # BLR-9c-d-n-1 — scale the Steiner step by the *max* edge
+            # rather than the mean.  For elongated shell triangles
+            # (e.g. the slim caps along high-curvature ridges) the
+            # mean edge is a poor proxy for the triangle's
+            # circumradius — using max_edge gives an apex offset
+            # comparable to the circumradius and thus a closer-to-
+            # regular tet (Q closer to 1).
+            scale_edge = float(edge_lens.max()) if edge_lens.size else 1.0
             inward_vec = apex_arr - face_centroid
             inward_norm = float(np.linalg.norm(inward_vec))
-            if inward_norm < 1e-30 or mean_edge < 1e-30:
+            if inward_norm < 1e-30 or scale_edge < 1e-30:
                 steiner_pt = face_centroid
             else:
-                step = float(steiner_step_factor) * mean_edge
+                step = float(steiner_step_factor) * scale_edge
                 # Cap the step at the available distance to the cavity
                 # centroid so the Steiner stays on the cavity side and
                 # never overshoots beyond the centroid.

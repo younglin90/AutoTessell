@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 55.943,
+      "elapsed_s": 54.836,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
@@ -66,8 +66,8 @@
           "lt_0p001": 0
         },
         "worst_q_kind_hist": {
-          "fan": 440,
-          "shell_closure": 211,
+          "fan": 441,
+          "shell_closure": 210,
           "none": 0,
           "other": 0
         },
@@ -82,7 +82,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 101.24,
+      "elapsed_s": 100.522,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
@@ -123,19 +123,19 @@
         },
         "q_min_hist": {
           "ge_0p3": 40,
-          "0p1_0p3": 130,
-          "0p01_0p1": 38,
+          "0p1_0p3": 131,
+          "0p01_0p1": 37,
           "lt_0p01": 2
         },
         "q_min_fine_hist": {
-          "0p05_0p1": 18,
+          "0p05_0p1": 17,
           "0p01_0p05": 20,
           "0p001_0p01": 2,
           "lt_0p001": 0
         },
         "worst_q_kind_hist": {
-          "fan": 128,
-          "shell_closure": 82,
+          "fan": 129,
+          "shell_closure": 81,
           "none": 0,
           "other": 0
         },

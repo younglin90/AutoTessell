@@ -834,9 +834,29 @@ The remaining 37 rejected components split:
   edge length, which gives a slim apex offset on elongated
   shell triangles.
 
-- [ ] BLR-9c-d (n-1): tune the Steiner step.  Use the maximum
-  edge length instead of the mean, or a separate
-  configurable env knob for closure-step magnitude.
+- [x] BLR-9c-d (n-1): scale the Steiner step by the *max* edge
+  rather than the mean.  Bench result: identical (824 accept,
+  29 shape, 8 non-ortho) — most shell triangles in the
+  21-STL bench are roughly equilateral so mean ≈ max, and the
+  remaining shape rejections turn out to be dominated by *fan*
+  tets (570/861 = 66 % vs closure 291/861 = 34 %).  The
+  ``max_non_ortho_deg`` field on test_cube did drop from 88.79°
+  to 87.08° (and from 89.85° to 83.02° on easy_100034), so the
+  algorithmic improvement is real even though it does not move
+  the gate-rejection counts.  Kept since it gives a more
+  geometrically defensible Steiner placement.
+
+### BLR-9c-d (o) — fan-tet shape (the dominant Q-shape source)
+
+- [ ] BLR-9c-d (o-1): the BLR-9c-c-iii-b fan transition tets are
+  built with the cavity centroid as their apex and the
+  BLR-9c-c-i inner triangles as their base.  For wall-owner
+  cells far from the cavity centroid the resulting tet is a
+  thin sliver because the apex sits halfway across the cavity
+  while the base is a tiny prism cap on the wall.  The fix
+  mirrors the closure-side BLR-9c-d-m-2 trick: replace the
+  shared apex with a per-fan-face Steiner point placed on the
+  inner-triangle's normal at a controlled offset.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
