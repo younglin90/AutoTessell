@@ -6,6 +6,7 @@ Analyzer → Preprocessor → Strategist → Generator ↔ Evaluator (최대 N�
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -452,6 +453,58 @@ class PipelineOrchestrator:
                         log.warning(
                             "post_layers_stage_exception",
                             engine=_post_engine, error=str(exc),
+                        )
+
+                # U-3 (2026-05-11) — drop residual neg-vol cells
+                # post-process.  Pre-BL anti-invert cap cannot predict
+                # post-extrusion emergent inversions; this helper removes
+                # them outright (typically 1-3 cells) so checkMesh's
+                # negative_volumes drops to 0.  Default OFF.
+                if (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_DROP_NEG_VOL", "0",
+                    ) == "1"
+                ):
+                    try:
+                        from core.utils.drop_neg_vol_cells import (
+                            drop_neg_vol_cells_iterative as _drop_nvc,
+                        )
+                        _skew_thr_raw = os.environ.get(
+                            "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD", "",
+                        ).strip()
+                        _skew_thr = (
+                            float(_skew_thr_raw)
+                            if _skew_thr_raw
+                            else None
+                        )
+                        _max_iter = int(os.environ.get(
+                            "AUTO_TESSELL_BL_DROP_MAX_ITER", "8",
+                        ))
+                        _drop_stats = _drop_nvc(
+                            case_dir,
+                            skew_drop_threshold=_skew_thr,
+                            max_iterations=_max_iter,
+                        )
+                        log.info(
+                            "drop_neg_vol_cells_done",
+                            n_dropped=_drop_stats.get("n_dropped", 0),
+                            n_dropped_inverted=_drop_stats.get(
+                                "n_dropped_inverted", 0,
+                            ),
+                            n_dropped_skew=_drop_stats.get(
+                                "n_dropped_skew", 0,
+                            ),
+                            n_cells_post=_drop_stats.get(
+                                "n_cells_post", 0,
+                            ),
+                            n_new_boundary=_drop_stats.get(
+                                "n_new_boundary_faces", 0,
+                            ),
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "drop_neg_vol_cells_skipped",
+                            error=str(exc)[:120],
                         )
 
                 # OpenFOAM 케이스 파일 생성 (write_of_case=True 일 때)

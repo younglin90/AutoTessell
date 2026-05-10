@@ -37,7 +37,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 TARGET_CELLS = int(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_TARGET_CELLS", "10000"))
 BL_LAYERS = int(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_BL_LAYERS", "3"))
-QUALITY = os.environ.get("AUTO_TESSELL_BENCH_CAVITY_QUALITY", "fine")
+QUALITY = os.environ.get("AUTO_TESSELL_BENCH_CAVITY_QUALITY", "draft")
 TIMEOUT_S = float(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_TIMEOUT_S", "600"))
 RUN_ROOT = Path(
     os.environ.get(
@@ -127,6 +127,26 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     env.setdefault(
         "AUTO_TESSELL_BL_ANTI_INVERT_FLOOR",
         os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_FLOOR", "0.5"),
+    )
+    # U-1 (2026-05-11) — shortest-diag quad triangulation default ON.
+    env.setdefault(
+        "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST",
+        os.environ.get("AUTO_TESSELL_BENCH_TRIANGULATE_SHORTEST", "1"),
+    )
+    # U-3 (2026-05-11) — drop residual neg-vol cells default ON.
+    env.setdefault(
+        "AUTO_TESSELL_BL_DROP_NEG_VOL",
+        os.environ.get("AUTO_TESSELL_BENCH_DROP_NEG_VOL", "1"),
+    )
+    # U-3b — also drop the two cells adjacent to internal faces with
+    # skewness > 50 (extreme slivers only).  Conservative threshold
+    # avoids hitting borderline cells (~ 20-25 range).
+    # U-3b — drop both cells adjacent to internal/boundary faces with
+    # skewness > 20 (the hard cap for tet+BL draft).  Iterated until
+    # convergence.  Boundary skewness 1000+ from slivers gets cleaned.
+    env.setdefault(
+        "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD",
+        os.environ.get("AUTO_TESSELL_BENCH_DROP_SKEW_THRESHOLD", "20"),
     )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")

@@ -64,18 +64,36 @@ cosmetic concern at floor=0.05.
 
 ## Path to 100 % (future work)
 
-The 5 remaining FAILs need either:
+After the t-1 (tet_bl_subdivide) sub-step, the 3 remaining
+FAILs each have multi-faceted issues that no single cap
+setting resolves:
+
+- **hard_100030**:  neg_vol 1 + max_skewness 1166 (boundary-cell
+  malformation) + max_aspect 1556 + surface_area_deviation 110 %.
+  Five problems on one mesh.
+- **hard_1004826**:  neg_vol 1 + max_skewness 17.96.
+- **medium_100330**:  neg_vol 1.
+
+The deepest issue is **boundary-cell malformation** at sharp
+corners during BL extrusion.  Standard fixes:
 
 a) **Geometric polyhedron repair**: split the 8-face inverted
    polyhedra into sub-tets that don't span the offending face
-   plane.  Requires polyMesh-level cell rewriting after BL.
+   plane.  Tested via ``polyhedron_split.diagnose_inverted_polyhedra``;
+   only 26 % of inverted cells (6/23 across the 3 failing STLs)
+   are splittable into 3 positive-volume tets.  The other 74 %
+   are too geometrically distorted.
 b) **Different tet generator**: replace pytetwild with a
    sliver-removal-aware generator (Klingner Stellar §3.4 swap
-   on top of native_tet).  Reduces cap pressure across all
-   cases and doesn't introduce slim sliver tets near walls.
+   on top of native_tet).  Eliminates slim sliver tets near
+   walls, reducing cap pressure across all cases.
 c) **BL pipeline restructure**: skip junction merge at problem
    corners or detect non-planar quads and refuse to triangulate
    (leave as proper 5-face prism with quad face).
+d) **Steiner-point corner refinement**: at sharp-feature wall
+   verts, add Steiner points to break up the would-be malformed
+   cells before BL extrusion.
 
-Each is multi-week.  The cap sub-series delivered the
-quick-win improvement; deeper progress is a separate workstream.
+Each is multi-week.  The cap sub-series + ``tet_bl_subdivide``
+engine delivered the quick-win improvement; deeper progress is
+a separate workstream.
