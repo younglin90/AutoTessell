@@ -1377,6 +1377,43 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
+### BLR-9c-d (s-1) — floor sweep on the 2 cap-induced FAILs
+
+The 2 ``aspect+surface_dev`` FAILs (extreme_1017014, extreme_102308)
+were cap-induced — the global anti-invert cap with floor=0.05
+thinned BL to 5 % of requested, blowing max_aspect past 1000.
+
+Tried raising the floor (looser cap → thicker BL):
+
+::
+
+    extreme_1017014:
+      floor 0.05    aspect 1146 + surface 20.36   FAIL (2 soft)
+      floor 0.50    aspect  114.7  surface OK     PASS_WITH_WARNINGS ✓
+    extreme_102308:
+      floor 0.05    aspect 1239 + surface 48 %    FAIL (2 soft)
+      floor 0.50    aspect  123.9  surface OK     PASS_WITH_WARNINGS ✓
+    medium_100330 (was PASS at floor=0.05):
+      floor 0.05    neg_vol 0                     PASS ✓
+      floor 0.30    neg_vol 1 + aspect 2118       FAIL (regressed)
+      floor 0.50    neg_vol 1 + aspect 1271       FAIL (regressed)
+
+**Trade-off**: floor=0.5 fixes 2 extreme cases but breaks
+medium_100330 (cap is now too loose to prevent inversion in
+its specific topology).  Net: 16 + 2 - 1 = 17/21 PASS.
+
+The proper solution is *per-STL adaptive floor*: try floor=0.5
+first; if neg_vol > 0 in result, retry with lower floor.
+Multi-pass — adds bench time.  Plan card ``s-2`` will implement.
+
+- [ ] BLR-9c-d (s-2): adaptive-floor BL retry.  Run BL once at
+  ``AUTO_TESSELL_BL_ANTI_INVERT_FLOOR=0.5``; if the resulting
+  polyMesh has ``negative_volumes > 0``, re-run with floor=0.1,
+  then 0.05.  Pick the first floor that produces a clean mesh.
+  Requires the orchestrator to detect post-BL neg_vol and
+  trigger re-run; same shape as
+  ``--auto-retry on`` for the strategist.
+
 ### BLR-9c-d (r-2) — polyhedron split diagnostic
 
 Implemented ``core/utils/polyhedron_split.diagnose_inverted_polyhedra``:
