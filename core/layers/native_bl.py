@@ -3358,15 +3358,17 @@ def _check_cavity_fan_tet_determinants(
     - ``n_degenerate_det``     tets with ``abs(det) <= det_tol``
     - ``signed_dets``          ``np.ndarray`` shape ``(n_tets,)``
     - ``worst_abs_det``        smallest ``|det|`` across all tets (or 0 if empty)
+    - ``n_sign_inconsistent``  tets whose sign disagrees with the majority
+                               of the rest of the component (BLR-9c-d-i-1).
+                               Reported as a *diagnostic only* — the
+                               polyMesh writer can re-orient any cell
+                               before emitting the mesh, so sign mixing
+                               is not a hard reject reason here.
     - ``bad_indices``          ``list[int]`` of fan-tet positions whose
-                               ``abs(det) <= det_tol`` *or* whose sign
-                               disagrees with the majority of the rest
-                               (i.e. flipped relative to the component)
-
-    The "majority sign" rule is the common Klingner / TetGen convention
-    used to detect a flipped triangle inside an otherwise consistent
-    fan: if the component contains, say, 4 tets with ``det > 0`` and 1
-    with ``det < 0``, the single odd-sign tet is bad.
+                               ``abs(det) <= det_tol`` (degenerate).
+                               Sign-inconsistent tets are *not* added
+                               to this list any more — see BLR-9c-d-i-1
+                               for the rationale.
     """
     out: dict[str, Any] = {
         "n_tets": 0,
@@ -3375,6 +3377,7 @@ def _check_cavity_fan_tet_determinants(
         "n_degenerate_det": 0,
         "signed_dets": np.empty(0, dtype=np.float64),
         "worst_abs_det": 0.0,
+        "n_sign_inconsistent": 0,
         "bad_indices": [],
     }
     if not fan_tets:
@@ -3419,12 +3422,25 @@ def _check_cavity_fan_tet_determinants(
         if abs_dets[k] <= det_tol:
             bad_set.add(k)
 
-    # majority-sign rule
+    # BLR-9c-d-i-1 — sign-inconsistency is now reported as a diagnostic
+    # only.  When the BLR-9c-c-iii-b fan and the BLR-9c-d-h-1 closure
+    # tets are produced from inputs with different winding conventions
+    # (e.g. inner-triangle motion vs. polyMesh face winding) some tets
+    # come out with positive signed volume and others with negative —
+    # but each of them is individually non-degenerate and the polyMesh
+    # writer can flip any cell at emission time.  Counting them as
+    # ``bad_indices`` was the dominant reject reason on the 21-STL bench
+    # (761 / 861 components for test_cube + easy_100034) and rejected
+    # otherwise-valid replacement candidates.
+    n_sign_inconsistent = 0
     if n_pos > 0 and n_neg > 0:
         majority_sign = 1.0 if n_pos >= n_neg else -1.0
-        for k in range(n):
-            if abs_dets[k] > det_tol and np.sign(dets[k]) != majority_sign:
-                bad_set.add(k)
+        n_sign_inconsistent = int(
+            np.sum(
+                (abs_dets > det_tol)
+                & (np.sign(dets) != majority_sign)
+            )
+        )
 
     out["n_tets"] = n
     out["n_pos_det"] = n_pos
@@ -3432,6 +3448,7 @@ def _check_cavity_fan_tet_determinants(
     out["n_degenerate_det"] = n_deg
     out["signed_dets"] = dets
     out["worst_abs_det"] = float(abs_dets.min()) if n > 0 else 0.0
+    out["n_sign_inconsistent"] = n_sign_inconsistent
     out["bad_indices"] = sorted(bad_set)
     return out
 
@@ -4165,6 +4182,9 @@ def _evaluate_cavity_component_candidates(
             "n_fan_bad_indices": n_fan_bad_det,
             "fan_worst_abs_det": float(
                 det_check.get("worst_abs_det", 0.0)
+            ),
+            "n_fan_sign_inconsistent": int(
+                det_check.get("n_sign_inconsistent", 0)
             ),
             "n_fan_bad_shape_indices": n_fan_bad_shape,
             "fan_q_min": float(shape_check.get("q_min", 0.0)),

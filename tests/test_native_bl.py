@@ -1957,11 +1957,13 @@ def test_native_bl_check_cavity_fan_tet_determinants_consistent_signs_pass() -> 
     assert out["bad_indices"] == []
 
 
-def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_flagged() -> None:
-    """BLR-9c-d-b — when one tet has the minority sign relative to the
-    rest of the fan, it is reported as a bad index even though its
-    ``|det|`` is large.  This is the Klingner-style "flipped fan
-    triangle" case."""
+def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_diagnostic() -> None:
+    """BLR-9c-d-i-1 — sign-inconsistency is reported as a *diagnostic*
+    via ``n_sign_inconsistent`` but is no longer added to
+    ``bad_indices``.  The polyMesh writer can re-orient any cell at
+    emission time, so a winding mismatch between the BLR-9c-c-iii-b
+    fan and the BLR-9c-d-h-1 closure tets is recoverable and must not
+    veto an otherwise-valid cavity replacement candidate."""
     apex = np.array([0.0, 0.0, 0.0])
     inner_points = np.array(
         [
@@ -1973,18 +1975,19 @@ def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_flagged() 
         dtype=np.float64,
     )
     fan_tets = [
-        # Two consistent-sign tets …
         {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
         {"face_id": 1, "tet_verts": [-1, 0, 1, 3]},
-        # … plus one with the indices swapped to flip the sign.
+        # Index swap inverts the sign.
         {"face_id": 2, "tet_verts": [-1, 1, 0, 2]},
     ]
     out = _check_cavity_fan_tet_determinants(fan_tets, apex, inner_points)
     assert out["n_tets"] == 3
     assert out["n_pos_det"] >= 1
     assert out["n_neg_det"] >= 1
-    # The minority-sign tet (index 2 here) must be reported.
-    assert 2 in out["bad_indices"]
+    # Diagnostic recorded …
+    assert out["n_sign_inconsistent"] >= 1
+    # … but no minority-sign tet is reported in ``bad_indices``.
+    assert out["bad_indices"] == []
 
 
 def test_native_bl_check_cavity_fan_tet_pair_non_ortho_empty_or_singleton() -> None:

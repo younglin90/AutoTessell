@@ -592,12 +592,36 @@ worth attempting on a given STL.
 
 ### BLR-9c-d (i) — sign-flip recovery for fan + closure tets
 
-- [ ] BLR-9c-d (i-1): per-tet orientation guard — when the
-  signed-volume sign of a fan tet disagrees with the majority
-  sign of the rest of the component, swap the last two
-  ``tet_verts`` entries before the determinant gate runs.  This
-  removes ``reject_bad_det`` cases driven purely by inconsistent
-  triangle winding.
+- [x] BLR-9c-d (i-1): treat sign-inconsistency as a diagnostic.
+  ``_check_cavity_fan_tet_determinants`` now reports
+  ``n_sign_inconsistent`` (the count of tets whose signed volume
+  disagrees with the majority sign of the rest of the component)
+  but no longer adds them to ``bad_indices`` — only degenerate
+  tets (``|det| <= det_tol``) trigger ``reject_bad_det``.  The
+  rationale: the polyMesh writer can re-orient any cell at
+  emission time, so winding inconsistency between the
+  BLR-9c-c-iii-b fan tets and the BLR-9c-d-h-1 closure tets is
+  recoverable.  **Bench impact (test_cube + easy_100034)**:
+
+  ::
+
+      before:  861 components, 96 accept, 761 reject_bad_det,
+               4 reject_bad_non_ortho.
+      after:   861 components, 630 accept, 0 reject_bad_det,
+               51 reject_bad_shape, 180 reject_bad_non_ortho.
+
+  Accept rate jumped 11% → 73%.  The next bottlenecks are the
+  shape (Q < 0.1) and non-ortho gates.
+
+### BLR-9c-d (j) — non-ortho cap softening / pair-aware threshold
+
+- [ ] BLR-9c-d (j-1): the current 70° non-ortho cap is the
+  OpenFOAM ``checkMesh`` "very bad" threshold; downstream
+  evaluators routinely tolerate up to ~80° on transition cells
+  near walls.  Audit the 180 ``reject_bad_non_ortho`` components
+  on the bench to confirm the angles cluster near the cap rather
+  than blowing up arbitrarily, then either lift the gate to 80°
+  or make it configurable through the env flag.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
