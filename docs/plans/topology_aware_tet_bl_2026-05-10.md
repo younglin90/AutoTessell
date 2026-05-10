@@ -995,17 +995,39 @@ inverted cell ids (e.g. extreme_102308 cells 163, 322, 323, 411,
 **prism aspect** check fires, never the bulk-inversion check.
 Native_bl is missing a post-extrusion guard.
 
-- [ ] BLR-9c-d (p-8): in ``native_bl`` after the wall-vertex
-  extrusion (step 5 in the comment header), recompute the
-  signed volume of every adjacent bulk tet and either:
-    a) cap the per-vertex extrusion magnitude so no neighbour
-       tet flips, *or*
-    b) post-process the output polyMesh to flip face winding /
-       swap owner-neighbour for inverted cells (OpenFOAM
-       ``renumberMesh`` equivalent).
-  Either path should drop the bench failure count from 8 to 1
-  (only ``extreme_1017014`` with its 71.94 skew is independent
-  of this issue).
+- [x] BLR-9c-d (p-8) — *negative result*.  Tried path (b): a
+  standalone ``polymesh_orient.fix_inverted_cells`` post-process
+  that, for every cell with negative signed volume, reversed the
+  vertex order of the faces shared between an inverted owner
+  and a non-inverted neighbour.  Bench result on extreme_102308:
+
+  ::
+
+      PRE:   max_no=89.85  neg_vol=6
+      POST:  max_no=89.85  neg_vol=28  (after 5 iterations,
+                                        424 face flips)
+
+  The XOR rule cascades: flipping a face brings the owner from
+  negative to positive, but the neighbour's contribution from
+  that face flips sign too, often making the neighbour
+  negative.  Five iterations didn't converge; instead the
+  inverted-cell count grew 6 → 28.  Reverted (helper deleted,
+  faces file untouched).  **Geometric inversion (vertex crossing
+  the opposite face plane) cannot be fixed by face-winding
+  topology alone — the only actual fix is to move the offending
+  wall vertex back, i.e. cap the BL extrusion at the point of
+  inversion.**
+
+- [ ] BLR-9c-d (p-9): path (a) — implement per-vertex extrusion
+  magnitude cap inside ``native_bl``.  Before extruding wall
+  vertex ``v`` to ``v + total_thickness * motion_dir``, walk
+  every adjacent bulk tet and compute the maximum extrusion
+  along ``motion_dir`` that keeps the tet's signed volume
+  positive (intersection with the opposite face plane).  Cap
+  the per-vertex extrusion at 0.95 of that maximum.  Default
+  OFF behind ``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1``; bench at
+  the cap to confirm 7/8 failure recovery before flipping
+  default ON.
 
 ### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
 

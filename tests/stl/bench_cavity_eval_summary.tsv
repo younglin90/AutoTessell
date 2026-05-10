@@ -1,3 +1,22 @@
 stl	returncode	elapsed_s	bl_path	evaluator_verdict	first_fail_metric	n_components	n_accepted	n_rejected_uncovered_shell	n_rejected_bad_det	n_rejected_bad_shape	n_rejected_bad_non_ortho	n_rejected_bad_skewness
-test_cube.stl	0	37.623	main	PASS		332	328	0	0	4	0	0
-tests/stl/thingi10k_bench20/easy_100034.stl	0	103.994	main	UNKNOWN	Max Non-Ortho                    89.4°         < 80°  FAIL	210	187	0	0	22	1	0
+test_cube.stl	0	39.454	main	PASS		332	328	0	0	4	0	0
+tests/stl/thingi10k_bench20/easy_100034.stl	0	106.799	main	UNKNOWN	Max Non-Ortho                    89.4°         < 80°  FAIL	210	187	0	0	22	1	0
+tests/stl/thingi10k_bench20/easy_100423.stl	0	296.075	main	UNKNOWN	Max Non-Ortho                    80.8°         < 80°  FAIL	746	669	0	0	53	24	0
+tests/stl/thingi10k_bench20/easy_100643.stl	0	46.089	main	PASS	Max Non-Ortho                    89.7°         < 80°  FAIL	277	269	0	0	8	0	0
+tests/stl/thingi10k_bench20/easy_101170.stl	0	30.305	main	PASS	Max Non-Ortho                    83.5°         < 80°  FAIL	450	183	0	0	259	8	0
+tests/stl/thingi10k_bench20/easy_101187.stl	0	35.603	main	PASS	Max Non-Ortho                    86.2°         < 80°  FAIL	661	84	0	0	466	111	0
+tests/stl/thingi10k_bench20/extreme_1017013.stl	1	41.855	main	FAIL	Max Non-Ortho                    89.8°         < 80°  FAIL	275	243	0	0	28	4	0
+tests/stl/thingi10k_bench20/extreme_1017014.stl	1	36.815	main	FAIL	Max Non-Ortho                    88.2°         < 80°  FAIL	261	241	0	0	18	2	0
+tests/stl/thingi10k_bench20/extreme_1017017.stl	1	98.281	main	FAIL	Max Non-Ortho                    90.0°         < 80°  FAIL	286	266	0	0	17	3	0
+tests/stl/thingi10k_bench20/extreme_102308.stl	1	30.286	main	FAIL	Max Non-Ortho                    89.8°         < 80°  FAIL	289	256	0	0	24	9	0
+tests/stl/thingi10k_bench20/extreme_1037019.stl	0	71.84	main	UNKNOWN		355	325	0	0	18	12	0
+tests/stl/thingi10k_bench20/hard_100027.stl	0	110.004	main	UNKNOWN	Max Non-Ortho                    82.6°         < 80°  FAIL	273	250	0	0	21	2	0
+tests/stl/thingi10k_bench20/hard_100029.stl	1	113.301	main	FAIL	Max Non-Ortho                    89.6°         < 80°  FAIL	247	233	0	0	14	0	0
+tests/stl/thingi10k_bench20/hard_100030.stl	1	61.085	main	FAIL	Max Non-Ortho                    90.0°         < 80°  FAIL	337	312	0	0	18	7	0
+tests/stl/thingi10k_bench20/hard_100040.stl	1	28.58	main	FAIL	Max Non-Ortho                    90.0°         < 80°  FAIL	301	279	0	0	20	2	0
+tests/stl/thingi10k_bench20/hard_1004826.stl	1	107.462	main	FAIL	Max Non-Ortho                    89.4°         < 80°  FAIL	266	248	0	0	15	3	0
+tests/stl/thingi10k_bench20/medium_100045.stl	0	202.696	main	UNKNOWN	Max Non-Ortho                    89.0°         < 80°  FAIL	487	456	0	0	22	9	0
+tests/stl/thingi10k_bench20/medium_100077.stl	0	65.494	main	UNKNOWN		297	292	0	0	5	0	0
+tests/stl/thingi10k_bench20/medium_100322.stl	0	117.206	main	UNKNOWN	Min Determinant                 0.0004       > 0.001  FAIL	237	217	0	0	17	3	0
+tests/stl/thingi10k_bench20/medium_100323.stl	0	118.674	main	UNKNOWN	Min Determinant                 0.0006       > 0.001  FAIL	243	227	0	0	15	1	0
+tests/stl/thingi10k_bench20/medium_100330.stl	1	137.01	main	FAIL	Max Non-Ortho                    89.7°         < 80°  FAIL	246	223	0	0	19	4	0

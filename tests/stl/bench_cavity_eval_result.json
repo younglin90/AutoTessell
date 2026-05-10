@@ -1,12 +1,12 @@
 {
   "totals": {
-    "n_stls": 2,
-    "n_components": 542,
-    "n_accepted": 515,
+    "n_stls": 21,
+    "n_components": 7076,
+    "n_accepted": 5788,
     "n_rejected_uncovered_shell": 0,
     "n_rejected_bad_det": 0,
-    "n_rejected_bad_shape": 26,
-    "n_rejected_bad_non_ortho": 1,
+    "n_rejected_bad_shape": 1083,
+    "n_rejected_bad_non_ortho": 205,
     "n_rejected_bad_skewness": 0
   },
   "rows": [
@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 0,
-      "elapsed_s": 37.623,
+      "elapsed_s": 39.454,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {
@@ -84,7 +84,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 0,
-      "elapsed_s": 103.994,
+      "elapsed_s": 106.799,
       "evaluator_verdict": "UNKNOWN",
       "first_fail_metric": "Max Non-Ortho                    89.4\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -146,6 +146,1336 @@
         "max_non_ortho_deg": 85.95683886352779,
         "max_skew": 0.3302679753481199,
         "min_q": 0.0020434466134299093
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_100423.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100423",
+      "returncode": 0,
+      "elapsed_s": 296.075,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "Max Non-Ortho                    80.8\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 746,
+        "n_accepted": 669,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 53,
+        "n_rejected_bad_non_ortho": 24,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 531,
+          "30_60": 60,
+          "60_70": 34,
+          "70_80": 54,
+          "80_90": 67,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 26,
+          "75_80": 28,
+          "80_85": 34,
+          "85_90": 33,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 234,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 512,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 746,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 62,
+          "0p1_0p3": 539,
+          "0p01_0p1": 142,
+          "lt_0p01": 3
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 92,
+          "0p01_0p05": 50,
+          "0p001_0p01": 3,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 531,
+          "shell_closure": 215,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.75685898794876,
+        "max_skew": 0.821200660100793,
+        "min_q": 0.0054206995227039775
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_100643.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100643",
+      "returncode": 0,
+      "elapsed_s": 46.089,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    89.7\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 277,
+        "n_accepted": 269,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 8,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 189,
+          "30_60": 47,
+          "60_70": 11,
+          "70_80": 22,
+          "80_90": 8,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 11,
+          "75_80": 11,
+          "80_85": 8,
+          "85_90": 0,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 114,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 163,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 277,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 125,
+          "0p1_0p3": 120,
+          "0p01_0p1": 32,
+          "lt_0p01": 0
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 24,
+          "0p01_0p05": 8,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 140,
+          "shell_closure": 137,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 83.94135124606149,
+        "max_skew": 0.42241051200564483,
+        "min_q": 0.013697920168142495
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_101170.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101170",
+      "returncode": 0,
+      "elapsed_s": 30.305,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    83.5\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 450,
+        "n_accepted": 183,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 259,
+        "n_rejected_bad_non_ortho": 8,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 167,
+          "30_60": 12,
+          "60_70": 10,
+          "70_80": 39,
+          "80_90": 222,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 17,
+          "75_80": 22,
+          "80_85": 70,
+          "85_90": 152,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 285,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 165,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 450,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 0,
+          "0p1_0p3": 64,
+          "0p01_0p1": 350,
+          "lt_0p01": 36
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 127,
+          "0p01_0p05": 223,
+          "0p001_0p01": 36,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 424,
+          "shell_closure": 26,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.95363498333653,
+        "max_skew": 0.41639288767363514,
+        "min_q": 0.00680386502067923
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_101187.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101187",
+      "returncode": 0,
+      "elapsed_s": 35.603,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    86.2\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 661,
+        "n_accepted": 84,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 466,
+        "n_rejected_bad_non_ortho": 111,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 242,
+          "30_60": 13,
+          "60_70": 10,
+          "70_80": 27,
+          "80_90": 369,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 11,
+          "75_80": 16,
+          "80_85": 66,
+          "85_90": 303,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 422,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 239,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 661,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 0,
+          "0p1_0p3": 19,
+          "0p01_0p1": 636,
+          "lt_0p01": 6
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 176,
+          "0p01_0p05": 460,
+          "0p001_0p01": 5,
+          "lt_0p001": 1
+        },
+        "worst_q_kind_hist": {
+          "fan": 633,
+          "shell_closure": 28,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.88935673736319,
+        "max_skew": 0.45403484517937465,
+        "min_q": 0.0009309952517128216
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017013.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017013",
+      "returncode": 1,
+      "elapsed_s": 41.855,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.8\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 275,
+        "n_accepted": 243,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 28,
+        "n_rejected_bad_non_ortho": 4,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 153,
+          "30_60": 38,
+          "60_70": 31,
+          "70_80": 34,
+          "80_90": 19,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 19,
+          "75_80": 15,
+          "80_85": 12,
+          "85_90": 7,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 152,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 123,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 275,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 44,
+          "0p1_0p3": 168,
+          "0p01_0p1": 62,
+          "lt_0p01": 1
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 35,
+          "0p01_0p05": 27,
+          "0p001_0p01": 1,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 244,
+          "shell_closure": 31,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.55741945524524,
+        "max_skew": 0.4789970076676534,
+        "min_q": 0.007480417059731935
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017014.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017014",
+      "returncode": 1,
+      "elapsed_s": 36.815,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    88.2\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 261,
+        "n_accepted": 241,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 18,
+        "n_rejected_bad_non_ortho": 2,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 158,
+          "30_60": 55,
+          "60_70": 31,
+          "70_80": 11,
+          "80_90": 6,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 4,
+          "75_80": 7,
+          "80_85": 3,
+          "85_90": 3,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 139,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 122,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 261,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 80,
+          "0p1_0p3": 133,
+          "0p01_0p1": 48,
+          "lt_0p01": 0
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 30,
+          "0p01_0p05": 18,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 231,
+          "shell_closure": 30,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.12787830081594,
+        "max_skew": 0.4735185982595183,
+        "min_q": 0.012859038736263208
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017017.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017017",
+      "returncode": 1,
+      "elapsed_s": 98.281,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    90.0\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 286,
+        "n_accepted": 266,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 17,
+        "n_rejected_bad_non_ortho": 3,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 158,
+          "30_60": 38,
+          "60_70": 20,
+          "70_80": 45,
+          "80_90": 25,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 27,
+          "75_80": 18,
+          "80_85": 18,
+          "85_90": 7,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 169,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 117,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 284,
+          "1_2": 2,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 109,
+          "0p1_0p3": 146,
+          "0p01_0p1": 27,
+          "lt_0p01": 4
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 14,
+          "0p01_0p05": 13,
+          "0p001_0p01": 4,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 193,
+          "shell_closure": 93,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.59186983683063,
+        "max_skew": 1.3097857159063968,
+        "min_q": 0.0021026186152744053
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_102308.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_102308",
+      "returncode": 1,
+      "elapsed_s": 30.286,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.8\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 289,
+        "n_accepted": 256,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 24,
+        "n_rejected_bad_non_ortho": 9,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 142,
+          "30_60": 48,
+          "60_70": 40,
+          "70_80": 37,
+          "80_90": 22,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 24,
+          "75_80": 13,
+          "80_85": 9,
+          "85_90": 13,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 175,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 114,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 289,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 48,
+          "0p1_0p3": 174,
+          "0p01_0p1": 64,
+          "lt_0p01": 3
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 43,
+          "0p01_0p05": 21,
+          "0p001_0p01": 3,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 264,
+          "shell_closure": 25,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.25494801940515,
+        "max_skew": 0.8753082804940687,
+        "min_q": 0.0014922818957287176
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1037019.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1037019",
+      "returncode": 0,
+      "elapsed_s": 71.84,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 355,
+        "n_accepted": 325,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 18,
+        "n_rejected_bad_non_ortho": 12,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 248,
+          "30_60": 48,
+          "60_70": 17,
+          "70_80": 15,
+          "80_90": 27,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 8,
+          "75_80": 7,
+          "80_85": 12,
+          "85_90": 15,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 141,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 214,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 355,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 149,
+          "0p1_0p3": 158,
+          "0p01_0p1": 44,
+          "lt_0p01": 4
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 30,
+          "0p01_0p05": 14,
+          "0p001_0p01": 4,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 207,
+          "shell_closure": 148,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.66434067947871,
+        "max_skew": 0.5269987318008234,
+        "min_q": 0.0011148081266839922
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100027.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100027",
+      "returncode": 0,
+      "elapsed_s": 110.004,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "Max Non-Ortho                    82.6\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 273,
+        "n_accepted": 250,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 21,
+        "n_rejected_bad_non_ortho": 2,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 192,
+          "30_60": 26,
+          "60_70": 10,
+          "70_80": 28,
+          "80_90": 17,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 9,
+          "75_80": 19,
+          "80_85": 10,
+          "85_90": 7,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 98,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 175,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 273,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 54,
+          "0p1_0p3": 179,
+          "0p01_0p1": 35,
+          "lt_0p01": 5
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 19,
+          "0p01_0p05": 16,
+          "0p001_0p01": 5,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 229,
+          "shell_closure": 44,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.11615562061417,
+        "max_skew": 0.7108274442946568,
+        "min_q": 0.0010403295700590796
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100029.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100029",
+      "returncode": 1,
+      "elapsed_s": 113.301,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.6\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 247,
+        "n_accepted": 233,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 14,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 243,
+          "30_60": 1,
+          "60_70": 1,
+          "70_80": 1,
+          "80_90": 1,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 0,
+          "75_80": 1,
+          "80_85": 1,
+          "85_90": 0,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 4,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 243,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 247,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 11,
+          "0p1_0p3": 198,
+          "0p01_0p1": 35,
+          "lt_0p01": 3
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 24,
+          "0p01_0p05": 11,
+          "0p001_0p01": 3,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 200,
+          "shell_closure": 47,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 84.88797649904957,
+        "max_skew": 0.25443264899903695,
+        "min_q": 0.003775662040534229
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100030.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100030",
+      "returncode": 1,
+      "elapsed_s": 61.085,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    90.0\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 337,
+        "n_accepted": 312,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 18,
+        "n_rejected_bad_non_ortho": 7,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 214,
+          "30_60": 75,
+          "60_70": 13,
+          "70_80": 19,
+          "80_90": 16,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 11,
+          "75_80": 8,
+          "80_85": 6,
+          "85_90": 10,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 188,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 149,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 337,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 51,
+          "0p1_0p3": 236,
+          "0p01_0p1": 47,
+          "lt_0p01": 3
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 32,
+          "0p01_0p05": 15,
+          "0p001_0p01": 3,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 121,
+          "shell_closure": 216,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.02825091087117,
+        "max_skew": 0.6359700110035211,
+        "min_q": 0.0024289800006308624
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100040.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100040",
+      "returncode": 1,
+      "elapsed_s": 28.58,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    90.0\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 301,
+        "n_accepted": 279,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 20,
+        "n_rejected_bad_non_ortho": 2,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 170,
+          "30_60": 72,
+          "60_70": 36,
+          "70_80": 14,
+          "80_90": 9,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 13,
+          "75_80": 1,
+          "80_85": 5,
+          "85_90": 4,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 166,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 135,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 301,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 103,
+          "0p1_0p3": 155,
+          "0p01_0p1": 42,
+          "lt_0p01": 1
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 23,
+          "0p01_0p05": 19,
+          "0p001_0p01": 1,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 267,
+          "shell_closure": 34,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.31903647300548,
+        "max_skew": 0.5359770833623152,
+        "min_q": 0.005055778779361942
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_1004826.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_1004826",
+      "returncode": 1,
+      "elapsed_s": 107.462,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.4\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 266,
+        "n_accepted": 248,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 15,
+        "n_rejected_bad_non_ortho": 3,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 128,
+          "30_60": 38,
+          "60_70": 39,
+          "70_80": 39,
+          "80_90": 22,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 17,
+          "75_80": 22,
+          "80_85": 14,
+          "85_90": 8,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 158,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 108,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 266,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 103,
+          "0p1_0p3": 131,
+          "0p01_0p1": 32,
+          "lt_0p01": 0
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 17,
+          "0p01_0p05": 15,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 178,
+          "shell_closure": 88,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.96972793962802,
+        "max_skew": 0.6114125519461756,
+        "min_q": 0.01244729405893516
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100045.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100045",
+      "returncode": 0,
+      "elapsed_s": 202.696,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "Max Non-Ortho                    89.0\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 487,
+        "n_accepted": 456,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 22,
+        "n_rejected_bad_non_ortho": 9,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 277,
+          "30_60": 78,
+          "60_70": 56,
+          "70_80": 43,
+          "80_90": 33,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 22,
+          "75_80": 21,
+          "80_85": 23,
+          "85_90": 10,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 288,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 199,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 487,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 175,
+          "0p1_0p3": 249,
+          "0p01_0p1": 60,
+          "lt_0p01": 3
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 41,
+          "0p01_0p05": 19,
+          "0p001_0p01": 3,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 329,
+          "shell_closure": 158,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 88.6805892816492,
+        "max_skew": 0.4465373451555898,
+        "min_q": 0.0016948779530503294
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100077.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100077",
+      "returncode": 0,
+      "elapsed_s": 65.494,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 297,
+        "n_accepted": 292,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 5,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 208,
+          "30_60": 36,
+          "60_70": 17,
+          "70_80": 27,
+          "80_90": 9,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 18,
+          "75_80": 9,
+          "80_85": 9,
+          "85_90": 0,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 104,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 193,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 297,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 103,
+          "0p1_0p3": 173,
+          "0p01_0p1": 21,
+          "lt_0p01": 0
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 16,
+          "0p01_0p05": 5,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 129,
+          "shell_closure": 168,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 83.76149657882046,
+        "max_skew": 0.4423763965170805,
+        "min_q": 0.01730907022509579
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100322.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100322",
+      "returncode": 0,
+      "elapsed_s": 117.206,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 237,
+        "n_accepted": 217,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 17,
+        "n_rejected_bad_non_ortho": 3,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 160,
+          "30_60": 29,
+          "60_70": 16,
+          "70_80": 17,
+          "80_90": 15,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 9,
+          "75_80": 8,
+          "80_85": 8,
+          "85_90": 7,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 98,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 139,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 237,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 84,
+          "0p1_0p3": 112,
+          "0p01_0p1": 40,
+          "lt_0p01": 1
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 24,
+          "0p01_0p05": 16,
+          "0p001_0p01": 0,
+          "lt_0p001": 1
+        },
+        "worst_q_kind_hist": {
+          "fan": 151,
+          "shell_closure": 86,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.85396210570049,
+        "max_skew": 0.87958148664992,
+        "min_q": 0.00016815590998484704
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100323.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100323",
+      "returncode": 0,
+      "elapsed_s": 118.674,
+      "evaluator_verdict": "UNKNOWN",
+      "first_fail_metric": "Min Determinant                 0.0006       > 0.001  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 243,
+        "n_accepted": 227,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 15,
+        "n_rejected_bad_non_ortho": 1,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 161,
+          "30_60": 32,
+          "60_70": 21,
+          "70_80": 19,
+          "80_90": 10,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 12,
+          "75_80": 7,
+          "80_85": 4,
+          "85_90": 6,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 100,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 143,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 243,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 86,
+          "0p1_0p3": 120,
+          "0p01_0p1": 37,
+          "lt_0p01": 0
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 22,
+          "0p01_0p05": 15,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 145,
+          "shell_closure": 98,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.67622899238587,
+        "max_skew": 0.4893309265403297,
+        "min_q": 0.01056567175067628
+      },
+      "fastpath": null,
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100330.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100330",
+      "returncode": 1,
+      "elapsed_s": 137.01,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.7\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 246,
+        "n_accepted": 223,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 19,
+        "n_rejected_bad_non_ortho": 4,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 139,
+          "30_60": 40,
+          "60_70": 17,
+          "70_80": 24,
+          "80_90": 26,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 12,
+          "75_80": 12,
+          "80_85": 18,
+          "85_90": 8,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 118,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 128,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 246,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 79,
+          "0p1_0p3": 126,
+          "0p01_0p1": 32,
+          "lt_0p01": 9
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 22,
+          "0p01_0p05": 10,
+          "0p001_0p01": 8,
+          "lt_0p001": 1
+        },
+        "worst_q_kind_hist": {
+          "fan": 132,
+          "shell_closure": 114,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 89.92054684842374,
+        "max_skew": 0.8594563675020132,
+        "min_q": 0.0002564800997440028
       },
       "fastpath": null,
       "bl_path": "main"
