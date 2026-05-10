@@ -541,8 +541,13 @@ def test_native_bl_owner_centre_motion_one_tet_wall_fixture() -> None:
     wall_vert_indices = [0, 1, 2]
     cell_centres = points.mean(axis=0).reshape(1, 3)
     eligible = {0}
+    # Production fallback is ``-vnorm[v]`` (inward, toward the owner cell).
+    # The owner cell sits above the wall (z=0.25), so the inward direction is
+    # +z.  A sign-consistency guard skips replacements that would invert the
+    # prism stack, so the fallback has to point into the same half-space as
+    # the owner centre for the centre-pointing direction to be applied.
     fallback = {
-        v: np.array([0.0, 0.0, -1.0], dtype=np.float64)  # outward wall normal flipped
+        v: np.array([0.0, 0.0, 1.0], dtype=np.float64)
         for v in wall_vert_indices
     }
 

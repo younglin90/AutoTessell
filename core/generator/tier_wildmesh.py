@@ -817,8 +817,19 @@ def _replace_case_with_axis_candidate(candidate_case: Path, case_dir: Path) -> N
 
     for name in ("native_bl_quality.json",):
         src = candidate_case / name
+        dst = case_dir / name
         if src.exists():
-            shutil.copy2(src, case_dir / name)
+            try:
+                shutil.copy2(src, dst)
+            except Exception:
+                # Stale sidecar would describe the previous polyMesh — drop it
+                # rather than let consumers read mismatched diagnostics.
+                if dst.exists():
+                    try:
+                        dst.unlink()
+                    except Exception:
+                        pass
+                raise
 
 
 def _section_polygon_at_axis_fraction(

@@ -2284,6 +2284,7 @@ def _owner_centre_wall_motion(
         "n_moved": 0,
         "mean_motion": 0.0,
         "max_motion": 0.0,
+        "n_rejected_orientation": 0,
     }
     motion_dirs: dict[int, np.ndarray] = {
         v: np.asarray(fallback_dirs[v], dtype=np.float64).reshape(3)
@@ -2325,6 +2326,7 @@ def _owner_centre_wall_motion(
 
     n_eligible = 0
     n_moved = 0
+    n_rejected_orientation = 0
     delta_norms: list[float] = []
     for v_int, accum in centre_accum.items():
         cnt = centre_count.get(v_int, 0)
@@ -2340,10 +2342,16 @@ def _owner_centre_wall_motion(
         if not np.all(np.isfinite(new_dir)):
             continue
         fallback = motion_dirs[v_int]
+        # Reject directions that disagree with the fallback's half-space.
+        # For obtuse / sliver tets the centroid can lie close to the wall
+        # plane and the centre-to-point vector may be tangent or even point
+        # outward through the wall; keep the fallback in those cases.
+        if float(np.dot(new_dir, fallback)) <= 0.0:
+            n_rejected_orientation += 1
+            continue
         delta = float(np.linalg.norm(new_dir - fallback))
         if delta <= 1e-12:
-            # Direction effectively unchanged; skip recording as moved.
-            motion_dirs[v_int] = new_dir
+            # Direction effectively unchanged; do not perturb the fallback.
             continue
         motion_dirs[v_int] = new_dir
         n_moved += 1
@@ -2351,6 +2359,7 @@ def _owner_centre_wall_motion(
 
     diag["n_eligible"] = int(n_eligible)
     diag["n_moved"] = int(n_moved)
+    diag["n_rejected_orientation"] = int(n_rejected_orientation)
     if delta_norms:
         diag["mean_motion"] = float(np.mean(delta_norms))
         diag["max_motion"] = float(np.max(delta_norms))

@@ -752,24 +752,38 @@ class NativeMeshChecker:
             )
 
         volumes = np.zeros(n_cells, dtype=np.float64)
-        for face_i in range(len(faces)):
-            if face_i >= len(owner):
-                continue
-            own = int(owner[face_i])
-            if 0 <= own < n_cells:
-                pyr = (
-                    abs(float(np.dot(area_vecs[face_i], fc[face_i] - cell_centres[own])))
-                    / 3.0
-                )
-                volumes[own] += pyr
-            if face_i < n_internal:
-                nbr = int(neighbour[face_i])
-                if 0 <= nbr < n_cells:
-                    pyr = (
-                        abs(float(np.dot(area_vecs[face_i], fc[face_i] - cell_centres[nbr])))
-                        / 3.0
+        n_faces = len(faces)
+        own_arr = np.asarray(owner, dtype=np.int64)
+        n_owner_use = min(n_faces, own_arr.shape[0])
+        if n_owner_use > 0:
+            own_slice = own_arr[:n_owner_use]
+            valid_own = (own_slice >= 0) & (own_slice < n_cells)
+            if np.any(valid_own):
+                idx = np.nonzero(valid_own)[0]
+                own_idx = own_slice[idx]
+                pyr_own = np.abs(
+                    np.einsum(
+                        "ij,ij->i",
+                        area_vecs[idx],
+                        fc[idx] - cell_centres[own_idx],
                     )
-                    volumes[nbr] += pyr
+                ) / 3.0
+                np.add.at(volumes, own_idx, pyr_own)
+        n_int_use = min(n_internal, n_owner_use)
+        if n_int_use > 0:
+            nbr_arr = np.asarray(neighbour[:n_int_use], dtype=np.int64)
+            valid_nbr = (nbr_arr >= 0) & (nbr_arr < n_cells)
+            if np.any(valid_nbr):
+                idx_n = np.nonzero(valid_nbr)[0]
+                nbr_idx = nbr_arr[idx_n]
+                pyr_nbr = np.abs(
+                    np.einsum(
+                        "ij,ij->i",
+                        area_vecs[idx_n],
+                        fc[idx_n] - cell_centres[nbr_idx],
+                    )
+                ) / 3.0
+                np.add.at(volumes, nbr_idx, pyr_nbr)
 
         negative_count = 0
         return volumes, negative_count
