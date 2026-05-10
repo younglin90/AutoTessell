@@ -411,8 +411,15 @@ worth attempting on a given STL.
       for that vertex.  No sharp-corner detection — the next
       sub-step will split a vertex into per-face dup ids when
       adjacent prism cap normals diverge above a cos threshold.
-    * [ ] 9c-c-ii-b: sharp-corner duplication pass on top of the
-      smooth stitcher output.
+    * [x] 9c-c-ii-b: sharp-corner duplication pass
+      (`_split_cavity_inner_ids_at_sharp_corners`).  Computes per-
+      face cap normals from the BLR-9c-c-i ``inner_xyz`` triangles
+      and, for each shared wall vertex whose adjacent cap normals
+      have any pairwise ``cos < cos_thresh`` (default 0.9), splits
+      the smooth-stitcher inner id into per-face dup ids placed at
+      each face's own predicted inner position.  Same idea as the
+      VD refactor's per-face inner verts, applied per cavity
+      component.  No mesh mutation.
     * [ ] 9c-c-iii: transition cell synthesis between the prism
       caps and the component's external_internal shell.
 - [ ] BLR-9c-d: per-component validity gates (determinant, face

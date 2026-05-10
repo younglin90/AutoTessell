@@ -33,6 +33,7 @@ from core.layers.native_bl import (
     _detect_wall_owner_cavity_components,
     _extract_cavity_component_boundary,
     _owner_centre_wall_motion,
+    _split_cavity_inner_ids_at_sharp_corners,
     _stitch_cavity_prism_inner_ids_smooth,
     _tet_wall_cavity_eligibility,
     _tet_wall_cavity_replacement_probe,
@@ -1336,6 +1337,97 @@ def test_native_bl_stitch_cavity_prism_inner_ids_smooth_empty() -> None:
     out = _stitch_cavity_prism_inner_ids_smooth([])
     assert out["inner_points"].shape == (0, 3)
     assert out["vert_to_inner_id"] == {}
+    assert out["face_inner_ids"] == []
+
+
+def test_native_bl_split_cavity_inner_ids_at_sharp_corners_smooth_no_split() -> None:
+    """BLR-9c-c-ii-b — coplanar adjacent prism caps (cos = 1.0) → no
+    sharp verts → output identical to the smooth stitcher."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [1, 3, 2]]
+    motion_dirs = {
+        v: np.array([0.0, 0.0, 1.0], dtype=np.float64) for v in range(4)
+    }
+    triangles = _build_cavity_prism_inner_triangles(
+        [0, 1], points, faces, motion_dirs, first_thickness=0.05
+    )
+    smooth = _stitch_cavity_prism_inner_ids_smooth(triangles)
+
+    out = _split_cavity_inner_ids_at_sharp_corners(
+        triangles, smooth, cos_thresh=0.9
+    )
+    assert out["n_split"] == 0
+    assert out["sharp_verts"] == {}
+    np.testing.assert_array_equal(out["inner_points"], smooth["inner_points"])
+    assert out["face_inner_ids"] == smooth["face_inner_ids"]
+
+
+def test_native_bl_split_cavity_inner_ids_at_sharp_corners_perpendicular_caps() -> None:
+    """Two prism caps with perpendicular normals (cos = 0) at shared
+    edge → both shared verts split into per-face dup ids."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    # Build two prism cap triangles whose normals are perpendicular.
+    triangles = [
+        {
+            "face_id": 0,
+            "outer_verts": [0, 1, 2],
+            "inner_xyz": np.array(
+                [
+                    [0.0, 0.0, 0.05],
+                    [1.0, 0.0, 0.05],
+                    [0.0, 1.0, 0.05],
+                ],
+                dtype=np.float64,
+            ),
+            # Implied normal: (1,0,0)×(0,1,0) = (0,0,1) → +z.
+        },
+        {
+            "face_id": 1,
+            "outer_verts": [1, 3, 2],
+            "inner_xyz": np.array(
+                [
+                    [1.0, 0.0, 0.0],   # i for v=1
+                    [1.0, 1.0, 0.0],   # i for v=3
+                    [1.0, 0.0, 1.0],   # i for v=2
+                ],
+                dtype=np.float64,
+            ),
+            # Implied normal: (i1-i0)×(i2-i0) = (0,1,0)×(0,0,1) = (1,0,0)
+            # → +x, perpendicular to face 0's +z normal.
+        },
+    ]
+    smooth = _stitch_cavity_prism_inner_ids_smooth(triangles)
+
+    out = _split_cavity_inner_ids_at_sharp_corners(
+        triangles, smooth, cos_thresh=0.9
+    )
+    # Verts 1 and 2 are shared → both should split.
+    assert out["n_split"] == 2
+    assert set(out["sharp_verts"].keys()) == {1, 2}
+    # Each split adds 1 new inner id (first face keeps smooth id, second
+    # face gets a fresh dup id).  smooth had 4 inner ids → after split
+    # should have 4 + 2 = 6.
+    assert out["inner_points"].shape == (6, 3)
+    # Face 0 still uses smooth ids for verts 1, 2.
+    assert out["face_inner_ids"][0] == smooth["face_inner_ids"][0]
+    # Face 1 uses dup ids for shared verts 1 and 2.  Vertex 3 is not
+    # shared → keeps smooth id.
+    assert out["face_inner_ids"][1][0] != smooth["face_inner_ids"][1][0]
+    assert out["face_inner_ids"][1][2] != smooth["face_inner_ids"][1][2]
+    # Vertex 3 (face 1, position 1) was NOT shared → smooth id retained.
+    assert out["face_inner_ids"][1][1] == smooth["face_inner_ids"][1][1]
+
+
+def test_native_bl_split_cavity_inner_ids_at_sharp_corners_empty() -> None:
+    smooth = _stitch_cavity_prism_inner_ids_smooth([])
+    out = _split_cavity_inner_ids_at_sharp_corners([], smooth)
+    assert out["n_split"] == 0
+    assert out["sharp_verts"] == {}
+    assert out["inner_points"].shape == (0, 3)
     assert out["face_inner_ids"] == []
 
 

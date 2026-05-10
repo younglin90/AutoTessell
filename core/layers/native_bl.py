@@ -2999,6 +2999,143 @@ def _stitch_cavity_prism_inner_ids_smooth(
     }
 
 
+def _split_cavity_inner_ids_at_sharp_corners(
+    inner_triangles: list[dict[str, Any]],
+    smooth_stitch: dict[str, Any],
+    *,
+    cos_thresh: float = 0.9,
+) -> dict[str, Any]:
+    """BLR-9c-c-ii-b: split shared inner ids at sharp cavity corners.
+
+    Starts from the smooth stitcher output (every shared wall vertex
+    has one inner id) and, for each wall vertex shared by multiple
+    component wall faces, computes the pairwise cosine between
+    adjacent prism cap normals.  When any pair of cap normals has
+    ``cos < cos_thresh`` the vertex is "sharp" and each face gets its
+    own per-face inner id at that vertex (vertex duplication, the
+    same idea as the VD refactor applied per cavity component).
+
+    Cap normal = ``(i1-i0) × (i2-i0)`` from the face's predicted
+    inner triangle (BLR-9c-c-i ``inner_xyz``).
+
+    Returns:
+        - ``inner_points`` (N_inner_after_split, 3) — unique coords
+          (smooth stitcher's coords plus the duplicates at split
+          vertices).
+        - ``face_inner_ids`` aligned with ``inner_triangles``: each
+          ``[i0, i1, i2]``; smooth verts share ids, sharp verts have
+          per-face ids.
+        - ``sharp_verts``: ``dict[int, list[int]]`` mapping each
+          split wall vertex to the list of its per-face inner ids
+          (in the same order as the face list at that vertex).
+        - ``n_split``: number of wall vertices that got duplicated.
+    """
+    smooth_points = np.asarray(
+        smooth_stitch.get("inner_points", np.zeros((0, 3))),
+        dtype=np.float64,
+    )
+    vert_to_inner_id: dict[int, int] = dict(
+        smooth_stitch.get("vert_to_inner_id", {})
+    )
+    smooth_face_inner_ids: list[list[int]] = [
+        list(x) for x in smooth_stitch.get("face_inner_ids", [])
+    ]
+
+    if not inner_triangles or len(inner_triangles) != len(smooth_face_inner_ids):
+        return {
+            "inner_points": smooth_points.copy(),
+            "face_inner_ids": [list(x) for x in smooth_face_inner_ids],
+            "sharp_verts": {},
+            "n_split": 0,
+        }
+
+    # Per-face cap normal.
+    face_normals: list[np.ndarray] = []
+    for entry in inner_triangles:
+        inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+        if inner_xyz.shape != (3, 3):
+            face_normals.append(np.zeros(3, dtype=np.float64))
+            continue
+        n_raw = np.cross(
+            inner_xyz[1] - inner_xyz[0], inner_xyz[2] - inner_xyz[0]
+        )
+        m = float(np.linalg.norm(n_raw))
+        face_normals.append(
+            n_raw / m if m > 1e-30 else np.zeros(3, dtype=np.float64)
+        )
+
+    # Per-vertex face list (smooth stitcher already aggregated; recompute
+    # in face order so we can emit per-face dup ids deterministically).
+    vert_to_faces: dict[int, list[int]] = {}
+    for fi_idx, entry in enumerate(inner_triangles):
+        for v in entry["outer_verts"]:
+            vert_to_faces.setdefault(int(v), []).append(fi_idx)
+
+    extra_points: list[np.ndarray] = []
+    next_inner_id = int(smooth_points.shape[0])
+    sharp_verts: dict[int, list[int]] = {}
+    n_split = 0
+    # Make a working copy of face inner ids that we will rewrite at
+    # sharp verts.
+    face_inner_ids: list[list[int]] = [list(x) for x in smooth_face_inner_ids]
+
+    for v, f_idx_list in vert_to_faces.items():
+        if len(f_idx_list) < 2:
+            continue
+        # Pairwise cosine min.
+        normals = [face_normals[fi] for fi in f_idx_list]
+        is_sharp = False
+        for i in range(len(normals)):
+            for j in range(i + 1, len(normals)):
+                if float(np.dot(normals[i], normals[j])) < cos_thresh:
+                    is_sharp = True
+                    break
+            if is_sharp:
+                break
+        if not is_sharp:
+            continue
+
+        # Sharp vertex — emit per-face dup ids.  Keep the smooth id
+        # for the FIRST face so we don't churn smooth ids unnecessarily;
+        # mint new ids for the remaining faces.
+        per_face_ids: list[int] = []
+        for offset, fi_idx in enumerate(f_idx_list):
+            entry = inner_triangles[fi_idx]
+            outer = entry["outer_verts"]
+            inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+            try:
+                k = outer.index(v)
+            except ValueError:
+                continue
+            if offset == 0:
+                # First face keeps the smooth shared id at this vert.
+                per_face_ids.append(face_inner_ids[fi_idx][k])
+                continue
+            # Subsequent faces get a fresh dup id placed at this face's
+            # own predicted inner position for vertex v.
+            extra_points.append(inner_xyz[k].copy())
+            new_id = next_inner_id
+            next_inner_id += 1
+            face_inner_ids[fi_idx][k] = new_id
+            per_face_ids.append(new_id)
+        sharp_verts[v] = per_face_ids
+        n_split += 1
+
+    if extra_points:
+        inner_points_out = np.concatenate(
+            [smooth_points, np.stack(extra_points, axis=0)], axis=0
+        )
+    else:
+        inner_points_out = smooth_points.copy()
+
+    return {
+        "inner_points": inner_points_out,
+        "face_inner_ids": face_inner_ids,
+        "sharp_verts": sharp_verts,
+        "n_split": int(n_split),
+    }
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],
