@@ -3250,7 +3250,26 @@ def _check_cavity_shell_coverage(
     if not shell_face_ids:
         return {"n_shell_faces": 0, "n_covered": 0, "uncovered": []}
 
-    # Build the set of all face vertex tuples produced by fan tets.
+    # Two coverage representations live on the input ``fan_tets`` list:
+    #
+    # - Inner-id space (BLR-9c-c-iii-b fan tets): ``tet_verts`` indexes
+    #   the BLR-9c-c-i / 9c-c-ii inner-points array, so the four
+    #   triangle face vertex sets are inner ids.  These never match a
+    #   polyMesh shell face by construction — the early sub-step
+    #   recorded that gap and BLR-9c-d-h-1 closes it via closure tets.
+    # - PolyMesh-id space (BLR-9c-d-h-1 closure tets): each closure tet
+    #   carries an ``outer_verts`` field listing the polyMesh face
+    #   vertices it was built from.  When sorted, that key matches the
+    #   shell face directly.  Polygon shell faces (quads, etc.) are
+    #   covered iff *any* closure tet has ``outer_verts`` whose vertex
+    #   set equals the shell face's.
+    outer_keys: set[tuple[int, ...]] = set()
+    for tet in fan_tets:
+        outer = tet.get("outer_verts")
+        if outer is None:
+            continue
+        outer_keys.add(tuple(sorted(int(v) for v in outer)))
+
     tet_face_keys: set[tuple[int, int, int]] = set()
     for tet in fan_tets:
         verts = list(tet.get("tet_verts", []))
@@ -3267,14 +3286,20 @@ def _check_cavity_shell_coverage(
             uncovered.append(int(fi))
             continue
         f = faces[fi]
-        if len(f) != 3:
+        if len(f) < 3:
             uncovered.append(int(fi))
             continue
         key = tuple(sorted(int(v) for v in f))
-        if key in tet_face_keys:
+        if key in outer_keys:
             n_covered += 1
-        else:
-            uncovered.append(int(fi))
+            continue
+        # Legacy inner-id match (kept for the BLR-9c-c-iii-c unit
+        # tests that synthesise tri shell faces directly from
+        # placeholder tet vertex ids).
+        if len(f) == 3 and key in tet_face_keys:
+            n_covered += 1
+            continue
+        uncovered.append(int(fi))
 
     return {
         "n_shell_faces": int(len(shell_face_ids)),
@@ -3640,38 +3665,45 @@ def _build_cavity_shell_closure_tets(
         if ifid < 0 or ifid >= len(faces):
             continue
         verts = list(faces[ifid])
-        if len(verts) != 3:
-            # Non-tri shell face — closure-tet schema only handles
-            # triangles; skip and let BLR-9c-d-h pick up polygons in
-            # a follow-on sub-step.
+        if len(verts) < 3:
             continue
-        idx_triple: list[int] = []
         # Validate every vertex first; only mutate the dedup map and
         # the extended points buffer once we know the face is good.
+        valid_iv: list[int] = []
+        ok = True
         for v in verts:
             iv = int(v)
             if iv < 0 or iv >= pts.shape[0]:
-                idx_triple = []
+                ok = False
                 break
-            idx_triple.append(iv)
-        if len(idx_triple) != 3:
+            valid_iv.append(iv)
+        if not ok:
             continue
         # Commit: append any unseen polyMesh vertex to the inner-point
-        # buffer and rewrite ``idx_triple`` as inner-point ids.
+        # buffer.  Fan-triangulate the n-gon from verts[0]:
+        #   tris = [(0, i, i+1) for i in 1..n-2]
+        # giving (n - 2) closure tets per shell face.  Tris (n=3),
+        # quads (n=4) and any larger polygon are all handled
+        # uniformly.
         inner_ids: list[int] = []
-        for iv in idx_triple:
+        for iv in valid_iv:
             if iv not in vertex_to_inner:
                 vertex_to_inner[iv] = next_id
                 extended.append(pts[iv].tolist())
                 next_id += 1
             inner_ids.append(vertex_to_inner[iv])
-        idx_triple = inner_ids
-        closure_tets.append({
-            "face_id": ifid,
-            "outer_verts": verts,
-            "tet_verts": [-1, idx_triple[0], idx_triple[1], idx_triple[2]],
-            "kind": "shell_closure",
-        })
+        for i in range(1, len(inner_ids) - 1):
+            j0 = inner_ids[0]
+            j1 = inner_ids[i]
+            j2 = inner_ids[i + 1]
+            closure_tets.append({
+                "face_id": ifid,
+                "outer_verts": list(verts),
+                "tet_verts": [-1, j0, j1, j2],
+                "kind": "shell_closure",
+                "fan_tri": int(i - 1),     # 0..n-3
+                "n_face_verts": int(len(verts)),
+            })
 
     out["extended_inner_points"] = np.asarray(extended, dtype=np.float64)
     out["n_appended_points"] = int(out["extended_inner_points"].shape[0] - inner.shape[0])
@@ -3963,6 +3995,7 @@ def _evaluate_cavity_component_candidates(
     - BLR-9c-d-d-1  ``_check_cavity_fan_tet_shape_quality``
     - BLR-9c-d-e-1  ``_check_cavity_fan_tet_pair_non_ortho``
     - BLR-9c-d-f-1  ``_check_cavity_fan_tet_pair_skewness``
+    - BLR-9c-d-h-1  ``_build_cavity_shell_closure_tets``
 
     Each component records its sizing (cells / wall / shell / internal),
     inner-point count after sharp-corner duplication, sharp vertex
@@ -4049,24 +4082,47 @@ def _evaluate_cavity_component_candidates(
             comp_set, faces, pts, owner, neighbour
         )
         fan_tets = _build_cavity_fan_transition_tets(triangles, split)
-        coverage = _check_cavity_shell_coverage(boundary, fan_tets, faces)
+        # Initial shell-coverage check on fan tets only — gives us the
+        # ``uncovered`` external_internal face list that BLR-9c-d-h-1
+        # then closes by emitting one extra transition tet per face.
+        pre_closure_coverage = _check_cavity_shell_coverage(
+            boundary, fan_tets, faces
+        )
+        closure = _build_cavity_shell_closure_tets(
+            uncovered_face_ids=pre_closure_coverage.get("uncovered", []),
+            boundary=boundary,
+            faces=faces,
+            points=pts,
+            inner_points=split["inner_points"],
+        )
+        closure_tets = closure["shell_closure_tets"]
+        extended_inner = closure["extended_inner_points"]
+        all_tets = list(fan_tets) + list(closure_tets)
+        # Re-run shell coverage on the combined list.  When every
+        # uncovered triangle was successfully closed, ``n_uncovered``
+        # drops to 0 and the component falls through to the quality
+        # gates below.  Polygon shell faces that BLR-9c-d-h-1 skipped
+        # remain uncovered and still trigger ``reject_uncovered_shell``.
+        coverage = _check_cavity_shell_coverage(
+            boundary, all_tets, faces
+        )
         n_uncovered = int(len(coverage.get("uncovered", [])))
         det_check = _check_cavity_fan_tet_determinants(
-            fan_tets, apex_xyz, split["inner_points"]
+            all_tets, apex_xyz, extended_inner
         )
         n_fan_bad_det = int(len(det_check.get("bad_indices", [])))
         shape_check = _check_cavity_fan_tet_shape_quality(
-            fan_tets, apex_xyz, split["inner_points"]
+            all_tets, apex_xyz, extended_inner
         )
         n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
         non_ortho_check = _check_cavity_fan_tet_pair_non_ortho(
-            fan_tets, apex_xyz, split["inner_points"]
+            all_tets, apex_xyz, extended_inner
         )
         n_fan_bad_non_ortho = int(
             len(non_ortho_check.get("bad_pair_indices", []))
         )
         skew_check = _check_cavity_fan_tet_pair_skewness(
-            fan_tets, apex_xyz, split["inner_points"]
+            all_tets, apex_xyz, extended_inner
         )
         n_fan_bad_skew = int(
             len(skew_check.get("bad_pair_indices", []))
@@ -4095,6 +4151,11 @@ def _evaluate_cavity_component_candidates(
             "n_inner_points": int(split["inner_points"].shape[0]),
             "n_sharp_verts": int(split.get("n_split", 0)),
             "n_fan_tets": int(len(fan_tets)),
+            "n_closure_tets": int(len(closure_tets)),
+            "n_total_tets": int(len(all_tets)),
+            "n_shell_uncovered_pre_closure": int(
+                len(pre_closure_coverage.get("uncovered", []))
+            ),
             "n_shell_uncovered": n_uncovered,
             "n_fan_pos_det": int(det_check.get("n_pos_det", 0)),
             "n_fan_neg_det": int(det_check.get("n_neg_det", 0)),

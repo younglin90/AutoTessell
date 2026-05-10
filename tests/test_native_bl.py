@@ -1746,14 +1746,25 @@ def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() ->
     # BLR-9c-d-f-2 — skewness fields populated and consistent with `accept`.
     assert rec["n_fan_pair_bad_skewness"] == 0
     assert rec["fan_pair_max_skew"] >= 0.0
+    # BLR-9c-d-h-2 — closure-tet fields populated.  The isolated-tet
+    # fixture has no ``external_internal`` shell face so no closure
+    # tets are emitted; ``n_total_tets == n_fan_tets``.
+    assert rec["n_closure_tets"] == 0
+    assert rec["n_total_tets"] == rec["n_fan_tets"]
+    assert rec["n_shell_uncovered_pre_closure"] == 0
 
 
-def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:
-    """BLR-9c-d — wall-owner tet whose neighbour cell is non-wall
-    (external_internal shell present) is reported as
-    ``reject_uncovered_shell``: current fan tets have apex placeholder ``-1``
-    so vertex-set coverage of the external shell faces fails by
-    construction."""
+def test_native_bl_evaluate_cavity_component_candidates_external_shell_closed_by_h1() -> None:
+    """BLR-9c-d — wall-owner cell whose neighbour cell is non-wall
+    used to be reported as ``reject_uncovered_shell``; the BLR-9c-d-h-1
+    closure helper now emits one transition tet per uncovered shell
+    face and shell coverage drops to zero, so the component falls
+    through the rest of the gates and (for this benign fixture) ends
+    up ``accept``.  This test pins the closure end-to-end:
+
+      pre_closure shell_uncovered > 0  →  closure_tets emitted
+      → post_closure shell_uncovered == 0  →  decision != reject_uncovered_shell
+    """
     points = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -1788,13 +1799,14 @@ def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects()
     )
     assert out["n_components"] == 1
     rec = out["components"][0]
-    # Cell 0 has wall faces [0,1,2] and a non-wall neighbour cell 1 via
-    # face 3 → external_internal shell present → uncovered → reject.
     assert rec["n_shell_faces"] >= 1
-    assert rec["n_shell_uncovered"] >= 1
-    assert rec["decision"] == "reject_uncovered_shell"
-    assert out["n_rejected_uncovered_shell"] == 1
-    assert out["n_accepted"] == 0
+    # Pre-closure the fan structure leaves the shell open; closure
+    # tets close it.
+    assert rec["n_shell_uncovered_pre_closure"] >= 1
+    assert rec["n_closure_tets"] >= 1
+    assert rec["n_shell_uncovered"] == 0
+    assert rec["decision"] != "reject_uncovered_shell"
+    assert out["n_rejected_uncovered_shell"] == 0
 
 
 def test_native_bl_evaluate_cavity_component_candidates_reject_bad_det() -> None:

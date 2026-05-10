@@ -568,13 +568,36 @@ worth attempting on a given STL.
   BLR-9c-c-iii-b fan tets so the BLR-9c-d-b/d/e/f gates can be
   reused on the combined fan + closure list without any change.
   Pure helper; aggregator wire-in deferred to BLR-9c-d (h-2).
-- [ ] BLR-9c-d (h-2): aggregator integration — combine the new
-  shell-closure tets with the existing fan-tet list before the
-  shell-coverage / det / shape / non-ortho / skewness gates so the
-  gate counters reflect the closed cavity.  After this the
-  ``test_cube`` / ``easy_100034`` smoke run should re-classify the
-  651 / 210 ``reject_uncovered_shell`` components into the
-  remaining gates (or accept).
+- [x] BLR-9c-d (h-2): aggregator integration of the closure tets
+  plus polyMesh-space coverage match.  ``_check_cavity_shell_coverage``
+  now treats any tet that carries an ``outer_verts`` field as
+  covering the polyMesh-space shell face whose vertex set equals
+  ``outer_verts``; the BLR-9c-d-h-1 closure helper is invoked
+  inside ``_evaluate_cavity_component_candidates`` and the combined
+  ``fan + closure`` list flows into the det / shape / non-ortho /
+  skewness gates against the *extended* inner-points array.  The
+  closure helper now also fan-triangulates polygon shell faces
+  (quads, n-gons) so non-tri shells are no longer skipped.  Per-
+  component record gains ``n_closure_tets`` / ``n_total_tets`` /
+  ``n_shell_uncovered_pre_closure``.  **Smoke result (2 STLs)**:
+
+  ::
+
+      before:  861 components, 0 accept, 861 shell-uncovered
+      after:   861 components, 96 accept, 0 shell-uncovered,
+               761 bad_det, 4 bad_non_ortho.
+
+  shell-coverage rejection eliminated; the next bottleneck is
+  ``reject_bad_det`` (sign-flipped or degenerate fan tets).
+
+### BLR-9c-d (i) — sign-flip recovery for fan + closure tets
+
+- [ ] BLR-9c-d (i-1): per-tet orientation guard — when the
+  signed-volume sign of a fan tet disagrees with the majority
+  sign of the rest of the component, swap the last two
+  ``tet_verts`` entries before the determinant gate runs.  This
+  removes ``reject_bad_det`` cases driven purely by inconsistent
+  triangle winding.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
