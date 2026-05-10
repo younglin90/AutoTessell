@@ -2780,6 +2780,80 @@ def _detect_wall_owner_cavity_components(
     return [groups[r] for r in sorted(groups.keys())]
 
 
+def _extract_cavity_component_boundary(
+    component: set[int] | frozenset[int] | list[int] | tuple[int, ...],
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+) -> dict[str, list[int]]:
+    """BLR-9c-b: face-level boundary structure of a cavity component.
+
+    A cavity component (output of :func:`_detect_wall_owner_cavity_components`)
+    is a set of wall-owner cells.  When BLR-9c rewrites the component
+    we need to know which faces:
+
+    - ``wall_faces``: are wall (boundary) faces of cells inside the
+      component.  These are the BL prism's outer/bottom faces and
+      survive the rewrite (their winding becomes the new prism's
+      bottom).
+    - ``external_internal_faces``: are internal faces with one cell
+      inside the component and the other cell OUTSIDE.  After the
+      component's cells are deleted, these face surfaces define the
+      cavity's outer (bulk-facing) shell — the closed surface BLR-9c
+      must respect when generating refill cells.
+    - ``internal_faces``: are internal faces with BOTH cells in the
+      component.  They vanish when the cavity is rewritten.
+
+    The function performs only owner/neighbour table lookups; it does
+    not mutate the polyMesh or inspect ``points`` / ``faces``.
+    """
+    comp_set = {int(c) for c in component}
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+
+    wall_face_id_set = {int(fi) for fi in wall_face_indices}
+
+    wall_faces: list[int] = []
+    external_internal_faces: list[int] = []
+    internal_faces: list[int] = []
+
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    n_total = int(owner_arr.size)
+
+    for fi in range(n_total):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi]) if fi < n_internal else -1
+
+        own_in = own in comp_set
+        nbr_in = (nbr >= 0) and (nbr in comp_set)
+
+        if not own_in and not nbr_in:
+            continue
+
+        if nbr < 0:
+            # Boundary face. Wall face only if listed in wall_face_indices.
+            if fi in wall_face_id_set:
+                wall_faces.append(int(fi))
+            else:
+                # Non-wall boundary face owned by a component cell — the
+                # rewrite still has to account for it; classify with the
+                # external-internal pile so callers don't lose track.
+                external_internal_faces.append(int(fi))
+            continue
+
+        if own_in and nbr_in:
+            internal_faces.append(int(fi))
+        else:
+            # Internal face crossing the component boundary.
+            external_internal_faces.append(int(fi))
+
+    return {
+        "wall_faces": wall_faces,
+        "external_internal_faces": external_internal_faces,
+        "internal_faces": internal_faces,
+    }
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

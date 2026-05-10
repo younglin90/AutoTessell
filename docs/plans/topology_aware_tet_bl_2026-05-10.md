@@ -386,10 +386,18 @@ worth attempting on a given STL.
   via the BLR-9b-iii guard, and are exactly the cavities BLR-9c
   needs to refill.  No mesh mutation; pure structural
   classification on owner/neighbour/wall_face_indices.
-- [ ] BLR-9c-b: per-component cavity boundary extraction — for
-  each cavity component, list the boundary faces visible to
-  surrounding (non-wall) cells.  These define the closed surface
-  the multi-cell refill must respect.
+- [x] BLR-9c-b: per-component boundary extractor
+  (`_extract_cavity_component_boundary`).  Returns three face
+  lists for a given cavity component:
+    * ``wall_faces``: boundary wall faces — survive the rewrite as
+      the new prism's bottom faces.
+    * ``external_internal_faces``: internal faces crossing the
+      component boundary AND non-wall boundary faces of component
+      cells.  Together they form the closed surface the BLR-9c
+      refill must reproduce after the wall-owner cells are
+      deleted.
+    * ``internal_faces``: faces fully internal to the component;
+      vanish on rewrite.  No mesh mutation.
 - [ ] BLR-9c-c: per-component refill candidate generator (prism
   stacks plus transition cells filling between the prism caps and
   the cavity's outer boundary).

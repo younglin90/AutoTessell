@@ -30,6 +30,7 @@ from core.layers.native_bl import (
     _apply_tet_cavity_replacement_plan,
     _build_tet_cavity_replacement_plan,
     _detect_wall_owner_cavity_components,
+    _extract_cavity_component_boundary,
     _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
     _tet_wall_cavity_replacement_probe,
@@ -1081,6 +1082,65 @@ def test_native_bl_detect_wall_owner_cavity_components_excludes_non_wall_path() 
     assert len(comps) == 2
     assert {0} in comps
     assert {2} in comps
+
+
+def test_native_bl_extract_cavity_component_boundary_isolated_tet() -> None:
+    """BLR-9c-b — single wall-owner tet has 1 wall face + 3 outward
+    crossing faces (here all boundaries since the tet stands alone)."""
+    # cell 0 owns 4 faces: 1 wall (boundary), 3 non-wall boundaries.
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([-1, -1, -1, -1], dtype=np.int64)
+    wall_face_indices = [0]
+
+    out = _extract_cavity_component_boundary(
+        {0}, owner, neighbour, wall_face_indices
+    )
+    assert out["wall_faces"] == [0]
+    # The other 3 boundary faces are NOT wall — they go into the
+    # external-internal pile so the refill caller can decide what to
+    # do with them when the cell is removed.
+    assert sorted(out["external_internal_faces"]) == [1, 2, 3]
+    assert out["internal_faces"] == []
+
+
+def test_native_bl_extract_cavity_component_boundary_two_tets() -> None:
+    """Two-tet component: 1 internal face vanishes; 2 wall faces; the
+    rest are external boundaries."""
+    # Faces:
+    #   0 wall, owner=0
+    #   1 internal, owner=0 nbr=1
+    #   2 boundary, owner=0 (non-wall — external_internal)
+    #   3 wall, owner=1
+    #   4 boundary, owner=1 (non-wall — external_internal)
+    owner = np.array([0, 0, 0, 1, 1], dtype=np.int64)
+    neighbour = np.array([-1, 1, -1, -1, -1], dtype=np.int64)
+    wall_face_indices = [0, 3]
+
+    out = _extract_cavity_component_boundary(
+        {0, 1}, owner, neighbour, wall_face_indices
+    )
+    assert sorted(out["wall_faces"]) == [0, 3]
+    assert out["internal_faces"] == [1]
+    assert sorted(out["external_internal_faces"]) == [2, 4]
+
+
+def test_native_bl_extract_cavity_component_boundary_external_internal_face() -> None:
+    """Internal face whose owner is in the component but neighbour is
+    OUT of the component → external_internal."""
+    # Faces:
+    #   0 wall, owner=0  (boundary)
+    #   1 internal, owner=0 nbr=1  (1 is OUTSIDE the component)
+    owner = np.array([0, 0], dtype=np.int64)
+    neighbour = np.array([-1, 1], dtype=np.int64)
+    wall_face_indices = [0]
+
+    out = _extract_cavity_component_boundary(
+        {0}, owner, neighbour, wall_face_indices
+    )
+    assert out["wall_faces"] == [0]
+    assert out["internal_faces"] == []
+    # Face 1 crosses the component boundary → external_internal.
+    assert out["external_internal_faces"] == [1]
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
