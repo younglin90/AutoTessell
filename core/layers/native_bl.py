@@ -6776,10 +6776,19 @@ def generate_native_bl(
                             1.0,
                         )
                         _global_ratio = float(_ratios.min())
-                        # Floor to a safety-conservative value; below
-                        # 0.05 the BL is so thin the user's y+ target
-                        # is meaningless anyway.
-                        _global_ratio = max(_global_ratio, 0.05)
+                        # Floor configurable via env; default 0.05.
+                        # Lower floors produce thinner BL but may
+                        # preserve quad-side planarity in tighter
+                        # corners.
+                        _global_floor = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_ANTI_INVERT_FLOOR",
+                                "0.05",
+                            )
+                        )
+                        _global_ratio = max(
+                            _global_ratio, _global_floor,
+                        )
                         anti_invert_scale_per_v = np.full_like(
                             _mag, _global_ratio
                         )
