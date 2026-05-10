@@ -80,6 +80,14 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     ]
     env = os.environ.copy()
     env["AUTO_TESSELL_BL_TET_CAVITY_EVAL"] = "1"
+    # BLR-9c-d-g-3 — disable wildmesh tier fastpaths (structured box
+    # / axis extrusion) so every STL routes through the main
+    # native_bl pass.  Without this, geometries that look like a
+    # constant-cross-section sweep emit a structured polyMesh with
+    # its own ``native_bl_quality.json`` that bypasses the cavity
+    # eval helpers entirely (see tier_wildmesh.py:1828, 1852).
+    env["AUTO_TESSELL_WILDMESH_BOX_FASTPATH"] = "0"
+    env["AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH"] = "0"
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
     env.setdefault("AUTO_TESSELL_LCR_OFF", "1")
@@ -102,16 +110,32 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         row["timeout"] = True
     row["elapsed_s"] = round(time.perf_counter() - start, 3)
 
-    # Read native_bl_quality.json and extract tet_cavity_eval.
+    # Read native_bl_quality.json and extract tet_cavity_eval +
+    # fastpath bypass markers.
     bl_qual_path = case_dir / "native_bl_quality.json"
     eval_block: dict[str, Any] = {}
+    fastpath_block: dict[str, Any] | None = None
     if bl_qual_path.exists():
         try:
             data = json.loads(bl_qual_path.read_text())
             eval_block = dict(data.get("tet_cavity_eval", {}))
+            fastpath_block = data.get("fastpath")
         except Exception as exc:  # noqa: BLE001
             eval_block = {"read_error": str(exc)[:160]}
     row["tet_cavity_eval"] = eval_block
+    row["fastpath"] = fastpath_block
+    if eval_block:
+        row["bl_path"] = (
+            "vd" if eval_block.get("writer_path") == "vd" else "main"
+        )
+    elif fastpath_block:
+        row["bl_path"] = (
+            f"fastpath:{fastpath_block.get('kind', 'unknown')}"
+        )
+    elif bl_qual_path.exists():
+        row["bl_path"] = "main_no_eval_block"
+    else:
+        row["bl_path"] = "missing_quality_json"
     return row
 
 
@@ -168,7 +192,10 @@ def main() -> int:
             f"nort={ev.get('n_rejected_bad_non_ortho', 0)} "
             f"skew={ev.get('n_rejected_bad_skewness', 0)}"
         )
-        print(f"        rc={row['returncode']} t={row['elapsed_s']}s {decision_str}")
+        print(
+            f"        rc={row['returncode']} t={row['elapsed_s']}s "
+            f"path={row.get('bl_path', '?')} {decision_str}"
+        )
 
     out_dir = ROOT / "tests" / "stl"
     json_path = out_dir / "bench_cavity_eval_result.json"
@@ -177,7 +204,7 @@ def main() -> int:
     ))
     tsv_path = out_dir / "bench_cavity_eval_summary.tsv"
     cols = [
-        "stl", "returncode", "elapsed_s",
+        "stl", "returncode", "elapsed_s", "bl_path",
         "n_components", "n_accepted",
         "n_rejected_uncovered_shell", "n_rejected_bad_det",
         "n_rejected_bad_shape", "n_rejected_bad_non_ortho",
@@ -190,6 +217,7 @@ def main() -> int:
             str(r.get("stl", "")),
             str(r.get("returncode", "")),
             str(r.get("elapsed_s", "")),
+            str(r.get("bl_path", "?")),
             str(ev.get("n_components", 0)),
             str(ev.get("n_accepted", 0)),
             str(ev.get("n_rejected_uncovered_shell", 0)),

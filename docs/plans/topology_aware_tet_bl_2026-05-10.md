@@ -541,11 +541,32 @@ worth attempting on a given STL.
   fastpath (line 367 / 1443 in ``tier_wildmesh.py``); for those
   cases there is no wall-owner cavity to fill, so a missing /
   empty eval block is the correct verdict.
-- [ ] BLR-9c-d (g-3): bench-script extension that also captures
-  fastpath-bypass cases (read ``fastpath`` field from the wildmesh
-  JSON when ``tet_cavity_eval`` is absent) plus an env hook to
-  force all 21 STLs through the main native_bl path so the eval
-  battery is exercised on every case.
+- [x] BLR-9c-d (g-3): bench-script extension forces every STL
+  through the main native_bl path (sets
+  ``AUTO_TESSELL_WILDMESH_BOX_FASTPATH=0`` +
+  ``AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH=0``), classifies each
+  case as ``main`` / ``vd`` / ``fastpath:<kind>`` /
+  ``main_no_eval_block`` / ``missing_quality_json``, and writes
+  ``bl_path`` to JSON + TSV.  **Smoke result (2 STLs)**:
+  ``test_cube.stl`` 651 wall-owner cavity components, **every one
+  reject_uncovered_shell**; ``easy_100034.stl`` 210 components,
+  same.  This empirically confirms the BLR-9c-c-iii-c limitation
+  (single-apex fan cannot cover the ``external_internal`` shell
+  faces left behind when a wall-owner cell has non-wall neighbours
+  through internal faces) on production geometries.  Next step is
+  BLR-9c-d-h to extend the fan structure to cover those shell
+  faces.
+
+### BLR-9c-d (h) — close the external_internal shell
+
+- [ ] BLR-9c-d (h-1): helper that, given the BLR-9c-c-iii-c
+  ``uncovered`` shell-face list and the BLR-9c-c-iii-a apex,
+  emits one extra transition tet per uncovered face by reusing
+  the apex and the 3 vertices of the shell face.  Pure helper.
+- [ ] BLR-9c-d (h-2): aggregator integration — combine the new
+  shell-closure tets with the existing fan-tet list before the
+  shell-coverage / det / shape / non-ortho / skewness gates so
+  the gate counters reflect the closed cavity.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
