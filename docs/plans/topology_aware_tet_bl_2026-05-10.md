@@ -485,10 +485,16 @@ worth attempting on a given STL.
   ``angles_deg``, ``max_angle_deg``, ``n_above_threshold``,
   ``bad_pair_indices``.  Default threshold 70°.  Pure helper;
   aggregator wire-in deferred to BLR-9c-d (e-2).
-- [ ] BLR-9c-d (e-2): wire ``_check_cavity_fan_tet_pair_non_ortho``
-  into ``_evaluate_cavity_component_candidates`` with a new
-  ``reject_bad_non_ortho`` decision label and
-  ``n_rejected_bad_non_ortho`` summary field.
+- [x] BLR-9c-d (e-2): aggregator wire-in for the non-orthogonality
+  gate.  ``_evaluate_cavity_component_candidates`` now invokes
+  ``_check_cavity_fan_tet_pair_non_ortho`` after the shape gate;
+  a component with non-empty ``bad_pair_indices`` is reported as
+  ``reject_bad_non_ortho``.  Decision precedence: shell coverage
+  > determinant > shape > non-ortho > accept.  Each component
+  record gains ``n_fan_pair_count``,
+  ``n_fan_pair_above_non_ortho``, ``fan_pair_max_non_ortho_deg``,
+  ``fan_pair_mean_non_ortho_deg``, ``n_fan_pair_bad_non_ortho``;
+  the summary gains ``n_rejected_bad_non_ortho``.
 - [ ] BLR-9c-d (f): face weight (skewness) gate, completing the
   per-component validity battery; then bench acceptance.
 

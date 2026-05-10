@@ -1734,6 +1734,13 @@ def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() ->
     assert rec["n_fan_bad_shape_indices"] == 0
     assert rec["fan_q_min"] > 0.0
     assert rec["fan_q_mean"] > 0.0
+    # BLR-9c-d-e-2 — non-ortho fields populated. The default
+    # ``sharp_cos_thresh = 0.9`` splits each tet vertex per-face,
+    # so the fan tets have no shared inner edges and the helper
+    # reports zero pairs — accepted as such.
+    assert "n_fan_pair_count" in rec
+    assert rec["n_fan_pair_bad_non_ortho"] == 0
+    assert rec["fan_pair_max_non_ortho_deg"] >= 0.0
 
 
 def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:
