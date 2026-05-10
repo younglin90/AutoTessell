@@ -137,6 +137,28 @@ def compute_anti_invert_caps(
     vert_cells = _build_vertex_cells(cell_verts)
     cell_faces = _build_cell_face_indices(faces, own, nbr, n_cells)
 
+    # Pre-compute per-cell opposite-face vertex tuples keyed by the
+    # *missing* vertex, so each (vertex, cell) lookup is O(1).
+    # cell_opposite[cid][v] = (i, j, k) such that cv[cid] - {v} = {i, j, k}.
+    cell_opposite: dict[int, dict[int, tuple[int, int, int]]] = {}
+    for cid in range(len(cell_verts)):
+        cv = cell_verts[cid]
+        if len(cv) != 4:
+            continue
+        # Iterate the cell's faces once and tag each by the missing
+        # cell vertex (the vertex of the cell *not* on this face).
+        cf_map: dict[int, tuple[int, int, int]] = {}
+        for fi in cell_faces[cid]:
+            f = faces[fi]
+            if len(f) != 3:
+                continue
+            f_tuple = (int(f[0]), int(f[1]), int(f[2]))
+            f_set = set(f_tuple)
+            missing = cv - f_set
+            if len(missing) == 1:
+                cf_map[next(iter(missing))] = f_tuple
+        cell_opposite[cid] = cf_map
+
     caps: dict[int, float] = {}
     for v in wall_vert_indices:
         v = int(v)
@@ -150,38 +172,29 @@ def compute_anti_invert_caps(
             caps[v] = float("inf")
             continue
         d_unit = d_arr / d_norm
+        v0 = pts[v]
 
         adjacent_cells = vert_cells.get(v, [])
         cap_v = float("inf")
         for cid in adjacent_cells:
-            cv = cell_verts[cid]
-            if v not in cv or len(cv) != 4:
-                continue   # non-tet or v not in cell
-            # Find the opposite face: the cell face whose vertex
-            # set does not include v.
-            opp_face_verts: list[int] | None = None
-            for fi in cell_faces[cid]:
-                f_set = set(int(x) for x in faces[fi])
-                if v not in f_set:
-                    opp_face_verts = list(faces[fi])
-                    break
-            if opp_face_verts is None or len(opp_face_verts) != 3:
+            cf_map = cell_opposite.get(cid)
+            if cf_map is None:
                 continue
-            v1 = pts[opp_face_verts[0]]
-            v2 = pts[opp_face_verts[1]]
-            v3 = pts[opp_face_verts[2]]
+            opp = cf_map.get(v)
+            if opp is None:
+                continue
+            v1 = pts[opp[0]]
+            v2 = pts[opp[1]]
+            v3 = pts[opp[2]]
             n_opp = np.cross(v2 - v1, v3 - v1)
-            v0 = pts[v]
             old_vol6 = float(np.dot(v0 - v1, n_opp))   # 6 × signed volume
             d_dot_n = float(np.dot(d_unit, n_opp))
             if d_dot_n >= 0.0:
-                # Extrusion increases (or doesn't change) volume.
                 continue
             if old_vol6 <= 0.0:
-                # Tet is already inverted/degenerate — can't help here.
                 cap_v = min(cap_v, 0.0)
                 continue
-            t_critical = -old_vol6 / d_dot_n   # > 0
+            t_critical = -old_vol6 / d_dot_n
             cap_v = min(cap_v, t_critical * float(safety_factor))
         caps[v] = cap_v if cap_v != float("inf") else float("inf")
     return caps
