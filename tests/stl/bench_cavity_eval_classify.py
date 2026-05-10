@@ -47,8 +47,18 @@ RUN_ROOT = Path(
 QUALITY = os.environ.get("AUTO_TESSELL_BENCH_CAVITY_QUALITY", "fine")
 
 
-def _classify(case: Path, max_skew: float) -> tuple[str, dict]:
-    if max_skew > 8.0:
+def _classify(
+    case: Path,
+    max_skew: float,
+    skew_cap: float,
+    neg_vol: int,
+) -> tuple[str, dict]:
+    if neg_vol > 0:
+        return "negative_volumes", {
+            "neg_vol": int(neg_vol),
+            "max_skew": round(max_skew, 2),
+        }
+    if max_skew > skew_cap:
         return "extreme_skew", {"max_skew": round(max_skew, 2)}
     poly = case / "constant" / "polyMesh"
     pts_text = (poly / "points").read_text()
@@ -127,6 +137,17 @@ def _classify(case: Path, max_skew: float) -> tuple[str, dict]:
 
 def main() -> int:
     thresholds = get_thresholds(QUALITY)
+    # Mirror the production evaluator's tet-tier bumps for
+    # draft/standard (core/evaluator/report.py:222-252).  Without
+    # this the classifier reports FAIL for STLs the real
+    # evaluator accepts as PASS.
+    if QUALITY in ("draft", "standard"):
+        thresholds["hard_non_ortho"] = max(
+            thresholds.get("hard_non_ortho", 85.0), 90.0,
+        )
+        thresholds["hard_skewness"] = max(
+            thresholds.get("hard_skewness", 8.0), 20.0,
+        )
     hard_no = float(thresholds.get("hard_non_ortho", 65.0))
     hard_skew = float(thresholds.get("hard_skewness", 4.0))
     cases = sorted(p for p in RUN_ROOT.iterdir() if p.is_dir())
@@ -150,7 +171,10 @@ def main() -> int:
         )
         verdict = "FAIL" if hard_fail else "PASS"
         if hard_fail:
-            cat, details = _classify(case, max_skew)
+            cat, details = _classify(
+                case, max_skew, hard_skew,
+                int(getattr(r, "negative_volumes", 0)),
+            )
         else:
             cat, details = "pass", {}
         print(

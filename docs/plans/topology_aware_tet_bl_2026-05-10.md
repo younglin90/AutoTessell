@@ -973,6 +973,47 @@ once the draft sweep finishes.
    *and* skew ridiculously high (71.9).  Severely malformed
    cells from the underlying tet mesher.
 
+### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
+
+**Critical fix**: the bench harness was using
+``agents/specs/evaluator.md`` thresholds (85° hard cap), but the
+production ``core/evaluator/report.py`` line 222-252 *bumps* the
+hard caps for tet tiers at draft / standard:
+
+::
+
+    hard_non_ortho   85° -> 90°  (sliver-boundary cells are structural)
+    hard_skewness    8   -> 20   (BL prism corner cells reach 18-20)
+
+So all the "FAIL @ 89° max_no" verdicts the live reader was
+emitting were *false negatives* — the production evaluator
+already accepts those.
+
+After fixing both ``bench_cavity_eval_live.py`` and
+``bench_cavity_eval_classify.py`` to mirror those bumps, the
+final 21-STL count at quality=draft is:
+
+::
+
+    PASS              13/21 (62 %)
+    FAIL               8/21
+      negative_volumes  7  (extreme_1017013/17, extreme_102308,
+                            hard_100029/100030/100040/1004826,
+                            medium_100330)
+      extreme_skew      1  (extreme_1017014  max_skew=71.94)
+
+**Dominant fail mode is negative_volumes** — the underlying tet
+mesher (pytetwild via the wildmesh tier) emits cells with
+inverted orientation.  This means the polyMesh writer or the
+upstream generator is missing a "flip on negative volume" pass.
+
+Next step: add a polyMesh post-process that detects cells with
+``signed_volume < 0`` and re-orders their face owners /
+neighbours so the volume is positive.  This is a standard
+mesh-conversion step (OpenFOAM ``renumberMesh`` does it
+automatically) and should fix 7/8 of the bench failures
+without changing any geometry.
+
 ### BLR-9c-d (p-5) — partial classification (17/21)
 
 After ~55 minutes of in-flight bench, **17/21 STLs done** at

@@ -45,6 +45,21 @@ def main() -> int:
         print(f"run root not found: {RUN_ROOT}", file=sys.stderr)
         return 1
     thresholds = get_thresholds(QUALITY)
+    # The actual production evaluator (core/evaluator/report.py:222-252)
+    # bumps the hard caps for tet tiers at draft/standard:
+    #   hard_non_ortho   85 -> 90 (sliver-boundary cells are structural)
+    #   hard_skewness     8 -> 20 (BL prism corner cells reach 18-20)
+    # The bench harness uses --tier wildmesh which qualifies, so the
+    # live reader must mirror those bumps to match the production
+    # PASS/FAIL verdict.  Without these, easy_100034 (89.4°) shows
+    # "FAIL" here but PASSES the real evaluator.
+    if QUALITY in ("draft", "standard"):
+        thresholds["hard_non_ortho"] = max(
+            thresholds.get("hard_non_ortho", 85.0), 90.0,
+        )
+        thresholds["hard_skewness"] = max(
+            thresholds.get("hard_skewness", 8.0), 20.0,
+        )
     hard_no = float(thresholds.get("hard_non_ortho", 65.0))
     hard_skew = float(thresholds.get("hard_skewness", 4.0))
     cases = sorted(p for p in RUN_ROOT.iterdir() if p.is_dir())
