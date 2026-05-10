@@ -1742,6 +1742,9 @@ def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() ->
     assert "n_fan_pair_count" in rec
     assert rec["n_fan_pair_bad_non_ortho"] == 0
     assert rec["fan_pair_max_non_ortho_deg"] >= 0.0
+    # BLR-9c-d-f-2 — skewness fields populated and consistent with `accept`.
+    assert rec["n_fan_pair_bad_skewness"] == 0
+    assert rec["fan_pair_max_skew"] >= 0.0
 
 
 def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:

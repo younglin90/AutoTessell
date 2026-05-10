@@ -3833,14 +3833,16 @@ def _evaluate_cavity_component_candidates(
     - BLR-9c-d-b    ``_check_cavity_fan_tet_determinants``
     - BLR-9c-d-d-1  ``_check_cavity_fan_tet_shape_quality``
     - BLR-9c-d-e-1  ``_check_cavity_fan_tet_pair_non_ortho``
+    - BLR-9c-d-f-1  ``_check_cavity_fan_tet_pair_skewness``
 
     Each component records its sizing (cells / wall / shell / internal),
     inner-point count after sharp-corner duplication, sharp vertex
     count, fan-tet count, uncovered shell-face count, fan-det stats,
-    fan Q-shape stats, fan-pair non-orthogonality stats, and a
-    decision.  Decision precedence — once a failure is recorded the
-    rest of the gates are *still computed* (so the per-component
-    record stays fully observable) but the earliest failure wins:
+    fan Q-shape stats, fan-pair non-orthogonality stats, fan-pair
+    skewness stats, and a decision.  Decision precedence — once a
+    failure is recorded the rest of the gates are *still computed*
+    (so the per-component record stays fully observable) but the
+    earliest failure wins:
 
     1. ``"reject_uncovered_shell"`` — ``n_shell_uncovered > 0``.
        A leaking cavity shell is a topology bug we must close before
@@ -3852,7 +3854,10 @@ def _evaluate_cavity_component_candidates(
     4. ``"reject_bad_non_ortho"`` — adjacent fan-tet pair angle
        above the OpenFOAM ``checkMesh`` non-orthogonality cap
        (default 70°) per BLR-9c-d-e-1.
-    5. ``"accept"`` — all gates pass.
+    5. ``"reject_bad_skewness"`` — adjacent fan-tet pair skewness
+       above the OpenFOAM ``checkMesh`` skewness cap (default 4.0)
+       per BLR-9c-d-f-1.
+    6. ``"accept"`` — all gates pass.
 
     Pure aggregation; no mesh mutation.  Returns::
 
@@ -3890,6 +3895,7 @@ def _evaluate_cavity_component_candidates(
         "n_rejected_bad_det": 0,
         "n_rejected_bad_shape": 0,
         "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
         "components": [],
     }
     if not components:
@@ -3930,6 +3936,12 @@ def _evaluate_cavity_component_candidates(
         n_fan_bad_non_ortho = int(
             len(non_ortho_check.get("bad_pair_indices", []))
         )
+        skew_check = _check_cavity_fan_tet_pair_skewness(
+            fan_tets, apex_xyz, split["inner_points"]
+        )
+        n_fan_bad_skew = int(
+            len(skew_check.get("bad_pair_indices", []))
+        )
         if n_uncovered > 0:
             decision = "reject_uncovered_shell"
         elif n_fan_bad_det > 0:
@@ -3938,6 +3950,8 @@ def _evaluate_cavity_component_candidates(
             decision = "reject_bad_shape"
         elif n_fan_bad_non_ortho > 0:
             decision = "reject_bad_non_ortho"
+        elif n_fan_bad_skew > 0:
+            decision = "reject_bad_skewness"
         else:
             decision = "accept"
 
@@ -3976,6 +3990,16 @@ def _evaluate_cavity_component_candidates(
                 non_ortho_check.get("mean_angle_deg", 0.0)
             ),
             "n_fan_pair_bad_non_ortho": n_fan_bad_non_ortho,
+            "fan_pair_max_skew": float(
+                skew_check.get("max_skew", 0.0)
+            ),
+            "fan_pair_mean_skew": float(
+                skew_check.get("mean_skew", 0.0)
+            ),
+            "n_fan_pair_above_skew": int(
+                skew_check.get("n_above_threshold", 0)
+            ),
+            "n_fan_pair_bad_skewness": n_fan_bad_skew,
             "decision": decision,
         }
         summary["components"].append(comp_record)
@@ -3989,6 +4013,8 @@ def _evaluate_cavity_component_candidates(
             summary["n_rejected_bad_shape"] += 1
         elif decision == "reject_bad_non_ortho":
             summary["n_rejected_bad_non_ortho"] += 1
+        elif decision == "reject_bad_skewness":
+            summary["n_rejected_bad_skewness"] += 1
 
     return summary
 

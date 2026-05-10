@@ -504,11 +504,16 @@ worth attempting on a given STL.
   ``n_above_threshold``, ``bad_pair_indices``.  Default threshold
   4.0 (OpenFOAM cap).  Pure helper; aggregator wire-in deferred to
   BLR-9c-d (f-2).
-- [ ] BLR-9c-d (f-2): wire ``_check_cavity_fan_tet_pair_skewness``
-  into ``_evaluate_cavity_component_candidates`` with a new
-  ``reject_bad_skewness`` decision label and
-  ``n_rejected_bad_skewness`` summary field.  Decision precedence:
-  shell > det > shape > non-ortho > skewness > accept.
+- [x] BLR-9c-d (f-2): aggregator wire-in for the skewness gate.
+  ``_evaluate_cavity_component_candidates`` now invokes
+  ``_check_cavity_fan_tet_pair_skewness`` after the non-ortho
+  gate; a component with non-empty skewness ``bad_pair_indices`` is
+  reported as ``reject_bad_skewness``.  Decision precedence: shell
+  > det > shape > non-ortho > skewness > accept.  Per-component
+  record gains ``fan_pair_max_skew``, ``fan_pair_mean_skew``,
+  ``n_fan_pair_above_skew``, ``n_fan_pair_bad_skewness``; summary
+  gains ``n_rejected_bad_skewness``.  All five rejection counters
+  plus ``n_accepted`` together account for ``n_components``.
 - [ ] BLR-9c-d (g): bench acceptance — measure
   reject_uncovered_shell / reject_bad_det / reject_bad_shape /
   reject_bad_non_ortho / reject_bad_skewness / accept counts on
