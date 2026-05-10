@@ -1848,13 +1848,55 @@ def _bl_bad_internal_face_histogram(
         for comp in components.values():
             cells = sorted(int(c) for c in comp["cells"])
             faces_comp = sorted(int(f) for f in comp["faces"])
+            cell_set = set(cells)
+            boundary_by_class: dict[str, int] = {}
+            n_inside_internal = 0
+            n_physical_boundary = 0
+            for fi, own_raw in enumerate(owner_arr):
+                own = int(own_raw)
+                own_in = own in cell_set
+                if fi < len(nbr_arr):
+                    nbr = int(nbr_arr[fi])
+                    nbr_in = nbr in cell_set
+                    if own_in and nbr_in:
+                        n_inside_internal += 1
+                    elif own_in or nbr_in:
+                        inside = own if own_in else nbr
+                        outside = nbr if own_in else own
+                        inside_kind = _classify_bl_cell_kind(
+                            inside,
+                            base_n_cells=base_n_cells,
+                            prism_cell_start=prism_cell_start,
+                            prism_cell_end=prism_cell_end,
+                        )
+                        outside_kind = _classify_bl_cell_kind(
+                            outside,
+                            base_n_cells=base_n_cells,
+                            prism_cell_start=prism_cell_start,
+                            prism_cell_end=prism_cell_end,
+                        )
+                        key = _bl_pair_class(inside_kind, outside_kind)
+                        boundary_by_class[key] = int(boundary_by_class.get(key, 0)) + 1
+                elif own_in:
+                    n_physical_boundary += 1
+            id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
+            include_full = len(cells) <= id_cap and len(faces_comp) <= id_cap
             packed_components.append(
                 {
                     "n_faces": int(comp["n_faces"]),
                     "n_cells": int(len(cells)),
                     "classes": dict(comp["classes"]),
+                    "n_inside_internal_faces": int(n_inside_internal),
+                    "n_cavity_boundary_faces": int(
+                        sum(boundary_by_class.values()) + n_physical_boundary
+                    ),
+                    "boundary_by_class": boundary_by_class,
+                    "n_physical_boundary_faces": int(n_physical_boundary),
+                    "ids_truncated": not include_full,
                     "sample_faces": faces_comp[: int(max_worst)],
                     "sample_cells": cells[: int(max_worst)],
+                    "faces": faces_comp if include_full else [],
+                    "cells": cells if include_full else [],
                 }
             )
         packed_components.sort(

@@ -414,3 +414,7 @@ def test_native_bl_bad_internal_face_histogram_classifies_interfaces() -> None:
     assert hist["components"][0]["n_cells"] == 3
     assert hist["components"][0]["classes"]["bulk-prism"] == 1
     assert hist["components"][0]["classes"]["prism-prism"] == 1
+    assert hist["components"][0]["ids_truncated"] is False
+    assert hist["components"][0]["faces"] == [0, 1]
+    assert hist["components"][0]["cells"] == [0, 2, 3]
+    assert hist["components"][0]["n_inside_internal_faces"] == 2

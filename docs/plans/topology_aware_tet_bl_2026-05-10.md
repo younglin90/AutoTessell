@@ -226,6 +226,12 @@ creates near-tangent interface faces.
 - [x] Record sample faces/cells per component for later cavity replacement.
 - [x] No output behavior change.
 
+### BLR-3: cavity boundary metadata
+
+- [x] Record full face/cell ids for small bad-face components.
+- [x] Record inside/internal and cavity-boundary face counts by interface class.
+- [x] No output behavior change.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.
