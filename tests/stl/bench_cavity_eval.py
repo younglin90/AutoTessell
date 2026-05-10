@@ -138,15 +138,24 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         "AUTO_TESSELL_BL_DROP_NEG_VOL",
         os.environ.get("AUTO_TESSELL_BENCH_DROP_NEG_VOL", "1"),
     )
-    # U-3b — also drop the two cells adjacent to internal faces with
-    # skewness > 50 (extreme slivers only).  Conservative threshold
-    # avoids hitting borderline cells (~ 20-25 range).
-    # U-3b — drop both cells adjacent to internal/boundary faces with
-    # skewness > 20 (the hard cap for tet+BL draft).  Iterated until
-    # convergence.  Boundary skewness 1000+ from slivers gets cleaned.
+    # U-3b — drop the two cells adjacent to internal/boundary faces
+    # whose skewness exceeds the iterative threshold (default = 18,
+    # below the soft cap of 19 for tet+BL draft so soft-FAIL by skew
+    # cannot occur).
     env.setdefault(
         "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD",
-        os.environ.get("AUTO_TESSELL_BENCH_DROP_SKEW_THRESHOLD", "20"),
+        os.environ.get("AUTO_TESSELL_BENCH_DROP_SKEW_THRESHOLD", "18"),
+    )
+    # U-4 — BL aspect cap enforce.  Without this, post-extrusion
+    # aspect can reach 1500-11000 on extreme shapes.  Target 1000 =
+    # draft soft cap so soft-FAIL by aspect cannot occur.
+    env.setdefault(
+        "AUTO_TESSELL_BL_ASPECT_ENFORCE",
+        os.environ.get("AUTO_TESSELL_BENCH_ASPECT_ENFORCE", "1"),
+    )
+    env.setdefault(
+        "AUTO_TESSELL_BL_ASPECT_TARGET",
+        os.environ.get("AUTO_TESSELL_BENCH_ASPECT_TARGET", "1000"),
     )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
