@@ -1,45 +1,40 @@
 # BLR-9c-d cap sub-series — final summary
 
-Across 77 ralph-loop iterations (BLR-9c-d-p-1 through p-21,
+Across 84 ralph-loop iterations (BLR-9c-d-p-1 through s-3,
 q-1 through q-3, r-1), the anti-invert cap chain pushed the
-21-STL tet+BL bench from baseline 12/21 PASS to 16/21 PASS.
+21-STL tet+BL bench from baseline 12/21 PASS to **17/21 PASS**.
 
-## Final result
+## Final result (with floor=0.5)
 
-| Metric              | Baseline | Cap ON   | Delta    |
-|---------------------|----------|----------|----------|
-| PASS verdicts (21)  | 12       | 16       | +4       |
-| Pass rate           | 57 %     | 76 %     | +19 pp   |
-| Hard fails          | 9        | 3        | -6       |
-| Soft fails (count)  | varies   | varies   | -        |
+| Metric              | Baseline | Cap floor=0.05 | Cap **floor=0.5** |
+|---------------------|----------|----------------|-------------------|
+| PASS verdicts (21)  | 12       | 16             | **17**            |
+| Pass rate           | 57 %     | 76 %           | **81 %**          |
+| Hard fails          | 9        | 3              | 3                 |
+| Cap-converted FAIL→PASS  | -    | 4              | **5**             |
 
-## Cap-converted FAIL → PASS (4 cases)
+floor=0.5 dropped max_aspect 10x across all STLs (e.g.
+test_cube 2237 → 224, easy_100423 11879 → 1188), the dominant
+cosmetic concern at floor=0.05.
+
+## Cap-converted FAIL → PASS (5 cases at floor=0.5)
 
 | STL                  | Baseline issue             | Cap fix                  |
 |----------------------|----------------------------|--------------------------|
 | extreme_1017013      | 9 negative volumes         | 0 neg_vol                |
+| extreme_1017014      | neg_vol + skew 71.94       | skew 11.78, aspect 114.7 |
+| extreme_102308       | 6 neg_vol + surface_dev 48%| neg_vol 0, aspect 124    |
 | hard_100029          | 3 negative volumes         | 0 neg_vol                |
-| hard_100040          | 28 neg_vol + skew 31.36    | 0 neg_vol, skew 5.06     |
-| medium_100330        | 6 negative volumes         | 0 neg_vol                |
+| hard_100040          | 28 neg_vol + skew 31.36    | 0 neg_vol, skew 9.46     |
 
-## Cap-induced trade-offs (5 remaining FAILs)
+## Remaining 4 FAILs (cap-independent or floor-conflicted)
 
-3 neg_vol residuals — 1 inverted 8-face polyhedron each, from
-the BL prism+gap-fill merge step deep in
-``_native_bl_phase2_full``.  Cap can't see post-BL emergent cells.
-
-| STL                  | Cause                                    |
+| STL                  | Cause at floor=0.5                       |
 |----------------------|------------------------------------------|
-| extreme_1017017      | 1 neg_vol + skew 29.34                   |
-| hard_100030          | 1 neg_vol + skew 1122 (extreme upstream) |
-| hard_1004826         | 1 neg_vol + skew 13.48                   |
-
-2 cap-induced aspect+surface_dev (cap thinifies prisms):
-
-| STL                  | Cause                                    |
-|----------------------|------------------------------------------|
-| extreme_1017014      | aspect 1146 > 1000 + surface_dev 20.36 % |
-| extreme_102308       | aspect 1239 > 1000 + surface_dev 48 %    |
+| extreme_1017017      | 1 neg_vol + skew 29.34 (cap-independent) |
+| hard_100030          | 1 neg_vol + skew 1166 (extreme upstream) |
+| hard_1004826         | 1 neg_vol + skew 13.48 (cap-independent) |
+| medium_100330        | 1 neg_vol (regression — needs floor≤0.05)|
 
 ## Code delivered
 
