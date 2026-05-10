@@ -33,6 +33,7 @@ from core.layers.native_bl import (
     _detect_wall_owner_cavity_components,
     _extract_cavity_component_boundary,
     _owner_centre_wall_motion,
+    _stitch_cavity_prism_inner_ids_smooth,
     _tet_wall_cavity_eligibility,
     _tet_wall_cavity_replacement_probe,
     generate_native_bl,
@@ -1224,6 +1225,118 @@ def test_native_bl_build_cavity_prism_inner_triangles_disabled() -> None:
         )
         == []
     )
+
+
+def test_native_bl_stitch_cavity_prism_inner_ids_smooth_two_faces() -> None:
+    """BLR-9c-c-ii-a — two coplanar wall faces sharing edge (1, 2)
+    collapse to 4 unique inner ids (verts 0, 1, 2, 3 each get one).
+    The shared verts (1, 2) average their predicted positions across
+    the two faces — identical for a coplanar smooth case."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [1, 3, 2]]
+    motion_dirs = {
+        v: np.array([0.0, 0.0, 1.0], dtype=np.float64) for v in range(4)
+    }
+    triangles = _build_cavity_prism_inner_triangles(
+        [0, 1], points, faces, motion_dirs, first_thickness=0.05
+    )
+
+    out = _stitch_cavity_prism_inner_ids_smooth(triangles)
+    assert out["inner_points"].shape == (4, 3)
+    # vert_to_inner_id is sorted by wall vert id ascending.
+    assert out["vert_to_inner_id"] == {0: 0, 1: 1, 2: 2, 3: 3}
+    # Inner positions = wall + 0.05 * +z.
+    np.testing.assert_allclose(
+        out["inner_points"],
+        np.array(
+            [
+                [0, 0, 0.05],
+                [1, 0, 0.05],
+                [0, 1, 0.05],
+                [1, 1, 0.05],
+            ],
+            dtype=np.float64,
+        ),
+        atol=1e-12,
+    )
+    # Face 0 (outer 0,1,2) → inner ids (0, 1, 2).
+    # Face 1 (outer 1,3,2) → inner ids (1, 3, 2).
+    assert out["face_inner_ids"] == [[0, 1, 2], [1, 3, 2]]
+
+
+def test_native_bl_stitch_cavity_prism_inner_ids_smooth_averages_disagreeing_predictions() -> None:
+    """When two adjacent faces predict different inner positions for a
+    shared vertex (e.g., motion_dirs differs across the cavity), the
+    smooth stitcher AVERAGES them — this is the no-dup behaviour and
+    will be replaced by per-face dup at sharp corners in
+    BLR-9c-c-ii-b."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [1, 3, 2]]
+    # Vertex 1 and 2 receive a different motion direction from each
+    # face — but motion_dirs is per-vertex globally, so to fake the
+    # disagreement use per-face entries.  The simplest way: build the
+    # inner_triangles list manually with disagreeing predictions.
+    triangles = [
+        {
+            "face_id": 0,
+            "outer_verts": [0, 1, 2],
+            "inner_xyz": np.array(
+                [
+                    [0.0, 0.0, 0.05],   # v=0
+                    [1.0, 0.0, 0.05],   # v=1
+                    [0.0, 1.0, 0.05],   # v=2
+                ],
+                dtype=np.float64,
+            ),
+        },
+        {
+            "face_id": 1,
+            "outer_verts": [1, 3, 2],
+            "inner_xyz": np.array(
+                [
+                    [1.0, 0.0, 0.10],   # v=1 — disagrees with face 0
+                    [1.0, 1.0, 0.10],   # v=3
+                    [0.0, 1.0, 0.10],   # v=2 — disagrees
+                ],
+                dtype=np.float64,
+            ),
+        },
+    ]
+
+    out = _stitch_cavity_prism_inner_ids_smooth(triangles)
+    # Vert 1 mean = ([1,0,0.05] + [1,0,0.10]) / 2 = [1, 0, 0.075]
+    np.testing.assert_allclose(
+        out["inner_points"][out["vert_to_inner_id"][1]],
+        [1.0, 0.0, 0.075],
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        out["inner_points"][out["vert_to_inner_id"][2]],
+        [0.0, 1.0, 0.075],
+        atol=1e-12,
+    )
+    # Non-shared verts use the single contribution.
+    np.testing.assert_allclose(
+        out["inner_points"][out["vert_to_inner_id"][0]],
+        [0.0, 0.0, 0.05],
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        out["inner_points"][out["vert_to_inner_id"][3]],
+        [1.0, 1.0, 0.10],
+        atol=1e-12,
+    )
+
+
+def test_native_bl_stitch_cavity_prism_inner_ids_smooth_empty() -> None:
+    out = _stitch_cavity_prism_inner_ids_smooth([])
+    assert out["inner_points"].shape == (0, 3)
+    assert out["vert_to_inner_id"] == {}
+    assert out["face_inner_ids"] == []
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:

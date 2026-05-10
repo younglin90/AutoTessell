@@ -404,9 +404,15 @@ worth attempting on a given STL.
     * [x] 9c-c-i: prism inner-triangle predictor
       (`_build_cavity_prism_inner_triangles`).  Per-face inner
       coordinates (no shared-vertex collapse yet).
-    * [ ] 9c-c-ii: shared-vertex inner-id stitching across the
-      component (so adjacent prisms can share their cap edge in
-      the smooth case, and duplicate at sharp corners).
+    * [x] 9c-c-ii-a: smooth-case inner-id stitcher
+      (`_stitch_cavity_prism_inner_ids_smooth`).  Every wall
+      vertex shared by multiple component wall faces collapses to
+      one inner vertex; position = mean of each face's prediction
+      for that vertex.  No sharp-corner detection — the next
+      sub-step will split a vertex into per-face dup ids when
+      adjacent prism cap normals diverge above a cos threshold.
+    * [ ] 9c-c-ii-b: sharp-corner duplication pass on top of the
+      smooth stitcher output.
     * [ ] 9c-c-iii: transition cell synthesis between the prism
       caps and the component's external_internal shell.
 - [ ] BLR-9c-d: per-component validity gates (determinant, face

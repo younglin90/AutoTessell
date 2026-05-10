@@ -2919,6 +2919,86 @@ def _build_cavity_prism_inner_triangles(
     return out
 
 
+def _stitch_cavity_prism_inner_ids_smooth(
+    inner_triangles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """BLR-9c-c-ii-a: smooth-case shared inner-vertex stitching.
+
+    Every wall vertex shared by multiple component wall faces collapses
+    into ONE inner vertex.  The shared inner position is the mean of
+    each face's prediction for that wall vertex (BLR-9c-c-i emits one
+    ``inner_xyz`` row per outer vertex per face; here we average them).
+
+    This is the no-dup baseline.  BLR-9c-c-ii-b will add the sharp-
+    corner detection that splits a wall vertex into per-face duplicate
+    inner ids when adjacent prism cap normals diverge above a cos
+    threshold (the same idea as the VD refactor's per-face inner
+    verts, applied per cavity component).
+
+    Returns:
+        - ``inner_points``: ``np.ndarray`` of shape ``(N_inner, 3)`` —
+          unique inner vertex coordinates in ascending wall vertex id
+          order.
+        - ``vert_to_inner_id``: ``dict[int, int]`` mapping each wall
+          vertex id to its inner vertex id.
+        - ``face_inner_ids``: list aligned with ``inner_triangles``,
+          each entry ``[i0, i1, i2]`` giving inner ids for the 3
+          outer verts of that face.
+    """
+    if not inner_triangles:
+        return {
+            "inner_points": np.zeros((0, 3), dtype=np.float64),
+            "vert_to_inner_id": {},
+            "face_inner_ids": [],
+        }
+
+    # Accumulate per-vertex sums of predicted inner coordinates.
+    accum: dict[int, np.ndarray] = {}
+    counts: dict[int, int] = {}
+    for entry in inner_triangles:
+        outer = entry["outer_verts"]
+        inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+        if inner_xyz.shape != (3, 3) or len(outer) != 3:
+            continue
+        for k in range(3):
+            v = int(outer[k])
+            if v not in accum:
+                accum[v] = inner_xyz[k].copy()
+                counts[v] = 1
+            else:
+                accum[v] += inner_xyz[k]
+                counts[v] += 1
+
+    sorted_verts = sorted(accum.keys())
+    vert_to_inner_id: dict[int, int] = {
+        v: i for i, v in enumerate(sorted_verts)
+    }
+    inner_points = np.stack(
+        [accum[v] / float(counts[v]) for v in sorted_verts], axis=0
+    )
+
+    face_inner_ids: list[list[int]] = []
+    for entry in inner_triangles:
+        outer = entry["outer_verts"]
+        if len(outer) != 3:
+            continue
+        try:
+            face_inner_ids.append(
+                [
+                    vert_to_inner_id[int(outer[0])],
+                    vert_to_inner_id[int(outer[1])],
+                    vert_to_inner_id[int(outer[2])],
+                ]
+            )
+        except KeyError:
+            continue
+    return {
+        "inner_points": inner_points,
+        "vert_to_inner_id": vert_to_inner_id,
+        "face_inner_ids": face_inner_ids,
+    }
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],
