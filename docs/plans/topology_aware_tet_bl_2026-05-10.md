@@ -1072,7 +1072,45 @@ Native_bl is missing a post-extrusion guard.
     bulk inversion or a degenerate prism.  The cap can move
     between those two failure modes but cannot eliminate both.
 
-  - [ ] BLR-9c-d (p-12): selective BL skipping.  In regions
+  - [x] BLR-9c-d (p-12): global uniform scaling.  Instead of
+    per-vertex caps (which create inhomogeneous prisms) or
+    cell-level smoothing (which over-caps), reduce *every* wall
+    vertex by the SAME factor — the minimum cap-ratio across
+    all wall verts.  Floor at 0.05 so the BL doesn't collapse
+    completely.  Default ON when CAP is on; override via
+    ``AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL=0``.
+
+    **Smoke test on extreme_102308.stl** (was hard FAIL on
+    4 metrics):
+
+    ::
+
+        BEFORE cap:                 hard_fails=4
+          Max Non-Ortho 89.85   FAIL (>85)
+          Max Skewness 4.64     PASS
+          Negative Volumes 6    FAIL
+          Min Det 0.00037       FAIL (<0.001)
+          Max Aspect ~140       PASS
+
+        AFTER cap (per-vert):       hard_fails=4 (same)
+        AFTER cap+smooth:           hard_fails=4 (worse)
+        AFTER cap+global:           hard_fails=0 ✓
+          Max Non-Ortho 78.6    OK
+          Max Skewness 2.44     OK
+          Negative Volumes 0    OK
+          Min Det 0.0035        OK
+          Max Aspect 1239       FAIL (>1000 soft cap)
+
+    Verdict still FAIL because soft_aspect_ratio kicks in at
+    1000 (draft cap) and prisms are now globally thinner →
+    aspect ratio of the thinnest prism is ~1239.  But this is
+    a **soft** fail and only 1 soft fail; verdict is FAIL only
+    on ≥2 soft fails.  Need to confirm the second soft fail.
+
+  - [ ] BLR-9c-d (p-13): wire the global cap default ON behind
+    ``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1`` and re-bench all 21
+    STLs to measure recovery — expect 7/8 currently failing
+    cases to flip to PASS or near-PASS.  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the

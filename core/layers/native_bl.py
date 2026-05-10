@@ -6688,6 +6688,24 @@ def generate_native_bl(
                 # back so all three verts move together — this
                 # preserves prism shape while still preventing bulk
                 # inversion.
+                # BLR-9c-d-p-12 — global uniform scaling.  Instead of
+                # per-vertex caps (which create inhomogeneous prisms)
+                # or cell-level smoothing (which over-caps), reduce
+                # *every* wall vertex by the SAME factor so prism
+                # cells stay shape-preserving but uniformly thinner.
+                # Trade-off: BL thickness is reduced globally, which
+                # may push effective y+ off target on some faces but
+                # keeps prism quality uniform.  When combined with
+                # the per-vertex cap below, it acts as a fallback
+                # tier: only fires when the per-vertex cap finds a
+                # vertex that needs capping.  Default ON when CAP
+                # is on; override via
+                # ``AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL=0``.
+                _global_scale_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL", "1",
+                    ) == "1"
+                )
                 _smooth_enabled = (
                     os.environ.get(
                         "AUTO_TESSELL_BL_ANTI_INVERT_SMOOTH", "0",
@@ -6732,11 +6750,32 @@ def generate_native_bl(
                 _n_capped = int(_over.sum())
                 if _n_capped:
                     _safe_mag = np.where(_mag > 1e-30, _mag, 1.0)
-                    anti_invert_scale_per_v = np.where(
-                        _over,
-                        np.minimum(1.0, _caps_arr / _safe_mag),
-                        1.0,
-                    )
+                    if _global_scale_enabled:
+                        # Take the *minimum* ratio across all wall verts
+                        # whose extrusion would invert a neighbour, then
+                        # apply that single scalar to every wall vert.
+                        # Result: prism cells stay homogeneous (no
+                        # aspect-ratio explosion), at the cost of a
+                        # globally thinner BL.
+                        _ratios = np.where(
+                            _over,
+                            np.minimum(1.0, _caps_arr / _safe_mag),
+                            1.0,
+                        )
+                        _global_ratio = float(_ratios.min())
+                        # Floor to a safety-conservative value; below
+                        # 0.05 the BL is so thin the user's y+ target
+                        # is meaningless anyway.
+                        _global_ratio = max(_global_ratio, 0.05)
+                        anti_invert_scale_per_v = np.full_like(
+                            _mag, _global_ratio
+                        )
+                    else:
+                        anti_invert_scale_per_v = np.where(
+                            _over,
+                            np.minimum(1.0, _caps_arr / _safe_mag),
+                            1.0,
+                        )
                     _max_reduction = float(
                         np.max(_mag - anti_invert_scale_per_v * _mag)
                     )
