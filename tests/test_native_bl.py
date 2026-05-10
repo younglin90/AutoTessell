@@ -1729,6 +1729,10 @@ def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() ->
     assert "n_fan_degenerate_det" in rec
     assert rec["n_fan_bad_indices"] == 0
     assert rec["fan_worst_abs_det"] > 0.0
+    # BLR-9c-d-d-2 — Q-shape fields populated and consistent with `accept`.
+    assert rec["n_fan_bad_shape_indices"] == 0
+    assert rec["fan_q_min"] > 0.0
+    assert rec["fan_q_mean"] > 0.0
 
 
 def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:
@@ -1836,6 +1840,55 @@ def test_native_bl_evaluate_cavity_component_candidates_reject_bad_det() -> None
     assert out["n_rejected_bad_det"] == 1
     assert out["n_accepted"] == 0
     assert out["n_rejected_uncovered_shell"] == 0
+
+
+def test_native_bl_evaluate_cavity_component_candidates_reject_bad_shape() -> None:
+    """BLR-9c-d-d-2 — wall-only single-tet component whose geometry
+    is *very flat* (one vertex barely above the base plane) produces
+    sliver fan tets that pass the determinant gate but fail the
+    Klingner Q-shape gate, ending up flagged ``reject_bad_shape``."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1e-3],   # near-coplanar with the base ⇒ slivery cavity
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    motion_dirs = {i: np.zeros(3) for i in range(4)}
+    out = _evaluate_cavity_component_candidates(
+        components=[{0}],
+        points=points,
+        faces=faces,
+        owner=owner,
+        neighbour=neighbour,
+        wall_face_indices=[0, 1, 2, 3],
+        motion_dirs=motion_dirs,
+        first_thickness=0.0,
+    )
+    assert out["n_components"] == 1
+    rec = out["components"][0]
+    # Wall-only ⇒ no shell rejection.
+    assert rec["n_shell_uncovered"] == 0
+    # Cavity is non-degenerate (apex above base plane by 0.25e-3),
+    # so determinant gate should *pass* (no bad_indices).
+    assert rec["n_fan_bad_indices"] == 0
+    # But every fan tet is a slab/sliver ⇒ Q below threshold.
+    assert rec["n_fan_bad_shape_indices"] >= 1
+    assert rec["fan_q_min"] < 0.1
+    assert rec["decision"] == "reject_bad_shape"
+    assert out["n_rejected_bad_shape"] == 1
+    assert out["n_accepted"] == 0
+    assert out["n_rejected_bad_det"] == 0
 
 
 def test_native_bl_check_cavity_fan_tet_determinants_empty() -> None:

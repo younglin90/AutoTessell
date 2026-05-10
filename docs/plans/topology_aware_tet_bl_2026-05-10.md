@@ -464,10 +464,17 @@ worth attempting on a given STL.
   with ``Q < q_min_threshold``.  Catches sliver/needle tets that
   pass the determinant gate but would still blow up CFD
   interpolation weights.  Pure helper; aggregator wire-in deferred.
-- [ ] BLR-9c-d (d-2): wire ``_check_cavity_fan_tet_shape_quality``
-  into ``_evaluate_cavity_component_candidates`` with a new
-  ``reject_bad_shape`` decision label and ``n_rejected_bad_shape``
-  summary field.
+- [x] BLR-9c-d (d-2): aggregator wire-in for the Q-shape gate.
+  ``_evaluate_cavity_component_candidates`` now invokes
+  ``_check_cavity_fan_tet_shape_quality`` after the determinant
+  gate; a component with non-empty shape ``bad_indices`` is
+  reported as ``reject_bad_shape``.  Decision precedence: shell
+  coverage > determinant > shape > accept.  Each component record
+  gains ``n_fan_bad_shape_indices`` / ``fan_q_min`` / ``fan_q_mean``
+  and the summary gains ``n_rejected_bad_shape``.  The shape
+  helper internally swaps the last two indices of any tet whose
+  signed volume is negative so Q-shape only measures shape, not
+  orientation (the determinant gate already covers orientation).
 - [ ] BLR-9c-d (e): face weight + non-orthogonality validity gates
   (per-component) and bench acceptance.
 

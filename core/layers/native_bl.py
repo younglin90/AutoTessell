@@ -3502,6 +3502,26 @@ def _check_cavity_fan_tet_shape_quality(
         tets_list.append([0, i0 + 1, i1 + 1, i2 + 1])
     tets_arr = np.asarray(tets_list, dtype=np.int64)
 
+    # Tet shape quality is invariant under vertex permutation, but
+    # core.evaluator.tet_qshape reports Q = 0 for tets with negative
+    # signed volume (its inverted-cell guard).  The BLR-9c-d-b
+    # determinant gate already takes care of orientation; here we
+    # only care about *shape*, so flip the last two columns of any
+    # tet whose signed volume is negative before delegating.
+    if tets_arr.shape[0] > 0:
+        a = pts[tets_arr[:, 0]]
+        b = pts[tets_arr[:, 1]]
+        c = pts[tets_arr[:, 2]]
+        d = pts[tets_arr[:, 3]]
+        signed_vol = np.einsum(
+            "ij,ij->i", np.cross(b - a, c - a), d - a
+        ) / 6.0
+        flip = signed_vol < 0.0
+        if np.any(flip):
+            swap = tets_arr[flip][:, [0, 1, 3, 2]]
+            tets_arr = tets_arr.copy()
+            tets_arr[flip] = swap
+
     from core.evaluator.tet_qshape import tet_qshape  # local import
 
     Q, _stats = tet_qshape(pts, tets_arr)
@@ -3540,20 +3560,24 @@ def _evaluate_cavity_component_candidates(
     - BLR-9c-c-iii-b ``_build_cavity_fan_transition_tets``
     - BLR-9c-c-iii-c ``_check_cavity_shell_coverage``
     - BLR-9c-d-b    ``_check_cavity_fan_tet_determinants``
+    - BLR-9c-d-d-1  ``_check_cavity_fan_tet_shape_quality``
 
     Each component records its sizing (cells / wall / shell / internal),
     inner-point count after sharp-corner duplication, sharp vertex
     count, fan-tet count, uncovered shell-face count, fan-det stats,
-    and a decision:
+    fan Q-shape stats, and a decision.  Decision precedence — once a
+    failure is recorded the rest of the gates are *still computed*
+    (so the per-component record stays fully observable) but the
+    earliest failure wins:
 
-    - ``"accept"`` when both shell coverage and fan-tet
-      determinants pass.
-    - ``"reject_uncovered_shell"`` when ``n_shell_uncovered > 0``.
-      This takes precedence — a leaking cavity shell is a topology
-      bug we must close before quality matters.
-    - ``"reject_bad_det"`` when the shell is fully covered but at
-      least one fan tet has a degenerate or sign-flipped
-      determinant (BLR-9c-d-b ``bad_indices``).
+    1. ``"reject_uncovered_shell"`` — ``n_shell_uncovered > 0``.
+       A leaking cavity shell is a topology bug we must close before
+       quality matters.
+    2. ``"reject_bad_det"`` — fan tet ``bad_indices`` (degenerate or
+       sign-flipped) per BLR-9c-d-b.
+    3. ``"reject_bad_shape"`` — fan tet Klingner ``Q < threshold``
+       (sliver / needle) per BLR-9c-d-d-1.
+    4. ``"accept"`` — all gates pass.
 
     Pure aggregation; no mesh mutation.  Returns::
 
@@ -3589,6 +3613,7 @@ def _evaluate_cavity_component_candidates(
         "n_accepted": 0,
         "n_rejected_uncovered_shell": 0,
         "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
         "components": [],
     }
     if not components:
@@ -3618,11 +3643,17 @@ def _evaluate_cavity_component_candidates(
         det_check = _check_cavity_fan_tet_determinants(
             fan_tets, apex_xyz, split["inner_points"]
         )
-        n_fan_bad = int(len(det_check.get("bad_indices", [])))
+        n_fan_bad_det = int(len(det_check.get("bad_indices", [])))
+        shape_check = _check_cavity_fan_tet_shape_quality(
+            fan_tets, apex_xyz, split["inner_points"]
+        )
+        n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
         if n_uncovered > 0:
             decision = "reject_uncovered_shell"
-        elif n_fan_bad > 0:
+        elif n_fan_bad_det > 0:
             decision = "reject_bad_det"
+        elif n_fan_bad_shape > 0:
+            decision = "reject_bad_shape"
         else:
             decision = "accept"
 
@@ -3643,10 +3674,13 @@ def _evaluate_cavity_component_candidates(
             "n_fan_degenerate_det": int(
                 det_check.get("n_degenerate_det", 0)
             ),
-            "n_fan_bad_indices": n_fan_bad,
+            "n_fan_bad_indices": n_fan_bad_det,
             "fan_worst_abs_det": float(
                 det_check.get("worst_abs_det", 0.0)
             ),
+            "n_fan_bad_shape_indices": n_fan_bad_shape,
+            "fan_q_min": float(shape_check.get("q_min", 0.0)),
+            "fan_q_mean": float(shape_check.get("q_mean", 0.0)),
             "decision": decision,
         }
         summary["components"].append(comp_record)
@@ -3656,6 +3690,8 @@ def _evaluate_cavity_component_candidates(
             summary["n_rejected_uncovered_shell"] += 1
         elif decision == "reject_bad_det":
             summary["n_rejected_bad_det"] += 1
+        elif decision == "reject_bad_shape":
+            summary["n_rejected_bad_shape"] += 1
 
     return summary
 
