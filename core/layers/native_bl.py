@@ -3283,6 +3283,120 @@ def _check_cavity_shell_coverage(
     }
 
 
+def _evaluate_cavity_component_candidates(
+    components: list[set[int]] | list[frozenset[int]] | list[list[int]],
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    sharp_cos_thresh: float = 0.9,
+) -> dict[str, Any]:
+    """BLR-9c-d: aggregate per-cavity-component evaluation.
+
+    For each cavity component (output of BLR-9c-a) the function chains:
+
+    - BLR-9c-b   ``_extract_cavity_component_boundary``
+    - BLR-9c-c-i ``_build_cavity_prism_inner_triangles``
+    - BLR-9c-c-ii-a ``_stitch_cavity_prism_inner_ids_smooth``
+    - BLR-9c-c-ii-b ``_split_cavity_inner_ids_at_sharp_corners``
+    - BLR-9c-c-iii-a ``_compute_cavity_centroid``
+    - BLR-9c-c-iii-b ``_build_cavity_fan_transition_tets``
+    - BLR-9c-c-iii-c ``_check_cavity_shell_coverage``
+
+    Each component records its sizing (cells / wall / shell / internal),
+    inner-point count after sharp-corner duplication, sharp vertex
+    count, fan-tet count, uncovered shell-face count, and a decision:
+
+    - ``"accept"`` when ``n_shell_uncovered == 0``;
+    - ``"reject_uncovered_shell"`` otherwise.
+
+    Pure aggregation; no mesh mutation.  Returns::
+
+        {
+            "n_components": int,
+            "n_accepted":   int,
+            "n_rejected_uncovered_shell": int,
+            "components": [
+                {
+                    "cells": [...],
+                    "n_cells": int,
+                    "n_wall_faces": int,
+                    "n_shell_faces": int,
+                    "n_internal_faces": int,
+                    "n_inner_points": int,
+                    "n_sharp_verts": int,
+                    "n_fan_tets": int,
+                    "n_shell_uncovered": int,
+                    "decision": str,
+                },
+                ...
+            ],
+        }
+    """
+    summary: dict[str, Any] = {
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "components": [],
+    }
+    if not components:
+        return summary
+    summary["n_components"] = int(len(components))
+    pts = np.asarray(points, dtype=np.float64)
+
+    for comp in components:
+        comp_set = {int(c) for c in comp}
+        boundary = _extract_cavity_component_boundary(
+            comp_set, owner, neighbour, wall_face_indices
+        )
+        comp_wall_faces = list(boundary.get("wall_faces", []))
+        triangles = _build_cavity_prism_inner_triangles(
+            comp_wall_faces, pts, faces, motion_dirs, float(first_thickness)
+        )
+        smooth = _stitch_cavity_prism_inner_ids_smooth(triangles)
+        split = _split_cavity_inner_ids_at_sharp_corners(
+            triangles, smooth, cos_thresh=sharp_cos_thresh
+        )
+        # Apex coords are not stored per-component yet; include count
+        # 1 if the component has any cells (BLR-9c-c-iii-b will mint
+        # the apex point at apply time using this position).
+        _ = _compute_cavity_centroid(
+            comp_set, faces, pts, owner, neighbour
+        )
+        fan_tets = _build_cavity_fan_transition_tets(triangles, split)
+        coverage = _check_cavity_shell_coverage(boundary, fan_tets, faces)
+        n_uncovered = int(len(coverage.get("uncovered", [])))
+        decision = (
+            "accept" if n_uncovered == 0 else "reject_uncovered_shell"
+        )
+
+        comp_record = {
+            "cells": sorted(comp_set),
+            "n_cells": int(len(comp_set)),
+            "n_wall_faces": int(len(comp_wall_faces)),
+            "n_shell_faces": int(coverage.get("n_shell_faces", 0)),
+            "n_internal_faces": int(
+                len(boundary.get("internal_faces", []))
+            ),
+            "n_inner_points": int(split["inner_points"].shape[0]),
+            "n_sharp_verts": int(split.get("n_split", 0)),
+            "n_fan_tets": int(len(fan_tets)),
+            "n_shell_uncovered": n_uncovered,
+            "decision": decision,
+        }
+        summary["components"].append(comp_record)
+        if decision == "accept":
+            summary["n_accepted"] += 1
+        else:
+            summary["n_rejected_uncovered_shell"] += 1
+
+    return summary
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

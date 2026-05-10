@@ -440,8 +440,13 @@ worth attempting on a given STL.
           explicit so a verifier can reject the candidate before
           any mesh mutation.  BLR-9c-d will gate on
           ``len(uncovered) == 0`` plus geometric quality.
-- [ ] BLR-9c-d: per-component validity gates (determinant, face
-  weight, non-orthogonality) and bench acceptance.
+- [x] BLR-9c-d (a): per-component aggregator
+  ``_evaluate_cavity_component_candidates`` that chains 9c-b…9c-c-iii-c
+  helpers and tags each component ``accept`` /
+  ``reject_uncovered_shell``. Pure read-only summary; mesh untouched.
+- [ ] BLR-9c-d (b): determinant + face weight +
+  non-orthogonality validity gates layered on top of the aggregator
+  and bench acceptance.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

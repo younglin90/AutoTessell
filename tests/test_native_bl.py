@@ -34,6 +34,7 @@ from core.layers.native_bl import (
     _check_cavity_shell_coverage,
     _compute_cavity_centroid,
     _detect_wall_owner_cavity_components,
+    _evaluate_cavity_component_candidates,
     _extract_cavity_component_boundary,
     _owner_centre_wall_motion,
     _split_cavity_inner_ids_at_sharp_corners,
@@ -1655,3 +1656,117 @@ def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:
     assert shell["boundary_by_class"]["bulk-bulk"] == 1
     assert shell["agglomerate_probe"]["n_interface_faces"] == 1
     assert len(shell["agglomerate_probe"]["worst_faces"]) == 1
+
+
+def test_native_bl_evaluate_cavity_component_candidates_empty_components() -> None:
+    """BLR-9c-d — empty component list returns zero-record summary."""
+    out = _evaluate_cavity_component_candidates(
+        components=[],
+        points=np.zeros((0, 3)),
+        faces=[],
+        owner=np.array([], dtype=np.int64),
+        neighbour=np.array([], dtype=np.int64),
+        wall_face_indices=[],
+        motion_dirs={},
+        first_thickness=0.05,
+    )
+    assert out["n_components"] == 0
+    assert out["n_accepted"] == 0
+    assert out["n_rejected_uncovered_shell"] == 0
+    assert out["components"] == []
+
+
+def test_native_bl_evaluate_cavity_component_candidates_isolated_tet_accept() -> None:
+    """BLR-9c-d — single isolated wall-owner tet without
+    external_internal shell: shell coverage = 0 uncovered → ``accept``."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall (face 0)
+        [0, 3, 1],   # wall (face 1)
+        [1, 3, 2],   # wall (face 2)
+        [2, 3, 0],   # wall (face 3)
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    motion_dirs = {
+        0: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0),
+        1: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0),
+        2: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0),
+        3: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0),
+    }
+    out = _evaluate_cavity_component_candidates(
+        components=[{0}],
+        points=points,
+        faces=faces,
+        owner=owner,
+        neighbour=neighbour,
+        wall_face_indices=[0, 1, 2, 3],
+        motion_dirs=motion_dirs,
+        first_thickness=0.05,
+    )
+    assert out["n_components"] == 1
+    assert out["n_accepted"] == 1
+    assert out["n_rejected_uncovered_shell"] == 0
+    rec = out["components"][0]
+    assert rec["cells"] == [0]
+    assert rec["n_cells"] == 1
+    assert rec["n_wall_faces"] == 4
+    assert rec["n_shell_faces"] == 0
+    assert rec["decision"] == "accept"
+
+
+def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects() -> None:
+    """BLR-9c-d — wall-owner tet whose neighbour cell is non-wall
+    (external_internal shell present) is reported as
+    ``reject_uncovered_shell``: current fan tets have apex placeholder ``-1``
+    so vertex-set coverage of the external shell faces fails by
+    construction."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall
+        [0, 3, 1],   # wall
+        [1, 3, 2],   # wall
+        [2, 3, 0],   # internal (cell 0 ↔ cell 1)
+        [2, 3, 4],   # bulk-bulk
+    ]
+    owner = np.array([0, 0, 0, 0, 1], dtype=np.int64)
+    neighbour = np.array([1], dtype=np.int64)
+    motion_dirs = {
+        i: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0) for i in range(5)
+    }
+    out = _evaluate_cavity_component_candidates(
+        components=[{0}],
+        points=points,
+        faces=faces,
+        owner=owner,
+        neighbour=neighbour,
+        wall_face_indices=[0, 1, 2],
+        motion_dirs=motion_dirs,
+        first_thickness=0.05,
+    )
+    assert out["n_components"] == 1
+    rec = out["components"][0]
+    # Cell 0 has wall faces [0,1,2] and a non-wall neighbour cell 1 via
+    # face 3 → external_internal shell present → uncovered → reject.
+    assert rec["n_shell_faces"] >= 1
+    assert rec["n_shell_uncovered"] >= 1
+    assert rec["decision"] == "reject_uncovered_shell"
+    assert out["n_rejected_uncovered_shell"] == 1
+    assert out["n_accepted"] == 0
