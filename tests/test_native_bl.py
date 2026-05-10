@@ -30,6 +30,7 @@ from core.layers.native_bl import (
     _apply_tet_cavity_replacement_plan,
     _build_cavity_fan_transition_tets,
     _build_cavity_prism_inner_triangles,
+    _build_cavity_shell_closure_tets,
     _build_tet_cavity_replacement_plan,
     _check_cavity_fan_tet_determinants,
     _check_cavity_fan_tet_pair_non_ortho,
@@ -2071,6 +2072,112 @@ def test_native_bl_check_cavity_fan_tet_pair_non_ortho_threshold_flagged() -> No
     assert out["max_angle_deg"] > 10.0
     assert out["n_above_threshold"] == 1
     assert len(out["bad_pair_indices"]) == 1
+
+
+def test_native_bl_build_cavity_shell_closure_tets_empty_uncovered() -> None:
+    """BLR-9c-d-h-1 — empty uncovered list ⇒ no closure tet, inner
+    points untouched."""
+    inner_points = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float64
+    )
+    out = _build_cavity_shell_closure_tets(
+        uncovered_face_ids=[],
+        boundary={"external_internal_faces": []},
+        faces=[],
+        points=np.zeros((0, 3)),
+        inner_points=inner_points,
+    )
+    assert out["n_closure_tets"] == 0
+    assert out["n_appended_points"] == 0
+    assert out["shell_closure_tets"] == []
+    np.testing.assert_array_equal(
+        out["extended_inner_points"], inner_points
+    )
+
+
+def test_native_bl_build_cavity_shell_closure_tets_one_face_extends_inner() -> None:
+    """BLR-9c-d-h-1 — one uncovered shell face appends 3 inner points
+    and emits one closure tet referring to those new ids."""
+    inner_points = np.array(
+        [[0.5, 0.5, 0.0]], dtype=np.float64
+    )
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2], [0, 1, 3]]
+    boundary = {
+        "external_internal_faces": [0],
+    }
+    out = _build_cavity_shell_closure_tets(
+        uncovered_face_ids=[0],
+        boundary=boundary,
+        faces=faces,
+        points=points,
+        inner_points=inner_points,
+    )
+    assert out["n_closure_tets"] == 1
+    assert out["n_appended_points"] == 3   # verts 0, 1, 2 added
+    closure = out["shell_closure_tets"][0]
+    assert closure["face_id"] == 0
+    assert closure["outer_verts"] == [0, 1, 2]
+    assert closure["tet_verts"][0] == -1
+    # New inner ids start at 1 (since inner_points had 1 entry).
+    assert sorted(closure["tet_verts"][1:]) == [1, 2, 3]
+    # Extended inner_points now has 1 (original) + 3 (appended) = 4.
+    assert out["extended_inner_points"].shape == (4, 3)
+
+
+def test_native_bl_build_cavity_shell_closure_tets_shared_verts_dedup() -> None:
+    """BLR-9c-d-h-1 — multiple uncovered shell faces sharing vertices
+    only append each polyMesh vertex once."""
+    inner_points = np.zeros((0, 3), dtype=np.float64)
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    # Two triangles sharing edge (0, 1).
+    faces = [[0, 1, 2], [0, 1, 3]]
+    boundary = {"external_internal_faces": [0, 1]}
+    out = _build_cavity_shell_closure_tets(
+        uncovered_face_ids=[0, 1],
+        boundary=boundary,
+        faces=faces,
+        points=points,
+        inner_points=inner_points,
+    )
+    assert out["n_closure_tets"] == 2
+    # Shared vertices 0 and 1 deduplicated ⇒ 4 total appended (0,1,2,3).
+    assert out["n_appended_points"] == 4
+
+
+def test_native_bl_build_cavity_shell_closure_tets_skips_invalid() -> None:
+    """BLR-9c-d-h-1 — entries that aren't in ``external_internal_faces``
+    or that point at non-triangle / out-of-range faces are skipped
+    silently."""
+    inner_points = np.zeros((0, 3), dtype=np.float64)
+    points = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float64)
+    faces = [[0, 1], [0, 1, 99]]   # quad and OOB index
+    boundary = {"external_internal_faces": [0, 1, 2]}
+    out = _build_cavity_shell_closure_tets(
+        uncovered_face_ids=[0, 1, 2, 99],   # 99 ≠ valid_shell
+        boundary=boundary,
+        faces=faces,
+        points=points,
+        inner_points=inner_points,
+    )
+    assert out["n_closure_tets"] == 0
+    assert out["n_appended_points"] == 0
 
 
 def test_native_bl_check_cavity_fan_tet_pair_skewness_empty_or_singleton() -> None:

@@ -3551,6 +3551,135 @@ def _check_cavity_fan_tet_pair_non_ortho(
     return out
 
 
+def _build_cavity_shell_closure_tets(
+    uncovered_face_ids: list[int] | set[int] | tuple[int, ...],
+    boundary: dict[str, Any],
+    faces: list[list[int]],
+    points: np.ndarray,
+    inner_points: np.ndarray,
+) -> dict[str, Any]:
+    """BLR-9c-d-h-1: emit one apex transition tet per uncovered shell face.
+
+    The BLR-9c-c-iii-b fan structure only covers the wall side of a
+    cavity component — for a wall-owner cell whose neighbour cell is
+    non-wall (BLR-9c-b ``external_internal_faces``) the fan does not
+    enclose the *exterior* boundary, so BLR-9c-c-iii-c reports those
+    shell faces as uncovered.  This helper closes the cavity by
+    emitting one extra transition tet per uncovered shell face using
+    the cavity apex and the 3 vertices of the shell face directly.
+
+    Each new closure tet shares vocabulary with the BLR-9c-c-iii-b
+    output: ``tet_verts = [-1, j0, j1, j2]`` where ``-1`` is the
+    apex placeholder and ``j_k`` index the *extended* inner-points
+    array returned by this helper.  That way the BLR-9c-d-b
+    determinant gate and the BLR-9c-d-d-1 Q-shape gate can be
+    applied to the combined fan-tet + closure-tet list without any
+    schema change.
+
+    Pure helper, no mesh mutation.  Aggregator wire-in deferred to
+    BLR-9c-d-h-2.
+
+    Parameters
+    ----------
+    uncovered_face_ids:
+        ``uncovered`` list from
+        :func:`_check_cavity_shell_coverage` (face ids into
+        ``boundary['external_internal_faces']`` are *not* used —
+        these are direct face ids into the polyMesh).
+    boundary:
+        Output of :func:`_extract_cavity_component_boundary`.
+        Used to validate that every entry of
+        ``uncovered_face_ids`` is actually an
+        ``external_internal_faces`` member.
+    faces:
+        polyMesh face vertex lists.
+    points:
+        polyMesh ``(P, 3)`` point coordinates.
+    inner_points:
+        Current ``(M, 3)`` inner-points array (post-stitch /
+        post-sharp-split).  The helper appends one vertex per
+        unique polyMesh vertex referenced by an uncovered shell
+        face and returns the extended array.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``extended_inner_points``  ``(M + K, 3)`` array
+    - ``n_appended_points``      ``K``  newly appended vertices
+    - ``shell_closure_tets``     ``list[dict]`` — one entry per
+                                 uncovered shell face whose
+                                 ``tet_verts`` indexes into
+                                 ``extended_inner_points``
+    - ``n_closure_tets``         number of closure tets emitted
+    """
+    out: dict[str, Any] = {
+        "extended_inner_points": np.asarray(
+            inner_points, dtype=np.float64
+        ).reshape(-1, 3),
+        "n_appended_points": 0,
+        "shell_closure_tets": [],
+        "n_closure_tets": 0,
+    }
+    if not uncovered_face_ids:
+        return out
+    pts = np.asarray(points, dtype=np.float64)
+    inner = np.asarray(inner_points, dtype=np.float64).reshape(-1, 3)
+    valid_shell: set[int] = set(
+        int(f) for f in boundary.get("external_internal_faces", [])
+    )
+
+    extended = inner.tolist()
+    next_id = len(extended)
+    vertex_to_inner: dict[int, int] = {}
+    closure_tets: list[dict[str, Any]] = []
+    for fid in uncovered_face_ids:
+        ifid = int(fid)
+        if ifid not in valid_shell:
+            continue
+        if ifid < 0 or ifid >= len(faces):
+            continue
+        verts = list(faces[ifid])
+        if len(verts) != 3:
+            # Non-tri shell face — closure-tet schema only handles
+            # triangles; skip and let BLR-9c-d-h pick up polygons in
+            # a follow-on sub-step.
+            continue
+        idx_triple: list[int] = []
+        # Validate every vertex first; only mutate the dedup map and
+        # the extended points buffer once we know the face is good.
+        for v in verts:
+            iv = int(v)
+            if iv < 0 or iv >= pts.shape[0]:
+                idx_triple = []
+                break
+            idx_triple.append(iv)
+        if len(idx_triple) != 3:
+            continue
+        # Commit: append any unseen polyMesh vertex to the inner-point
+        # buffer and rewrite ``idx_triple`` as inner-point ids.
+        inner_ids: list[int] = []
+        for iv in idx_triple:
+            if iv not in vertex_to_inner:
+                vertex_to_inner[iv] = next_id
+                extended.append(pts[iv].tolist())
+                next_id += 1
+            inner_ids.append(vertex_to_inner[iv])
+        idx_triple = inner_ids
+        closure_tets.append({
+            "face_id": ifid,
+            "outer_verts": verts,
+            "tet_verts": [-1, idx_triple[0], idx_triple[1], idx_triple[2]],
+            "kind": "shell_closure",
+        })
+
+    out["extended_inner_points"] = np.asarray(extended, dtype=np.float64)
+    out["n_appended_points"] = int(out["extended_inner_points"].shape[0] - inner.shape[0])
+    out["shell_closure_tets"] = closure_tets
+    out["n_closure_tets"] = len(closure_tets)
+    return out
+
+
 def _check_cavity_fan_tet_pair_skewness(
     fan_tets: list[dict[str, Any]],
     apex_xyz: np.ndarray | list[float],

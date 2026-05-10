@@ -559,14 +559,22 @@ worth attempting on a given STL.
 
 ### BLR-9c-d (h) — close the external_internal shell
 
-- [ ] BLR-9c-d (h-1): helper that, given the BLR-9c-c-iii-c
-  ``uncovered`` shell-face list and the BLR-9c-c-iii-a apex,
-  emits one extra transition tet per uncovered face by reusing
-  the apex and the 3 vertices of the shell face.  Pure helper.
+- [x] BLR-9c-d (h-1): shell-closure helper
+  ``_build_cavity_shell_closure_tets``.  For every uncovered
+  ``external_internal`` shell face it appends the 3 polyMesh
+  vertices to the inner-points array (deduplicated across faces)
+  and emits one closure tet ``[-1, j0, j1, j2]`` whose indices
+  refer to the *extended* inner points.  Schema-compatible with
+  BLR-9c-c-iii-b fan tets so the BLR-9c-d-b/d/e/f gates can be
+  reused on the combined fan + closure list without any change.
+  Pure helper; aggregator wire-in deferred to BLR-9c-d (h-2).
 - [ ] BLR-9c-d (h-2): aggregator integration — combine the new
   shell-closure tets with the existing fan-tet list before the
-  shell-coverage / det / shape / non-ortho / skewness gates so
-  the gate counters reflect the closed cavity.
+  shell-coverage / det / shape / non-ortho / skewness gates so the
+  gate counters reflect the closed cavity.  After this the
+  ``test_cube`` / ``easy_100034`` smoke run should re-classify the
+  651 / 210 ``reject_uncovered_shell`` components into the
+  remaining gates (or accept).
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
