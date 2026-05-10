@@ -974,8 +974,15 @@ def _select_stable_hole_sweep_surface(surf: Any) -> tuple[Any, dict[str, Any]] |
                         and outer_poly.contains(hole_poly.representative_point())
                     ):
                         cap_holes += 1
-            except Exception:
-                cap_holes = max(0, len(loops) - 1)
+            except Exception as exc:
+                # Fail closed when shapely is unavailable: we cannot tell
+                # multi-component caps from holed caps via raw loop counts,
+                # so refuse the candidate rather than guess.
+                logger.debug(
+                    "wildmesh_stable_hole_sweep_shapely_unavailable",
+                    error=str(exc),
+                )
+                continue
             topology = _axis_section_topology_summary(surf, axis)
             topology_class = _classify_axis_section_topology(
                 topology,

@@ -2067,6 +2067,7 @@ def _bl_bad_internal_face_histogram(
             comp["cells"].add(int(record["neighbour"]))
 
         packed_components: list[dict[str, Any]] = []
+        id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
         for comp in components.values():
             cells = sorted(int(c) for c in comp["cells"])
             faces_comp = sorted(int(f) for f in comp["faces"])
@@ -2101,7 +2102,6 @@ def _bl_bad_internal_face_histogram(
                         boundary_by_class[key] = int(boundary_by_class.get(key, 0)) + 1
                 elif own_in:
                     n_physical_boundary += 1
-            id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
             include_full = len(cells) <= id_cap and len(faces_comp) <= id_cap
             cavity_shell = _bl_cavity_shell_summary(
                 points,
