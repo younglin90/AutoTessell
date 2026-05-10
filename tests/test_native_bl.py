@@ -27,6 +27,7 @@ from core.layers.native_bl import (
     _bl_bad_internal_face_histogram,
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
+    _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
     generate_native_bl,
 )
@@ -509,6 +510,108 @@ def test_native_bl_tet_wall_cavity_marks_single_wall_tet_owner() -> None:
     assert summary["n_single_wall_tet_owner_cells"] == 1
     assert summary["coverage_single_wall_tet"] == 1.0
     assert summary["sample_single_wall_tet_cells"] == [0]
+
+
+def test_native_bl_owner_centre_motion_one_tet_wall_fixture() -> None:
+    """BLR-8 — owner-centre motion produces finite, single-cell-bounded
+    wall-vertex displacements when enabled, and is a no-op when disabled.
+
+    Fixture: a single tetrahedron with vertices forming the wall triangle
+    on the z=0 plane and an apex directly above. The owner cell centre
+    sits inside the tet, so the new motion direction must point from each
+    wall vertex toward the cell centre — bounded inside the tet.
+    """
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],   # wall vertex 0
+            [1.0, 0.0, 0.0],   # wall vertex 1
+            [0.0, 1.0, 0.0],   # wall vertex 2
+            [0.0, 0.0, 1.0],   # apex (interior)
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall face (boundary)
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    wall_face_indices = [0]
+    wall_vert_indices = [0, 1, 2]
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    eligible = {0}
+    fallback = {
+        v: np.array([0.0, 0.0, -1.0], dtype=np.float64)  # outward wall normal flipped
+        for v in wall_vert_indices
+    }
+
+    # Env ON — should move all three wall vertices toward owner cell centre.
+    dirs_on, diag_on = _owner_centre_wall_motion(
+        points,
+        faces,
+        owner,
+        wall_vert_indices,
+        wall_face_indices,
+        cell_centres,
+        eligible,
+        fallback,
+        enabled=True,
+    )
+
+    assert diag_on["enabled"] is True
+    assert diag_on["n_eligible"] == 3
+    assert diag_on["n_moved"] == 3
+    assert diag_on["mean_motion"] > 0.0
+    assert diag_on["max_motion"] >= diag_on["mean_motion"]
+
+    expected_centre = points.mean(axis=0)
+    for v in wall_vert_indices:
+        d = dirs_on[v]
+        assert d.shape == (3,)
+        assert np.all(np.isfinite(d))
+        # Unit vector.
+        assert abs(float(np.linalg.norm(d)) - 1.0) < 1e-9
+        # Direction matches centre - point, normalized — single-cell-bounded.
+        expected = expected_centre - points[v]
+        expected = expected / np.linalg.norm(expected)
+        np.testing.assert_allclose(d, expected, atol=1e-9)
+
+    # Env OFF — must reproduce fallback exactly (no-op).
+    dirs_off, diag_off = _owner_centre_wall_motion(
+        points,
+        faces,
+        owner,
+        wall_vert_indices,
+        wall_face_indices,
+        cell_centres,
+        eligible,
+        fallback,
+        enabled=False,
+    )
+    assert diag_off["enabled"] is False
+    assert diag_off["n_eligible"] == 0
+    assert diag_off["n_moved"] == 0
+    assert diag_off["mean_motion"] == 0.0
+    assert diag_off["max_motion"] == 0.0
+    for v in wall_vert_indices:
+        np.testing.assert_array_equal(dirs_off[v], fallback[v])
+
+    # Empty eligible set with env ON must still be a no-op (no motion).
+    dirs_empty, diag_empty = _owner_centre_wall_motion(
+        points,
+        faces,
+        owner,
+        wall_vert_indices,
+        wall_face_indices,
+        cell_centres,
+        set(),
+        fallback,
+        enabled=True,
+    )
+    assert diag_empty["n_moved"] == 0
+    for v in wall_vert_indices:
+        np.testing.assert_array_equal(dirs_empty[v], fallback[v])
 
 
 def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:

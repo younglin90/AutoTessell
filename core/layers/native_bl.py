@@ -2259,6 +2259,114 @@ def _tet_wall_cavity_eligibility(
     return summary
 
 
+def _owner_centre_wall_motion(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_vert_indices: list[int],
+    wall_face_indices: list[int],
+    cell_centres: np.ndarray,
+    eligible_owner_cells: set[int] | list[int] | tuple[int, ...] | None,
+    fallback_dirs: dict[int, np.ndarray],
+    *,
+    enabled: bool,
+) -> tuple[dict[int, np.ndarray], dict[str, Any]]:
+    """BLR-8 candidate: per-wall-vertex inward direction toward owner cell centres.
+
+    For each wall vertex ``v`` adjacent to at least one wall face whose owner
+    cell is in ``eligible_owner_cells`` (the BLR-7 single-tet, single-wall set),
+    the new motion direction is the unit vector from the wall point toward the
+    mean of those adjacent owner cell centres. Vertices with no eligible
+    adjacent owner — or with a degenerate centre-to-vertex vector — fall back to
+    ``fallback_dirs`` (typically ``-vnorm[v]``). When ``enabled`` is False the
+    helper is a no-op: the returned dict is a copy of ``fallback_dirs`` and the
+    diagnostics report zero motion.
+
+    The returned diagnostics carry: ``enabled`` (bool), ``n_eligible``
+    (vertices with at least one eligible adjacent owner), ``n_moved`` (vertices
+    that ended up using the new direction), ``mean_motion`` and ``max_motion``
+    (mean / max L2 norm of ``new_dir - fallback_dir`` across moved vertices,
+    in unit-vector space; 0.0 when no vertex moved).
+    """
+    diag: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "n_eligible": 0,
+        "n_moved": 0,
+        "mean_motion": 0.0,
+        "max_motion": 0.0,
+    }
+    motion_dirs: dict[int, np.ndarray] = {
+        v: np.asarray(fallback_dirs[v], dtype=np.float64).reshape(3)
+        for v in wall_vert_indices
+        if v in fallback_dirs
+    }
+    if not enabled or not wall_vert_indices:
+        return motion_dirs, diag
+    if eligible_owner_cells is None:
+        return motion_dirs, diag
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set or cell_centres is None or len(cell_centres) == 0:
+        return motion_dirs, diag
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    centre_accum: dict[int, np.ndarray] = {}
+    centre_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres:
+            continue
+        if own not in eligible_set:
+            continue
+        centre = np.asarray(cell_centres[own], dtype=np.float64).reshape(3)
+        for vid in faces[fi]:
+            v_int = int(vid)
+            if v_int not in motion_dirs:
+                continue
+            if v_int not in centre_accum:
+                centre_accum[v_int] = centre.copy()
+                centre_count[v_int] = 1
+            else:
+                centre_accum[v_int] += centre
+                centre_count[v_int] += 1
+
+    n_eligible = 0
+    n_moved = 0
+    delta_norms: list[float] = []
+    for v_int, accum in centre_accum.items():
+        cnt = centre_count.get(v_int, 0)
+        if cnt <= 0:
+            continue
+        n_eligible += 1
+        mean_centre = accum / float(cnt)
+        vec = mean_centre - np.asarray(points[v_int], dtype=np.float64).reshape(3)
+        norm = float(np.linalg.norm(vec))
+        if norm <= 1e-30 or not np.isfinite(norm):
+            continue
+        new_dir = vec / norm
+        if not np.all(np.isfinite(new_dir)):
+            continue
+        fallback = motion_dirs[v_int]
+        delta = float(np.linalg.norm(new_dir - fallback))
+        if delta <= 1e-12:
+            # Direction effectively unchanged; skip recording as moved.
+            motion_dirs[v_int] = new_dir
+            continue
+        motion_dirs[v_int] = new_dir
+        n_moved += 1
+        delta_norms.append(delta)
+
+    diag["n_eligible"] = int(n_eligible)
+    diag["n_moved"] = int(n_moved)
+    if delta_norms:
+        diag["mean_motion"] = float(np.mean(delta_norms))
+        diag["max_motion"] = float(np.max(delta_norms))
+    return motion_dirs, diag
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
@@ -3540,6 +3648,31 @@ def generate_native_bl(
     except Exception as exc:  # noqa: BLE001
         tet_wall_cavity_eligibility = {"error": str(exc)[:160]}
 
+    # BLR-8 — env-gated owner-centre wall vertex motion (default OFF).
+    # Wall vertices adjacent to BLR-7 single-tet single-wall owner cells are
+    # extruded toward the owner cell centre instead of the area-/angle-weighted
+    # patch normal, which lets the closed advancing-layer refill keep its
+    # candidate motion bounded inside the eligible owner cell.
+    _bl_owner_centre_motion_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_OWNER_CENTRE_MOTION", "0") == "1"
+    )
+    _bl_owner_centre_eligible_cells: set[int] = set()
+    if isinstance(tet_wall_cavity_eligibility, dict):
+        _bl_owner_centre_eligible_cells = {
+            int(c)
+            for c in tet_wall_cavity_eligibility.get(
+                "sample_single_wall_tet_cells", []
+            )
+        }
+    owner_centre_motion_diag: dict[str, Any] = {
+        "enabled": bool(_bl_owner_centre_motion_enabled),
+        "n_eligible_owner_cells": int(len(_bl_owner_centre_eligible_cells)),
+        "n_eligible": 0,
+        "n_moved": 0,
+        "mean_motion": 0.0,
+        "max_motion": 0.0,
+    }
+
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
     vertex_cum_map: dict[int, np.ndarray] = {}
@@ -3717,7 +3850,31 @@ def generate_native_bl(
         if len(wall_vert_indices) == 0:
             inward_normals = np.zeros((0, 3), dtype=np.float64)
         else:
-            inward_normals = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64).reshape(-1, 3)  # (W,3)
+            # BLR-8 — env-gated owner-centre motion replaces ``-vnorm[v]`` with
+            # a unit vector toward the eligible owner cell centre.  When the
+            # env flag is OFF ``_owner_centre_wall_motion`` is a no-op and we
+            # keep the existing patch-normal direction.
+            nonlocal owner_centre_motion_diag
+            fallback_inward_map = {v: -vnorm[v] for v in wall_vert_indices}
+            motion_dirs, motion_diag = _owner_centre_wall_motion(
+                points,
+                faces,
+                owner,
+                wall_vert_indices,
+                wall_face_indices,
+                cell_centres,
+                _bl_owner_centre_eligible_cells,
+                fallback_inward_map,
+                enabled=_bl_owner_centre_motion_enabled,
+            )
+            motion_diag["n_eligible_owner_cells"] = int(
+                len(_bl_owner_centre_eligible_cells)
+            )
+            owner_centre_motion_diag = motion_diag
+            inward_normals = np.array(
+                [motion_dirs[v] for v in wall_vert_indices],
+                dtype=np.float64,
+            ).reshape(-1, 3)  # (W,3)
 
         if use_per_v_cum_pass and vertex_cum_map_pass:
             # per-vertex total thickness vector: (W,)
@@ -4676,6 +4833,7 @@ def generate_native_bl(
             "bad_internal_faces": bad_internal_face_histogram,
             "pre_bl_bad_internal_faces": pre_bl_bad_internal_face_histogram,
             "tet_wall_cavity": tet_wall_cavity_eligibility,
+            "owner_centre_motion": owner_centre_motion_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,

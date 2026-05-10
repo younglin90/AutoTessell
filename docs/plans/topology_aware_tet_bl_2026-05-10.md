@@ -266,6 +266,41 @@ creates near-tangent interface faces.
   general front/block/refill.
 - [x] No output behavior change.
 
+### Task 1: BLR-8 — owner-centre wall vertex motion candidate
+
+- [x] Add an env-gated BL motion mode in `core/layers/native_bl.py` that
+  moves wall vertices toward adjacent owner cell centres instead of
+  averaged patch normals. Use the simple-tet-owner cells captured by
+  BLR-7 (`tet_wall_cavity` -> `sample_single_wall_tet_cells`) as the
+  candidate set.
+- [x] Default OFF behind `AUTO_TESSELL_BL_OWNER_CENTRE_MOTION=0`; when
+  ON, restrict the motion to owners flagged as eligible single-tet
+  single-wall cells. Other owners keep the existing normal-averaged
+  path.
+- [x] Record per-pass diagnostics (`n_eligible`, `n_moved`,
+  `mean_motion`, `max_motion`) so the verifier can decide accept/reject.
+- [x] Add a unit test in `tests/test_native_bl.py` that constructs a
+  small one-tet wall fixture and confirms the new motion path produces
+  finite, single-cell-bounded vertex displacements with the env flag
+  on and is a no-op with the env flag off.
+- [x] Files: `core/layers/native_bl.py`, `tests/test_native_bl.py`,
+  `docs/plans/topology_aware_tet_bl_2026-05-10.md` (mark
+  checkbox `[x]` when done).
+- [x] Verify:
+  - `python3 -m py_compile core/layers/native_bl.py
+    tests/test_native_bl.py`
+  - `python3 -m pytest tests/test_native_bl.py -q` (existing 9 passed,
+    10 skipped baseline must remain green; new test added).
+  - Optional bench (do not block on it; just record any score change in
+    the commit body):
+    `timeout 1800 python3 .autoresearch/tet_bl_full/verify.py 2>&1
+     | tail -3`.
+  - Keep the change unless the verifier shows a retained reduction in
+    the 16 currently failing cases relative to the BLR-7 baseline.
+
+- [x] Target exact WildMesh cases where bulk is mostly clean but
+  generated bulk-prism / prism-prism interfaces dominate.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.
