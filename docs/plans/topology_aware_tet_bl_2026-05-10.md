@@ -431,9 +431,15 @@ worth attempting on a given STL.
           ``[apex, i0, i1, i2]`` transition tet definitions.  The
           caller mints a real apex point id during final polyMesh
           assembly.
-        - [ ] 9c-c-iii-c: external_internal-shell coverage check
-          (every cavity outer face must end up adjacent to a
-          transition cell).
+        - [x] 9c-c-iii-c: external_internal-shell coverage probe
+          (`_check_cavity_shell_coverage`).  For each cavity outer
+          face checks whether any face of any fan transition tet
+          has the same unordered vertex set, and reports the
+          uncovered face ids.  This makes the gap between the
+          BLR-9c-c-iii-b fan structure and a fully-closed cavity
+          explicit so a verifier can reject the candidate before
+          any mesh mutation.  BLR-9c-d will gate on
+          ``len(uncovered) == 0`` plus geometric quality.
 - [ ] BLR-9c-d: per-component validity gates (determinant, face
   weight, non-orthogonality) and bench acceptance.
 

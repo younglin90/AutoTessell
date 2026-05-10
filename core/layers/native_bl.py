@@ -3213,6 +3213,76 @@ def _build_cavity_fan_transition_tets(
     return out
 
 
+def _check_cavity_shell_coverage(
+    boundary: dict[str, list[int]],
+    fan_tets: list[dict[str, Any]],
+    faces: list[list[int]],
+) -> dict[str, Any]:
+    """BLR-9c-c-iii-c: shell-face coverage probe for transition cells.
+
+    For each ``external_internal_face`` in ``boundary`` (the cavity's
+    outer shell), check whether any face of any fan transition tet has
+    the same unordered vertex set.  Shell faces that find no matching
+    tet face are returned as ``uncovered`` — they are the first reject
+    reason BLR-9c-d will gate on.
+
+    The current BLR-9c-c-iii-b fan structure (apex + each prism cap)
+    cannot, in general, cover the cavity's external_internal shell:
+    the shell faces sit on the cell's *other* sides and would need
+    additional transition cells (e.g. one tet per shell face glued to
+    the apex).  This probe makes that gap explicit so a verifier can
+    reject the candidate before any mesh mutation.
+
+    A "tet face" of a transition tet ``[apex, i0, i1, i2]`` is one of
+    the four triangles ``(apex, i0, i1)``, ``(apex, i1, i2)``,
+    ``(apex, i0, i2)``, ``(i0, i1, i2)``.  Vertex set matching is
+    strict (same three vertex ids, order-independent).
+
+    Returns dict::
+
+        {
+            "n_shell_faces": int,
+            "n_covered":     int,
+            "uncovered":     list[int],   # original face_ids
+        }
+    """
+    shell_face_ids = list(boundary.get("external_internal_faces", []))
+    if not shell_face_ids:
+        return {"n_shell_faces": 0, "n_covered": 0, "uncovered": []}
+
+    # Build the set of all face vertex tuples produced by fan tets.
+    tet_face_keys: set[tuple[int, int, int]] = set()
+    for tet in fan_tets:
+        verts = list(tet.get("tet_verts", []))
+        if len(verts) != 4:
+            continue
+        for i in range(4):
+            triangle = [verts[k] for k in range(4) if k != i]
+            tet_face_keys.add(tuple(sorted(int(v) for v in triangle)))
+
+    n_covered = 0
+    uncovered: list[int] = []
+    for fi in shell_face_ids:
+        if fi < 0 or fi >= len(faces):
+            uncovered.append(int(fi))
+            continue
+        f = faces[fi]
+        if len(f) != 3:
+            uncovered.append(int(fi))
+            continue
+        key = tuple(sorted(int(v) for v in f))
+        if key in tet_face_keys:
+            n_covered += 1
+        else:
+            uncovered.append(int(fi))
+
+    return {
+        "n_shell_faces": int(len(shell_face_ids)),
+        "n_covered": int(n_covered),
+        "uncovered": uncovered,
+    }
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

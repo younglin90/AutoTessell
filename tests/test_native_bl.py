@@ -31,6 +31,7 @@ from core.layers.native_bl import (
     _build_cavity_fan_transition_tets,
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
+    _check_cavity_shell_coverage,
     _compute_cavity_centroid,
     _detect_wall_owner_cavity_components,
     _extract_cavity_component_boundary,
@@ -1525,6 +1526,47 @@ def test_native_bl_build_cavity_fan_transition_tets_empty() -> None:
         )
         == []
     )
+
+
+def test_native_bl_check_cavity_shell_coverage_no_shell_no_op() -> None:
+    """BLR-9c-c-iii-c — empty external_internal shell → trivially
+    covered."""
+    out = _check_cavity_shell_coverage(
+        {"external_internal_faces": []},
+        [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}],
+        [[0, 1, 2]],
+    )
+    assert out == {"n_shell_faces": 0, "n_covered": 0, "uncovered": []}
+
+
+def test_native_bl_check_cavity_shell_coverage_face_present_in_tet_face() -> None:
+    """A shell face whose vertex set matches one of the tet's 4 faces
+    is reported as covered."""
+    # Single fan tet [apex, 0, 1, 2] has 4 faces (vertex sets):
+    #   {apex, 0, 1}, {apex, 1, 2}, {apex, 0, 2}, {0, 1, 2}.
+    # Use apex placeholder = 9 so the matching vertex set is (0, 1, 9).
+    faces = [[0, 1, 9]]      # face_id 0 uses verts {0, 1, 9}
+    fan_tets = [{"face_id": 99, "tet_verts": [9, 0, 1, 2]}]
+    out = _check_cavity_shell_coverage(
+        {"external_internal_faces": [0]}, fan_tets, faces
+    )
+    assert out["n_shell_faces"] == 1
+    assert out["n_covered"] == 1
+    assert out["uncovered"] == []
+
+
+def test_native_bl_check_cavity_shell_coverage_uncovered_returned() -> None:
+    """Shell face whose verts have no match in any tet face → reported
+    as uncovered (this is the typical BLR-9c-c-iii-c gap before
+    additional transition cells are added)."""
+    faces = [[5, 6, 7]]   # external_internal face — no tet face touches these.
+    fan_tets = [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}]
+    out = _check_cavity_shell_coverage(
+        {"external_internal_faces": [0]}, fan_tets, faces
+    )
+    assert out["n_shell_faces"] == 1
+    assert out["n_covered"] == 0
+    assert out["uncovered"] == [0]
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
