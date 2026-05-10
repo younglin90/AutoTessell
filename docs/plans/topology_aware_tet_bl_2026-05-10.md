@@ -1175,7 +1175,40 @@ Native_bl is missing a post-extrusion guard.
       b) stay FAIL but on different soft criteria (cap traded
          negative_volumes for max_aspect_ratio)
       c) stay FAIL because of upstream surface_area_deviation
-         (tet mesher fidelity, independent of cap)  In regions
+         (tet mesher fidelity, independent of cap)
+
+### BLR-9c-d (p-15) — pre-bench prediction from no-cap baseline
+
+Baseline bench (commit b4f945af, no cap) on 21 STLs at draft:
+
+::
+
+    PASS  12  test_cube + 11 thingi10k
+    FAIL   9  9 STLs with rc=1
+
+Of the 9 fails (analysed via commit d4280917 classifier
+output):
+
+  Neg-vol-only candidates (cap should fix):       5
+    extreme_1017013, extreme_102308, hard_100029,
+    hard_1004826,  medium_100330
+  max_skew > 20 hard cap (cap can't fix):         4
+    extreme_1017014 (skew 72), extreme_1017017 (29),
+    hard_100030 (899!),  hard_100040 (31)
+
+**Best-case projection with cap on**: 17/21 PASS = 81 %.
+The 4 extreme-skew cases need an algorithmic fix in the
+underlying tet mesher (Klingner-style sliver flip / AMIPS
+smoothing) before they can pass.
+
+**Plausible scenarios**:
+  - Best case: 17/21 PASS  (cap turns all 5 neg-vol-only
+                            into PASS)
+  - Realistic: 14-15/21 PASS (some of the 5 still FAIL on
+                              cap-induced max_aspect or
+                              upstream surface_area_dev)
+  - Worst:    13-14/21 PASS (cap mostly converts hard
+                              FAIL to soft FAIL)  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the
