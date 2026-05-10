@@ -352,9 +352,17 @@ worth attempting on a given STL.
   Default OFF behind the same `AUTO_TESSELL_BL_TET_CAVITY_PROBE`
   flag for now (the helper is not yet wired into the writer; it is
   exercised only by unit tests).
-- [ ] BLR-9b-iii: regression bench — flag-on vs flag-off retained
-  failure delta on the 21-STL set; only keep the change if a strict
-  reduction in tet failed cases is observed.
+- [x] BLR-9b-iii: topology guard added to plan builder.  Wall-owner
+  tets with internal-face neighbours are now REJECTED into the new
+  ``rejected.neighbour_internal`` bucket, because the simple
+  1-prism-+-1-transition-tet rewrite would orphan the neighbour
+  cell's shared face.  This restricts BLR-9b application to
+  isolated wall owners pending the BLR-9c multi-cell cavity refill.
+- [ ] BLR-9b-iv: writer integration + bench — wire the plan/apply
+  helpers into the polyMesh writer behind a NEW env flag
+  `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0` (distinct from the probe
+  flag).  Run flag-on vs flag-off on the 21-STL set; keep only if
+  retained failure count strictly drops.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

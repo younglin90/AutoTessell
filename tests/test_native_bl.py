@@ -951,6 +951,79 @@ def test_native_bl_apply_tet_cavity_replacement_plan_one_eligible_cell() -> None
     assert applied["new_neighbour"].size >= 1
 
 
+def test_native_bl_replacement_plan_rejects_wall_owner_with_internal_neighbour() -> None:
+    """BLR-9b-iii topology guard: a wall-owner tet with one or more
+    internal-face neighbours must be REJECTED by the plan builder
+    (the simple 1-prism-+-1-transition-tet rewrite would orphan the
+    neighbour cell's shared face).  The candidate is logged in
+    ``rejected.neighbour_internal`` so a verifier can count it.
+
+    Fixture: two tets sharing the face (0, 1, 3); the wall face
+    (0, 1, 2) belongs only to cell 0, so cell 0 is the wall owner
+    and cell 1 is its internal-face neighbour through (0, 1, 3).
+    """
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall face — boundary, owner=0
+        [0, 1, 3],   # internal — owner=0, neighbour=1
+        [1, 2, 3],   # boundary — owner=0
+        [2, 0, 3],   # boundary — owner=0
+        [0, 1, 4],   # boundary — owner=1
+        [1, 3, 4],   # boundary — owner=1
+        [3, 0, 4],   # boundary — owner=1
+    ]
+    owner = np.array([0, 0, 0, 0, 1, 1, 1], dtype=np.int64)
+    neighbour = np.array([-1, 1, -1, -1, -1, -1, -1], dtype=np.int64)
+    wall_face_indices = [0]
+    cell_centres = np.array(
+        [
+            np.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])[:0],  # placeholder unused
+            np.array([0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])[:0],
+        ],
+        dtype=np.float64,
+    )
+    # Recompute centres simply from the verts.
+    cell_centres = np.array(
+        [
+            points[[0, 1, 2, 3]].mean(axis=0),
+            points[[0, 1, 3, 4]].mean(axis=0),
+        ],
+        dtype=np.float64,
+    )
+    motion_dirs = {
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    plan = _build_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+        neighbour=neighbour,
+    )
+    assert plan["n_planned"] == 0
+    assert plan["cells_to_delete"] == []
+    assert plan["new_cells"] == []
+    assert plan["n_rejected_neighbour_internal"] == 1
+    assert plan["rejected"]["neighbour_internal"] == [0]
+
+
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
     """``enabled=False`` returns a structurally identical copy with no
     cells touched."""

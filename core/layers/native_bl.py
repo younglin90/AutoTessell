@@ -2511,6 +2511,7 @@ def _build_tet_cavity_replacement_plan(
     first_thickness: float,
     *,
     enabled: bool,
+    neighbour: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """BLR-9b-i: build the replacement plan WITHOUT mutating the polyMesh.
 
@@ -2543,10 +2544,12 @@ def _build_tet_cavity_replacement_plan(
         "rejected": {
             "topology": [],
             "det": [],
+            "neighbour_internal": [],
         },
         "n_planned": 0,
         "n_rejected_topology": 0,
         "n_rejected_det": 0,
+        "n_rejected_neighbour_internal": 0,
     }
     if (
         not enabled
@@ -2580,6 +2583,36 @@ def _build_tet_cavity_replacement_plan(
     new_points_list: list[np.ndarray] = []
     rejected_topology: list[int] = []
     rejected_det: list[int] = []
+    rejected_neighbour_internal: list[int] = []
+
+    # BLR-9b-iii topology guard: a single-tet wall owner can be safely
+    # replaced by the BLR-9b-ii prism + transition tet pair only when
+    # the replacement does not orphan an adjacent cell's internal face
+    # (the new cells share the wall face but NOT the original tet's
+    # other three internal faces).  Detect this by counting how many
+    # of the deleted cell's faces are internal — i.e. shared with a
+    # neighbour cell.  If any internal face exists, the simple
+    # 1-prism-+-1-transition-tet rewrite would leave the neighbour
+    # without a partner face, so the candidate must be rejected.  This
+    # restricts BLR-9b application to "isolated" wall owners — typical
+    # of small disconnected fragments — and BLR-9c will add the
+    # multi-cell cavity refill needed for the general case.
+    if neighbour is not None:
+        nbr_arr = np.asarray(neighbour, dtype=np.int64)
+        cell_internal_face_count: dict[int, int] = {}
+        for fi in range(min(len(owner_arr), len(nbr_arr))):
+            own = int(owner_arr[fi])
+            nbr = int(nbr_arr[fi])
+            if 0 <= own < n_centres:
+                cell_internal_face_count[own] = (
+                    cell_internal_face_count.get(own, 0) + 1
+                )
+            if 0 <= nbr < n_centres:
+                cell_internal_face_count[nbr] = (
+                    cell_internal_face_count.get(nbr, 0) + 1
+                )
+    else:
+        cell_internal_face_count = {}
 
     n_orig_points = int(points.shape[0])
     next_id = n_orig_points
@@ -2587,6 +2620,11 @@ def _build_tet_cavity_replacement_plan(
     for cid in sorted(eligible_set):
         if cell_wall_face_count.get(cid, 0) != 1:
             rejected_topology.append(int(cid))
+            continue
+        # BLR-9b-iii: reject if the original tet has neighbour-internal
+        # faces. Neighbours would otherwise lose their partner face.
+        if neighbour is not None and cell_internal_face_count.get(cid, 0) > 0:
+            rejected_neighbour_internal.append(int(cid))
             continue
         fi = cell_to_wall_face[cid]
         f = faces[fi]
@@ -2657,9 +2695,11 @@ def _build_tet_cavity_replacement_plan(
         plan["new_points"] = np.asarray(new_points_list, dtype=np.float64)
     plan["rejected"]["topology"] = rejected_topology
     plan["rejected"]["det"] = rejected_det
+    plan["rejected"]["neighbour_internal"] = rejected_neighbour_internal
     plan["n_planned"] = int(len(cells_to_delete))
     plan["n_rejected_topology"] = int(len(rejected_topology))
     plan["n_rejected_det"] = int(len(rejected_det))
+    plan["n_rejected_neighbour_internal"] = int(len(rejected_neighbour_internal))
     return plan
 
 
