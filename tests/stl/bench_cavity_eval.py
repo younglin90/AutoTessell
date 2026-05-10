@@ -193,15 +193,18 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     bl_qual_path = case_dir / "native_bl_quality.json"
     eval_block: dict[str, Any] = {}
     fastpath_block: dict[str, Any] | None = None
+    anti_invert_block: dict[str, Any] = {}
     if bl_qual_path.exists():
         try:
             data = json.loads(bl_qual_path.read_text())
             eval_block = dict(data.get("tet_cavity_eval", {}))
             fastpath_block = data.get("fastpath")
+            anti_invert_block = dict(data.get("anti_invert_cap", {}))
         except Exception as exc:  # noqa: BLE001
             eval_block = {"read_error": str(exc)[:160]}
     row["tet_cavity_eval"] = eval_block
     row["fastpath"] = fastpath_block
+    row["anti_invert_cap"] = anti_invert_block
     if eval_block:
         row["bl_path"] = (
             "vd" if eval_block.get("writer_path") == "vd" else "main"
@@ -294,6 +297,7 @@ def main() -> int:
     cols = [
         "stl", "returncode", "elapsed_s", "bl_path",
         "evaluator_verdict", "first_fail_metric",
+        "anti_invert_n_capped", "anti_invert_max_reduction",
         "n_components", "n_accepted",
         "n_rejected_uncovered_shell", "n_rejected_bad_det",
         "n_rejected_bad_shape", "n_rejected_bad_non_ortho",
@@ -302,6 +306,7 @@ def main() -> int:
     lines = ["\t".join(cols)]
     for r in rows:
         ev = r.get("tet_cavity_eval") or {}
+        ai = r.get("anti_invert_cap") or {}
         lines.append("\t".join([
             str(r.get("stl", "")),
             str(r.get("returncode", "")),
@@ -309,6 +314,8 @@ def main() -> int:
             str(r.get("bl_path", "?")),
             str(r.get("evaluator_verdict", "?")),
             str(r.get("first_fail_metric", ""))[:80],
+            str(ai.get("n_capped", 0)),
+            str(round(float(ai.get("max_reduction", 0.0)), 6)),
             str(ev.get("n_components", 0)),
             str(ev.get("n_accepted", 0)),
             str(ev.get("n_rejected_uncovered_shell", 0)),
