@@ -848,15 +848,29 @@ The remaining 37 rejected components split:
 
 ### BLR-9c-d (o) — fan-tet shape (the dominant Q-shape source)
 
-- [ ] BLR-9c-d (o-1): the BLR-9c-c-iii-b fan transition tets are
-  built with the cavity centroid as their apex and the
-  BLR-9c-c-i inner triangles as their base.  For wall-owner
-  cells far from the cavity centroid the resulting tet is a
-  thin sliver because the apex sits halfway across the cavity
-  while the base is a tiny prism cap on the wall.  The fix
-  mirrors the closure-side BLR-9c-d-m-2 trick: replace the
-  shared apex with a per-fan-face Steiner point placed on the
-  inner-triangle's normal at a controlled offset.
+- [x] BLR-9c-d (o-1) — *negative result*.  Tried switching the
+  fan apex from ``_compute_cavity_centroid`` (cell-vertex mean)
+  to the centroid of the BLR-9c-c-i inner-points (the prism caps).
+  Bench dropped catastrophically:
+
+  ::
+
+      824 accept → 192 accept (-632)
+      0 reject_bad_det → 537 reject_bad_det
+
+  Reason: the prism-cap centroid sits *inside* the convex hull of
+  the inner triangles and frequently lands on the wrong side of
+  one or more inner-triangle planes, flipping the signed volume of
+  the corresponding fan tet (now reported as bad_det because most
+  of the 537 are degenerate, not just sign-mixed).  The
+  cavity-cell centroid is the right shared apex.  Reverted
+  immediately.
+
+- [ ] BLR-9c-d (o-2): tune the BLR-9c-c-i motion direction or
+  magnitude so the inner triangles stay closer to the wall (i.e.
+  *thinner* prism cap) — this reduces the height of the fan
+  tet's apex above the base without moving the apex itself, which
+  should improve Q without breaking validity.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

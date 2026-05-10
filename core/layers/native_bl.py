@@ -4244,9 +4244,20 @@ def _evaluate_cavity_component_candidates(
         split = _split_cavity_inner_ids_at_sharp_corners(
             triangles, smooth, cos_thresh=sharp_cos_thresh
         )
+        # BLR-9c-d-o-1 (reverted): the prism-cap centroid as fan
+        # apex was tried and caused a hard regression (824 → 192
+        # accept, +537 reject_bad_det) because the cap centroid
+        # sits *too close* to the BLR-9c-c-i inner triangles — for
+        # many components it lands on the wrong side of one or more
+        # caps, flipping the signed volume of the corresponding fan
+        # tet.  The cavity-cell centroid is the right invariant
+        # apex; future tuning of fan-tet shape needs a different
+        # tactic (e.g. a per-component scale on the BLR-9c-c-i
+        # motion direction) that does not move the apex.
         apex_xyz = _compute_cavity_centroid(
             comp_set, faces, pts, owner, neighbour
         )
+        cavity_centroid_xyz = apex_xyz
         fan_tets = _build_cavity_fan_transition_tets(triangles, split)
         # Initial shell-coverage check on fan tets only — gives us the
         # ``uncovered`` external_internal face list that BLR-9c-d-h-1
@@ -4260,7 +4271,7 @@ def _evaluate_cavity_component_candidates(
             faces=faces,
             points=pts,
             inner_points=split["inner_points"],
-            apex_xyz=apex_xyz,
+            apex_xyz=cavity_centroid_xyz,
         )
         closure_tets = closure["shell_closure_tets"]
         extended_inner = closure["extended_inner_points"]
