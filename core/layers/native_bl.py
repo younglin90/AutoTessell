@@ -3997,6 +3997,7 @@ def _evaluate_cavity_component_candidates(
     *,
     sharp_cos_thresh: float = 0.9,
     non_ortho_threshold_deg: float = 70.0,
+    q_min_threshold: float = 0.1,
 ) -> dict[str, Any]:
     """BLR-9c-d: aggregate per-cavity-component evaluation.
 
@@ -4164,7 +4165,8 @@ def _evaluate_cavity_component_candidates(
         )
         n_fan_bad_det = int(len(det_check.get("bad_indices", [])))
         shape_check = _check_cavity_fan_tet_shape_quality(
-            all_tets, apex_xyz, extended_inner
+            all_tets, apex_xyz, extended_inner,
+            q_min_threshold=q_min_threshold,
         )
         n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
         # BLR-9c-d-k-1 — attribute the worst-Q tet to either the
@@ -5070,6 +5072,12 @@ def _generate_native_bl_vd(
                     "70.0",
                 )
             )
+            _vd_q_min_thresh = float(
+                os.environ.get(
+                    "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
+                    "0.1",
+                )
+            )
             _vd_summary = _evaluate_cavity_component_candidates(
                 components=_vd_components,
                 points=np.asarray(points, dtype=np.float64),
@@ -5080,6 +5088,7 @@ def _generate_native_bl_vd(
                 motion_dirs=_vd_motion_dirs,
                 first_thickness=float(cfg.first_thickness),
                 non_ortho_threshold_deg=_vd_non_ortho_thresh,
+                q_min_threshold=_vd_q_min_thresh,
             )
             for _key in (
                 "n_components", "n_accepted",
@@ -6357,6 +6366,12 @@ def generate_native_bl(
                             "70.0",
                         )
                     )
+                    _eval_q_min_thresh = float(
+                        os.environ.get(
+                            "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
+                            "0.1",
+                        )
+                    )
                     _eval_summary = _evaluate_cavity_component_candidates(
                         components=_eval_components,
                         points=np.asarray(points, dtype=np.float64),
@@ -6367,6 +6382,7 @@ def generate_native_bl(
                         motion_dirs=motion_dirs,
                         first_thickness=float(cfg.first_thickness),
                         non_ortho_threshold_deg=_eval_non_ortho_thresh,
+                        q_min_threshold=_eval_q_min_thresh,
                     )
                     tet_cavity_eval_diag = {
                         "enabled": True,

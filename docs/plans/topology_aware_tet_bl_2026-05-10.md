@@ -681,10 +681,33 @@ worth attempting on a given STL.
     BLR-9c-c-iii-b fan, 32 % from the BLR-9c-d-h-1 closure — both
     paths contribute, fan dominates.
 
-- [ ] BLR-9c-d (k-2): wire ``AUTO_TESSELL_BL_TET_CAVITY_Q_MIN``
-  through ``_evaluate_cavity_component_candidates`` →
-  ``_check_cavity_fan_tet_shape_quality`` (default 0.1).  Bench
-  at 0.05 / 0.01 to confirm the histogram-predicted recovery.
+- [x] BLR-9c-d (k-2): ``_evaluate_cavity_component_candidates``
+  takes ``q_min_threshold`` (default 0.1) and forwards it to
+  ``_check_cavity_fan_tet_shape_quality``.  Both
+  ``generate_native_bl`` and ``_generate_native_bl_vd`` read
+  ``AUTO_TESSELL_BL_TET_CAVITY_Q_MIN`` (default 0.1) and pass
+  through.  The bench harness sets the cap to 0.05 by default
+  (override via ``AUTO_TESSELL_BENCH_CAVITY_Q_MIN``).  **Bench
+  at q_min = 0.05 (test_cube + easy_100034)**:
+
+  ::
+
+      before (q_min=0.1): 861 components, 742 accept (86.2 %),
+                          51 reject_bad_shape, 68 reject_bad_non_ortho.
+      after  (q_min=0.05):861 components, 754 accept (87.6 %),
+                          30 reject_bad_shape, 77 reject_bad_non_ortho.
+
+  Net +12 accept.  Of the 21 components recovered from the shape
+  gate, ~9 fall through into ``reject_bad_non_ortho`` instead — a
+  pattern characteristic of sequential-gate flow.
+
+### BLR-9c-d (l) — non-ortho 77 / shape 30 audit
+
+- [ ] BLR-9c-d (l-1): re-bench with the fine non-ortho histogram
+  to see whether the new 77 rejected components cluster just
+  past 80° (cap lift to 85° / 90° likely safe) or scatter to
+  much higher values (geometry pathology).  Mirror the BLR-9c-d-j-1
+  audit pattern.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

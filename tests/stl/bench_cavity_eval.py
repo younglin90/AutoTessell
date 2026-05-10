@@ -97,6 +97,13 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
         os.environ.get("AUTO_TESSELL_BENCH_CAVITY_NON_ORTHO_DEG", "80"),
     )
+    # BLR-9c-d-k-2 — Q-min cap configurable; default to 0.05 since
+    # the BLR-9c-d-k-1 audit showed the rejected components cluster
+    # in the [0.01, 0.1) range and only 2 of 51 fall below 0.01.
+    env.setdefault(
+        "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
+        os.environ.get("AUTO_TESSELL_BENCH_CAVITY_Q_MIN", "0.05"),
+    )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
     env.setdefault("AUTO_TESSELL_LCR_OFF", "1")
