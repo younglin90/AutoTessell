@@ -14,7 +14,9 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 54.92,
+      "elapsed_s": 57.307,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    74.1\u00b0         < 60\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
@@ -82,7 +84,9 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 103.843,
+      "elapsed_s": 104.261,
+      "evaluator_verdict": "FAIL",
+      "first_fail_metric": "Max Non-Ortho                    89.4\u00b0         < 60\u00b0  FAIL",
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,

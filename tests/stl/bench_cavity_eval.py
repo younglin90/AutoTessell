@@ -114,6 +114,7 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         "case_dir": str(case_dir),
     }
     start = time.perf_counter()
+    log_tail = ""
     try:
         proc = subprocess.run(
             cmd, cwd=ROOT, env=env, text=True,
@@ -121,10 +122,27 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
             timeout=TIMEOUT_S,
         )
         row["returncode"] = int(proc.returncode)
-    except subprocess.TimeoutExpired:
+        log_tail = (proc.stdout or "")[-4000:]
+    except subprocess.TimeoutExpired as exc:
         row["returncode"] = 124
         row["timeout"] = True
+        log_tail = (exc.stdout if isinstance(exc.stdout, str) else "")[-4000:]
     row["elapsed_s"] = round(time.perf_counter() - start, 3)
+    row["log_tail"] = log_tail
+    # Extract the evaluator verdict + first failing metric (if any) from
+    # the captured log so the bench summary surfaces the real reject
+    # reason — separate from the cavity_eval read-only audit.
+    row["evaluator_verdict"] = "UNKNOWN"
+    row["first_fail_metric"] = ""
+    for line in log_tail.splitlines():
+        if "verdict=PASS" in line:
+            row["evaluator_verdict"] = "PASS"
+        elif "verdict=FAIL" in line:
+            row["evaluator_verdict"] = "FAIL"
+        if " FAIL " in line and not row["first_fail_metric"]:
+            stripped = line.strip()
+            if stripped.startswith("Max ") or stripped.startswith("Min ") or stripped.startswith("Avg "):
+                row["first_fail_metric"] = stripped[:120]
 
     # Read native_bl_quality.json and extract tet_cavity_eval +
     # fastpath bypass markers.
@@ -210,17 +228,28 @@ def main() -> int:
         )
         print(
             f"        rc={row['returncode']} t={row['elapsed_s']}s "
-            f"path={row.get('bl_path', '?')} {decision_str}"
+            f"path={row.get('bl_path', '?')} "
+            f"v={row.get('evaluator_verdict', '?')} {decision_str}"
         )
+        if row.get("first_fail_metric"):
+            print(f"        fail: {row['first_fail_metric']}")
 
     out_dir = ROOT / "tests" / "stl"
     json_path = out_dir / "bench_cavity_eval_result.json"
+    # Drop the verbose log_tail from the persisted JSON to keep the
+    # file readable; per-STL stdout is reconstructable from the live
+    # run if needed.
+    rows_json = []
+    for r in rows:
+        rj = {k: v for k, v in r.items() if k != "log_tail"}
+        rows_json.append(rj)
     json_path.write_text(json.dumps(
-        {"totals": totals, "rows": rows}, indent=2,
+        {"totals": totals, "rows": rows_json}, indent=2,
     ))
     tsv_path = out_dir / "bench_cavity_eval_summary.tsv"
     cols = [
         "stl", "returncode", "elapsed_s", "bl_path",
+        "evaluator_verdict", "first_fail_metric",
         "n_components", "n_accepted",
         "n_rejected_uncovered_shell", "n_rejected_bad_det",
         "n_rejected_bad_shape", "n_rejected_bad_non_ortho",
@@ -234,6 +263,8 @@ def main() -> int:
             str(r.get("returncode", "")),
             str(r.get("elapsed_s", "")),
             str(r.get("bl_path", "?")),
+            str(r.get("evaluator_verdict", "?")),
+            str(r.get("first_fail_metric", ""))[:80],
             str(ev.get("n_components", 0)),
             str(ev.get("n_accepted", 0)),
             str(ev.get("n_rejected_uncovered_shell", 0)),

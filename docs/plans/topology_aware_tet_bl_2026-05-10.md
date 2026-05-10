@@ -872,6 +872,43 @@ The remaining 37 rejected components split:
   tet's apex above the base without moving the apex itself, which
   should improve Q without breaking validity.
 
+### BLR-9c-d (p) — bench surfaces the *real* failure: max non-ortho
+
+- [x] BLR-9c-d (p-1): bench harness now captures CLI stdout and
+  surfaces ``evaluator_verdict`` + ``first_fail_metric`` per STL
+  in JSON + TSV.  **First measurement**:
+
+  ::
+
+      test_cube.stl       FAIL — Max Non-Ortho 74.1 < 60 deg
+      easy_100034.stl     FAIL — Max Non-Ortho 89.4 < 60 deg
+
+  Both STLs fail on the *real* polyMesh's max non-ortho hitting
+  the ``quality=fine`` 60° gate, **independent of the cavity
+  eval read-only audit** (which sits at 824/861 = 95.7% predictive
+  accept).  The cavity replacement strategy can fix exactly these
+  cells if wired into the writer, but **the cavity-eval gate
+  audits alone never close the user-facing PASS gap**.
+
+### BLR-9c-d (q) — wire BLR-9 cavity replacement into the writer
+
+This is the long-deferred BLR-9b-iv-b sub-step.  With 95.7 %
+predictive accept rate, applying the cavity replacement to
+those cells is expected to drop the production max non-ortho
+because each replaced wall-owner cell becomes a fan + closure
+of controlled-angle transition tets in place of the original
+sometimes-skewed cell.
+
+- [ ] BLR-9c-d (q-1): when both ``AUTO_TESSELL_BL_TET_CAVITY_EVAL=1``
+  and ``AUTO_TESSELL_BL_TET_CAVITY_REPLACE=1`` are set, the
+  generate_native_bl writer path swaps the predicted apex /
+  inner-points / fan + closure tets into the polyMesh arrays for
+  every component the aggregator marked ``accept``.  Component
+  whose decision is any reject label keeps its original cells
+  unchanged.  Default OFF — gated by env so production behaviour
+  is unaffected until the bench shows the rewritten polyMesh
+  passes a mesh-validity smoke test.
+
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
   to delete each eligible wall-owner tet, insert the layer-1 prism
