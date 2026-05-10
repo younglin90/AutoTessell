@@ -328,7 +328,28 @@ revertable change.
 The probe outputs let BLR-9b decide whether the actual rewrite is
 worth attempting on a given STL.
 
-#### Task 2b: BLR-9b — single-cell rewrite (next iteration)
+#### Task 2b: BLR-9b — single-cell rewrite (in progress)
+
+- [x] BLR-9b-i: build a cell-level replacement plan
+  (`_build_tet_cavity_replacement_plan`) without mutating the
+  polyMesh.  For every probe-pass candidate emit
+  ``cells_to_delete`` (original wall-owner tet ids) and
+  ``new_cells`` (prism + transition tet vertex bundles) plus a
+  ``new_points`` array of inner-triangle coordinates ready to be
+  appended.  Rejected candidates split between
+  ``rejected.topology`` and ``rejected.det`` so they can be logged.
+  Default OFF behind `AUTO_TESSELL_BL_TET_CAVITY_PROBE` (the same
+  env flag as BLR-9a) — plan-build is a strict superset of probe
+  behaviour and shares its diagnostics.
+- [ ] BLR-9b-ii: apply the plan — append the transition-tet apex
+  point, drop ``cells_to_delete`` from owner/neighbour, append
+  ``new_cells`` with their face/owner/neighbour entries.  Default
+  OFF behind a NEW env flag `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0`
+  so the plan-only path can stay enabled for diagnostics without
+  touching the mesh.
+- [ ] BLR-9b-iii: regression bench — flag-on vs flag-off retained
+  failure delta on the 21-STL set; only keep the change if a strict
+  reduction in tet failed cases is observed.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

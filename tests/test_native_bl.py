@@ -27,6 +27,7 @@ from core.layers.native_bl import (
     _bl_bad_internal_face_histogram,
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
+    _build_tet_cavity_replacement_plan,
     _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
     _tet_wall_cavity_replacement_probe,
@@ -736,6 +737,143 @@ def test_native_bl_tet_cavity_probe_rejects_outward_motion() -> None:
     # classified as a topology failure (not a determinant failure).
     assert diag["n_quality_fail_topology"] == 1
     assert diag["n_quality_fail_det"] == 0
+
+
+def test_native_bl_tet_cavity_replacement_plan_one_eligible_cell() -> None:
+    """BLR-9b-i — replacement plan builder produces 1 cell to delete +
+    1 prism + 1 transition tet + 3 new inner-triangle points for the
+    one-tet inward fixture, and is empty when disabled."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    wall_face_indices = [0]
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    motion_dirs = {
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    plan_on = _build_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+    )
+    assert plan_on["enabled"] is True
+    assert plan_on["n_planned"] == 1
+    assert plan_on["cells_to_delete"] == [0]
+    assert len(plan_on["new_cells"]) == 1
+    new_cell = plan_on["new_cells"][0]
+    assert new_cell["deleted_cell_id"] == 0
+    # Prism: outer triangle keeps original wall verts (0, 1, 2); inner
+    # triangle uses the three freshly minted point ids appended right
+    # after the original ``points`` (4) — so 4, 5, 6.
+    assert new_cell["prism"] == [0, 1, 2, 4, 5, 6]
+    # Transition tet apex id is -1 placeholder; base verts are the
+    # same minted ids as the prism inner triangle.
+    assert new_cell["transition_tet"][0] == -1
+    assert new_cell["transition_tet"][1:] == [4, 5, 6]
+    # Apex coordinate equals the original cell centroid = mean(points).
+    np.testing.assert_allclose(
+        new_cell["transition_tet_apex_xyz"],
+        points.mean(axis=0),
+        atol=1e-12,
+    )
+    assert plan_on["new_points"].shape == (3, 3)
+    # Inner triangle points = wall verts + (+z * 0.05).
+    np.testing.assert_allclose(
+        plan_on["new_points"],
+        np.array(
+            [
+                [0.0, 0.0, 0.05],
+                [1.0, 0.0, 0.05],
+                [0.0, 1.0, 0.05],
+            ],
+            dtype=np.float64,
+        ),
+        atol=1e-12,
+    )
+
+    # Env OFF — plan must be empty.
+    plan_off = _build_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=False,
+    )
+    assert plan_off["enabled"] is False
+    assert plan_off["n_planned"] == 0
+    assert plan_off["cells_to_delete"] == []
+    assert plan_off["new_cells"] == []
+    assert plan_off["new_points"].shape == (0, 3)
+
+
+def test_native_bl_tet_cavity_replacement_plan_outward_motion_rejected() -> None:
+    """Outward motion → topology rejection at plan-build time, no new
+    cells emitted."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    motion_dirs = {
+        0: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+    }
+
+    plan = _build_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        [0],
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+    )
+    assert plan["n_planned"] == 0
+    assert plan["cells_to_delete"] == []
+    assert plan["new_cells"] == []
+    assert plan["n_rejected_topology"] == 1
+    assert plan["rejected"]["topology"] == [0]
 
 
 def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:

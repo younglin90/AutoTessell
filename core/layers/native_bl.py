@@ -2500,6 +2500,169 @@ def _tet_wall_cavity_replacement_probe(
     return diag
 
 
+def _build_tet_cavity_replacement_plan(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_face_indices: list[int],
+    eligible_owner_cells: list[int] | tuple[int, ...] | set[int] | None,
+    cell_centres: np.ndarray,
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    enabled: bool,
+) -> dict[str, Any]:
+    """BLR-9b-i: build the replacement plan WITHOUT mutating the polyMesh.
+
+    For each BLR-7 single-tet single-wall eligible owner that the BLR-9a
+    probe would classify as quality_pass, emit a cell-level replacement
+    plan:
+
+    - ``cells_to_delete``: original wall-owner tet ids slated for removal.
+    - ``new_cells``: per-replacement, the new cell vertex bundles
+      ``{"prism": [...6 verts...], "transition_tet": [...4 verts...]}``.
+      The prism's outer triangle keeps the original wall face vertex
+      order; the inner triangle uses freshly minted point ids appended
+      to ``new_points``.  The transition tet uses ``apex = original cell
+      centroid`` and ``base = inner triangle`` (matching the BLR-9a
+      probe geometry exactly).
+    - ``new_points``: ``(N, 3)`` array of inner triangle coordinates
+      that the caller will append to the global ``points`` array; the
+      ``new_cells`` entries reference them by offset (offset 0 = first
+      newly minted point, etc).
+    - ``rejected``: candidates classified as topology_fail / det_fail
+      so the caller can log them.
+
+    No mesh mutation.  When ``enabled`` is False the plan is empty.
+    """
+    plan: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "cells_to_delete": [],
+        "new_cells": [],
+        "new_points": np.zeros((0, 3), dtype=np.float64),
+        "rejected": {
+            "topology": [],
+            "det": [],
+        },
+        "n_planned": 0,
+        "n_rejected_topology": 0,
+        "n_rejected_det": 0,
+    }
+    if (
+        not enabled
+        or not wall_face_indices
+        or eligible_owner_cells is None
+        or motion_dirs is None
+        or cell_centres is None
+        or len(cell_centres) == 0
+    ):
+        return plan
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set:
+        return plan
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    cell_to_wall_face: dict[int, int] = {}
+    cell_wall_face_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres or own not in eligible_set:
+            continue
+        cell_wall_face_count[own] = cell_wall_face_count.get(own, 0) + 1
+        cell_to_wall_face.setdefault(own, int(fi))
+
+    cells_to_delete: list[int] = []
+    new_cells: list[dict[str, list[int]]] = []
+    new_points_list: list[np.ndarray] = []
+    rejected_topology: list[int] = []
+    rejected_det: list[int] = []
+
+    n_orig_points = int(points.shape[0])
+    next_id = n_orig_points
+
+    for cid in sorted(eligible_set):
+        if cell_wall_face_count.get(cid, 0) != 1:
+            rejected_topology.append(int(cid))
+            continue
+        fi = cell_to_wall_face[cid]
+        f = faces[fi]
+        if len(f) != 3:
+            rejected_topology.append(int(cid))
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = motion_dirs[v0]
+            d1 = motion_dirs[v1]
+            d2 = motion_dirs[v2]
+        except KeyError:
+            rejected_topology.append(int(cid))
+            continue
+
+        p0 = np.asarray(points[v0], dtype=np.float64)
+        p1 = np.asarray(points[v1], dtype=np.float64)
+        p2 = np.asarray(points[v2], dtype=np.float64)
+        i0_pt = p0 + np.asarray(d0, dtype=np.float64).reshape(3) * float(first_thickness)
+        i1_pt = p1 + np.asarray(d1, dtype=np.float64).reshape(3) * float(first_thickness)
+        i2_pt = p2 + np.asarray(d2, dtype=np.float64).reshape(3) * float(first_thickness)
+        apex = np.asarray(cell_centres[cid], dtype=np.float64).reshape(3)
+
+        # Topology gate identical to the BLR-9a probe.
+        wall_centroid = (p0 + p1 + p2) / 3.0
+        inner_centroid = (i0_pt + i1_pt + i2_pt) / 3.0
+        if (
+            float(np.dot(inner_centroid - wall_centroid, apex - wall_centroid))
+            <= 0.0
+        ):
+            rejected_topology.append(int(cid))
+            continue
+
+        # Determinant gate identical to the BLR-9a probe.
+        m = np.stack([i0_pt - apex, i1_pt - apex, i2_pt - apex], axis=0)
+        det_signed = float(np.linalg.det(m)) / 6.0
+        if (not np.isfinite(det_signed)) or abs(det_signed) <= 1e-30:
+            rejected_det.append(int(cid))
+            continue
+
+        # Mint the three new inner-triangle point ids.
+        i0 = next_id
+        i1 = next_id + 1
+        i2 = next_id + 2
+        next_id += 3
+        new_points_list.append(i0_pt)
+        new_points_list.append(i1_pt)
+        new_points_list.append(i2_pt)
+
+        cells_to_delete.append(int(cid))
+        new_cells.append(
+            {
+                "prism": [v0, v1, v2, i0, i1, i2],
+                # Apex point id is deliberately left as -1 here — BLR-9b-ii
+                # will mint the original cell centroid as a real point when
+                # the plan is applied to the polyMesh.  ``transition_tet[0]``
+                # MUST be re-resolved at apply time using the
+                # ``transition_tet_apex_xyz`` coordinate below.
+                "transition_tet": [-1, i0, i1, i2],
+                "transition_tet_apex_xyz": apex.tolist(),
+                "deleted_cell_id": int(cid),
+            }
+        )
+
+    plan["cells_to_delete"] = cells_to_delete
+    plan["new_cells"] = new_cells
+    if new_points_list:
+        plan["new_points"] = np.asarray(new_points_list, dtype=np.float64)
+    plan["rejected"]["topology"] = rejected_topology
+    plan["rejected"]["det"] = rejected_det
+    plan["n_planned"] = int(len(cells_to_delete))
+    plan["n_rejected_topology"] = int(len(rejected_topology))
+    plan["n_rejected_det"] = int(len(rejected_det))
+    return plan
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
