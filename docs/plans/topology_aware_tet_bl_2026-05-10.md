@@ -655,13 +655,36 @@ worth attempting on a given STL.
 
 ### BLR-9c-d (k) — shape gate audit / Q-floor relaxation
 
-- [ ] BLR-9c-d (k-1): the q_min histogram showed 51 components
-  with ``Q < 0.1`` (37 in easy_100034 alone, 14 in test_cube).
-  Surface a finer-grained histogram and ``q_min_argmin``
-  per-component so we know whether the slivers cluster on a
-  specific topology pattern (e.g. tet-on-quad-shell closure
-  triangles) before deciding whether to accept a softer Q floor
-  or rebuild the closure tets.
+- [x] BLR-9c-d (k-1): added ``q_min_fine_hist`` (bins
+  [0.05, 0.1) / [0.01, 0.05) / [0.001, 0.01) / <0.001) and
+  ``worst_q_kind_hist`` (fan / shell_closure / none / other) to
+  the aggregator summary; per-component records carry
+  ``worst_q_kind`` and ``worst_q_value``.  Surfaced through both
+  ``generate_native_bl`` and ``_generate_native_bl_vd``.
+
+  **Bench audit (test_cube + easy_100034)**:
+
+  ::
+
+      Q < 0.1 fine bins (51 components):
+        test_cube     7 / 7 / 0 / 0
+        easy_100034  14 / 21 / 2 / 0
+      Worst-Q tet kind across all 861 components:
+        test_cube     fan 451 / shell_closure 200
+        easy_100034   fan 137 / shell_closure  73
+
+  - Rejected components cluster in the [0.01, 0.1) range; only 2
+    out of 51 fall below 0.01 (both in easy_100034).  Lifting the
+    cap to Q ≥ 0.05 recovers ~21 components, to Q ≥ 0.01 recovers
+    ~49.  Below 0.01 the slivers are real geometric pathology.
+  - 68 % of all components have their worst-Q tet from the
+    BLR-9c-c-iii-b fan, 32 % from the BLR-9c-d-h-1 closure — both
+    paths contribute, fan dominates.
+
+- [ ] BLR-9c-d (k-2): wire ``AUTO_TESSELL_BL_TET_CAVITY_Q_MIN``
+  through ``_evaluate_cavity_component_candidates`` →
+  ``_check_cavity_fan_tet_shape_quality`` (default 0.1).  Bench
+  at 0.05 / 0.01 to confirm the histogram-predicted recovery.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

@@ -4090,6 +4090,23 @@ def _evaluate_cavity_component_candidates(
         "q_min_hist": {
             "ge_0p3": 0, "0p1_0p3": 0, "0p01_0p1": 0, "lt_0p01": 0,
         },
+        # BLR-9c-d-k-1 — fine-grained Q bins so the
+        # ``reject_bad_shape`` bucket can be split between
+        # near-threshold (likely recoverable by softening the cap)
+        # and pathological (slivers that need a real geometric fix).
+        "q_min_fine_hist": {
+            "0p05_0p1": 0,
+            "0p01_0p05": 0,
+            "0p001_0p01": 0,
+            "lt_0p001": 0,
+        },
+        # Worst-Q-tet attribution across all components.
+        "worst_q_kind_hist": {
+            "fan": 0,
+            "shell_closure": 0,
+            "none": 0,
+            "other": 0,
+        },
         "max_non_ortho_deg": 0.0,
         "max_skew": 0.0,
         "min_q": 1.0,
@@ -4150,6 +4167,23 @@ def _evaluate_cavity_component_candidates(
             all_tets, apex_xyz, extended_inner
         )
         n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
+        # BLR-9c-d-k-1 — attribute the worst-Q tet to either the
+        # BLR-9c-c-iii-b fan or the BLR-9c-d-h-1 shell closure so
+        # later sub-steps can target the right helper.
+        worst_q_kind = "none"
+        worst_q_value = 1.0
+        _q_values = shape_check.get("q_values", None)
+        if (
+            _q_values is not None
+            and hasattr(_q_values, "size")
+            and _q_values.size > 0
+        ):
+            _argmin = int(np.argmin(_q_values))
+            if 0 <= _argmin < len(all_tets):
+                worst_q_kind = str(
+                    all_tets[_argmin].get("kind", "fan")
+                )
+                worst_q_value = float(_q_values[_argmin])
         non_ortho_check = _check_cavity_fan_tet_pair_non_ortho(
             all_tets, apex_xyz, extended_inner,
             non_ortho_threshold_deg=non_ortho_threshold_deg,
@@ -4208,6 +4242,8 @@ def _evaluate_cavity_component_candidates(
             "n_fan_bad_shape_indices": n_fan_bad_shape,
             "fan_q_min": float(shape_check.get("q_min", 0.0)),
             "fan_q_mean": float(shape_check.get("q_mean", 0.0)),
+            "worst_q_kind": worst_q_kind,
+            "worst_q_value": worst_q_value,
             "n_fan_pair_count": int(non_ortho_check.get("n_pairs", 0)),
             "n_fan_pair_above_non_ortho": int(
                 non_ortho_check.get("n_above_threshold", 0)
@@ -4285,8 +4321,25 @@ def _evaluate_cavity_component_candidates(
             summary["q_min_hist"]["0p01_0p1"] += 1
         else:
             summary["q_min_hist"]["lt_0p01"] += 1
+        # Fine-grained bins, only populated for components that fall
+        # below the BLR-9c-d-d-1 threshold (Q < 0.1).
+        if _q_min < 0.1:
+            if _q_min >= 0.05:
+                summary["q_min_fine_hist"]["0p05_0p1"] += 1
+            elif _q_min >= 0.01:
+                summary["q_min_fine_hist"]["0p01_0p05"] += 1
+            elif _q_min >= 0.001:
+                summary["q_min_fine_hist"]["0p001_0p01"] += 1
+            else:
+                summary["q_min_fine_hist"]["lt_0p001"] += 1
         if _q_min < summary["min_q"]:
             summary["min_q"] = _q_min
+
+        _wq_kind = comp_record.get("worst_q_kind", "none")
+        if _wq_kind in summary["worst_q_kind_hist"]:
+            summary["worst_q_kind_hist"][_wq_kind] += 1
+        else:
+            summary["worst_q_kind_hist"]["other"] += 1
 
     return summary
 
@@ -5045,6 +5098,12 @@ def _generate_native_bl_vd(
             )
             vd_tet_cavity_eval_diag["q_min_hist"] = dict(
                 _vd_summary.get("q_min_hist", {})
+            )
+            vd_tet_cavity_eval_diag["q_min_fine_hist"] = dict(
+                _vd_summary.get("q_min_fine_hist", {})
+            )
+            vd_tet_cavity_eval_diag["worst_q_kind_hist"] = dict(
+                _vd_summary.get("worst_q_kind_hist", {})
             )
             vd_tet_cavity_eval_diag["max_non_ortho_deg"] = float(
                 _vd_summary.get("max_non_ortho_deg", 0.0)
@@ -6346,6 +6405,12 @@ def generate_native_bl(
                         ),
                         "q_min_hist": dict(
                             _eval_summary.get("q_min_hist", {})
+                        ),
+                        "q_min_fine_hist": dict(
+                            _eval_summary.get("q_min_fine_hist", {})
+                        ),
+                        "worst_q_kind_hist": dict(
+                            _eval_summary.get("worst_q_kind_hist", {})
                         ),
                         "max_non_ortho_deg": float(
                             _eval_summary.get("max_non_ortho_deg", 0.0)

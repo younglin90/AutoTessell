@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 1,
-      "elapsed_s": 61.183,
+      "elapsed_s": 59.889,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 651,
@@ -45,6 +45,18 @@
           "0p01_0p1": 14,
           "lt_0p01": 0
         },
+        "q_min_fine_hist": {
+          "0p05_0p1": 7,
+          "0p01_0p05": 7,
+          "0p001_0p01": 0,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 451,
+          "shell_closure": 200,
+          "none": 0,
+          "other": 0
+        },
         "max_non_ortho_deg": 88.78667589232185,
         "max_skew": 1.3279396988858834,
         "min_q": 0.014938855321832669
@@ -56,7 +68,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 1,
-      "elapsed_s": 110.314,
+      "elapsed_s": 107.288,
       "tet_cavity_eval": {
         "enabled": true,
         "n_components": 210,
@@ -86,6 +98,18 @@
           "0p1_0p3": 131,
           "0p01_0p1": 35,
           "lt_0p01": 2
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 14,
+          "0p01_0p05": 21,
+          "0p001_0p01": 2,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 137,
+          "shell_closure": 73,
+          "none": 0,
+          "other": 0
         },
         "max_non_ortho_deg": 89.84899145442255,
         "max_skew": 2.458029108169462,
