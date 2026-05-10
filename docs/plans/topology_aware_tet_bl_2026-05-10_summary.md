@@ -1,17 +1,20 @@
 # BLR-9c-d cap sub-series — final summary
 
-Across 84 ralph-loop iterations (BLR-9c-d-p-1 through s-3,
-q-1 through q-3, r-1), the anti-invert cap chain pushed the
-21-STL tet+BL bench from baseline 12/21 PASS to **17/21 PASS**.
+Across 87 ralph-loop iterations (BLR-9c-d-p-1 through t-1,
+q-1 through q-3, r-1, s-1 through s-4), the anti-invert cap
+chain plus the ``tet_bl_subdivide`` post-layers engine pushed
+the 21-STL tet+BL bench from baseline 12/21 PASS to
+**18/21 PASS** (production-verdict, read directly from
+``quality_report.json``).
 
-## Final result (with floor=0.5)
+## Final result (with floor=0.5 + tet_bl_subdivide)
 
-| Metric              | Baseline | Cap floor=0.05 | Cap **floor=0.5** |
-|---------------------|----------|----------------|-------------------|
-| PASS verdicts (21)  | 12       | 16             | **17**            |
-| Pass rate           | 57 %     | 76 %           | **81 %**          |
-| Hard fails          | 9        | 3              | 3                 |
-| Cap-converted FAIL→PASS  | -    | 4              | **5**             |
+| Metric              | Baseline | floor=0.05 | floor=0.5 | floor=0.5 + **tet_bl_subdivide** |
+|---------------------|----------|------------|-----------|----------------------------------|
+| PASS verdicts (21)  | 12       | 16         | 17        | **18**                           |
+| Pass rate           | 57 %     | 76 %       | 81 %      | **86 %**                         |
+| Hard fails          | 9        | 3          | 3         | 3                                |
+| Cap-converted FAIL→PASS | -    | 4          | 5         | **6**                            |
 
 floor=0.5 dropped max_aspect 10x across all STLs (e.g.
 test_cube 2237 → 224, easy_100423 11879 → 1188), the dominant
