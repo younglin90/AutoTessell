@@ -938,6 +938,27 @@ feature angles) per level.
 produce a mesh that passes for many STLs.  Worth a separate bench
 once the draft sweep finishes.
 
+### BLR-9c-d (r) — native_tet tier kwarg-leak fix
+
+- [x] BLR-9c-d (r-1): the orchestrator forwards pipeline-level
+  kwargs (``bl_layers``, ``post_layers_engine``,
+  ``post_layers_num_layers``, ``checker_engine``, ``cad_engine``,
+  ``remesh_engine``, ``repair_engine``, ``postprocess_engine``)
+  to every tier runner.  ``tier_native_tet._runner`` blindly
+  ``**kwargs``-forwarded them to ``generate_native_tet`` /
+  ``run_native_tet_harness`` which immediately raised
+  ``TypeError: generate_native_tet() got an unexpected keyword
+  argument 'bl_layers'`` — so ``--tier native_tet --bl-layers 3``
+  was completely broken.  ``_runner`` now strips those keys
+  before forwarding.  Two unit tests pin the filter list and
+  verify the harness sees only volume-mesher-relevant kwargs.
+
+  This unblocks running the user's "self-mesher only" goal.
+  However the native_tet output on real STLs is still very
+  poor (max_skew 249, 207 negative volumes on
+  easy_100034.stl) — a separate sliver / orientation cleanup
+  pass is needed before native_tet can replace wildmesh.
+
 ### BLR-9c-d (q) — wire BLR-9 cavity replacement into the writer
 
 This is the long-deferred BLR-9b-iv-b sub-step.  With 95.7 %
