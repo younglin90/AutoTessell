@@ -1210,20 +1210,39 @@ smoothing) before they can pass.
   - Worst:    13-14/21 PASS (cap mostly converts hard
                               FAIL to soft FAIL)
 
-**Early evidence (smoke tests, cap ON)**:
-  - extreme_102308:    hard_fails 4 → 0, but 2 soft fails
-                       (max_aspect 1239 + surface_dev 48%) →
-                       still FAIL.
-  - extreme_1017013:   hard_fails was 1 (neg_vol=9) → cap ON
-                       → hard_fails 0, soft 1 →
-                       **PASS_WITH_WARNINGS** ✓
-  - test_cube (already PASS):
-                       hard_fails 0, soft 1 (max_aspect 2237)
-                       → PASS_WITH_WARNINGS ✓ (no regression)
+**Smoke-test results (all 5 cap-fixable candidates, cap ON)**:
 
-Of the 5 cap-fixable candidates, 2 smoke-tested so far:
-1 PASS_WITH_WARNINGS, 1 FAIL (upstream surface_dev).
-Realistic projection of **14-15/21 PASS** stands.  In regions
+::
+
+    1. extreme_102308     FAIL    upstream surface_dev 48% +
+                                  cap-induced max_aspect 1239
+                                  (2 soft fails — independent
+                                   of cap behaviour)
+    2. extreme_1017013    PASS    hard_fails 1 → 0
+                                  PASS_WITH_WARNINGS  ✓
+    3. hard_100029        PASS    hard_fails 1 → 0
+                                  PASS_WITH_WARNINGS  ✓
+    4. hard_1004826       FAIL    1 neg_vol survived cap (cap
+                                   needs lower safety to
+                                   eliminate; safety=0.5 not
+                                   tight enough here)
+    5. medium_100330      PASS    hard_fails 1 → 0
+                                  PASS_WITH_WARNINGS  ✓
+
+**3 of 5 candidates → PASS** with global uniform cap +
+safety=0.5.  Combined with the 12 baseline-passing STLs
+(test_cube + 11 thingi10k):
+
+::
+
+    Final projection:  15 / 21 PASS = 71 %
+
+The 6 remaining FAIL:
+  - 4 extreme_skew (cap-independent): extreme_1017014,
+    extreme_1017017, hard_100030, hard_100040
+  - 1 upstream surface_dev (cap-independent): extreme_102308
+  - 1 partial cap fix: hard_1004826 (1 neg_vol left at
+    safety=0.5; could fix with tighter safety)  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the
