@@ -32,6 +32,7 @@ from core.layers.native_bl import (
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
     _check_cavity_fan_tet_determinants,
+    _check_cavity_fan_tet_shape_quality,
     _check_cavity_shell_coverage,
     _compute_cavity_centroid,
     _detect_wall_owner_cavity_components,
@@ -1906,6 +1907,77 @@ def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_flagged() 
     assert out["n_neg_det"] >= 1
     # The minority-sign tet (index 2 here) must be reported.
     assert 2 in out["bad_indices"]
+
+
+def test_native_bl_check_cavity_fan_tet_shape_quality_empty() -> None:
+    """BLR-9c-d-d-1 — empty fan list returns zero record."""
+    out = _check_cavity_fan_tet_shape_quality(
+        [], np.zeros(3), np.zeros((0, 3))
+    )
+    assert out["n_tets"] == 0
+    assert out["bad_indices"] == []
+    assert out["n_below_threshold"] == 0
+    assert out["q_values"].shape == (0,)
+
+
+def test_native_bl_check_cavity_fan_tet_shape_quality_regular_tet_passes() -> None:
+    """BLR-9c-d-d-1 — a near-regular fan tet has Q ≈ 1 ⇒ no bad
+    indices."""
+    # apex at origin, inner points at the three "regular tet"
+    # neighbours of (0,0,0) at unit distance.
+    apex = np.array([0.0, 0.0, 0.0])
+    inner_points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.5, np.sqrt(3.0) / 2.0, 0.0],
+            [0.5, np.sqrt(3.0) / 6.0, np.sqrt(2.0 / 3.0)],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}]
+    out = _check_cavity_fan_tet_shape_quality(fan_tets, apex, inner_points)
+    assert out["n_tets"] == 1
+    assert out["q_min"] > 0.5         # near-regular ⇒ Q close to 1
+    assert out["bad_indices"] == []
+    assert out["n_below_threshold"] == 0
+
+
+def test_native_bl_check_cavity_fan_tet_shape_quality_sliver_flagged() -> None:
+    """BLR-9c-d-d-1 — a needle/sliver fan tet (Q ≈ 0) is reported
+    as bad."""
+    apex = np.array([0.0, 0.0, 0.0])
+    # All three inner points nearly collinear with apex at origin,
+    # off-axis only by 1e-3 ⇒ near-zero volume / huge edge ratio.
+    inner_points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [2.0, 1e-3, 0.0],
+            [3.0, 0.0, 1e-3],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}]
+    out = _check_cavity_fan_tet_shape_quality(
+        fan_tets, apex, inner_points, q_min_threshold=0.1
+    )
+    assert out["n_tets"] == 1
+    assert out["q_min"] < 0.1
+    assert out["bad_indices"] == [0]
+    assert out["n_below_threshold"] == 1
+
+
+def test_native_bl_check_cavity_fan_tet_shape_quality_invalid_tet_flagged() -> None:
+    """BLR-9c-d-d-1 — a fan tet with malformed tet_verts (apex
+    placeholder missing or out-of-range index) is marked bad."""
+    apex = np.array([0.0, 0.0, 0.0])
+    inner_points = np.array([[1.0, 0.0, 0.0]], dtype=np.float64)
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [0, 0, 0, 0]},          # no -1 placeholder
+        {"face_id": 1, "tet_verts": [-1, 0, 99, 0]},        # OOB index 99
+    ]
+    out = _check_cavity_fan_tet_shape_quality(fan_tets, apex, inner_points)
+    assert out["n_tets"] == 2
+    assert set(out["bad_indices"]) == {0, 1}
 
 
 def test_native_bl_check_cavity_fan_tet_determinants_degenerate_flagged() -> None:

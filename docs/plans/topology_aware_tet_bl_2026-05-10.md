@@ -458,8 +458,18 @@ worth attempting on a given STL.
   component fields ``n_fan_pos_det`` / ``n_fan_neg_det`` /
   ``n_fan_degenerate_det`` / ``n_fan_bad_indices`` /
   ``fan_worst_abs_det``.
-- [ ] BLR-9c-d (d): face weight + non-orthogonality validity gates
-  layered on top of the aggregator and bench acceptance.
+- [x] BLR-9c-d (d-1): fan-tet shape-quality helper
+  ``_check_cavity_fan_tet_shape_quality`` re-using the BETA2709
+  Klingner Q-shape (``core.evaluator.tet_qshape``) to flag fan tets
+  with ``Q < q_min_threshold``.  Catches sliver/needle tets that
+  pass the determinant gate but would still blow up CFD
+  interpolation weights.  Pure helper; aggregator wire-in deferred.
+- [ ] BLR-9c-d (d-2): wire ``_check_cavity_fan_tet_shape_quality``
+  into ``_evaluate_cavity_component_candidates`` with a new
+  ``reject_bad_shape`` decision label and ``n_rejected_bad_shape``
+  summary field.
+- [ ] BLR-9c-d (e): face weight + non-orthogonality validity gates
+  (per-component) and bench acceptance.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

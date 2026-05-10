@@ -3411,6 +3411,111 @@ def _check_cavity_fan_tet_determinants(
     return out
 
 
+def _check_cavity_fan_tet_shape_quality(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    q_min_threshold: float = 0.1,
+) -> dict[str, Any]:
+    """BLR-9c-d-d-1: shape-quality gate for the BLR-9c-c-iii-b fan tets.
+
+    Re-uses the BETA2709 ``core.evaluator.tet_qshape`` Klingner-like
+    Q-shape ratio (Q ≈ 1 for a regular tet, Q → 0 for a sliver) to
+    flag fan tets whose ``Q < q_min_threshold``.  This complements
+    the BLR-9c-d-b determinant gate, which only catches *signed*
+    degeneracy: a fan tet can have non-zero signed volume yet still
+    be a sliver/needle, which would blow up CFD interpolation
+    weights and skewness without ever flipping sign.
+
+    The helper does **not** mutate the mesh and does **not** decide
+    the component verdict — BLR-9c-d-d (b) wires the result into
+    ``_evaluate_cavity_component_candidates``.
+
+    Parameters
+    ----------
+    fan_tets:
+        Output of :func:`_build_cavity_fan_transition_tets`.  Each
+        entry's ``tet_verts`` is ``[-1, i0, i1, i2]`` where ``-1`` is
+        the apex placeholder and ``i_k`` index ``inner_points``.
+    apex_xyz:
+        Apex coordinate (cavity centroid).
+    inner_points:
+        ``(M, 3)`` inner-triangle vertex coordinates.
+    q_min_threshold:
+        Q-shape threshold below which a tet is reported as bad.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_tets``           number of fan tets evaluated
+    - ``q_values``         per-fan Q ∈ [0, 1] as ``np.ndarray``
+    - ``q_min``            minimum Q across all fan tets
+    - ``q_mean``           mean Q
+    - ``n_below_threshold`` count of tets with ``Q < q_min_threshold``
+    - ``bad_indices``      ``list[int]`` fan-tet positions with bad Q
+    """
+    out: dict[str, Any] = {
+        "n_tets": 0,
+        "q_values": np.empty(0, dtype=np.float64),
+        "q_min": 0.0,
+        "q_mean": 0.0,
+        "n_below_threshold": 0,
+        "bad_indices": [],
+    }
+    if not fan_tets:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        out["n_tets"] = len(fan_tets)
+        out["bad_indices"] = list(range(len(fan_tets)))
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    # Build combined point cloud: apex at index 0, then inner_points.
+    pts = np.vstack([apex.reshape(1, 3), inner])
+
+    # Translate fan tets into (T, 4) vertex-id array using the
+    # combined indexing above (apex placeholder ``-1`` → 0,
+    # inner index ``k`` → ``k + 1``).
+    tets_list: list[list[int]] = []
+    invalid_idx: set[int] = set()
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        if len(verts) != 4 or verts[0] != -1:
+            invalid_idx.add(k)
+            tets_list.append([0, 0, 0, 0])
+            continue
+        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
+        if (
+            i0 < 0
+            or i1 < 0
+            or i2 < 0
+            or i0 >= inner.shape[0]
+            or i1 >= inner.shape[0]
+            or i2 >= inner.shape[0]
+        ):
+            invalid_idx.add(k)
+            tets_list.append([0, 0, 0, 0])
+            continue
+        tets_list.append([0, i0 + 1, i1 + 1, i2 + 1])
+    tets_arr = np.asarray(tets_list, dtype=np.int64)
+
+    from core.evaluator.tet_qshape import tet_qshape  # local import
+
+    Q, _stats = tet_qshape(pts, tets_arr)
+
+    bad = {int(k) for k in np.where(Q < q_min_threshold)[0]} | invalid_idx
+    out["n_tets"] = len(fan_tets)
+    out["q_values"] = Q
+    out["q_min"] = float(Q.min()) if Q.size > 0 else 0.0
+    out["q_mean"] = float(Q.mean()) if Q.size > 0 else 0.0
+    out["n_below_threshold"] = int((Q < q_min_threshold).sum())
+    out["bad_indices"] = sorted(bad)
+    return out
+
+
 def _evaluate_cavity_component_candidates(
     components: list[set[int]] | list[frozenset[int]] | list[list[int]],
     points: np.ndarray,
