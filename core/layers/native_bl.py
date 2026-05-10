@@ -4277,6 +4277,31 @@ def generate_native_bl(
         "max_predicted_det": 0.0,
     }
 
+    # BLR-9b-iv — env-gated cavity replacement (default OFF).  When
+    # ``AUTO_TESSELL_BL_TET_CAVITY_REPLACE=1`` the plan/apply helpers
+    # are wired into ``generate_native_bl`` so the in-memory replacement
+    # arrays can be inspected by a downstream verifier.  This iteration
+    # does NOT yet hand the rewritten arrays to the polyMesh writer —
+    # the helper output stays in the diagnostic JSON only — so toggling
+    # the flag never mutates an emitted ``polyMesh``.  The next sub-step
+    # will swap in the writer integration once a regression bench
+    # confirms the topology guard rejects every unsafe candidate.
+    _bl_tet_cavity_replace_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_REPLACE", "0") == "1"
+    )
+    tet_cavity_replace_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_replace_enabled),
+        "wired_to_writer": False,
+        "n_planned": 0,
+        "n_replaced": 0,
+        "n_rejected_topology": 0,
+        "n_rejected_det": 0,
+        "n_rejected_neighbour_internal": 0,
+        "n_cells_before": 0,
+        "n_cells_after": 0,
+        "n_new_points_total": 0,
+    }
+
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
     vertex_cum_map: dict[int, np.ndarray] = {}
@@ -4502,6 +4527,68 @@ def generate_native_bl(
                     "enabled": bool(_bl_tet_cavity_probe_enabled),
                     "error": str(exc)[:160],
                 }
+
+            # BLR-9b-iv — plan + apply hook (env-gated, no writer yet).
+            # When the replace flag is OFF this branch is a strict no-op.
+            # When ON the helpers run on copies of the polyMesh arrays so
+            # callers can inspect ``tet_cavity_replace_diag`` for
+            # n_replaced / n_rejected_* / n_cells_before/after numbers
+            # before the next iteration wires the rewritten arrays into
+            # the polyMesh writer.
+            if _bl_tet_cavity_replace_enabled:
+                try:
+                    nonlocal tet_cavity_replace_diag
+                    _replace_plan = _build_tet_cavity_replacement_plan(
+                        points,
+                        faces,
+                        owner,
+                        wall_face_indices,
+                        _bl_owner_centre_eligible_cells,
+                        cell_centres,
+                        motion_dirs,
+                        float(cfg.first_thickness),
+                        enabled=True,
+                        neighbour=neighbour,
+                    )
+                    _replace_applied = _apply_tet_cavity_replacement_plan(
+                        np.asarray(points, dtype=np.float64),
+                        faces,
+                        np.asarray(owner, dtype=np.int64),
+                        np.asarray(neighbour, dtype=np.int64),
+                        wall_face_indices,
+                        _replace_plan,
+                        enabled=True,
+                    )
+                    tet_cavity_replace_diag = {
+                        "enabled": True,
+                        "wired_to_writer": False,
+                        "n_planned": int(_replace_plan.get("n_planned", 0)),
+                        "n_replaced": int(_replace_applied.get("n_replaced", 0)),
+                        "n_rejected_topology": int(
+                            _replace_plan.get("n_rejected_topology", 0)
+                        ),
+                        "n_rejected_det": int(
+                            _replace_plan.get("n_rejected_det", 0)
+                        ),
+                        "n_rejected_neighbour_internal": int(
+                            _replace_plan.get("n_rejected_neighbour_internal", 0)
+                        ),
+                        "n_cells_before": int(
+                            _replace_applied.get("n_cells_before", 0)
+                        ),
+                        "n_cells_after": int(
+                            _replace_applied.get("n_cells_after", 0)
+                        ),
+                        "n_new_points_total": int(
+                            _replace_applied.get("n_new_points_total", 0)
+                        ),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    tet_cavity_replace_diag = {
+                        "enabled": True,
+                        "wired_to_writer": False,
+                        "error": str(exc)[:160],
+                    }
 
         if use_per_v_cum_pass and vertex_cum_map_pass:
             # per-vertex total thickness vector: (W,)
@@ -5462,6 +5549,7 @@ def generate_native_bl(
             "tet_wall_cavity": tet_wall_cavity_eligibility,
             "owner_centre_motion": owner_centre_motion_diag,
             "tet_cavity_probe": tet_cavity_probe_diag,
+            "tet_cavity_replace": tet_cavity_replace_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,

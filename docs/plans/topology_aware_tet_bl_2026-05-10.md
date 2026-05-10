@@ -358,11 +358,22 @@ worth attempting on a given STL.
   1-prism-+-1-transition-tet rewrite would orphan the neighbour
   cell's shared face.  This restricts BLR-9b application to
   isolated wall owners pending the BLR-9c multi-cell cavity refill.
-- [ ] BLR-9b-iv: writer integration + bench — wire the plan/apply
-  helpers into the polyMesh writer behind a NEW env flag
-  `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0` (distinct from the probe
-  flag).  Run flag-on vs flag-off on the 21-STL set; keep only if
-  retained failure count strictly drops.
+- [x] BLR-9b-iv-a: scaffolding — `generate_native_bl` now reads a
+  new `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0` env flag (distinct
+  from the probe flag) and, when ON, calls
+  `_build_tet_cavity_replacement_plan` + `_apply_tet_cavity_replacement_plan`
+  on copies of the polyMesh arrays.  The result is summarised under
+  `native_bl_quality.tet_cavity_replace` (`n_planned`, `n_replaced`,
+  `n_rejected_*`, `n_cells_before/after`, `n_new_points_total`,
+  `wired_to_writer=False`).  The rewritten arrays are NOT yet
+  handed to the polyMesh writer, so toggling the flag never mutates
+  the emitted `polyMesh`; the metadata is purely for verifier
+  decisions.
+- [ ] BLR-9b-iv-b: actually swap the rewritten arrays into the
+  writer pipeline once the verifier confirms the topology guard
+  rejects every unsafe candidate on the 21-STL bench.  Acceptance:
+  the flag-on bench must show a strict reduction in tet failed
+  cases vs. the BLR-8 baseline.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
