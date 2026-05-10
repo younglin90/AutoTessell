@@ -770,13 +770,30 @@ fan-from-vertex-0 triangulation of polygon shell faces
 produces wide angles and slim triangles when the shell face
 is highly elongated or near-degenerate.
 
-- [ ] BLR-9c-d (m-1): replace the fan-from-vertex-0
-  triangulation in ``_build_cavity_shell_closure_tets`` with a
-  **shortest-diagonal** triangulation for quad shell faces (use
-  ``v0-v2`` vs ``v1-v3`` whichever is shorter).  This is a
-  one-line change for the n=4 case and a Delaunay-style choice
-  for general polygons.  Expected: closure-pair non-ortho drops
-  by reducing the diagonal length asymmetry.
+- [x] BLR-9c-d (m-1): quad shell faces are now triangulated along
+  the shorter of the two diagonals (``v0-v2`` vs ``v1-v3``)
+  instead of always fanning from ``v0``.  Triangle and >4-gon
+  shells are unchanged.  One new unit test pins the selection on
+  an asymmetric quad fixture.  **Bench impact**: identical
+  (808 accept, 30 shape, 23 non-ortho) — the closure-closure
+  worst pair is dominated by *tri* shell faces, not quads, and
+  the non-ortho is driven by the 3D position of the cavity apex
+  relative to the shell-face plane rather than the in-plane
+  diagonal choice.  Kept the change since the algorithm is
+  geometrically more correct and harmless when quads do appear.
+
+- [ ] BLR-9c-d (m-2): per-face apex.  The current cavity
+  centroid is one point shared by every fan and closure tet of
+  the component, which forces a wide range of shell-face-to-
+  apex distances and is the root cause of the non-ortho /
+  Q-shape long tails on tri shell faces.  Replace the single
+  apex with a per-shell-face Steiner point placed on the
+  cavity-side normal at a controlled distance (e.g.
+  ``first_thickness`` × growth_ratio scaled by the shell
+  triangle's circumradius).  Expected: closure-pair non-ortho
+  collapses toward 90° minus a moderate fraction, and Q-shape
+  on closure tets jumps because the apex is no longer
+  collinear with the shell plane.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

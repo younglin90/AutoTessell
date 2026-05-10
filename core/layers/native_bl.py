@@ -3703,11 +3703,19 @@ def _build_cavity_shell_closure_tets(
         if not ok:
             continue
         # Commit: append any unseen polyMesh vertex to the inner-point
-        # buffer.  Fan-triangulate the n-gon from verts[0]:
-        #   tris = [(0, i, i+1) for i in 1..n-2]
-        # giving (n - 2) closure tets per shell face.  Tris (n=3),
-        # quads (n=4) and any larger polygon are all handled
-        # uniformly.
+        # buffer.  Triangulation strategy:
+        #   - n == 3: pass through (one tri).
+        #   - n == 4: pick the **shortest diagonal** between (v0, v2)
+        #     and (v1, v3).  This is the BLR-9c-d-m-1 root-cause fix
+        #     for the closure-closure non-orthogonality bottleneck:
+        #     fan-from-vertex-0 always uses (v0, v2) regardless of
+        #     the quad's shape, which forces the shared diagonal
+        #     onto the *long* axis whenever the quad is elongated
+        #     and produces the wide-angle / sliver pairs the bench
+        #     audit (BLR-9c-d-l-1) flagged.  Choosing the shorter
+        #     diagonal gives a more balanced split.
+        #   - n > 4: fan-from-vertex-0 (a future sub-step will switch
+        #     to a Delaunay-style choice).
         inner_ids: list[int] = []
         for iv in valid_iv:
             if iv not in vertex_to_inner:
@@ -3715,17 +3723,39 @@ def _build_cavity_shell_closure_tets(
                 extended.append(pts[iv].tolist())
                 next_id += 1
             inner_ids.append(vertex_to_inner[iv])
-        for i in range(1, len(inner_ids) - 1):
-            j0 = inner_ids[0]
-            j1 = inner_ids[i]
-            j2 = inner_ids[i + 1]
+        n_face = len(inner_ids)
+        if n_face == 4:
+            d02 = float(
+                np.linalg.norm(pts[valid_iv[0]] - pts[valid_iv[2]])
+            )
+            d13 = float(
+                np.linalg.norm(pts[valid_iv[1]] - pts[valid_iv[3]])
+            )
+            if d13 < d02:
+                # Diagonal (v1, v3) — emit (v1, v2, v3) and (v1, v3, v0).
+                tri_seq = [
+                    (inner_ids[1], inner_ids[2], inner_ids[3]),
+                    (inner_ids[1], inner_ids[3], inner_ids[0]),
+                ]
+            else:
+                # Diagonal (v0, v2) — emit (v0, v1, v2) and (v0, v2, v3).
+                tri_seq = [
+                    (inner_ids[0], inner_ids[1], inner_ids[2]),
+                    (inner_ids[0], inner_ids[2], inner_ids[3]),
+                ]
+        else:
+            tri_seq = [
+                (inner_ids[0], inner_ids[i], inner_ids[i + 1])
+                for i in range(1, n_face - 1)
+            ]
+        for k, (j0, j1, j2) in enumerate(tri_seq):
             closure_tets.append({
                 "face_id": ifid,
                 "outer_verts": list(verts),
                 "tet_verts": [-1, j0, j1, j2],
                 "kind": "shell_closure",
-                "fan_tri": int(i - 1),     # 0..n-3
-                "n_face_verts": int(len(verts)),
+                "fan_tri": int(k),
+                "n_face_verts": int(n_face),
             })
 
     out["extended_inner_points"] = np.asarray(extended, dtype=np.float64)

@@ -2176,6 +2176,48 @@ def test_native_bl_build_cavity_shell_closure_tets_shared_verts_dedup() -> None:
     assert out["n_appended_points"] == 4
 
 
+def test_native_bl_build_cavity_shell_closure_tets_quad_picks_shortest_diagonal() -> None:
+    """BLR-9c-d-m-1 — for a quad shell face the helper picks the
+    shorter of the two possible diagonals so adjacent closure tets
+    don't share the long axis (which produces the wide-angle /
+    sliver pairs the BLR-9c-d-l-1 audit flagged)."""
+    inner_points = np.zeros((0, 3), dtype=np.float64)
+    # Elongated quad on z = 0:  v0 = (0,0), v1 = (4,0), v2 = (4,1),
+    # v3 = (0,1).  Diagonal (v0, v2) = sqrt(17) ≈ 4.12, diagonal
+    # (v1, v3) = sqrt(17) ≈ 4.12 — equal, default branch wins
+    # (v0, v2).  We instead use a *clearly* asymmetric quad to test
+    # selection.
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [4.0, 0.1, 0.0],
+            [0.0, 5.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2, 3]]
+    boundary = {"external_internal_faces": [0]}
+    out = _build_cavity_shell_closure_tets(
+        uncovered_face_ids=[0],
+        boundary=boundary,
+        faces=faces,
+        points=points,
+        inner_points=inner_points,
+    )
+    assert out["n_closure_tets"] == 2
+    # |v0 - v2| = sqrt(16 + 0.01)  ≈ 4.001
+    # |v1 - v3| = sqrt(16 + 25)    ≈ 6.40   ⇒ pick (v0, v2)
+    # Shared diagonal vertices appear in both tets' tet_verts.
+    tv0 = set(out["shell_closure_tets"][0]["tet_verts"][1:])
+    tv1 = set(out["shell_closure_tets"][1]["tet_verts"][1:])
+    shared = tv0 & tv1
+    assert len(shared) == 2
+    # Inner ids 0 and 2 correspond to polyMesh verts 0 and 2 — the
+    # shorter-diagonal endpoints.
+    assert shared == {0, 2}
+
+
 def test_native_bl_build_cavity_shell_closure_tets_skips_invalid() -> None:
     """BLR-9c-d-h-1 — entries that aren't in ``external_internal_faces``
     or that point at non-triangle / out-of-range faces are skipped
