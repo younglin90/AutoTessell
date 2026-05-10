@@ -27,6 +27,7 @@ from core.layers.native_bl import (
     _bl_bad_internal_face_histogram,
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
+    _apply_tet_cavity_replacement_plan,
     _build_tet_cavity_replacement_plan,
     _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
@@ -874,6 +875,125 @@ def test_native_bl_tet_cavity_replacement_plan_outward_motion_rejected() -> None
     assert plan["new_cells"] == []
     assert plan["n_rejected_topology"] == 1
     assert plan["rejected"]["topology"] == [0]
+
+
+def test_native_bl_apply_tet_cavity_replacement_plan_one_eligible_cell() -> None:
+    """BLR-9b-ii — apply the plan in-memory: original 1-tet cell goes to
+    0; 2 new cells (prism + transition tet) are emitted.  Points
+    grow by 4 (3 inner + 1 apex)."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall (boundary)
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    wall_face_indices = [0]
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    motion_dirs = {
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    plan = _build_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+    )
+    assert plan["n_planned"] == 1
+
+    applied = _apply_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        neighbour,
+        wall_face_indices,
+        plan,
+        enabled=True,
+    )
+    assert applied["enabled"] is True
+    assert applied["n_replaced"] == 1
+    assert applied["n_cells_before"] == 1
+    assert applied["n_cells_after"] == 2  # 1 deleted, 2 new (prism + tet)
+    # 4 original points + 3 inner triangle + 1 apex = 8.
+    assert applied["new_points"].shape == (8, 3)
+    assert applied["n_new_points_total"] == 4
+    # Apex = original cell centroid.
+    np.testing.assert_allclose(
+        applied["new_points"][7], points.mean(axis=0), atol=1e-12
+    )
+    # Inner triangle = wall + 0.05 * +z.
+    np.testing.assert_allclose(
+        applied["new_points"][4:7],
+        np.array([[0, 0, 0.05], [1, 0, 0.05], [0, 1, 0.05]], dtype=np.float64),
+        atol=1e-12,
+    )
+    # Owner array compact: prism = cell 0, transition tet = cell 1.
+    assert int(applied["new_owner"].max()) <= 1
+    # At least one internal face exists (prism cap shared with transition tet).
+    assert applied["new_neighbour"].size >= 1
+
+
+def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
+    """``enabled=False`` returns a structurally identical copy with no
+    cells touched."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    neighbour = np.array([], dtype=np.int64)
+    plan = {"enabled": True, "n_planned": 1, "cells_to_delete": [0], "new_cells": [
+        {
+            "prism": [0, 1, 2, 4, 5, 6],
+            "transition_tet": [-1, 4, 5, 6],
+            "transition_tet_apex_xyz": [0.25, 0.25, 0.25],
+            "deleted_cell_id": 0,
+        }
+    ], "new_points": np.zeros((3, 3))}
+
+    applied = _apply_tet_cavity_replacement_plan(
+        points,
+        faces,
+        owner,
+        neighbour,
+        [0],
+        plan,
+        enabled=False,
+    )
+    assert applied["enabled"] is False
+    assert applied["n_replaced"] == 0
+    assert applied["n_cells_before"] == applied["n_cells_after"] == 1
+    np.testing.assert_array_equal(applied["new_points"], points)
+    assert applied["new_faces"] == faces
 
 
 def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:

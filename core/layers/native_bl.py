@@ -2663,6 +2663,253 @@ def _build_tet_cavity_replacement_plan(
     return plan
 
 
+def _apply_tet_cavity_replacement_plan(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    wall_face_indices: list[int],
+    plan: dict[str, Any],
+    *,
+    enabled: bool,
+) -> dict[str, Any]:
+    """BLR-9b-ii: apply a BLR-9b-i replacement plan to in-memory arrays.
+
+    The mutation is performed entirely on copies of the input arrays —
+    the caller is responsible for swapping them into the polyMesh
+    writer in a later, separately env-gated step.
+
+    Steps:
+
+    1. ``points`` ← original points + plan.new_points + 1 apex point
+       per new cell (minted from ``transition_tet_apex_xyz``).
+    2. Resolve each ``new_cells[i]['transition_tet'][0]`` placeholder
+       (-1) to the newly minted apex id.
+    3. Drop every face whose owner OR neighbour is in
+       ``cells_to_delete``.  Wall faces of deleted cells map to the
+       new prism's bottom face; other dropped boundary faces are
+       discarded (they were the wall face slated for replacement).
+    4. Compact the surviving cell ids (deletion shifts ids down) and
+       rebuild ``owner`` / ``neighbour`` over the surviving faces.
+    5. Append per-replacement faces:
+         - prism: bottom (wall, kept), top (cap, internal), 3 sides
+           (internal).
+         - transition tet: shares its base face with the prism's top;
+           three lateral triangles connect the base to the apex.
+
+    The function does NOT yet touch ``boundary`` (patch metadata) —
+    BLR-9b-iii will reattach the wall face to its original patch.
+    Default OFF when ``enabled`` is False (returns a no-op dict
+    holding the originals).
+
+    Returns dict: ``enabled``, ``new_points``, ``new_faces``,
+    ``new_owner``, ``new_neighbour``, ``n_cells_before``,
+    ``n_cells_after``, ``n_new_points_total`` (inner verts +
+    minted apex), ``n_replaced``.
+    """
+    owner_arr_in = np.asarray(owner, dtype=np.int64)
+    neighbour_arr_in = np.asarray(neighbour, dtype=np.int64)
+    _max_own = int(owner_arr_in.max()) if owner_arr_in.size > 0 else -1
+    _max_nbr = int(neighbour_arr_in.max()) if neighbour_arr_in.size > 0 else -1
+    n_cells_before = max(_max_own, _max_nbr) + 1
+    if n_cells_before < 0:
+        n_cells_before = 0
+
+    no_op: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "new_points": np.asarray(points, dtype=np.float64).copy(),
+        "new_faces": [list(f) for f in faces],
+        "new_owner": np.asarray(owner, dtype=np.int64).copy(),
+        "new_neighbour": np.asarray(neighbour, dtype=np.int64).copy(),
+        "n_cells_before": int(n_cells_before),
+        "n_cells_after": int(n_cells_before),
+        "n_new_points_total": 0,
+        "n_replaced": 0,
+    }
+    if not enabled or not plan or not plan.get("n_planned"):
+        return no_op
+    if plan.get("enabled") is False:
+        return no_op
+
+    cells_to_delete: list[int] = list(plan.get("cells_to_delete", []))
+    new_cells_spec: list[dict[str, Any]] = list(plan.get("new_cells", []))
+    plan_new_points: np.ndarray = np.asarray(
+        plan.get("new_points", np.zeros((0, 3), dtype=np.float64)),
+        dtype=np.float64,
+    )
+    if not cells_to_delete or not new_cells_spec:
+        return no_op
+    if len(cells_to_delete) != len(new_cells_spec):
+        # Inconsistent plan; refuse to mutate.
+        no_op["error"] = "plan: cells_to_delete vs new_cells length mismatch"
+        return no_op
+
+    # 1. Mint points: original + plan inner verts + apex per replacement.
+    apex_xyz_list: list[list[float]] = []
+    for spec in new_cells_spec:
+        apex_xyz_list.append(list(spec.get("transition_tet_apex_xyz", [0.0, 0.0, 0.0])))
+    apex_arr = (
+        np.asarray(apex_xyz_list, dtype=np.float64).reshape(-1, 3)
+        if apex_xyz_list
+        else np.zeros((0, 3), dtype=np.float64)
+    )
+    pts_orig = np.asarray(points, dtype=np.float64)
+    new_points = np.concatenate([pts_orig, plan_new_points, apex_arr], axis=0)
+    apex_id_offset = int(pts_orig.shape[0] + plan_new_points.shape[0])
+
+    # 2. Resolve apex ids inside each new cell spec.
+    resolved_specs: list[dict[str, Any]] = []
+    for i, spec in enumerate(new_cells_spec):
+        resolved = dict(spec)
+        tet = list(spec["transition_tet"])
+        tet[0] = apex_id_offset + i
+        resolved["transition_tet"] = tet
+        resolved_specs.append(resolved)
+
+    delete_set = {int(c) for c in cells_to_delete}
+    wall_face_set = {int(fi) for fi in wall_face_indices}
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_internal = int(len(nbr_arr))
+
+    # 3. Build the list of surviving faces.  Faces whose owner OR
+    # neighbour is being deleted disappear (they are either the wall
+    # face slated for replacement or an internal face whose other
+    # cell is itself being replaced — both will be re-emitted by the
+    # new cells).  Track which faces survive and remember the wall
+    # face owner mapping (used in step 5 so the new prism inherits
+    # the original patch wall face's vertex order).
+    surviving_face_ids: list[int] = []
+    for fi in range(len(faces)):
+        own = int(owner_arr[fi]) if fi < len(owner_arr) else -1
+        nbr = int(nbr_arr[fi]) if fi < n_internal else -1
+        if own in delete_set:
+            continue
+        if 0 <= nbr and nbr in delete_set:
+            # Other side of an internal face was deleted; re-emit later.
+            continue
+        surviving_face_ids.append(fi)
+
+    # 4. Compact cell ids: deleted cells shift later ids down.
+    n_cells_after_delete = n_cells_before - len(delete_set)
+    cell_remap = np.full(n_cells_before, -1, dtype=np.int64)
+    next_new_id = 0
+    for cid in range(n_cells_before):
+        if cid in delete_set:
+            continue
+        cell_remap[cid] = next_new_id
+        next_new_id += 1
+
+    # Rebuild faces / owner / neighbour over surviving ids.
+    surviving_faces_int: list[list[int]] = []
+    surviving_faces_bnd: list[list[int]] = []
+    survive_own_int: list[int] = []
+    survive_own_bnd: list[int] = []
+    survive_nbr_int: list[int] = []
+    for fi in surviving_face_ids:
+        own = int(owner_arr[fi])
+        nbr = int(nbr_arr[fi]) if fi < n_internal else -1
+        new_own = int(cell_remap[own]) if 0 <= own < n_cells_before else -1
+        new_nbr = int(cell_remap[nbr]) if 0 <= nbr < n_cells_before else -1
+        if 0 <= nbr < n_cells_before and nbr not in delete_set:
+            # Internal face survives.
+            surviving_faces_int.append(list(faces[fi]))
+            survive_own_int.append(new_own)
+            survive_nbr_int.append(new_nbr)
+        else:
+            surviving_faces_bnd.append(list(faces[fi]))
+            survive_own_bnd.append(new_own)
+
+    # 5. Emit new cells.  Each replacement contributes:
+    #    prism (cell id = next_new_id):
+    #      - bottom triangle (wall) → boundary face, owner=prism
+    #      - top triangle (cap)     → internal face, owner=prism,
+    #                                 neighbour=transition_tet
+    #      - 3 side quads           → boundary faces (BLR-9b-iii will
+    #                                 stitch them to neighbour cells in
+    #                                 a future pass; for now they are
+    #                                 boundary so the polyMesh stays
+    #                                 valid at smoke-test scale).
+    #    transition tet (cell id = next_new_id + 1):
+    #      - base = prism top (already emitted, neighbour side)
+    #      - 3 sides → boundary faces.
+    new_internal_faces: list[list[int]] = []
+    new_internal_own: list[int] = []
+    new_internal_nbr: list[int] = []
+    new_bnd_faces: list[list[int]] = []
+    new_bnd_own: list[int] = []
+    n_replaced = 0
+    for spec in resolved_specs:
+        prism = list(spec["prism"])
+        v0, v1, v2, i0, i1, i2 = (int(x) for x in prism)
+        prism_cell = next_new_id
+        tet_cell = next_new_id + 1
+        next_new_id += 2
+        n_replaced += 1
+
+        # Bottom = original wall face, but using its original vertex order.
+        # Locate the wall face for this deleted cell to inherit winding.
+        cid = int(spec["deleted_cell_id"])
+        bottom_face_verts: list[int] | None = None
+        for fi in wall_face_indices:
+            if 0 <= fi < len(owner_arr) and int(owner_arr[fi]) == cid:
+                bottom_face_verts = list(faces[fi])
+                break
+        if bottom_face_verts is None:
+            bottom_face_verts = [v0, v1, v2]
+        new_bnd_faces.append(bottom_face_verts)
+        new_bnd_own.append(prism_cell)
+
+        # Top (cap) — opposite winding so the outward normal points
+        # toward the transition tet apex.
+        new_internal_faces.append([i0, i2, i1])
+        new_internal_own.append(prism_cell)
+        new_internal_nbr.append(tet_cell)
+
+        # 3 prism side quads (boundary placeholder for BLR-9b-ii).
+        new_bnd_faces.append([v0, v1, i1, i0])
+        new_bnd_own.append(prism_cell)
+        new_bnd_faces.append([v1, v2, i2, i1])
+        new_bnd_own.append(prism_cell)
+        new_bnd_faces.append([v2, v0, i0, i2])
+        new_bnd_own.append(prism_cell)
+
+        # Transition tet sides (apex = spec['transition_tet'][0]).
+        apex_id = int(spec["transition_tet"][0])
+        new_bnd_faces.append([i0, i1, apex_id])
+        new_bnd_own.append(tet_cell)
+        new_bnd_faces.append([i1, i2, apex_id])
+        new_bnd_own.append(tet_cell)
+        new_bnd_faces.append([i2, i0, apex_id])
+        new_bnd_own.append(tet_cell)
+
+    n_cells_after = n_cells_after_delete + 2 * n_replaced
+
+    # OpenFOAM convention: internal faces first, then boundary faces.
+    final_faces = surviving_faces_int + new_internal_faces + surviving_faces_bnd + new_bnd_faces
+    final_owner = np.asarray(
+        survive_own_int + new_internal_own + survive_own_bnd + new_bnd_own,
+        dtype=np.int64,
+    )
+    final_neighbour = np.asarray(
+        survive_nbr_int + new_internal_nbr,
+        dtype=np.int64,
+    )
+
+    return {
+        "enabled": True,
+        "new_points": new_points,
+        "new_faces": final_faces,
+        "new_owner": final_owner,
+        "new_neighbour": final_neighbour,
+        "n_cells_before": int(n_cells_before),
+        "n_cells_after": int(n_cells_after),
+        "n_new_points_total": int(plan_new_points.shape[0] + apex_arr.shape[0]),
+        "n_replaced": int(n_replaced),
+    }
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],

@@ -341,12 +341,17 @@ worth attempting on a given STL.
   Default OFF behind `AUTO_TESSELL_BL_TET_CAVITY_PROBE` (the same
   env flag as BLR-9a) — plan-build is a strict superset of probe
   behaviour and shares its diagnostics.
-- [ ] BLR-9b-ii: apply the plan — append the transition-tet apex
-  point, drop ``cells_to_delete`` from owner/neighbour, append
-  ``new_cells`` with their face/owner/neighbour entries.  Default
-  OFF behind a NEW env flag `AUTO_TESSELL_BL_TET_CAVITY_REPLACE=0`
-  so the plan-only path can stay enabled for diagnostics without
-  touching the mesh.
+- [x] BLR-9b-ii: in-memory apply — `_apply_tet_cavity_replacement_plan`
+  appends the transition-tet apex point, drops the wall-owner cells
+  from owner/neighbour, compacts surviving cell ids, and emits new
+  prism + transition tet face/owner/neighbour entries.  Side quads
+  of the prism and lateral faces of the transition tet are emitted
+  as boundary placeholders to keep the array structure valid for
+  unit testing; BLR-9b-iii will stitch those back into internal
+  faces with the real polyMesh writer + restore the wall patch.
+  Default OFF behind the same `AUTO_TESSELL_BL_TET_CAVITY_PROBE`
+  flag for now (the helper is not yet wired into the writer; it is
+  exercised only by unit tests).
 - [ ] BLR-9b-iii: regression bench — flag-on vs flag-off retained
   failure delta on the 21-STL set; only keep the change if a strict
   reduction in tet failed cases is observed.
