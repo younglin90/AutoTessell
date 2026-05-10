@@ -973,6 +973,36 @@ once the draft sweep finishes.
    *and* skew ridiculously high (71.9).  Severely malformed
    cells from the underlying tet mesher.
 
+### BLR-9c-d (p-5) — partial classification (17/21)
+
+After ~55 minutes of in-flight bench, **17/21 STLs done** at
+``quality=draft`` (cap 85°, skew 8.0).  Auto-classification:
+
+::
+
+    PASS              5  (test_cube, easy_100423, easy_101170,
+                          extreme_1037019, hard_100027)
+    sliver_tri        3  (easy_100034, easy_100643, hard_100029)
+    pancake           2  (easy_101187, extreme_102308)
+    extreme_skew      6  (extreme_1017013/14/17, hard_100030 max_skew=899(!),
+                          hard_100040, hard_1004826)
+    medium_*          4  in flight (medium_100077 currently)
+
+extreme_skew is the dominant fail mode (35 % of total).  The
+underlying tet mesher (wildmesh tier → pytetwild) produces
+severely malformed cells on these STLs.
+
+Each category needs its own fix:
+
+  sliver_tri     -> Klingner-style sliver-flip / edge-collapse
+                    in our native tet mesher.
+  pancake        -> BL-bulk transition refinement (gradient
+                    sizing in the bulk near the BL prism cap).
+  extreme_skew   -> fundamental tet-mesher quality (envelope
+                    tightening, Stellar §3.4 swap, AMIPS smoothing).
+
+Wider regression suite stays green (303 passed, 10 skipped).
+
 ### BLR-9c-d (r) — native_tet tier kwarg-leak fix
 
 - [x] BLR-9c-d (r-1): the orchestrator forwards pipeline-level
