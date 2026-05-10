@@ -3283,6 +3283,134 @@ def _check_cavity_shell_coverage(
     }
 
 
+def _check_cavity_fan_tet_determinants(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    det_tol: float = 1e-12,
+) -> dict[str, Any]:
+    """BLR-9c-d-b: signed-volume gate for the BLR-9c-c-iii-b fan tets.
+
+    Each fan tet is ``tet_verts = [-1, i0, i1, i2]`` where ``-1`` is the
+    apex placeholder and ``i0/i1/i2`` index ``inner_points`` (the
+    BLR-9c-c-ii inner-triangle vertices, possibly duplicated by the
+    BLR-9c-c-ii-b sharp-corner split).  The signed scalar triple product
+
+        det = (v0 - apex) · ((v1 - apex) × (v2 - apex))
+
+    is sign-invariant under triangle winding, so this helper returns
+    both the *signed* determinants (so the caller can detect sign-flips
+    inside one component, which indicates a flipped fan triangle) and
+    a per-tet pass/fail label gated only on ``abs(det) > det_tol``.
+
+    The helper does **not** mutate the mesh and does **not** decide the
+    component verdict — BLR-9c-d (c) wires the result into
+    ``_evaluate_cavity_component_candidates``.
+
+    Parameters
+    ----------
+    fan_tets:
+        Output of :func:`_build_cavity_fan_transition_tets`.
+    apex_xyz:
+        Apex vertex coordinate (typically the cavity centroid from
+        :func:`_compute_cavity_centroid`).
+    inner_points:
+        ``(M, 3)`` array of inner triangle vertex coordinates from
+        :func:`_split_cavity_inner_ids_at_sharp_corners` (or
+        :func:`_stitch_cavity_prism_inner_ids_smooth` if no split was
+        applied).
+    det_tol:
+        Magnitude below which a tet is treated as degenerate.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_tets``               total fan tets inspected
+    - ``n_pos_det``            tets with ``det > +det_tol``
+    - ``n_neg_det``            tets with ``det < -det_tol``
+    - ``n_degenerate_det``     tets with ``abs(det) <= det_tol``
+    - ``signed_dets``          ``np.ndarray`` shape ``(n_tets,)``
+    - ``worst_abs_det``        smallest ``|det|`` across all tets (or 0 if empty)
+    - ``bad_indices``          ``list[int]`` of fan-tet positions whose
+                               ``abs(det) <= det_tol`` *or* whose sign
+                               disagrees with the majority of the rest
+                               (i.e. flipped relative to the component)
+
+    The "majority sign" rule is the common Klingner / TetGen convention
+    used to detect a flipped triangle inside an otherwise consistent
+    fan: if the component contains, say, 4 tets with ``det > 0`` and 1
+    with ``det < 0``, the single odd-sign tet is bad.
+    """
+    out: dict[str, Any] = {
+        "n_tets": 0,
+        "n_pos_det": 0,
+        "n_neg_det": 0,
+        "n_degenerate_det": 0,
+        "signed_dets": np.empty(0, dtype=np.float64),
+        "worst_abs_det": 0.0,
+        "bad_indices": [],
+    }
+    if not fan_tets:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        out["bad_indices"] = list(range(len(fan_tets)))
+        out["n_tets"] = len(fan_tets)
+        out["n_degenerate_det"] = len(fan_tets)
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    n = len(fan_tets)
+    dets = np.zeros(n, dtype=np.float64)
+    bad_set: set[int] = set()
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        if len(verts) != 4 or verts[0] != -1:
+            bad_set.add(k)
+            continue
+        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
+        if (
+            i0 < 0
+            or i1 < 0
+            or i2 < 0
+            or i0 >= inner.shape[0]
+            or i1 >= inner.shape[0]
+            or i2 >= inner.shape[0]
+        ):
+            bad_set.add(k)
+            continue
+        v0 = inner[i0] - apex
+        v1 = inner[i1] - apex
+        v2 = inner[i2] - apex
+        dets[k] = float(np.dot(v0, np.cross(v1, v2)))
+
+    abs_dets = np.abs(dets)
+    n_pos = int(np.sum(dets > det_tol))
+    n_neg = int(np.sum(dets < -det_tol))
+    n_deg = int(np.sum(abs_dets <= det_tol))
+    for k in range(n):
+        if abs_dets[k] <= det_tol:
+            bad_set.add(k)
+
+    # majority-sign rule
+    if n_pos > 0 and n_neg > 0:
+        majority_sign = 1.0 if n_pos >= n_neg else -1.0
+        for k in range(n):
+            if abs_dets[k] > det_tol and np.sign(dets[k]) != majority_sign:
+                bad_set.add(k)
+
+    out["n_tets"] = n
+    out["n_pos_det"] = n_pos
+    out["n_neg_det"] = n_neg
+    out["n_degenerate_det"] = n_deg
+    out["signed_dets"] = dets
+    out["worst_abs_det"] = float(abs_dets.min()) if n > 0 else 0.0
+    out["bad_indices"] = sorted(bad_set)
+    return out
+
+
 def _evaluate_cavity_component_candidates(
     components: list[set[int]] | list[frozenset[int]] | list[list[int]],
     points: np.ndarray,

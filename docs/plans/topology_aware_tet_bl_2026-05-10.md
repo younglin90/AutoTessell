@@ -444,9 +444,17 @@ worth attempting on a given STL.
   ``_evaluate_cavity_component_candidates`` that chains 9c-b…9c-c-iii-c
   helpers and tags each component ``accept`` /
   ``reject_uncovered_shell``. Pure read-only summary; mesh untouched.
-- [ ] BLR-9c-d (b): determinant + face weight +
-  non-orthogonality validity gates layered on top of the aggregator
-  and bench acceptance.
+- [x] BLR-9c-d (b): fan-tet signed-volume gate
+  ``_check_cavity_fan_tet_determinants`` — reports per-fan
+  ``signed_dets``, ``n_pos_det`` / ``n_neg_det`` /
+  ``n_degenerate_det``, and a Klingner-style minority-sign rule that
+  flags flipped fan triangles relative to the rest of the component.
+  Pure helper; aggregator wire-in deferred to BLR-9c-d (c).
+- [ ] BLR-9c-d (c): wire the BLR-9c-d-b determinant gate into
+  ``_evaluate_cavity_component_candidates`` so a component is rejected
+  when its fan-tet ``bad_indices`` is non-empty.
+- [ ] BLR-9c-d (d): face weight + non-orthogonality validity gates
+  layered on top of the aggregator and bench acceptance.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

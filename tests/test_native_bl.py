@@ -31,6 +31,7 @@ from core.layers.native_bl import (
     _build_cavity_fan_transition_tets,
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
+    _check_cavity_fan_tet_determinants,
     _check_cavity_shell_coverage,
     _compute_cavity_centroid,
     _detect_wall_owner_cavity_components,
@@ -1770,3 +1771,94 @@ def test_native_bl_evaluate_cavity_component_candidates_external_shell_rejects()
     assert rec["decision"] == "reject_uncovered_shell"
     assert out["n_rejected_uncovered_shell"] == 1
     assert out["n_accepted"] == 0
+
+
+def test_native_bl_check_cavity_fan_tet_determinants_empty() -> None:
+    """BLR-9c-d-b — empty fan list returns zero record."""
+    out = _check_cavity_fan_tet_determinants(
+        [], np.zeros(3), np.zeros((0, 3))
+    )
+    assert out["n_tets"] == 0
+    assert out["n_pos_det"] == 0
+    assert out["n_neg_det"] == 0
+    assert out["n_degenerate_det"] == 0
+    assert out["worst_abs_det"] == 0.0
+    assert out["bad_indices"] == []
+
+
+def test_native_bl_check_cavity_fan_tet_determinants_consistent_signs_pass() -> None:
+    """BLR-9c-d-b — fan tets that all share one sign and have
+    non-degenerate determinant produce zero ``bad_indices``."""
+    apex = np.array([0.0, 0.0, 0.0])
+    inner_points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5],   # off-plane to keep both tets non-degenerate
+        ],
+        dtype=np.float64,
+    )
+    # Two fan tets, both with the same winding (consistent-sign
+    # determinant in the apex / inner-points frame).
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 0, 1, 3]},
+    ]
+    out = _check_cavity_fan_tet_determinants(fan_tets, apex, inner_points)
+    assert out["n_tets"] == 2
+    assert out["n_degenerate_det"] == 0
+    # Either all positive or all negative is fine; what matters is
+    # that no tet ends up in `bad_indices`.
+    assert out["n_pos_det"] + out["n_neg_det"] == 2
+    assert out["bad_indices"] == []
+
+
+def test_native_bl_check_cavity_fan_tet_determinants_flipped_minority_flagged() -> None:
+    """BLR-9c-d-b — when one tet has the minority sign relative to the
+    rest of the fan, it is reported as a bad index even though its
+    ``|det|`` is large.  This is the Klingner-style "flipped fan
+    triangle" case."""
+    apex = np.array([0.0, 0.0, 0.0])
+    inner_points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        # Two consistent-sign tets …
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 0, 1, 3]},
+        # … plus one with the indices swapped to flip the sign.
+        {"face_id": 2, "tet_verts": [-1, 1, 0, 2]},
+    ]
+    out = _check_cavity_fan_tet_determinants(fan_tets, apex, inner_points)
+    assert out["n_tets"] == 3
+    assert out["n_pos_det"] >= 1
+    assert out["n_neg_det"] >= 1
+    # The minority-sign tet (index 2 here) must be reported.
+    assert 2 in out["bad_indices"]
+
+
+def test_native_bl_check_cavity_fan_tet_determinants_degenerate_flagged() -> None:
+    """BLR-9c-d-b — a degenerate (zero-volume) tet, e.g. when the apex
+    lies on the inner triangle plane, is reported regardless of sign."""
+    apex = np.array([0.0, 0.0, 0.0])
+    inner_points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],   # all on z=0, degenerate with apex
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}]
+    out = _check_cavity_fan_tet_determinants(fan_tets, apex, inner_points)
+    assert out["n_tets"] == 1
+    assert out["n_degenerate_det"] == 1
+    assert out["bad_indices"] == [0]
+    assert out["worst_abs_det"] < 1e-9
