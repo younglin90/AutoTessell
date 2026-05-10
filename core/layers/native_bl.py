@@ -2366,6 +2366,140 @@ def _owner_centre_wall_motion(
     return motion_dirs, diag
 
 
+def _tet_wall_cavity_replacement_probe(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_face_indices: list[int],
+    eligible_owner_cells: list[int] | tuple[int, ...] | set[int] | None,
+    cell_centres: np.ndarray,
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    enabled: bool,
+) -> dict[str, Any]:
+    """BLR-9a: dry-run quality probe for single-tet wall-cavity replacement.
+
+    For each eligible single-tet wall owner from BLR-7:
+
+    - predict the prism inner triangle as the wall face vertices moved
+      inward by ``motion_dirs[v] * first_thickness`` (BLR-8 motion when
+      available; otherwise the call site's fallback ``-vnorm`` already
+      lives in ``motion_dirs``);
+    - predict a transition tet as (apex = original tet cell centroid,
+      base = prism inner triangle);
+    - count how many candidates yield a strictly-positive signed volume
+      transition tet (the lowest necessary gate before any real
+      ``polyMesh`` rewrite is attempted in BLR-9b).
+
+    No mesh mutation. The diagnostics are intended only as a quality
+    estimate so a verifier can decide whether the cavity-replacement
+    path is worth turning on. When ``enabled`` is False the diagnostics
+    are zero-filled.
+    """
+    diag: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "n_candidates": 0,
+        "n_quality_pass": 0,
+        "n_quality_fail_det": 0,
+        "n_quality_fail_topology": 0,
+        "mean_predicted_det": 0.0,
+        "min_predicted_det": 0.0,
+        "max_predicted_det": 0.0,
+    }
+    if not enabled or not wall_face_indices or eligible_owner_cells is None:
+        return diag
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set or cell_centres is None or len(cell_centres) == 0:
+        return diag
+    if motion_dirs is None:
+        return diag
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    # Map: eligible owner cell -> the unique wall face it owns. Cells with
+    # zero or 2+ wall faces would not have been classed as single-wall
+    # eligible by BLR-7, but guard anyway so the probe never picks the
+    # wrong face for an inverted topology snapshot.
+    cell_to_wall_face: dict[int, int] = {}
+    cell_wall_face_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres or own not in eligible_set:
+            continue
+        cell_wall_face_count[own] = cell_wall_face_count.get(own, 0) + 1
+        cell_to_wall_face.setdefault(own, int(fi))
+
+    dets: list[float] = []
+    n_topology_fail = 0
+    n_det_fail = 0
+    n_pass = 0
+    for cid in eligible_set:
+        if cell_wall_face_count.get(cid, 0) != 1:
+            n_topology_fail += 1
+            continue
+        fi = cell_to_wall_face[cid]
+        f = faces[fi]
+        if len(f) != 3:
+            n_topology_fail += 1
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = motion_dirs[v0]
+            d1 = motion_dirs[v1]
+            d2 = motion_dirs[v2]
+        except KeyError:
+            n_topology_fail += 1
+            continue
+        # Predicted prism inner triangle (one layer of thickness).
+        p0 = np.asarray(points[v0], dtype=np.float64)
+        p1 = np.asarray(points[v1], dtype=np.float64)
+        p2 = np.asarray(points[v2], dtype=np.float64)
+        i0 = p0 + np.asarray(d0, dtype=np.float64).reshape(3) * float(first_thickness)
+        i1 = p1 + np.asarray(d1, dtype=np.float64).reshape(3) * float(first_thickness)
+        i2 = p2 + np.asarray(d2, dtype=np.float64).reshape(3) * float(first_thickness)
+        apex = np.asarray(cell_centres[cid], dtype=np.float64).reshape(3)
+
+        # Topology gate: the predicted inner triangle must lie on the same
+        # side of the wall as the original cell centroid.  Outward motion
+        # (inner pushed through the wall into the body solid) is
+        # geometrically invalid for a cavity replacement and is counted as
+        # a topology failure rather than a determinant failure.
+        wall_centroid = (p0 + p1 + p2) / 3.0
+        inner_centroid = (i0 + i1 + i2) / 3.0
+        if float(np.dot(inner_centroid - wall_centroid, apex - wall_centroid)) <= 0.0:
+            n_topology_fail += 1
+            continue
+
+        # Signed volume magnitude of the transition tet (apex, i0, i1, i2).
+        m = np.stack([i0 - apex, i1 - apex, i2 - apex], axis=0)
+        det_signed = float(np.linalg.det(m)) / 6.0
+        if not np.isfinite(det_signed):
+            n_det_fail += 1
+            continue
+        det = abs(det_signed)
+        if det <= 1e-30:
+            n_det_fail += 1
+            continue
+        n_pass += 1
+        dets.append(det)
+
+    n_candidates = int(len(eligible_set))
+    diag["n_candidates"] = n_candidates
+    diag["n_quality_pass"] = int(n_pass)
+    diag["n_quality_fail_det"] = int(n_det_fail)
+    diag["n_quality_fail_topology"] = int(n_topology_fail)
+    if dets:
+        dets_arr = np.asarray(dets, dtype=np.float64)
+        diag["mean_predicted_det"] = float(dets_arr.mean())
+        diag["min_predicted_det"] = float(dets_arr.min())
+        diag["max_predicted_det"] = float(dets_arr.max())
+    return diag
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
@@ -3674,6 +3808,25 @@ def generate_native_bl(
         "max_motion": 0.0,
     }
 
+    # BLR-9a — env-gated dry-run quality probe for tet wall-cavity replacement.
+    # No mesh mutation; predicts whether the prism + transition tet
+    # combination would be geometrically valid for each BLR-7 single-tet
+    # eligible owner.  BLR-9b (a future iteration) will gate the actual
+    # cavity rewrite on these metrics.  Default OFF.
+    _bl_tet_cavity_probe_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_PROBE", "0") == "1"
+    )
+    tet_cavity_probe_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_probe_enabled),
+        "n_candidates": 0,
+        "n_quality_pass": 0,
+        "n_quality_fail_det": 0,
+        "n_quality_fail_topology": 0,
+        "mean_predicted_det": 0.0,
+        "min_predicted_det": 0.0,
+        "max_predicted_det": 0.0,
+    }
+
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
     vertex_cum_map: dict[int, np.ndarray] = {}
@@ -3876,6 +4029,29 @@ def generate_native_bl(
                 [motion_dirs[v] for v in wall_vert_indices],
                 dtype=np.float64,
             ).reshape(-1, 3)  # (W,3)
+
+            # BLR-9a — dry-run replacement quality probe (env-gated, no-op
+            # when disabled).  Uses the same motion directions as the prism
+            # extrusion so the probe and the eventual rewrite agree on the
+            # predicted inner triangle.
+            try:
+                nonlocal tet_cavity_probe_diag
+                tet_cavity_probe_diag = _tet_wall_cavity_replacement_probe(
+                    points,
+                    faces,
+                    owner,
+                    wall_face_indices,
+                    _bl_owner_centre_eligible_cells,
+                    cell_centres,
+                    motion_dirs,
+                    float(cfg.first_thickness),
+                    enabled=_bl_tet_cavity_probe_enabled,
+                )
+            except Exception as exc:  # noqa: BLE001
+                tet_cavity_probe_diag = {
+                    "enabled": bool(_bl_tet_cavity_probe_enabled),
+                    "error": str(exc)[:160],
+                }
 
         if use_per_v_cum_pass and vertex_cum_map_pass:
             # per-vertex total thickness vector: (W,)
@@ -4835,6 +5011,7 @@ def generate_native_bl(
             "pre_bl_bad_internal_faces": pre_bl_bad_internal_face_histogram,
             "tet_wall_cavity": tet_wall_cavity_eligibility,
             "owner_centre_motion": owner_centre_motion_diag,
+            "tet_cavity_probe": tet_cavity_probe_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,

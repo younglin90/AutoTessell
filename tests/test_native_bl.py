@@ -29,6 +29,7 @@ from core.layers.native_bl import (
     _merge_skewed_bl_internal_quads,
     _owner_centre_wall_motion,
     _tet_wall_cavity_eligibility,
+    _tet_wall_cavity_replacement_probe,
     generate_native_bl,
 )
 from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
@@ -617,6 +618,124 @@ def test_native_bl_owner_centre_motion_one_tet_wall_fixture() -> None:
     assert diag_empty["n_moved"] == 0
     for v in wall_vert_indices:
         np.testing.assert_array_equal(dirs_empty[v], fallback[v])
+
+
+def test_native_bl_tet_cavity_probe_one_tet_passes() -> None:
+    """BLR-9a — dry-run probe on a single eligible tet predicts a valid
+    transition tet (positive determinant) when the inward motion points
+    into the owner cell.
+
+    Re-uses the BLR-8 fixture: one tet with wall on z=0 and apex above.
+    Inward direction = +z. Inner triangle = wall verts + thickness × (+z).
+    Transition tet apex = cell centroid (above wall); base = inner
+    triangle. Signed volume should be strictly positive.
+    """
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],   # wall face
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    wall_face_indices = [0]
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    eligible = {0}
+    motion_dirs = {
+        0: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, 1.0], dtype=np.float64),
+    }
+
+    diag_on = _tet_wall_cavity_replacement_probe(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        eligible,
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+    )
+    assert diag_on["enabled"] is True
+    assert diag_on["n_candidates"] == 1
+    assert diag_on["n_quality_pass"] == 1
+    assert diag_on["n_quality_fail_det"] == 0
+    assert diag_on["n_quality_fail_topology"] == 0
+    assert diag_on["min_predicted_det"] > 0.0
+    assert diag_on["mean_predicted_det"] >= diag_on["min_predicted_det"]
+
+    # Env OFF — diagnostics must be zero-filled.
+    diag_off = _tet_wall_cavity_replacement_probe(
+        points,
+        faces,
+        owner,
+        wall_face_indices,
+        eligible,
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=False,
+    )
+    assert diag_off["enabled"] is False
+    assert diag_off["n_candidates"] == 0
+    assert diag_off["n_quality_pass"] == 0
+    assert diag_off["min_predicted_det"] == 0.0
+
+
+def test_native_bl_tet_cavity_probe_rejects_outward_motion() -> None:
+    """Inward motion pointing OUT of the owner cell yields negative
+    transition tet volume — probe must count it as a det failure."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+    ]
+    owner = np.array([0, 0, 0, 0], dtype=np.int64)
+    cell_centres = points.mean(axis=0).reshape(1, 3)
+    # Reverse the motion: -z (away from owner cell which is above the wall).
+    motion_dirs = {
+        0: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+        1: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+        2: np.array([0.0, 0.0, -1.0], dtype=np.float64),
+    }
+
+    diag = _tet_wall_cavity_replacement_probe(
+        points,
+        faces,
+        owner,
+        [0],
+        {0},
+        cell_centres,
+        motion_dirs,
+        first_thickness=0.05,
+        enabled=True,
+    )
+    assert diag["n_candidates"] == 1
+    assert diag["n_quality_pass"] == 0
+    # Outward motion = inner triangle on the WRONG side of the wall →
+    # classified as a topology failure (not a determinant failure).
+    assert diag["n_quality_fail_topology"] == 1
+    assert diag["n_quality_fail_det"] == 0
 
 
 def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:

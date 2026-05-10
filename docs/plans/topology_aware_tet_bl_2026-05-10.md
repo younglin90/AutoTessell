@@ -303,6 +303,33 @@ creates near-tangent interface faces.
 
 ### Task 2: BLR-9 — env-gated single-tet wall cavity replacement candidate
 
+Sub-staged into BLR-9a (probe), BLR-9b (single-cell rewrite), BLR-9c
+(multi-cell sweep) so each iteration of the loop can land an atomic,
+revertable change.
+
+#### Task 2a: BLR-9a — dry-run quality probe
+
+- [x] Add `_tet_wall_cavity_replacement_probe(...)` in
+  `core/layers/native_bl.py`. For each BLR-7 single-tet eligible
+  owner, predict the prism inner triangle and the transition tet
+  `(apex = original cell centroid, base = inner triangle)` and
+  classify each candidate as topology-fail (inner pushed through the
+  wall, outward motion), det-fail (zero/non-finite signed volume),
+  or quality-pass.  No mesh mutation; default OFF behind
+  `AUTO_TESSELL_BL_TET_CAVITY_PROBE=0`.
+- [x] Surface `tet_cavity_probe` diagnostics in
+  `native_bl_quality.json` (`n_candidates`, `n_quality_pass`,
+  `n_quality_fail_topology`, `n_quality_fail_det`,
+  `mean/min/max_predicted_det`).
+- [x] Two unit tests in `tests/test_native_bl.py`:
+  one-tet inward motion → quality_pass, outward motion →
+  topology_fail; env OFF returns zero-filled diagnostics.
+
+The probe outputs let BLR-9b decide whether the actual rewrite is
+worth attempting on a given STL.
+
+#### Task 2b: BLR-9b — single-cell rewrite (next iteration)
+
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
   to delete each eligible wall-owner tet, insert the layer-1 prism
