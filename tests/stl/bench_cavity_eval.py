@@ -120,6 +120,13 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         "AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL",
         os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_GLOBAL", "1"),
     )
+    # BLR-9c-d-s-1 sweep showed floor=0.5 fixes 2 cap-induced
+    # aspect+surface_dev FAILs (extreme_1017014, extreme_102308) at
+    # the cost of 1 regression (medium_100330) — net +1 PASS.
+    env.setdefault(
+        "AUTO_TESSELL_BL_ANTI_INVERT_FLOOR",
+        os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_FLOOR", "0.5"),
+    )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
     env.setdefault("AUTO_TESSELL_LCR_OFF", "1")
