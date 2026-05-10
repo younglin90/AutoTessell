@@ -6679,6 +6679,46 @@ def generate_native_bl(
                     wall_vert_indices, motion_dirs,
                     safety_factor=_safety,
                 )
+                # BLR-9c-d-p-11 — cell-level cap smoothing.  Per-
+                # vertex caps alone produce inhomogeneous reductions
+                # within a single prism face (one vert capped tight,
+                # adjacent vert unchanged) which collapses the prism
+                # to a sliver / aspect-1e9 cell.  For each wall face
+                # take the *min* cap across its 3 verts and propagate
+                # back so all three verts move together — this
+                # preserves prism shape while still preventing bulk
+                # inversion.
+                _smooth_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_SMOOTH", "0",
+                    ) == "1"
+                )
+                if _smooth_enabled:
+                    _face_min_cap: dict[int, float] = {}
+                    for _fi in wall_face_indices:
+                        if _fi < 0 or _fi >= len(faces):
+                            continue
+                        _f = faces[_fi]
+                        _face_caps = [
+                            _caps_dict.get(int(v), float("inf"))
+                            for v in _f
+                        ]
+                        _face_min_cap[_fi] = (
+                            float(min(_face_caps)) if _face_caps else float("inf")
+                        )
+                    _vert_face_min: dict[int, float] = {}
+                    for _fi, _fmc in _face_min_cap.items():
+                        for v in faces[_fi]:
+                            iv = int(v)
+                            cur = _vert_face_min.get(iv, float("inf"))
+                            if _fmc < cur:
+                                _vert_face_min[iv] = _fmc
+                    for v in wall_vert_indices:
+                        iv = int(v)
+                        if iv in _vert_face_min:
+                            _orig = _caps_dict.get(iv, float("inf"))
+                            _smoothed = min(_orig, _vert_face_min[iv])
+                            _caps_dict[iv] = _smoothed
                 _delta = new_pts[wall_idx_arr_p] - points[wall_idx_arr_p]
                 _mag = np.linalg.norm(_delta, axis=1)
                 _caps_arr = np.array(

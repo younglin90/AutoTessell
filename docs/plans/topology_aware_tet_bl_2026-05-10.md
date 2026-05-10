@@ -1050,12 +1050,37 @@ Native_bl is missing a post-extrusion guard.
   with a triangle face that's nearly degenerate — max-aspect
   ratio 10⁹ and max skewness 3447.
 
-  - [ ] BLR-9c-d (p-11): cell-level cap.  For each prism cell
-    (i.e. each wall face), use the min cap across its 3 wall
-    vertices as the *common* cap for that cell, so all three
-    inner verts move together and the prism cap stays
-    well-shaped.  This keeps prism quality while still
-    preventing bulk inversion.
+  - [x] BLR-9c-d (p-11) — *negative result*.  Tried cell-level
+    cap smoothing: for every wall face, take the min cap across
+    its 3 verts and propagate back so the trio moves together.
+    Default-OFF env hook
+    ``AUTO_TESSELL_BL_ANTI_INVERT_SMOOTH`` (left at 0).  Smoke
+    test on extreme_102308.stl with smoothing ON:
+
+    ::
+
+        before smooth (per-vert): n_capped 216, neg_vol 0,
+                                    max_skew 3447, max_aspect 1e9
+        after  smooth (cell-min): n_capped 467, neg_vol 10,
+                                    max_skew 6286, max_aspect 1e9
+
+    Smoothing made things *worse*: more verts got capped by
+    inheriting their neighbours' aggressive caps, so even more
+    prism cells collapsed.  The fundamental problem is that in
+    regions where the local feature size is smaller than the BL
+    thickness, *any* non-trivial extrusion creates either a
+    bulk inversion or a degenerate prism.  The cap can move
+    between those two failure modes but cannot eliminate both.
+
+  - [ ] BLR-9c-d (p-12): selective BL skipping.  In regions
+    where the per-vertex cap drops below a threshold fraction
+    of the requested total_thickness (e.g. < 30 %), skip the
+    BL extrusion *entirely* for that wall face — leave the
+    original bulk tet in place and don't insert any prism
+    cells.  This produces a "hole" in the BL coverage but
+    keeps the rest of the mesh valid.  Evaluator's
+    ``soft_bl_missing`` check at standard threshold is 30 %,
+    so up to ~30 % missing wall faces is acceptable.
 
 ### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
 
