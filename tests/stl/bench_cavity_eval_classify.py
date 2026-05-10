@@ -148,11 +148,24 @@ def main() -> int:
         thresholds["hard_skewness"] = max(
             thresholds.get("hard_skewness", 8.0), 20.0,
         )
+        # BL active bumps for tet tiers (mirror line 251-252)
+        thresholds["soft_skewness"] = max(
+            thresholds.get("soft_skewness", 4.0), 19.0,
+        )
+        thresholds["soft_non_ortho"] = max(
+            thresholds.get("soft_non_ortho", 80.0), 90.0,
+        )
     hard_no = float(thresholds.get("hard_non_ortho", 65.0))
     hard_skew = float(thresholds.get("hard_skewness", 4.0))
+    soft_aspect = float(thresholds.get("soft_aspect_ratio", 1000.0))
     cases = sorted(p for p in RUN_ROOT.iterdir() if p.is_dir())
-    print(f"quality={QUALITY}  hard_no={hard_no}  hard_skew={hard_skew}")
-    print(f"{'case':<20}\tverdict\tmax_no\tmax_skew\tcategory\tdetails")
+    print(
+        f"quality={QUALITY}  hard_no={hard_no}  hard_skew={hard_skew} "
+        f"soft_aspect={soft_aspect}"
+    )
+    print(
+        f"{'case':<20}\tverdict\tmax_no\tmax_skew\tmax_aspect\tcategory\tdetails"
+    )
     for case in cases:
         if not (case / "constant" / "polyMesh" / "owner").exists():
             continue
@@ -162,24 +175,48 @@ def main() -> int:
             continue
         max_no = float(r.max_non_orthogonality)
         max_skew = float(r.max_skewness)
+        max_aspect = float(getattr(r, "max_aspect_ratio", 0.0) or 0.0)
         min_det = float(r.min_determinant)
+        neg_vol = int(getattr(r, "negative_volumes", 0))
         hard_fail = (
             max_no > hard_no
             or max_skew > hard_skew
             or min_det <= 0.0
-            or int(getattr(r, "negative_volumes", 0)) > 0
+            or neg_vol > 0
         )
-        verdict = "FAIL" if hard_fail else "PASS"
+        # Soft criteria that the production evaluator counts when
+        # deciding whether a mesh is PASS or FAIL: 2+ soft fails ⇒
+        # FAIL even when no hard fail.  We approximate with
+        # max_aspect_ratio + soft_skewness + soft_non_ortho.
+        soft_skew = float(thresholds.get("soft_skewness", 6.0))
+        soft_no = float(thresholds.get("soft_non_ortho", 80.0))
+        soft_fails = 0
+        if max_aspect > soft_aspect:
+            soft_fails += 1
+        if max_skew > soft_skew:
+            soft_fails += 1
+        if max_no > soft_no:
+            soft_fails += 1
+        verdict = (
+            "FAIL" if hard_fail else
+            ("FAIL" if soft_fails >= 2 else "PASS")
+        )
         if hard_fail:
             cat, details = _classify(
-                case, max_skew, hard_skew,
-                int(getattr(r, "negative_volumes", 0)),
+                case, max_skew, hard_skew, neg_vol,
             )
+        elif soft_fails >= 2:
+            cat = "soft_fail"
+            details = {
+                "max_aspect": round(max_aspect, 1),
+                "soft_fails": soft_fails,
+            }
         else:
             cat, details = "pass", {}
         print(
             f"{case.name:<20}\t{verdict}\t{round(max_no, 1)}\t"
-            f"{round(max_skew, 2)}\t{cat}\t{details}"
+            f"{round(max_skew, 2)}\t{round(max_aspect, 1)}\t"
+            f"{cat}\t{details}"
         )
     return 0
 
