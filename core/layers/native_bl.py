@@ -4708,6 +4708,63 @@ def _generate_native_bl_vd(
             / (float(cfg.growth_ratio) - 1.0)
         )
 
+    # BLR-9c-d-g — env-gated cavity-component evaluation on the
+    # pre-BL polyMesh.  In the VD writer path we don't carry an
+    # explicit ``motion_dirs`` map, but the inward unit vector for
+    # each wall vertex is exactly ``-vnorm[v]`` — build that map
+    # inline so the eval helpers can run without any other change.
+    _vd_tet_cavity_eval_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_EVAL", "0") == "1"
+    )
+    vd_tet_cavity_eval_diag: dict[str, Any] = {
+        "enabled": bool(_vd_tet_cavity_eval_enabled),
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        "writer_path": "vd",
+    }
+    if _vd_tet_cavity_eval_enabled:
+        try:
+            _vd_motion_dirs = {
+                int(v): -np.asarray(vnorm[v], dtype=np.float64)
+                for v in wall_vert_indices
+                if v in vnorm
+            }
+            _vd_components = _detect_wall_owner_cavity_components(
+                np.asarray(owner, dtype=np.int64),
+                np.asarray(neighbour, dtype=np.int64),
+                list(wall_face_indices),
+            )
+            _vd_summary = _evaluate_cavity_component_candidates(
+                components=_vd_components,
+                points=np.asarray(points, dtype=np.float64),
+                faces=faces,
+                owner=np.asarray(owner, dtype=np.int64),
+                neighbour=np.asarray(neighbour, dtype=np.int64),
+                wall_face_indices=list(wall_face_indices),
+                motion_dirs=_vd_motion_dirs,
+                first_thickness=float(cfg.first_thickness),
+            )
+            for _key in (
+                "n_components", "n_accepted",
+                "n_rejected_uncovered_shell", "n_rejected_bad_det",
+                "n_rejected_bad_shape", "n_rejected_bad_non_ortho",
+                "n_rejected_bad_skewness",
+            ):
+                vd_tet_cavity_eval_diag[_key] = int(
+                    _vd_summary.get(_key, 0)
+                )
+        except Exception as exc:  # noqa: BLE001
+            vd_tet_cavity_eval_diag = {
+                "enabled": True,
+                "writer_path": "vd",
+                "error": str(exc)[:160],
+            }
+
     try:
         import json as _json
 
@@ -4719,6 +4776,7 @@ def _generate_native_bl_vd(
             "n_gap_fill_cells": int(n_gap),
             "n_feature_edge_merged": 0,
             "n_new_points": int(n_new_pts),
+            "tet_cavity_eval": vd_tet_cavity_eval_diag,
             "total_thickness": float(total_thickness),
             "bbox_diag": float(bbox_diag),
             "thickness_to_bbox_ratio": float(total_thickness / max(bbox_diag, 1e-30)),

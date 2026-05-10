@@ -1,0 +1,21 @@
+{
+  "totals": {
+    "n_stls": 1,
+    "n_components": 0,
+    "n_accepted": 0,
+    "n_rejected_uncovered_shell": 0,
+    "n_rejected_bad_det": 0,
+    "n_rejected_bad_shape": 0,
+    "n_rejected_bad_non_ortho": 0,
+    "n_rejected_bad_skewness": 0
+  },
+  "rows": [
+    {
+      "stl": "test_cube.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
+      "returncode": 0,
+      "elapsed_s": 14.905,
+      "tet_cavity_eval": {}
+    }
+  ]
+}

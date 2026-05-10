@@ -523,10 +523,29 @@ worth attempting on a given STL.
   n_rejected_bad_shape, n_rejected_bad_non_ortho,
   n_rejected_bad_skewness).  Default OFF so the rest of the BL
   pipeline is untouched.  Pure read-only — no polyMesh mutation.
-- [ ] BLR-9c-d (g-2): run the 21-STL bench with
-  ``AUTO_TESSELL_BL_TET_CAVITY_EVAL=1`` and aggregate the per-STL
-  ``native_bl_quality.tet_cavity_eval`` blocks to confirm gate
-  effectiveness before any polyMesh-writer wire-in.
+- [x] BLR-9c-d (g-2-a): bench harness ``tests/stl/bench_cavity_eval.py``
+  that runs the 21-STL set through ``auto-tessell run --mesh-type
+  tet --tier wildmesh`` with ``AUTO_TESSELL_BL_TET_CAVITY_EVAL=1``
+  set, then aggregates per-STL ``native_bl_quality.tet_cavity_eval``
+  blocks into ``tests/stl/bench_cavity_eval_result.json`` +
+  ``bench_cavity_eval_summary.tsv``.  Smoke validation: rc 0 on
+  ``test_cube.stl`` (~15 s) and ``easy_100034.stl`` (~24 s).
+- [x] BLR-9c-d (g-2-b): VD-writer wire-in for the eval block.
+  ``_generate_native_bl_vd`` (the BLR vertex-duplication writer
+  path) now calls the BLR-9c-a detector and BLR-9c-d aggregator
+  using ``-vnorm[v]`` as the inward motion direction and surfaces
+  the result as ``native_bl_quality.tet_cavity_eval`` so the bench
+  also captures VD-path cases.  The smoke JSON for the easy
+  thingi10k STLs shows ``tet_cavity_eval`` is *missing* whenever
+  the wildmesh tier picks an axis-extrusion or structured-box
+  fastpath (line 367 / 1443 in ``tier_wildmesh.py``); for those
+  cases there is no wall-owner cavity to fill, so a missing /
+  empty eval block is the correct verdict.
+- [ ] BLR-9c-d (g-3): bench-script extension that also captures
+  fastpath-bypass cases (read ``fastpath`` field from the wildmesh
+  JSON when ``tet_cavity_eval`` is absent) plus an env hook to
+  force all 21 STLs through the main native_bl path so the eval
+  battery is exercised on every case.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
