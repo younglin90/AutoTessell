@@ -134,15 +134,43 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     # reason — separate from the cavity_eval read-only audit.
     row["evaluator_verdict"] = "UNKNOWN"
     row["first_fail_metric"] = ""
+    # The Python orchestrator emits two complementary verdict markers:
+    # ``verdict=PASS`` / ``verdict=FAIL`` from the structured logger
+    # *and* a Rich-rendered `Verdict: PASS|FAIL` panel from the CLI.
+    # Different STLs end up trimming the log_tail differently, so we
+    # match either format and also check for the final ``✓ PASS``/``✗ FAIL``
+    # CLI summary line.  Returncode is the ultimate fallback when no
+    # verdict line survives the tail truncation.
+    pass_markers = (
+        "verdict=PASS", "Verdict: PASS", "✓ PASS", "PASS — Mesh"
+    )
+    fail_markers = (
+        "verdict=FAIL", "Verdict: FAIL", "✗ FAIL", "FAIL — Mesh"
+    )
     for line in log_tail.splitlines():
-        if "verdict=PASS" in line:
-            row["evaluator_verdict"] = "PASS"
-        elif "verdict=FAIL" in line:
+        if any(m in line for m in fail_markers):
             row["evaluator_verdict"] = "FAIL"
+        elif (
+            row["evaluator_verdict"] != "FAIL"
+            and any(m in line for m in pass_markers)
+        ):
+            row["evaluator_verdict"] = "PASS"
         if " FAIL " in line and not row["first_fail_metric"]:
             stripped = line.strip()
-            if stripped.startswith("Max ") or stripped.startswith("Min ") or stripped.startswith("Avg "):
+            if (
+                stripped.startswith("Max ")
+                or stripped.startswith("Min ")
+                or stripped.startswith("Avg ")
+                or stripped.startswith("Hausdorff")
+                or stripped.startswith("Negative")
+            ):
                 row["first_fail_metric"] = stripped[:120]
+    # Fallback: if the log was truncated past every verdict marker but
+    # the CLI returned non-zero, treat as FAIL (matches the orchestrator
+    # exit-code contract).  rc=0 + UNKNOWN keeps the UNKNOWN label so the
+    # bench reader knows to investigate.
+    if row["evaluator_verdict"] == "UNKNOWN" and row.get("returncode") not in (0, None):
+        row["evaluator_verdict"] = "FAIL"
 
     # Read native_bl_quality.json and extract tet_cavity_eval +
     # fastpath bypass markers.
