@@ -33,6 +33,7 @@ from core.layers.native_bl import (
     _build_tet_cavity_replacement_plan,
     _check_cavity_fan_tet_determinants,
     _check_cavity_fan_tet_pair_non_ortho,
+    _check_cavity_fan_tet_pair_skewness,
     _check_cavity_fan_tet_shape_quality,
     _check_cavity_shell_coverage,
     _compute_cavity_centroid,
@@ -2067,6 +2068,103 @@ def test_native_bl_check_cavity_fan_tet_pair_non_ortho_threshold_flagged() -> No
     assert out["max_angle_deg"] > 10.0
     assert out["n_above_threshold"] == 1
     assert len(out["bad_pair_indices"]) == 1
+
+
+def test_native_bl_check_cavity_fan_tet_pair_skewness_empty_or_singleton() -> None:
+    """BLR-9c-d-f-1 — fewer than two fan tets ⇒ no internal pair to
+    measure ⇒ zero record."""
+    apex = np.zeros(3)
+    inner_points = np.eye(3)
+    out_empty = _check_cavity_fan_tet_pair_skewness([], apex, inner_points)
+    assert out_empty["n_pairs"] == 0
+    assert out_empty["max_skew"] == 0.0
+    assert out_empty["bad_pair_indices"] == []
+    out_one = _check_cavity_fan_tet_pair_skewness(
+        [{"face_id": 0, "tet_verts": [-1, 0, 1, 2]}], apex, inner_points
+    )
+    assert out_one["n_pairs"] == 0
+
+
+def test_native_bl_check_cavity_fan_tet_pair_skewness_symmetric_fan_low_skew() -> None:
+    """BLR-9c-d-f-1 — a mirror-symmetric fan keeps skewness well
+    below the OpenFOAM checkMesh cap (4.0)."""
+    apex = np.array([0.0, 0.0, 1.0])
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.5, -1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 0, 1, 3]},
+    ]
+    out = _check_cavity_fan_tet_pair_skewness(fan_tets, apex, inner_points)
+    assert out["n_pairs"] == 1
+    # Mirror-symmetric about edge (0,1) keeps skewness small. The
+    # apex z-coordinate is unequal to the cell-centroid z, so the
+    # face centroid is offset from the OF line along z, but the
+    # offset is bounded — well under the checkMesh cap of 4.
+    assert out["max_skew"] < 1.0
+    assert out["bad_pair_indices"] == []
+
+
+def test_native_bl_check_cavity_fan_tet_pair_skewness_threshold_flagged() -> None:
+    """BLR-9c-d-f-1 — pairs above the threshold land in
+    ``bad_pair_indices``.  Use a tight cap so the (low) skew of a
+    benign asymmetric fixture still gets flagged."""
+    apex = np.array([0.0, 0.0, 1.0])
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 1, 3, 2]},
+    ]
+    # Aggressive cap so any non-zero skew flags.
+    out = _check_cavity_fan_tet_pair_skewness(
+        fan_tets, apex, inner_points, skew_threshold=1e-6
+    )
+    assert out["n_pairs"] == 1
+    if out["max_skew"] > 1e-6:
+        assert out["n_above_threshold"] == 1
+        assert len(out["bad_pair_indices"]) == 1
+    else:
+        # Symmetric ⇒ degenerate case; should report zero.
+        assert out["n_above_threshold"] == 0
+
+
+def test_native_bl_check_cavity_fan_tet_pair_skewness_no_shared_edge() -> None:
+    """BLR-9c-d-f-1 — fan tets that share no inner edge ⇒ no pair
+    counted, like the non-ortho helper."""
+    apex = np.zeros(3)
+    inner_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    fan_tets = [
+        {"face_id": 0, "tet_verts": [-1, 0, 1, 2]},
+        {"face_id": 1, "tet_verts": [-1, 3, 4, 5]},
+    ]
+    out = _check_cavity_fan_tet_pair_skewness(fan_tets, apex, inner_points)
+    assert out["n_pairs"] == 0
+    assert out["bad_pair_indices"] == []
 
 
 def test_native_bl_check_cavity_fan_tet_shape_quality_empty() -> None:

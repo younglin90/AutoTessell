@@ -495,8 +495,25 @@ worth attempting on a given STL.
   ``n_fan_pair_above_non_ortho``, ``fan_pair_max_non_ortho_deg``,
   ``fan_pair_mean_non_ortho_deg``, ``n_fan_pair_bad_non_ortho``;
   the summary gains ``n_rejected_bad_non_ortho``.
-- [ ] BLR-9c-d (f): face weight (skewness) gate, completing the
-  per-component validity battery; then bench acceptance.
+- [x] BLR-9c-d (f-1): adjacent fan-tet pair skewness helper
+  ``_check_cavity_fan_tet_pair_skewness``.  For each shared
+  internal face it computes the OpenFOAM ``checkMesh`` skewness
+  ``|c_f − c_perp| / |c_N − c_O|`` where ``c_perp`` is the foot of
+  the perpendicular from the face centroid onto the cell-cell
+  line.  Reports ``skew_values``, ``max_skew``, ``mean_skew``,
+  ``n_above_threshold``, ``bad_pair_indices``.  Default threshold
+  4.0 (OpenFOAM cap).  Pure helper; aggregator wire-in deferred to
+  BLR-9c-d (f-2).
+- [ ] BLR-9c-d (f-2): wire ``_check_cavity_fan_tet_pair_skewness``
+  into ``_evaluate_cavity_component_candidates`` with a new
+  ``reject_bad_skewness`` decision label and
+  ``n_rejected_bad_skewness`` summary field.  Decision precedence:
+  shell > det > shape > non-ortho > skewness > accept.
+- [ ] BLR-9c-d (g): bench acceptance — measure
+  reject_uncovered_shell / reject_bad_det / reject_bad_shape /
+  reject_bad_non_ortho / reject_bad_skewness / accept counts on
+  the 21-STL bench and confirm gate effectiveness before any
+  polyMesh-writer wire-in.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)

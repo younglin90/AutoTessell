@@ -3551,6 +3551,137 @@ def _check_cavity_fan_tet_pair_non_ortho(
     return out
 
 
+def _check_cavity_fan_tet_pair_skewness(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    skew_threshold: float = 4.0,
+) -> dict[str, Any]:
+    """BLR-9c-d-f-1: per-pair face skewness of adjacent fan tets.
+
+    The OpenFOAM ``checkMesh`` "skewness" is, for an internal face
+    between owner cell O and neighbour cell N,
+
+        c_f         = face centroid
+        c_O, c_N    = cell centroids
+        d           = c_N − c_O
+        λ           = ((c_f − c_O) · d) / (d · d)
+        c_perp      = c_O + λ · d            (foot of perpendicular)
+        skew        = |c_f − c_perp| / |d|
+
+    A skew > 4 is the standard OpenFOAM cap; values above this break
+    interpolation accuracy and trigger a checkMesh quality failure.
+
+    Like ``_check_cavity_fan_tet_pair_non_ortho``, this helper
+    builds an inner-edge → fan-tet map and reports one skewness
+    measurement per adjacent fan-tet pair (i.e. per internal face
+    that the cavity replacement introduces).  Pure helper, no mesh
+    mutation; aggregator wire-in deferred to BLR-9c-d-f-2.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_pairs``                adjacent-fan-tet pairs found
+    - ``skew_values``            per-pair skew, ``np.ndarray``
+    - ``max_skew``               maximum skew across all pairs
+                                 (0.0 if no pairs)
+    - ``mean_skew``              arithmetic mean (0.0 if no pairs)
+    - ``n_above_threshold``      pairs with skew > threshold
+    - ``bad_pair_indices``       ``list[tuple[int, int]]`` fan-tet
+                                 index pairs whose skew exceeds the
+                                 threshold
+    """
+    out: dict[str, Any] = {
+        "n_pairs": 0,
+        "skew_values": np.empty(0, dtype=np.float64),
+        "max_skew": 0.0,
+        "mean_skew": 0.0,
+        "n_above_threshold": 0,
+        "bad_pair_indices": [],
+    }
+    if not fan_tets or len(fan_tets) < 2:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    n = len(fan_tets)
+    inner_triples: list[tuple[int, int, int] | None] = []
+    centroids = np.zeros((n, 3), dtype=np.float64)
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        if len(verts) != 4 or verts[0] != -1:
+            inner_triples.append(None)
+            continue
+        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
+        if (
+            i0 < 0
+            or i1 < 0
+            or i2 < 0
+            or i0 >= inner.shape[0]
+            or i1 >= inner.shape[0]
+            or i2 >= inner.shape[0]
+        ):
+            inner_triples.append(None)
+            continue
+        inner_triples.append((i0, i1, i2))
+        centroids[k] = (apex + inner[i0] + inner[i1] + inner[i2]) / 4.0
+
+    edge_owners: dict[tuple[int, int], list[int]] = {}
+    for k, triple in enumerate(inner_triples):
+        if triple is None:
+            continue
+        a, b, c = triple
+        for u, v in ((a, b), (b, c), (a, c)):
+            key = (min(u, v), max(u, v))
+            edge_owners.setdefault(key, []).append(k)
+
+    skews: list[float] = []
+    bad_pairs: list[tuple[int, int]] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for (u, v), owners in edge_owners.items():
+        if len(owners) < 2:
+            continue
+        for i in range(len(owners)):
+            for j in range(i + 1, len(owners)):
+                p_o, p_n = owners[i], owners[j]
+                key = (min(p_o, p_n), max(p_o, p_n))
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                p_a, p_b = inner[u], inner[v]
+                c_f = (apex + p_a + p_b) / 3.0
+                c_O = centroids[p_o]
+                c_N = centroids[p_n]
+                d_vec = c_N - c_O
+                d_dot = float(np.dot(d_vec, d_vec))
+                d_norm = float(np.sqrt(d_dot))
+                if d_dot < 1e-30 or d_norm < 1e-30:
+                    skew = 0.0
+                else:
+                    lam = float(np.dot(c_f - c_O, d_vec)) / d_dot
+                    c_perp = c_O + lam * d_vec
+                    skew = float(np.linalg.norm(c_f - c_perp)) / d_norm
+                skews.append(skew)
+                if skew > skew_threshold:
+                    bad_pairs.append(key)
+
+    if not skews:
+        return out
+
+    arr = np.asarray(skews, dtype=np.float64)
+    out["n_pairs"] = int(arr.shape[0])
+    out["skew_values"] = arr
+    out["max_skew"] = float(arr.max())
+    out["mean_skew"] = float(arr.mean())
+    out["n_above_threshold"] = int(np.sum(arr > skew_threshold))
+    out["bad_pair_indices"] = bad_pairs
+    return out
+
+
 def _check_cavity_fan_tet_shape_quality(
     fan_tets: list[dict[str, Any]],
     apex_xyz: np.ndarray | list[float],
