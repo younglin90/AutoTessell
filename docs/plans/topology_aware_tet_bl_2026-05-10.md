@@ -890,6 +890,33 @@ The remaining 37 rejected components split:
   cells if wired into the writer, but **the cavity-eval gate
   audits alone never close the user-facing PASS gap**.
 
+### BLR-9c-d (p-2) — quality-level audit
+
+The evaluator caps from ``agents/specs/evaluator.md``:
+
+::
+
+    quality   draft   standard   fine
+    hard_no   85      70         65
+    soft_no   80      65         60
+
+**Bench at ``quality=draft``** (test_cube + easy_100034):
+
+::
+
+    test_cube.stl       rc=0  v=PASS    max_non_ortho 74.1° (< 85°)
+    easy_100034.stl     rc=0  v=UNKNOWN max_non_ortho 89.4° (> 85°)
+
+- ``test_cube.stl`` **PASSES at draft quality** out of the box —
+  no cavity replacement needed.  The user goal "evaluator.md 기준
+  통과" is satisfied for this STL at draft.
+- ``easy_100034.stl`` still has 89.4° non-ortho which exceeds
+  even the draft 85° hard cap.  This is the real outlier.
+
+**Implication**: the per-STL pass/fail picture is tier × quality
+× cell-count specific.  A single "all 21 STLs PASS at fine" goal
+is much harder than "all 21 STLs PASS at draft".
+
 ### BLR-9c-d (q) — wire BLR-9 cavity replacement into the writer
 
 This is the long-deferred BLR-9b-iv-b sub-step.  With 95.7 %
