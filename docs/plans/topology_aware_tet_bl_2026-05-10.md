@@ -1285,7 +1285,41 @@ The 6 remaining FAIL:
   pre-BL bulk tets; prism cells emerging during BL insertion
   are not in their visible set.
 
-### BLR-9c-d (p-16) — partial 21-STL re-bench (cap ON, 14/21)
+### BLR-9c-d (p-16) — final 21-STL re-bench (cap ON, 21/21)
+
+**Final result: 18/21 PASS = 86 %**  (baseline 12/21 = 57 %).
+Anti-invert cap added **+6 PASS / +28 percentage points**.
+
+::
+
+    PASS 18:
+      test_cube,         easy_100034,        easy_100423,
+      easy_100643,       easy_101170,        easy_101187,
+      extreme_1017013✓,  extreme_1017014✓,   extreme_102308✓,
+      extreme_1037019,   hard_100027,        hard_100029✓,
+      hard_100040✓,      medium_100045,      medium_100077,
+      medium_100322,     medium_100323,      medium_100330✓
+        ✓ = converted from FAIL to PASS by anti-invert cap
+
+    FAIL 3 (all 1-neg_vol residuals):
+      extreme_1017017    (1 neg_vol + skew 29.3)
+      hard_100030        (1 neg_vol + skew 1122)
+      hard_1004826       (1 neg_vol + skew 13.5)
+
+The 3 remaining FAILs all have **exactly 1 neg_vol cell each**.
+Most likely cause: a **prism cell** (created during BL
+insertion) that the pre-BL anti-invert cap cannot see because
+the cap walks only bulk tets.  BLR-9c-d-(q-3) — post-BL prism
+inversion check — would target these.
+
+Surprise wins beyond the smoke-test prediction:
+  - **extreme_1017014**: max_skew 71.94 → 6.84
+  - **hard_100040**:    max_skew 31.36 → 5.06
+  - **medium_100330**:  PASS_WITH_WARNINGS (the per-vert cap
+                        + global scaling + joint cap chain
+                        eliminated all 6 neg_vols)
+
+### BLR-9c-d (p-16-old) — partial 21-STL re-bench (cap ON, 14/21)
 
 **Bench in-flight, 14/21 STLs complete at quality=draft**:
 
