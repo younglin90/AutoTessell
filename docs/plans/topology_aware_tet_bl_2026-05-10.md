@@ -240,6 +240,15 @@ creates near-tangent interface faces.
   status.
 - [x] No output behavior change.
 
+### BLR-5: agglomeration safety probe
+
+- [x] For each closed cavity shell, estimate the quality of exterior interface
+  faces after hypothetically merging the selected cells into one poly cell.
+- [x] Record candidate max non-orthogonality, min face weight, bad-interface
+  count, and worst faces so unsafe naive agglomeration can be rejected before
+  output mutation.
+- [x] No output behavior change.
+
 ### Discarded: direct bad-face union
 
 - [x] Tried env-gated prism-prism bad-face deletion/union.

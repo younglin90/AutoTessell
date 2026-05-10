@@ -24,6 +24,7 @@ from core.generator.polymesh_writer import write_generic_polymesh
 from core.layers.native_bl import (
     BLConfig,
     _bl_bad_internal_face_histogram,
+    _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
     generate_native_bl,
 )
@@ -419,6 +420,7 @@ def test_native_bl_bad_internal_face_histogram_classifies_interfaces() -> None:
     assert hist["components"][0]["cells"] == [0, 2, 3]
     assert hist["components"][0]["n_inside_internal_faces"] == 2
     assert hist["components"][0]["cavity_shell"]["n_boundary_faces"] == 0
+    assert hist["components"][0]["cavity_shell"]["agglomerate_probe"]["passes"] is True
 
 
 def test_native_bl_bad_component_records_closed_cavity_shell() -> None:
@@ -472,3 +474,48 @@ def test_native_bl_bad_component_records_closed_cavity_shell() -> None:
     assert shell["n_duplicate_boundary_faces"] == 0
     assert shell["is_closed_2manifold"] is True
     assert shell["small_closed_cavity_candidate"] is True
+    assert shell["agglomerate_probe"]["n_interface_faces"] == 0
+    assert shell["agglomerate_probe"]["passes"] is True
+
+
+def test_native_bl_cavity_shell_probes_agglomerated_interface_quality() -> None:
+    """Cavity diagnostics predict exterior interface quality before agglomeration."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],  # selected-selected internal face
+        [0, 3, 1],  # selected-outside internal face
+        [1, 3, 2],
+        [2, 3, 0],
+        [0, 1, 4],
+        [1, 2, 4],
+        [2, 0, 4],
+    ]
+    owner = np.array([0, 0, 0, 0, 2, 2, 2], dtype=np.int64)
+    neighbour = np.array([2, 1], dtype=np.int64)
+
+    shell = _bl_cavity_shell_summary(
+        points,
+        faces,
+        owner,
+        neighbour,
+        {0, 2},
+        base_n_cells=2,
+        prism_cell_start=2,
+        prism_cell_end=3,
+    )
+
+    assert shell["is_closed_2manifold"] is True
+    assert shell["n_boundary_faces"] == 6
+    assert shell["n_physical_boundary_faces"] == 5
+    assert shell["boundary_by_class"]["bulk-bulk"] == 1
+    assert shell["agglomerate_probe"]["n_interface_faces"] == 1
+    assert len(shell["agglomerate_probe"]["worst_faces"]) == 1

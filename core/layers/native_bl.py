@@ -1689,10 +1689,31 @@ def _bl_cavity_shell_summary(
         "total_boundary_area": 0.0,
         "is_closed_2manifold": False,
         "small_closed_cavity_candidate": False,
+        "agglomerate_probe": {
+            "n_interface_faces": 0,
+            "n_bad_interface_faces": 0,
+            "max_non_ortho_deg": 0.0,
+            "min_face_weight": 1.0,
+            "passes": True,
+            "worst_faces": [],
+        },
         "sample_boundary_faces": [],
     }
     if not cell_set:
         return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_cells_cur = int(owner_arr.max()) + 1 if owner_arr.size else 0
+    if nbr_arr.size:
+        n_cells_cur = max(n_cells_cur, int(nbr_arr.max()) + 1)
+    centres = _cell_centres_from_faces(
+        points,
+        faces,
+        owner_arr,
+        nbr_arr,
+        n_cells_cur,
+    ) if n_cells_cur > 0 else np.zeros((0, 3), dtype=np.float64)
 
     for cid in sorted(cell_set):
         kind = _classify_bl_cell_kind(
@@ -1707,13 +1728,14 @@ def _bl_cavity_shell_summary(
     face_keys: set[tuple[int, ...]] = set()
     vertices: set[int] = set()
     boundary_face_ids: list[int] = []
+    interface_records: list[tuple[int, int]] = []
     min_area = float("inf")
     total_area = 0.0
 
-    for fi, own_raw in enumerate(owner):
+    for fi, own_raw in enumerate(owner_arr):
         own = int(own_raw)
         own_in = own in cell_set
-        nbr = int(neighbour[fi]) if fi < len(neighbour) else None
+        nbr = int(nbr_arr[fi]) if fi < len(nbr_arr) else None
         nbr_in = bool(nbr is not None and nbr in cell_set)
         if own_in and nbr_in:
             summary["n_internal_faces"] = int(summary["n_internal_faces"]) + 1
@@ -1759,6 +1781,7 @@ def _bl_cavity_shell_summary(
         else:
             inside = own if own_in else int(nbr)
             outside = int(nbr) if own_in else own
+            interface_records.append((int(fi), int(outside)))
             inside_kind = _classify_bl_cell_kind(
                 inside,
                 base_n_cells=base_n_cells,
@@ -1793,6 +1816,65 @@ def _bl_cavity_shell_summary(
         and open_edges == 0
         and nonmanifold_edges == 0
     )
+    if boundary_face_ids and centres.size:
+        face_centres = np.asarray(
+            [points[np.asarray(faces[fi], dtype=np.int64)].mean(axis=0)
+             for fi in boundary_face_ids],
+            dtype=np.float64,
+        )
+        union_centre = face_centres.mean(axis=0)
+        worst: list[dict[str, Any]] = []
+        max_non_ortho = 0.0
+        min_face_weight = 1.0
+        n_bad = 0
+        for fi, outside in interface_records:
+            if outside < 0 or outside >= centres.shape[0]:
+                continue
+            face = faces[fi]
+            normal, area = _face_normal_area(points, face)
+            face_centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
+            d = centres[outside] - union_centre
+            n_mag = float(np.linalg.norm(normal))
+            d_mag = float(np.linalg.norm(d))
+            if area <= 1e-30 or n_mag <= 1e-30 or d_mag <= 1e-30:
+                non_ortho = 180.0
+                face_weight = 0.0
+            else:
+                cos_theta = abs(float(np.dot(normal, d)) / max(n_mag * d_mag, 1e-30))
+                cos_theta = min(1.0, max(0.0, cos_theta))
+                non_ortho = float(np.degrees(np.arccos(cos_theta)))
+                t = float(np.dot(face_centre - union_centre, d) / max(d_mag * d_mag, 1e-30))
+                face_weight = min(t, 1.0 - t)
+            max_non_ortho = max(max_non_ortho, non_ortho)
+            min_face_weight = min(min_face_weight, face_weight)
+            bad = bool(non_ortho > 65.0 or face_weight < 0.05)
+            if bad:
+                n_bad += 1
+            worst.append(
+                {
+                    "face": int(fi),
+                    "outside_cell": int(outside),
+                    "non_ortho_deg": float(non_ortho),
+                    "face_weight": float(face_weight),
+                    "bad": bad,
+                }
+            )
+        worst.sort(
+            key=lambda item: (
+                bool(item["bad"]),
+                float(item["non_ortho_deg"]),
+                -float(item["face_weight"]),
+            ),
+            reverse=True,
+        )
+        summary["agglomerate_probe"] = {
+            "n_interface_faces": int(len(interface_records)),
+            "n_bad_interface_faces": int(n_bad),
+            "max_non_ortho_deg": float(max_non_ortho),
+            "min_face_weight": float(min_face_weight),
+            "passes": bool(n_bad == 0),
+            "worst_faces": worst[: int(sample_cap)],
+        }
     summary["small_closed_cavity_candidate"] = bool(
         summary["is_closed_2manifold"]
         and summary["n_cells"] <= int(
