@@ -697,19 +697,50 @@ def build_gap_fill_cells(
     )
 
 
-def _triangulate_quad(quad: list[int]) -> list[list[int]]:
+def _triangulate_quad(
+    quad: list[int],
+    points: np.ndarray | None = None,
+) -> list[list[int]]:
     """Canonical triangulation of a 4-vertex quad face.
 
-    Splits along the diagonal connecting the lowest-id vertex of the quad to
-    its non-adjacent neighbour. Both incidences of the same shared quad
-    therefore pick identical triangles regardless of which cyclic ordering
-    each cell stored, which lets prism side quads share with adjacent
-    gap-fill tetrahedra at junction edges.
+    Without ``points``: splits along the diagonal connecting the
+    lowest-id vertex to its non-adjacent neighbour.  Deterministic
+    by vertex id alone so adjacent prism + gap-fill cells pick the
+    same split.
+
+    With ``points``: picks the **shorter diagonal** so non-planar
+    quads (e.g. caused by aggressive BL extrusion) are split into
+    triangles that minimise the diagonal length asymmetry.  Still
+    deterministic — both incidences of the shared quad see the
+    same point coords, so they pick the same diagonal.
+
+    BLR-9c-d-(p-19): the points-aware path was added because the
+    lowest-id rule on a non-planar quad can pick a diagonal whose
+    two triangles fold across the quad's mid-line, producing an
+    inverted 8-face prism cell after triangulation.  Shorter
+    diagonal is the standard Delaunay-style proxy for "less
+    folded".
     """
     if len(quad) != 4:
         raise ValueError(f"Expected 4-vert quad, got {len(quad)}: {quad}")
     verts = [int(v) for v in quad]
-    min_pos = verts.index(min(verts))
+    if points is None:
+        min_pos = verts.index(min(verts))
+    else:
+        # Pick the diagonal between the two non-adjacent vertices
+        # whose pair distance is shortest.  This is deterministic
+        # by global coords.
+        p_arr = np.asarray(points, dtype=np.float64)
+        d02 = float(
+            np.linalg.norm(p_arr[verts[0]] - p_arr[verts[2]])
+        )
+        d13 = float(
+            np.linalg.norm(p_arr[verts[1]] - p_arr[verts[3]])
+        )
+        # If the (1, 3) diagonal is shorter, start from vertex 1
+        # so the diagonal is 1-3.  Else start from vertex 0 so
+        # the diagonal is 0-2.
+        min_pos = 1 if d13 < d02 else 0
     a = verts[min_pos]
     b = verts[(min_pos + 1) % 4]
     c = verts[(min_pos + 2) % 4]
@@ -717,18 +748,25 @@ def _triangulate_quad(quad: list[int]) -> list[list[int]]:
     return [[a, b, c], [a, c, d]]
 
 
-def _triangulate_prism_cell(prism_cell: list[list[int]]) -> list[list[int]]:
+def _triangulate_prism_cell(
+    prism_cell: list[list[int]],
+    points: np.ndarray | None = None,
+) -> list[list[int]]:
     """Replace every 4-vertex side face in a prism cell with 2 triangles.
 
     Triangle faces (wall + cap) pass through unchanged so the patch
     classifier still sees face_idx 0 = wall, face_idx 1 = bl_internal in the
     rebuilt cell. The remaining 6 indices belong to side triangles which all
     classify as bl_internal_side.
+
+    When ``points`` is supplied (BLR-9c-d-p-19), the quad split picks
+    the shorter diagonal — important for non-planar quads where the
+    lowest-id rule can fold one triangle across the quad's mid-line.
     """
     out: list[list[int]] = []
     for face in prism_cell:
         if len(face) == 4:
-            out.extend(_triangulate_quad(face))
+            out.extend(_triangulate_quad(face, points=points))
         else:
             out.append([int(v) for v in face])
     return out
@@ -809,8 +847,20 @@ def build_full_bl_polymesh(
     prisms = build_prism_cells(wall_face_indices, faces, inner_result)
     gap = build_gap_fill_cells(wall_face_indices, faces, points, inner_result)
 
+    # BLR-9c-d-p-19 — pass `inner_result.new_points` so quad
+    # triangulation can pick the shorter diagonal on non-planar
+    # prism side faces (caused by aggressive BL extrusion at sharp
+    # corners).  Default-OFF env hook
+    # ``AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST=1`` toggles.
+    _shortest_diag = (
+        os.environ.get(
+            "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST", "0"
+        ) == "1"
+    )
+    _tri_pts = inner_result.new_points if _shortest_diag else None
     triangulated_prism_cells = [
-        _triangulate_prism_cell(cell) for cell in prisms.cell_face_verts
+        _triangulate_prism_cell(cell, points=_tri_pts)
+        for cell in prisms.cell_face_verts
     ]
     n_prism = len(triangulated_prism_cells)
     n_gap = len(gap.cell_face_verts)
@@ -1094,8 +1144,16 @@ def build_multi_layer_full_bl_polymesh(
         faces,
         multi,
     )
+    # BLR-9c-d-p-19 — match build_full_bl_polymesh's diagonal-mode hook.
+    _shortest_diag = (
+        os.environ.get(
+            "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST", "0"
+        ) == "1"
+    )
+    _tri_pts = multi.new_points if _shortest_diag else None
     prism_cells = [
-        _triangulate_prism_cell(cell) for cell in multi.cell_face_verts
+        _triangulate_prism_cell(cell, points=_tri_pts)
+        for cell in multi.cell_face_verts
     ]
     n_prism = len(prism_cells)
     n_gap = len(gap.cell_face_verts)
