@@ -424,8 +424,13 @@ worth attempting on a given STL.
       caps and the component's external_internal shell.  Sub-staged:
         - [x] 9c-c-iii-a: cavity apex = mean of all unique vertices
           owned by component cells (`_compute_cavity_centroid`).
-        - [ ] 9c-c-iii-b: per-cap fan tets (apex + prism inner
-          triangle).
+        - [x] 9c-c-iii-b: per-cap fan tets
+          (`_build_cavity_fan_transition_tets`).  Each prism cap
+          pairs with the cavity apex placeholder ``-1`` and the
+          per-face inner ids from the BLR-9c-c-ii output to produce
+          ``[apex, i0, i1, i2]`` transition tet definitions.  The
+          caller mints a real apex point id during final polyMesh
+          assembly.
         - [ ] 9c-c-iii-c: external_internal-shell coverage check
           (every cavity outer face must end up adjacent to a
           transition cell).

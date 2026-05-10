@@ -3172,6 +3172,47 @@ def _compute_cavity_centroid(
     return pts[sorted(vert_ids)].mean(axis=0)
 
 
+def _build_cavity_fan_transition_tets(
+    inner_triangles: list[dict[str, Any]],
+    split_result: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """BLR-9c-c-iii-b: emit a fan transition tet per prism cap.
+
+    Each entry pairs a cap's inner triangle ``[i0, i1, i2]`` (from
+    ``split_result["face_inner_ids"]``, which already accounts for
+    smooth and sharp-corner stitching) with the cavity apex
+    placeholder ``-1`` so the caller can mint a real apex point id
+    when the final polyMesh is assembled.
+
+    Returns:
+        list aligned with ``inner_triangles``; each entry is::
+
+            {
+                "face_id":   int  - original wall face id,
+                "tet_verts": [-1, i0, i1, i2],
+            }
+
+    Faces with no matching ``face_inner_ids`` row (e.g. dropped by
+    BLR-9c-c-i for missing motion direction) are silently skipped.
+    """
+    face_inner_ids = list(split_result.get("face_inner_ids", []))
+    if not inner_triangles or not face_inner_ids:
+        return []
+    out: list[dict[str, Any]] = []
+    n = min(len(inner_triangles), len(face_inner_ids))
+    for k in range(n):
+        ids = list(face_inner_ids[k])
+        if len(ids) != 3:
+            continue
+        out.append(
+            {
+                "face_id": int(inner_triangles[k]["face_id"]),
+                "tet_verts": [-1, int(ids[0]), int(ids[1]), int(ids[2])],
+            }
+        )
+    return out
+
+
 def _apply_tet_cavity_replacement_plan(
     points: np.ndarray,
     faces: list[list[int]],

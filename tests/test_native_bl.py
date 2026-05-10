@@ -28,6 +28,7 @@ from core.layers.native_bl import (
     _bl_cavity_shell_summary,
     _merge_skewed_bl_internal_quads,
     _apply_tet_cavity_replacement_plan,
+    _build_cavity_fan_transition_tets,
     _build_cavity_prism_inner_triangles,
     _build_tet_cavity_replacement_plan,
     _compute_cavity_centroid,
@@ -1487,6 +1488,43 @@ def test_native_bl_compute_cavity_centroid_empty() -> None:
         np.array([], dtype=np.int64),
     )
     np.testing.assert_array_equal(apex, np.zeros(3))
+
+
+def test_native_bl_build_cavity_fan_transition_tets_smooth_two_faces() -> None:
+    """BLR-9c-c-iii-b — two coplanar wall faces yield two fan tets,
+    each with apex placeholder ``-1`` and the per-face inner ids
+    from the smooth stitcher."""
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], dtype=np.float64
+    )
+    faces = [[0, 1, 2], [1, 3, 2]]
+    motion_dirs = {
+        v: np.array([0.0, 0.0, 1.0], dtype=np.float64) for v in range(4)
+    }
+    triangles = _build_cavity_prism_inner_triangles(
+        [0, 1], points, faces, motion_dirs, first_thickness=0.05
+    )
+    smooth = _stitch_cavity_prism_inner_ids_smooth(triangles)
+    split = _split_cavity_inner_ids_at_sharp_corners(triangles, smooth)
+
+    fan = _build_cavity_fan_transition_tets(triangles, split)
+    assert len(fan) == 2
+    assert fan[0]["face_id"] == 0
+    assert fan[0]["tet_verts"] == [-1, 0, 1, 2]
+    assert fan[1]["face_id"] == 1
+    assert fan[1]["tet_verts"] == [-1, 1, 3, 2]
+
+
+def test_native_bl_build_cavity_fan_transition_tets_empty() -> None:
+    """Empty inputs → empty fan list."""
+    assert _build_cavity_fan_transition_tets([], {"face_inner_ids": []}) == []
+    assert (
+        _build_cavity_fan_transition_tets(
+            [{"face_id": 0, "outer_verts": [0, 1, 2], "inner_xyz": np.zeros((3, 3))}],
+            {"face_inner_ids": []},
+        )
+        == []
+    )
 
 
 def test_native_bl_apply_tet_cavity_replacement_plan_disabled_is_noop() -> None:
