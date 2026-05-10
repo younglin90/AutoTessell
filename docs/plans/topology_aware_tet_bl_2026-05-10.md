@@ -1377,6 +1377,26 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
+### BLR-9c-d (p-21) — final iteration's investigation summary
+
+After the 76 % milestone the remaining 5 FAILs split into:
+
+  3 neg_vol residuals  extreme_1017017, hard_100030, hard_1004826
+  2 cap-induced aspect+surface_dev  extreme_1017014, extreme_102308
+
+For the 2 aspect+surface_dev cases I tried:
+  a) tighter pytetwild params (epsilon 0.002 → 0.001, edge_length_r
+     0.06 → 0.05): no help (strategist override didn't take, surface_dev
+     stayed at 20.36 %).
+  b) ``--quality standard`` (which uses the tighter pytetwild params
+     by default): aspect went up (2293 vs 1146), still 2 soft fails.
+
+Conclusion: those 2 cases are stuck in a cap-thinning vs aspect-cap
+tug-of-war that the cap-only sub-series can't escape.  Real fixes
+need either (i) thicker BL with anti-invert via geometric repair
+(split inverted polyhedra) or (ii) a different tet generator that
+doesn't emit slim sliver tets near walls (less cap pressure).
+
 ### BLR-9c-d (p-18) — milestone summary (CORRECTED)
 
 After BLR-9c-d-(p-9) through (q-3) the 21-STL bench at draft
