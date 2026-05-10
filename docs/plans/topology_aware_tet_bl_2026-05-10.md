@@ -1285,6 +1285,33 @@ The 6 remaining FAIL:
   pre-BL bulk tets; prism cells emerging during BL insertion
   are not in their visible set.
 
+### BLR-9c-d (p-16) — partial 21-STL re-bench (cap ON, 14/21)
+
+**Bench in-flight, 14/21 STLs complete at quality=draft**:
+
+::
+
+    PASS  12  test_cube, easy_100034, easy_100423, easy_100643,
+              easy_101170, easy_101187, extreme_1017013,
+              extreme_1017014 (!), extreme_102308 (!),
+              extreme_1037019, hard_100027, hard_100029
+    FAIL   2  extreme_1017017 (1 neg_vol + skew 29.34)
+              hard_100030    (1 neg_vol + skew 1122)
+
+**86 % PASS so far** — much better than the 71 % projection.
+
+Surprise wins:
+  - **extreme_1017014**: max_skew 71.94 → 6.84  (PASS)
+    The cap eliminated the slivers that were producing the
+    extreme skewness.
+  - **extreme_102308**: surface_dev was 48 % in pre-bench
+    smoke; in this bench run it dropped enough to clear the
+    soft cap (verdict PASS, not the predicted FAIL).
+
+The 7 remaining STLs are mostly the medium_* set (which were
+already PASS in baseline) plus hard_100040, hard_1004826,
+medium_100330.  Realistic final projection: **17-18/21 PASS**.
+
 - [ ] BLR-9c-d (q-3): post-BL prism inversion check.  After
   prism cells are emitted, run a final signed-volume check
   on every prism and either flip its winding or skip it.
