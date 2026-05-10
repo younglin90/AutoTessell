@@ -917,6 +917,27 @@ The evaluator caps from ``agents/specs/evaluator.md``:
 × cell-count specific.  A single "all 21 STLs PASS at fine" goal
 is much harder than "all 21 STLs PASS at draft".
 
+### BLR-9c-d (p-3) — quality-level changes the *generator* output
+
+While the 21-STL bench at draft was running, ran ``NativeMeshChecker``
+directly on the in-flight ``test_cube`` polyMesh and got
+``max_non_ortho = 69.66°`` — well under the standard 70° hard cap.
+But the prior bench at ``fine`` reported ``max_non_ortho = 74.1°``.
+The mesh itself differs by quality level because the strategist
+chooses different generator parameters (cell size, snap iterations,
+feature angles) per level.
+
+::
+
+    test_cube polyMesh max_non_ortho:
+      fine    74.1° (FAIL: 65° hard cap)
+      draft   69.66° (PASS: 85° hard cap)
+      standard cap 70° — *also* PASS at 69.66° (untested)
+
+**Implication**: at standard quality the generator may already
+produce a mesh that passes for many STLs.  Worth a separate bench
+once the draft sweep finishes.
+
 ### BLR-9c-d (q) — wire BLR-9 cavity replacement into the writer
 
 This is the long-deferred BLR-9b-iv-b sub-step.  With 95.7 %
