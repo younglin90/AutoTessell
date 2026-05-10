@@ -1018,16 +1018,44 @@ Native_bl is missing a post-extrusion guard.
   wall vertex back, i.e. cap the BL extrusion at the point of
   inversion.**
 
-- [ ] BLR-9c-d (p-9): path (a) — implement per-vertex extrusion
-  magnitude cap inside ``native_bl``.  Before extruding wall
-  vertex ``v`` to ``v + total_thickness * motion_dir``, walk
-  every adjacent bulk tet and compute the maximum extrusion
-  along ``motion_dir`` that keeps the tet's signed volume
-  positive (intersection with the opposite face plane).  Cap
-  the per-vertex extrusion at 0.95 of that maximum.  Default
-  OFF behind ``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1``; bench at
-  the cap to confirm 7/8 failure recovery before flipping
-  default ON.
+- [x] BLR-9c-d (p-9): path (a) implemented as
+  ``compute_anti_invert_caps`` helper + native_bl wire-in.
+  Default OFF behind ``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1``,
+  safety override ``AUTO_TESSELL_BL_ANTI_INVERT_SAFETY``
+  (default 0.5).  Per-vertex cap is propagated through both
+  the wall-vertex extrusion line (6637) and the per-layer
+  offset matrix (6735) so the prism inner layers respect the
+  same cap as the wall layer.
+
+  **Smoke test on extreme_102308.stl** (one of the 7 failing
+  cases):
+
+  ::
+
+      WITHOUT cap:  Negative Volumes 6  (hard FAIL)
+                    Max Skewness 4.64  (PASS)
+      WITH cap (safety=0.95):
+                    Negative Volumes 2  (hard FAIL)
+                    Max Skewness 4.64  (PASS)
+      WITH cap (safety=0.5):
+                    Negative Volumes 0  (PASS!)
+                    Max Skewness  3447  (HARD FAIL)
+                    Max Aspect  1e9  (degenerate prisms)
+
+  The cap *did* eliminate the negative volumes but created a
+  new failure mode: **inhomogeneous reduction**.  Adjacent
+  wall vertices of a single prism cap can end up with very
+  different cap values (e.g. one vert capped to 0.01, another
+  unchanged at 0.135), so the prism cell between them ends up
+  with a triangle face that's nearly degenerate — max-aspect
+  ratio 10⁹ and max skewness 3447.
+
+  - [ ] BLR-9c-d (p-11): cell-level cap.  For each prism cell
+    (i.e. each wall face), use the min cap across its 3 wall
+    vertices as the *common* cap for that cell, so all three
+    inner verts move together and the prism cap stays
+    well-shaped.  This keeps prism quality while still
+    preventing bulk inversion.
 
 ### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
 

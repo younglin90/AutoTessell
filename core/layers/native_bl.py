@@ -6230,6 +6230,15 @@ def generate_native_bl(
         "n_rejected_bad_skewness": 0,
     }
 
+    # BLR-9c-d-p-10 — anti-invert cap default-OFF outer-scope state.
+    # Set inside the inner pass closure when the env flag is on.
+    anti_invert_cap_diag: dict[str, Any] = {
+        "enabled": False,
+        "n_capped": 0,
+        "max_reduction": 0.0,
+        "n_wall_verts": 0,
+    }
+
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
     vertex_cum_map: dict[int, np.ndarray] = {}
@@ -6636,6 +6645,82 @@ def generate_native_bl(
             )  # (W,)
             new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_normals * (total * scales_v[:, None])
 
+        # BLR-9c-d-p-10 — anti-invert per-vertex cap.  When enabled,
+        # walks every adjacent bulk tet of each wall vertex and
+        # scales the wall vertex *and every per-layer offset* down
+        # so no neighbour tet's signed volume can flip.  Default OFF;
+        # the bench at quality=draft (BLR-9c-d-p-7) showed 7/8
+        # failing 21-STL cases are caused by exactly this geometric
+        # inversion.
+        _anti_invert_cap_enabled = (
+            os.environ.get("AUTO_TESSELL_BL_ANTI_INVERT_CAP", "0") == "1"
+        )
+        nonlocal anti_invert_cap_diag
+        anti_invert_cap_diag = {
+            "enabled": bool(_anti_invert_cap_enabled),
+            "n_capped": 0,
+            "max_reduction": 0.0,
+            "n_wall_verts": int(len(wall_vert_indices)),
+        }
+        anti_invert_scale_per_v: np.ndarray | None = None
+        if _anti_invert_cap_enabled and len(wall_vert_indices) > 0:
+            try:
+                from core.layers.native_bl_anti_invert import (
+                    compute_anti_invert_caps,
+                )
+                _safety = float(
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_SAFETY",
+                        "0.5",
+                    )
+                )
+                _caps_dict = compute_anti_invert_caps(
+                    points, faces, owner, neighbour,
+                    wall_vert_indices, motion_dirs,
+                    safety_factor=_safety,
+                )
+                _delta = new_pts[wall_idx_arr_p] - points[wall_idx_arr_p]
+                _mag = np.linalg.norm(_delta, axis=1)
+                _caps_arr = np.array(
+                    [
+                        float(_caps_dict.get(int(v), float("inf")))
+                        for v in wall_vert_indices
+                    ],
+                    dtype=np.float64,
+                )
+                _over = _mag > _caps_arr
+                _n_capped = int(_over.sum())
+                if _n_capped:
+                    _safe_mag = np.where(_mag > 1e-30, _mag, 1.0)
+                    anti_invert_scale_per_v = np.where(
+                        _over,
+                        np.minimum(1.0, _caps_arr / _safe_mag),
+                        1.0,
+                    )
+                    _max_reduction = float(
+                        np.max(_mag - anti_invert_scale_per_v * _mag)
+                    )
+                    new_pts[wall_idx_arr_p] = (
+                        points[wall_idx_arr_p]
+                        + _delta * anti_invert_scale_per_v[:, None]
+                    )
+                    anti_invert_cap_diag["n_capped"] = _n_capped
+                    anti_invert_cap_diag["max_reduction"] = (
+                        _max_reduction
+                    )
+                    log.info(
+                        "native_bl_anti_invert_cap_applied",
+                        n_capped=_n_capped,
+                        max_reduction=round(_max_reduction, 6),
+                        n_wall_verts=int(len(wall_vert_indices)),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                anti_invert_cap_diag["error"] = str(exc)[:160]
+                log.debug(
+                    "native_bl_anti_invert_cap_skipped",
+                    reason=str(exc)[:160],
+                )
+
         # Build per-layer offset arrays: shape (num_layers, W) for inner layers
         lp_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
         cursor_p = len(points)
@@ -6665,6 +6750,18 @@ def generate_native_bl(
                     dtype=np.float64,
                 )  # (num_layers,)
                 offsets_mat = cum_inner[:, None] * scales_v2[None, :]  # (num_layers, W)
+
+            # BLR-9c-d-p-10 — propagate the anti-invert per-vertex
+            # cap from the wall-vertex extrusion into every per-layer
+            # offset.  Without this the inner layers still target the
+            # un-capped position and the prism cap sits past the
+            # opposite face plane of an adjacent bulk tet, causing
+            # the very inversion we just prevented at the wall layer.
+            if (
+                anti_invert_scale_per_v is not None
+                and anti_invert_scale_per_v.shape[0] == offsets_mat.shape[1]
+            ):
+                offsets_mat = offsets_mat * anti_invert_scale_per_v[None, :]
 
             # new_positions: (num_layers, W, 3)
             # points[wall_idx_arr_p]: (W, 3); inward_normals: (W, 3)
@@ -7580,6 +7677,7 @@ def generate_native_bl(
             "tet_cavity_probe": tet_cavity_probe_diag,
             "tet_cavity_replace": tet_cavity_replace_diag,
             "tet_cavity_eval": tet_cavity_eval_diag,
+            "anti_invert_cap": anti_invert_cap_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
