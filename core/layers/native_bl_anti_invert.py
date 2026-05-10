@@ -87,6 +87,160 @@ def _build_cell_face_indices(
     return cell_faces
 
 
+def compute_joint_cell_inversion_scale(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    wall_vert_indices: list[int] | set[int],
+    motion_dirs: dict[int, np.ndarray],
+    requested_extrusion: dict[int, float],
+    *,
+    safety_factor: float = 0.5,
+    max_bisection_iter: int = 20,
+) -> float:
+    """BLR-9c-d-q-1: joint multi-wall-vertex cap via bisection.
+
+    The single-vertex ``compute_anti_invert_caps`` assumes only one
+    wall vertex of a tet moves at a time (other 3 vertices stay
+    fixed).  In real BL extrusion *all* wall verts of a tet move
+    simultaneously.  When two or more wall verts of the same tet
+    move jointly, the cell can invert even if every individual
+    single-vertex cap is satisfied.
+
+    This helper computes the maximum *uniform* scale ``s ∈ [0, 1]``
+    such that, for **every** cell in the polyMesh, applying
+    ``v_new = v + s · requested_extrusion[v] · motion_dirs[v]`` to
+    every wall vertex of that cell keeps the cell's signed volume
+    positive.  Bisection on ``s`` finds the largest safe scale.
+
+    Returns
+    -------
+    float
+        Joint scale in ``[0, 1]``.  ``1.0`` means no cell would
+        invert at full requested extrusion.
+
+    Parameters
+    ----------
+    requested_extrusion:
+        ``v → magnitude`` of the wall vertex's *target* extrusion
+        in the absence of any cap.  ``motion_dirs[v]`` should be a
+        unit vector; if not, the magnitude is interpreted relative
+        to its norm.
+    safety_factor:
+        After bisection finds the safe maximum ``s_max``, the
+        returned scale is ``s_max * safety_factor`` (default 0.5).
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    own = np.asarray(owner, dtype=np.int64)
+    nbr = np.asarray(neighbour, dtype=np.int64)
+    n_cells = max(
+        int(own.max()) if own.size else -1,
+        int(nbr.max()) if nbr.size else -1,
+    ) + 1
+    cell_verts = _build_cell_vertices(faces, own, nbr, n_cells)
+    wall_set = set(int(v) for v in wall_vert_indices)
+    if not wall_set or n_cells == 0:
+        return 1.0
+
+    # Per-cell wall vert ids and their motion + magnitude.
+    cell_wall_data: list[tuple[list[int], np.ndarray, np.ndarray]] = []
+    cell_bulk_idx: list[np.ndarray] = []
+    cell_all_idx: list[np.ndarray] = []
+    for cid in range(n_cells):
+        cv = cell_verts[cid]
+        if len(cv) != 4:
+            cell_wall_data.append(([], np.zeros((0, 3)), np.zeros(0)))
+            cell_bulk_idx.append(np.zeros(0, dtype=np.int64))
+            cell_all_idx.append(np.zeros(0, dtype=np.int64))
+            continue
+        verts_sorted = sorted(cv)
+        wall_in_cell: list[int] = []
+        bulk_in_cell: list[int] = []
+        for v in verts_sorted:
+            if v in wall_set:
+                wall_in_cell.append(v)
+            else:
+                bulk_in_cell.append(v)
+        if not wall_in_cell:
+            cell_wall_data.append(([], np.zeros((0, 3)), np.zeros(0)))
+            cell_bulk_idx.append(
+                np.asarray(bulk_in_cell, dtype=np.int64)
+            )
+            cell_all_idx.append(
+                np.asarray(verts_sorted, dtype=np.int64)
+            )
+            continue
+        # Per-wall-vert: unit motion direction × requested magnitude.
+        dirs_arr = np.zeros((len(wall_in_cell), 3), dtype=np.float64)
+        mags_arr = np.zeros(len(wall_in_cell), dtype=np.float64)
+        for i, v in enumerate(wall_in_cell):
+            d = motion_dirs.get(v) if motion_dirs else None
+            if d is None:
+                continue
+            d_arr = np.asarray(d, dtype=np.float64).reshape(3)
+            dn = float(np.linalg.norm(d_arr))
+            if dn < 1e-30:
+                continue
+            dirs_arr[i] = d_arr / dn
+            mags_arr[i] = float(requested_extrusion.get(int(v), 0.0))
+        cell_wall_data.append(
+            (wall_in_cell, dirs_arr, mags_arr)
+        )
+        cell_bulk_idx.append(
+            np.asarray(bulk_in_cell, dtype=np.int64)
+        )
+        cell_all_idx.append(
+            np.asarray(verts_sorted, dtype=np.int64)
+        )
+
+    def _all_cells_positive(s: float) -> bool:
+        """Apply scale ``s`` to every wall vert and check whether
+        every tet cell's signed volume stays positive."""
+        for cid in range(n_cells):
+            wall_in_cell, dirs_arr, mags_arr = cell_wall_data[cid]
+            all_idx = cell_all_idx[cid]
+            if all_idx.size != 4:
+                continue
+            disp = pts[all_idx].copy()
+            for i, v in enumerate(wall_in_cell):
+                pos_in_cell = int(np.where(all_idx == v)[0][0])
+                disp[pos_in_cell] = (
+                    pts[v] + s * mags_arr[i] * dirs_arr[i]
+                )
+            v0, v1, v2, v3 = disp[0], disp[1], disp[2], disp[3]
+            sv = float(np.dot(v1 - v0, np.cross(v2 - v0, v3 - v0)))
+            # Maintain the *original* sign — if the original tet
+            # was positive, stay positive; if negative, stay
+            # negative (the original mesh already satisfied this
+            # invariant after PolyMeshWriter normalisation).
+            sv_orig = float(np.dot(
+                pts[all_idx[1]] - pts[all_idx[0]],
+                np.cross(
+                    pts[all_idx[2]] - pts[all_idx[0]],
+                    pts[all_idx[3]] - pts[all_idx[0]],
+                ),
+            ))
+            if sv_orig > 0 and sv <= 1e-30:
+                return False
+            if sv_orig < 0 and sv >= -1e-30:
+                return False
+        return True
+
+    # Bisection: find the largest s in [0, 1] keeping all cells positive.
+    # If full extrusion is already safe, no cap is needed (return 1.0).
+    if _all_cells_positive(1.0):
+        return 1.0
+    s_lo, s_hi = 0.0, 1.0
+    for _ in range(max_bisection_iter):
+        s_mid = 0.5 * (s_lo + s_hi)
+        if _all_cells_positive(s_mid):
+            s_lo = s_mid
+        else:
+            s_hi = s_mid
+    return s_lo * float(safety_factor)
+
+
 def compute_anti_invert_caps(
     points: np.ndarray,
     faces: list[list[int]],

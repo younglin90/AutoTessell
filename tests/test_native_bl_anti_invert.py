@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from core.layers.native_bl_anti_invert import compute_anti_invert_caps
+from core.layers.native_bl_anti_invert import (
+    compute_anti_invert_caps,
+    compute_joint_cell_inversion_scale,
+)
 
 
 def _single_tet_polymesh():
@@ -112,6 +115,39 @@ def test_anti_invert_cap_takes_min_over_adjacent_tets() -> None:
     # Tet B constraint: distance 2/√3 ≈ 1.155.
     # Min wins → cap[0] ≈ 0.577 (with safety 1.0).
     assert abs(caps[0] - (1.0 / np.sqrt(3.0))) < 1e-6
+
+
+def test_joint_cell_inversion_scale_returns_1_when_safe() -> None:
+    """BLR-9c-d-q-1 — full extrusion well within the tet keeps
+    every cell positive ⇒ joint scale is 1.0 (no cap)."""
+    pts, faces, own, nbr = _single_tet_polymesh()
+    motion = {0: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0)}
+    # Tiny extrusion well within the tet.
+    extr = {0: 0.01}
+    scale = compute_joint_cell_inversion_scale(
+        pts, faces, own, nbr, [0], motion, extr,
+        safety_factor=1.0,
+    )
+    assert scale == 1.0
+
+
+def test_joint_cell_inversion_scale_caps_when_too_far() -> None:
+    """BLR-9c-d-q-1 — extrusion past the opposite face plane forces
+    the bisection cap to drop."""
+    pts, faces, own, nbr = _single_tet_polymesh()
+    motion = {0: np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0)}
+    # Requested extrusion = 1.0 is far past the tet's diameter
+    # (vertex 0 to opposite face plane is 1/√3 ≈ 0.577 along
+    # the unit motion).
+    extr = {0: 1.0}
+    scale = compute_joint_cell_inversion_scale(
+        pts, faces, own, nbr, [0], motion, extr,
+        safety_factor=1.0,
+    )
+    # Geometric safe scale is ~0.577 (since extr=1 means we'd
+    # move 1.0 units, but only 0.577 keeps the tet positive).
+    # Bisection should converge close to 0.577.
+    assert 0.5 < scale < 0.6
 
 
 def test_anti_invert_cap_no_motion_dir_for_vertex_returns_infinity() -> None:

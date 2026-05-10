@@ -1242,7 +1242,33 @@ The 6 remaining FAIL:
     extreme_1017017, hard_100030, hard_100040
   - 1 upstream surface_dev (cap-independent): extreme_102308
   - 1 partial cap fix: hard_1004826 (1 neg_vol left at
-    safety=0.5; could fix with tighter safety)  In regions
+    safety=0.5; tested safety=0.3 → still 1 neg_vol.  The
+    surviving cell likely has 2+ wall verts moving jointly —
+    each individual cap allows the motion, but the *joint*
+    motion crosses the opposite face plane.
+
+### BLR-9c-d (q-1) — joint multi-wall-vert cap helper
+
+- [x] BLR-9c-d (q-1): added
+  ``compute_joint_cell_inversion_scale`` to
+  ``core/layers/native_bl_anti_invert.py``.  Bisection on a
+  uniform scale ``s ∈ [0, 1]`` finds the largest scale at
+  which *every* tet cell stays positive when *all* its wall
+  verts are extruded simultaneously by
+  ``s × requested_magnitude × motion_dir``.  Returns ``1.0``
+  if no cap needed; else ``s_max * safety_factor``.
+
+  Pure helper, no mesh mutation or wire-in yet.  Two new
+  unit tests confirm it returns 1.0 when extrusion is safe
+  and ~0.577 when extrusion would move past the opposite-face
+  plane of the canonical unit tet.
+
+- [ ] BLR-9c-d (q-2): wire the joint scale into native_bl
+  alongside the per-vertex cap.  When both single-vert global
+  cap *and* joint cap are computed, take the minimum of the
+  two.  This catches the multi-wall-vert co-motion cases
+  the per-vertex helper misses (e.g. hard_1004826's
+  surviving 1 neg_vol).  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the
