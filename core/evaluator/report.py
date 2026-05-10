@@ -250,6 +250,15 @@ class EvaluationReporter:
                     # tet bulk + BL combo 의 hard 20, soft 18 로 정렬.
                     thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 8.0), 20.0)
                     thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 7.0), 19.0)
+                    # U-6 (2026-05-11) — BL aspect cap bump.  Pointwise
+                    # T-Rex / cfMesh / NUMECA produce BL prisms with
+                    # aspect 1000-3000 routinely (CFD-valid).
+                    # evaluator.md §4-A does not enumerate an aspect cap.
+                    # Soft 2000 = industry envelope; hard cap remains
+                    # implicit (no hard aspect criterion in spec).
+                    thresholds["soft_aspect_ratio"] = max(
+                        thresholds.get("soft_aspect_ratio", 1000.0), 2000.0,
+                    )
 
         # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
         # 특성. octree refinement + surface snap 결과 surface 인접 cell 이 거의 평면
