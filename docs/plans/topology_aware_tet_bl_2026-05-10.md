@@ -1107,10 +1107,37 @@ Native_bl is missing a post-extrusion guard.
     a **soft** fail and only 1 soft fail; verdict is FAIL only
     on ≥2 soft fails.  Need to confirm the second soft fail.
 
-  - [ ] BLR-9c-d (p-13): wire the global cap default ON behind
-    ``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1`` and re-bench all 21
-    STLs to measure recovery — expect 7/8 currently failing
-    cases to flip to PASS or near-PASS.  In regions
+  - [x] BLR-9c-d (p-13): bench harness opts in to anti-invert
+    cap (``AUTO_TESSELL_BL_ANTI_INVERT_CAP=1``,
+    ``SAFETY=0.5``, ``GLOBAL=1``) by default.  Override per
+    knob via ``AUTO_TESSELL_BENCH_ANTI_INVERT_*``.  21-STL
+    re-bench in flight (~60 min).
+
+    **Per-STL deep-dive on extreme_102308 with cap ON**:
+
+    ::
+
+        hard_fails:  0  (was 4)
+        soft_fails:  2
+          - max_aspect_ratio:           1239 > 1000  (cap-induced
+            since the global scaling makes prisms thin)
+          - surface_area_deviation:     48 % > 20 % (upstream
+            wildmesh tier surface fidelity issue, *not* cap-related)
+
+    The surface_area_deviation is from the underlying tet
+    mesher's surface deformation — the wildmesh tier with
+    pytetwild produces a tet output whose surface mesh
+    differs ~48 % in area from the input STL, presumably from
+    the ``epsilon`` envelope at draft (0.002).  The cap
+    doesn't touch this.
+
+  - [ ] BLR-9c-d (p-14): once the 21-STL re-bench completes,
+    classify which cases:
+      a) flip to PASS with cap (clean win)
+      b) stay FAIL but on different soft criteria (cap traded
+         negative_volumes for max_aspect_ratio)
+      c) stay FAIL because of upstream surface_area_deviation
+         (tet mesher fidelity, independent of cap)  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the
