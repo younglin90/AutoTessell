@@ -1263,12 +1263,33 @@ The 6 remaining FAIL:
   and ~0.577 when extrusion would move past the opposite-face
   plane of the canonical unit tet.
 
-- [ ] BLR-9c-d (q-2): wire the joint scale into native_bl
-  alongside the per-vertex cap.  When both single-vert global
-  cap *and* joint cap are computed, take the minimum of the
-  two.  This catches the multi-wall-vert co-motion cases
-  the per-vertex helper misses (e.g. hard_1004826's
-  surviving 1 neg_vol).  In regions
+- [x] BLR-9c-d (q-2): wired the joint scale alongside the
+  per-vertex cap.  After the per-vert cap fires, joint helper
+  bisects the *post-cap* magnitudes against every adjacent
+  bulk tet to find any further reduction needed.  Wired
+  behind ``AUTO_TESSELL_BL_ANTI_INVERT_JOINT=1`` (default ON
+  when CAP is on).
+
+  **Smoke test on hard_1004826** (target: convert 1 surviving
+  neg_vol to 0):
+
+  ::
+
+      with cap (per-vert + joint) safety=0.5:
+        Negative Volumes      1   FAIL   (unchanged)
+        joint helper returned 1.0  (no further reduction)
+
+  Joint cap *didn't* fire for hard_1004826.  Hypothesis: the
+  surviving neg_vol cell is a **prism cell** (created during
+  BL insertion), not a bulk tet.  The cap helpers only walk
+  pre-BL bulk tets; prism cells emerging during BL insertion
+  are not in their visible set.
+
+- [ ] BLR-9c-d (q-3): post-BL prism inversion check.  After
+  prism cells are emitted, run a final signed-volume check
+  on every prism and either flip its winding or skip it.
+  This catches the residual neg_vol cells the pre-BL cap
+  cannot see.  In regions
     where the per-vertex cap drops below a threshold fraction
     of the requested total_thickness (e.g. < 30 %), skip the
     BL extrusion *entirely* for that wall face — leave the

@@ -6748,6 +6748,19 @@ def generate_native_bl(
                 )
                 _over = _mag > _caps_arr
                 _n_capped = int(_over.sum())
+                # BLR-9c-d-q-2 — joint multi-wall-vert cap, applied
+                # after the per-vert cap.  Treats all wall verts as
+                # moving simultaneously and uses bisection to find
+                # the max uniform scale that keeps *every* tet cell
+                # positive.  Catches the multi-wall-vert co-motion
+                # cases the per-vert helper misses
+                # (e.g. hard_1004826: 1 neg_vol survives per-vert
+                # cap at safety=0.3).
+                _joint_scale_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_JOINT", "1",
+                    ) == "1"
+                )
                 if _n_capped:
                     _safe_mag = np.where(_mag > 1e-30, _mag, 1.0)
                     if _global_scale_enabled:
@@ -6775,6 +6788,48 @@ def generate_native_bl(
                             _over,
                             np.minimum(1.0, _caps_arr / _safe_mag),
                             1.0,
+                        )
+                # Joint cap: even if no per-vert cap fires, run the
+                # joint helper to catch cases where multi-wall-vert
+                # co-motion would invert a tet that no individual
+                # vert cap would have flagged.
+                if _joint_scale_enabled:
+                    try:
+                        from core.layers.native_bl_anti_invert import (
+                            compute_joint_cell_inversion_scale,
+                        )
+                        # current per-vertex post-cap magnitudes
+                        if anti_invert_scale_per_v is not None:
+                            _eff_mag = _mag * anti_invert_scale_per_v
+                        else:
+                            _eff_mag = _mag
+                        _req_extr = {
+                            int(v): float(_eff_mag[i])
+                            for i, v in enumerate(wall_vert_indices)
+                        }
+                        _joint = compute_joint_cell_inversion_scale(
+                            points, faces, owner, neighbour,
+                            list(wall_vert_indices), motion_dirs,
+                            _req_extr, safety_factor=_safety,
+                        )
+                        if _joint < 1.0:
+                            _joint = max(_joint, 0.05)
+                            if anti_invert_scale_per_v is None:
+                                anti_invert_scale_per_v = np.full_like(
+                                    _mag, _joint,
+                                )
+                            else:
+                                anti_invert_scale_per_v = (
+                                    anti_invert_scale_per_v * _joint
+                                )
+                            log.info(
+                                "native_bl_anti_invert_joint_scale",
+                                joint=round(_joint, 4),
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        log.debug(
+                            "native_bl_anti_invert_joint_skipped",
+                            reason=str(exc)[:160],
                         )
                     _max_reduction = float(
                         np.max(_mag - anti_invert_scale_per_v * _mag)
