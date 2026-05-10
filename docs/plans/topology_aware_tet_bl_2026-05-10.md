@@ -973,6 +973,40 @@ once the draft sweep finishes.
    *and* skew ridiculously high (71.9).  Severely malformed
    cells from the underlying tet mesher.
 
+### BLR-9c-d (p-7) — inverted-cell root cause: BL extrusion vs adjacent bulk tets
+
+For the 7 ``negative_volumes`` failing STLs, drilling into the
+inverted cell ids (e.g. extreme_102308 cells 163, 322, 323, 411,
+1503, 2092) shows:
+
+- All 6 inverted cells in extreme_102308 are **bulk tets** (4
+  faces each).
+- ``PolyMeshWriter._normalize_tet_winding`` (line 343) already
+  fixes negative-volume tets at writer time — so the bulk tets
+  WERE positive when first written.
+- The negative volumes appear *after* ``native_bl`` runs.  The
+  BL wall-vertex extrusion moves wall verts inward, and when
+  the local feature size is smaller than the BL thickness an
+  adjacent bulk tet ends up with inverted orientation
+  (geometrically: the wall vertex crosses the opposite face
+  plane of the tet).
+
+``n_degenerate_prisms`` is 0 in every failing STL — only the
+**prism aspect** check fires, never the bulk-inversion check.
+Native_bl is missing a post-extrusion guard.
+
+- [ ] BLR-9c-d (p-8): in ``native_bl`` after the wall-vertex
+  extrusion (step 5 in the comment header), recompute the
+  signed volume of every adjacent bulk tet and either:
+    a) cap the per-vertex extrusion magnitude so no neighbour
+       tet flips, *or*
+    b) post-process the output polyMesh to flip face winding /
+       swap owner-neighbour for inverted cells (OpenFOAM
+       ``renumberMesh`` equivalent).
+  Either path should drop the bench failure count from 8 to 1
+  (only ``extreme_1017014`` with its 71.94 skew is independent
+  of this issue).
+
 ### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
 
 **Critical fix**: the bench harness was using
