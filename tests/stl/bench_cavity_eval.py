@@ -104,6 +104,22 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
         "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
         os.environ.get("AUTO_TESSELL_BENCH_CAVITY_Q_MIN", "0.05"),
     )
+    # BLR-9c-d-p-13 — anti-invert cap default ON for the bench so we
+    # measure the new wall-vertex inversion guard's impact on the
+    # 21-STL baseline.  Override via
+    # ``AUTO_TESSELL_BENCH_ANTI_INVERT_CAP=0`` for A/B comparison.
+    env.setdefault(
+        "AUTO_TESSELL_BL_ANTI_INVERT_CAP",
+        os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_CAP", "1"),
+    )
+    env.setdefault(
+        "AUTO_TESSELL_BL_ANTI_INVERT_SAFETY",
+        os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_SAFETY", "0.5"),
+    )
+    env.setdefault(
+        "AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL",
+        os.environ.get("AUTO_TESSELL_BENCH_ANTI_INVERT_GLOBAL", "1"),
+    )
     env.setdefault("AUTO_TESSELL_P4C_PYTETWILD", "0")
     env.setdefault("AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM", "0")
     env.setdefault("AUTO_TESSELL_LCR_OFF", "1")
