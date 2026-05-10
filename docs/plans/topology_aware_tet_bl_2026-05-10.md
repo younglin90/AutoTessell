@@ -1377,6 +1377,46 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
+### BLR-9c-d (r-2) — polyhedron split diagnostic
+
+Implemented ``core/utils/polyhedron_split.diagnose_inverted_polyhedra``:
+read-only scanner that for each cell with negative signed
+volume identifies its 6 wall+inner verts (if it's a triangulated
+prism) and tries the 6 standard prism tet decompositions to find
+one whose three sub-tets all have ``signed_vol > 0``.
+
+Diagnostic on the 3 neg_vol residual FAILs:
+
+::
+
+    extreme_1017017:  2 inverted,  0 splittable, 2 unsplittable
+    hard_100030:     17 inverted,  5 splittable, 12 unsplittable
+    hard_1004826:     4 inverted,  1 splittable,  3 unsplittable
+
+Total: 23 inverted cells, **6/23 = 26 % splittable** with the
+standard prism decompositions.  All 23 are recognised as
+8-face triangulated prisms (n_non_prism = 0), but for 17 of
+them the polyhedron is geometrically too far gone — every
+prism tet decomposition has at least one negative tet.
+
+These need *external* repair (move a wall vertex back, or
+collapse the cell) rather than internal decomposition.
+
+(NativeMeshChecker reports a smaller ``negative_volumes`` count
+than this scanner finds — its threshold filters near-zero
+inversions, so on hard_100030 it shows 1 while the strict
+scanner finds 17.)
+
+- [ ] BLR-9c-d (r-3): writer-side replacement.  When 100 % of an
+  inverted cell's prism decompositions are positive, replace
+  the polyMesh cell with the 3 sub-tets.  When the
+  decomposition fails: **collapse** the inner verts onto the
+  wall verts (zero-volume cell), so checkMesh sees a
+  ``min_cell_volume = 0`` instead of a negative volume —
+  marginally better than ``negative_volumes > 0``, both
+  technically hard fails but the former is recoverable by a
+  follow-up "drop tiny cells" pass.
+
 ### BLR-9c-d (p-21) — final iteration's investigation summary
 
 After the 76 % milestone the remaining 5 FAILs split into:
