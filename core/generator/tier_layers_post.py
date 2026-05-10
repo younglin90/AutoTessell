@@ -1654,6 +1654,15 @@ class LayersPostGenerator:
                         if ok
                         else f"subdivide 실패: {_res2.message}"
                     )
+                    if ok and not bool(_res2.subdivision_applied):
+                        log.warning(
+                            "tet_bl_subdivide_skipped_mixed_topology",
+                            note=(
+                                "subdivide returned success but the prism "
+                                "wedge layer was left unconverted — final "
+                                "mesh is mixed tet/prism, not pure tet."
+                            ),
+                        )
                     # BETA2886 — tet_bl_subdivide 후 AMIPS smoothing post-polish.
                     # cfmesh_tet_shrink 에는 inline AMIPS 가 있지만, native_bl
                     # path 에는 없어 medium_100322 등 external flow 에서 max_skew

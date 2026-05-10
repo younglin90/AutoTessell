@@ -87,7 +87,9 @@ Gate: watertight + manifold 통과 시 Volume Phase 진입.
 
 주 볼륨 엔진 이후 BL 추가. **메쉬 타입별 다른 기법**:
 
-- **tet**: 전체 tet 유지 (prism → tet 3 분할)
+- **tet**: auto 라우팅은 `native_bl` (deterministic prism wedge BL, tet+prism
+  혼합 결과). 순수 tet 가 필요하면 `--post-layers-engine tet_bl_subdivide`
+  옵트인 — wedge → 3 tet 분할 시도 후 실패 시 mixed mesh 로 떨어짐.
 - **hex_dominant**: 전통적 prism 층 (shrink+extrude+snap+merge+stitch)
 - **poly**: prism 층 + polyhedral 전환 or anisotropic poly 셀
 

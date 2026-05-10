@@ -149,6 +149,7 @@ class NativeMeshChecker:
         # non-orthogonality 가 180° 근처로 오판되고 divergence theorem 의 volume
         # 이 음수가 나온다. 실제 OpenFOAM checkMesh 와 동일 결과를 내기 위함.)
         # ------------------------------------------------------------------
+        n_inverted_owner_cells = 0
         if len(face_centres) > 0 and len(owner) > 0:
             to_face = face_centres - cell_centres[owner]
             dot_check = np.einsum("ij,ij->i", to_face, face_normals)
@@ -162,6 +163,31 @@ class NativeMeshChecker:
                     flipped=n_flip,
                     total=len(face_normals),
                 )
+            # Inversion detection — a cell whose every owned face had its raw
+            # normal flipped is wound opposite to the OpenFOAM owner-outward
+            # convention (a true topological inversion).  Skipped when the
+            # global flip rate is high (≥50%): in that case the entire mesh
+            # uses an inverse convention and the orientation fix already
+            # normalised it, so per-cell "all flipped" is not a defect.
+            n_face_total = max(int(len(flip_mask)), 1)
+            global_flip_rate = float(int(flip_mask.sum())) / float(n_face_total)
+            if global_flip_rate < 0.5 and n_cells > 0:
+                flip_per_cell = np.zeros(n_cells, dtype=np.int64)
+                faces_per_cell = np.zeros(n_cells, dtype=np.int64)
+                valid_owner_mask = (owner >= 0) & (owner < n_cells)
+                if np.any(valid_owner_mask):
+                    np.add.at(
+                        flip_per_cell,
+                        owner[valid_owner_mask],
+                        flip_mask[valid_owner_mask].astype(np.int64),
+                    )
+                    np.add.at(faces_per_cell, owner[valid_owner_mask], 1)
+                fully_inverted = (
+                    (faces_per_cell > 0)
+                    & (flip_per_cell == faces_per_cell)
+                    & (flip_per_cell > 0)
+                )
+                n_inverted_owner_cells = int(fully_inverted.sum())
 
         # ------------------------------------------------------------------
         # 4. Non-orthogonality (internal faces only)
@@ -242,8 +268,12 @@ class NativeMeshChecker:
         # Note: divergence theorem 볼륨 계산은 부동소수점 오차로 인해
         # 매우 작은 음수값(-1e-15 등)이 발생할 수 있다. 의미있는 negative volume
         # 검출을 위해 상대 임계값을 사용한다.
-        # negative_volumes는 _compute_cell_volumes에서 이미 상대 tolerance로 카운트
-        meaningful_neg_volumes = negative_volumes
+        # negative_volumes는 _compute_cell_volumes에서 이미 상대 tolerance로 카운트.
+        # _compute_cell_volumes uses abs() pyramids for robust magnitudes (mixed
+        # tet/prism meshes from cfMesh-style writers) so it cannot detect
+        # inverted cells on its own; combine its tolerance count with the
+        # orientation-fix-based inversion count tracked above.
+        meaningful_neg_volumes = max(int(negative_volumes), int(n_inverted_owner_cells))
 
         failed_checks = 0
         if meaningful_neg_volumes > 0:

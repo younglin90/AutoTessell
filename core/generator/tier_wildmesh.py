@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import shutil
 import signal
@@ -719,13 +720,21 @@ def _validate_axis_extrusion_candidate_case(
     *,
     reference_stl: Path | None,
     bbox_diag: float,
-    max_non_ortho: float = 85.0,
-    max_skewness: float = 8.0,
+    max_non_ortho: float = 65.0,
+    max_skewness: float = 4.0,
     min_determinant: float = 0.001,
-    max_hausdorff_relative: float = 0.10,
-    max_area_deviation_percent: float = 20.0,
+    min_face_weight: float = 0.05,
+    max_face_warpage: float = 1.0e-6,
+    max_hausdorff_relative: float = 0.02,
+    max_area_deviation_percent: float = 2.0,
 ) -> dict[str, Any]:
-    """Run local quality gates before a generated fastpath candidate is used."""
+    """Run local quality gates before a generated fastpath candidate is used.
+
+    Thresholds mirror ``tests/stl/verify_autoresearch_mesh_matrix.py`` defaults
+    so a candidate the local validator accepts will not regress on the strict
+    bench gates.  The plan's "reject rather than regress" rule for stable-hole
+    sweep candidates relies on these matching the verifier defaults.
+    """
     result: dict[str, Any] = {"accepted": False, "checks": {}}
     try:
         from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
@@ -740,7 +749,11 @@ def _validate_axis_extrusion_candidate_case(
             "min_determinant": float(check.min_determinant),
             "max_non_orthogonality": float(check.max_non_orthogonality),
             "max_skewness": float(check.max_skewness),
+            "min_face_weight": float(check.min_face_weight),
+            "max_face_warpage": float(check.max_face_warpage),
         }
+        warp = float(check.max_face_warpage)
+        warp_ok = (not math.isfinite(warp)) or (warp <= float(max_face_warpage))
         native_ok = (
             bool(check.mesh_ok)
             and int(check.failed_checks) == 0
@@ -750,6 +763,8 @@ def _validate_axis_extrusion_candidate_case(
             and float(check.min_determinant) >= float(min_determinant)
             and float(check.max_non_orthogonality) <= float(max_non_ortho)
             and float(check.max_skewness) <= float(max_skewness)
+            and float(check.min_face_weight) >= float(min_face_weight)
+            and warp_ok
         )
 
         fidelity_ok = True
@@ -958,7 +973,19 @@ def _make_axis_extrusion_surface_from_section_polygon(
 
 
 def _select_stable_hole_sweep_surface(surf: Any) -> tuple[Any, dict[str, Any]] | None:
-    """Create a synthetic sweep surface for stable interior-hole sections."""
+    """Create a synthetic sweep surface for stable interior-hole sections.
+
+    This is the conservative first step of plan A2 in
+    ``docs/plans/topology_aware_tet_bl_2026-05-10.md``: pick the mid-axis
+    section once and constant-extrude it.  Bodies whose section actually
+    varies along the axis will produce a surface that diverges from the
+    input, and the candidate validator
+    (:func:`_validate_axis_extrusion_candidate_case`) is responsible for
+    rejecting them under the verifier's Hausdorff / surface-area /
+    face-weight / face-warpage gates.  A future change can replace the
+    constant extrusion with a true per-section sweep without altering the
+    selection contract.
+    """
     try:
         bounds = np.asarray(surf.bounds, dtype=np.float64)
         extents = bounds[1] - bounds[0]

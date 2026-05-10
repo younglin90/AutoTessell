@@ -1138,7 +1138,7 @@ class TestNativeMeshChecker:
         assert result.negative_volumes == 0
 
     def test_native_checker_no_internal_faces_single_tet(self) -> None:
-        """단일 tet는 내부 면이 없으므로 non_ortho = 0, skewness = 0."""
+        """단일 tet는 내부 면이 없으므로 non_ortho = 0, internal skewness = 0."""
         from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1146,10 +1146,13 @@ class TestNativeMeshChecker:
             _write_single_tet_polymesh(case_dir)
             result = NativeMeshChecker().run(case_dir)
 
-        # Single tet has no internal faces → these metrics are trivially 0
+        # Single tet has no internal faces → non-ortho and internal skewness
+        # are trivially zero.  ``max_skewness`` is the max of internal *and*
+        # boundary skewness, and an irregular tet has a non-zero boundary
+        # skewness, so it is not asserted here.
         assert result.max_non_orthogonality == pytest.approx(0.0)
         assert result.avg_non_orthogonality == pytest.approx(0.0)
-        assert result.max_skewness == pytest.approx(0.0)
+        assert result.max_internal_skewness == pytest.approx(0.0)
 
     def test_native_checker_two_tets_internal_face(self) -> None:
         """두 tet (공유 면 존재) → non_ortho 계산 가능."""

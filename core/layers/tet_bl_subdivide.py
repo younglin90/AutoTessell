@@ -51,6 +51,12 @@ class TetSubdivResult:
     n_prism_before: int = 0
     n_tet_added: int = 0
     message: str = ""
+    # ``True`` when wedge → tet subdivision actually ran and the resulting
+    # mesh is pure tet.  ``False`` is reserved for the early-out on non-tet
+    # bulk input where ``native_bl`` left mixed tet/prism cells in place;
+    # callers that depend on the all-tet contract should treat that case
+    # as a partial success.
+    subdivision_applied: bool = False
 
 
 def _identify_prism_cells(
@@ -241,6 +247,7 @@ def subdivide_prism_layers_to_tet(
             True, time.perf_counter() - t0,
             n_prism_before=0, n_tet_added=0,
             message="prism cell 없음 — 이미 전체 tet.",
+            subdivision_applied=True,
         )
 
     # 2) 각 prism 의 outer/inner pair 추출 + TET_BL1 quality/collision guard
@@ -709,4 +716,5 @@ def subdivide_prism_layers_to_tet(
             f"tet_bl_subdivide OK — {n_prism} prism → {3 * n_prism} tet "
             f"(total cells={total_cells})"
         ),
+        subdivision_applied=True,
     )
