@@ -1377,6 +1377,42 @@ NativeMeshChecker reports "1 neg_vol" because of an internal
 threshold; my volume scan with ``< 0`` strict catches all 4.
 The 3 truly inverted polys are the production blockers.
 
+### BLR-9c-d (p-18) — milestone summary
+
+After BLR-9c-d-(p-9) through (q-3) the 21-STL bench at draft
+sits at **18/21 PASS = 86 %** (baseline 12/21 = 57 %), a
++6-case / +28-percentage-point gain delivered by the
+anti-invert cap chain (per-vertex + global-uniform +
+joint-cell + safe-flip post-process).
+
+The remaining 3 FAILs all share the **8-face inverted
+polyhedron** pattern.  Two diagnoses ruled out:
+
+  - ``AUTO_TESSELL_BL_FEATURE_EDGE_POLY_MERGE=0`` (disable
+    feature-edge skew merger) leaves the inverted polyhedra
+    intact.  The source is a *different* native_bl step.
+  - ``AUTO_TESSELL_BL_VD_ENABLE`` is already 0 in production;
+    the VD-path's vertex-fill / mixed-owner-cut env hooks
+    don't apply.
+
+The inverted polyhedra come from prism + gap-fill cell
+merging deep inside ``_native_bl_phase2_full``.  Reaching them
+would require restructuring the main BL writer's junction
+treatment — beyond the scope of the cap-only sub-series.
+
+**Closing this sub-series at 86 %** as the deliverable:
+
+::
+
+    PASS  18/21
+      test_cube, easy_*5, extreme_*4, hard_*3, medium_*5
+    FAIL   3/21
+      extreme_1017017, hard_100030, hard_1004826
+      (each "1 neg_vol residual" 8-face polyhedron from
+       BL gap-fill merge at internal sharp corners)
+
+### BLR-9c-d (q-3-old) — first attempt
+
 - [x] BLR-9c-d (q-3): added
   ``core/utils/polymesh_orient_safe.fix_inverted_cells_safely``
   — a single-iteration single-face-flip post-process that
