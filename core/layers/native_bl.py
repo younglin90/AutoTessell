@@ -3308,6 +3308,37 @@ def _check_cavity_shell_coverage(
     }
 
 
+def _resolve_tet_apex_xyz(
+    tet_verts: list[int],
+    shared_apex_xyz: np.ndarray,
+    inner_points: np.ndarray,
+) -> tuple[np.ndarray, int, int, int] | None:
+    """BLR-9c-d-m-2 helper — extract ``(apex_xyz, i0, i1, i2)`` from a
+    tet's ``tet_verts`` list, supporting both legacy shared-apex
+    placeholder (-1) and per-face Steiner indices (non-negative).
+
+    Returns ``None`` if the tet vertex schema is malformed.
+    """
+    if len(tet_verts) != 4:
+        return None
+    a_idx = int(tet_verts[0])
+    if a_idx == -1:
+        a_xyz = shared_apex_xyz
+    elif 0 <= a_idx < inner_points.shape[0]:
+        a_xyz = inner_points[a_idx]
+    else:
+        return None
+    i0, i1, i2 = int(tet_verts[1]), int(tet_verts[2]), int(tet_verts[3])
+    if (
+        i0 < 0 or i1 < 0 or i2 < 0
+        or i0 >= inner_points.shape[0]
+        or i1 >= inner_points.shape[0]
+        or i2 >= inner_points.shape[0]
+    ):
+        return None
+    return a_xyz, i0, i1, i2
+
+
 def _check_cavity_fan_tet_determinants(
     fan_tets: list[dict[str, Any]],
     apex_xyz: np.ndarray | list[float],
@@ -3395,23 +3426,14 @@ def _check_cavity_fan_tet_determinants(
     bad_set: set[int] = set()
     for k, tet in enumerate(fan_tets):
         verts = tet.get("tet_verts", [])
-        if len(verts) != 4 or verts[0] != -1:
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
             bad_set.add(k)
             continue
-        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
-        if (
-            i0 < 0
-            or i1 < 0
-            or i2 < 0
-            or i0 >= inner.shape[0]
-            or i1 >= inner.shape[0]
-            or i2 >= inner.shape[0]
-        ):
-            bad_set.add(k)
-            continue
-        v0 = inner[i0] - apex
-        v1 = inner[i1] - apex
-        v2 = inner[i2] - apex
+        a_xyz, i0, i1, i2 = resolved
+        v0 = inner[i0] - a_xyz
+        v1 = inner[i1] - a_xyz
+        v2 = inner[i2] - a_xyz
         dets[k] = float(np.dot(v0, np.cross(v1, v2)))
 
     abs_dets = np.abs(dets)
@@ -3520,27 +3542,25 @@ def _check_cavity_fan_tet_pair_non_ortho(
     # Per-fan: triple of inner indices and centroid.
     n = len(fan_tets)
     inner_triples: list[tuple[int, int, int] | None] = []
+    apex_per_tet = np.zeros((n, 3), dtype=np.float64)
     centroids = np.zeros((n, 3), dtype=np.float64)
     for k, tet in enumerate(fan_tets):
         verts = tet.get("tet_verts", [])
-        if len(verts) != 4 or verts[0] != -1:
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
             inner_triples.append(None)
             continue
-        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
-        if (
-            i0 < 0
-            or i1 < 0
-            or i2 < 0
-            or i0 >= inner.shape[0]
-            or i1 >= inner.shape[0]
-            or i2 >= inner.shape[0]
-        ):
-            inner_triples.append(None)
-            continue
+        a_xyz, i0, i1, i2 = resolved
         inner_triples.append((i0, i1, i2))
-        centroids[k] = (apex + inner[i0] + inner[i1] + inner[i2]) / 4.0
+        apex_per_tet[k] = a_xyz
+        centroids[k] = (a_xyz + inner[i0] + inner[i1] + inner[i2]) / 4.0
 
-    # Edge → list[fan_idx] map keyed on sorted inner-pair.
+    # Edge → list[fan_idx] map keyed on sorted inner-pair.  The pair
+    # is only valid for non-ortho measurement when the two tets
+    # actually share an *internal face* — i.e. they share the apex
+    # *and* the two inner verts.  When apex differs (per-face Steiner
+    # closures), two tets sharing an inner edge no longer share a
+    # face, so they aren't a checkMesh non-ortho pair.
     edge_owners: dict[tuple[int, int], list[int]] = {}
     for k, triple in enumerate(inner_triples):
         if triple is None:
@@ -3564,9 +3584,16 @@ def _check_cavity_fan_tet_pair_non_ortho(
                 if key in seen_pairs:
                     continue
                 seen_pairs.add(key)
+                # Skip pairs that don't actually share a face — they
+                # do not contribute to checkMesh non-ortho.
+                if not np.array_equal(
+                    apex_per_tet[p_o], apex_per_tet[p_n]
+                ):
+                    continue
                 p_a, p_b = inner[u], inner[v]
-                # Internal face = (apex, p_a, p_b)
-                n_f = np.cross(p_a - apex, p_b - apex)
+                a_face_apex = apex_per_tet[p_o]
+                # Internal face = (shared apex, p_a, p_b)
+                n_f = np.cross(p_a - a_face_apex, p_b - a_face_apex)
                 d_vec = centroids[p_n] - centroids[p_o]
                 n_norm = float(np.linalg.norm(n_f))
                 d_norm = float(np.linalg.norm(d_vec))
@@ -3605,6 +3632,9 @@ def _build_cavity_shell_closure_tets(
     faces: list[list[int]],
     points: np.ndarray,
     inner_points: np.ndarray,
+    *,
+    apex_xyz: np.ndarray | list[float] | None = None,
+    steiner_step_factor: float = 0.5,
 ) -> dict[str, Any]:
     """BLR-9c-d-h-1: emit one apex transition tet per uncovered shell face.
 
@@ -3748,11 +3778,44 @@ def _build_cavity_shell_closure_tets(
                 (inner_ids[0], inner_ids[i], inner_ids[i + 1])
                 for i in range(1, n_face - 1)
             ]
+        # BLR-9c-d-m-2 — per-face Steiner apex.  When a cavity centroid
+        # (``apex_xyz``) is supplied, replace the shared placeholder
+        # apex (-1) with a Steiner point placed on the shell-face
+        # plane offset toward the cavity centroid.  This breaks the
+        # "all closure tets share the cavity centroid" coupling that
+        # produced the closure-closure non-orthogonality long tail
+        # observed in the BLR-9c-d-l-1 audit (60 % of all components).
+        # When ``apex_xyz`` is None, falls back to the legacy shared-
+        # apex schema (placeholder -1) for backward compatibility.
+        steiner_idx = -1
+        if apex_xyz is not None:
+            apex_arr = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+            face_pts = pts[valid_iv]               # (n_face, 3)
+            face_centroid = face_pts.mean(axis=0)
+            edge_lens = np.linalg.norm(
+                np.diff(np.vstack([face_pts, face_pts[:1]]), axis=0),
+                axis=1,
+            )
+            mean_edge = float(edge_lens.mean()) if edge_lens.size else 1.0
+            inward_vec = apex_arr - face_centroid
+            inward_norm = float(np.linalg.norm(inward_vec))
+            if inward_norm < 1e-30 or mean_edge < 1e-30:
+                steiner_pt = face_centroid
+            else:
+                step = float(steiner_step_factor) * mean_edge
+                # Cap the step at the available distance to the cavity
+                # centroid so the Steiner stays on the cavity side and
+                # never overshoots beyond the centroid.
+                step = min(step, 0.95 * inward_norm)
+                steiner_pt = face_centroid + (inward_vec / inward_norm) * step
+            steiner_idx = next_id
+            extended.append(steiner_pt.tolist())
+            next_id += 1
         for k, (j0, j1, j2) in enumerate(tri_seq):
             closure_tets.append({
                 "face_id": ifid,
                 "outer_verts": list(verts),
-                "tet_verts": [-1, j0, j1, j2],
+                "tet_verts": [steiner_idx, j0, j1, j2],
                 "kind": "shell_closure",
                 "fan_tri": int(k),
                 "n_face_verts": int(n_face),
@@ -3824,25 +3887,18 @@ def _check_cavity_fan_tet_pair_skewness(
 
     n = len(fan_tets)
     inner_triples: list[tuple[int, int, int] | None] = []
+    apex_per_tet = np.zeros((n, 3), dtype=np.float64)
     centroids = np.zeros((n, 3), dtype=np.float64)
     for k, tet in enumerate(fan_tets):
         verts = tet.get("tet_verts", [])
-        if len(verts) != 4 or verts[0] != -1:
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
             inner_triples.append(None)
             continue
-        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
-        if (
-            i0 < 0
-            or i1 < 0
-            or i2 < 0
-            or i0 >= inner.shape[0]
-            or i1 >= inner.shape[0]
-            or i2 >= inner.shape[0]
-        ):
-            inner_triples.append(None)
-            continue
+        a_xyz, i0, i1, i2 = resolved
         inner_triples.append((i0, i1, i2))
-        centroids[k] = (apex + inner[i0] + inner[i1] + inner[i2]) / 4.0
+        apex_per_tet[k] = a_xyz
+        centroids[k] = (a_xyz + inner[i0] + inner[i1] + inner[i2]) / 4.0
 
     edge_owners: dict[tuple[int, int], list[int]] = {}
     for k, triple in enumerate(inner_triples):
@@ -3866,8 +3922,13 @@ def _check_cavity_fan_tet_pair_skewness(
                 if key in seen_pairs:
                     continue
                 seen_pairs.add(key)
+                if not np.array_equal(
+                    apex_per_tet[p_o], apex_per_tet[p_n]
+                ):
+                    continue
                 p_a, p_b = inner[u], inner[v]
-                c_f = (apex + p_a + p_b) / 3.0
+                a_face_apex = apex_per_tet[p_o]
+                c_f = (a_face_apex + p_a + p_b) / 3.0
                 c_O = centroids[p_o]
                 c_N = centroids[p_n]
                 d_vec = c_N - c_O
@@ -3962,29 +4023,23 @@ def _check_cavity_fan_tet_shape_quality(
     pts = np.vstack([apex.reshape(1, 3), inner])
 
     # Translate fan tets into (T, 4) vertex-id array using the
-    # combined indexing above (apex placeholder ``-1`` → 0,
+    # combined indexing above (shared-apex placeholder ``-1`` → 0,
+    # per-face Steiner index ``s`` → ``s + 1``,
     # inner index ``k`` → ``k + 1``).
     tets_list: list[list[int]] = []
     invalid_idx: set[int] = set()
     for k, tet in enumerate(fan_tets):
         verts = tet.get("tet_verts", [])
-        if len(verts) != 4 or verts[0] != -1:
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
             invalid_idx.add(k)
             tets_list.append([0, 0, 0, 0])
             continue
-        i0, i1, i2 = int(verts[1]), int(verts[2]), int(verts[3])
-        if (
-            i0 < 0
-            or i1 < 0
-            or i2 < 0
-            or i0 >= inner.shape[0]
-            or i1 >= inner.shape[0]
-            or i2 >= inner.shape[0]
-        ):
-            invalid_idx.add(k)
-            tets_list.append([0, 0, 0, 0])
-            continue
-        tets_list.append([0, i0 + 1, i1 + 1, i2 + 1])
+        a_xyz, i0, i1, i2 = resolved
+        a_idx_combined = (
+            0 if int(verts[0]) == -1 else int(verts[0]) + 1
+        )
+        tets_list.append([a_idx_combined, i0 + 1, i1 + 1, i2 + 1])
     tets_arr = np.asarray(tets_list, dtype=np.int64)
 
     # Tet shape quality is invariant under vertex permutation, but
@@ -4198,6 +4253,7 @@ def _evaluate_cavity_component_candidates(
             faces=faces,
             points=pts,
             inner_points=split["inner_points"],
+            apex_xyz=apex_xyz,
         )
         closure_tets = closure["shell_closure_tets"]
         extended_inner = closure["extended_inner_points"]

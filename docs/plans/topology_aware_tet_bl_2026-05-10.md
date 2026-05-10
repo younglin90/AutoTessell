@@ -782,18 +782,61 @@ is highly elongated or near-degenerate.
   diagonal choice.  Kept the change since the algorithm is
   geometrically more correct and harmless when quads do appear.
 
-- [ ] BLR-9c-d (m-2): per-face apex.  The current cavity
-  centroid is one point shared by every fan and closure tet of
-  the component, which forces a wide range of shell-face-to-
-  apex distances and is the root cause of the non-ortho /
-  Q-shape long tails on tri shell faces.  Replace the single
-  apex with a per-shell-face Steiner point placed on the
-  cavity-side normal at a controlled distance (e.g.
-  ``first_thickness`` × growth_ratio scaled by the shell
-  triangle's circumradius).  Expected: closure-pair non-ortho
-  collapses toward 90° minus a moderate fraction, and Q-shape
-  on closure tets jumps because the apex is no longer
-  collinear with the shell plane.
+- [x] BLR-9c-d (m-2): per-face Steiner apex for closure tets.
+  ``_build_cavity_shell_closure_tets`` now accepts an
+  ``apex_xyz`` parameter (the cavity centroid) and a
+  ``steiner_step_factor`` (default 0.5).  For every uncovered
+  shell face it computes the face centroid, an inward unit
+  vector toward the cavity centroid, and a Steiner point at
+  ``face_centroid + 0.5 * mean_edge * inward`` (capped so it
+  stays on the cavity side of the centroid).  The Steiner point
+  is appended to the extended inner-points array and used as
+  the apex for that face's closure tets via
+  ``tet_verts = [steiner_idx, j0, j1, j2]`` (no -1 placeholder).
+
+  Helpers updated: a new
+  ``_resolve_tet_apex_xyz`` dispatcher hands the four quality
+  gates (det / shape / non-ortho / skewness) the right apex
+  depending on whether ``tet_verts[0]`` is -1 (legacy
+  shared-apex fan tet) or a non-negative inner index (per-face
+  Steiner closure tet).  The non-ortho and skewness pair
+  helpers also skip pairs whose two tets carry different
+  apexes — they no longer share a face, so the OpenFOAM
+  internal-face metric does not apply.
+
+  **Bench result (test_cube + easy_100034, q_min 0.05,
+  non_ortho 85°)**:
+
+  ::
+
+      before:  861 components, 808 accept (93.8 %),
+               30 shape, 23 non-ortho.
+      after:   861 components, 824 accept (95.7 %),
+               29 shape,  8 non-ortho.
+
+  +16 components recovered, non-ortho buckets dropped 23 → 8
+  (-15) because every closure-closure pair now lives behind a
+  different per-face apex and is no longer counted as a
+  checkMesh internal-face pair.  Only the fan-fan pairs remain.
+  The shape gate barely moves because the closure-tet shape
+  quality is still dominated by the apex-to-shell-face
+  geometry, just from a different apex.
+
+### BLR-9c-d (n) — fan-fan non-ortho 8 + closure shape 29
+
+The remaining 37 rejected components split:
+
+- 8 ``reject_bad_non_ortho`` — all fan-fan pairs.  These come
+  from sharp internal corners where the BLR-9c-c-iii-b motion
+  pulls adjacent inner triangles apart.  Pure fan-side issue.
+- 29 ``reject_bad_shape`` — almost all closure tets with bad
+  Q because the Steiner step is still tied to the in-plane
+  edge length, which gives a slim apex offset on elongated
+  shell triangles.
+
+- [ ] BLR-9c-d (n-1): tune the Steiner step.  Use the maximum
+  edge length instead of the mean, or a separate
+  configurable env knob for closure-step magnitude.
 
 - [ ] Use the `tet_wall_cavity` BLR-7 metadata (specifically
   `sample_single_wall_tet_cells`, the simple-tet eligible owners)
