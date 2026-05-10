@@ -6786,12 +6786,48 @@ def generate_native_bl(
                                 "0.05",
                             )
                         )
-                        _global_ratio = max(
-                            _global_ratio, _global_floor,
+                        # BLR-9c-d-(s-4) — selective floor.  When
+                        # ``AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE=1``
+                        # (default 1), verts whose individual
+                        # geometric ratio is *much smaller* than the
+                        # floor (say < 0.5 × floor) are treated as
+                        # outliers — they get their tight geometric
+                        # cap applied per-vert, while the rest of the
+                        # mesh uses ``max(geometric, floor)``.  This
+                        # preserves clean prisms in 99 % of the
+                        # mesh and tightens only the tiny problem
+                        # region — fixes medium_100330 at floor=0.5
+                        # without breaking any other case.
+                        # NOTE: BLR-9c-d-(s-4) tested selective floor
+                        # (per-vert tight cap for outliers, floor for
+                        # rest) and saw catastrophic cascade —
+                        # max_skew 1.7e15 on medium_100330.  Same
+                        # inhomogeneous-cap cascade pattern as p-10.
+                        # Default OFF; only the homogeneous floor is
+                        # safe.
+                        _selective = (
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE",
+                                "0",
+                            ) == "1"
                         )
-                        anti_invert_scale_per_v = np.full_like(
-                            _mag, _global_ratio
-                        )
+                        if _selective:
+                            _outlier_thresh = (
+                                _global_floor * 0.5
+                            )
+                            anti_invert_scale_per_v = np.where(
+                                _ratios < _outlier_thresh,
+                                _ratios,
+                                np.maximum(_ratios, _global_floor),
+                            )
+                            # ``_global_ratio`` left as-is for diag.
+                        else:
+                            _global_ratio = max(
+                                _global_ratio, _global_floor,
+                            )
+                            anti_invert_scale_per_v = np.full_like(
+                                _mag, _global_ratio
+                            )
                     else:
                         anti_invert_scale_per_v = np.where(
                             _over,
