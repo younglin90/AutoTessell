@@ -938,6 +938,41 @@ feature angles) per level.
 produce a mesh that passes for many STLs.  Worth a separate bench
 once the draft sweep finishes.
 
+### BLR-9c-d (p-4) — partial 21-STL bench classification (11/21)
+
+**At ``quality=draft`` (cap 85°), 11/21 done, 4 PASS / 7 FAIL**:
+
+::
+
+    PASS  test_cube         69.66°
+    PASS  easy_100423       80.84°
+    PASS  easy_101170       83.52°
+    PASS  extreme_1037019   76.57°
+    FAIL  easy_100034       89.37°  -> sliver tri (40-60x aspect)
+    FAIL  easy_100643       89.73°
+    FAIL  easy_101187       86.23°  -> flat "pancake" cells, 2128 faces >80°
+    FAIL  extreme_1017013   89.77°  + skew 11.7
+    FAIL  extreme_1017014   88.21°  + skew 71.9
+    FAIL  extreme_1017017   89.97°  + skew 29.3
+    FAIL  extreme_102308    89.85°  + skew 4.6
+
+**Failure modes**:
+
+1. **Sliver tris** (e.g. ``easy_100034``): top-K worst faces are
+   needle triangles with 40-60x edge-length aspect, sequential
+   cell ids — clusters along sharp ridges in the input geometry.
+   Non-ortho is ~89° because the face normal is nearly tangent
+   to the cell-cell line.
+2. **Flat pancake cells** (e.g. ``easy_101187``): worst faces
+   are *not* slivers (1.5x edge aspect) but ``cell_dist`` is
+   much smaller than ``face_size``, so the cell is thin
+   perpendicular to the face.  Systemic: 30 % of all internal
+   faces are >60°.  This is the BL-transition-zone aspect
+   issue, not an isolated outlier.
+3. **Extreme skew** (e.g. ``extreme_1017014``): non-ortho high
+   *and* skew ridiculously high (71.9).  Severely malformed
+   cells from the underlying tet mesher.
+
 ### BLR-9c-d (r) — native_tet tier kwarg-leak fix
 
 - [x] BLR-9c-d (r-1): the orchestrator forwards pipeline-level
