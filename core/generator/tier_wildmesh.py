@@ -296,7 +296,15 @@ def _write_structured_box_polymesh(
     # divisions to the axis with the largest current cell size so thin slabs do
     # not produce high-aspect cells.
     min_axis = max(2 * int(bl_layers) + 2, 2)
-    desired_cells = max(int(max(1, target_cells) * 0.58), min_axis ** 3)
+    # U-12 (2026-05-11) — target_cells accuracy.  Old multiplier 0.58
+    # produced 5832 cells for target=10000 (−42 % under).  Industry
+    # T-Rex / cfMesh expect ±10-20 % accuracy for "approximate"
+    # cell-count requests.  Tunable via env (default 0.95 = ~−5 %
+    # before the loop overshoots).
+    _frac = float(os.environ.get(
+        "AUTO_TESSELL_WILDMESH_BOX_TARGET_FRAC", "0.95",
+    ))
+    desired_cells = max(int(max(1, target_cells) * _frac), min_axis ** 3)
     ext = np.maximum(maxs - mins, 1e-30)
     counts = np.array([min_axis, min_axis, min_axis], dtype=np.int64)
     while int(np.prod(counts)) < desired_cells:
