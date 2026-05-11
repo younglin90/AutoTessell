@@ -87,8 +87,15 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     # constant-cross-section sweep emit a structured polyMesh with
     # its own ``native_bl_quality.json`` that bypasses the cavity
     # eval helpers entirely (see tier_wildmesh.py:1828, 1852).
-    env["AUTO_TESSELL_WILDMESH_BOX_FASTPATH"] = "0"
-    env["AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH"] = "0"
+    # U-10 (2026-05-11) — BOX_FASTPATH re-enabled by default because
+    # it routes test_cube through *our own* native structured mesher
+    # (no pytetwild dependency), advancing the "minimize external
+    # libs" goal.  Set ``AUTO_TESSELL_BENCH_FASTPATH_OFF=1`` to
+    # restore the all-paths-through-native_bl behaviour for cavity
+    # eval helper testing.
+    if os.environ.get("AUTO_TESSELL_BENCH_FASTPATH_OFF", "0") == "1":
+        env["AUTO_TESSELL_WILDMESH_BOX_FASTPATH"] = "0"
+        env["AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH"] = "0"
     # BLR-9c-d-j-2 — non-ortho cap configurable; default to 80° to
     # match what downstream evaluators tolerate on transition cells
     # (the bench audit at 70° showed angles cluster in 70-90° band
