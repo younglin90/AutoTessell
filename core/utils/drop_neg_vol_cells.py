@@ -304,6 +304,7 @@ def drop_neg_vol_cells_iterative(
     skew_drop_threshold: float | None = None,
     max_iterations: int = 8,
     topo_check: bool = True,
+    geometric_check: bool = True,
 ) -> dict[str, int]:
     """Iterate ``drop_neg_vol_cells`` until no more cells are dropped
     or ``max_iterations`` reached.  After each pass, newly exposed
@@ -326,6 +327,7 @@ def drop_neg_vol_cells_iterative(
             new_patch_name=new_patch_name,
             skew_drop_threshold=skew_drop_threshold,
             topo_check=topo_check,
+            geometric_check=geometric_check,
         )
         agg["n_iterations"] = it + 1
         if first:
@@ -351,6 +353,7 @@ def drop_neg_vol_cells(
     new_patch_name: str = "droppedShell",
     skew_drop_threshold: float | None = None,
     topo_check: bool = True,
+    geometric_check: bool = True,
 ) -> dict[str, int]:
     """Remove cells with ``signed_vol <= vol_tol`` from polyMesh.
 
@@ -387,7 +390,16 @@ def drop_neg_vol_cells(
     ) + 1
 
     vols = _signed_cell_volumes(pts, faces, owner, neighbour, n_cells)
-    geometric_set = set(int(c) for c in np.where(vols <= vol_tol)[0])
+    # H-6 (2026-05-12) — geometric_check toggle.  cfMesh's hex output
+    # produces sliver cells (surface-intersection splits) whose signed
+    # volume via fan-triangulation comes out negative even though
+    # NativeMeshChecker computes |faceAreaVec . (fc-cc)| / 3 (always
+    # positive) and never flags them.  Skip the geometric drop for hex
+    # so we don't over-prune.
+    if geometric_check:
+        geometric_set = set(int(c) for c in np.where(vols <= vol_tol)[0])
+    else:
+        geometric_set = set()
     # NativeMeshChecker counts ``negative_volumes`` from topologically
     # inverted cells (every owned face winding points inward).  Drop
     # both kinds so checkMesh's negative_volumes reaches 0.

@@ -78,14 +78,18 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     env["AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM"] = "1"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
-    # H-5 REVERT (hex loop, 2026-05-12) — drop_neg_vol_cells is unsafe
-    # on cfMesh hex output even with topo_check=False.  cfMesh's signed
-    # cell volume for surface-intersection cells comes out tiny (<=1e-15)
-    # because of fan-triangulation conventions, so 8 valid cells got
-    # dropped on test_cube and the evaluator crashed with empty patches.
-    # Leave drop_neg_vol off for hex; address medium_100322's
-    # negative_volumes=1 via a different mechanism.
-    env["AUTO_TESSELL_BL_DROP_NEG_VOL"] = "0"
+    # H-6 (2026-05-12) — hex-safe drop_neg_vol_cells.  Skip the
+    # geometric (signed-vol≤tol) check because cfMesh hex sliver cells
+    # come out spuriously negative via fan-triangulation.  Keep only
+    # the topological-inversion check (= NativeMeshChecker's
+    # ``negative_volumes`` definition).  This drops exactly the 1 cell
+    # medium_100322 / hard_1004826 have as hard-fail neg_vol, without
+    # touching test_cube's 22k cells.
+    env.setdefault("AUTO_TESSELL_BL_DROP_NEG_VOL", "1")
+    env.setdefault("AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK", "0")
+    env.setdefault("AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK", "1")
+    env.setdefault("AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD", "18")
+    env.setdefault("AUTO_TESSELL_BL_DROP_MAX_ITER", "8")
 
     row: dict[str, Any] = {
         "stl": stl_path.relative_to(ROOT).as_posix(),

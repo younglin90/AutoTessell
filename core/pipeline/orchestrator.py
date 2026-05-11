@@ -486,11 +486,18 @@ class PipelineOrchestrator:
                                 "1",
                             ) == "1"
                         )
+                        _geom_check = (
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK",
+                                "1",
+                            ) == "1"
+                        )
                         _drop_stats = _drop_nvc(
                             case_dir,
                             skew_drop_threshold=_skew_thr,
                             max_iterations=_max_iter,
                             topo_check=_topo_check,
+                            geometric_check=_geom_check,
                         )
                         log.info(
                             "drop_neg_vol_cells_done",
