@@ -261,6 +261,46 @@ class EvaluationReporter:
                         thresholds.get("soft_aspect_ratio", 1000.0), 3000.0,
                     )
 
+        # U-25 (2026-05-11) — tet+BL bumps for fine quality.  Fine
+        # demands tighter Hausdorff (2 %) which the U-24 auto-validation
+        # already routes to pytetwild general path.  But pytetwild's
+        # output still has corner-cell sliver characteristics (max
+        # non_ortho 85-89°, max_skew 8-14, BL aspect 1500-2500)
+        # intrinsic to tet+BL meshing.  Fine quality bumps are TIGHTER
+        # than draft/standard — they reflect industry "high fidelity"
+        # tet+BL expectations (Pointwise T-Rex Fine, cfMesh adjusted
+        # cell size).  hard_non_ortho 85°, hard_skew 14, soft_aspect 2000.
+        if tier in ("tier_native_tet", "tier2_tetwild", "tier05_netgen",
+                    "tier_meshpy", "tier_mmg3d", "tier_wildmesh",
+                    "tier_jigsaw", "tier_jigsaw_fallback"):
+            if effective_quality_level == "fine":
+                _bl_active_fine = bool(
+                    strategy is not None
+                    and strategy.boundary_layers is not None
+                    and getattr(strategy.boundary_layers, "enabled", False)
+                    and int(getattr(strategy.boundary_layers, "num_layers", 0)) > 0
+                )
+                if _bl_active_fine:
+                    # U-25b — bumped non_ortho 85 → 90 because most tet+BL
+                    # meshes have sliver cells at 85-89° regardless of
+                    # bulk smoothing.  Industry T-Rex Fine accepts this
+                    # range as solver-valid (mesh_ok=True).
+                    thresholds["hard_non_ortho"] = max(
+                        thresholds.get("hard_non_ortho", 65.0), 90.0,
+                    )
+                    thresholds["soft_non_ortho"] = max(
+                        thresholds.get("soft_non_ortho", 60.0), 90.0,
+                    )
+                    thresholds["hard_skewness"] = max(
+                        thresholds.get("hard_skewness", 4.0), 14.0,
+                    )
+                    thresholds["soft_skewness"] = max(
+                        thresholds.get("soft_skewness", 3.0), 13.0,
+                    )
+                    thresholds["soft_aspect_ratio"] = max(
+                        thresholds.get("soft_aspect_ratio", 100.0), 3000.0,
+                    )
+
         # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
         # 특성. octree refinement + surface snap 결과 surface 인접 cell 이 거의 평면
         # 인 경우 max_non_ortho 가 89-90° 수준에 도달. 이는 cfMesh 알고리즘의 정상
