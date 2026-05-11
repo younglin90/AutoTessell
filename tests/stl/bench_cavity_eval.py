@@ -373,6 +373,68 @@ def main() -> int:
     print(f"[bench_cavity_eval] totals: {totals}")
     print(f"[bench_cavity_eval] wrote {json_path}")
     print(f"[bench_cavity_eval] wrote {tsv_path}")
+
+    # U-23 (2026-05-11) — User-goal summary: read each case's
+    # quality_report.json and tally PASS/FAIL + cell-count accuracy
+    # so the bench's stdout directly answers the ralph-loop user
+    # goal without requiring a second parsing step.
+    try:
+        n_pass = 0
+        n_pass_warn = 0
+        n_fail = 0
+        cells_pcts: list[float] = []
+        for r in rows:
+            case_dir = Path(r.get("case_dir", ""))
+            qp = case_dir / "quality_report.json"
+            if not qp.exists():
+                continue
+            try:
+                report = json.loads(qp.read_text())
+            except Exception:
+                continue
+            verdict = report.get("evaluation_summary", {}).get("verdict", "")
+            if verdict == "PASS":
+                n_pass += 1
+            elif verdict == "PASS_WITH_WARNINGS":
+                n_pass_warn += 1
+            else:
+                n_fail += 1
+            # cell count vs target — read from quality_report.json's
+            # nested ``evaluation_summary.checkmesh.cells`` (cheap; no
+            # extra NativeMeshChecker invocation).
+            try:
+                cm = (
+                    report.get("evaluation_summary", {}).get("checkmesh", {})
+                    or {}
+                )
+                cells = cm.get("cells")
+                if cells is not None and cells > 0:
+                    pct = (
+                        (cells - TARGET_CELLS) / max(TARGET_CELLS, 1) * 100.0
+                    )
+                    cells_pcts.append(pct)
+            except Exception:
+                pass
+
+        n_total = n_pass + n_pass_warn + n_fail
+        if n_total > 0:
+            within_10 = sum(1 for p in cells_pcts if abs(p) <= 10)
+            within_20 = sum(1 for p in cells_pcts if abs(p) <= 20)
+            within_30 = sum(1 for p in cells_pcts if abs(p) <= 30)
+            print(
+                f"[user-goal] PASS={n_pass}/{n_total} "
+                f"PASS_WITH_WARNINGS={n_pass_warn}/{n_total} "
+                f"FAIL={n_fail}/{n_total}"
+            )
+            print(
+                f"[user-goal] cells target={TARGET_CELLS}: "
+                f"within ±10 %={within_10}/{n_total}, "
+                f"±20 %={within_20}/{n_total}, "
+                f"±30 %={within_30}/{n_total}"
+            )
+            print(f"[user-goal] BL layers requested={BL_LAYERS}")
+    except Exception as _summary_exc:  # noqa: BLE001
+        print(f"[user-goal] summary failed: {_summary_exc}")
     return 0
 
 
