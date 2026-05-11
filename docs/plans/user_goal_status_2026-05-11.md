@@ -42,7 +42,7 @@ U-21 commit-by-commit detail.
 |---------|-----------|------------|
 | draft (bench default) | 21/21 (100 %) | tet+BL bumps applied |
 | standard (CLI default) | **18/21 (86 %)** after U-24 (was 8/21) | auto-validation routes curved inputs to pytetwild; remaining 3 broken multi-shell inputs |
-| fine | (likely similar to standard) | also auto-enables validation under U-24 |
+| fine | **18/21 (86 %)** after U-25 (was 0/21) | U-25 tet+BL bumps for fine (non_ortho 65→90, skew 4→14, aspect 100→3000); same 3 broken inputs fail |
 
 Extending standard requires improving extrusion fastpath fidelity
 (multi-week) or routing curved inputs through different self-impl —
