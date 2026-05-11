@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET_CELLS = int(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_TARGET_CELLS", "10000"))
 BL_LAYERS = int(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_BL_LAYERS", "3"))
 QUALITY = os.environ.get("AUTO_TESSELL_BENCH_CAVITY_QUALITY", "draft")
-TIMEOUT_S = float(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_TIMEOUT_S", "900"))
+TIMEOUT_S = float(os.environ.get("AUTO_TESSELL_BENCH_CAVITY_TIMEOUT_S", "1800"))
 RUN_ROOT = Path(
     os.environ.get(
         "AUTO_TESSELL_BENCH_HEX_RUN_ROOT",
@@ -78,11 +78,13 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     env["AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM"] = "1"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
-    # drop_neg_vol_cells is tet+BL specific (designed for
-    # tet_bl_subdivide side effects).  On cfMesh hex output it
-    # mis-detects clean cells as topologically inverted and drains
-    # the wall patch into many tiny droppedShell patches, breaking
-    # the evaluator ('list arg must have no negative elements').
+    # H-5 REVERT (hex loop, 2026-05-12) — drop_neg_vol_cells is unsafe
+    # on cfMesh hex output even with topo_check=False.  cfMesh's signed
+    # cell volume for surface-intersection cells comes out tiny (<=1e-15)
+    # because of fan-triangulation conventions, so 8 valid cells got
+    # dropped on test_cube and the evaluator crashed with empty patches.
+    # Leave drop_neg_vol off for hex; address medium_100322's
+    # negative_volumes=1 via a different mechanism.
     env["AUTO_TESSELL_BL_DROP_NEG_VOL"] = "0"
 
     row: dict[str, Any] = {

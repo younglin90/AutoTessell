@@ -303,6 +303,7 @@ def drop_neg_vol_cells_iterative(
     new_patch_name: str = "droppedShell",
     skew_drop_threshold: float | None = None,
     max_iterations: int = 8,
+    topo_check: bool = True,
 ) -> dict[str, int]:
     """Iterate ``drop_neg_vol_cells`` until no more cells are dropped
     or ``max_iterations`` reached.  After each pass, newly exposed
@@ -324,6 +325,7 @@ def drop_neg_vol_cells_iterative(
             vol_tol=vol_tol,
             new_patch_name=new_patch_name,
             skew_drop_threshold=skew_drop_threshold,
+            topo_check=topo_check,
         )
         agg["n_iterations"] = it + 1
         if first:
@@ -348,6 +350,7 @@ def drop_neg_vol_cells(
     vol_tol: float = 1e-15,
     new_patch_name: str = "droppedShell",
     skew_drop_threshold: float | None = None,
+    topo_check: bool = True,
 ) -> dict[str, int]:
     """Remove cells with ``signed_vol <= vol_tol`` from polyMesh.
 
@@ -388,9 +391,17 @@ def drop_neg_vol_cells(
     # NativeMeshChecker counts ``negative_volumes`` from topologically
     # inverted cells (every owned face winding points inward).  Drop
     # both kinds so checkMesh's negative_volumes reaches 0.
-    topo_set = _topologically_inverted_cells(
-        pts, faces, owner, neighbour, n_cells,
-    )
+    # H-5 (hex loop, 2026-05-12) — topo_check default True preserves
+    # tet+BL behaviour.  For hex_dominant + cfMesh, the cartesianMesh
+    # winding convention differs and the topo check produces false
+    # positives that empty patches.  Call with topo_check=False to
+    # only drop cells with truly negative signed volume.
+    if topo_check:
+        topo_set = _topologically_inverted_cells(
+            pts, faces, owner, neighbour, n_cells,
+        )
+    else:
+        topo_set = set()
     inverted_set = geometric_set | topo_set
     skew_set: set[int] = set()
     if skew_drop_threshold is not None and skew_drop_threshold > 0:

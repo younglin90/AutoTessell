@@ -480,10 +480,17 @@ class PipelineOrchestrator:
                         _max_iter = int(os.environ.get(
                             "AUTO_TESSELL_BL_DROP_MAX_ITER", "8",
                         ))
+                        _topo_check = (
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK",
+                                "1",
+                            ) == "1"
+                        )
                         _drop_stats = _drop_nvc(
                             case_dir,
                             skew_drop_threshold=_skew_thr,
                             max_iterations=_max_iter,
+                            topo_check=_topo_check,
                         )
                         log.info(
                             "drop_neg_vol_cells_done",
