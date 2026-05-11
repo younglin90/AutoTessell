@@ -158,6 +158,32 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     raw_edge = float(
         params.get("wildmesh_edge_length_r", params.get("wildmesh_edge_length", d["edge_length_r"]))
     )
+    # U-8 (2026-05-11) — target_cells → edge_length_r mapping.
+    # Opt-in via ``AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP=1`` because
+    # the override changes the calibration the 21-STL bench depends on
+    # for 100 % PASS.  When opted in, map target_cells to edge_length_r
+    # via inverse-cube scaling against a baseline (14 k cells at
+    # edge_r=0.06).  pytetwild's quality-driven loop limits accuracy
+    # to ~±40 %.
+    _target_cells_raw = params.get("target_cells")
+    _remap_on = os.environ.get(
+        "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP", "0",
+    ) == "1"
+    if _target_cells_raw and _remap_on:
+        try:
+            _target_cells = int(_target_cells_raw)
+            _calib_cells = float(os.environ.get(
+                "AUTO_TESSELL_WILDMESH_TARGET_CALIB_BASE", "14000",
+            ))
+            _overshoot = float(os.environ.get(
+                "AUTO_TESSELL_WILDMESH_TARGET_OVERSHOOT", "1.4",
+            ))
+            _calib_edge_r = 0.06
+            _effective_target = max(_target_cells, 1) / max(_overshoot, 1e-3)
+            _scale = (_calib_cells / _effective_target) ** (1.0 / 3.0)
+            raw_edge = max(0.005, min(0.2, _calib_edge_r * _scale))
+        except (ValueError, TypeError):
+            pass
     return {
         "stop_quality": _clamp_param("stop_quality", raw_stop),
         "max_its": int(_clamp_param("max_its", float(raw_max_its))),
