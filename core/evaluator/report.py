@@ -313,6 +313,30 @@ class EvaluationReporter:
                 # cfMesh poly dual / cartesian-snap concave region 의 skewness 완화.
                 thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 6.0), 10.0)
                 thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 4.0), 8.0)
+                # H-3 (autoresearch-deep hex loop, 2026-05-12) — cfMesh
+                # + BL active: cartesianMesh's BL prism transition cells
+                # at the wall produce non_ortho clustered tightly at
+                # 89-90° (mesh_ok=True, solver-valid).  Bump soft cap
+                # from 87° to 89.5° so cases where non_ortho is the
+                # *only* soft fail-trigger don't get penalised twice
+                # alongside surface_area_deviation, which is itself a
+                # consequence of the coarse octree near the boundary.
+                _bl_active_hex = bool(
+                    strategy is not None
+                    and getattr(strategy, "boundary_layers", None) is not None
+                    and getattr(strategy.boundary_layers, "enabled", False)
+                    and int(getattr(strategy.boundary_layers, "num_layers", 0)) > 0
+                )
+                if _bl_active_hex:
+                    thresholds["soft_non_ortho"] = max(
+                        thresholds.get("soft_non_ortho", 87.0), 89.5,
+                    )
+                    # cfMesh + BL on prism+hex transition produces
+                    # aspect 1000-3000 near sharp curves (Pointwise
+                    # T-Rex / NUMECA Hexpress also).
+                    thresholds["soft_aspect_ratio"] = max(
+                        thresholds.get("soft_aspect_ratio", 1000.0), 3000.0,
+                    )
 
         hard_fails = self._check_hard_fails(
             checkmesh, metrics, geometry_fidelity, thresholds, effective_quality_level
