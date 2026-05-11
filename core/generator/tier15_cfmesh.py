@@ -207,6 +207,10 @@ class Tier15CfMeshGenerator:
                     # cube → 1.7k cell (12 cells/dim, draft 적정).
                     # H-7b REVERT (2026-05-12): bnd=max/2 caused 14× cell
                     # explosion (test_cube 22k → 325k) — too aggressive.
+                    # H-9 NEGATIVE (2026-05-12): bnd=max*0.75 ineffective
+                    # because cfMesh octree refinement is binary
+                    # (refine to bnd or not).  bnd between max/2 and max
+                    # = no extra octree level = same cells.
                     if "cfmesh_boundary_cell_size" in _params:
                         _bnd = float(_params["cfmesh_boundary_cell_size"])
                     else:
