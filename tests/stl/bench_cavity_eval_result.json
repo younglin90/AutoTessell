@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 0,
-      "elapsed_s": 20.97,
+      "elapsed_s": 21.137,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -26,7 +26,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 0,
-      "elapsed_s": 19.239,
+      "elapsed_s": 21.011,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -36,7 +36,7 @@
         "cap_holes": 6,
         "cap_loops": 7,
         "kind": "axis_extrusion",
-        "plane_triangles": 790,
+        "plane_triangles": 907,
         "project_axes": [
           0,
           2
@@ -75,9 +75,9 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100423.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100423",
       "returncode": 0,
-      "elapsed_s": 19.317,
+      "elapsed_s": 21.313,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  23.24%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  23.28%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -85,7 +85,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 781,
+        "plane_triangles": 937,
         "project_axes": [
           0,
           1
@@ -124,7 +124,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100643.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100643",
       "returncode": 0,
-      "elapsed_s": 18.877,
+      "elapsed_s": 20.771,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -134,7 +134,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 787,
+        "plane_triangles": 949,
         "project_axes": [
           0,
           1
@@ -173,7 +173,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_101170.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101170",
       "returncode": 0,
-      "elapsed_s": 21.653,
+      "elapsed_s": 21.609,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -185,7 +185,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_101187.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101187",
       "returncode": 0,
-      "elapsed_s": 21.678,
+      "elapsed_s": 21.843,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -197,7 +197,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017013.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017013",
       "returncode": 0,
-      "elapsed_s": 47.313,
+      "elapsed_s": 48.518,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    86.4\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -273,9 +273,9 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017014.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017014",
       "returncode": 0,
-      "elapsed_s": 26.065,
+      "elapsed_s": 27.963,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  66.97%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  66.93%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -283,7 +283,7 @@
         "cap_holes": 6,
         "cap_loops": 17,
         "kind": "axis_extrusion",
-        "plane_triangles": 799,
+        "plane_triangles": 959,
         "project_axes": [
           0,
           1
@@ -322,9 +322,9 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017017.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017017",
       "returncode": 0,
-      "elapsed_s": 26.347,
+      "elapsed_s": 27.847,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  48.58%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  48.66%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -332,7 +332,7 @@
         "cap_holes": 8,
         "cap_loops": 9,
         "kind": "axis_extrusion",
-        "plane_triangles": 805,
+        "plane_triangles": 915,
         "project_axes": [
           0,
           1
@@ -371,9 +371,9 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_102308.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_102308",
       "returncode": 0,
-      "elapsed_s": 22.895,
+      "elapsed_s": 24.854,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  38.86%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  39.16%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -381,7 +381,7 @@
         "cap_holes": 1,
         "cap_loops": 3,
         "kind": "axis_extrusion",
-        "plane_triangles": 793,
+        "plane_triangles": 920,
         "project_axes": [
           0,
           1
@@ -420,7 +420,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1037019.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1037019",
       "returncode": 0,
-      "elapsed_s": 22.279,
+      "elapsed_s": 23.405,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -430,7 +430,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 812,
+        "plane_triangles": 913,
         "project_axes": [
           0,
           1
@@ -469,7 +469,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100027.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100027",
       "returncode": 0,
-      "elapsed_s": 20.302,
+      "elapsed_s": 22.218,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -479,7 +479,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 791,
+        "plane_triangles": 927,
         "project_axes": [
           0,
           2
@@ -518,7 +518,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100029.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100029",
       "returncode": 0,
-      "elapsed_s": 20.857,
+      "elapsed_s": 22.44,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -528,7 +528,7 @@
         "cap_holes": 8,
         "cap_loops": 9,
         "kind": "axis_extrusion",
-        "plane_triangles": 824,
+        "plane_triangles": 946,
         "project_axes": [
           0,
           1
@@ -567,9 +567,9 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100030.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100030",
       "returncode": 0,
-      "elapsed_s": 22.306,
+      "elapsed_s": 23.596,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  57.47%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  56.86%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -577,7 +577,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 884,
+        "plane_triangles": 1001,
         "project_axes": [
           0,
           1
@@ -616,9 +616,9 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100040.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100040",
       "returncode": 0,
-      "elapsed_s": 23.118,
+      "elapsed_s": 24.667,
       "evaluator_verdict": "PASS",
-      "first_fail_metric": "Hausdorff Rel.                  68.23%         < 10%  FAIL",
+      "first_fail_metric": "Hausdorff Rel.                  68.26%         < 10%  FAIL",
       "tet_cavity_eval": {},
       "fastpath": {
         "axis": 2,
@@ -626,7 +626,7 @@
         "cap_holes": 2,
         "cap_loops": 6,
         "kind": "axis_extrusion",
-        "plane_triangles": 978,
+        "plane_triangles": 1113,
         "project_axes": [
           0,
           1
@@ -665,7 +665,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_1004826.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_1004826",
       "returncode": 0,
-      "elapsed_s": 32.295,
+      "elapsed_s": 34.525,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Hausdorff Rel.                  73.43%         < 10%  FAIL",
       "tet_cavity_eval": {},
@@ -675,7 +675,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 784,
+        "plane_triangles": 945,
         "project_axes": [
           0,
           1
@@ -714,7 +714,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100045.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100045",
       "returncode": 0,
-      "elapsed_s": 19.534,
+      "elapsed_s": 20.885,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -724,7 +724,7 @@
         "cap_holes": 0,
         "cap_loops": 1,
         "kind": "axis_extrusion",
-        "plane_triangles": 800,
+        "plane_triangles": 933,
         "project_axes": [
           0,
           1
@@ -763,7 +763,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100077.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100077",
       "returncode": 0,
-      "elapsed_s": 19.083,
+      "elapsed_s": 20.701,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Hausdorff Rel.                  10.19%         < 10%  FAIL",
       "tet_cavity_eval": {},
@@ -773,7 +773,7 @@
         "cap_holes": 1,
         "cap_loops": 2,
         "kind": "axis_extrusion",
-        "plane_triangles": 796,
+        "plane_triangles": 927,
         "project_axes": [
           1,
           2
@@ -812,7 +812,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100322.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100322",
       "returncode": 0,
-      "elapsed_s": 27.062,
+      "elapsed_s": 28.272,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
       "tet_cavity_eval": {},
@@ -822,7 +822,7 @@
         "cap_holes": 5,
         "cap_loops": 6,
         "kind": "axis_extrusion",
-        "plane_triangles": 1222,
+        "plane_triangles": 1346,
         "project_axes": [
           0,
           1
@@ -861,7 +861,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100323.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100323",
       "returncode": 0,
-      "elapsed_s": 25.483,
+      "elapsed_s": 26.893,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
       "tet_cavity_eval": {},
@@ -871,7 +871,7 @@
         "cap_holes": 7,
         "cap_loops": 8,
         "kind": "axis_extrusion",
-        "plane_triangles": 1142,
+        "plane_triangles": 1256,
         "project_axes": [
           0,
           1
@@ -910,7 +910,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100330.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100330",
       "returncode": 0,
-      "elapsed_s": 23.122,
+      "elapsed_s": 24.791,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {},
@@ -920,7 +920,7 @@
         "cap_holes": 2,
         "cap_loops": 3,
         "kind": "axis_extrusion",
-        "plane_triangles": 1038,
+        "plane_triangles": 1156,
         "project_axes": [
           0,
           1

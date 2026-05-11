@@ -1335,13 +1335,14 @@ def _write_axis_extrusion_polymesh(
                         )
 
     num_z = max(2 * int(bl_layers) + 2, 10)
-    # U-16 (2026-05-11) — extrusion fastpath target_cells accuracy.
-    # Measured: with naive ``triangles = target_cells / num_z`` the
-    # final mesh ends up ~1.75× the user's target (BL prism extrusion
-    # adds rows per triangle).  Empirical compensation factor below
-    # is tunable via env.
+    # U-16 / U-17 (2026-05-11) — extrusion fastpath target_cells accuracy.
+    # Iteration history:
+    #   factor=1.0 (no comp): +38 % to +77 % over target (median +50 %)
+    #   factor=1.75:         −22 % to +22 % (median −20 %)
+    #   factor=1.5:          targeted ±10 % (next probe)
+    # 1.5 lines up with the empirical 1.49 cells/triangle/z-step.
     _ext_factor = float(os.environ.get(
-        "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR", "1.75",
+        "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR", "1.5",
     ))
     _eff_cells = max(1, int(target_cells / max(_ext_factor, 1e-3)))
     target_triangles = max(80, int(_eff_cells / num_z))
