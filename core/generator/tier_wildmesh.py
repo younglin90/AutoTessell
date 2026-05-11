@@ -1335,7 +1335,16 @@ def _write_axis_extrusion_polymesh(
                         )
 
     num_z = max(2 * int(bl_layers) + 2, 10)
-    target_triangles = max(80, int(max(1, target_cells) / num_z))
+    # U-16 (2026-05-11) — extrusion fastpath target_cells accuracy.
+    # Measured: with naive ``triangles = target_cells / num_z`` the
+    # final mesh ends up ~1.75× the user's target (BL prism extrusion
+    # adds rows per triangle).  Empirical compensation factor below
+    # is tunable via env.
+    _ext_factor = float(os.environ.get(
+        "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR", "1.75",
+    ))
+    _eff_cells = max(1, int(target_cells / max(_ext_factor, 1e-3)))
+    target_triangles = max(80, int(_eff_cells / num_z))
     max_area = float(polygon.area) / float(target_triangles)
 
     points_2d: list[tuple[float, float]] = []
@@ -2084,8 +2093,20 @@ class TierWildMeshGenerator:
             and tet_f.shape[0] > 0
         )
         if _rebudget_on:
-            _target_low = max(1, int(round(float(_cell_budget) * 0.5)))
-            _target_high = max(_target_low, int(round(float(_cell_budget) * 2.0)))
+            # U-15 (2026-05-11) — tighten target band from [0.5x, 2.0x]
+            # to [0.85x, 1.15x] so the rebudget feedback loop converges
+            # to ±15 % of user-specified target_cells.  The wider band
+            # was suitable for the cavity-eval helpers' 0.5x..2x verifier
+            # but obscured the user's "approximate" cell-count contract.
+            # Tunable via env (default ratios still allow loose mode).
+            _band_lo = float(os.environ.get(
+                "AUTO_TESSELL_WILDMESH_REBUDGET_LO", "0.85",
+            ))
+            _band_hi = float(os.environ.get(
+                "AUTO_TESSELL_WILDMESH_REBUDGET_HI", "1.15",
+            ))
+            _target_low = max(1, int(round(float(_cell_budget) * _band_lo)))
+            _target_high = max(_target_low, int(round(float(_cell_budget) * _band_hi)))
             _budget_layers = int(
                 params.get("post_layers_num_layers") or params.get("bl_layers") or 0
             )
