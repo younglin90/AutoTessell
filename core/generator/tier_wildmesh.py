@@ -158,14 +158,20 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     raw_edge = float(
         params.get("wildmesh_edge_length_r", params.get("wildmesh_edge_length", d["edge_length_r"]))
     )
-    # U-8 / U-13 (2026-05-11) — target_cells → edge_length_r mapping.
-    # Enabled by default after U-13 confirmed 21-STL bench remains
-    # 21/21 PASS with the U-3 cleanup pipeline + U-6/U-9 bumps
+    # U-8 / U-13 / U-14 (2026-05-11) — target_cells → edge_length_r
+    # mapping.  Enabled by default after U-13 confirmed 21-STL bench
+    # remains 21/21 PASS with the U-3 cleanup pipeline + U-6/U-9 bumps
     # absorbing any new edge_r-induced quality shifts.  Set
     # ``AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP=0`` to disable.
     # When enabled, map target_cells to edge_length_r via inverse-cube
     # scaling against a baseline (14 k cells at edge_r=0.06).
-    # pytetwild's quality-driven loop limits accuracy to ~±40 %.
+    # U-14 finding: pytetwild's internal quality-driven loop puts a
+    # *per-STL floor* on output cell count that overrides any edge_r
+    # the user passes (verified overshoot=1.4 / 2.0 / 10.0 all produce
+    # the same cell count on easy_100643).  Accuracy on pytetwild
+    # general path stays at ~+40-77 % regardless of overshoot tuning.
+    # Real ±10 % accuracy needs a 2-shot feedback loop or replacing
+    # pytetwild — both multi-week scope.
     _target_cells_raw = params.get("target_cells")
     _remap_on = os.environ.get(
         "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP", "1",
