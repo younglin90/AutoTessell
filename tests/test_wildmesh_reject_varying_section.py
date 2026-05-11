@@ -114,3 +114,60 @@ def test_reject_varying_section_env_on(monkeypatch):
             "AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION", "0",
         ) == "1"
     )
+
+
+def test_extrusion_writer_rejects_cone_when_env_on(tmp_path, monkeypatch):
+    """Integration test: a cone has a varying cross-section (radius
+    shrinks along axis).  With the env gate ON, the extrusion writer
+    must return None instead of producing an approximated polyMesh."""
+    pytest.importorskip("trimesh")
+    pytest.importorskip("meshpy.triangle")
+    pytest.importorskip("shapely")
+
+    import trimesh
+    from core.generator.tier_wildmesh import _write_axis_extrusion_polymesh
+
+    cone = trimesh.creation.cone(radius=1.0, height=2.0, sections=20)
+
+    monkeypatch.setenv(
+        "AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION", "1",
+    )
+    case_dir = tmp_path / "cone_reject"
+    case_dir.mkdir()
+    result = _write_axis_extrusion_polymesh(
+        cone, case_dir, target_cells=2000, bl_layers=3, forced_axis=2,
+    )
+    assert result is None, (
+        f"expected reject for cone (varying section), got {result}"
+    )
+
+
+def test_extrusion_writer_accepts_cone_when_env_off(tmp_path, monkeypatch):
+    """Default behaviour: env unset.  Cone should still be processed
+    (extrusion fastpath approximation), confirming the gate is opt-in."""
+    pytest.importorskip("trimesh")
+    pytest.importorskip("meshpy.triangle")
+    pytest.importorskip("shapely")
+
+    import trimesh
+    from core.generator.tier_wildmesh import _write_axis_extrusion_polymesh
+
+    cone = trimesh.creation.cone(radius=1.0, height=2.0, sections=20)
+
+    monkeypatch.delenv(
+        "AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION", raising=False,
+    )
+    case_dir = tmp_path / "cone_accept"
+    case_dir.mkdir()
+    result = _write_axis_extrusion_polymesh(
+        cone, case_dir, target_cells=2000, bl_layers=3, forced_axis=2,
+    )
+    # Default (env unset) — extrusion writer proceeds and writes some
+    # polyMesh result.  Failure modes other than the varying-section
+    # gate (e.g. import errors) would also return None, but we check
+    # for a non-None dict to confirm the gate didn't fire.
+    assert result is not None, (
+        "expected extrusion writer to succeed when reject gate is off"
+    )
+    assert isinstance(result, dict)
+    assert int(result.get("num_cells", 0)) > 0
