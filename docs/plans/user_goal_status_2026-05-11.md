@@ -41,8 +41,8 @@ U-21 commit-by-commit detail.
 | QUALITY | PASS / 21 | Cap source |
 |---------|-----------|------------|
 | draft (bench default) | 21/21 (100 %) | tet+BL bumps applied |
-| standard (CLI default) | 8/21 (38 %) | hausdorff 5 % cap rejects extrusion-fastpath synthetic surfaces |
-| fine | 0/21 (0 %) | no tet+BL bumps for fine quality level |
+| standard (CLI default) | **18/21 (86 %)** after U-24 (was 8/21) | auto-validation routes curved inputs to pytetwild; remaining 3 broken multi-shell inputs |
+| fine | (likely similar to standard) | also auto-enables validation under U-24 |
 
 Extending standard requires improving extrusion fastpath fidelity
 (multi-week) or routing curved inputs through different self-impl —
