@@ -1936,6 +1936,28 @@ class TierWildMeshGenerator:
             _mesh_type_fast == "tet"
             and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "1") != "0"
         ):
+            # U-24 (2026-05-11) — quality-level-aware validation.
+            # At standard / fine quality the user explicitly asks for
+            # tighter Hausdorff (5 %, 2 % caps); auto-enable the
+            # fastpath fidelity gate so curved-input STLs that fail
+            # the gate fall through to pytetwild for better fidelity.
+            # At draft (10 % cap) the synthetic extrusion approximation
+            # is acceptable and we preserve the 95 % self-impl coverage.
+            # Manual override: ``AUTO_TESSELL_WILDMESH_VALIDATE_FASTPATH``.
+            _ql_str = str(getattr(quality_level, "value", quality_level)).lower()
+            if (
+                _ql_str in ("standard", "fine")
+                and os.environ.get(
+                    "AUTO_TESSELL_WILDMESH_VALIDATE_FASTPATH", ""
+                ) == ""
+            ):
+                os.environ[
+                    "AUTO_TESSELL_WILDMESH_VALIDATE_FASTPATH"
+                ] = "1"
+                logger.info(
+                    "wildmesh_auto_enable_validate_fastpath_for_strict_quality",
+                    quality_level=_ql_str,
+                )
             target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
             bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
             extrusion_surfaces: list[tuple[str, Any, Path | None]] = [
