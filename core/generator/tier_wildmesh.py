@@ -158,16 +158,17 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     raw_edge = float(
         params.get("wildmesh_edge_length_r", params.get("wildmesh_edge_length", d["edge_length_r"]))
     )
-    # U-8 (2026-05-11) — target_cells → edge_length_r mapping.
-    # Opt-in via ``AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP=1`` because
-    # the override changes the calibration the 21-STL bench depends on
-    # for 100 % PASS.  When opted in, map target_cells to edge_length_r
-    # via inverse-cube scaling against a baseline (14 k cells at
-    # edge_r=0.06).  pytetwild's quality-driven loop limits accuracy
-    # to ~±40 %.
+    # U-8 / U-13 (2026-05-11) — target_cells → edge_length_r mapping.
+    # Enabled by default after U-13 confirmed 21-STL bench remains
+    # 21/21 PASS with the U-3 cleanup pipeline + U-6/U-9 bumps
+    # absorbing any new edge_r-induced quality shifts.  Set
+    # ``AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP=0`` to disable.
+    # When enabled, map target_cells to edge_length_r via inverse-cube
+    # scaling against a baseline (14 k cells at edge_r=0.06).
+    # pytetwild's quality-driven loop limits accuracy to ~±40 %.
     _target_cells_raw = params.get("target_cells")
     _remap_on = os.environ.get(
-        "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP", "0",
+        "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP", "1",
     ) == "1"
     if _target_cells_raw and _remap_on:
         try:
