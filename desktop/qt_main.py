@@ -96,6 +96,7 @@ _DEFAULT_ENV = {
     # P4D pytetwild fallback + AGGR/L3 repair (extreme 입력 회복).
     "AUTO_TESSELL_STELLAR_KLINGNER": "1",   # Klingner edge contract (P2.1).
     "AUTO_TESSELL_BL_ASPECT_ENFORCE": "1",  # post-extrude aspect cap.
+    "AUTO_TESSELL_BL_ASPECT_TARGET": "1000",
     "AUTO_TESSELL_P4C_PYTETWILD": "1",      # P4-C external fallback.
     "AUTO_TESSELL_VVV2_QUEUE": "1",         # Stellar swap queue.
     "AUTO_TESSELL_RRR2_TARGETED": "1",      # AMIPS targeted smoothing.
@@ -104,6 +105,19 @@ _DEFAULT_ENV = {
     "AUTO_TESSELL_AGGR_REPAIR": "0",        # off by default (heavier).
     "AUTO_TESSELL_L3_AI_REPAIR": "0",       # off by default (very heavy).
     "AUTO_TESSELL_POLY_GRADE_RETRY": "1",   # poly retry chain.
+    # U-1 / U-3 / U-3b / U-13 / U-17 (2026-05-11) — bench 와 parity.
+    # 이 env 들이 빠지면 GUI 21-STL 결과가 18/21 수준으로 떨어진다.
+    # bench_cavity_eval.py 의 default 와 동일하게 설정.
+    "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST": "1",      # U-1
+    "AUTO_TESSELL_BL_DROP_NEG_VOL": "1",                   # U-3
+    "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD": "18",           # U-3b
+    "AUTO_TESSELL_BL_DROP_MAX_ITER": "8",
+    "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP": "1",        # U-13
+    "AUTO_TESSELL_WILDMESH_TARGET_CALIB_BASE": "14000",
+    "AUTO_TESSELL_WILDMESH_TARGET_OVERSHOOT": "1.4",
+    "AUTO_TESSELL_WILDMESH_BOX_TARGET_FRAC": "0.95",       # U-12
+    "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR": "1.5",  # U-17
+    "AUTO_TESSELL_WILDMESH_EXTRUSION_OUTER_FACTOR": "0.9",
 }
 
 
