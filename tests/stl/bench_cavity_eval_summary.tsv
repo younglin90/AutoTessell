@@ -1,22 +1,22 @@
 stl	returncode	elapsed_s	bl_path	evaluator_verdict	first_fail_metric	anti_invert_n_capped	anti_invert_max_reduction	n_components	n_accepted	n_rejected_uncovered_shell	n_rejected_bad_det	n_rejected_bad_shape	n_rejected_bad_non_ortho	n_rejected_bad_skewness
-test_cube.stl	0	22.875	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/easy_100034.stl	0	23.058	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/easy_100423.stl	0	23.283	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  23.28%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/easy_100643.stl	0	23.093	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/easy_101170.stl	0	23.857	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/easy_101187.stl	0	24.011	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/extreme_1017013.stl	0	51.074	main	PASS	Max Non-Ortho                    86.4°         < 80°  FAIL	175	0.067513	226	192	0	0	27	7	0
-tests/stl/thingi10k_bench20/extreme_1017014.stl	0	30.475	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  66.93%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/extreme_1017017.stl	0	30.117	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  48.66%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/extreme_102308.stl	0	27.163	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  39.16%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/extreme_1037019.stl	0	25.712	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/hard_100027.stl	0	24.33	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/hard_100029.stl	0	24.416	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/hard_100030.stl	0	25.899	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  56.86%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/hard_100040.stl	0	27.118	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  68.26%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/hard_1004826.stl	0	36.627	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  73.43%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/medium_100045.stl	0	23.212	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/medium_100077.stl	0	22.831	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  10.19%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/medium_100322.stl	0	30.379	fastpath:axis_extrusion	PASS	Min Determinant                 0.0004       > 0.001  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/medium_100323.stl	0	29.404	fastpath:axis_extrusion	PASS	Min Determinant                 0.0004       > 0.001  FAIL	0	0.0	0	0	0	0	0	0	0
-tests/stl/thingi10k_bench20/medium_100330.stl	0	26.58	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+test_cube.stl	0	23.229	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/easy_100034.stl	0	22.779	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/easy_100423.stl	0	23.223	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  23.28%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/easy_100643.stl	0	22.74	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/easy_101170.stl	0	23.275	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/easy_101187.stl	0	23.327	main_no_eval_block	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/extreme_1017013.stl	0	50.995	main	PASS	Max Non-Ortho                    86.4°         < 80°  FAIL	175	0.067513	226	192	0	0	27	7	0
+tests/stl/thingi10k_bench20/extreme_1017014.stl	0	30.159	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  66.93%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/extreme_1017017.stl	0	29.419	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  48.66%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/extreme_102308.stl	0	26.046	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  39.16%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/extreme_1037019.stl	0	24.535	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/hard_100027.stl	0	23.174	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/hard_100029.stl	0	23.498	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/hard_100030.stl	0	24.85	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  56.86%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/hard_100040.stl	0	26.153	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  68.26%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/hard_1004826.stl	0	35.641	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  73.43%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/medium_100045.stl	0	22.204	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/medium_100077.stl	0	22.176	fastpath:axis_extrusion	PASS	Hausdorff Rel.                  10.19%         < 10%  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/medium_100322.stl	0	29.615	fastpath:axis_extrusion	PASS	Min Determinant                 0.0004       > 0.001  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/medium_100323.stl	0	28.361	fastpath:axis_extrusion	PASS	Min Determinant                 0.0004       > 0.001  FAIL	0	0.0	0	0	0	0	0	0	0
+tests/stl/thingi10k_bench20/medium_100330.stl	0	26.105	fastpath:axis_extrusion	PASS		0	0.0	0	0	0	0	0	0	0
