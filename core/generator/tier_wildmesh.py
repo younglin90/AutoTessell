@@ -1932,7 +1932,9 @@ class TierWildMeshGenerator:
                 mesh_stats = _write_stable_hole_sweep_candidate(
                     extrusion_surf,
                     case_dir,
-                    target_cells=max(1, int(target_cells * 0.9)),
+                    target_cells=max(1, int(target_cells * float(os.environ.get(
+                        "AUTO_TESSELL_WILDMESH_EXTRUSION_OUTER_FACTOR", "0.9",
+                    )))),
                     bl_layers=max(0, bl_layers),
                     reference_stl=reference_stl,
                 )
@@ -1940,7 +1942,9 @@ class TierWildMeshGenerator:
                     mesh_stats = _write_axis_extrusion_polymesh_guarded(
                         extrusion_surf,
                         case_dir,
-                        target_cells=max(1, int(target_cells * 0.9)),
+                        target_cells=max(1, int(target_cells * float(os.environ.get(
+                        "AUTO_TESSELL_WILDMESH_EXTRUSION_OUTER_FACTOR", "0.9",
+                    )))),
                         bl_layers=max(0, bl_layers),
                         reference_stl=reference_stl,
                     )
