@@ -1334,6 +1334,30 @@ def _write_axis_extrusion_polymesh(
                             scale=round(float(scale), 4),
                         )
 
+    # U-22 (2026-05-11) — opt-in early reject of varying-section sweeps.
+    # ``AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION=1`` causes the
+    # extrusion fastpath to bail out when the input cross-section
+    # changes significantly along the axis (class
+    # ``changing_section_sweep``).  When rejected, the caller falls
+    # through to the next path (pytetwild) for higher mesh fidelity.
+    # Default OFF preserves the 95 % self-impl coverage from U-15.
+    if os.environ.get(
+        "AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION", "0",
+    ) == "1":
+        _early_topo = _axis_section_topology_summary(surf, axis)
+        _early_class = _classify_axis_section_topology(
+            _early_topo,
+            cap_loop_count=int(len(loops)),
+            cap_hole_count=int(len(hole_loops)),
+        )
+        if _early_class == "changing_section_sweep":
+            logger.info(
+                "wildmesh_axis_extrusion_rejected_varying_section",
+                axis=int(axis),
+                class_name=_early_class,
+            )
+            return None
+
     num_z = max(2 * int(bl_layers) + 2, 10)
     # U-16 / U-17 (2026-05-11) — extrusion fastpath target_cells accuracy.
     # Iteration history:
