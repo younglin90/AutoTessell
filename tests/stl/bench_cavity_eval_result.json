@@ -14,7 +14,7 @@
       "stl": "test_cube.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
       "returncode": 0,
-      "elapsed_s": 89.66,
+      "elapsed_s": 92.45,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {
@@ -90,7 +90,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
       "returncode": 0,
-      "elapsed_s": 28.932,
+      "elapsed_s": 29.543,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.6\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -166,7 +166,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100423.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100423",
       "returncode": 0,
-      "elapsed_s": 309.824,
+      "elapsed_s": 313.977,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Aspect Ratio                1187.9        < 1000  FAIL",
       "tet_cavity_eval": {
@@ -242,7 +242,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_100643.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100643",
       "returncode": 0,
-      "elapsed_s": 28.599,
+      "elapsed_s": 29.97,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.9\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -318,7 +318,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_101170.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101170",
       "returncode": 0,
-      "elapsed_s": 33.955,
+      "elapsed_s": 35.152,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    82.0\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -394,7 +394,7 @@
       "stl": "tests/stl/thingi10k_bench20/easy_101187.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101187",
       "returncode": 0,
-      "elapsed_s": 46.264,
+      "elapsed_s": 48.628,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    82.1\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -470,7 +470,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017013.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017013",
       "returncode": 0,
-      "elapsed_s": 34.548,
+      "elapsed_s": 36.18,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    80.8\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -546,7 +546,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017014.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017014",
       "returncode": 0,
-      "elapsed_s": 29.477,
+      "elapsed_s": 31.157,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Min Determinant                 0.0009       > 0.001  FAIL",
       "tet_cavity_eval": {
@@ -622,7 +622,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1017017.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017017",
       "returncode": 0,
-      "elapsed_s": 36.241,
+      "elapsed_s": 38.185,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.7\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -698,7 +698,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_102308.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_102308",
       "returncode": 0,
-      "elapsed_s": 33.411,
+      "elapsed_s": 35.507,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.7\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -774,7 +774,7 @@
       "stl": "tests/stl/thingi10k_bench20/extreme_1037019.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1037019",
       "returncode": 0,
-      "elapsed_s": 67.445,
+      "elapsed_s": 72.108,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {
@@ -850,7 +850,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100027.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100027",
       "returncode": 0,
-      "elapsed_s": 44.003,
+      "elapsed_s": 46.793,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.9\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -926,7 +926,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100029.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100029",
       "returncode": 0,
-      "elapsed_s": 38.406,
+      "elapsed_s": 40.035,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.3\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -1002,7 +1002,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100030.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100030",
       "returncode": 0,
-      "elapsed_s": 82.825,
+      "elapsed_s": 87.529,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    90.0\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -1078,7 +1078,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_100040.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100040",
       "returncode": 0,
-      "elapsed_s": 24.418,
+      "elapsed_s": 25.97,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.6\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -1154,7 +1154,7 @@
       "stl": "tests/stl/thingi10k_bench20/hard_1004826.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_1004826",
       "returncode": 0,
-      "elapsed_s": 53.3,
+      "elapsed_s": 56.127,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    89.8\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -1230,7 +1230,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100045.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100045",
       "returncode": 0,
-      "elapsed_s": 211.099,
+      "elapsed_s": 220.152,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    88.9\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {
@@ -1306,7 +1306,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100077.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100077",
       "returncode": 0,
-      "elapsed_s": 70.639,
+      "elapsed_s": 75.34,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "",
       "tet_cavity_eval": {
@@ -1382,7 +1382,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100322.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100322",
       "returncode": 0,
-      "elapsed_s": 83.093,
+      "elapsed_s": 86.593,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Aspect Ratio                1086.4        < 1000  FAIL",
       "tet_cavity_eval": {
@@ -1458,7 +1458,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100323.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100323",
       "returncode": 0,
-      "elapsed_s": 84.916,
+      "elapsed_s": 84.78,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Aspect Ratio                1316.2        < 1000  FAIL",
       "tet_cavity_eval": {
@@ -1534,7 +1534,7 @@
       "stl": "tests/stl/thingi10k_bench20/medium_100330.stl",
       "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100330",
       "returncode": 0,
-      "elapsed_s": 140.604,
+      "elapsed_s": 150.453,
       "evaluator_verdict": "PASS",
       "first_fail_metric": "Max Non-Ortho                    86.5\u00b0         < 80\u00b0  FAIL",
       "tet_cavity_eval": {

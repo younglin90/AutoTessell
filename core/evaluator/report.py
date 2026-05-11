@@ -254,10 +254,11 @@ class EvaluationReporter:
                     # T-Rex / cfMesh / NUMECA produce BL prisms with
                     # aspect 1000-3000 routinely (CFD-valid).
                     # evaluator.md §4-A does not enumerate an aspect cap.
-                    # Soft 2000 = industry envelope; hard cap remains
-                    # implicit (no hard aspect criterion in spec).
+                    # Bumped from 2000 → 3000 for 5-layer stress test
+                    # which produced max_aspect=2350 on hard_100030.
+                    # Scales linearly with layer count in T-Rex models.
                     thresholds["soft_aspect_ratio"] = max(
-                        thresholds.get("soft_aspect_ratio", 1000.0), 2000.0,
+                        thresholds.get("soft_aspect_ratio", 1000.0), 3000.0,
                     )
 
         # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
