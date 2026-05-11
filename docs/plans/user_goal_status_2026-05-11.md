@@ -52,10 +52,10 @@ multi-week.  Out of scope for current ralph-loop iteration window.
 
 - **medium_100322 / medium_100323**: +35-45 % cell over-shoot — these
   have "changing_section_sweep" topology that the extrusion fastpath
-  can detect (and stores classification in native_bl_quality.json) but
-  doesn't gate on.  Adding the gate would route them to pytetwild
-  (better fidelity, less self-impl).  Env knob:
-  ``AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION`` (not yet wired).
+  can detect (and stores classification in native_bl_quality.json).
+  ``AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION=1`` (U-22, wired)
+  opt-in routes them to pytetwild for better fidelity at the cost
+  of self-impl coverage.  Default OFF.
 - **extreme_1017013**: −56 % cell under-shoot — broken multi-shell
   input (109 components, 5074 self-intersections).  Even pytetwild
   produces a much smaller mesh than target.
@@ -81,4 +81,5 @@ multi-week.  Out of scope for current ralph-loop iteration window.
 - ``AUTO_TESSELL_WILDMESH_REBUDGET_LO=0.85`` (U-15)
 - ``AUTO_TESSELL_WILDMESH_REBUDGET_HI=1.15`` (U-15)
 - ``AUTO_TESSELL_WILDMESH_VALIDATE_FASTPATH=0`` (U-21, opt-in)
+- ``AUTO_TESSELL_WILDMESH_REJECT_VARYING_SECTION=0`` (U-22, opt-in)
 - ``AUTO_TESSELL_BENCH_FASTPATH_OFF=0`` (U-10, default keep fastpaths on)
