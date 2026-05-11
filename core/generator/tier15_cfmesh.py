@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
 from pathlib import Path
@@ -145,6 +146,60 @@ class Tier15CfMeshGenerator:
                         "cfmesh_max_cell_size",
                         _target * 4 if _target > 0 else 0.2,
                     ))
+                    # H-1 (autoresearch-deep hex loop, 2026-05-11) —
+                    # target_cells-aware maxCellSize remap. cfMesh's
+                    # default _max = target_cell_size * 4 gives 200-2400
+                    # cells on the 21-STL bench vs user target=10000.
+                    # Approximate cfMesh octree cell count as
+                    # domain_vol / cell_size^3; invert to get cell_size.
+                    # No-op when target_cells is not requested or domain
+                    # info is unavailable.
+                    _target_cells = int(_params.get("target_cells", 0) or 0)
+                    if _target_cells > 0 and not _params.get("cfmesh_max_cell_size"):
+                        try:
+                            _dom = getattr(strategy, "domain", None)
+                            _dmin = list(getattr(_dom, "min", []) or [])
+                            _dmax = list(getattr(_dom, "max", []) or [])
+                            if len(_dmin) == 3 and len(_dmax) == 3:
+                                _dvol = max(
+                                    (_dmax[0] - _dmin[0])
+                                    * (_dmax[1] - _dmin[1])
+                                    * (_dmax[2] - _dmin[2]),
+                                    1e-30,
+                                )
+                                # H-2 (2026-05-11) — calibration factor
+                                # 0.85 (was 1.0).  H-1 measurement across
+                                # 12 STLs showed cfMesh's actual cell
+                                # count is ~50-65 % of the uniform-grid
+                                # estimate (octree pruning of empty
+                                # cells).  CALIB=0.85 makes cell_size
+                                # ~15 % smaller, pushing cell count up
+                                # ~60 % toward target.
+                                _calib = float(os.environ.get(
+                                    "AUTO_TESSELL_HEX_CFMESH_TARGET_CALIB",
+                                    "0.85",
+                                ))
+                                _max_from_target = (
+                                    (_dvol / _target_cells) ** (1.0 / 3.0)
+                                ) * _calib
+                                # Only override if it makes cells SMALLER
+                                # (i.e., cell count larger).  Never coarsen
+                                # the default — that risks worse quality.
+                                if _max_from_target < _max:
+                                    logger.info(
+                                        "cfmesh_max_remap_from_target_cells",
+                                        target_cells=_target_cells,
+                                        domain_vol=_dvol,
+                                        prev_max=_max,
+                                        new_max=_max_from_target,
+                                        calib=_calib,
+                                    )
+                                    _max = _max_from_target
+                        except Exception as _exc:
+                            logger.debug(
+                                "cfmesh_max_remap_skipped",
+                                error=str(_exc)[:120],
+                            )
                     # BETA2870 — draft default = uniform sizing (no surface
                     # refinement). cfMesh octree halves cell size per level →
                     # any bnd < max forces +1 level (8× cells). bnd=0 으로 두고
