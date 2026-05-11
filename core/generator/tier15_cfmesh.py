@@ -18,6 +18,67 @@ logger = get_logger(__name__)
 TIER_NAME = "tier15_cfmesh"
 
 
+def _hex_repair_surface(stl_path: Path) -> None:
+    """WildMesh-style surface repair, applied before cfMesh runs.
+
+    Mirrors ``tier_wildmesh._run_pipeline`` (lines 1857-1886):
+    1. ``trimesh.fill_holes`` — fills boundary loops.
+    2. ``pymeshfix.MeshFix.repair`` — self-intersection / non-manifold
+       fix-up via Attene's algorithm.
+
+    Writes the repaired STL back to ``stl_path``.  Safe no-op when the
+    input is already watertight.
+    """
+    try:
+        import trimesh as _tm  # type: ignore
+    except ImportError:
+        logger.info("hex_repair_surface_no_trimesh")
+        return
+    try:
+        surf = _tm.load(str(stl_path), force="mesh")
+        if surf is None or len(getattr(surf, "vertices", [])) == 0:
+            return
+        if surf.is_watertight:
+            return
+        logger.info(
+            "hex_repair_surface_pre",
+            n_verts=len(surf.vertices),
+            n_faces=len(surf.faces),
+            watertight=False,
+        )
+        try:
+            surf.fill_holes()
+        except Exception as exc:
+            logger.warning("hex_repair_fill_holes_failed", error=str(exc)[:120])
+        if not surf.is_watertight:
+            try:
+                import pymeshfix  # type: ignore
+
+                mf = pymeshfix.MeshFix(surf.vertices, surf.faces)
+                mf.repair()
+                repaired = _tm.Trimesh(vertices=mf.points, faces=mf.faces)
+                if len(repaired.vertices) > 0 and len(repaired.faces) > 0:
+                    surf = repaired
+                    logger.info("hex_repair_pymeshfix_success")
+                else:
+                    logger.warning("hex_repair_pymeshfix_empty")
+            except Exception as exc:
+                logger.warning(
+                    "hex_repair_pymeshfix_failed", error=str(exc)[:120],
+                )
+        # Write back even if not yet fully watertight — cfMesh is more
+        # tolerant than fTetWild and a partial repair can still help.
+        surf.export(str(stl_path))
+        logger.info(
+            "hex_repair_surface_post",
+            n_verts=len(surf.vertices),
+            n_faces=len(surf.faces),
+            watertight=bool(surf.is_watertight),
+        )
+    except Exception as exc:
+        logger.warning("hex_repair_surface_failed", error=str(exc)[:120])
+
+
 def generate_cfmesh_dict(strategy: MeshStrategy) -> dict[str, Any]:
     """cfMesh용 meshDict 내용을 Python dict로 생성한다.
 
@@ -95,11 +156,23 @@ class Tier15CfMeshGenerator:
             # 케이스 구조 생성
             self._writer.ensure_case_structure(case_dir)
 
-            # STL 복사
+            # STL 복사 + H-10 WildMesh-style surface repair
+            # (autoresearch-deep hex loop, 2026-05-12).  Broken multi-shell
+            # STLs (109 components, 5000+ self-intersections) cause cfMesh
+            # to produce 2-14 % of target cells.  Apply the same recipe
+            # tier_wildmesh uses for fTetWild: trimesh.fill_holes →
+            # pymeshfix.MeshFix.repair.  Result: cfMesh sees a closed,
+            # manifold surface and meshes it normally.
             surface_stl = case_dir / "constant" / "triSurface" / "surface.stl"
             if preprocessed_path.exists():
                 shutil.copy(str(preprocessed_path), str(surface_stl))
                 logger.info("stl_copied", src=str(preprocessed_path), dst=str(surface_stl))
+                if (
+                    os.environ.get(
+                        "AUTO_TESSELL_HEX_CFMESH_REPAIR_SURFACE", "1",
+                    ) == "1"
+                ):
+                    _hex_repair_surface(surface_stl)
 
             # Dict 파일 생성
             self._writer.write_control_dict(case_dir, application="cartesianMesh")
