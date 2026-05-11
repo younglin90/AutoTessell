@@ -205,6 +205,8 @@ class Tier15CfMeshGenerator:
                     # any bnd < max forces +1 level (8× cells). bnd=0 으로 두고
                     # 사용자가 GUI slider 로 명시할 때만 refinement 활성.
                     # cube → 1.7k cell (12 cells/dim, draft 적정).
+                    # H-7b REVERT (2026-05-12): bnd=max/2 caused 14× cell
+                    # explosion (test_cube 22k → 325k) — too aggressive.
                     if "cfmesh_boundary_cell_size" in _params:
                         _bnd = float(_params["cfmesh_boundary_cell_size"])
                     else:

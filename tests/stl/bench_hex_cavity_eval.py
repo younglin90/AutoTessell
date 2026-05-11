@@ -89,7 +89,11 @@ def run_one(stl_path: Path, case_dir: Path) -> dict[str, Any]:
     env.setdefault("AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK", "0")
     env.setdefault("AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK", "1")
     env.setdefault("AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD", "18")
-    env.setdefault("AUTO_TESSELL_BL_DROP_MAX_ITER", "8")
+    # H-7 (2026-05-12) — bump max iterations from 8 → 24 so
+    # hard_1004826 (633 cells dropped in 8 iters, still
+    # max_skew=70.5) can converge.  Iter pattern was monotone
+    # decreasing (89,175,168,106,63,20,7,5) — more iters needed.
+    env.setdefault("AUTO_TESSELL_BL_DROP_MAX_ITER", "24")
 
     row: dict[str, Any] = {
         "stl": stl_path.relative_to(ROOT).as_posix(),
