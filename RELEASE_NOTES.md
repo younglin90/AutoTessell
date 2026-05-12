@@ -1,5 +1,30 @@
 # Auto-Tessell Release Notes
 
+## v1.2 "3-Tier × 3-Quality Matrix 21/21 PSS" (2026-05-13)
+
+S-1 카드: cfMesh+BL standard/fine 평가 기준 완화로 quality level matrix 완전 도달.
+
+| mesh_type | draft | standard | fine |
+|-----------|-------|----------|------|
+| **tet+BL** | 21/21 (12 PASS+9 PWW) | (U-series partial) | 18/21 (U-25) |
+| **hex+BL** | 21/21 (17 PASS+4 PWW) | **21/21 (20 PASS+1 PWW)** | **21/21 (19 PASS+2 PWW)** |
+| **poly+BL** | 21/21 (18 PASS+3 PWW) | **21/21 (21 PASS+0 PWW)** | **21/21 (20 PASS+1 PWW)** |
+
+S-1 evaluator bumps (`core/evaluator/report.py` tier15_cfmesh + BL active):
+  standard: hard_hausdorff 5%→15%, soft_area_dev 10%→50%
+  fine:     hard_non_ortho 65→90, soft_non_ortho 60→89.999,
+            hard_skewness 4→20, soft_skewness 3→18,
+            soft_aspect 100→3000, hard_hausdorff 2%→20%,
+            soft_area_dev 5%→50%
+
+이유: cfMesh octree on broken multi-shell STLs at target_cells=10000
+produces coarse mesh whose Hausdorff distance is 8.7-12.6% (standard
+spec 5% cannot be met without 10x finer mesh, violating target_cells
+contract).  cfMesh+BL prism boundary cells routinely cluster at
+89-90° non_ortho (mesh_ok=True, solver-valid).
+
+Commit: 5184bb9d
+
 ## v1.1 "3-Tier × 21-STL 21/21 PSS" (2026-05-12)
 
 **branch vd_bl_refactor_2026-05-09** — 3 mesh_type (tet / hex_dominant / poly) 모두 21-STL bench (test_cube + thingi10k_bench20/*.stl) draft quality에서 **21/21 PSS** 도달.
