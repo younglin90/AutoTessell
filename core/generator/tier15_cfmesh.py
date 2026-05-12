@@ -371,7 +371,22 @@ class Tier15CfMeshGenerator:
                                 # Apply SA-fit cell_size, capped at
                                 # current/N (default 4 = up to +2 octree
                                 # levels of refinement near surface).
+                                # H-13 detection gate — default OFF to
+                                # preserve clean under-shoot behaviour
+                                # on multi-body but well-formed STLs
+                                # (medium_100322 → 29992 cells if
+                                # auto-fired, vs 8436 with detection off).
+                                # Opt in via env to enable broken-input
+                                # cell-count rescue.
+                                _do_broken_detect = (
+                                    os.environ.get(
+                                        "AUTO_TESSELL_HEX_CFMESH_BROKEN_DETECT",
+                                        "0",
+                                    ) == "1"
+                                )
                                 try:
+                                    if not _do_broken_detect:
+                                        raise RuntimeError("broken_detect_disabled")
                                     _orig_path_str = (
                                         getattr(strategy, "input_file", "")
                                         or ""

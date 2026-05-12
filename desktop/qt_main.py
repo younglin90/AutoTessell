@@ -118,6 +118,18 @@ _DEFAULT_ENV = {
     "AUTO_TESSELL_WILDMESH_BOX_TARGET_FRAC": "0.95",       # U-12
     "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR": "1.5",  # U-17
     "AUTO_TESSELL_WILDMESH_EXTRUSION_OUTER_FACTOR": "0.9",
+    # H-1 / H-3 / H-6 / H-7 / H-10 / H-11 (2026-05-12) — hex+cfMesh loop.
+    # bench_hex_cavity_eval.py default와 동일.  이 env 들이 빠지면
+    # GUI 21-STL hex+BL 결과가 12/21 baseline 수준으로 떨어진다.
+    "AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM": "1",           # cfMesh는 OpenFOAM external
+    "AUTO_TESSELL_HEX_CFMESH_TARGET_CALIB": "0.85",        # H-2
+    "AUTO_TESSELL_HEX_CFMESH_REPAIR_SURFACE": "1",         # H-10 WildMesh repair
+    "AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK": "0",        # H-6 hex-safe
+    "AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK": "1",
+    # tet loop default 8 < H-7's 24.  hex+BL 의 broken-input cleanup 에
+    # 더 많은 iter 필요.  tet+BL bench도 8 → 24 로 올라가지만 (모든 카드
+    # PASS) tet loop 측정상 negative effect 없음.
+    "AUTO_TESSELL_BL_DROP_MAX_ITER": "24",
 }
 
 

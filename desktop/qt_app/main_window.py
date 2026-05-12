@@ -3157,9 +3157,16 @@ class AutoTessellWindow:  # type: ignore[misc]
             if bl_on:
                 # BL ON — spin 값 그대로 propagate.
                 if getattr(self, "_cfm_bl_layers_spin", None) is not None:
-                    tier_params["cfmesh_bl_n_layers"] = int(
-                        self._cfm_bl_layers_spin.value()
-                    )
+                    _bl_layers_v = int(self._cfm_bl_layers_spin.value())
+                    tier_params["cfmesh_bl_n_layers"] = _bl_layers_v
+                    # H-3/H-8 GUI parity (2026-05-12) — also set CLI's
+                    # standard ``bl_layers`` key so the orchestrator
+                    # populates ``strategy.boundary_layers.enabled=True``
+                    # and ``num_layers``.  Without this the cfMesh+BL
+                    # evaluator bumps (soft_non_ortho 89.999, hard_skew 20)
+                    # do not fire — they gate on
+                    # ``strategy.boundary_layers.enabled``.
+                    tier_params.setdefault("bl_layers", _bl_layers_v)
                 if getattr(self, "_cfm_bl_ratio_spin", None) is not None:
                     tier_params["cfmesh_bl_thickness_ratio"] = float(
                         self._cfm_bl_ratio_spin.value()
@@ -3174,6 +3181,15 @@ class AutoTessellWindow:  # type: ignore[misc]
                 tier_params["cfmesh_bl_n_layers"] = 0
         except Exception:
             pass
+
+        # H-1 GUI parity (2026-05-12) — tier15_cfmesh's target_cells-aware
+        # maxCellSize remap reads ``target_cells`` from tier_specific_params,
+        # NOT from strategy.  Without this propagate, GUI hex+BL falls back
+        # to cfMesh's coarse default and produces 200-2400 cells (vs target).
+        # Mirror bench_hex_cavity_eval.py: target_cells = max_cells when set.
+        if max_cells is not None and max_cells > 0:
+            tier_params.setdefault("target_cells", max_cells)
+            tier_params.setdefault("max_cells", max_cells)
 
         # y⁺ 패널에서 계산된 첫 층 두께 자동 주입 (beta100)
         if self._computed_bl_first_thickness is not None:
