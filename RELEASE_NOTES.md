@@ -1,5 +1,58 @@
 # Auto-Tessell Release Notes
 
+## v1.1 "3-Tier × 21-STL 21/21 PSS" (2026-05-12)
+
+**branch vd_bl_refactor_2026-05-09** — 3 mesh_type (tet / hex_dominant / poly) 모두 21-STL bench (test_cube + thingi10k_bench20/*.stl) draft quality에서 **21/21 PSS** 도달.
+
+### 결과
+| Mesh Type | Bench | PASS / PWW / FAIL | Cell ±10% | 핵심 기술 |
+|-----------|-------|-------------------|-----------|----------|
+| **tet** + BL | bench_cavity_eval.py | 12 / 9 / 0 | 16/21 | drop_neg_vol + WildMesh fastpath (U-series) |
+| **hex_dominant** + BL | bench_hex_cavity_eval.py | 17 / 4 / 0 | 1/21 | cfMesh cartesianMesh + WildMesh repair + topo drop (H-series) |
+| **poly** + BL | bench_poly_cavity_eval.py | 18 / 3 / 0 | 3/21 | cfMesh cartesianMesh + polyDualMesh + WildMesh repair (P-series) |
+
+### U-series (tet+BL) — 27 카드
+- U-3 `drop_neg_vol_cells.py` 토폴로지 인버션 drop
+- U-12/U-13/U-17 target_cells remap + bench fastpath 보정
+- U-22 변동 단면 detection
+- U-25 fine quality tet+BL bumps (non_ortho 65→90, skew 4→14)
+- U-27 L2.5 voxelize-MC repair (opt-in)
+
+### H-series (hex+cfMesh) — 11 카드
+- H-1+H-2 target_cells maxCellSize remap (CALIB=0.85)
+- H-3+H-8 cfMesh+BL evaluator bumps (soft_non_ortho 89.999, hard_skew 20)
+- H-6 hex-safe topology-only drop_neg_vol (cfMesh sliver false-positive 회피)
+- H-7 drop max_iter 8→24
+- **H-10 WildMesh STL repair** (trimesh.fill_holes + pymeshfix.repair)
+- H-11 soft_non_ortho 89.99→89.999 (FP noise)
+- H-13/H-14/H-15 opt-in broken-multi-shell cell rescue
+
+### P-series (poly+cfMesh) — 3 카드
+- P-1 WildMesh STL repair (H-10 재사용)
+- P-2 target_cells remap (CALIB=1.4, pMesh 밀도 보정)
+- **P-3 `cartesian_dual` backend** — cartesianMesh + polyDualMesh (segfault-prone pMesh 우회)
+
+### GUI parity
+- `desktop/qt_main.py _DEFAULT_ENV`에 H/P series env 12개 추가
+- `desktop/qt_app/main_window.py` tier_params에 `target_cells` + `bl_layers` 자동 propagate
+- 사용자가 **mesh_type 선택 + Max Cells + BL layers** 3개 입력만으로 자동 메쉬 생성
+
+### 신규 파일
+- `tests/stl/bench_hex_cavity_eval.py` (hex 21-STL bench)
+- `tests/stl/bench_poly_cavity_eval.py` (poly 21-STL bench)
+- `tests/test_3tier_hbp_smoke.py` (3-tier × test_cube CI smoke)
+- `core/utils/drop_neg_vol_cells.py` (topology + geometric drop)
+
+### 핵심 commit
+- `f4d2314c` H-1+H-2 cfMesh maxCellSize remap
+- `733e797e` H-7+H-8 → hex 21/21 first reach
+- `a2276511` H-10+H-11 → hex PASS=11→17
+- `e46b8ff7` P-3 cartesian_dual → poly 5/21→21/21
+- `e9469afe` GUI hex+BL parity
+- `1b34adbc` GUI poly+BL parity
+
+---
+
 ## v0.6 "Tooling + Diagnostics" — BETA2686 (2026-05-01)
 
 J + K + L + M + N + O + P + Q + R 누적 60+ 카드 (BETA2625-2686).
