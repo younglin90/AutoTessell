@@ -6,11 +6,14 @@ third_party/cfmesh/build/pMesh on a prepared OpenFOAM case.
 """
 from __future__ import annotations
 
+import os
+import shutil
 import time
 from pathlib import Path
 from typing import Any
 
 from core.generator.openfoam_writer import OpenFOAMWriter
+from core.generator.tier15_cfmesh import _hex_repair_surface  # noqa: F401
 from core.schemas import MeshStrategy, TierAttempt, GeneratorStep
 from core.utils.logging import get_logger
 
@@ -67,6 +70,23 @@ class CfMeshPolyGenerator:
                 error_message="surface_mesh.path 없음",
             )
 
+        # P-1 (autoresearch-deep poly loop, 2026-05-12) — WildMesh-style
+        # STL repair before cfMesh pMesh.  Many broken multi-shell STLs
+        # cause pMesh to segfault during BL detection; running
+        # trimesh.fill_holes + pymeshfix.MeshFix.repair (same recipe as
+        # tier15_cfmesh H-10) on the input STL converts them to closed
+        # single-body surfaces that pMesh can mesh.
+        if os.environ.get(
+            "AUTO_TESSELL_POLY_CFMESH_REPAIR_SURFACE", "1",
+        ) == "1":
+            try:
+                _hex_repair_surface(Path(stl_path))
+            except Exception as _exc:
+                logger.warning(
+                    "poly_cfmesh_repair_surface_failed",
+                    error=str(_exc)[:120],
+                )
+
         params = strategy.tier_specific_params or {}
         sm = strategy.surface_mesh
         bl = getattr(strategy, "boundary_layers", None)
@@ -77,6 +97,48 @@ class CfMeshPolyGenerator:
             "cfmesh_max_cell_size",
             _target * 4 if _target > 0 else 0.2,
         ))
+        # P-2 (autoresearch-deep poly loop, 2026-05-12) — target_cells
+        # aware maxCellSize remap (mirror tier15_cfmesh H-1+H-2).
+        # cfMesh default max=target_cell_size*4 gives ≪ target cells on
+        # broken-input STLs; remap to (domain_vol / target_cells)^(1/3) *
+        # calib (default 0.85) to push toward target.
+        _target_cells = int(params.get("target_cells", 0) or 0)
+        if _target_cells > 0 and not params.get("cfmesh_max_cell_size"):
+            try:
+                _dom = getattr(strategy, "domain", None)
+                _dmin = list(getattr(_dom, "min", []) or [])
+                _dmax = list(getattr(_dom, "max", []) or [])
+                if len(_dmin) == 3 and len(_dmax) == 3:
+                    _dvol = max(
+                        (_dmax[0] - _dmin[0])
+                        * (_dmax[1] - _dmin[1])
+                        * (_dmax[2] - _dmin[2]),
+                        1e-30,
+                    )
+                    # pMesh produces ~2× cells/vol than cartesianMesh
+                    # because polyhedral merging adds intermediate
+                    # surface cells.  CALIB=1.4 (was 0.85, hex value)
+                    # compensates: test_cube 122k → ~10k cells.
+                    _calib = float(os.environ.get(
+                        "AUTO_TESSELL_POLY_CFMESH_TARGET_CALIB",
+                        "1.4",
+                    ))
+                    _max_from_target = (
+                        (_dvol / _target_cells) ** (1.0 / 3.0)
+                    ) * _calib
+                    if _max_from_target < max_cell:
+                        logger.info(
+                            "cfmesh_poly_max_remap_from_target",
+                            target_cells=_target_cells,
+                            domain_vol=_dvol,
+                            prev_max=max_cell,
+                            new_max=_max_from_target,
+                        )
+                        max_cell = _max_from_target
+            except Exception as _exc:
+                logger.debug(
+                    "cfmesh_poly_remap_skipped", error=str(_exc)[:120],
+                )
         # BETA2876 — poly 는 polyhedral 변환에서 surface refinement 가 없으면
         # corner / sharp feature 가 뭉개진다 (사용자 QA: "원래 형상을 보존하지 못함").
         # cfMesh octree 는 cell 을 절반씩 분할 — bnd >= max/2 면 같은 레벨 (refine
