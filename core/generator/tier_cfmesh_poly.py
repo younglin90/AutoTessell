@@ -168,22 +168,110 @@ class CfMeshPolyGenerator:
         if "cfmesh_bl_max_first_layer" in params:
             max_first = float(params["cfmesh_bl_max_first_layer"])
 
+        # P-3 (autoresearch-deep poly loop, 2026-05-12) — backend selector.
+        # ``cfmesh_pmesh`` (legacy): vendored pMesh executable directly
+        # produces polyhedral cells.  Segfaults on broken multi-shell
+        # STLs (13/21 NO_QR on bench).  ``cartesian_dual`` (default):
+        # use cartesianMesh (same as tier15_cfmesh hex+BL, proven
+        # 21/21 stable) followed by OpenFOAM polyDualMesh utility.
+        # cfMesh family (cartesianMesh) is preserved per user spec
+        # while the polyhedral conversion goes through a stable utility.
+        _backend = os.environ.get(
+            "AUTO_TESSELL_POLY_BACKEND", "cartesian_dual",
+        ).lower()
+
         t_step = time.monotonic()
-        r = cfm.poly_mesh(
-            str(stl_path), str(case_dir),
-            max_cell_size=max_cell,
-            min_cell_size=min_cell,
-            boundary_cell_size=boundary_cell,
-            bl_n_layers=n_layers,
-            bl_thickness_ratio=thickness_ratio,
-            bl_max_first_layer=max_first,
-            feature_angle_deg=float(params.get("bl_feature_angle", 30.0)),
-            keep_cells_intersecting_boundary=True,
-        )
+        if _backend == "cartesian_dual":
+            # Step 1: cartesianMesh (hex+BL volume mesh, segfault-free
+            # path already proven by tier15_cfmesh H-series 21/21).
+            r = cfm.cartesian_mesh(
+                str(stl_path), str(case_dir),
+                max_cell_size=max_cell,
+                min_cell_size=min_cell,
+                boundary_cell_size=boundary_cell,
+                bl_n_layers=n_layers,
+                bl_thickness_ratio=thickness_ratio,
+                bl_max_first_layer=max_first,
+                feature_angle_deg=float(params.get("bl_feature_angle", 30.0)),
+                keep_cells_intersecting_boundary=True,
+            )
+            if not r.get("success"):
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=time.monotonic() - t_start,
+                    steps=[GeneratorStep(
+                        name="cfmesh_cartesianMesh",
+                        status="failed",
+                        time=time.monotonic() - t_step,
+                    )],
+                    error_message=(
+                        "cartesian_dual stage 1 (cartesianMesh) 실패: "
+                        + (r.get("log", "")[-300:])
+                    ),
+                )
+            # Step 2: polyDualMesh (OpenFOAM utility) — hex→poly dual.
+            try:
+                from core.utils.openfoam_utils import run_openfoam
+                # polyDualMesh requires system/fvSchemes + fvSolution;
+                # cfmesh_native cartesian_mesh doesn't write them.
+                self._writer.write_control_dict(case_dir, application="polyDualMesh")
+                self._writer.write_fv_schemes(case_dir)
+                self._writer.write_fv_solution(case_dir)
+                _feat = float(params.get("bl_feature_angle", 30.0))
+                _step2_t = time.monotonic()
+                run_openfoam(
+                    "polyDualMesh", case_dir, [str(_feat)],
+                )
+                # polyDualMesh writes the new polyMesh into a time
+                # directory (1/polyMesh).  Promote it back to
+                # constant/polyMesh so the evaluator finds it.
+                _from = case_dir / "1" / "polyMesh"
+                _to = case_dir / "constant" / "polyMesh"
+                if _from.exists():
+                    if _to.exists():
+                        shutil.rmtree(str(_to))
+                    shutil.copytree(str(_from), str(_to))
+                logger.info(
+                    "cfmesh_poly_cartesian_dual_used",
+                    polymesh=str(_to),
+                    feature_angle=_feat,
+                    step1_s=round(time.monotonic() - t_step - (time.monotonic() - _step2_t), 3),
+                    step2_s=round(time.monotonic() - _step2_t, 3),
+                )
+            except Exception as exc:
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=time.monotonic() - t_start,
+                    steps=[GeneratorStep(
+                        name="polyDualMesh",
+                        status="failed",
+                        time=time.monotonic() - t_step,
+                    )],
+                    error_message=(
+                        f"cartesian_dual stage 2 (polyDualMesh) 실패: "
+                        f"{str(exc)[:300]}"
+                    ),
+                )
+        else:
+            # legacy pMesh path (segfault prone on broken STLs).
+            r = cfm.poly_mesh(
+                str(stl_path), str(case_dir),
+                max_cell_size=max_cell,
+                min_cell_size=min_cell,
+                boundary_cell_size=boundary_cell,
+                bl_n_layers=n_layers,
+                bl_thickness_ratio=thickness_ratio,
+                bl_max_first_layer=max_first,
+                feature_angle_deg=float(params.get("bl_feature_angle", 30.0)),
+                keep_cells_intersecting_boundary=True,
+            )
+
         step_time = time.monotonic() - t_step
         elapsed = time.monotonic() - t_start
 
-        if not r.get("success"):
+        if _backend != "cartesian_dual" and not r.get("success"):
             return TierAttempt(
                 tier=TIER_NAME,
                 status="failed",
@@ -192,7 +280,11 @@ class CfMeshPolyGenerator:
                 error_message=f"cfmesh pMesh 실패: {r.get('log', '')[-300:]}",
             )
 
-        logger.info("cfmesh_poly_vendored_used", polymesh=r.get("polymesh_dir"))
+        logger.info(
+            "cfmesh_poly_vendored_used",
+            backend=_backend,
+            polymesh=str(case_dir / "constant" / "polyMesh"),
+        )
         return TierAttempt(
             tier=TIER_NAME,
             status="success",
