@@ -268,6 +268,12 @@ class Tier15CfMeshGenerator:
                                         calib=_calib,
                                     )
                                     _max = _max_from_target
+                                # H-12 REVERT (2026-05-12): surface-area
+                                # formula over-corrects on healthy STLs
+                                # (test_cube 22k → 712k cells).  The
+                                # SA/V signal does not reliably
+                                # distinguish broken-multi-shell from
+                                # small-but-healthy STLs.
                         except Exception as _exc:
                             logger.debug(
                                 "cfmesh_max_remap_skipped",
