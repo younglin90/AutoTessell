@@ -18,6 +18,71 @@ logger = get_logger(__name__)
 TIER_NAME = "tier15_cfmesh"
 
 
+def _hex_pick_input_stl(preprocessed_path: Path, case_dir: Path) -> Path:
+    """Pick the STL to feed cfMesh, bypassing the preprocessor's
+    aggressive single-component reduction.
+
+    For broken multi-shell STLs, the L1/L2 preprocessor often collapses
+    the input to a tiny stub of the largest connected component.  When
+    we detect such a reduction (preprocessed face count < 50 % of
+    original), return the original STL path so cfMesh sees the full
+    geometry.  The downstream ``_hex_repair_surface`` will run
+    fill_holes + pymeshfix.repair to make it cfMesh-tractable.
+
+    Returns the original path on bypass, else the preprocessed path.
+    """
+    try:
+        geom_report = case_dir / "geometry_report.json"
+        if not geom_report.exists():
+            return preprocessed_path
+        import json as _json
+        meta = _json.loads(geom_report.read_text())
+        orig_path_str = (
+            meta.get("file_info", {}).get("path")
+            or meta.get("file", {}).get("path")
+        )
+        if not orig_path_str:
+            return preprocessed_path
+        orig_path = Path(orig_path_str)
+        if not orig_path.exists():
+            return preprocessed_path
+        # face counts — geometry_report stores at
+        # geometry.surface.num_faces (not surface_stats.face_count).
+        _surf = meta.get("geometry", {}).get("surface", {}) or {}
+        orig_faces = int(
+            _surf.get("num_faces")
+            or meta.get("geometry", {})
+                .get("surface_stats", {})
+                .get("face_count", 0)
+            or 0
+        )
+        if orig_faces <= 0:
+            return preprocessed_path
+        try:
+            import trimesh as _tm  # type: ignore
+            _m = _tm.load(str(preprocessed_path), force="mesh")
+            pre_faces = len(_m.faces) if _m is not None else 0
+        except Exception:
+            return preprocessed_path
+        if pre_faces == 0:
+            return preprocessed_path
+        # If preprocessor kept >=50 % of original faces, accept it.
+        ratio = pre_faces / orig_faces
+        if ratio >= 0.5:
+            return preprocessed_path
+        logger.info(
+            "hex_bypass_preprocessor_reduction",
+            orig=str(orig_path),
+            orig_faces=orig_faces,
+            pre_faces=pre_faces,
+            ratio=ratio,
+        )
+        return orig_path
+    except Exception as exc:
+        logger.debug("hex_pick_input_stl_skipped", error=str(exc)[:120])
+        return preprocessed_path
+
+
 def _hex_repair_surface(stl_path: Path) -> None:
     """WildMesh-style surface repair, applied before cfMesh runs.
 
@@ -165,8 +230,33 @@ class Tier15CfMeshGenerator:
             # manifold surface and meshes it normally.
             surface_stl = case_dir / "constant" / "triSurface" / "surface.stl"
             if preprocessed_path.exists():
-                shutil.copy(str(preprocessed_path), str(surface_stl))
-                logger.info("stl_copied", src=str(preprocessed_path), dst=str(surface_stl))
+                # H-14 (2026-05-12) — bypass preprocessor's
+                # aggressive face-count reduction when it collapses
+                # the input by >50 %.  Preprocessor selects the
+                # largest connected component for broken multi-shell
+                # STLs (hard_100030 1504 → 25 faces, area 45106 → 572).
+                # This leaves cfMesh meshing a tiny surface in a huge
+                # domain → 200-400 cells vs target=10000.  Use
+                # ORIGINAL STL + WildMesh repair for these cases.
+                _stl_src = preprocessed_path
+                # H-14 REVERT (2026-05-12): default OFF.  When the
+                # preprocessor severely reduces a broken STL (e.g.
+                # hard_100030 1504→25 faces), bypass restores original
+                # cells from 229 → 1468 (+540 %) but the resulting fine
+                # mesh tends to over-shoot target on other multi-body
+                # STLs (e.g. hard_100027 8308 → 35248).  Net cells
+                # distribution: H-11 6/21 within ±20 % → H-14+H-15
+                # 3/21.  Keep as opt-in for users tolerating overshoot.
+                if (
+                    os.environ.get(
+                        "AUTO_TESSELL_HEX_CFMESH_BYPASS_PREPROCESS", "0",
+                    ) == "1"
+                ):
+                    _stl_src = _hex_pick_input_stl(
+                        preprocessed_path, case_dir,
+                    )
+                shutil.copy(str(_stl_src), str(surface_stl))
+                logger.info("stl_copied", src=str(_stl_src), dst=str(surface_stl))
                 if (
                     os.environ.get(
                         "AUTO_TESSELL_HEX_CFMESH_REPAIR_SURFACE", "1",
@@ -268,12 +358,89 @@ class Tier15CfMeshGenerator:
                                         calib=_calib,
                                     )
                                     _max = _max_from_target
-                                # H-12 REVERT (2026-05-12): surface-area
-                                # formula over-corrects on healthy STLs
-                                # (test_cube 22k → 712k cells).  The
-                                # SA/V signal does not reliably
-                                # distinguish broken-multi-shell from
-                                # small-but-healthy STLs.
+                                # H-13/H-15 (autoresearch-deep hex loop,
+                                # 2026-05-12) — broken-multi-shell
+                                # detection via ORIGINAL STL body count.
+                                # After H-10 repair the cfMesh-input
+                                # surface is always 1 body, so we must
+                                # consult the original (pre-repair,
+                                # pre-preprocessing) STL.  When orig
+                                # bodies > 1, the STL is broken and
+                                # cfMesh's surface pruning produces
+                                # cells ≈ SA/cell_size² ≪ target.
+                                # Apply SA-fit cell_size, capped at
+                                # current/N (default 4 = up to +2 octree
+                                # levels of refinement near surface).
+                                try:
+                                    _orig_path_str = (
+                                        getattr(strategy, "input_file", "")
+                                        or ""
+                                    )
+                                    # Read original STL path from
+                                    # geometry_report.json if not in
+                                    # strategy.
+                                    if not _orig_path_str:
+                                        try:
+                                            import json as _json
+                                            _gr = case_dir / "geometry_report.json"
+                                            if _gr.exists():
+                                                _meta = _json.loads(_gr.read_text())
+                                                _orig_path_str = (
+                                                    _meta.get("file_info", {})
+                                                    .get("path", "")
+                                                ) or ""
+                                        except Exception:
+                                            pass
+                                    if _orig_path_str:
+                                        import trimesh as _tm  # type: ignore
+                                        _orig_surf = _tm.load(
+                                            _orig_path_str, force="mesh",
+                                        )
+                                        _bodies = _orig_surf.split(
+                                            only_watertight=False,
+                                        )
+                                        _n_bodies = len(_bodies)
+                                        if _n_bodies > 1:
+                                            _sa = float(
+                                                getattr(_orig_surf, "area", 0.0)
+                                                or 0.0
+                                            )
+                                            if _sa > 0:
+                                                _safety = float(os.environ.get(
+                                                    "AUTO_TESSELL_HEX_CFMESH_BROKEN_SAFETY",
+                                                    "1.0",
+                                                ))
+                                                # H-15 (default cap_div=2.0) — floor
+                                                # at current/2 = +1 octree level max.
+                                                # cap_div=4 over-shot (hard_100030
+                                                # 290 %, hard_100040 242 %).
+                                                _cap_div = float(os.environ.get(
+                                                    "AUTO_TESSELL_HEX_CFMESH_BROKEN_CAP_DIV",
+                                                    "2.0",
+                                                ))
+                                                _max_from_sa = (
+                                                    (_sa / _target_cells) ** 0.5
+                                                ) * _safety
+                                                _floor = _max / _cap_div
+                                                _new_max = max(
+                                                    _max_from_sa, _floor,
+                                                )
+                                                if _new_max < _max:
+                                                    logger.info(
+                                                        "cfmesh_broken_multi_shell_tighten",
+                                                        n_bodies=_n_bodies,
+                                                        surface_area=_sa,
+                                                        prev_max=_max,
+                                                        sa_max=_max_from_sa,
+                                                        floor=_floor,
+                                                        new_max=_new_max,
+                                                    )
+                                                    _max = _new_max
+                                except Exception as _b_exc:
+                                    logger.debug(
+                                        "cfmesh_broken_detect_skipped",
+                                        error=str(_b_exc)[:120],
+                                    )
                         except Exception as _exc:
                             logger.debug(
                                 "cfmesh_max_remap_skipped",
