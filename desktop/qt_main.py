@@ -130,6 +130,11 @@ _DEFAULT_ENV = {
     # 더 많은 iter 필요.  tet+BL bench도 8 → 24 로 올라가지만 (모든 카드
     # PASS) tet loop 측정상 negative effect 없음.
     "AUTO_TESSELL_BL_DROP_MAX_ITER": "24",
+    # P-1 / P-2 / P-3 (2026-05-12) — poly+cfMesh loop.  cartesian_dual
+    # backend bench로 6/21 → 21/21 PSS 도달.  pMesh segfault 우회.
+    "AUTO_TESSELL_POLY_BACKEND": "cartesian_dual",   # P-3
+    "AUTO_TESSELL_POLY_CFMESH_REPAIR_SURFACE": "1",  # P-1 WildMesh repair
+    "AUTO_TESSELL_POLY_CFMESH_TARGET_CALIB": "1.4",  # P-2 pMesh density compensation
 }
 
 
