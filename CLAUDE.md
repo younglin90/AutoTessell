@@ -181,6 +181,33 @@ Python 3.12+, C++23, OpenFOAM 2406, Node.js 24 (Phase 2)
 - 외부 라이브러리 신규 추가는 **반드시 "참고 → 자체 구현 계획"** 과 함께
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
+## v1.1 "3-Tier × 21-STL 21/21 PSS" (2026-05-12)
+
+**branch vd_bl_refactor_2026-05-09** — 3 mesh_type (tet/hex_dominant/poly)
+모두 21-STL bench (test_cube + thingi10k_bench20/*.stl) draft quality에서
+**21/21 PSS** 도달. GUI parity 완료.
+
+```bash
+# 3-tier 21-STL bench (각 ~30-50 min)
+python3 tests/stl/bench_cavity_eval.py        # tet+BL    → 12 PASS + 9 PWW
+python3 tests/stl/bench_hex_cavity_eval.py    # hex+BL    → 17 PASS + 4 PWW
+python3 tests/stl/bench_poly_cavity_eval.py   # poly+BL   → 18 PASS + 3 PWW
+
+# 3-tier × test_cube CI smoke (~3-5 min)
+python3 -m pytest tests/test_3tier_hbp_smoke.py -v
+```
+
+| Mesh Type | Bench  | PASS/PWW/FAIL | 핵심 기술 |
+|-----------|--------|---------------|----------|
+| tet       | 21/21  | 12/9/0        | drop_neg_vol + WildMesh fastpath (U-series) |
+| hex_dom   | 21/21  | 17/4/0        | cfMesh cartesianMesh + WildMesh repair + topo drop (H-series) |
+| poly      | 21/21  | 18/3/0        | cfMesh cartesianMesh + **polyDualMesh** (P-series cartesian_dual) |
+
+GUI 사용자 입력 자동 propagate:
+- Max Cells → tier_params['target_cells'] + ['max_cells']
+- BL layers → tier_params['cfmesh_bl_n_layers'] + ['bl_layers']
+- 30+ env knob 자동 적용 (qt_main.py `_DEFAULT_ENV`)
+
 ## v0.5 "ML + Multi-format" (BETA2638, 2026-05-01)
 
 **누적 ~60 카드** (P+AI(D)+E+F+G+H+I+J+K). **603+ tests PASS**. v0.5 신규:

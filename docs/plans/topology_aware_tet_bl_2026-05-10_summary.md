@@ -1,0 +1,99 @@
+# BLR-9c-d cap sub-series — final summary
+
+Across 87 ralph-loop iterations (BLR-9c-d-p-1 through t-1,
+q-1 through q-3, r-1, s-1 through s-4), the anti-invert cap
+chain plus the ``tet_bl_subdivide`` post-layers engine pushed
+the 21-STL tet+BL bench from baseline 12/21 PASS to
+**18/21 PASS** (production-verdict, read directly from
+``quality_report.json``).
+
+## Final result (with floor=0.5 + tet_bl_subdivide)
+
+| Metric              | Baseline | floor=0.05 | floor=0.5 | floor=0.5 + **tet_bl_subdivide** |
+|---------------------|----------|------------|-----------|----------------------------------|
+| PASS verdicts (21)  | 12       | 16         | 17        | **18**                           |
+| Pass rate           | 57 %     | 76 %       | 81 %      | **86 %**                         |
+| Hard fails          | 9        | 3          | 3         | 3                                |
+| Cap-converted FAIL→PASS | -    | 4          | 5         | **6**                            |
+
+floor=0.5 dropped max_aspect 10x across all STLs (e.g.
+test_cube 2237 → 224, easy_100423 11879 → 1188), the dominant
+cosmetic concern at floor=0.05.
+
+## Cap-converted FAIL → PASS (5 cases at floor=0.5)
+
+| STL                  | Baseline issue             | Cap fix                  |
+|----------------------|----------------------------|--------------------------|
+| extreme_1017013      | 9 negative volumes         | 0 neg_vol                |
+| extreme_1017014      | neg_vol + skew 71.94       | skew 11.78, aspect 114.7 |
+| extreme_102308       | 6 neg_vol + surface_dev 48%| neg_vol 0, aspect 124    |
+| hard_100029          | 3 negative volumes         | 0 neg_vol                |
+| hard_100040          | 28 neg_vol + skew 31.36    | 0 neg_vol, skew 9.46     |
+
+## Remaining 4 FAILs (cap-independent or floor-conflicted)
+
+| STL                  | Cause at floor=0.5                       |
+|----------------------|------------------------------------------|
+| extreme_1017017      | 1 neg_vol + skew 29.34 (cap-independent) |
+| hard_100030          | 1 neg_vol + skew 1166 (extreme upstream) |
+| hard_1004826         | 1 neg_vol + skew 13.48 (cap-independent) |
+| medium_100330        | 1 neg_vol (regression — needs floor≤0.05)|
+
+## Code delivered
+
+- ``core/layers/native_bl_anti_invert.py`` (354 LOC):
+  ``compute_anti_invert_caps`` per-vert geometric helper +
+  ``compute_joint_cell_inversion_scale`` multi-vert bisection
+  joint helper.
+- ``core/utils/polymesh_orient_safe.py`` (234 LOC):
+  ``fix_inverted_cells_safely`` single-iteration single-face-flip
+  post-process.
+- ``core/layers/native_bl.py`` integration of cap helpers behind
+  env flags ``AUTO_TESSELL_BL_ANTI_INVERT_CAP/SAFETY/GLOBAL/JOINT/FLOOR``.
+- ``core/layers/native_bl_vd.py`` shortest-diagonal triangulation
+  behind ``AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST``.
+- ``core/generator/tier_native_tet.py`` pipeline-only kwargs filter
+  (BLR-9c-d-r-1 fix that unblocked --tier native_tet end-to-end).
+- ``tests/stl/bench_cavity_eval*.py`` 4-script bench harness:
+  - bench_cavity_eval.py main runner with anti-invert cap default ON
+  - bench_cavity_eval_live.py live partial-results reader
+  - bench_cavity_eval_classify.py auto-classify by failure mode
+  - bench_cavity_eval_worst_faces.py worst-face diagnostic
+- 7 new unit tests in ``tests/test_native_bl_anti_invert.py``;
+  2 in ``tests/test_tier_native_tet_kwarg_filter.py``.
+
+## Path to 100 % (future work)
+
+After the t-1 (tet_bl_subdivide) sub-step, the 3 remaining
+FAILs each have multi-faceted issues that no single cap
+setting resolves:
+
+- **hard_100030**:  neg_vol 1 + max_skewness 1166 (boundary-cell
+  malformation) + max_aspect 1556 + surface_area_deviation 110 %.
+  Five problems on one mesh.
+- **hard_1004826**:  neg_vol 1 + max_skewness 17.96.
+- **medium_100330**:  neg_vol 1.
+
+The deepest issue is **boundary-cell malformation** at sharp
+corners during BL extrusion.  Standard fixes:
+
+a) **Geometric polyhedron repair**: split the 8-face inverted
+   polyhedra into sub-tets that don't span the offending face
+   plane.  Tested via ``polyhedron_split.diagnose_inverted_polyhedra``;
+   only 26 % of inverted cells (6/23 across the 3 failing STLs)
+   are splittable into 3 positive-volume tets.  The other 74 %
+   are too geometrically distorted.
+b) **Different tet generator**: replace pytetwild with a
+   sliver-removal-aware generator (Klingner Stellar §3.4 swap
+   on top of native_tet).  Eliminates slim sliver tets near
+   walls, reducing cap pressure across all cases.
+c) **BL pipeline restructure**: skip junction merge at problem
+   corners or detect non-planar quads and refuse to triangulate
+   (leave as proper 5-face prism with quad face).
+d) **Steiner-point corner refinement**: at sharp-feature wall
+   verts, add Steiner points to break up the would-be malformed
+   cells before BL extrusion.
+
+Each is multi-week.  The cap sub-series + ``tet_bl_subdivide``
+engine delivered the quick-win improvement; deeper progress is
+a separate workstream.

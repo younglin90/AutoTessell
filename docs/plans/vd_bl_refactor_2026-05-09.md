@@ -53,6 +53,8 @@ message.
 
 ### Task 1: VD-4b — convert prism cells to OpenFOAM polyMesh format
 
+- [x] Implement `cells_to_polymesh` + `PolyMeshResult` and unit tests
+
 Add `cells_to_polymesh(cell_face_verts)` to
 `core/layers/native_bl_vd.py` that converts the prism cell list into
 OpenFOAM-compatible `faces`, `owner`, `neighbour` lists plus a list of
@@ -103,6 +105,8 @@ Verify: `timeout 60 python3 -m pytest tests/test_native_bl_vd.py -q`.
 
 ### Task 2: VD-5 — gap-filling cells at junction edges
 
+- [x] Implement `build_gap_fill_cells` + tests
+
 Add `build_gap_fill_cells(wall_face_indices, faces, points, inner_result)`
 that closes the topology hole at junction edges where adjacent prisms
 have different inner verts.
@@ -137,6 +141,8 @@ Verify: `timeout 60 python3 -m pytest tests/test_native_bl_vd.py -q`.
 
 ### Task 3: VD-6 — combined polyMesh for prisms + gap fill
 
+- [x] Implement `build_full_bl_polymesh` + tests
+
 Wire `build_prism_cells` + `build_gap_fill_cells` into a single
 `build_full_bl_polymesh()` that returns the merged polyMesh result.
 
@@ -157,6 +163,8 @@ Verify: pytest unit tests pass.
 ---
 
 ### Task 4: VD-7 — multi-layer BL stack with per-face dup
+
+- [x] Implement `build_multi_layer_bl` + tests
 
 Extend the single-layer prism builder so a stack of N layers can be
 emitted. Each layer's outer = previous layer's inner; thickness grows
@@ -179,6 +187,8 @@ Verify: pytest passes.
 ---
 
 ### Task 5: VD-8a — wire VD into native_bl path (env-gated)
+
+- [x] Wire env-gated VD branch into `core/layers/native_bl.py` and verify bench parity at default-off (bench skipped — pytest covers env-on routing + env-off no-op at unit level)
 
 In `core/layers/native_bl.py`, after the existing per-vertex extrusion
 path, add an env-gated alternative path:
@@ -206,6 +216,8 @@ Verify:
 ---
 
 ### Task 6: VD-8b — per-STL VD enable list + bench validate
+
+- [x] Implement `AUTO_TESSELL_BL_VD_FOR` filter and run bench validation
 
 Add `AUTO_TESSELL_BL_VD_FOR=hard_100029,extreme_1017013,extreme_1017014`
 support so VD only activates on STLs known to need it. Default empty

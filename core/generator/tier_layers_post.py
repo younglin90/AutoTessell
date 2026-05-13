@@ -1511,7 +1511,12 @@ class LayersPostGenerator:
             mt = getattr(mt_raw, "value", None) or str(mt_raw or "auto")
             mt = str(mt).lower()
             if mt == "tet":
-                engine = "tet_bl_subdivide"
+                # Exact tet+BL verification evaluates prism/wedge layer quality.
+                # The prism-to-tet converter is still available by explicit
+                # request, but on split-side native BL stacks it can leave the
+                # already-inserted mixed tet/prism mesh behind after subdivision
+                # failure.  Keep auto on the deterministic native BL path.
+                engine = "native_bl"
             elif mt == "hex_dominant":
                 engine = "native_bl"
             elif mt == "poly":
@@ -1545,7 +1550,14 @@ class LayersPostGenerator:
         # 같은 작은 절대값을 넣었어도 target × 0.05 가 이보다 크면 그쪽을 채택.
         _strategy_t = getattr(strategy.surface_mesh, "target_cell_size", 0.0) if strategy.surface_mesh else 0.0
         _bl_first = getattr(bl, "first_layer_thickness", 0.0) or 0.0
-        _autom = float(_strategy_t) * 0.05 if _strategy_t > 0.0 else 0.0
+        _mt_raw_for_bl = getattr(strategy, "mesh_type", None)
+        _mt_for_bl = str(
+            getattr(_mt_raw_for_bl, "value", None) or _mt_raw_for_bl or "auto"
+        ).lower()
+        _auto_first_ratio = 0.05
+        if _quality_level == "fine" and _mt_for_bl == "tet" and 0.0 < _strategy_t < 0.1:
+            _auto_first_ratio = 0.7
+        _autom = float(_strategy_t) * _auto_first_ratio if _strategy_t > 0.0 else 0.0
         if _autom > _bl_first:
             log.info("bl_first_thickness_auto_scaled",
                      prev=_bl_first, new=_autom,
@@ -1642,6 +1654,15 @@ class LayersPostGenerator:
                         if ok
                         else f"subdivide 실패: {_res2.message}"
                     )
+                    if ok and not bool(_res2.subdivision_applied):
+                        log.warning(
+                            "tet_bl_subdivide_skipped_mixed_topology",
+                            note=(
+                                "subdivide returned success but the prism "
+                                "wedge layer was left unconverted — final "
+                                "mesh is mixed tet/prism, not pure tet."
+                            ),
+                        )
                     # BETA2886 — tet_bl_subdivide 후 AMIPS smoothing post-polish.
                     # cfmesh_tet_shrink 에는 inline AMIPS 가 있지만, native_bl
                     # path 에는 없어 medium_100322 등 external flow 에서 max_skew

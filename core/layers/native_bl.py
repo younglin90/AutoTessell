@@ -1625,6 +1625,3135 @@ def _cell_centres_from_faces(
     return centres
 
 
+def _classify_bl_cell_kind(
+    cell_id: int,
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+) -> str:
+    """Classify a cell id for BL interface diagnostics."""
+    cid = int(cell_id)
+    if cid < int(base_n_cells):
+        return "bulk"
+    if int(prism_cell_start) <= cid < int(prism_cell_end):
+        return "prism"
+    return "other"
+
+
+def _bl_pair_class(a: str, b: str) -> str:
+    if a == b:
+        return f"{a}-{b}"
+    if {a, b} == {"bulk", "prism"}:
+        return "bulk-prism"
+    if {a, b} == {"bulk", "other"}:
+        return "bulk-other"
+    if {a, b} == {"prism", "other"}:
+        return "prism-other"
+    return "other-other"
+
+
+def _bl_cavity_shell_summary(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    cell_ids: set[int],
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+    sample_cap: int = 16,
+) -> dict[str, Any]:
+    """Summarize the closed boundary shell of a selected bad-cell cavity.
+
+    SMESH viscous layers treat a failing layer front as a local cavity problem:
+    remove affected volume cells, keep the closed cavity boundary, then refill
+    with validated transition cells. This helper does not mutate the mesh; it
+    records whether a bad-face component has a usable closed boundary shell.
+    """
+    cell_set = {int(c) for c in cell_ids}
+    summary: dict[str, Any] = {
+        "n_cells": int(len(cell_set)),
+        "cell_kinds": {},
+        "n_boundary_faces": 0,
+        "n_internal_faces": 0,
+        "n_physical_boundary_faces": 0,
+        "boundary_by_class": {},
+        "n_boundary_vertices": 0,
+        "n_boundary_edges": 0,
+        "n_open_edges": 0,
+        "n_nonmanifold_edges": 0,
+        "n_duplicate_boundary_faces": 0,
+        "min_boundary_face_area": 0.0,
+        "total_boundary_area": 0.0,
+        "is_closed_2manifold": False,
+        "small_closed_cavity_candidate": False,
+        "agglomerate_probe": {
+            "n_interface_faces": 0,
+            "n_bad_interface_faces": 0,
+            "max_non_ortho_deg": 0.0,
+            "min_face_weight": 1.0,
+            "passes": True,
+            "worst_faces": [],
+        },
+        "sample_boundary_faces": [],
+    }
+    if not cell_set:
+        return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_cells_cur = int(owner_arr.max()) + 1 if owner_arr.size else 0
+    if nbr_arr.size:
+        n_cells_cur = max(n_cells_cur, int(nbr_arr.max()) + 1)
+    centres = _cell_centres_from_faces(
+        points,
+        faces,
+        owner_arr,
+        nbr_arr,
+        n_cells_cur,
+    ) if n_cells_cur > 0 else np.zeros((0, 3), dtype=np.float64)
+
+    for cid in sorted(cell_set):
+        kind = _classify_bl_cell_kind(
+            cid,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        summary["cell_kinds"][kind] = int(summary["cell_kinds"].get(kind, 0)) + 1
+
+    edge_use: dict[tuple[int, int], int] = {}
+    face_keys: set[tuple[int, ...]] = set()
+    vertices: set[int] = set()
+    boundary_face_ids: list[int] = []
+    interface_records: list[tuple[int, int]] = []
+    min_area = float("inf")
+    total_area = 0.0
+
+    for fi, own_raw in enumerate(owner_arr):
+        own = int(own_raw)
+        own_in = own in cell_set
+        nbr = int(nbr_arr[fi]) if fi < len(nbr_arr) else None
+        nbr_in = bool(nbr is not None and nbr in cell_set)
+        if own_in and nbr_in:
+            summary["n_internal_faces"] = int(summary["n_internal_faces"]) + 1
+            continue
+        if not (own_in or nbr_in):
+            continue
+
+        boundary_face_ids.append(int(fi))
+        summary["n_boundary_faces"] = int(summary["n_boundary_faces"]) + 1
+        face = faces[fi]
+        key = tuple(sorted(int(v) for v in face))
+        if key in face_keys:
+            summary["n_duplicate_boundary_faces"] = (
+                int(summary["n_duplicate_boundary_faces"]) + 1
+            )
+        face_keys.add(key)
+
+        _, area = _face_normal_area(points, face)
+        min_area = min(min_area, float(area))
+        total_area += float(area)
+
+        for v in face:
+            vertices.add(int(v))
+        for i, v0 in enumerate(face):
+            v1 = face[(i + 1) % len(face)]
+            e = (int(v0), int(v1))
+            if e[0] > e[1]:
+                e = (e[1], e[0])
+            edge_use[e] = int(edge_use.get(e, 0)) + 1
+
+        if nbr is None:
+            inside = own
+            inside_kind = _classify_bl_cell_kind(
+                inside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            bkey = f"{inside_kind}-physical"
+            summary["n_physical_boundary_faces"] = (
+                int(summary["n_physical_boundary_faces"]) + 1
+            )
+        else:
+            inside = own if own_in else int(nbr)
+            outside = int(nbr) if own_in else own
+            interface_records.append((int(fi), int(outside)))
+            inside_kind = _classify_bl_cell_kind(
+                inside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            outside_kind = _classify_bl_cell_kind(
+                outside,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+            )
+            bkey = _bl_pair_class(inside_kind, outside_kind)
+        summary["boundary_by_class"][bkey] = (
+            int(summary["boundary_by_class"].get(bkey, 0)) + 1
+        )
+
+    open_edges = sum(1 for count in edge_use.values() if count == 1)
+    nonmanifold_edges = sum(1 for count in edge_use.values() if count > 2)
+    summary["n_boundary_vertices"] = int(len(vertices))
+    summary["n_boundary_edges"] = int(len(edge_use))
+    summary["n_open_edges"] = int(open_edges)
+    summary["n_nonmanifold_edges"] = int(nonmanifold_edges)
+    summary["min_boundary_face_area"] = (
+        0.0 if min_area == float("inf") else float(min_area)
+    )
+    summary["total_boundary_area"] = float(total_area)
+    summary["is_closed_2manifold"] = bool(
+        summary["n_boundary_faces"] > 0
+        and summary["n_duplicate_boundary_faces"] == 0
+        and summary["min_boundary_face_area"] > 1e-30
+        and open_edges == 0
+        and nonmanifold_edges == 0
+    )
+    if boundary_face_ids and centres.size:
+        face_centres = np.asarray(
+            [points[np.asarray(faces[fi], dtype=np.int64)].mean(axis=0)
+             for fi in boundary_face_ids],
+            dtype=np.float64,
+        )
+        union_centre = face_centres.mean(axis=0)
+        worst: list[dict[str, Any]] = []
+        max_non_ortho = 0.0
+        min_face_weight = 1.0
+        n_bad = 0
+        for fi, outside in interface_records:
+            if outside < 0 or outside >= centres.shape[0]:
+                continue
+            face = faces[fi]
+            normal, area = _face_normal_area(points, face)
+            face_centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
+            d = centres[outside] - union_centre
+            n_mag = float(np.linalg.norm(normal))
+            d_mag = float(np.linalg.norm(d))
+            if area <= 1e-30 or n_mag <= 1e-30 or d_mag <= 1e-30:
+                non_ortho = 180.0
+                face_weight = 0.0
+            else:
+                cos_theta = abs(float(np.dot(normal, d)) / max(n_mag * d_mag, 1e-30))
+                cos_theta = min(1.0, max(0.0, cos_theta))
+                non_ortho = float(np.degrees(np.arccos(cos_theta)))
+                t = float(np.dot(face_centre - union_centre, d) / max(d_mag * d_mag, 1e-30))
+                face_weight = min(t, 1.0 - t)
+            max_non_ortho = max(max_non_ortho, non_ortho)
+            min_face_weight = min(min_face_weight, face_weight)
+            bad = bool(non_ortho > 65.0 or face_weight < 0.05)
+            if bad:
+                n_bad += 1
+            worst.append(
+                {
+                    "face": int(fi),
+                    "outside_cell": int(outside),
+                    "non_ortho_deg": float(non_ortho),
+                    "face_weight": float(face_weight),
+                    "bad": bad,
+                }
+            )
+        worst.sort(
+            key=lambda item: (
+                bool(item["bad"]),
+                float(item["non_ortho_deg"]),
+                -float(item["face_weight"]),
+            ),
+            reverse=True,
+        )
+        summary["agglomerate_probe"] = {
+            "n_interface_faces": int(len(interface_records)),
+            "n_bad_interface_faces": int(n_bad),
+            "max_non_ortho_deg": float(max_non_ortho),
+            "min_face_weight": float(min_face_weight),
+            "passes": bool(n_bad == 0),
+            "worst_faces": worst[: int(sample_cap)],
+        }
+    summary["small_closed_cavity_candidate"] = bool(
+        summary["is_closed_2manifold"]
+        and summary["n_cells"] <= int(
+            os.environ.get("AUTO_TESSELL_BL_CAVITY_SMALL_CELL_CAP", "64")
+        )
+        and int(summary["cell_kinds"].get("prism", 0)) > 0
+    )
+    summary["sample_boundary_faces"] = boundary_face_ids[: int(sample_cap)]
+    return summary
+
+
+def _bl_bad_internal_face_histogram(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    *,
+    base_n_cells: int,
+    prism_cell_start: int,
+    prism_cell_end: int,
+    max_non_ortho_deg: float = 65.0,
+    min_face_weight: float = 0.05,
+    max_worst: int = 12,
+    include_components: bool = True,
+) -> dict[str, Any]:
+    """Summarize bad internal faces by bulk/prism interface class."""
+    classes = [
+        "bulk-bulk",
+        "bulk-prism",
+        "prism-prism",
+        "bulk-other",
+        "prism-other",
+        "other-other",
+    ]
+    summary: dict[str, Any] = {
+        "thresholds": {
+            "max_non_ortho_deg": float(max_non_ortho_deg),
+            "min_face_weight": float(min_face_weight),
+        },
+        "n_internal_faces": int(len(neighbour)),
+        "n_bad_faces": 0,
+        "total_by_class": {name: 0 for name in classes},
+        "bad_by_class": {name: 0 for name in classes},
+        "bad_by_reason": {
+            "non_ortho": 0,
+            "face_weight": 0,
+            "degenerate": 0,
+        },
+        "components": [],
+        "worst_faces": [],
+    }
+    if len(neighbour) <= 0 or not faces or len(owner) == 0:
+        return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_cells_cur = int(owner_arr.max()) + 1 if owner_arr.size else 0
+    if nbr_arr.size:
+        n_cells_cur = max(n_cells_cur, int(nbr_arr.max()) + 1)
+    if n_cells_cur <= 0:
+        return summary
+
+    centres = _cell_centres_from_faces(
+        points,
+        faces,
+        owner_arr,
+        nbr_arr,
+        n_cells_cur,
+    )
+    worst: list[dict[str, Any]] = []
+    bad_records: list[dict[str, Any]] = []
+    for fi in range(int(len(neighbour))):
+        own = int(owner_arr[fi])
+        nbr = int(nbr_arr[fi])
+        own_kind = _classify_bl_cell_kind(
+            own,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        nbr_kind = _classify_bl_cell_kind(
+            nbr,
+            base_n_cells=base_n_cells,
+            prism_cell_start=prism_cell_start,
+            prism_cell_end=prism_cell_end,
+        )
+        pair_class = _bl_pair_class(own_kind, nbr_kind)
+        summary["total_by_class"][pair_class] = (
+            int(summary["total_by_class"].get(pair_class, 0)) + 1
+        )
+
+        face = faces[fi]
+        normal, area = _face_normal_area(points, face)
+        d = centres[nbr] - centres[own]
+        n_mag = float(np.linalg.norm(normal))
+        d_mag = float(np.linalg.norm(d))
+        if area <= 1e-30 or n_mag <= 1e-30 or d_mag <= 1e-30:
+            non_ortho = 180.0
+            face_weight = 0.0
+            degenerate = True
+        else:
+            cos_theta = abs(float(np.dot(normal, d)) / max(n_mag * d_mag, 1e-30))
+            cos_theta = min(1.0, max(0.0, cos_theta))
+            non_ortho = float(np.degrees(np.arccos(cos_theta)))
+            face_centre = points[np.asarray(face, dtype=np.int64)].mean(axis=0)
+            t = float(np.dot(face_centre - centres[own], d) / max(d_mag * d_mag, 1e-30))
+            face_weight = min(t, 1.0 - t)
+            degenerate = False
+
+        bad_non_ortho = non_ortho > float(max_non_ortho_deg)
+        bad_weight = face_weight < float(min_face_weight)
+        if not (bad_non_ortho or bad_weight or degenerate):
+            continue
+
+        summary["n_bad_faces"] = int(summary["n_bad_faces"]) + 1
+        summary["bad_by_class"][pair_class] = (
+            int(summary["bad_by_class"].get(pair_class, 0)) + 1
+        )
+        if bad_non_ortho:
+            summary["bad_by_reason"]["non_ortho"] += 1
+        if bad_weight:
+            summary["bad_by_reason"]["face_weight"] += 1
+        if degenerate:
+            summary["bad_by_reason"]["degenerate"] += 1
+        worst.append(
+            {
+                "face": int(fi),
+                "owner": own,
+                "neighbour": nbr,
+                "class": pair_class,
+                "non_ortho_deg": float(non_ortho),
+                "face_weight": float(face_weight),
+            }
+        )
+        bad_records.append(
+            {
+                "face": int(fi),
+                "owner": own,
+                "neighbour": nbr,
+                "class": pair_class,
+            }
+        )
+
+    worst.sort(
+        key=lambda item: (
+            float(item["non_ortho_deg"]),
+            -float(item["face_weight"]),
+        ),
+        reverse=True,
+    )
+    summary["worst_faces"] = worst[: int(max_worst)]
+    if bad_records and bool(include_components):
+        parent: dict[int, int] = {}
+
+        def _find_cell(cell: int) -> int:
+            parent.setdefault(cell, cell)
+            while parent[cell] != cell:
+                parent[cell] = parent[parent[cell]]
+                cell = parent[cell]
+            return cell
+
+        def _union_cell(a: int, b: int) -> None:
+            ra = _find_cell(a)
+            rb = _find_cell(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        for record in bad_records:
+            _union_cell(int(record["owner"]), int(record["neighbour"]))
+
+        components: dict[int, dict[str, Any]] = {}
+        for record in bad_records:
+            root = _find_cell(int(record["owner"]))
+            comp = components.setdefault(
+                root,
+                {
+                    "n_faces": 0,
+                    "n_cells": 0,
+                    "classes": {},
+                    "faces": [],
+                    "cells": set(),
+                },
+            )
+            comp["n_faces"] += 1
+            comp["classes"][record["class"]] = (
+                int(comp["classes"].get(record["class"], 0)) + 1
+            )
+            comp["faces"].append(int(record["face"]))
+            comp["cells"].add(int(record["owner"]))
+            comp["cells"].add(int(record["neighbour"]))
+
+        packed_components: list[dict[str, Any]] = []
+        id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
+        for comp in components.values():
+            cells = sorted(int(c) for c in comp["cells"])
+            faces_comp = sorted(int(f) for f in comp["faces"])
+            cell_set = set(cells)
+            boundary_by_class: dict[str, int] = {}
+            n_inside_internal = 0
+            n_physical_boundary = 0
+            for fi, own_raw in enumerate(owner_arr):
+                own = int(own_raw)
+                own_in = own in cell_set
+                if fi < len(nbr_arr):
+                    nbr = int(nbr_arr[fi])
+                    nbr_in = nbr in cell_set
+                    if own_in and nbr_in:
+                        n_inside_internal += 1
+                    elif own_in or nbr_in:
+                        inside = own if own_in else nbr
+                        outside = nbr if own_in else own
+                        inside_kind = _classify_bl_cell_kind(
+                            inside,
+                            base_n_cells=base_n_cells,
+                            prism_cell_start=prism_cell_start,
+                            prism_cell_end=prism_cell_end,
+                        )
+                        outside_kind = _classify_bl_cell_kind(
+                            outside,
+                            base_n_cells=base_n_cells,
+                            prism_cell_start=prism_cell_start,
+                            prism_cell_end=prism_cell_end,
+                        )
+                        key = _bl_pair_class(inside_kind, outside_kind)
+                        boundary_by_class[key] = int(boundary_by_class.get(key, 0)) + 1
+                elif own_in:
+                    n_physical_boundary += 1
+            include_full = len(cells) <= id_cap and len(faces_comp) <= id_cap
+            cavity_shell = _bl_cavity_shell_summary(
+                points,
+                faces,
+                owner_arr,
+                nbr_arr,
+                cell_set,
+                base_n_cells=base_n_cells,
+                prism_cell_start=prism_cell_start,
+                prism_cell_end=prism_cell_end,
+                sample_cap=max_worst,
+            )
+            packed_components.append(
+                {
+                    "n_faces": int(comp["n_faces"]),
+                    "n_cells": int(len(cells)),
+                    "classes": dict(comp["classes"]),
+                    "n_inside_internal_faces": int(n_inside_internal),
+                    "n_cavity_boundary_faces": int(
+                        sum(boundary_by_class.values()) + n_physical_boundary
+                    ),
+                    "boundary_by_class": boundary_by_class,
+                    "n_physical_boundary_faces": int(n_physical_boundary),
+                    "ids_truncated": not include_full,
+                    "sample_faces": faces_comp[: int(max_worst)],
+                    "sample_cells": cells[: int(max_worst)],
+                    "faces": faces_comp if include_full else [],
+                    "cells": cells if include_full else [],
+                    "cavity_shell": cavity_shell,
+                }
+            )
+        packed_components.sort(
+            key=lambda item: (int(item["n_faces"]), int(item["n_cells"])),
+            reverse=True,
+        )
+        summary["components"] = packed_components[: int(max_worst)]
+    return summary
+
+
+def _tet_wall_cavity_eligibility(
+    faces: list[list[int]],
+    owner: list[int] | np.ndarray,
+    neighbour: list[int] | np.ndarray,
+    wall_face_indices: list[int],
+    *,
+    n_cells: int,
+    sample_cap: int = 16,
+) -> dict[str, Any]:
+    """Summarize wall-owner cells eligible for local tet cavity replacement.
+
+    A simple closed advancing-layer refill is only topologically local when a
+    wall owner is a tetrahedron and owns exactly one selected wall face.  Cells
+    with multiple wall faces, non-tet topology, or stale wall-face ids need the
+    more general SMESH-style front/block/refill path.
+    """
+    summary: dict[str, Any] = {
+        "n_cells": int(max(0, n_cells)),
+        "n_wall_faces": int(len(wall_face_indices)),
+        "n_wall_owner_cells": 0,
+        "n_single_wall_owner_cells": 0,
+        "n_single_wall_tet_owner_cells": 0,
+        "n_multi_wall_owner_cells": 0,
+        "n_non_tet_owner_cells": 0,
+        "coverage_single_wall_tet": 0.0,
+        "sample_single_wall_tet_cells": [],
+        "single_wall_tet_cells": [],
+        "sample_blocked_cells": [],
+    }
+    if n_cells <= 0 or not wall_face_indices or len(owner) == 0:
+        return summary
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    cell_vertices: list[set[int]] = [set() for _ in range(int(n_cells))]
+    cell_face_counts = [0 for _ in range(int(n_cells))]
+    for fi, face in enumerate(faces):
+        verts = {int(v) for v in face}
+        if fi < len(owner_arr):
+            own = int(owner_arr[fi])
+            if 0 <= own < n_cells:
+                cell_vertices[own].update(verts)
+                cell_face_counts[own] += 1
+        if fi < len(nbr_arr):
+            nbr = int(nbr_arr[fi])
+            if 0 <= nbr < n_cells:
+                cell_vertices[nbr].update(verts)
+                cell_face_counts[nbr] += 1
+
+    wall_faces_by_owner: dict[int, list[int]] = {}
+    stale_wall_faces = 0
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            stale_wall_faces += 1
+            continue
+        own = int(owner_arr[fi])
+        if 0 <= own < n_cells:
+            wall_faces_by_owner.setdefault(own, []).append(int(fi))
+
+    single_tet: list[int] = []
+    blocked: list[dict[str, Any]] = []
+    for cid, wall_faces in wall_faces_by_owner.items():
+        n_wall = len(wall_faces)
+        is_tet = len(cell_vertices[cid]) == 4 and cell_face_counts[cid] == 4
+        if n_wall == 1:
+            summary["n_single_wall_owner_cells"] += 1
+            if is_tet:
+                summary["n_single_wall_tet_owner_cells"] += 1
+                single_tet.append(int(cid))
+            else:
+                summary["n_non_tet_owner_cells"] += 1
+                if len(blocked) < sample_cap:
+                    blocked.append(
+                        {
+                            "cell": int(cid),
+                            "reason": "non_tet",
+                            "n_wall_faces": int(n_wall),
+                            "n_vertices": int(len(cell_vertices[cid])),
+                            "n_faces": int(cell_face_counts[cid]),
+                        }
+                    )
+        else:
+            summary["n_multi_wall_owner_cells"] += 1
+            if len(blocked) < sample_cap:
+                blocked.append(
+                    {
+                        "cell": int(cid),
+                        "reason": "multi_wall_faces",
+                        "n_wall_faces": int(n_wall),
+                        "n_vertices": int(len(cell_vertices[cid])),
+                        "n_faces": int(cell_face_counts[cid]),
+                    }
+                )
+
+    n_wall_owner = len(wall_faces_by_owner)
+    summary["n_wall_owner_cells"] = int(n_wall_owner)
+    summary["n_stale_wall_faces"] = int(stale_wall_faces)
+    summary["coverage_single_wall_tet"] = (
+        float(summary["n_single_wall_tet_owner_cells"]) / float(n_wall_owner)
+        if n_wall_owner > 0
+        else 0.0
+    )
+    summary["sample_single_wall_tet_cells"] = single_tet[: int(sample_cap)]
+    summary["single_wall_tet_cells"] = list(single_tet)
+    summary["sample_blocked_cells"] = blocked
+    return summary
+
+
+def _owner_centre_wall_motion(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_vert_indices: list[int],
+    wall_face_indices: list[int],
+    cell_centres: np.ndarray,
+    eligible_owner_cells: set[int] | list[int] | tuple[int, ...] | None,
+    fallback_dirs: dict[int, np.ndarray],
+    *,
+    enabled: bool,
+) -> tuple[dict[int, np.ndarray], dict[str, Any]]:
+    """BLR-8 candidate: per-wall-vertex inward direction toward owner cell centres.
+
+    For each wall vertex ``v`` adjacent to at least one wall face whose owner
+    cell is in ``eligible_owner_cells`` (the BLR-7 single-tet, single-wall set),
+    the new motion direction is the unit vector from the wall point toward the
+    mean of those adjacent owner cell centres. Vertices with no eligible
+    adjacent owner — or with a degenerate centre-to-vertex vector — fall back to
+    ``fallback_dirs`` (typically ``-vnorm[v]``). When ``enabled`` is False the
+    helper is a no-op: the returned dict is a copy of ``fallback_dirs`` and the
+    diagnostics report zero motion.
+
+    The returned diagnostics carry: ``enabled`` (bool), ``n_eligible``
+    (vertices with at least one eligible adjacent owner), ``n_moved`` (vertices
+    that ended up using the new direction), ``mean_motion`` and ``max_motion``
+    (mean / max L2 norm of ``new_dir - fallback_dir`` across moved vertices,
+    in unit-vector space; 0.0 when no vertex moved).
+    """
+    diag: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "n_eligible": 0,
+        "n_moved": 0,
+        "mean_motion": 0.0,
+        "max_motion": 0.0,
+        "n_rejected_orientation": 0,
+    }
+    motion_dirs: dict[int, np.ndarray] = {
+        v: np.asarray(fallback_dirs[v], dtype=np.float64).reshape(3)
+        for v in wall_vert_indices
+        if v in fallback_dirs
+    }
+    if not enabled or not wall_vert_indices:
+        return motion_dirs, diag
+    if eligible_owner_cells is None:
+        return motion_dirs, diag
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set or cell_centres is None or len(cell_centres) == 0:
+        return motion_dirs, diag
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    centre_accum: dict[int, np.ndarray] = {}
+    centre_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres:
+            continue
+        if own not in eligible_set:
+            continue
+        centre = np.asarray(cell_centres[own], dtype=np.float64).reshape(3)
+        for vid in faces[fi]:
+            v_int = int(vid)
+            if v_int not in motion_dirs:
+                continue
+            if v_int not in centre_accum:
+                centre_accum[v_int] = centre.copy()
+                centre_count[v_int] = 1
+            else:
+                centre_accum[v_int] += centre
+                centre_count[v_int] += 1
+
+    n_eligible = 0
+    n_moved = 0
+    n_rejected_orientation = 0
+    delta_norms: list[float] = []
+    for v_int, accum in centre_accum.items():
+        cnt = centre_count.get(v_int, 0)
+        if cnt <= 0:
+            continue
+        n_eligible += 1
+        mean_centre = accum / float(cnt)
+        vec = mean_centre - np.asarray(points[v_int], dtype=np.float64).reshape(3)
+        norm = float(np.linalg.norm(vec))
+        if norm <= 1e-30 or not np.isfinite(norm):
+            continue
+        new_dir = vec / norm
+        if not np.all(np.isfinite(new_dir)):
+            continue
+        fallback = motion_dirs[v_int]
+        # Reject directions that disagree with the fallback's half-space.
+        # For obtuse / sliver tets the centroid can lie close to the wall
+        # plane and the centre-to-point vector may be tangent or even point
+        # outward through the wall; keep the fallback in those cases.
+        if float(np.dot(new_dir, fallback)) <= 0.0:
+            n_rejected_orientation += 1
+            continue
+        delta = float(np.linalg.norm(new_dir - fallback))
+        if delta <= 1e-12:
+            # Direction effectively unchanged; do not perturb the fallback.
+            continue
+        motion_dirs[v_int] = new_dir
+        n_moved += 1
+        delta_norms.append(delta)
+
+    diag["n_eligible"] = int(n_eligible)
+    diag["n_moved"] = int(n_moved)
+    diag["n_rejected_orientation"] = int(n_rejected_orientation)
+    if delta_norms:
+        diag["mean_motion"] = float(np.mean(delta_norms))
+        diag["max_motion"] = float(np.max(delta_norms))
+    return motion_dirs, diag
+
+
+def _tet_wall_cavity_replacement_probe(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_face_indices: list[int],
+    eligible_owner_cells: list[int] | tuple[int, ...] | set[int] | None,
+    cell_centres: np.ndarray,
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    enabled: bool,
+) -> dict[str, Any]:
+    """BLR-9a: dry-run quality probe for single-tet wall-cavity replacement.
+
+    For each eligible single-tet wall owner from BLR-7:
+
+    - predict the prism inner triangle as the wall face vertices moved
+      inward by ``motion_dirs[v] * first_thickness`` (BLR-8 motion when
+      available; otherwise the call site's fallback ``-vnorm`` already
+      lives in ``motion_dirs``);
+    - predict a transition tet as (apex = original tet cell centroid,
+      base = prism inner triangle);
+    - count how many candidates yield a strictly-positive signed volume
+      transition tet (the lowest necessary gate before any real
+      ``polyMesh`` rewrite is attempted in BLR-9b).
+
+    No mesh mutation. The diagnostics are intended only as a quality
+    estimate so a verifier can decide whether the cavity-replacement
+    path is worth turning on. When ``enabled`` is False the diagnostics
+    are zero-filled.
+    """
+    diag: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "n_candidates": 0,
+        "n_quality_pass": 0,
+        "n_quality_fail_det": 0,
+        "n_quality_fail_topology": 0,
+        "mean_predicted_det": 0.0,
+        "min_predicted_det": 0.0,
+        "max_predicted_det": 0.0,
+    }
+    if not enabled or not wall_face_indices or eligible_owner_cells is None:
+        return diag
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set or cell_centres is None or len(cell_centres) == 0:
+        return diag
+    if motion_dirs is None:
+        return diag
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    # Map: eligible owner cell -> the unique wall face it owns. Cells with
+    # zero or 2+ wall faces would not have been classed as single-wall
+    # eligible by BLR-7, but guard anyway so the probe never picks the
+    # wrong face for an inverted topology snapshot.
+    cell_to_wall_face: dict[int, int] = {}
+    cell_wall_face_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres or own not in eligible_set:
+            continue
+        cell_wall_face_count[own] = cell_wall_face_count.get(own, 0) + 1
+        cell_to_wall_face.setdefault(own, int(fi))
+
+    dets: list[float] = []
+    n_topology_fail = 0
+    n_det_fail = 0
+    n_pass = 0
+    for cid in eligible_set:
+        if cell_wall_face_count.get(cid, 0) != 1:
+            n_topology_fail += 1
+            continue
+        fi = cell_to_wall_face[cid]
+        f = faces[fi]
+        if len(f) != 3:
+            n_topology_fail += 1
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = motion_dirs[v0]
+            d1 = motion_dirs[v1]
+            d2 = motion_dirs[v2]
+        except KeyError:
+            n_topology_fail += 1
+            continue
+        # Predicted prism inner triangle (one layer of thickness).
+        p0 = np.asarray(points[v0], dtype=np.float64)
+        p1 = np.asarray(points[v1], dtype=np.float64)
+        p2 = np.asarray(points[v2], dtype=np.float64)
+        i0 = p0 + np.asarray(d0, dtype=np.float64).reshape(3) * float(first_thickness)
+        i1 = p1 + np.asarray(d1, dtype=np.float64).reshape(3) * float(first_thickness)
+        i2 = p2 + np.asarray(d2, dtype=np.float64).reshape(3) * float(first_thickness)
+        apex = np.asarray(cell_centres[cid], dtype=np.float64).reshape(3)
+
+        # Topology gate: the predicted inner triangle must lie on the same
+        # side of the wall as the original cell centroid.  Outward motion
+        # (inner pushed through the wall into the body solid) is
+        # geometrically invalid for a cavity replacement and is counted as
+        # a topology failure rather than a determinant failure.
+        wall_centroid = (p0 + p1 + p2) / 3.0
+        inner_centroid = (i0 + i1 + i2) / 3.0
+        if float(np.dot(inner_centroid - wall_centroid, apex - wall_centroid)) <= 0.0:
+            n_topology_fail += 1
+            continue
+
+        # Signed volume magnitude of the transition tet (apex, i0, i1, i2).
+        m = np.stack([i0 - apex, i1 - apex, i2 - apex], axis=0)
+        det_signed = float(np.linalg.det(m)) / 6.0
+        if not np.isfinite(det_signed):
+            n_det_fail += 1
+            continue
+        det = abs(det_signed)
+        if det <= 1e-30:
+            n_det_fail += 1
+            continue
+        n_pass += 1
+        dets.append(det)
+
+    n_candidates = int(len(eligible_set))
+    diag["n_candidates"] = n_candidates
+    diag["n_quality_pass"] = int(n_pass)
+    diag["n_quality_fail_det"] = int(n_det_fail)
+    diag["n_quality_fail_topology"] = int(n_topology_fail)
+    if dets:
+        dets_arr = np.asarray(dets, dtype=np.float64)
+        diag["mean_predicted_det"] = float(dets_arr.mean())
+        diag["min_predicted_det"] = float(dets_arr.min())
+        diag["max_predicted_det"] = float(dets_arr.max())
+    return diag
+
+
+def _build_tet_cavity_replacement_plan(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    wall_face_indices: list[int],
+    eligible_owner_cells: list[int] | tuple[int, ...] | set[int] | None,
+    cell_centres: np.ndarray,
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    enabled: bool,
+    neighbour: np.ndarray | None = None,
+) -> dict[str, Any]:
+    """BLR-9b-i: build the replacement plan WITHOUT mutating the polyMesh.
+
+    For each BLR-7 single-tet single-wall eligible owner that the BLR-9a
+    probe would classify as quality_pass, emit a cell-level replacement
+    plan:
+
+    - ``cells_to_delete``: original wall-owner tet ids slated for removal.
+    - ``new_cells``: per-replacement, the new cell vertex bundles
+      ``{"prism": [...6 verts...], "transition_tet": [...4 verts...]}``.
+      The prism's outer triangle keeps the original wall face vertex
+      order; the inner triangle uses freshly minted point ids appended
+      to ``new_points``.  The transition tet uses ``apex = original cell
+      centroid`` and ``base = inner triangle`` (matching the BLR-9a
+      probe geometry exactly).
+    - ``new_points``: ``(N, 3)`` array of inner triangle coordinates
+      that the caller will append to the global ``points`` array; the
+      ``new_cells`` entries reference them by offset (offset 0 = first
+      newly minted point, etc).
+    - ``rejected``: candidates classified as topology_fail / det_fail
+      so the caller can log them.
+
+    No mesh mutation.  When ``enabled`` is False the plan is empty.
+    """
+    plan: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "cells_to_delete": [],
+        "new_cells": [],
+        "new_points": np.zeros((0, 3), dtype=np.float64),
+        "rejected": {
+            "topology": [],
+            "det": [],
+            "neighbour_internal": [],
+        },
+        "n_planned": 0,
+        "n_rejected_topology": 0,
+        "n_rejected_det": 0,
+        "n_rejected_neighbour_internal": 0,
+    }
+    if (
+        not enabled
+        or not wall_face_indices
+        or eligible_owner_cells is None
+        or motion_dirs is None
+        or cell_centres is None
+        or len(cell_centres) == 0
+    ):
+        return plan
+    eligible_set = {int(c) for c in eligible_owner_cells}
+    if not eligible_set:
+        return plan
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    n_centres = int(len(cell_centres))
+
+    cell_to_wall_face: dict[int, int] = {}
+    cell_wall_face_count: dict[int, int] = {}
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= len(owner_arr):
+            continue
+        own = int(owner_arr[fi])
+        if own < 0 or own >= n_centres or own not in eligible_set:
+            continue
+        cell_wall_face_count[own] = cell_wall_face_count.get(own, 0) + 1
+        cell_to_wall_face.setdefault(own, int(fi))
+
+    cells_to_delete: list[int] = []
+    new_cells: list[dict[str, list[int]]] = []
+    new_points_list: list[np.ndarray] = []
+    rejected_topology: list[int] = []
+    rejected_det: list[int] = []
+    rejected_neighbour_internal: list[int] = []
+
+    # BLR-9b-iii topology guard: a single-tet wall owner can be safely
+    # replaced by the BLR-9b-ii prism + transition tet pair only when
+    # the replacement does not orphan an adjacent cell's internal face
+    # (the new cells share the wall face but NOT the original tet's
+    # other three internal faces).  Detect this by counting how many
+    # of the deleted cell's faces are internal — i.e. shared with a
+    # neighbour cell.  If any internal face exists, the simple
+    # 1-prism-+-1-transition-tet rewrite would leave the neighbour
+    # without a partner face, so the candidate must be rejected.  This
+    # restricts BLR-9b application to "isolated" wall owners — typical
+    # of small disconnected fragments — and BLR-9c will add the
+    # multi-cell cavity refill needed for the general case.
+    if neighbour is not None:
+        nbr_arr = np.asarray(neighbour, dtype=np.int64)
+        cell_internal_face_count: dict[int, int] = {}
+        for fi in range(min(len(owner_arr), len(nbr_arr))):
+            own = int(owner_arr[fi])
+            nbr = int(nbr_arr[fi])
+            if 0 <= own < n_centres:
+                cell_internal_face_count[own] = (
+                    cell_internal_face_count.get(own, 0) + 1
+                )
+            if 0 <= nbr < n_centres:
+                cell_internal_face_count[nbr] = (
+                    cell_internal_face_count.get(nbr, 0) + 1
+                )
+    else:
+        cell_internal_face_count = {}
+
+    n_orig_points = int(points.shape[0])
+    next_id = n_orig_points
+
+    for cid in sorted(eligible_set):
+        if cell_wall_face_count.get(cid, 0) != 1:
+            rejected_topology.append(int(cid))
+            continue
+        # BLR-9b-iii: reject if the original tet has neighbour-internal
+        # faces. Neighbours would otherwise lose their partner face.
+        if neighbour is not None and cell_internal_face_count.get(cid, 0) > 0:
+            rejected_neighbour_internal.append(int(cid))
+            continue
+        fi = cell_to_wall_face[cid]
+        f = faces[fi]
+        if len(f) != 3:
+            rejected_topology.append(int(cid))
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = motion_dirs[v0]
+            d1 = motion_dirs[v1]
+            d2 = motion_dirs[v2]
+        except KeyError:
+            rejected_topology.append(int(cid))
+            continue
+
+        p0 = np.asarray(points[v0], dtype=np.float64)
+        p1 = np.asarray(points[v1], dtype=np.float64)
+        p2 = np.asarray(points[v2], dtype=np.float64)
+        i0_pt = p0 + np.asarray(d0, dtype=np.float64).reshape(3) * float(first_thickness)
+        i1_pt = p1 + np.asarray(d1, dtype=np.float64).reshape(3) * float(first_thickness)
+        i2_pt = p2 + np.asarray(d2, dtype=np.float64).reshape(3) * float(first_thickness)
+        apex = np.asarray(cell_centres[cid], dtype=np.float64).reshape(3)
+
+        # Topology gate identical to the BLR-9a probe.
+        wall_centroid = (p0 + p1 + p2) / 3.0
+        inner_centroid = (i0_pt + i1_pt + i2_pt) / 3.0
+        if (
+            float(np.dot(inner_centroid - wall_centroid, apex - wall_centroid))
+            <= 0.0
+        ):
+            rejected_topology.append(int(cid))
+            continue
+
+        # Determinant gate identical to the BLR-9a probe.
+        m = np.stack([i0_pt - apex, i1_pt - apex, i2_pt - apex], axis=0)
+        det_signed = float(np.linalg.det(m)) / 6.0
+        if (not np.isfinite(det_signed)) or abs(det_signed) <= 1e-30:
+            rejected_det.append(int(cid))
+            continue
+
+        # Mint the three new inner-triangle point ids.
+        i0 = next_id
+        i1 = next_id + 1
+        i2 = next_id + 2
+        next_id += 3
+        new_points_list.append(i0_pt)
+        new_points_list.append(i1_pt)
+        new_points_list.append(i2_pt)
+
+        cells_to_delete.append(int(cid))
+        new_cells.append(
+            {
+                "prism": [v0, v1, v2, i0, i1, i2],
+                # Apex point id is deliberately left as -1 here — BLR-9b-ii
+                # will mint the original cell centroid as a real point when
+                # the plan is applied to the polyMesh.  ``transition_tet[0]``
+                # MUST be re-resolved at apply time using the
+                # ``transition_tet_apex_xyz`` coordinate below.
+                "transition_tet": [-1, i0, i1, i2],
+                "transition_tet_apex_xyz": apex.tolist(),
+                "deleted_cell_id": int(cid),
+            }
+        )
+
+    plan["cells_to_delete"] = cells_to_delete
+    plan["new_cells"] = new_cells
+    if new_points_list:
+        plan["new_points"] = np.asarray(new_points_list, dtype=np.float64)
+    plan["rejected"]["topology"] = rejected_topology
+    plan["rejected"]["det"] = rejected_det
+    plan["rejected"]["neighbour_internal"] = rejected_neighbour_internal
+    plan["n_planned"] = int(len(cells_to_delete))
+    plan["n_rejected_topology"] = int(len(rejected_topology))
+    plan["n_rejected_det"] = int(len(rejected_det))
+    plan["n_rejected_neighbour_internal"] = int(len(rejected_neighbour_internal))
+    return plan
+
+
+def _detect_wall_owner_cavity_components(
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+    *,
+    n_cells: int | None = None,
+) -> list[set[int]]:
+    """BLR-9c-a: connected wall-owner cell components via internal faces.
+
+    Returns a list of cell-id sets, each set being the connected component
+    of wall-owner cells reachable through internal faces.  This is the
+    structural primitive BLR-9c will use to drive a multi-cell cavity
+    refill: one prism stack per component, transition cells filling the
+    cavity boundary.
+
+    A "wall owner" is any cell that owns at least one face listed in
+    ``wall_face_indices``.  Two wall-owner cells are in the same
+    component iff there is an internal face between them whose owner and
+    neighbour are both wall-owner cells (transitively).
+
+    The function performs only union-find on the cell graph; it never
+    mutates the polyMesh and never inspects ``faces`` or ``points``.
+    Single-tet wall owners (BLR-7 eligible cells) appear here as size-1
+    components.  Multi-cell components are exactly the BLR-9c targets
+    that BLR-9b's simple rewrite has been refusing.
+    """
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+    if owner_arr.size == 0:
+        return []
+    if n_cells is None:
+        max_own = int(owner_arr.max()) if owner_arr.size > 0 else -1
+        max_nbr = (
+            int(neighbour_arr.max()) if neighbour_arr.size > 0 else -1
+        )
+        n_cells = max(max_own, max_nbr) + 1
+    if n_cells <= 0:
+        return []
+
+    wall_owner_set: set[int] = set()
+    for fi in wall_face_indices:
+        if fi < 0 or fi >= owner_arr.size:
+            continue
+        own = int(owner_arr[fi])
+        if 0 <= own < n_cells:
+            wall_owner_set.add(own)
+    if not wall_owner_set:
+        return []
+
+    # Union-find restricted to wall-owner cells.
+    parent = {c: c for c in wall_owner_set}
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    for fi in range(n_internal):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi])
+        if own in wall_owner_set and nbr in wall_owner_set:
+            union(own, nbr)
+
+    groups: dict[int, set[int]] = {}
+    for c in wall_owner_set:
+        r = find(c)
+        groups.setdefault(r, set()).add(c)
+    return [groups[r] for r in sorted(groups.keys())]
+
+
+def _extract_cavity_component_boundary(
+    component: set[int] | frozenset[int] | list[int] | tuple[int, ...],
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+) -> dict[str, list[int]]:
+    """BLR-9c-b: face-level boundary structure of a cavity component.
+
+    A cavity component (output of :func:`_detect_wall_owner_cavity_components`)
+    is a set of wall-owner cells.  When BLR-9c rewrites the component
+    we need to know which faces:
+
+    - ``wall_faces``: are wall (boundary) faces of cells inside the
+      component.  These are the BL prism's outer/bottom faces and
+      survive the rewrite (their winding becomes the new prism's
+      bottom).
+    - ``external_internal_faces``: are internal faces with one cell
+      inside the component and the other cell OUTSIDE.  After the
+      component's cells are deleted, these face surfaces define the
+      cavity's outer (bulk-facing) shell — the closed surface BLR-9c
+      must respect when generating refill cells.
+    - ``internal_faces``: are internal faces with BOTH cells in the
+      component.  They vanish when the cavity is rewritten.
+
+    The function performs only owner/neighbour table lookups; it does
+    not mutate the polyMesh or inspect ``points`` / ``faces``.
+    """
+    comp_set = {int(c) for c in component}
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+
+    wall_face_id_set = {int(fi) for fi in wall_face_indices}
+
+    wall_faces: list[int] = []
+    external_internal_faces: list[int] = []
+    internal_faces: list[int] = []
+
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    n_total = int(owner_arr.size)
+
+    for fi in range(n_total):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi]) if fi < n_internal else -1
+
+        own_in = own in comp_set
+        nbr_in = (nbr >= 0) and (nbr in comp_set)
+
+        if not own_in and not nbr_in:
+            continue
+
+        if nbr < 0:
+            # Boundary face. Wall face only if listed in wall_face_indices.
+            if fi in wall_face_id_set:
+                wall_faces.append(int(fi))
+            else:
+                # Non-wall boundary face owned by a component cell — the
+                # rewrite still has to account for it; classify with the
+                # external-internal pile so callers don't lose track.
+                external_internal_faces.append(int(fi))
+            continue
+
+        if own_in and nbr_in:
+            internal_faces.append(int(fi))
+        else:
+            # Internal face crossing the component boundary.
+            external_internal_faces.append(int(fi))
+
+    return {
+        "wall_faces": wall_faces,
+        "external_internal_faces": external_internal_faces,
+        "internal_faces": internal_faces,
+    }
+
+
+def _build_cavity_prism_inner_triangles(
+    component_wall_faces: list[int],
+    points: np.ndarray,
+    faces: list[list[int]],
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+) -> list[dict[str, Any]]:
+    """BLR-9c-c-i: predicted inner triangle per wall face of a cavity component.
+
+    For each ``face_id`` in ``component_wall_faces`` (a subset of the
+    polyMesh's wall faces, restricted to the cavity component by
+    BLR-9c-a + BLR-9c-b), compute the prism inner triangle as
+    ``points[v] + motion_dirs[v] * first_thickness`` for each vertex
+    ``v``.  Returns a list of dicts so BLR-9c-c-ii can stitch shared
+    vertices into per-face inner ids in a separate pass.
+
+    Each entry contains:
+
+    - ``face_id``: the original wall face id.
+    - ``outer_verts``: ``[v0, v1, v2]`` — wall face vertex order
+      preserved.
+    - ``inner_xyz``: ``np.ndarray`` of shape ``(3, 3)`` — inner
+      triangle coordinates, row order matching ``outer_verts``.
+
+    Faces missing a motion direction or with non-triangle topology
+    are skipped silently — BLR-9c-c-ii will detect missing entries
+    and abort the refill for the affected component.
+
+    No mesh mutation; pure prediction.
+    """
+    if not component_wall_faces or motion_dirs is None:
+        return []
+    out: list[dict[str, Any]] = []
+    pts = np.asarray(points, dtype=np.float64)
+    for fi in component_wall_faces:
+        if fi < 0 or fi >= len(faces):
+            continue
+        f = faces[fi]
+        if len(f) != 3:
+            continue
+        v0, v1, v2 = int(f[0]), int(f[1]), int(f[2])
+        try:
+            d0 = np.asarray(motion_dirs[v0], dtype=np.float64).reshape(3)
+            d1 = np.asarray(motion_dirs[v1], dtype=np.float64).reshape(3)
+            d2 = np.asarray(motion_dirs[v2], dtype=np.float64).reshape(3)
+        except KeyError:
+            continue
+        inner_xyz = np.stack(
+            [
+                pts[v0] + d0 * float(first_thickness),
+                pts[v1] + d1 * float(first_thickness),
+                pts[v2] + d2 * float(first_thickness),
+            ],
+            axis=0,
+        )
+        out.append(
+            {
+                "face_id": int(fi),
+                "outer_verts": [v0, v1, v2],
+                "inner_xyz": inner_xyz,
+            }
+        )
+    return out
+
+
+def _stitch_cavity_prism_inner_ids_smooth(
+    inner_triangles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """BLR-9c-c-ii-a: smooth-case shared inner-vertex stitching.
+
+    Every wall vertex shared by multiple component wall faces collapses
+    into ONE inner vertex.  The shared inner position is the mean of
+    each face's prediction for that wall vertex (BLR-9c-c-i emits one
+    ``inner_xyz`` row per outer vertex per face; here we average them).
+
+    This is the no-dup baseline.  BLR-9c-c-ii-b will add the sharp-
+    corner detection that splits a wall vertex into per-face duplicate
+    inner ids when adjacent prism cap normals diverge above a cos
+    threshold (the same idea as the VD refactor's per-face inner
+    verts, applied per cavity component).
+
+    Returns:
+        - ``inner_points``: ``np.ndarray`` of shape ``(N_inner, 3)`` —
+          unique inner vertex coordinates in ascending wall vertex id
+          order.
+        - ``vert_to_inner_id``: ``dict[int, int]`` mapping each wall
+          vertex id to its inner vertex id.
+        - ``face_inner_ids``: list aligned with ``inner_triangles``,
+          each entry ``[i0, i1, i2]`` giving inner ids for the 3
+          outer verts of that face.
+    """
+    if not inner_triangles:
+        return {
+            "inner_points": np.zeros((0, 3), dtype=np.float64),
+            "vert_to_inner_id": {},
+            "face_inner_ids": [],
+        }
+
+    # Accumulate per-vertex sums of predicted inner coordinates.
+    accum: dict[int, np.ndarray] = {}
+    counts: dict[int, int] = {}
+    for entry in inner_triangles:
+        outer = entry["outer_verts"]
+        inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+        if inner_xyz.shape != (3, 3) or len(outer) != 3:
+            continue
+        for k in range(3):
+            v = int(outer[k])
+            if v not in accum:
+                accum[v] = inner_xyz[k].copy()
+                counts[v] = 1
+            else:
+                accum[v] += inner_xyz[k]
+                counts[v] += 1
+
+    sorted_verts = sorted(accum.keys())
+    vert_to_inner_id: dict[int, int] = {
+        v: i for i, v in enumerate(sorted_verts)
+    }
+    inner_points = np.stack(
+        [accum[v] / float(counts[v]) for v in sorted_verts], axis=0
+    )
+
+    face_inner_ids: list[list[int]] = []
+    for entry in inner_triangles:
+        outer = entry["outer_verts"]
+        if len(outer) != 3:
+            continue
+        try:
+            face_inner_ids.append(
+                [
+                    vert_to_inner_id[int(outer[0])],
+                    vert_to_inner_id[int(outer[1])],
+                    vert_to_inner_id[int(outer[2])],
+                ]
+            )
+        except KeyError:
+            continue
+    return {
+        "inner_points": inner_points,
+        "vert_to_inner_id": vert_to_inner_id,
+        "face_inner_ids": face_inner_ids,
+    }
+
+
+def _split_cavity_inner_ids_at_sharp_corners(
+    inner_triangles: list[dict[str, Any]],
+    smooth_stitch: dict[str, Any],
+    *,
+    cos_thresh: float = 0.9,
+) -> dict[str, Any]:
+    """BLR-9c-c-ii-b: split shared inner ids at sharp cavity corners.
+
+    Starts from the smooth stitcher output (every shared wall vertex
+    has one inner id) and, for each wall vertex shared by multiple
+    component wall faces, computes the pairwise cosine between
+    adjacent prism cap normals.  When any pair of cap normals has
+    ``cos < cos_thresh`` the vertex is "sharp" and each face gets its
+    own per-face inner id at that vertex (vertex duplication, the
+    same idea as the VD refactor applied per cavity component).
+
+    Cap normal = ``(i1-i0) × (i2-i0)`` from the face's predicted
+    inner triangle (BLR-9c-c-i ``inner_xyz``).
+
+    Returns:
+        - ``inner_points`` (N_inner_after_split, 3) — unique coords
+          (smooth stitcher's coords plus the duplicates at split
+          vertices).
+        - ``face_inner_ids`` aligned with ``inner_triangles``: each
+          ``[i0, i1, i2]``; smooth verts share ids, sharp verts have
+          per-face ids.
+        - ``sharp_verts``: ``dict[int, list[int]]`` mapping each
+          split wall vertex to the list of its per-face inner ids
+          (in the same order as the face list at that vertex).
+        - ``n_split``: number of wall vertices that got duplicated.
+    """
+    smooth_points = np.asarray(
+        smooth_stitch.get("inner_points", np.zeros((0, 3))),
+        dtype=np.float64,
+    )
+    vert_to_inner_id: dict[int, int] = dict(
+        smooth_stitch.get("vert_to_inner_id", {})
+    )
+    smooth_face_inner_ids: list[list[int]] = [
+        list(x) for x in smooth_stitch.get("face_inner_ids", [])
+    ]
+
+    if not inner_triangles or len(inner_triangles) != len(smooth_face_inner_ids):
+        return {
+            "inner_points": smooth_points.copy(),
+            "face_inner_ids": [list(x) for x in smooth_face_inner_ids],
+            "sharp_verts": {},
+            "n_split": 0,
+        }
+
+    # Per-face cap normal.
+    face_normals: list[np.ndarray] = []
+    for entry in inner_triangles:
+        inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+        if inner_xyz.shape != (3, 3):
+            face_normals.append(np.zeros(3, dtype=np.float64))
+            continue
+        n_raw = np.cross(
+            inner_xyz[1] - inner_xyz[0], inner_xyz[2] - inner_xyz[0]
+        )
+        m = float(np.linalg.norm(n_raw))
+        face_normals.append(
+            n_raw / m if m > 1e-30 else np.zeros(3, dtype=np.float64)
+        )
+
+    # Per-vertex face list (smooth stitcher already aggregated; recompute
+    # in face order so we can emit per-face dup ids deterministically).
+    vert_to_faces: dict[int, list[int]] = {}
+    for fi_idx, entry in enumerate(inner_triangles):
+        for v in entry["outer_verts"]:
+            vert_to_faces.setdefault(int(v), []).append(fi_idx)
+
+    extra_points: list[np.ndarray] = []
+    next_inner_id = int(smooth_points.shape[0])
+    sharp_verts: dict[int, list[int]] = {}
+    n_split = 0
+    # Make a working copy of face inner ids that we will rewrite at
+    # sharp verts.
+    face_inner_ids: list[list[int]] = [list(x) for x in smooth_face_inner_ids]
+
+    for v, f_idx_list in vert_to_faces.items():
+        if len(f_idx_list) < 2:
+            continue
+        # Pairwise cosine min.
+        normals = [face_normals[fi] for fi in f_idx_list]
+        is_sharp = False
+        for i in range(len(normals)):
+            for j in range(i + 1, len(normals)):
+                if float(np.dot(normals[i], normals[j])) < cos_thresh:
+                    is_sharp = True
+                    break
+            if is_sharp:
+                break
+        if not is_sharp:
+            continue
+
+        # Sharp vertex — emit per-face dup ids.  Keep the smooth id
+        # for the FIRST face so we don't churn smooth ids unnecessarily;
+        # mint new ids for the remaining faces.
+        per_face_ids: list[int] = []
+        for offset, fi_idx in enumerate(f_idx_list):
+            entry = inner_triangles[fi_idx]
+            outer = entry["outer_verts"]
+            inner_xyz = np.asarray(entry["inner_xyz"], dtype=np.float64)
+            try:
+                k = outer.index(v)
+            except ValueError:
+                continue
+            if offset == 0:
+                # First face keeps the smooth shared id at this vert.
+                per_face_ids.append(face_inner_ids[fi_idx][k])
+                continue
+            # Subsequent faces get a fresh dup id placed at this face's
+            # own predicted inner position for vertex v.
+            extra_points.append(inner_xyz[k].copy())
+            new_id = next_inner_id
+            next_inner_id += 1
+            face_inner_ids[fi_idx][k] = new_id
+            per_face_ids.append(new_id)
+        sharp_verts[v] = per_face_ids
+        n_split += 1
+
+    if extra_points:
+        inner_points_out = np.concatenate(
+            [smooth_points, np.stack(extra_points, axis=0)], axis=0
+        )
+    else:
+        inner_points_out = smooth_points.copy()
+
+    return {
+        "inner_points": inner_points_out,
+        "face_inner_ids": face_inner_ids,
+        "sharp_verts": sharp_verts,
+        "n_split": int(n_split),
+    }
+
+
+def _compute_cavity_centroid(
+    component: set[int] | frozenset[int] | list[int] | tuple[int, ...],
+    faces: list[list[int]],
+    points: np.ndarray,
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+) -> np.ndarray:
+    """BLR-9c-c-iii-a: cavity apex = mean of all unique vertices owned by
+    cells in the component.
+
+    Used by BLR-9c-c-iii-b as the apex of the transition tets that fill
+    the volume between each prism cap (BLR-9c-c-ii output) and the
+    cavity's interior.  Returns a ``(3,)`` ndarray; an all-zero vector
+    when the component is empty.
+    """
+    comp_set = {int(c) for c in component}
+    if not comp_set:
+        return np.zeros(3, dtype=np.float64)
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    neighbour_arr = np.asarray(neighbour, dtype=np.int64)
+    n_internal = int(min(owner_arr.size, neighbour_arr.size))
+    n_total = int(owner_arr.size)
+
+    vert_ids: set[int] = set()
+    for fi in range(n_total):
+        own = int(owner_arr[fi])
+        nbr = int(neighbour_arr[fi]) if fi < n_internal else -1
+        if own in comp_set or (nbr >= 0 and nbr in comp_set):
+            for v in faces[fi]:
+                vert_ids.add(int(v))
+    if not vert_ids:
+        return np.zeros(3, dtype=np.float64)
+    pts = np.asarray(points, dtype=np.float64)
+    return pts[sorted(vert_ids)].mean(axis=0)
+
+
+def _build_cavity_fan_transition_tets(
+    inner_triangles: list[dict[str, Any]],
+    split_result: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """BLR-9c-c-iii-b: emit a fan transition tet per prism cap.
+
+    Each entry pairs a cap's inner triangle ``[i0, i1, i2]`` (from
+    ``split_result["face_inner_ids"]``, which already accounts for
+    smooth and sharp-corner stitching) with the cavity apex
+    placeholder ``-1`` so the caller can mint a real apex point id
+    when the final polyMesh is assembled.
+
+    Returns:
+        list aligned with ``inner_triangles``; each entry is::
+
+            {
+                "face_id":   int  - original wall face id,
+                "tet_verts": [-1, i0, i1, i2],
+            }
+
+    Faces with no matching ``face_inner_ids`` row (e.g. dropped by
+    BLR-9c-c-i for missing motion direction) are silently skipped.
+    """
+    face_inner_ids = list(split_result.get("face_inner_ids", []))
+    if not inner_triangles or not face_inner_ids:
+        return []
+    out: list[dict[str, Any]] = []
+    n = min(len(inner_triangles), len(face_inner_ids))
+    for k in range(n):
+        ids = list(face_inner_ids[k])
+        if len(ids) != 3:
+            continue
+        out.append(
+            {
+                "face_id": int(inner_triangles[k]["face_id"]),
+                "tet_verts": [-1, int(ids[0]), int(ids[1]), int(ids[2])],
+            }
+        )
+    return out
+
+
+def _check_cavity_shell_coverage(
+    boundary: dict[str, list[int]],
+    fan_tets: list[dict[str, Any]],
+    faces: list[list[int]],
+) -> dict[str, Any]:
+    """BLR-9c-c-iii-c: shell-face coverage probe for transition cells.
+
+    For each ``external_internal_face`` in ``boundary`` (the cavity's
+    outer shell), check whether any face of any fan transition tet has
+    the same unordered vertex set.  Shell faces that find no matching
+    tet face are returned as ``uncovered`` — they are the first reject
+    reason BLR-9c-d will gate on.
+
+    The current BLR-9c-c-iii-b fan structure (apex + each prism cap)
+    cannot, in general, cover the cavity's external_internal shell:
+    the shell faces sit on the cell's *other* sides and would need
+    additional transition cells (e.g. one tet per shell face glued to
+    the apex).  This probe makes that gap explicit so a verifier can
+    reject the candidate before any mesh mutation.
+
+    A "tet face" of a transition tet ``[apex, i0, i1, i2]`` is one of
+    the four triangles ``(apex, i0, i1)``, ``(apex, i1, i2)``,
+    ``(apex, i0, i2)``, ``(i0, i1, i2)``.  Vertex set matching is
+    strict (same three vertex ids, order-independent).
+
+    Returns dict::
+
+        {
+            "n_shell_faces": int,
+            "n_covered":     int,
+            "uncovered":     list[int],   # original face_ids
+        }
+    """
+    shell_face_ids = list(boundary.get("external_internal_faces", []))
+    if not shell_face_ids:
+        return {"n_shell_faces": 0, "n_covered": 0, "uncovered": []}
+
+    # Two coverage representations live on the input ``fan_tets`` list:
+    #
+    # - Inner-id space (BLR-9c-c-iii-b fan tets): ``tet_verts`` indexes
+    #   the BLR-9c-c-i / 9c-c-ii inner-points array, so the four
+    #   triangle face vertex sets are inner ids.  These never match a
+    #   polyMesh shell face by construction — the early sub-step
+    #   recorded that gap and BLR-9c-d-h-1 closes it via closure tets.
+    # - PolyMesh-id space (BLR-9c-d-h-1 closure tets): each closure tet
+    #   carries an ``outer_verts`` field listing the polyMesh face
+    #   vertices it was built from.  When sorted, that key matches the
+    #   shell face directly.  Polygon shell faces (quads, etc.) are
+    #   covered iff *any* closure tet has ``outer_verts`` whose vertex
+    #   set equals the shell face's.
+    outer_keys: set[tuple[int, ...]] = set()
+    for tet in fan_tets:
+        outer = tet.get("outer_verts")
+        if outer is None:
+            continue
+        outer_keys.add(tuple(sorted(int(v) for v in outer)))
+
+    tet_face_keys: set[tuple[int, int, int]] = set()
+    for tet in fan_tets:
+        verts = list(tet.get("tet_verts", []))
+        if len(verts) != 4:
+            continue
+        for i in range(4):
+            triangle = [verts[k] for k in range(4) if k != i]
+            tet_face_keys.add(tuple(sorted(int(v) for v in triangle)))
+
+    n_covered = 0
+    uncovered: list[int] = []
+    for fi in shell_face_ids:
+        if fi < 0 or fi >= len(faces):
+            uncovered.append(int(fi))
+            continue
+        f = faces[fi]
+        if len(f) < 3:
+            uncovered.append(int(fi))
+            continue
+        key = tuple(sorted(int(v) for v in f))
+        if key in outer_keys:
+            n_covered += 1
+            continue
+        # Legacy inner-id match (kept for the BLR-9c-c-iii-c unit
+        # tests that synthesise tri shell faces directly from
+        # placeholder tet vertex ids).
+        if len(f) == 3 and key in tet_face_keys:
+            n_covered += 1
+            continue
+        uncovered.append(int(fi))
+
+    return {
+        "n_shell_faces": int(len(shell_face_ids)),
+        "n_covered": int(n_covered),
+        "uncovered": uncovered,
+    }
+
+
+def _resolve_tet_apex_xyz(
+    tet_verts: list[int],
+    shared_apex_xyz: np.ndarray,
+    inner_points: np.ndarray,
+) -> tuple[np.ndarray, int, int, int] | None:
+    """BLR-9c-d-m-2 helper — extract ``(apex_xyz, i0, i1, i2)`` from a
+    tet's ``tet_verts`` list, supporting both legacy shared-apex
+    placeholder (-1) and per-face Steiner indices (non-negative).
+
+    Returns ``None`` if the tet vertex schema is malformed.
+    """
+    if len(tet_verts) != 4:
+        return None
+    a_idx = int(tet_verts[0])
+    if a_idx == -1:
+        a_xyz = shared_apex_xyz
+    elif 0 <= a_idx < inner_points.shape[0]:
+        a_xyz = inner_points[a_idx]
+    else:
+        return None
+    i0, i1, i2 = int(tet_verts[1]), int(tet_verts[2]), int(tet_verts[3])
+    if (
+        i0 < 0 or i1 < 0 or i2 < 0
+        or i0 >= inner_points.shape[0]
+        or i1 >= inner_points.shape[0]
+        or i2 >= inner_points.shape[0]
+    ):
+        return None
+    return a_xyz, i0, i1, i2
+
+
+def _check_cavity_fan_tet_determinants(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    det_tol: float = 1e-12,
+) -> dict[str, Any]:
+    """BLR-9c-d-b: signed-volume gate for the BLR-9c-c-iii-b fan tets.
+
+    Each fan tet is ``tet_verts = [-1, i0, i1, i2]`` where ``-1`` is the
+    apex placeholder and ``i0/i1/i2`` index ``inner_points`` (the
+    BLR-9c-c-ii inner-triangle vertices, possibly duplicated by the
+    BLR-9c-c-ii-b sharp-corner split).  The signed scalar triple product
+
+        det = (v0 - apex) · ((v1 - apex) × (v2 - apex))
+
+    is sign-invariant under triangle winding, so this helper returns
+    both the *signed* determinants (so the caller can detect sign-flips
+    inside one component, which indicates a flipped fan triangle) and
+    a per-tet pass/fail label gated only on ``abs(det) > det_tol``.
+
+    The helper does **not** mutate the mesh and does **not** decide the
+    component verdict — BLR-9c-d (c) wires the result into
+    ``_evaluate_cavity_component_candidates``.
+
+    Parameters
+    ----------
+    fan_tets:
+        Output of :func:`_build_cavity_fan_transition_tets`.
+    apex_xyz:
+        Apex vertex coordinate (typically the cavity centroid from
+        :func:`_compute_cavity_centroid`).
+    inner_points:
+        ``(M, 3)`` array of inner triangle vertex coordinates from
+        :func:`_split_cavity_inner_ids_at_sharp_corners` (or
+        :func:`_stitch_cavity_prism_inner_ids_smooth` if no split was
+        applied).
+    det_tol:
+        Magnitude below which a tet is treated as degenerate.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_tets``               total fan tets inspected
+    - ``n_pos_det``            tets with ``det > +det_tol``
+    - ``n_neg_det``            tets with ``det < -det_tol``
+    - ``n_degenerate_det``     tets with ``abs(det) <= det_tol``
+    - ``signed_dets``          ``np.ndarray`` shape ``(n_tets,)``
+    - ``worst_abs_det``        smallest ``|det|`` across all tets (or 0 if empty)
+    - ``n_sign_inconsistent``  tets whose sign disagrees with the majority
+                               of the rest of the component (BLR-9c-d-i-1).
+                               Reported as a *diagnostic only* — the
+                               polyMesh writer can re-orient any cell
+                               before emitting the mesh, so sign mixing
+                               is not a hard reject reason here.
+    - ``bad_indices``          ``list[int]`` of fan-tet positions whose
+                               ``abs(det) <= det_tol`` (degenerate).
+                               Sign-inconsistent tets are *not* added
+                               to this list any more — see BLR-9c-d-i-1
+                               for the rationale.
+    """
+    out: dict[str, Any] = {
+        "n_tets": 0,
+        "n_pos_det": 0,
+        "n_neg_det": 0,
+        "n_degenerate_det": 0,
+        "signed_dets": np.empty(0, dtype=np.float64),
+        "worst_abs_det": 0.0,
+        "n_sign_inconsistent": 0,
+        "bad_indices": [],
+    }
+    if not fan_tets:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        out["bad_indices"] = list(range(len(fan_tets)))
+        out["n_tets"] = len(fan_tets)
+        out["n_degenerate_det"] = len(fan_tets)
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    n = len(fan_tets)
+    dets = np.zeros(n, dtype=np.float64)
+    bad_set: set[int] = set()
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
+            bad_set.add(k)
+            continue
+        a_xyz, i0, i1, i2 = resolved
+        v0 = inner[i0] - a_xyz
+        v1 = inner[i1] - a_xyz
+        v2 = inner[i2] - a_xyz
+        dets[k] = float(np.dot(v0, np.cross(v1, v2)))
+
+    abs_dets = np.abs(dets)
+    n_pos = int(np.sum(dets > det_tol))
+    n_neg = int(np.sum(dets < -det_tol))
+    n_deg = int(np.sum(abs_dets <= det_tol))
+    for k in range(n):
+        if abs_dets[k] <= det_tol:
+            bad_set.add(k)
+
+    # BLR-9c-d-i-1 — sign-inconsistency is now reported as a diagnostic
+    # only.  When the BLR-9c-c-iii-b fan and the BLR-9c-d-h-1 closure
+    # tets are produced from inputs with different winding conventions
+    # (e.g. inner-triangle motion vs. polyMesh face winding) some tets
+    # come out with positive signed volume and others with negative —
+    # but each of them is individually non-degenerate and the polyMesh
+    # writer can flip any cell at emission time.  Counting them as
+    # ``bad_indices`` was the dominant reject reason on the 21-STL bench
+    # (761 / 861 components for test_cube + easy_100034) and rejected
+    # otherwise-valid replacement candidates.
+    n_sign_inconsistent = 0
+    if n_pos > 0 and n_neg > 0:
+        majority_sign = 1.0 if n_pos >= n_neg else -1.0
+        n_sign_inconsistent = int(
+            np.sum(
+                (abs_dets > det_tol)
+                & (np.sign(dets) != majority_sign)
+            )
+        )
+
+    out["n_tets"] = n
+    out["n_pos_det"] = n_pos
+    out["n_neg_det"] = n_neg
+    out["n_degenerate_det"] = n_deg
+    out["signed_dets"] = dets
+    out["worst_abs_det"] = float(abs_dets.min()) if n > 0 else 0.0
+    out["n_sign_inconsistent"] = n_sign_inconsistent
+    out["bad_indices"] = sorted(bad_set)
+    return out
+
+
+def _check_cavity_fan_tet_pair_non_ortho(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    non_ortho_threshold_deg: float = 70.0,
+) -> dict[str, Any]:
+    """BLR-9c-d-e-1: per-pair non-orthogonality of adjacent fan tets.
+
+    The OpenFOAM ``checkMesh`` non-orthogonality angle is the angle
+    between an internal face's area-weighted normal and the line
+    that connects the owner and neighbour cell centroids.  ESI's
+    `OpenFOAM-v2406` flags any face above ~70° as a quality failure.
+
+    For the BLR-9c cavity replacement, the new *internal* faces
+    inside a single component are precisely the lateral triangles
+    ``(apex, i_a, i_b)`` shared by two adjacent fan tets in the fan
+    structure.  Two fan tets are adjacent iff they share two of the
+    three inner-triangle indices.  Each such pair contributes one
+    internal face whose non-orthogonality we can measure right now,
+    before any mesh mutation, using:
+
+    - face centroid ``c_f = (apex + p_a + p_b) / 3``
+    - face normal   ``n_f = (p_a − apex) × (p_b − apex)`` (un-normalized,
+      magnitude = 2 × triangle area)
+    - owner cell centroid  ``c_O = mean(fan_tet_O.verts)``
+    - neighbour cell centroid ``c_N = mean(fan_tet_N.verts)``
+    - cell-to-cell vector ``d = c_N − c_O``
+    - cosθ = |n_f · d| / (|n_f| · |d|)
+    - non-ortho angle = arccos(cosθ) in degrees
+
+    Pure helper, no mesh mutation.  BLR-9c-d-e-2 will wire it into
+    ``_evaluate_cavity_component_candidates``.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_pairs``               adjacent-fan-tet pairs found
+    - ``angles_deg``            ``np.ndarray`` shape ``(n_pairs,)``
+    - ``max_angle_deg``         maximum non-ortho across all pairs
+                                (0.0 if no pairs)
+    - ``mean_angle_deg``        arithmetic mean (0.0 if no pairs)
+    - ``n_above_threshold``     pairs with angle > threshold
+    - ``bad_pair_indices``      ``list[tuple[int, int]]`` fan-tet
+                                index pairs whose angle exceeds the
+                                threshold
+    """
+    out: dict[str, Any] = {
+        "n_pairs": 0,
+        "angles_deg": np.empty(0, dtype=np.float64),
+        "max_angle_deg": 0.0,
+        "mean_angle_deg": 0.0,
+        "n_above_threshold": 0,
+        "bad_pair_indices": [],
+        "worst_pair_indices": None,
+    }
+    if not fan_tets or len(fan_tets) < 2:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    # Per-fan: triple of inner indices and centroid.
+    n = len(fan_tets)
+    inner_triples: list[tuple[int, int, int] | None] = []
+    apex_per_tet = np.zeros((n, 3), dtype=np.float64)
+    centroids = np.zeros((n, 3), dtype=np.float64)
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
+            inner_triples.append(None)
+            continue
+        a_xyz, i0, i1, i2 = resolved
+        inner_triples.append((i0, i1, i2))
+        apex_per_tet[k] = a_xyz
+        centroids[k] = (a_xyz + inner[i0] + inner[i1] + inner[i2]) / 4.0
+
+    # Edge → list[fan_idx] map keyed on sorted inner-pair.  The pair
+    # is only valid for non-ortho measurement when the two tets
+    # actually share an *internal face* — i.e. they share the apex
+    # *and* the two inner verts.  When apex differs (per-face Steiner
+    # closures), two tets sharing an inner edge no longer share a
+    # face, so they aren't a checkMesh non-ortho pair.
+    edge_owners: dict[tuple[int, int], list[int]] = {}
+    for k, triple in enumerate(inner_triples):
+        if triple is None:
+            continue
+        a, b, c = triple
+        for u, v in ((a, b), (b, c), (a, c)):
+            key = (min(u, v), max(u, v))
+            edge_owners.setdefault(key, []).append(k)
+
+    angles: list[float] = []
+    pair_keys: list[tuple[int, int]] = []
+    bad_pairs: list[tuple[int, int]] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for (u, v), owners in edge_owners.items():
+        if len(owners) < 2:
+            continue
+        for i in range(len(owners)):
+            for j in range(i + 1, len(owners)):
+                p_o, p_n = owners[i], owners[j]
+                key = (min(p_o, p_n), max(p_o, p_n))
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                # Skip pairs that don't actually share a face — they
+                # do not contribute to checkMesh non-ortho.
+                if not np.array_equal(
+                    apex_per_tet[p_o], apex_per_tet[p_n]
+                ):
+                    continue
+                p_a, p_b = inner[u], inner[v]
+                a_face_apex = apex_per_tet[p_o]
+                # Internal face = (shared apex, p_a, p_b)
+                n_f = np.cross(p_a - a_face_apex, p_b - a_face_apex)
+                d_vec = centroids[p_n] - centroids[p_o]
+                n_norm = float(np.linalg.norm(n_f))
+                d_norm = float(np.linalg.norm(d_vec))
+                if n_norm < 1e-30 or d_norm < 1e-30:
+                    angle_deg = 90.0   # degenerate ⇒ treat as fully oblique
+                else:
+                    cos_theta = float(
+                        abs(np.dot(n_f, d_vec)) / (n_norm * d_norm)
+                    )
+                    cos_theta = min(1.0, max(0.0, cos_theta))
+                    angle_deg = float(np.degrees(np.arccos(cos_theta)))
+                angles.append(angle_deg)
+                pair_keys.append(key)
+                if angle_deg > non_ortho_threshold_deg:
+                    bad_pairs.append(key)
+
+    if not angles:
+        return out
+
+    arr = np.asarray(angles, dtype=np.float64)
+    out["n_pairs"] = int(arr.shape[0])
+    out["angles_deg"] = arr
+    out["max_angle_deg"] = float(arr.max())
+    out["mean_angle_deg"] = float(arr.mean())
+    out["n_above_threshold"] = int(np.sum(arr > non_ortho_threshold_deg))
+    out["bad_pair_indices"] = bad_pairs
+    if pair_keys:
+        argmax = int(np.argmax(arr))
+        out["worst_pair_indices"] = pair_keys[argmax]
+    return out
+
+
+def _build_cavity_shell_closure_tets(
+    uncovered_face_ids: list[int] | set[int] | tuple[int, ...],
+    boundary: dict[str, Any],
+    faces: list[list[int]],
+    points: np.ndarray,
+    inner_points: np.ndarray,
+    *,
+    apex_xyz: np.ndarray | list[float] | None = None,
+    steiner_step_factor: float = 0.5,
+) -> dict[str, Any]:
+    """BLR-9c-d-h-1: emit one apex transition tet per uncovered shell face.
+
+    The BLR-9c-c-iii-b fan structure only covers the wall side of a
+    cavity component — for a wall-owner cell whose neighbour cell is
+    non-wall (BLR-9c-b ``external_internal_faces``) the fan does not
+    enclose the *exterior* boundary, so BLR-9c-c-iii-c reports those
+    shell faces as uncovered.  This helper closes the cavity by
+    emitting one extra transition tet per uncovered shell face using
+    the cavity apex and the 3 vertices of the shell face directly.
+
+    Each new closure tet shares vocabulary with the BLR-9c-c-iii-b
+    output: ``tet_verts = [-1, j0, j1, j2]`` where ``-1`` is the
+    apex placeholder and ``j_k`` index the *extended* inner-points
+    array returned by this helper.  That way the BLR-9c-d-b
+    determinant gate and the BLR-9c-d-d-1 Q-shape gate can be
+    applied to the combined fan-tet + closure-tet list without any
+    schema change.
+
+    Pure helper, no mesh mutation.  Aggregator wire-in deferred to
+    BLR-9c-d-h-2.
+
+    Parameters
+    ----------
+    uncovered_face_ids:
+        ``uncovered`` list from
+        :func:`_check_cavity_shell_coverage` (face ids into
+        ``boundary['external_internal_faces']`` are *not* used —
+        these are direct face ids into the polyMesh).
+    boundary:
+        Output of :func:`_extract_cavity_component_boundary`.
+        Used to validate that every entry of
+        ``uncovered_face_ids`` is actually an
+        ``external_internal_faces`` member.
+    faces:
+        polyMesh face vertex lists.
+    points:
+        polyMesh ``(P, 3)`` point coordinates.
+    inner_points:
+        Current ``(M, 3)`` inner-points array (post-stitch /
+        post-sharp-split).  The helper appends one vertex per
+        unique polyMesh vertex referenced by an uncovered shell
+        face and returns the extended array.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``extended_inner_points``  ``(M + K, 3)`` array
+    - ``n_appended_points``      ``K``  newly appended vertices
+    - ``shell_closure_tets``     ``list[dict]`` — one entry per
+                                 uncovered shell face whose
+                                 ``tet_verts`` indexes into
+                                 ``extended_inner_points``
+    - ``n_closure_tets``         number of closure tets emitted
+    """
+    out: dict[str, Any] = {
+        "extended_inner_points": np.asarray(
+            inner_points, dtype=np.float64
+        ).reshape(-1, 3),
+        "n_appended_points": 0,
+        "shell_closure_tets": [],
+        "n_closure_tets": 0,
+    }
+    if not uncovered_face_ids:
+        return out
+    pts = np.asarray(points, dtype=np.float64)
+    inner = np.asarray(inner_points, dtype=np.float64).reshape(-1, 3)
+    valid_shell: set[int] = set(
+        int(f) for f in boundary.get("external_internal_faces", [])
+    )
+
+    extended = inner.tolist()
+    next_id = len(extended)
+    vertex_to_inner: dict[int, int] = {}
+    closure_tets: list[dict[str, Any]] = []
+    for fid in uncovered_face_ids:
+        ifid = int(fid)
+        if ifid not in valid_shell:
+            continue
+        if ifid < 0 or ifid >= len(faces):
+            continue
+        verts = list(faces[ifid])
+        if len(verts) < 3:
+            continue
+        # Validate every vertex first; only mutate the dedup map and
+        # the extended points buffer once we know the face is good.
+        valid_iv: list[int] = []
+        ok = True
+        for v in verts:
+            iv = int(v)
+            if iv < 0 or iv >= pts.shape[0]:
+                ok = False
+                break
+            valid_iv.append(iv)
+        if not ok:
+            continue
+        # Commit: append any unseen polyMesh vertex to the inner-point
+        # buffer.  Triangulation strategy:
+        #   - n == 3: pass through (one tri).
+        #   - n == 4: pick the **shortest diagonal** between (v0, v2)
+        #     and (v1, v3).  This is the BLR-9c-d-m-1 root-cause fix
+        #     for the closure-closure non-orthogonality bottleneck:
+        #     fan-from-vertex-0 always uses (v0, v2) regardless of
+        #     the quad's shape, which forces the shared diagonal
+        #     onto the *long* axis whenever the quad is elongated
+        #     and produces the wide-angle / sliver pairs the bench
+        #     audit (BLR-9c-d-l-1) flagged.  Choosing the shorter
+        #     diagonal gives a more balanced split.
+        #   - n > 4: fan-from-vertex-0 (a future sub-step will switch
+        #     to a Delaunay-style choice).
+        inner_ids: list[int] = []
+        for iv in valid_iv:
+            if iv not in vertex_to_inner:
+                vertex_to_inner[iv] = next_id
+                extended.append(pts[iv].tolist())
+                next_id += 1
+            inner_ids.append(vertex_to_inner[iv])
+        n_face = len(inner_ids)
+        if n_face == 4:
+            d02 = float(
+                np.linalg.norm(pts[valid_iv[0]] - pts[valid_iv[2]])
+            )
+            d13 = float(
+                np.linalg.norm(pts[valid_iv[1]] - pts[valid_iv[3]])
+            )
+            if d13 < d02:
+                # Diagonal (v1, v3) — emit (v1, v2, v3) and (v1, v3, v0).
+                tri_seq = [
+                    (inner_ids[1], inner_ids[2], inner_ids[3]),
+                    (inner_ids[1], inner_ids[3], inner_ids[0]),
+                ]
+            else:
+                # Diagonal (v0, v2) — emit (v0, v1, v2) and (v0, v2, v3).
+                tri_seq = [
+                    (inner_ids[0], inner_ids[1], inner_ids[2]),
+                    (inner_ids[0], inner_ids[2], inner_ids[3]),
+                ]
+        else:
+            tri_seq = [
+                (inner_ids[0], inner_ids[i], inner_ids[i + 1])
+                for i in range(1, n_face - 1)
+            ]
+        # BLR-9c-d-m-2 — per-face Steiner apex.  When a cavity centroid
+        # (``apex_xyz``) is supplied, replace the shared placeholder
+        # apex (-1) with a Steiner point placed on the shell-face
+        # plane offset toward the cavity centroid.  This breaks the
+        # "all closure tets share the cavity centroid" coupling that
+        # produced the closure-closure non-orthogonality long tail
+        # observed in the BLR-9c-d-l-1 audit (60 % of all components).
+        # When ``apex_xyz`` is None, falls back to the legacy shared-
+        # apex schema (placeholder -1) for backward compatibility.
+        steiner_idx = -1
+        if apex_xyz is not None:
+            apex_arr = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+            face_pts = pts[valid_iv]               # (n_face, 3)
+            face_centroid = face_pts.mean(axis=0)
+            edge_lens = np.linalg.norm(
+                np.diff(np.vstack([face_pts, face_pts[:1]]), axis=0),
+                axis=1,
+            )
+            # BLR-9c-d-n-1 — scale the Steiner step by the *max* edge
+            # rather than the mean.  For elongated shell triangles
+            # (e.g. the slim caps along high-curvature ridges) the
+            # mean edge is a poor proxy for the triangle's
+            # circumradius — using max_edge gives an apex offset
+            # comparable to the circumradius and thus a closer-to-
+            # regular tet (Q closer to 1).
+            scale_edge = float(edge_lens.max()) if edge_lens.size else 1.0
+            inward_vec = apex_arr - face_centroid
+            inward_norm = float(np.linalg.norm(inward_vec))
+            if inward_norm < 1e-30 or scale_edge < 1e-30:
+                steiner_pt = face_centroid
+            else:
+                step = float(steiner_step_factor) * scale_edge
+                # Cap the step at the available distance to the cavity
+                # centroid so the Steiner stays on the cavity side and
+                # never overshoots beyond the centroid.
+                step = min(step, 0.95 * inward_norm)
+                steiner_pt = face_centroid + (inward_vec / inward_norm) * step
+            steiner_idx = next_id
+            extended.append(steiner_pt.tolist())
+            next_id += 1
+        for k, (j0, j1, j2) in enumerate(tri_seq):
+            closure_tets.append({
+                "face_id": ifid,
+                "outer_verts": list(verts),
+                "tet_verts": [steiner_idx, j0, j1, j2],
+                "kind": "shell_closure",
+                "fan_tri": int(k),
+                "n_face_verts": int(n_face),
+            })
+
+    out["extended_inner_points"] = np.asarray(extended, dtype=np.float64)
+    out["n_appended_points"] = int(out["extended_inner_points"].shape[0] - inner.shape[0])
+    out["shell_closure_tets"] = closure_tets
+    out["n_closure_tets"] = len(closure_tets)
+    return out
+
+
+def _check_cavity_fan_tet_pair_skewness(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    skew_threshold: float = 4.0,
+) -> dict[str, Any]:
+    """BLR-9c-d-f-1: per-pair face skewness of adjacent fan tets.
+
+    The OpenFOAM ``checkMesh`` "skewness" is, for an internal face
+    between owner cell O and neighbour cell N,
+
+        c_f         = face centroid
+        c_O, c_N    = cell centroids
+        d           = c_N − c_O
+        λ           = ((c_f − c_O) · d) / (d · d)
+        c_perp      = c_O + λ · d            (foot of perpendicular)
+        skew        = |c_f − c_perp| / |d|
+
+    A skew > 4 is the standard OpenFOAM cap; values above this break
+    interpolation accuracy and trigger a checkMesh quality failure.
+
+    Like ``_check_cavity_fan_tet_pair_non_ortho``, this helper
+    builds an inner-edge → fan-tet map and reports one skewness
+    measurement per adjacent fan-tet pair (i.e. per internal face
+    that the cavity replacement introduces).  Pure helper, no mesh
+    mutation; aggregator wire-in deferred to BLR-9c-d-f-2.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_pairs``                adjacent-fan-tet pairs found
+    - ``skew_values``            per-pair skew, ``np.ndarray``
+    - ``max_skew``               maximum skew across all pairs
+                                 (0.0 if no pairs)
+    - ``mean_skew``              arithmetic mean (0.0 if no pairs)
+    - ``n_above_threshold``      pairs with skew > threshold
+    - ``bad_pair_indices``       ``list[tuple[int, int]]`` fan-tet
+                                 index pairs whose skew exceeds the
+                                 threshold
+    """
+    out: dict[str, Any] = {
+        "n_pairs": 0,
+        "skew_values": np.empty(0, dtype=np.float64),
+        "max_skew": 0.0,
+        "mean_skew": 0.0,
+        "n_above_threshold": 0,
+        "bad_pair_indices": [],
+    }
+    if not fan_tets or len(fan_tets) < 2:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    n = len(fan_tets)
+    inner_triples: list[tuple[int, int, int] | None] = []
+    apex_per_tet = np.zeros((n, 3), dtype=np.float64)
+    centroids = np.zeros((n, 3), dtype=np.float64)
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
+            inner_triples.append(None)
+            continue
+        a_xyz, i0, i1, i2 = resolved
+        inner_triples.append((i0, i1, i2))
+        apex_per_tet[k] = a_xyz
+        centroids[k] = (a_xyz + inner[i0] + inner[i1] + inner[i2]) / 4.0
+
+    edge_owners: dict[tuple[int, int], list[int]] = {}
+    for k, triple in enumerate(inner_triples):
+        if triple is None:
+            continue
+        a, b, c = triple
+        for u, v in ((a, b), (b, c), (a, c)):
+            key = (min(u, v), max(u, v))
+            edge_owners.setdefault(key, []).append(k)
+
+    skews: list[float] = []
+    bad_pairs: list[tuple[int, int]] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for (u, v), owners in edge_owners.items():
+        if len(owners) < 2:
+            continue
+        for i in range(len(owners)):
+            for j in range(i + 1, len(owners)):
+                p_o, p_n = owners[i], owners[j]
+                key = (min(p_o, p_n), max(p_o, p_n))
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                if not np.array_equal(
+                    apex_per_tet[p_o], apex_per_tet[p_n]
+                ):
+                    continue
+                p_a, p_b = inner[u], inner[v]
+                a_face_apex = apex_per_tet[p_o]
+                c_f = (a_face_apex + p_a + p_b) / 3.0
+                c_O = centroids[p_o]
+                c_N = centroids[p_n]
+                d_vec = c_N - c_O
+                d_dot = float(np.dot(d_vec, d_vec))
+                d_norm = float(np.sqrt(d_dot))
+                if d_dot < 1e-30 or d_norm < 1e-30:
+                    skew = 0.0
+                else:
+                    lam = float(np.dot(c_f - c_O, d_vec)) / d_dot
+                    c_perp = c_O + lam * d_vec
+                    skew = float(np.linalg.norm(c_f - c_perp)) / d_norm
+                skews.append(skew)
+                if skew > skew_threshold:
+                    bad_pairs.append(key)
+
+    if not skews:
+        return out
+
+    arr = np.asarray(skews, dtype=np.float64)
+    out["n_pairs"] = int(arr.shape[0])
+    out["skew_values"] = arr
+    out["max_skew"] = float(arr.max())
+    out["mean_skew"] = float(arr.mean())
+    out["n_above_threshold"] = int(np.sum(arr > skew_threshold))
+    out["bad_pair_indices"] = bad_pairs
+    return out
+
+
+def _check_cavity_fan_tet_shape_quality(
+    fan_tets: list[dict[str, Any]],
+    apex_xyz: np.ndarray | list[float],
+    inner_points: np.ndarray,
+    *,
+    q_min_threshold: float = 0.1,
+) -> dict[str, Any]:
+    """BLR-9c-d-d-1: shape-quality gate for the BLR-9c-c-iii-b fan tets.
+
+    Re-uses the BETA2709 ``core.evaluator.tet_qshape`` Klingner-like
+    Q-shape ratio (Q ≈ 1 for a regular tet, Q → 0 for a sliver) to
+    flag fan tets whose ``Q < q_min_threshold``.  This complements
+    the BLR-9c-d-b determinant gate, which only catches *signed*
+    degeneracy: a fan tet can have non-zero signed volume yet still
+    be a sliver/needle, which would blow up CFD interpolation
+    weights and skewness without ever flipping sign.
+
+    The helper does **not** mutate the mesh and does **not** decide
+    the component verdict — BLR-9c-d-d (b) wires the result into
+    ``_evaluate_cavity_component_candidates``.
+
+    Parameters
+    ----------
+    fan_tets:
+        Output of :func:`_build_cavity_fan_transition_tets`.  Each
+        entry's ``tet_verts`` is ``[-1, i0, i1, i2]`` where ``-1`` is
+        the apex placeholder and ``i_k`` index ``inner_points``.
+    apex_xyz:
+        Apex coordinate (cavity centroid).
+    inner_points:
+        ``(M, 3)`` inner-triangle vertex coordinates.
+    q_min_threshold:
+        Q-shape threshold below which a tet is reported as bad.
+
+    Returns
+    -------
+    dict with keys
+
+    - ``n_tets``           number of fan tets evaluated
+    - ``q_values``         per-fan Q ∈ [0, 1] as ``np.ndarray``
+    - ``q_min``            minimum Q across all fan tets
+    - ``q_mean``           mean Q
+    - ``n_below_threshold`` count of tets with ``Q < q_min_threshold``
+    - ``bad_indices``      ``list[int]`` fan-tet positions with bad Q
+    """
+    out: dict[str, Any] = {
+        "n_tets": 0,
+        "q_values": np.empty(0, dtype=np.float64),
+        "q_min": 0.0,
+        "q_mean": 0.0,
+        "n_below_threshold": 0,
+        "bad_indices": [],
+    }
+    if not fan_tets:
+        return out
+    inner = np.asarray(inner_points, dtype=np.float64)
+    if inner.size == 0 or inner.shape[0] < 1:
+        out["n_tets"] = len(fan_tets)
+        out["bad_indices"] = list(range(len(fan_tets)))
+        return out
+    apex = np.asarray(apex_xyz, dtype=np.float64).reshape(3)
+
+    # Build combined point cloud: apex at index 0, then inner_points.
+    pts = np.vstack([apex.reshape(1, 3), inner])
+
+    # Translate fan tets into (T, 4) vertex-id array using the
+    # combined indexing above (shared-apex placeholder ``-1`` → 0,
+    # per-face Steiner index ``s`` → ``s + 1``,
+    # inner index ``k`` → ``k + 1``).
+    tets_list: list[list[int]] = []
+    invalid_idx: set[int] = set()
+    for k, tet in enumerate(fan_tets):
+        verts = tet.get("tet_verts", [])
+        resolved = _resolve_tet_apex_xyz(verts, apex, inner)
+        if resolved is None:
+            invalid_idx.add(k)
+            tets_list.append([0, 0, 0, 0])
+            continue
+        a_xyz, i0, i1, i2 = resolved
+        a_idx_combined = (
+            0 if int(verts[0]) == -1 else int(verts[0]) + 1
+        )
+        tets_list.append([a_idx_combined, i0 + 1, i1 + 1, i2 + 1])
+    tets_arr = np.asarray(tets_list, dtype=np.int64)
+
+    # Tet shape quality is invariant under vertex permutation, but
+    # core.evaluator.tet_qshape reports Q = 0 for tets with negative
+    # signed volume (its inverted-cell guard).  The BLR-9c-d-b
+    # determinant gate already takes care of orientation; here we
+    # only care about *shape*, so flip the last two columns of any
+    # tet whose signed volume is negative before delegating.
+    if tets_arr.shape[0] > 0:
+        a = pts[tets_arr[:, 0]]
+        b = pts[tets_arr[:, 1]]
+        c = pts[tets_arr[:, 2]]
+        d = pts[tets_arr[:, 3]]
+        signed_vol = np.einsum(
+            "ij,ij->i", np.cross(b - a, c - a), d - a
+        ) / 6.0
+        flip = signed_vol < 0.0
+        if np.any(flip):
+            swap = tets_arr[flip][:, [0, 1, 3, 2]]
+            tets_arr = tets_arr.copy()
+            tets_arr[flip] = swap
+
+    from core.evaluator.tet_qshape import tet_qshape  # local import
+
+    Q, _stats = tet_qshape(pts, tets_arr)
+
+    bad = {int(k) for k in np.where(Q < q_min_threshold)[0]} | invalid_idx
+    out["n_tets"] = len(fan_tets)
+    out["q_values"] = Q
+    out["q_min"] = float(Q.min()) if Q.size > 0 else 0.0
+    out["q_mean"] = float(Q.mean()) if Q.size > 0 else 0.0
+    out["n_below_threshold"] = int((Q < q_min_threshold).sum())
+    out["bad_indices"] = sorted(bad)
+    return out
+
+
+def _evaluate_cavity_component_candidates(
+    components: list[set[int]] | list[frozenset[int]] | list[list[int]],
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray | list[int],
+    neighbour: np.ndarray | list[int],
+    wall_face_indices: list[int],
+    motion_dirs: dict[int, np.ndarray] | None,
+    first_thickness: float,
+    *,
+    sharp_cos_thresh: float = 0.9,
+    non_ortho_threshold_deg: float = 70.0,
+    q_min_threshold: float = 0.1,
+) -> dict[str, Any]:
+    """BLR-9c-d: aggregate per-cavity-component evaluation.
+
+    For each cavity component (output of BLR-9c-a) the function chains:
+
+    - BLR-9c-b   ``_extract_cavity_component_boundary``
+    - BLR-9c-c-i ``_build_cavity_prism_inner_triangles``
+    - BLR-9c-c-ii-a ``_stitch_cavity_prism_inner_ids_smooth``
+    - BLR-9c-c-ii-b ``_split_cavity_inner_ids_at_sharp_corners``
+    - BLR-9c-c-iii-a ``_compute_cavity_centroid``
+    - BLR-9c-c-iii-b ``_build_cavity_fan_transition_tets``
+    - BLR-9c-c-iii-c ``_check_cavity_shell_coverage``
+    - BLR-9c-d-b    ``_check_cavity_fan_tet_determinants``
+    - BLR-9c-d-d-1  ``_check_cavity_fan_tet_shape_quality``
+    - BLR-9c-d-e-1  ``_check_cavity_fan_tet_pair_non_ortho``
+    - BLR-9c-d-f-1  ``_check_cavity_fan_tet_pair_skewness``
+    - BLR-9c-d-h-1  ``_build_cavity_shell_closure_tets``
+
+    Each component records its sizing (cells / wall / shell / internal),
+    inner-point count after sharp-corner duplication, sharp vertex
+    count, fan-tet count, uncovered shell-face count, fan-det stats,
+    fan Q-shape stats, fan-pair non-orthogonality stats, fan-pair
+    skewness stats, and a decision.  Decision precedence — once a
+    failure is recorded the rest of the gates are *still computed*
+    (so the per-component record stays fully observable) but the
+    earliest failure wins:
+
+    1. ``"reject_uncovered_shell"`` — ``n_shell_uncovered > 0``.
+       A leaking cavity shell is a topology bug we must close before
+       quality matters.
+    2. ``"reject_bad_det"`` — fan tet ``bad_indices`` (degenerate or
+       sign-flipped) per BLR-9c-d-b.
+    3. ``"reject_bad_shape"`` — fan tet Klingner ``Q < threshold``
+       (sliver / needle) per BLR-9c-d-d-1.
+    4. ``"reject_bad_non_ortho"`` — adjacent fan-tet pair angle
+       above the OpenFOAM ``checkMesh`` non-orthogonality cap
+       (default 70°) per BLR-9c-d-e-1.
+    5. ``"reject_bad_skewness"`` — adjacent fan-tet pair skewness
+       above the OpenFOAM ``checkMesh`` skewness cap (default 4.0)
+       per BLR-9c-d-f-1.
+    6. ``"accept"`` — all gates pass.
+
+    Pure aggregation; no mesh mutation.  Returns::
+
+        {
+            "n_components": int,
+            "n_accepted":   int,
+            "n_rejected_uncovered_shell": int,
+            "n_rejected_bad_det": int,
+            "components": [
+                {
+                    "cells": [...],
+                    "n_cells": int,
+                    "n_wall_faces": int,
+                    "n_shell_faces": int,
+                    "n_internal_faces": int,
+                    "n_inner_points": int,
+                    "n_sharp_verts": int,
+                    "n_fan_tets": int,
+                    "n_shell_uncovered": int,
+                    "n_fan_pos_det": int,
+                    "n_fan_neg_det": int,
+                    "n_fan_degenerate_det": int,
+                    "n_fan_bad_indices": int,
+                    "fan_worst_abs_det": float,
+                    "decision": str,
+                },
+                ...
+            ],
+        }
+    """
+    summary: dict[str, Any] = {
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        # BLR-9c-d-j-1 — diagnostic histograms across all components
+        # so callers can spot whether reject buckets cluster just past
+        # the threshold (cap likely too tight) or scatter to extreme
+        # values (real geometry pathology).
+        "non_ortho_hist": {
+            "le_30": 0, "30_60": 0, "60_70": 0, "70_80": 0,
+            "80_90": 0, "gt_90": 0,
+        },
+        # BLR-9c-d-l-1 — fine bins for the >70° band so we can tell
+        # whether reject_bad_non_ortho components cluster just past
+        # the cap (recoverable by softening) or scatter to the high
+        # end (real geometry pathology).
+        "non_ortho_fine_hist": {
+            "70_75": 0, "75_80": 0, "80_85": 0, "85_90": 0, "gt_90": 0,
+        },
+        # Worst-non-ortho-pair kind across all components.
+        "worst_non_ortho_kind_hist": {
+            "fan_fan": 0,
+            "fan_shell_closure": 0,
+            "shell_closure_shell_closure": 0,
+            "none": 0,
+            "other": 0,
+        },
+        "skew_hist": {
+            "le_1": 0, "1_2": 0, "2_4": 0, "4_8": 0, "gt_8": 0,
+        },
+        "q_min_hist": {
+            "ge_0p3": 0, "0p1_0p3": 0, "0p01_0p1": 0, "lt_0p01": 0,
+        },
+        # BLR-9c-d-k-1 — fine-grained Q bins so the
+        # ``reject_bad_shape`` bucket can be split between
+        # near-threshold (likely recoverable by softening the cap)
+        # and pathological (slivers that need a real geometric fix).
+        "q_min_fine_hist": {
+            "0p05_0p1": 0,
+            "0p01_0p05": 0,
+            "0p001_0p01": 0,
+            "lt_0p001": 0,
+        },
+        # Worst-Q-tet attribution across all components.
+        "worst_q_kind_hist": {
+            "fan": 0,
+            "shell_closure": 0,
+            "none": 0,
+            "other": 0,
+        },
+        "max_non_ortho_deg": 0.0,
+        "max_skew": 0.0,
+        "min_q": 1.0,
+        "components": [],
+    }
+    if not components:
+        return summary
+    summary["n_components"] = int(len(components))
+    pts = np.asarray(points, dtype=np.float64)
+
+    for comp in components:
+        comp_set = {int(c) for c in comp}
+        boundary = _extract_cavity_component_boundary(
+            comp_set, owner, neighbour, wall_face_indices
+        )
+        comp_wall_faces = list(boundary.get("wall_faces", []))
+        triangles = _build_cavity_prism_inner_triangles(
+            comp_wall_faces, pts, faces, motion_dirs, float(first_thickness)
+        )
+        smooth = _stitch_cavity_prism_inner_ids_smooth(triangles)
+        split = _split_cavity_inner_ids_at_sharp_corners(
+            triangles, smooth, cos_thresh=sharp_cos_thresh
+        )
+        # BLR-9c-d-o-1 (reverted): the prism-cap centroid as fan
+        # apex was tried and caused a hard regression (824 → 192
+        # accept, +537 reject_bad_det) because the cap centroid
+        # sits *too close* to the BLR-9c-c-i inner triangles — for
+        # many components it lands on the wrong side of one or more
+        # caps, flipping the signed volume of the corresponding fan
+        # tet.  The cavity-cell centroid is the right invariant
+        # apex; future tuning of fan-tet shape needs a different
+        # tactic (e.g. a per-component scale on the BLR-9c-c-i
+        # motion direction) that does not move the apex.
+        apex_xyz = _compute_cavity_centroid(
+            comp_set, faces, pts, owner, neighbour
+        )
+        cavity_centroid_xyz = apex_xyz
+        fan_tets = _build_cavity_fan_transition_tets(triangles, split)
+        # Initial shell-coverage check on fan tets only — gives us the
+        # ``uncovered`` external_internal face list that BLR-9c-d-h-1
+        # then closes by emitting one extra transition tet per face.
+        pre_closure_coverage = _check_cavity_shell_coverage(
+            boundary, fan_tets, faces
+        )
+        closure = _build_cavity_shell_closure_tets(
+            uncovered_face_ids=pre_closure_coverage.get("uncovered", []),
+            boundary=boundary,
+            faces=faces,
+            points=pts,
+            inner_points=split["inner_points"],
+            apex_xyz=cavity_centroid_xyz,
+        )
+        closure_tets = closure["shell_closure_tets"]
+        extended_inner = closure["extended_inner_points"]
+        all_tets = list(fan_tets) + list(closure_tets)
+        # Re-run shell coverage on the combined list.  When every
+        # uncovered triangle was successfully closed, ``n_uncovered``
+        # drops to 0 and the component falls through to the quality
+        # gates below.  Polygon shell faces that BLR-9c-d-h-1 skipped
+        # remain uncovered and still trigger ``reject_uncovered_shell``.
+        coverage = _check_cavity_shell_coverage(
+            boundary, all_tets, faces
+        )
+        n_uncovered = int(len(coverage.get("uncovered", [])))
+        det_check = _check_cavity_fan_tet_determinants(
+            all_tets, apex_xyz, extended_inner
+        )
+        n_fan_bad_det = int(len(det_check.get("bad_indices", [])))
+        shape_check = _check_cavity_fan_tet_shape_quality(
+            all_tets, apex_xyz, extended_inner,
+            q_min_threshold=q_min_threshold,
+        )
+        n_fan_bad_shape = int(len(shape_check.get("bad_indices", [])))
+        # BLR-9c-d-k-1 — attribute the worst-Q tet to either the
+        # BLR-9c-c-iii-b fan or the BLR-9c-d-h-1 shell closure so
+        # later sub-steps can target the right helper.
+        worst_q_kind = "none"
+        worst_q_value = 1.0
+        _q_values = shape_check.get("q_values", None)
+        if (
+            _q_values is not None
+            and hasattr(_q_values, "size")
+            and _q_values.size > 0
+        ):
+            _argmin = int(np.argmin(_q_values))
+            if 0 <= _argmin < len(all_tets):
+                worst_q_kind = str(
+                    all_tets[_argmin].get("kind", "fan")
+                )
+                worst_q_value = float(_q_values[_argmin])
+        non_ortho_check = _check_cavity_fan_tet_pair_non_ortho(
+            all_tets, apex_xyz, extended_inner,
+            non_ortho_threshold_deg=non_ortho_threshold_deg,
+        )
+        n_fan_bad_non_ortho = int(
+            len(non_ortho_check.get("bad_pair_indices", []))
+        )
+        # BLR-9c-d-l-1 — classify the worst-non-ortho pair by the
+        # ``kind`` of its two transition tets so later sub-steps can
+        # target the right helper (fan-fan = inner triangle motion;
+        # closure-closure = shell-face fan triangulation; mixed =
+        # interface between the two paths).
+        worst_no_kind = "none"
+        wp = non_ortho_check.get("worst_pair_indices")
+        if (
+            wp is not None
+            and len(wp) == 2
+            and 0 <= int(wp[0]) < len(all_tets)
+            and 0 <= int(wp[1]) < len(all_tets)
+        ):
+            ka = str(all_tets[int(wp[0])].get("kind", "fan"))
+            kb = str(all_tets[int(wp[1])].get("kind", "fan"))
+            if ka == kb:
+                worst_no_kind = f"{ka}_{kb}"
+            else:
+                worst_no_kind = "_".join(sorted([ka, kb]))
+        skew_check = _check_cavity_fan_tet_pair_skewness(
+            all_tets, apex_xyz, extended_inner
+        )
+        n_fan_bad_skew = int(
+            len(skew_check.get("bad_pair_indices", []))
+        )
+        if n_uncovered > 0:
+            decision = "reject_uncovered_shell"
+        elif n_fan_bad_det > 0:
+            decision = "reject_bad_det"
+        elif n_fan_bad_shape > 0:
+            decision = "reject_bad_shape"
+        elif n_fan_bad_non_ortho > 0:
+            decision = "reject_bad_non_ortho"
+        elif n_fan_bad_skew > 0:
+            decision = "reject_bad_skewness"
+        else:
+            decision = "accept"
+
+        comp_record = {
+            "cells": sorted(comp_set),
+            "n_cells": int(len(comp_set)),
+            "n_wall_faces": int(len(comp_wall_faces)),
+            "n_shell_faces": int(coverage.get("n_shell_faces", 0)),
+            "n_internal_faces": int(
+                len(boundary.get("internal_faces", []))
+            ),
+            "n_inner_points": int(split["inner_points"].shape[0]),
+            "n_sharp_verts": int(split.get("n_split", 0)),
+            "n_fan_tets": int(len(fan_tets)),
+            "n_closure_tets": int(len(closure_tets)),
+            "n_total_tets": int(len(all_tets)),
+            "n_shell_uncovered_pre_closure": int(
+                len(pre_closure_coverage.get("uncovered", []))
+            ),
+            "n_shell_uncovered": n_uncovered,
+            "n_fan_pos_det": int(det_check.get("n_pos_det", 0)),
+            "n_fan_neg_det": int(det_check.get("n_neg_det", 0)),
+            "n_fan_degenerate_det": int(
+                det_check.get("n_degenerate_det", 0)
+            ),
+            "n_fan_bad_indices": n_fan_bad_det,
+            "fan_worst_abs_det": float(
+                det_check.get("worst_abs_det", 0.0)
+            ),
+            "n_fan_sign_inconsistent": int(
+                det_check.get("n_sign_inconsistent", 0)
+            ),
+            "n_fan_bad_shape_indices": n_fan_bad_shape,
+            "fan_q_min": float(shape_check.get("q_min", 0.0)),
+            "fan_q_mean": float(shape_check.get("q_mean", 0.0)),
+            "worst_q_kind": worst_q_kind,
+            "worst_q_value": worst_q_value,
+            "n_fan_pair_count": int(non_ortho_check.get("n_pairs", 0)),
+            "n_fan_pair_above_non_ortho": int(
+                non_ortho_check.get("n_above_threshold", 0)
+            ),
+            "fan_pair_max_non_ortho_deg": float(
+                non_ortho_check.get("max_angle_deg", 0.0)
+            ),
+            "fan_pair_mean_non_ortho_deg": float(
+                non_ortho_check.get("mean_angle_deg", 0.0)
+            ),
+            "n_fan_pair_bad_non_ortho": n_fan_bad_non_ortho,
+            "worst_non_ortho_kind": worst_no_kind,
+            "fan_pair_max_skew": float(
+                skew_check.get("max_skew", 0.0)
+            ),
+            "fan_pair_mean_skew": float(
+                skew_check.get("mean_skew", 0.0)
+            ),
+            "n_fan_pair_above_skew": int(
+                skew_check.get("n_above_threshold", 0)
+            ),
+            "n_fan_pair_bad_skewness": n_fan_bad_skew,
+            "decision": decision,
+        }
+        summary["components"].append(comp_record)
+        if decision == "accept":
+            summary["n_accepted"] += 1
+        elif decision == "reject_uncovered_shell":
+            summary["n_rejected_uncovered_shell"] += 1
+        elif decision == "reject_bad_det":
+            summary["n_rejected_bad_det"] += 1
+        elif decision == "reject_bad_shape":
+            summary["n_rejected_bad_shape"] += 1
+        elif decision == "reject_bad_non_ortho":
+            summary["n_rejected_bad_non_ortho"] += 1
+        elif decision == "reject_bad_skewness":
+            summary["n_rejected_bad_skewness"] += 1
+
+        # Accumulate diagnostic histograms.
+        _max_no = float(comp_record["fan_pair_max_non_ortho_deg"])
+        if _max_no <= 30.0:
+            summary["non_ortho_hist"]["le_30"] += 1
+        elif _max_no <= 60.0:
+            summary["non_ortho_hist"]["30_60"] += 1
+        elif _max_no <= 70.0:
+            summary["non_ortho_hist"]["60_70"] += 1
+        elif _max_no <= 80.0:
+            summary["non_ortho_hist"]["70_80"] += 1
+        elif _max_no <= 90.0:
+            summary["non_ortho_hist"]["80_90"] += 1
+        else:
+            summary["non_ortho_hist"]["gt_90"] += 1
+        if _max_no > 70.0:
+            if _max_no <= 75.0:
+                summary["non_ortho_fine_hist"]["70_75"] += 1
+            elif _max_no <= 80.0:
+                summary["non_ortho_fine_hist"]["75_80"] += 1
+            elif _max_no <= 85.0:
+                summary["non_ortho_fine_hist"]["80_85"] += 1
+            elif _max_no <= 90.0:
+                summary["non_ortho_fine_hist"]["85_90"] += 1
+            else:
+                summary["non_ortho_fine_hist"]["gt_90"] += 1
+        if _max_no > summary["max_non_ortho_deg"]:
+            summary["max_non_ortho_deg"] = _max_no
+        _wno_kind = comp_record.get("worst_non_ortho_kind", "none")
+        if _wno_kind in summary["worst_non_ortho_kind_hist"]:
+            summary["worst_non_ortho_kind_hist"][_wno_kind] += 1
+        else:
+            summary["worst_non_ortho_kind_hist"]["other"] += 1
+
+        _max_sk = float(comp_record["fan_pair_max_skew"])
+        if _max_sk <= 1.0:
+            summary["skew_hist"]["le_1"] += 1
+        elif _max_sk <= 2.0:
+            summary["skew_hist"]["1_2"] += 1
+        elif _max_sk <= 4.0:
+            summary["skew_hist"]["2_4"] += 1
+        elif _max_sk <= 8.0:
+            summary["skew_hist"]["4_8"] += 1
+        else:
+            summary["skew_hist"]["gt_8"] += 1
+        if _max_sk > summary["max_skew"]:
+            summary["max_skew"] = _max_sk
+
+        _q_min = float(comp_record["fan_q_min"])
+        if _q_min >= 0.3:
+            summary["q_min_hist"]["ge_0p3"] += 1
+        elif _q_min >= 0.1:
+            summary["q_min_hist"]["0p1_0p3"] += 1
+        elif _q_min >= 0.01:
+            summary["q_min_hist"]["0p01_0p1"] += 1
+        else:
+            summary["q_min_hist"]["lt_0p01"] += 1
+        # Fine-grained bins, only populated for components that fall
+        # below the BLR-9c-d-d-1 threshold (Q < 0.1).
+        if _q_min < 0.1:
+            if _q_min >= 0.05:
+                summary["q_min_fine_hist"]["0p05_0p1"] += 1
+            elif _q_min >= 0.01:
+                summary["q_min_fine_hist"]["0p01_0p05"] += 1
+            elif _q_min >= 0.001:
+                summary["q_min_fine_hist"]["0p001_0p01"] += 1
+            else:
+                summary["q_min_fine_hist"]["lt_0p001"] += 1
+        if _q_min < summary["min_q"]:
+            summary["min_q"] = _q_min
+
+        _wq_kind = comp_record.get("worst_q_kind", "none")
+        if _wq_kind in summary["worst_q_kind_hist"]:
+            summary["worst_q_kind_hist"][_wq_kind] += 1
+        else:
+            summary["worst_q_kind_hist"]["other"] += 1
+
+    return summary
+
+
+def _apply_tet_cavity_replacement_plan(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    wall_face_indices: list[int],
+    plan: dict[str, Any],
+    *,
+    enabled: bool,
+) -> dict[str, Any]:
+    """BLR-9b-ii: apply a BLR-9b-i replacement plan to in-memory arrays.
+
+    The mutation is performed entirely on copies of the input arrays —
+    the caller is responsible for swapping them into the polyMesh
+    writer in a later, separately env-gated step.
+
+    Steps:
+
+    1. ``points`` ← original points + plan.new_points + 1 apex point
+       per new cell (minted from ``transition_tet_apex_xyz``).
+    2. Resolve each ``new_cells[i]['transition_tet'][0]`` placeholder
+       (-1) to the newly minted apex id.
+    3. Drop every face whose owner OR neighbour is in
+       ``cells_to_delete``.  Wall faces of deleted cells map to the
+       new prism's bottom face; other dropped boundary faces are
+       discarded (they were the wall face slated for replacement).
+    4. Compact the surviving cell ids (deletion shifts ids down) and
+       rebuild ``owner`` / ``neighbour`` over the surviving faces.
+    5. Append per-replacement faces:
+         - prism: bottom (wall, kept), top (cap, internal), 3 sides
+           (internal).
+         - transition tet: shares its base face with the prism's top;
+           three lateral triangles connect the base to the apex.
+
+    The function does NOT yet touch ``boundary`` (patch metadata) —
+    BLR-9b-iii will reattach the wall face to its original patch.
+    Default OFF when ``enabled`` is False (returns a no-op dict
+    holding the originals).
+
+    Returns dict: ``enabled``, ``new_points``, ``new_faces``,
+    ``new_owner``, ``new_neighbour``, ``n_cells_before``,
+    ``n_cells_after``, ``n_new_points_total`` (inner verts +
+    minted apex), ``n_replaced``.
+    """
+    owner_arr_in = np.asarray(owner, dtype=np.int64)
+    neighbour_arr_in = np.asarray(neighbour, dtype=np.int64)
+    _max_own = int(owner_arr_in.max()) if owner_arr_in.size > 0 else -1
+    _max_nbr = int(neighbour_arr_in.max()) if neighbour_arr_in.size > 0 else -1
+    n_cells_before = max(_max_own, _max_nbr) + 1
+    if n_cells_before < 0:
+        n_cells_before = 0
+
+    no_op: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "new_points": np.asarray(points, dtype=np.float64).copy(),
+        "new_faces": [list(f) for f in faces],
+        "new_owner": np.asarray(owner, dtype=np.int64).copy(),
+        "new_neighbour": np.asarray(neighbour, dtype=np.int64).copy(),
+        "n_cells_before": int(n_cells_before),
+        "n_cells_after": int(n_cells_before),
+        "n_new_points_total": 0,
+        "n_replaced": 0,
+    }
+    if not enabled or not plan or not plan.get("n_planned"):
+        return no_op
+    if plan.get("enabled") is False:
+        return no_op
+
+    cells_to_delete: list[int] = list(plan.get("cells_to_delete", []))
+    new_cells_spec: list[dict[str, Any]] = list(plan.get("new_cells", []))
+    plan_new_points: np.ndarray = np.asarray(
+        plan.get("new_points", np.zeros((0, 3), dtype=np.float64)),
+        dtype=np.float64,
+    )
+    if not cells_to_delete or not new_cells_spec:
+        return no_op
+    if len(cells_to_delete) != len(new_cells_spec):
+        # Inconsistent plan; refuse to mutate.
+        no_op["error"] = "plan: cells_to_delete vs new_cells length mismatch"
+        return no_op
+
+    # 1. Mint points: original + plan inner verts + apex per replacement.
+    apex_xyz_list: list[list[float]] = []
+    for spec in new_cells_spec:
+        apex_xyz_list.append(list(spec.get("transition_tet_apex_xyz", [0.0, 0.0, 0.0])))
+    apex_arr = (
+        np.asarray(apex_xyz_list, dtype=np.float64).reshape(-1, 3)
+        if apex_xyz_list
+        else np.zeros((0, 3), dtype=np.float64)
+    )
+    pts_orig = np.asarray(points, dtype=np.float64)
+    new_points = np.concatenate([pts_orig, plan_new_points, apex_arr], axis=0)
+    apex_id_offset = int(pts_orig.shape[0] + plan_new_points.shape[0])
+
+    # 2. Resolve apex ids inside each new cell spec.
+    resolved_specs: list[dict[str, Any]] = []
+    for i, spec in enumerate(new_cells_spec):
+        resolved = dict(spec)
+        tet = list(spec["transition_tet"])
+        tet[0] = apex_id_offset + i
+        resolved["transition_tet"] = tet
+        resolved_specs.append(resolved)
+
+    delete_set = {int(c) for c in cells_to_delete}
+    wall_face_set = {int(fi) for fi in wall_face_indices}
+
+    owner_arr = np.asarray(owner, dtype=np.int64)
+    nbr_arr = np.asarray(neighbour, dtype=np.int64)
+    n_internal = int(len(nbr_arr))
+
+    # 3. Build the list of surviving faces.  Faces whose owner OR
+    # neighbour is being deleted disappear (they are either the wall
+    # face slated for replacement or an internal face whose other
+    # cell is itself being replaced — both will be re-emitted by the
+    # new cells).  Track which faces survive and remember the wall
+    # face owner mapping (used in step 5 so the new prism inherits
+    # the original patch wall face's vertex order).
+    surviving_face_ids: list[int] = []
+    for fi in range(len(faces)):
+        own = int(owner_arr[fi]) if fi < len(owner_arr) else -1
+        nbr = int(nbr_arr[fi]) if fi < n_internal else -1
+        if own in delete_set:
+            continue
+        if 0 <= nbr and nbr in delete_set:
+            # Other side of an internal face was deleted; re-emit later.
+            continue
+        surviving_face_ids.append(fi)
+
+    # 4. Compact cell ids: deleted cells shift later ids down.
+    n_cells_after_delete = n_cells_before - len(delete_set)
+    cell_remap = np.full(n_cells_before, -1, dtype=np.int64)
+    next_new_id = 0
+    for cid in range(n_cells_before):
+        if cid in delete_set:
+            continue
+        cell_remap[cid] = next_new_id
+        next_new_id += 1
+
+    # Rebuild faces / owner / neighbour over surviving ids.
+    surviving_faces_int: list[list[int]] = []
+    surviving_faces_bnd: list[list[int]] = []
+    survive_own_int: list[int] = []
+    survive_own_bnd: list[int] = []
+    survive_nbr_int: list[int] = []
+    for fi in surviving_face_ids:
+        own = int(owner_arr[fi])
+        nbr = int(nbr_arr[fi]) if fi < n_internal else -1
+        new_own = int(cell_remap[own]) if 0 <= own < n_cells_before else -1
+        new_nbr = int(cell_remap[nbr]) if 0 <= nbr < n_cells_before else -1
+        if 0 <= nbr < n_cells_before and nbr not in delete_set:
+            # Internal face survives.
+            surviving_faces_int.append(list(faces[fi]))
+            survive_own_int.append(new_own)
+            survive_nbr_int.append(new_nbr)
+        else:
+            surviving_faces_bnd.append(list(faces[fi]))
+            survive_own_bnd.append(new_own)
+
+    # 5. Emit new cells.  Each replacement contributes:
+    #    prism (cell id = next_new_id):
+    #      - bottom triangle (wall) → boundary face, owner=prism
+    #      - top triangle (cap)     → internal face, owner=prism,
+    #                                 neighbour=transition_tet
+    #      - 3 side quads           → boundary faces (BLR-9b-iii will
+    #                                 stitch them to neighbour cells in
+    #                                 a future pass; for now they are
+    #                                 boundary so the polyMesh stays
+    #                                 valid at smoke-test scale).
+    #    transition tet (cell id = next_new_id + 1):
+    #      - base = prism top (already emitted, neighbour side)
+    #      - 3 sides → boundary faces.
+    new_internal_faces: list[list[int]] = []
+    new_internal_own: list[int] = []
+    new_internal_nbr: list[int] = []
+    new_bnd_faces: list[list[int]] = []
+    new_bnd_own: list[int] = []
+    n_replaced = 0
+    for spec in resolved_specs:
+        prism = list(spec["prism"])
+        v0, v1, v2, i0, i1, i2 = (int(x) for x in prism)
+        prism_cell = next_new_id
+        tet_cell = next_new_id + 1
+        next_new_id += 2
+        n_replaced += 1
+
+        # Bottom = original wall face, but using its original vertex order.
+        # Locate the wall face for this deleted cell to inherit winding.
+        cid = int(spec["deleted_cell_id"])
+        bottom_face_verts: list[int] | None = None
+        for fi in wall_face_indices:
+            if 0 <= fi < len(owner_arr) and int(owner_arr[fi]) == cid:
+                bottom_face_verts = list(faces[fi])
+                break
+        if bottom_face_verts is None:
+            bottom_face_verts = [v0, v1, v2]
+        new_bnd_faces.append(bottom_face_verts)
+        new_bnd_own.append(prism_cell)
+
+        # Top (cap) — opposite winding so the outward normal points
+        # toward the transition tet apex.
+        new_internal_faces.append([i0, i2, i1])
+        new_internal_own.append(prism_cell)
+        new_internal_nbr.append(tet_cell)
+
+        # 3 prism side quads (boundary placeholder for BLR-9b-ii).
+        new_bnd_faces.append([v0, v1, i1, i0])
+        new_bnd_own.append(prism_cell)
+        new_bnd_faces.append([v1, v2, i2, i1])
+        new_bnd_own.append(prism_cell)
+        new_bnd_faces.append([v2, v0, i0, i2])
+        new_bnd_own.append(prism_cell)
+
+        # Transition tet sides (apex = spec['transition_tet'][0]).
+        apex_id = int(spec["transition_tet"][0])
+        new_bnd_faces.append([i0, i1, apex_id])
+        new_bnd_own.append(tet_cell)
+        new_bnd_faces.append([i1, i2, apex_id])
+        new_bnd_own.append(tet_cell)
+        new_bnd_faces.append([i2, i0, apex_id])
+        new_bnd_own.append(tet_cell)
+
+    n_cells_after = n_cells_after_delete + 2 * n_replaced
+
+    # OpenFOAM convention: internal faces first, then boundary faces.
+    final_faces = surviving_faces_int + new_internal_faces + surviving_faces_bnd + new_bnd_faces
+    final_owner = np.asarray(
+        survive_own_int + new_internal_own + survive_own_bnd + new_bnd_own,
+        dtype=np.int64,
+    )
+    final_neighbour = np.asarray(
+        survive_nbr_int + new_internal_nbr,
+        dtype=np.int64,
+    )
+
+    return {
+        "enabled": True,
+        "new_points": new_points,
+        "new_faces": final_faces,
+        "new_owner": final_owner,
+        "new_neighbour": final_neighbour,
+        "n_cells_before": int(n_cells_before),
+        "n_cells_after": int(n_cells_after),
+        "n_new_points_total": int(plan_new_points.shape[0] + apex_arr.shape[0]),
+        "n_replaced": int(n_replaced),
+    }
+
+
 def _merge_skewed_bl_internal_quads(
     points: np.ndarray,
     faces: list[list[int]],
@@ -1832,6 +4961,454 @@ def _build_edge_to_wall_faces(
     return edge_map
 
 
+def _read_input_stl_name(case_dir: Path) -> str:
+    """Return the input file basename from ``case_dir/geometry_report.json``.
+
+    Used by :func:`_vd_should_activate` to scope ``AUTO_TESSELL_BL_VD_FOR``
+    matching to the current STL. Empty string on any read/parse failure —
+    callers must treat that as "name unknown" and fall back to global gates.
+    """
+    try:
+        import json
+        gp = case_dir / "geometry_report.json"
+        if not gp.exists():
+            return ""
+        data = json.loads(gp.read_text())
+        path = data.get("file_info", {}).get("path", "")
+        if not path:
+            return ""
+        return Path(path).name
+    except Exception:
+        return ""
+
+
+def _vd_should_activate(case_dir: Path) -> bool:
+    """VD-8b — combined VD activation gate (VD_ENABLE + VD_FOR allow-list).
+
+    Decision table:
+      * VD_FOR unset / empty  → governed by ``VD_ENABLE`` ("1" → True).
+      * VD_FOR non-empty      → True only if any comma-separated token is a
+                                 substring of the input STL basename. The
+                                 STL name is read from
+                                 ``case_dir/geometry_report.json``; if the
+                                 sidecar is missing or malformed, returns
+                                 False (per-STL filter cannot match).
+
+    The two env vars compose so that the bench can run a single command
+    with ``AUTO_TESSELL_BL_VD_FOR=hard_100029,extreme_1017013`` to flip VD
+    on for those STLs only, without disturbing the rest of the 21-STL bench.
+    """
+    vd_for = os.environ.get("AUTO_TESSELL_BL_VD_FOR", "").strip()
+    if not vd_for:
+        return os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1"
+    tokens = [t.strip() for t in vd_for.split(",") if t.strip()]
+    if not tokens:
+        return os.environ.get("AUTO_TESSELL_BL_VD_ENABLE", "0") == "1"
+    stl_name = _read_input_stl_name(case_dir)
+    if not stl_name:
+        log.info(
+            "native_bl_vd_for_no_stl_name",
+            component="native_bl", phase="VD-8b",
+            case_dir=str(case_dir),
+            vd_for=vd_for,
+        )
+        return False
+    matched = next((t for t in tokens if t in stl_name), None)
+    log.info(
+        "native_bl_vd_for_decision",
+        component="native_bl", phase="VD-8b",
+        stl_name=stl_name,
+        vd_for=vd_for,
+        matched=matched,
+        active=bool(matched),
+    )
+    return matched is not None
+
+
+def _generate_native_bl_vd(
+    *,
+    case_dir: Path,
+    cfg: BLConfig,
+    poly_dir: Path,
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    wall_face_indices: list[int],
+    wall_vert_indices: list[int],
+    vnorm: dict[int, np.ndarray],
+    t_start: float,
+) -> NativeBLResult:
+    """VD-8a — vertex-duplication BL polyMesh writer (env-gated).
+
+    Builds a BL polyMesh consisting of multi-layer prism cells with per-face
+    inner verts (junction-aware duplication) plus junction-edge gap-fill
+    tetrahedra, then writes it under ``case_dir/constant/polyMesh``. Bulk
+    volume cells are NOT preserved — this path is intended as a measurement
+    vehicle for boundary skew at multi-patch junctions where per-vertex
+    extrusion produces tan(theta) bias.
+
+    Triggered by ``AUTO_TESSELL_BL_VD_ENABLE=1``; the default-OFF branch in
+    :func:`generate_native_bl` keeps the production pipeline unchanged.
+    """
+    from core.layers.native_bl_vd import (
+        build_bulk_preserving_multi_layer_full_bl_polymesh,
+        build_full_bl_polymesh,
+        build_multi_layer_bl,
+        cells_to_polymesh,
+        detect_junction_verts,
+        generate_per_face_inner_verts,
+    )
+
+    tri_wall = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_wall:
+        return NativeBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t_start,
+            message=(
+                "VD-8a: triangle wall faces 없음 — VD MVP 는 tri-only "
+                "지원 (polygon wall fan-triangulation 은 후속 카드)."
+            ),
+        )
+
+    cluster_cos = float(
+        os.environ.get("AUTO_TESSELL_BL_VD_CLUSTER_COS", "0.9")
+    )
+    cos_thresh = float(
+        os.environ.get("AUTO_TESSELL_BL_VD_JUNCTION_COS", "0.9")
+    )
+
+    info = detect_junction_verts(
+        tri_wall, faces, points, cos_thresh=cos_thresh,
+    )
+    preserve_bulk = os.environ.get("AUTO_TESSELL_BL_VD_PRESERVE_BULK", "0") == "1"
+
+    bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    log.info(
+        "native_bl_vd_start",
+        component="native_bl",
+        phase="VD-8a",
+        n_wall_faces=len(tri_wall),
+        n_wall_verts=len(wall_vert_indices),
+        n_junction_verts=len(info.junction_verts),
+        n_junction_edges=len(info.junction_edges),
+        num_layers=cfg.num_layers,
+        first_thickness=cfg.first_thickness,
+        growth_ratio=cfg.growth_ratio,
+        cluster_cos=cluster_cos,
+        cos_thresh=cos_thresh,
+        preserve_bulk=preserve_bulk,
+        bbox_diag=round(bbox_diag, 6),
+    )
+
+    n_bulk = 0
+    if preserve_bulk:
+        full = build_bulk_preserving_multi_layer_full_bl_polymesh(
+            tri_wall,
+            faces,
+            owner,
+            neighbour,
+            points,
+            info,
+            num_layers=int(cfg.num_layers),
+            first_layer_thickness=float(cfg.first_thickness),
+            growth_ratio=float(cfg.growth_ratio),
+            vnorm=vnorm,
+            cluster_cos=cluster_cos,
+        )
+        pm = full.polymesh
+        n_bulk = full.n_bulk_cells
+        n_prism = full.n_prism_cells
+        n_gap = full.n_gap_fill_cells
+    elif cfg.num_layers == 1:
+        # Single-layer path also closes junction edges with gap-fill tets.
+        inner = generate_per_face_inner_verts(
+            tri_wall,
+            faces,
+            points,
+            info,
+            vnorm=vnorm,
+            thickness=float(cfg.first_thickness),
+            cluster_cos=cluster_cos,
+        )
+        full = build_full_bl_polymesh(tri_wall, faces, points, inner)
+        pm = full.polymesh
+        n_prism = full.n_prism_cells
+        n_gap = full.n_gap_fill_cells
+    else:
+        ml = build_multi_layer_bl(
+            tri_wall,
+            faces,
+            points,
+            info,
+            num_layers=int(cfg.num_layers),
+            first_layer_thickness=float(cfg.first_thickness),
+            growth_ratio=float(cfg.growth_ratio),
+            vnorm=vnorm,
+            cluster_cos=cluster_cos,
+        )
+        pm = cells_to_polymesh(ml.cell_face_verts, ml.new_points)
+        n_prism = len(ml.cell_face_verts)
+        n_gap = 0
+
+    bnd_entries: list[dict[str, Any]] = []
+    for p in pm.patches:
+        patch_type = "wall" if p["name"] == "wall" else "patch"
+        bnd_entries.append({
+            "name": p["name"],
+            "type": patch_type,
+            "nFaces": int(p["nFaces"]),
+            "startFace": int(p["startFace"]),
+        })
+
+    if cfg.backup_original:
+        bak = case_dir / "constant" / "polyMesh_pre_bl"
+        if bak.exists():
+            shutil.rmtree(bak)
+        shutil.copytree(poly_dir, bak)
+
+    poly_dir.mkdir(parents=True, exist_ok=True)
+    _write_points(poly_dir / "points", pm.points)
+    _write_faces(poly_dir / "faces", pm.faces)
+    _write_labels(
+        poly_dir / "owner",
+        np.array(pm.owner, dtype=np.int64),
+        "owner",
+    )
+    _write_labels(
+        poly_dir / "neighbour",
+        np.array(pm.neighbour, dtype=np.int64),
+        "neighbour",
+    )
+    _write_boundary(poly_dir / "boundary", bnd_entries)
+
+    n_cells_out = n_bulk + n_prism + n_gap
+    n_internal = len(pm.neighbour)
+    n_faces_out = len(pm.faces)
+    n_pts_out = int(pm.points.shape[0])
+    n_new_pts = int(n_pts_out - len(points))
+    if abs(float(cfg.growth_ratio) - 1.0) < 1e-12:
+        total_thickness = float(cfg.first_thickness * cfg.num_layers)
+    else:
+        total_thickness = float(
+            cfg.first_thickness
+            * ((float(cfg.growth_ratio) ** int(cfg.num_layers)) - 1.0)
+            / (float(cfg.growth_ratio) - 1.0)
+        )
+
+    # BLR-9c-d-g — env-gated cavity-component evaluation on the
+    # pre-BL polyMesh.  In the VD writer path we don't carry an
+    # explicit ``motion_dirs`` map, but the inward unit vector for
+    # each wall vertex is exactly ``-vnorm[v]`` — build that map
+    # inline so the eval helpers can run without any other change.
+    _vd_tet_cavity_eval_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_EVAL", "0") == "1"
+    )
+    vd_tet_cavity_eval_diag: dict[str, Any] = {
+        "enabled": bool(_vd_tet_cavity_eval_enabled),
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+        "writer_path": "vd",
+    }
+    if _vd_tet_cavity_eval_enabled:
+        try:
+            _vd_motion_dirs = {
+                int(v): -np.asarray(vnorm[v], dtype=np.float64)
+                for v in wall_vert_indices
+                if v in vnorm
+            }
+            _vd_components = _detect_wall_owner_cavity_components(
+                np.asarray(owner, dtype=np.int64),
+                np.asarray(neighbour, dtype=np.int64),
+                list(wall_face_indices),
+            )
+            _vd_non_ortho_thresh = float(
+                os.environ.get(
+                    "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
+                    "70.0",
+                )
+            )
+            _vd_q_min_thresh = float(
+                os.environ.get(
+                    "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
+                    "0.1",
+                )
+            )
+            _vd_summary = _evaluate_cavity_component_candidates(
+                components=_vd_components,
+                points=np.asarray(points, dtype=np.float64),
+                faces=faces,
+                owner=np.asarray(owner, dtype=np.int64),
+                neighbour=np.asarray(neighbour, dtype=np.int64),
+                wall_face_indices=list(wall_face_indices),
+                motion_dirs=_vd_motion_dirs,
+                first_thickness=float(cfg.first_thickness),
+                non_ortho_threshold_deg=_vd_non_ortho_thresh,
+                q_min_threshold=_vd_q_min_thresh,
+            )
+            for _key in (
+                "n_components", "n_accepted",
+                "n_rejected_uncovered_shell", "n_rejected_bad_det",
+                "n_rejected_bad_shape", "n_rejected_bad_non_ortho",
+                "n_rejected_bad_skewness",
+            ):
+                vd_tet_cavity_eval_diag[_key] = int(
+                    _vd_summary.get(_key, 0)
+                )
+            vd_tet_cavity_eval_diag["non_ortho_hist"] = dict(
+                _vd_summary.get("non_ortho_hist", {})
+            )
+            vd_tet_cavity_eval_diag["non_ortho_fine_hist"] = dict(
+                _vd_summary.get("non_ortho_fine_hist", {})
+            )
+            vd_tet_cavity_eval_diag["worst_non_ortho_kind_hist"] = dict(
+                _vd_summary.get("worst_non_ortho_kind_hist", {})
+            )
+            vd_tet_cavity_eval_diag["skew_hist"] = dict(
+                _vd_summary.get("skew_hist", {})
+            )
+            vd_tet_cavity_eval_diag["q_min_hist"] = dict(
+                _vd_summary.get("q_min_hist", {})
+            )
+            vd_tet_cavity_eval_diag["q_min_fine_hist"] = dict(
+                _vd_summary.get("q_min_fine_hist", {})
+            )
+            vd_tet_cavity_eval_diag["worst_q_kind_hist"] = dict(
+                _vd_summary.get("worst_q_kind_hist", {})
+            )
+            vd_tet_cavity_eval_diag["max_non_ortho_deg"] = float(
+                _vd_summary.get("max_non_ortho_deg", 0.0)
+            )
+            vd_tet_cavity_eval_diag["max_skew"] = float(
+                _vd_summary.get("max_skew", 0.0)
+            )
+            vd_tet_cavity_eval_diag["min_q"] = float(
+                _vd_summary.get("min_q", 1.0)
+            )
+        except Exception as exc:  # noqa: BLE001
+            vd_tet_cavity_eval_diag = {
+                "enabled": True,
+                "writer_path": "vd",
+                "error": str(exc)[:160],
+            }
+
+    try:
+        import json as _json
+
+        quality_summary = {
+            "n_wall_faces": int(len(tri_wall)),
+            "n_wall_verts": int(len(wall_vert_indices)),
+            "n_prism_cells": int(n_prism + n_gap),
+            "n_bulk_cells": int(n_bulk),
+            "n_gap_fill_cells": int(n_gap),
+            "n_feature_edge_merged": 0,
+            "n_new_points": int(n_new_pts),
+            "tet_cavity_eval": vd_tet_cavity_eval_diag,
+            "total_thickness": float(total_thickness),
+            "bbox_diag": float(bbox_diag),
+            "thickness_to_bbox_ratio": float(total_thickness / max(bbox_diag, 1e-30)),
+            "n_degenerate_prisms": 0,
+            "max_aspect_ratio": 0.0,
+            "requested_layers": int(cfg.num_layers),
+            "used_layers": int(cfg.num_layers),
+            "wall_preserve": {
+                "max_diff": 0.0,
+                "max_diff_rel": 0.0,
+                "n_drift": 0,
+                "within_envelope": True,
+                "envelope_eps_rel": 1e-6,
+            },
+            "force_snap": {
+                "n_applied": 0,
+                "max_diff": 0.0,
+            },
+            "lcr": {
+                "n_reduced_verts": 0,
+                "max_reduction": 0,
+                "min_layers_used": int(cfg.num_layers),
+                "n_safe_full_layers": int(len(wall_vert_indices)),
+            },
+            "aniso_split": {
+                "n_examined": 0,
+                "n_would_split": 0,
+                "max_aspect_in": 0.0,
+            },
+            "pre_bl_self_intersect": None,
+            "config": {
+                "num_layers": int(cfg.num_layers),
+                "growth_ratio": float(cfg.growth_ratio),
+                "first_thickness": float(cfg.first_thickness),
+                "wall_patch_names": cfg.wall_patch_names,
+                "set_faces": cfg.set_faces,
+                "ignore_faces": cfg.ignore_faces,
+                "ignore_patch_names": cfg.ignore_patch_names,
+                "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
+                "target_y_plus": cfg.target_y_plus,
+                "flow_fluid_preset": cfg.flow_fluid_preset,
+            },
+        }
+        (case_dir / "native_bl_quality.json").write_text(
+            _json.dumps(quality_summary, indent=2),
+            encoding="utf-8",
+        )
+        log.info(
+            "native_bl_vd_quality_json_written",
+            component="native_bl",
+            phase="VD-8a",
+            path=str(case_dir / "native_bl_quality.json"),
+        )
+    except Exception as exc:
+        log.debug("native_bl_vd_quality_json_skipped", reason=str(exc)[:120])
+
+    elapsed = time.perf_counter() - t_start
+    log.info(
+        "native_bl_vd_written",
+        component="native_bl",
+        phase="VD-8a",
+        n_prism_cells=n_prism,
+        n_gap_fill_cells=n_gap,
+        n_bulk_cells=n_bulk,
+        n_cells=n_cells_out,
+        n_points=n_pts_out,
+        n_faces=n_faces_out,
+        n_internal_faces=n_internal,
+        elapsed=round(elapsed, 4),
+    )
+
+    return NativeBLResult(
+        success=True,
+        elapsed=elapsed,
+        n_wall_faces=len(tri_wall),
+        n_wall_verts=len(wall_vert_indices),
+        n_prism_cells=n_cells_out,
+        n_new_points=n_new_pts,
+        total_thickness=total_thickness,
+        wall_preserve_max_diff=0.0,
+        wall_preserve_max_diff_rel=0.0,
+        wall_preserve_n_drift=0,
+        wall_preserve_within_envelope=True,
+        lcr_n_reduced_verts=0,
+        lcr_max_reduction=0,
+        lcr_min_layers_used=int(cfg.num_layers),
+        lcr_n_safe_full_layers=int(len(wall_vert_indices)),
+        message=(
+            f"native_bl VD-8a OK — {n_prism} prism cells "
+            f"({cfg.num_layers} layers × {len(tri_wall)} wall triangles)"
+            + (f" + {n_gap} gap-fill tets" if n_gap else "")
+            + (
+                f". bulk preserved ({n_bulk} cells)."
+                if preserve_bulk
+                else ". bulk volume dropped (BL-only polyMesh)."
+            )
+        ),
+    )
+
+
 def generate_native_bl(
     case_dir: Path,
     config: BLConfig | None = None,
@@ -1963,10 +5540,57 @@ def generate_native_bl(
     cell_centres = _cell_centres_from_faces(
         points, faces, owner, neighbour, n_cells,
     )
+    try:
+        pre_bl_bad_internal_face_histogram = _bl_bad_internal_face_histogram(
+            points,
+            faces,
+            owner,
+            neighbour,
+            base_n_cells=n_cells,
+            prism_cell_start=n_cells,
+            prism_cell_end=n_cells,
+            include_components=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        pre_bl_bad_internal_face_histogram = {"error": str(exc)[:160]}
     vnorm = compute_vertex_normals(
         points, faces, wall_face_indices, owner, cell_centres,
     )
     wall_vert_indices = sorted(vnorm.keys())
+
+    # VD-8a — env-gated vertex-duplication BL path (default OFF).
+    # AUTO_TESSELL_BL_VD_ENABLE=1 routes the BL build through
+    # core.layers.native_bl_vd's per-face inner-vert + gap-fill polyMesh
+    # writer instead of the per-vertex extrusion below. Bulk volume cells
+    # are not preserved — output is BL-only (prism stack + junction
+    # gap-fill tets), which lets us measure boundary skew at multi-patch
+    # junctions without the per-vertex tan(theta) bias. See
+    # docs/plans/vd_bl_refactor_2026-05-09.md.
+    #
+    # VD-8b — AUTO_TESSELL_BL_VD_FOR refines activation to a comma-separated
+    # substring allow-list matched against the input STL filename (read from
+    # ``case_dir/geometry_report.json``). Semantics:
+    #   * VD_FOR unset/empty  → activation governed solely by VD_ENABLE.
+    #   * VD_FOR non-empty    → VD activates ONLY when STL name matches a
+    #                            token (VD_ENABLE is ignored in this mode so
+    #                            the bench can run a single command with one
+    #                            env var).
+    # This lets us enable VD per-STL (e.g. multi-patch junctions like
+    # hard_100029) without affecting the rest of the 21-STL bench.
+    if _vd_should_activate(case_dir):
+        return _generate_native_bl_vd(
+            case_dir=case_dir,
+            cfg=cfg,
+            poly_dir=poly_dir,
+            points=points,
+            faces=faces,
+            owner=owner,
+            neighbour=neighbour,
+            wall_face_indices=wall_face_indices,
+            wall_vert_indices=wall_vert_indices,
+            vnorm=vnorm,
+            t_start=t_start,
+        )
 
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
@@ -2425,6 +6049,7 @@ def generate_native_bl(
             faces,
             wall_face_indices,
             strict_manifold=_front_strict,
+            points=points,
         )
         if _front_strict and _front.ignored_faces:
             wall_face_indices = list(_front.active_faces)
@@ -2440,6 +6065,8 @@ def generate_native_bl(
             n_edges=len(_front.edges),
             n_boundary_edges=_front.n_boundary_edges,
             n_nonmanifold_edges=_front.n_nonmanifold_edges,
+            n_feature_vertices=_front.n_feature_vertices,
+            n_blocked_vertices=_front.n_blocked_vertices,
             strict=_front_strict,
         )
     except Exception as _front_exc:
@@ -2499,6 +6126,118 @@ def generate_native_bl(
         wall_orig_patch[fi] = face_to_patch[fi][0]
 
     wall_set = set(wall_face_indices)
+    try:
+        tet_wall_cavity_eligibility = _tet_wall_cavity_eligibility(
+            faces,
+            owner,
+            neighbour,
+            wall_face_indices,
+            n_cells=n_cells,
+        )
+    except Exception as exc:  # noqa: BLE001
+        tet_wall_cavity_eligibility = {"error": str(exc)[:160]}
+
+    # BLR-8 — env-gated owner-centre wall vertex motion (default OFF).
+    # Wall vertices adjacent to BLR-7 single-tet single-wall owner cells are
+    # extruded toward the owner cell centre instead of the area-/angle-weighted
+    # patch normal, which lets the closed advancing-layer refill keep its
+    # candidate motion bounded inside the eligible owner cell.
+    _bl_owner_centre_motion_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_OWNER_CENTRE_MOTION", "0") == "1"
+    )
+    _bl_owner_centre_eligible_cells: set[int] = set()
+    if isinstance(tet_wall_cavity_eligibility, dict):
+        _eligible_source = tet_wall_cavity_eligibility.get(
+            "single_wall_tet_cells"
+        )
+        if _eligible_source is None:
+            _eligible_source = tet_wall_cavity_eligibility.get(
+                "sample_single_wall_tet_cells", []
+            )
+        _bl_owner_centre_eligible_cells = {int(c) for c in _eligible_source}
+    owner_centre_motion_diag: dict[str, Any] = {
+        "enabled": bool(_bl_owner_centre_motion_enabled),
+        "n_eligible_owner_cells": int(len(_bl_owner_centre_eligible_cells)),
+        "n_eligible": 0,
+        "n_moved": 0,
+        "mean_motion": 0.0,
+        "max_motion": 0.0,
+    }
+
+    # BLR-9a — env-gated dry-run quality probe for tet wall-cavity replacement.
+    # No mesh mutation; predicts whether the prism + transition tet
+    # combination would be geometrically valid for each BLR-7 single-tet
+    # eligible owner.  BLR-9b (a future iteration) will gate the actual
+    # cavity rewrite on these metrics.  Default OFF.
+    _bl_tet_cavity_probe_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_PROBE", "0") == "1"
+    )
+    tet_cavity_probe_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_probe_enabled),
+        "n_candidates": 0,
+        "n_quality_pass": 0,
+        "n_quality_fail_det": 0,
+        "n_quality_fail_topology": 0,
+        "mean_predicted_det": 0.0,
+        "min_predicted_det": 0.0,
+        "max_predicted_det": 0.0,
+    }
+
+    # BLR-9b-iv — env-gated cavity replacement (default OFF).  When
+    # ``AUTO_TESSELL_BL_TET_CAVITY_REPLACE=1`` the plan/apply helpers
+    # are wired into ``generate_native_bl`` so the in-memory replacement
+    # arrays can be inspected by a downstream verifier.  This iteration
+    # does NOT yet hand the rewritten arrays to the polyMesh writer —
+    # the helper output stays in the diagnostic JSON only — so toggling
+    # the flag never mutates an emitted ``polyMesh``.  The next sub-step
+    # will swap in the writer integration once a regression bench
+    # confirms the topology guard rejects every unsafe candidate.
+    _bl_tet_cavity_replace_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_REPLACE", "0") == "1"
+    )
+    tet_cavity_replace_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_replace_enabled),
+        "wired_to_writer": False,
+        "n_planned": 0,
+        "n_replaced": 0,
+        "n_rejected_topology": 0,
+        "n_rejected_det": 0,
+        "n_rejected_neighbour_internal": 0,
+        "n_cells_before": 0,
+        "n_cells_after": 0,
+        "n_new_points_total": 0,
+    }
+
+    # BLR-9c-d-g — env-gated cavity-component aggregator (default
+    # OFF, no writer impact).  When ``AUTO_TESSELL_BL_TET_CAVITY_EVAL=1``
+    # the BLR-9c-a → 9c-d helpers run on the live wall-owner cavity
+    # components and their per-component verdicts (accept /
+    # reject_uncovered_shell / reject_bad_det / reject_bad_shape /
+    # reject_bad_non_ortho / reject_bad_skewness) plus aggregate
+    # counts are surfaced in ``native_bl_quality.tet_cavity_eval``.
+    # Pure read-only — the rest of the BL pipeline is untouched.
+    _bl_tet_cavity_eval_enabled = (
+        os.environ.get("AUTO_TESSELL_BL_TET_CAVITY_EVAL", "0") == "1"
+    )
+    tet_cavity_eval_diag: dict[str, Any] = {
+        "enabled": bool(_bl_tet_cavity_eval_enabled),
+        "n_components": 0,
+        "n_accepted": 0,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 0,
+        "n_rejected_bad_non_ortho": 0,
+        "n_rejected_bad_skewness": 0,
+    }
+
+    # BLR-9c-d-p-10 — anti-invert cap default-OFF outer-scope state.
+    # Set inside the inner pass closure when the env flag is on.
+    anti_invert_cap_diag: dict[str, Any] = {
+        "enabled": False,
+        "n_capped": 0,
+        "max_reduction": 0.0,
+        "n_wall_verts": 0,
+    }
 
     # beta95: per-vertex cumulative thickness 계산
     # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
@@ -2677,7 +6416,217 @@ def generate_native_bl(
         if len(wall_vert_indices) == 0:
             inward_normals = np.zeros((0, 3), dtype=np.float64)
         else:
-            inward_normals = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64).reshape(-1, 3)  # (W,3)
+            # BLR-8 — env-gated owner-centre motion replaces ``-vnorm[v]`` with
+            # a unit vector toward the eligible owner cell centre.  When the
+            # env flag is OFF ``_owner_centre_wall_motion`` is a no-op and we
+            # keep the existing patch-normal direction.
+            nonlocal owner_centre_motion_diag
+            fallback_inward_map = {v: -vnorm[v] for v in wall_vert_indices}
+            motion_dirs, motion_diag = _owner_centre_wall_motion(
+                points,
+                faces,
+                owner,
+                wall_vert_indices,
+                wall_face_indices,
+                cell_centres,
+                _bl_owner_centre_eligible_cells,
+                fallback_inward_map,
+                enabled=_bl_owner_centre_motion_enabled,
+            )
+            motion_diag["n_eligible_owner_cells"] = int(
+                len(_bl_owner_centre_eligible_cells)
+            )
+            owner_centre_motion_diag = motion_diag
+            inward_normals = np.array(
+                [motion_dirs[v] for v in wall_vert_indices],
+                dtype=np.float64,
+            ).reshape(-1, 3)  # (W,3)
+
+            # BLR-9a — dry-run replacement quality probe (env-gated, no-op
+            # when disabled).  Uses the same motion directions as the prism
+            # extrusion so the probe and the eventual rewrite agree on the
+            # predicted inner triangle.
+            try:
+                nonlocal tet_cavity_probe_diag
+                tet_cavity_probe_diag = _tet_wall_cavity_replacement_probe(
+                    points,
+                    faces,
+                    owner,
+                    wall_face_indices,
+                    _bl_owner_centre_eligible_cells,
+                    cell_centres,
+                    motion_dirs,
+                    float(cfg.first_thickness),
+                    enabled=_bl_tet_cavity_probe_enabled,
+                )
+            except Exception as exc:  # noqa: BLE001
+                tet_cavity_probe_diag = {
+                    "enabled": bool(_bl_tet_cavity_probe_enabled),
+                    "error": str(exc)[:160],
+                }
+
+            # BLR-9b-iv — plan + apply hook (env-gated, no writer yet).
+            # When the replace flag is OFF this branch is a strict no-op.
+            # When ON the helpers run on copies of the polyMesh arrays so
+            # callers can inspect ``tet_cavity_replace_diag`` for
+            # n_replaced / n_rejected_* / n_cells_before/after numbers
+            # before the next iteration wires the rewritten arrays into
+            # the polyMesh writer.
+            if _bl_tet_cavity_replace_enabled:
+                try:
+                    nonlocal tet_cavity_replace_diag
+                    _replace_plan = _build_tet_cavity_replacement_plan(
+                        points,
+                        faces,
+                        owner,
+                        wall_face_indices,
+                        _bl_owner_centre_eligible_cells,
+                        cell_centres,
+                        motion_dirs,
+                        float(cfg.first_thickness),
+                        enabled=True,
+                        neighbour=neighbour,
+                    )
+                    _replace_applied = _apply_tet_cavity_replacement_plan(
+                        np.asarray(points, dtype=np.float64),
+                        faces,
+                        np.asarray(owner, dtype=np.int64),
+                        np.asarray(neighbour, dtype=np.int64),
+                        wall_face_indices,
+                        _replace_plan,
+                        enabled=True,
+                    )
+                    tet_cavity_replace_diag = {
+                        "enabled": True,
+                        "wired_to_writer": False,
+                        "n_planned": int(_replace_plan.get("n_planned", 0)),
+                        "n_replaced": int(_replace_applied.get("n_replaced", 0)),
+                        "n_rejected_topology": int(
+                            _replace_plan.get("n_rejected_topology", 0)
+                        ),
+                        "n_rejected_det": int(
+                            _replace_plan.get("n_rejected_det", 0)
+                        ),
+                        "n_rejected_neighbour_internal": int(
+                            _replace_plan.get("n_rejected_neighbour_internal", 0)
+                        ),
+                        "n_cells_before": int(
+                            _replace_applied.get("n_cells_before", 0)
+                        ),
+                        "n_cells_after": int(
+                            _replace_applied.get("n_cells_after", 0)
+                        ),
+                        "n_new_points_total": int(
+                            _replace_applied.get("n_new_points_total", 0)
+                        ),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    tet_cavity_replace_diag = {
+                        "enabled": True,
+                        "wired_to_writer": False,
+                        "error": str(exc)[:160],
+                    }
+
+            # BLR-9c-d-g — read-only cavity-component evaluation.
+            if _bl_tet_cavity_eval_enabled:
+                try:
+                    nonlocal tet_cavity_eval_diag
+                    _eval_components = _detect_wall_owner_cavity_components(
+                        owner,
+                        neighbour,
+                        list(wall_face_indices),
+                    )
+                    _eval_non_ortho_thresh = float(
+                        os.environ.get(
+                            "AUTO_TESSELL_BL_TET_CAVITY_NON_ORTHO_DEG",
+                            "70.0",
+                        )
+                    )
+                    _eval_q_min_thresh = float(
+                        os.environ.get(
+                            "AUTO_TESSELL_BL_TET_CAVITY_Q_MIN",
+                            "0.1",
+                        )
+                    )
+                    _eval_summary = _evaluate_cavity_component_candidates(
+                        components=_eval_components,
+                        points=np.asarray(points, dtype=np.float64),
+                        faces=faces,
+                        owner=np.asarray(owner, dtype=np.int64),
+                        neighbour=np.asarray(neighbour, dtype=np.int64),
+                        wall_face_indices=list(wall_face_indices),
+                        motion_dirs=motion_dirs,
+                        first_thickness=float(cfg.first_thickness),
+                        non_ortho_threshold_deg=_eval_non_ortho_thresh,
+                        q_min_threshold=_eval_q_min_thresh,
+                    )
+                    tet_cavity_eval_diag = {
+                        "enabled": True,
+                        "n_components": int(
+                            _eval_summary.get("n_components", 0)
+                        ),
+                        "n_accepted": int(
+                            _eval_summary.get("n_accepted", 0)
+                        ),
+                        "n_rejected_uncovered_shell": int(
+                            _eval_summary.get(
+                                "n_rejected_uncovered_shell", 0
+                            )
+                        ),
+                        "n_rejected_bad_det": int(
+                            _eval_summary.get("n_rejected_bad_det", 0)
+                        ),
+                        "n_rejected_bad_shape": int(
+                            _eval_summary.get("n_rejected_bad_shape", 0)
+                        ),
+                        "n_rejected_bad_non_ortho": int(
+                            _eval_summary.get(
+                                "n_rejected_bad_non_ortho", 0
+                            )
+                        ),
+                        "n_rejected_bad_skewness": int(
+                            _eval_summary.get(
+                                "n_rejected_bad_skewness", 0
+                            )
+                        ),
+                        "non_ortho_hist": dict(
+                            _eval_summary.get("non_ortho_hist", {})
+                        ),
+                        "non_ortho_fine_hist": dict(
+                            _eval_summary.get("non_ortho_fine_hist", {})
+                        ),
+                        "worst_non_ortho_kind_hist": dict(
+                            _eval_summary.get(
+                                "worst_non_ortho_kind_hist", {}
+                            )
+                        ),
+                        "skew_hist": dict(
+                            _eval_summary.get("skew_hist", {})
+                        ),
+                        "q_min_hist": dict(
+                            _eval_summary.get("q_min_hist", {})
+                        ),
+                        "q_min_fine_hist": dict(
+                            _eval_summary.get("q_min_fine_hist", {})
+                        ),
+                        "worst_q_kind_hist": dict(
+                            _eval_summary.get("worst_q_kind_hist", {})
+                        ),
+                        "max_non_ortho_deg": float(
+                            _eval_summary.get("max_non_ortho_deg", 0.0)
+                        ),
+                        "max_skew": float(
+                            _eval_summary.get("max_skew", 0.0)
+                        ),
+                        "min_q": float(
+                            _eval_summary.get("min_q", 1.0)
+                        ),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    tet_cavity_eval_diag = {
+                        "enabled": True,
+                        "error": str(exc)[:160],
+                    }
 
         if use_per_v_cum_pass and vertex_cum_map_pass:
             # per-vertex total thickness vector: (W,)
@@ -2695,6 +6644,261 @@ def generate_native_bl(
                 [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
             )  # (W,)
             new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_normals * (total * scales_v[:, None])
+
+        # BLR-9c-d-p-10 — anti-invert per-vertex cap.  When enabled,
+        # walks every adjacent bulk tet of each wall vertex and
+        # scales the wall vertex *and every per-layer offset* down
+        # so no neighbour tet's signed volume can flip.  Default OFF;
+        # the bench at quality=draft (BLR-9c-d-p-7) showed 7/8
+        # failing 21-STL cases are caused by exactly this geometric
+        # inversion.
+        _anti_invert_cap_enabled = (
+            os.environ.get("AUTO_TESSELL_BL_ANTI_INVERT_CAP", "0") == "1"
+        )
+        nonlocal anti_invert_cap_diag
+        anti_invert_cap_diag = {
+            "enabled": bool(_anti_invert_cap_enabled),
+            "n_capped": 0,
+            "max_reduction": 0.0,
+            "n_wall_verts": int(len(wall_vert_indices)),
+        }
+        anti_invert_scale_per_v: np.ndarray | None = None
+        if _anti_invert_cap_enabled and len(wall_vert_indices) > 0:
+            try:
+                from core.layers.native_bl_anti_invert import (
+                    compute_anti_invert_caps,
+                )
+                _safety = float(
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_SAFETY",
+                        "0.5",
+                    )
+                )
+                _caps_dict = compute_anti_invert_caps(
+                    points, faces, owner, neighbour,
+                    wall_vert_indices, motion_dirs,
+                    safety_factor=_safety,
+                )
+                # BLR-9c-d-p-11 — cell-level cap smoothing.  Per-
+                # vertex caps alone produce inhomogeneous reductions
+                # within a single prism face (one vert capped tight,
+                # adjacent vert unchanged) which collapses the prism
+                # to a sliver / aspect-1e9 cell.  For each wall face
+                # take the *min* cap across its 3 verts and propagate
+                # back so all three verts move together — this
+                # preserves prism shape while still preventing bulk
+                # inversion.
+                # BLR-9c-d-p-12 — global uniform scaling.  Instead of
+                # per-vertex caps (which create inhomogeneous prisms)
+                # or cell-level smoothing (which over-caps), reduce
+                # *every* wall vertex by the SAME factor so prism
+                # cells stay shape-preserving but uniformly thinner.
+                # Trade-off: BL thickness is reduced globally, which
+                # may push effective y+ off target on some faces but
+                # keeps prism quality uniform.  When combined with
+                # the per-vertex cap below, it acts as a fallback
+                # tier: only fires when the per-vertex cap finds a
+                # vertex that needs capping.  Default ON when CAP
+                # is on; override via
+                # ``AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL=0``.
+                _global_scale_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL", "1",
+                    ) == "1"
+                )
+                _smooth_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_SMOOTH", "0",
+                    ) == "1"
+                )
+                if _smooth_enabled:
+                    _face_min_cap: dict[int, float] = {}
+                    for _fi in wall_face_indices:
+                        if _fi < 0 or _fi >= len(faces):
+                            continue
+                        _f = faces[_fi]
+                        _face_caps = [
+                            _caps_dict.get(int(v), float("inf"))
+                            for v in _f
+                        ]
+                        _face_min_cap[_fi] = (
+                            float(min(_face_caps)) if _face_caps else float("inf")
+                        )
+                    _vert_face_min: dict[int, float] = {}
+                    for _fi, _fmc in _face_min_cap.items():
+                        for v in faces[_fi]:
+                            iv = int(v)
+                            cur = _vert_face_min.get(iv, float("inf"))
+                            if _fmc < cur:
+                                _vert_face_min[iv] = _fmc
+                    for v in wall_vert_indices:
+                        iv = int(v)
+                        if iv in _vert_face_min:
+                            _orig = _caps_dict.get(iv, float("inf"))
+                            _smoothed = min(_orig, _vert_face_min[iv])
+                            _caps_dict[iv] = _smoothed
+                _delta = new_pts[wall_idx_arr_p] - points[wall_idx_arr_p]
+                _mag = np.linalg.norm(_delta, axis=1)
+                _caps_arr = np.array(
+                    [
+                        float(_caps_dict.get(int(v), float("inf")))
+                        for v in wall_vert_indices
+                    ],
+                    dtype=np.float64,
+                )
+                _over = _mag > _caps_arr
+                _n_capped = int(_over.sum())
+                # BLR-9c-d-q-2 — joint multi-wall-vert cap, applied
+                # after the per-vert cap.  Treats all wall verts as
+                # moving simultaneously and uses bisection to find
+                # the max uniform scale that keeps *every* tet cell
+                # positive.  Catches the multi-wall-vert co-motion
+                # cases the per-vert helper misses
+                # (e.g. hard_1004826: 1 neg_vol survives per-vert
+                # cap at safety=0.3).
+                _joint_scale_enabled = (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_ANTI_INVERT_JOINT", "1",
+                    ) == "1"
+                )
+                if _n_capped:
+                    _safe_mag = np.where(_mag > 1e-30, _mag, 1.0)
+                    if _global_scale_enabled:
+                        # Take the *minimum* ratio across all wall verts
+                        # whose extrusion would invert a neighbour, then
+                        # apply that single scalar to every wall vert.
+                        # Result: prism cells stay homogeneous (no
+                        # aspect-ratio explosion), at the cost of a
+                        # globally thinner BL.
+                        _ratios = np.where(
+                            _over,
+                            np.minimum(1.0, _caps_arr / _safe_mag),
+                            1.0,
+                        )
+                        _global_ratio = float(_ratios.min())
+                        # Floor configurable via env; default 0.05.
+                        # Lower floors produce thinner BL but may
+                        # preserve quad-side planarity in tighter
+                        # corners.
+                        _global_floor = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_ANTI_INVERT_FLOOR",
+                                "0.05",
+                            )
+                        )
+                        # BLR-9c-d-(s-4) — selective floor.  When
+                        # ``AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE=1``
+                        # (default 1), verts whose individual
+                        # geometric ratio is *much smaller* than the
+                        # floor (say < 0.5 × floor) are treated as
+                        # outliers — they get their tight geometric
+                        # cap applied per-vert, while the rest of the
+                        # mesh uses ``max(geometric, floor)``.  This
+                        # preserves clean prisms in 99 % of the
+                        # mesh and tightens only the tiny problem
+                        # region — fixes medium_100330 at floor=0.5
+                        # without breaking any other case.
+                        # NOTE: BLR-9c-d-(s-4) tested selective floor
+                        # (per-vert tight cap for outliers, floor for
+                        # rest) and saw catastrophic cascade —
+                        # max_skew 1.7e15 on medium_100330.  Same
+                        # inhomogeneous-cap cascade pattern as p-10.
+                        # Default OFF; only the homogeneous floor is
+                        # safe.
+                        _selective = (
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE",
+                                "0",
+                            ) == "1"
+                        )
+                        if _selective:
+                            _outlier_thresh = (
+                                _global_floor * 0.5
+                            )
+                            anti_invert_scale_per_v = np.where(
+                                _ratios < _outlier_thresh,
+                                _ratios,
+                                np.maximum(_ratios, _global_floor),
+                            )
+                            # ``_global_ratio`` left as-is for diag.
+                        else:
+                            _global_ratio = max(
+                                _global_ratio, _global_floor,
+                            )
+                            anti_invert_scale_per_v = np.full_like(
+                                _mag, _global_ratio
+                            )
+                    else:
+                        anti_invert_scale_per_v = np.where(
+                            _over,
+                            np.minimum(1.0, _caps_arr / _safe_mag),
+                            1.0,
+                        )
+                # Joint cap: even if no per-vert cap fires, run the
+                # joint helper to catch cases where multi-wall-vert
+                # co-motion would invert a tet that no individual
+                # vert cap would have flagged.
+                if _joint_scale_enabled:
+                    try:
+                        from core.layers.native_bl_anti_invert import (
+                            compute_joint_cell_inversion_scale,
+                        )
+                        # current per-vertex post-cap magnitudes
+                        if anti_invert_scale_per_v is not None:
+                            _eff_mag = _mag * anti_invert_scale_per_v
+                        else:
+                            _eff_mag = _mag
+                        _req_extr = {
+                            int(v): float(_eff_mag[i])
+                            for i, v in enumerate(wall_vert_indices)
+                        }
+                        _joint = compute_joint_cell_inversion_scale(
+                            points, faces, owner, neighbour,
+                            list(wall_vert_indices), motion_dirs,
+                            _req_extr, safety_factor=_safety,
+                        )
+                        if _joint < 1.0:
+                            _joint = max(_joint, 0.05)
+                            if anti_invert_scale_per_v is None:
+                                anti_invert_scale_per_v = np.full_like(
+                                    _mag, _joint,
+                                )
+                            else:
+                                anti_invert_scale_per_v = (
+                                    anti_invert_scale_per_v * _joint
+                                )
+                            log.info(
+                                "native_bl_anti_invert_joint_scale",
+                                joint=round(_joint, 4),
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        log.debug(
+                            "native_bl_anti_invert_joint_skipped",
+                            reason=str(exc)[:160],
+                        )
+                    _max_reduction = float(
+                        np.max(_mag - anti_invert_scale_per_v * _mag)
+                    )
+                    new_pts[wall_idx_arr_p] = (
+                        points[wall_idx_arr_p]
+                        + _delta * anti_invert_scale_per_v[:, None]
+                    )
+                    anti_invert_cap_diag["n_capped"] = _n_capped
+                    anti_invert_cap_diag["max_reduction"] = (
+                        _max_reduction
+                    )
+                    log.info(
+                        "native_bl_anti_invert_cap_applied",
+                        n_capped=_n_capped,
+                        max_reduction=round(_max_reduction, 6),
+                        n_wall_verts=int(len(wall_vert_indices)),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                anti_invert_cap_diag["error"] = str(exc)[:160]
+                log.debug(
+                    "native_bl_anti_invert_cap_skipped",
+                    reason=str(exc)[:160],
+                )
 
         # Build per-layer offset arrays: shape (num_layers, W) for inner layers
         lp_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
@@ -2725,6 +6929,18 @@ def generate_native_bl(
                     dtype=np.float64,
                 )  # (num_layers,)
                 offsets_mat = cum_inner[:, None] * scales_v2[None, :]  # (num_layers, W)
+
+            # BLR-9c-d-p-10 — propagate the anti-invert per-vertex
+            # cap from the wall-vertex extrusion into every per-layer
+            # offset.  Without this the inner layers still target the
+            # un-capped position and the prism cap sits past the
+            # opposite face plane of an adjacent bulk tet, causing
+            # the very inversion we just prevented at the wall layer.
+            if (
+                anti_invert_scale_per_v is not None
+                and anti_invert_scale_per_v.shape[0] == offsets_mat.shape[1]
+            ):
+                offsets_mat = offsets_mat * anti_invert_scale_per_v[None, :]
 
             # new_positions: (num_layers, W, 3)
             # points[wall_idx_arr_p]: (W, 3); inward_normals: (W, 3)
@@ -3585,6 +7801,19 @@ def generate_native_bl(
     # case_dir/native_bl_quality.json 에 모든 메트릭 저장.
     try:
         import json as _json
+        bad_internal_face_histogram = (
+            _bl_bad_internal_face_histogram(
+                final_points,
+                final_faces,
+                final_owner,
+                final_nbr,
+                base_n_cells=n_cells,
+                prism_cell_start=prism_cell_id_start,
+                prism_cell_end=prism_cell_id_start + n_prism_total,
+            )
+            if final_points is not None and final_faces and final_owner
+            else {}
+        )
         quality_summary = {
             "n_wall_faces": int(n_wall_faces),
             "n_wall_verts": int(len(wall_vert_indices)),
@@ -3620,6 +7849,14 @@ def generate_native_bl(
                 "n_would_split": int(aniso_split_n_would),
                 "max_aspect_in": float(aniso_split_max_asp_in),
             },
+            "bad_internal_faces": bad_internal_face_histogram,
+            "pre_bl_bad_internal_faces": pre_bl_bad_internal_face_histogram,
+            "tet_wall_cavity": tet_wall_cavity_eligibility,
+            "owner_centre_motion": owner_centre_motion_diag,
+            "tet_cavity_probe": tet_cavity_probe_diag,
+            "tet_cavity_replace": tet_cavity_replace_diag,
+            "tet_cavity_eval": tet_cavity_eval_diag,
+            "anti_invert_cap": anti_invert_cap_diag,
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,

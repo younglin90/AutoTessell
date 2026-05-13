@@ -1,0 +1,959 @@
+{
+  "totals": {
+    "n_stls": 21,
+    "n_components": 226,
+    "n_accepted": 192,
+    "n_rejected_uncovered_shell": 0,
+    "n_rejected_bad_det": 0,
+    "n_rejected_bad_shape": 27,
+    "n_rejected_bad_non_ortho": 7,
+    "n_rejected_bad_skewness": 0
+  },
+  "rows": [
+    {
+      "stl": "test_cube.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/test_cube",
+      "returncode": 0,
+      "elapsed_s": 22.082,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": null,
+      "anti_invert_cap": {},
+      "bl_path": "main_no_eval_block"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_100034.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100034",
+      "returncode": 0,
+      "elapsed_s": 21.984,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 1,
+        "axis_length": 2.89996337890625,
+        "cap_holes": 6,
+        "cap_loops": 7,
+        "kind": "axis_extrusion",
+        "plane_triangles": 907,
+        "project_axes": [
+          0,
+          2
+        ],
+        "section_area": 7870.131547693163,
+        "section_perimeter": 1485.9574990583797,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 8086.9195130179905,
+          "area_min": 7913.489140758151,
+          "hole_counts": [
+            6,
+            6,
+            6,
+            6,
+            6
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": true,
+          "usable_count": 5
+        },
+        "section_topology_class": "constant_prism",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_100423.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100423",
+      "returncode": 0,
+      "elapsed_s": 22.477,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  23.28%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 11.626731872558594,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 937,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 28.400795203848382,
+        "section_perimeter": 19.35647877043442,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 4.268590373019585,
+          "area_min": 0.9742245240258484,
+          "hole_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": true,
+          "usable_count": 5
+        },
+        "section_topology_class": "stable_hole_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_100643.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_100643",
+      "returncode": 0,
+      "elapsed_s": 22.367,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 10.43552017211914,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 949,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 316.12026573193356,
+        "section_perimeter": 208.35406041449667,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 468.88030773881553,
+          "area_min": 34.78500626494976,
+          "hole_counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            3,
+            3,
+            2
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_101170.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101170",
+      "returncode": 0,
+      "elapsed_s": 23.036,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": null,
+      "anti_invert_cap": {},
+      "bl_path": "main_no_eval_block"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/easy_101187.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/easy_101187",
+      "returncode": 0,
+      "elapsed_s": 23.073,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": null,
+      "anti_invert_cap": {},
+      "bl_path": "main_no_eval_block"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017013.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017013",
+      "returncode": 0,
+      "elapsed_s": 50.058,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Max Non-Ortho                    86.4\u00b0         < 80\u00b0  FAIL",
+      "tet_cavity_eval": {
+        "enabled": true,
+        "n_components": 226,
+        "n_accepted": 192,
+        "n_rejected_uncovered_shell": 0,
+        "n_rejected_bad_det": 0,
+        "n_rejected_bad_shape": 27,
+        "n_rejected_bad_non_ortho": 7,
+        "n_rejected_bad_skewness": 0,
+        "non_ortho_hist": {
+          "le_30": 122,
+          "30_60": 28,
+          "60_70": 26,
+          "70_80": 31,
+          "80_90": 19,
+          "gt_90": 0
+        },
+        "non_ortho_fine_hist": {
+          "70_75": 15,
+          "75_80": 16,
+          "80_85": 10,
+          "85_90": 9,
+          "gt_90": 0
+        },
+        "worst_non_ortho_kind_hist": {
+          "fan_fan": 116,
+          "fan_shell_closure": 0,
+          "shell_closure_shell_closure": 0,
+          "none": 110,
+          "other": 0
+        },
+        "skew_hist": {
+          "le_1": 226,
+          "1_2": 0,
+          "2_4": 0,
+          "4_8": 0,
+          "gt_8": 0
+        },
+        "q_min_hist": {
+          "ge_0p3": 12,
+          "0p1_0p3": 143,
+          "0p01_0p1": 66,
+          "lt_0p01": 5
+        },
+        "q_min_fine_hist": {
+          "0p05_0p1": 44,
+          "0p01_0p05": 22,
+          "0p001_0p01": 5,
+          "lt_0p001": 0
+        },
+        "worst_q_kind_hist": {
+          "fan": 205,
+          "shell_closure": 21,
+          "none": 0,
+          "other": 0
+        },
+        "max_non_ortho_deg": 88.10015992170712,
+        "max_skew": 0.6954815370889639,
+        "min_q": 0.0018316070384833604
+      },
+      "fastpath": null,
+      "anti_invert_cap": {
+        "enabled": true,
+        "n_capped": 175,
+        "max_reduction": 0.06751326300000161,
+        "n_wall_verts": 380
+      },
+      "bl_path": "main"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017014.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017014",
+      "returncode": 0,
+      "elapsed_s": 29.885,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  66.93%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 6.75642,
+        "cap_holes": 6,
+        "cap_loops": 17,
+        "kind": "axis_extrusion",
+        "plane_triangles": 959,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 5685.47604,
+        "section_perimeter": 324.0142830126538,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 10827.127693331842,
+          "area_min": 447.1061771411205,
+          "hole_counts": [
+            0,
+            7,
+            1,
+            1,
+            0
+          ],
+          "polygon_counts": [
+            33,
+            24,
+            50,
+            37,
+            2
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1017017.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1017017",
+      "returncode": 0,
+      "elapsed_s": 29.332,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  48.66%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 5.300003,
+        "cap_holes": 8,
+        "cap_loops": 9,
+        "kind": "axis_extrusion",
+        "plane_triangles": 915,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 4700.0,
+        "section_perimeter": 320.0,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 11163.320801421736,
+          "area_min": 1784.3694386659688,
+          "hole_counts": [
+            18,
+            16,
+            4,
+            3,
+            3
+          ],
+          "polygon_counts": [
+            9,
+            17,
+            22,
+            45,
+            26
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_102308.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_102308",
+      "returncode": 0,
+      "elapsed_s": 26.049,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  39.16%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 2.44,
+        "cap_holes": 1,
+        "cap_loops": 3,
+        "kind": "axis_extrusion",
+        "plane_triangles": 920,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 2.4718999999999998,
+        "section_perimeter": 17.56768431946892,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 2.7406762116341183,
+          "area_min": 0.3910455014942882,
+          "hole_counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "polygon_counts": [
+            8,
+            12,
+            11,
+            3,
+            3
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/extreme_1037019.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/extreme_1037019",
+      "returncode": 0,
+      "elapsed_s": 25.588,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 10.999933629391307,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 913,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 40.406686402857304,
+        "section_perimeter": 37.05029296875,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 73.62563256515692,
+          "area_min": 40.406685471393054,
+          "hole_counts": [
+            1,
+            1,
+            1,
+            0,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            4,
+            3,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100027.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100027",
+      "returncode": 0,
+      "elapsed_s": 23.3,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 1,
+        "axis_length": 41.000003814697266,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 927,
+        "project_axes": [
+          0,
+          2
+        ],
+        "section_area": 87.28606148366445,
+        "section_perimeter": 133.08159495776192,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 140.76718941983728,
+          "area_min": 56.499765219695085,
+          "hole_counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            6,
+            2,
+            7,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100029.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100029",
+      "returncode": 0,
+      "elapsed_s": 23.45,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 2.5,
+        "cap_holes": 8,
+        "cap_loops": 9,
+        "kind": "axis_extrusion",
+        "plane_triangles": 946,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 4913.198699357462,
+        "section_perimeter": 2087.236607410529,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 4911.650577167636,
+          "area_min": 4700.713139229447,
+          "hole_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": true,
+          "usable_count": 5
+        },
+        "section_topology_class": "constant_prism",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100030.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100030",
+      "returncode": 0,
+      "elapsed_s": 25.099,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  56.86%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 88.4128,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 1001,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 995.7542945390551,
+        "section_perimeter": 187.4771127700035,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 11168.467759393345,
+          "area_min": 1607.7200638547456,
+          "hole_counts": [
+            5,
+            0,
+            1,
+            1,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            3,
+            2,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_100040.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_100040",
+      "returncode": 0,
+      "elapsed_s": 26.065,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  68.26%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 15.0,
+        "cap_holes": 2,
+        "cap_loops": 6,
+        "kind": "axis_extrusion",
+        "plane_triangles": 1113,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 1334.783185118705,
+        "section_perimeter": 380.0056408034953,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 2698.2631435296275,
+          "area_min": 2669.5662543894923,
+          "hole_counts": [
+            4,
+            4,
+            4,
+            4,
+            4
+          ],
+          "polygon_counts": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "sample_count": 5,
+          "topology_stable": true,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/hard_1004826.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/hard_1004826",
+      "returncode": 0,
+      "elapsed_s": 35.629,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  73.43%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 11.236659,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 945,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 18.1536083529095,
+        "section_perimeter": 31.412085967384222,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 324.202178418895,
+          "area_min": 87.06173560969854,
+          "hole_counts": [
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100045.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100045",
+      "returncode": 0,
+      "elapsed_s": 22.542,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 1.5999999046325684,
+        "cap_holes": 0,
+        "cap_loops": 1,
+        "kind": "axis_extrusion",
+        "plane_triangles": 933,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 6.022399265970166,
+        "section_perimeter": 10.96470376533698,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 4.448200060653687,
+          "area_min": 0.23579997761249416,
+          "hole_counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "polygon_counts": [
+            1,
+            3,
+            5,
+            3,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100077.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100077",
+      "returncode": 0,
+      "elapsed_s": 22.077,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Hausdorff Rel.                  10.19%         < 10%  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 0,
+        "axis_length": 0.25,
+        "cap_holes": 1,
+        "cap_loops": 2,
+        "kind": "axis_extrusion",
+        "plane_triangles": 927,
+        "project_axes": [
+          1,
+          2
+        ],
+        "section_area": 0.5857454106938533,
+        "section_perimeter": 5.236841982593617,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 0.8955227427508949,
+          "area_min": 0.7056087843559484,
+          "hole_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": true,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100322.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100322",
+      "returncode": 0,
+      "elapsed_s": 30.101,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 8.0,
+        "cap_holes": 5,
+        "cap_loops": 6,
+        "kind": "axis_extrusion",
+        "plane_triangles": 1346,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 4553.609261266515,
+        "section_perimeter": 664.396960866214,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 5332.9449367405905,
+          "area_min": 127.81781769886155,
+          "hole_counts": [
+            5,
+            3,
+            3,
+            1,
+            1
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100323.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100323",
+      "returncode": 0,
+      "elapsed_s": 28.833,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "Min Determinant                 0.0004       > 0.001  FAIL",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 8.0,
+        "cap_holes": 7,
+        "cap_loops": 8,
+        "kind": "axis_extrusion",
+        "plane_triangles": 1256,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 4575.1630374929755,
+        "section_perimeter": 660.2655953169119,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 5332.9449367405905,
+          "area_min": 127.81781769886155,
+          "hole_counts": [
+            5,
+            3,
+            3,
+            1,
+            1
+          ],
+          "polygon_counts": [
+            3,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    },
+    {
+      "stl": "tests/stl/thingi10k_bench20/medium_100330.stl",
+      "case_dir": "/tmp/autotessell_bench_cavity_eval/medium_100330",
+      "returncode": 0,
+      "elapsed_s": 26.204,
+      "evaluator_verdict": "PASS",
+      "first_fail_metric": "",
+      "tet_cavity_eval": {},
+      "fastpath": {
+        "axis": 2,
+        "axis_length": 5.4966301918029785,
+        "cap_holes": 2,
+        "cap_loops": 3,
+        "kind": "axis_extrusion",
+        "plane_triangles": 1156,
+        "project_axes": [
+          0,
+          1
+        ],
+        "section_area": 515.2932418886087,
+        "section_perimeter": 354.33995526155974,
+        "section_source": "cap",
+        "section_topology": {
+          "area_max": 1341.597346875731,
+          "area_min": 509.22717310749454,
+          "hole_counts": [
+            3,
+            2,
+            2,
+            2,
+            2
+          ],
+          "polygon_counts": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "sample_count": 5,
+          "topology_stable": false,
+          "usable_count": 5
+        },
+        "section_topology_class": "changing_section_sweep",
+        "z_layers": 10
+      },
+      "anti_invert_cap": {},
+      "bl_path": "fastpath:axis_extrusion"
+    }
+  ]
+}

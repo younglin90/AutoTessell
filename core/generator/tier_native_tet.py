@@ -26,12 +26,27 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
     beta2295: TetWild-lite Phase B/C / AMIPS / chunked / CDT / target_cells
     knobs 를 **kwargs 로 forward (이전엔 **_unused 가 silently drop).
     harness 는 이미 (beta310 부터) **kwargs 를 mesher 에 전달하도록 wired.
+
+    The orchestrator forwards pipeline-level kwargs that aren't part
+    of the volume-mesher API (``bl_layers``, ``post_layers_*``,
+    ``checker_engine``, ``cad_engine``, etc).  Strip them here so
+    they don't leak into ``generate_native_tet`` and trigger
+    "unexpected keyword argument" failures (BLR-9c-d-r-1 fix).
     """
+    _PIPELINE_ONLY_KEYS = {
+        "bl_layers", "post_layers_engine", "post_layers_num_layers",
+        "checker_engine", "cad_engine", "remesh_engine",
+        "repair_engine", "postprocess_engine",
+    }
+    forward_kwargs = {
+        k: v for k, v in kwargs.items()
+        if k not in _PIPELINE_ONLY_KEYS
+    }
     hres = run_native_tet_harness(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=int(seed_density), max_iter=int(max_iter),
-        **kwargs,
+        **forward_kwargs,
     )
     if hres.success or hres.n_cells > 0:
         return hres
@@ -40,7 +55,7 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=int(seed_density),
-        **kwargs,
+        **forward_kwargs,
     )
 
 

@@ -149,6 +149,7 @@ class NativeMeshChecker:
         # non-orthogonality 가 180° 근처로 오판되고 divergence theorem 의 volume
         # 이 음수가 나온다. 실제 OpenFOAM checkMesh 와 동일 결과를 내기 위함.)
         # ------------------------------------------------------------------
+        n_inverted_owner_cells = 0
         if len(face_centres) > 0 and len(owner) > 0:
             to_face = face_centres - cell_centres[owner]
             dot_check = np.einsum("ij,ij->i", to_face, face_normals)
@@ -162,6 +163,31 @@ class NativeMeshChecker:
                     flipped=n_flip,
                     total=len(face_normals),
                 )
+            # Inversion detection — a cell whose every owned face had its raw
+            # normal flipped is wound opposite to the OpenFOAM owner-outward
+            # convention (a true topological inversion).  Skipped when the
+            # global flip rate is high (≥50%): in that case the entire mesh
+            # uses an inverse convention and the orientation fix already
+            # normalised it, so per-cell "all flipped" is not a defect.
+            n_face_total = max(int(len(flip_mask)), 1)
+            global_flip_rate = float(int(flip_mask.sum())) / float(n_face_total)
+            if global_flip_rate < 0.5 and n_cells > 0:
+                flip_per_cell = np.zeros(n_cells, dtype=np.int64)
+                faces_per_cell = np.zeros(n_cells, dtype=np.int64)
+                valid_owner_mask = (owner >= 0) & (owner < n_cells)
+                if np.any(valid_owner_mask):
+                    np.add.at(
+                        flip_per_cell,
+                        owner[valid_owner_mask],
+                        flip_mask[valid_owner_mask].astype(np.int64),
+                    )
+                    np.add.at(faces_per_cell, owner[valid_owner_mask], 1)
+                fully_inverted = (
+                    (faces_per_cell > 0)
+                    & (flip_per_cell == faces_per_cell)
+                    & (flip_per_cell > 0)
+                )
+                n_inverted_owner_cells = int(fully_inverted.sum())
 
         # ------------------------------------------------------------------
         # 4. Non-orthogonality (internal faces only)
@@ -187,7 +213,7 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         cell_volumes, negative_volumes = self._compute_cell_volumes(
             points, raw_faces, face_normals, face_areas, owner, neighbour,
-            n_cells, n_internal
+            n_cells, n_internal, cell_centres
         )
 
         # ------------------------------------------------------------------
@@ -211,6 +237,7 @@ class NativeMeshChecker:
             max_cell_size_growth_ratio,
         ) = self._compute_face_weight_volume_ratio(
             face_centres,
+            face_normals * face_areas[:, np.newaxis],
             cell_centres,
             owner,
             neighbour,
@@ -241,8 +268,12 @@ class NativeMeshChecker:
         # Note: divergence theorem 볼륨 계산은 부동소수점 오차로 인해
         # 매우 작은 음수값(-1e-15 등)이 발생할 수 있다. 의미있는 negative volume
         # 검출을 위해 상대 임계값을 사용한다.
-        # negative_volumes는 _compute_cell_volumes에서 이미 상대 tolerance로 카운트
-        meaningful_neg_volumes = negative_volumes
+        # negative_volumes는 _compute_cell_volumes에서 이미 상대 tolerance로 카운트.
+        # _compute_cell_volumes uses abs() pyramids for robust magnitudes (mixed
+        # tet/prism meshes from cfMesh-style writers) so it cannot detect
+        # inverted cells on its own; combine its tolerance count with the
+        # orientation-fix-based inversion count tracked above.
+        meaningful_neg_volumes = max(int(negative_volumes), int(n_inverted_owner_cells))
 
         failed_checks = 0
         if meaningful_neg_volumes > 0:
@@ -661,6 +692,7 @@ class NativeMeshChecker:
     @staticmethod
     def _compute_face_weight_volume_ratio(
         face_centres: np.ndarray,
+        face_area_vectors: np.ndarray,
         cell_centres: np.ndarray,
         owner: np.ndarray,
         neighbour: np.ndarray,
@@ -685,14 +717,19 @@ class NativeMeshChecker:
         own = own[valid]
         nbr = nbr[valid]
         fc = face_centres[:n_internal][valid]
+        fa = face_area_vectors[:n_internal][valid]
         co = cell_centres[own]
         cn = cell_centres[nbr]
-        d = cn - co
-        d2 = np.einsum("ij,ij->i", d, d)
-        valid_d = d2 > 1e-30
-        if np.any(valid_d):
-            t = np.einsum("ij,ij->i", fc[valid_d] - co[valid_d], d[valid_d]) / d2[valid_d]
-            weights = np.minimum(t, 1.0 - t)
+        # OpenFOAM meshCheck::faceWeights:
+        # dOwn = mag(faceArea & (faceCentre - ownerCentre))
+        # dNei = mag(faceArea & (neighbourCentre - faceCentre))
+        # weight = min(dOwn, dNei)/(dOwn + dNei + VSMALL)
+        d_own = np.abs(np.einsum("ij,ij->i", fa, fc - co))
+        d_nei = np.abs(np.einsum("ij,ij->i", fa, cn - fc))
+        denom = d_own + d_nei
+        valid_w = denom > 1e-300
+        if np.any(valid_w):
+            weights = np.minimum(d_own[valid_w], d_nei[valid_w]) / denom[valid_w]
             min_face_weight = float(np.nanmin(weights)) if weights.size else 1.0
         else:
             min_face_weight = 1.0
@@ -725,78 +762,60 @@ class NativeMeshChecker:
         neighbour: np.ndarray,
         n_cells: int,
         n_internal: int,
+        cell_centres: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:
-        """Estimate cell volumes using the divergence theorem.
+        """Estimate cell volumes from face pyramids around each cell centre.
 
-        V = (1/3) * sum_f ( face_centre · face_normal * face_area * sign )
-
-        where sign = +1 if the face normal points out of the cell,
-        -1 if it points in.
-
-        By the polyMesh convention:
-        - For internal faces: normal points from owner to neighbour
-          → +1 for owner, -1 for neighbour.
-        - For boundary faces: normal points outward from owner → +1.
-
-        Returns:
-            (cell_volumes array, count of negative volumes)
+        OpenFOAM's geometric checks reason about owner/neighbour face pyramids.
+        Summing ``abs(faceAreaVector dot (faceCentre - cellCentre)) / 3`` over
+        the faces incident to each cell is origin-independent and is robust to
+        mixed tet/prism meshes whose face winding is not perfectly consistent.
         """
-        n_faces = len(faces)
+        if n_cells <= 0:
+            return np.zeros(0, dtype=np.float64), 0
 
-        # Face centres — vectorized (reuse _compute_face_centres logic)
         fc = NativeMeshChecker._compute_face_centres(points, faces)
-
-        # ── face normal 방향을 "owner cell 바깥" 기준으로 정렬 ──
-        # cfMesh/octree mesh 는 face vertex ordering 이 항상 표준 owner→neighbour 를
-        # 따르지 않을 수 있다. 각 face 의 owner centroid → face centre 벡터와
-        # normal 이 반대 방향이면 flip 해서 일관된 outward normal 로 만든다.
-        # 선행 조건: cell_centres 가 이미 계산됐어야 한다 → 임시로 face centroid
-        # 평균으로 근사 (정밀한 centroid 는 호출자가 별도 전달).
-        cell_c = np.zeros((n_cells, 3), dtype=np.float64)
-        cnt = np.zeros(n_cells, dtype=np.int64)
-        np.add.at(cell_c, owner, fc)
-        np.add.at(cnt, owner, 1)
-        if n_internal > 0:
-            np.add.at(cell_c, neighbour[:n_internal], fc[:n_internal])
-            np.add.at(cnt, neighbour[:n_internal], 1)
-        nz = cnt > 0
-        cell_c[nz] /= cnt[nz, np.newaxis]
-
-        to_face = fc - cell_c[owner]
-        owner_outward_dot = np.einsum("ij,ij->i", to_face, face_normals)
-        outward_sign = np.where(owner_outward_dot < 0, -1.0, 1.0)
-        # normal · sign 이 owner-outward 방향을 보장
-        n_outward = face_normals * outward_sign[:, np.newaxis]
-
-        # Contribution: face_centre · outward_normal * area
-        contribution = np.einsum("ij,ij->i", fc, n_outward) * face_areas  # (F,)
+        area_vecs = face_normals * face_areas[:, np.newaxis]
+        if cell_centres is None or len(cell_centres) != n_cells:
+            cell_centres = NativeMeshChecker._compute_cell_centres_from_vertices(
+                points, faces, owner, n_cells, neighbour,
+            )
 
         volumes = np.zeros(n_cells, dtype=np.float64)
+        n_faces = len(faces)
+        own_arr = np.asarray(owner, dtype=np.int64)
+        n_owner_use = min(n_faces, own_arr.shape[0])
+        if n_owner_use > 0:
+            own_slice = own_arr[:n_owner_use]
+            valid_own = (own_slice >= 0) & (own_slice < n_cells)
+            if np.any(valid_own):
+                idx = np.nonzero(valid_own)[0]
+                own_idx = own_slice[idx]
+                pyr_own = np.abs(
+                    np.einsum(
+                        "ij,ij->i",
+                        area_vecs[idx],
+                        fc[idx] - cell_centres[own_idx],
+                    )
+                ) / 3.0
+                np.add.at(volumes, own_idx, pyr_own)
+        n_int_use = min(n_internal, n_owner_use)
+        if n_int_use > 0:
+            nbr_arr = np.asarray(neighbour[:n_int_use], dtype=np.int64)
+            valid_nbr = (nbr_arr >= 0) & (nbr_arr < n_cells)
+            if np.any(valid_nbr):
+                idx_n = np.nonzero(valid_nbr)[0]
+                nbr_idx = nbr_arr[idx_n]
+                pyr_nbr = np.abs(
+                    np.einsum(
+                        "ij,ij->i",
+                        area_vecs[idx_n],
+                        fc[idx_n] - cell_centres[nbr_idx],
+                    )
+                ) / 3.0
+                np.add.at(volumes, nbr_idx, pyr_nbr)
 
-        # Internal faces: owner +, neighbour -
-        if n_internal > 0:
-            own_idx = owner[:n_internal]
-            nbr_idx = neighbour[:n_internal]
-            np.add.at(volumes, own_idx, contribution[:n_internal])
-            np.subtract.at(volumes, nbr_idx, contribution[:n_internal])
-
-        # Boundary faces: owner +
-        if n_faces > n_internal:
-            bnd_owners = owner[n_internal:]
-            np.add.at(volumes, bnd_owners, contribution[n_internal:])
-
-        volumes /= 3.0
-        # 절대값으로 — outward 정렬 후에도 cell centroid 근사 오차로 부호가 반대
-        # 나올 수 있음. 실제 volume 은 항상 양수 (mesh 가 geometric valid 이면).
-        volumes = np.abs(volumes)
-
-        # Divergence theorem은 distorted 셀에서 작은 음수를 반환할 수 있다.
-        # 의미있는 negative volume은 mean volume 대비 상대적으로 큰 음수만 카운트.
-        if len(volumes) > 0 and volumes.max() > 0:
-            vol_threshold = -volumes.max() * 1e-6  # mean이 아닌 max 대비 1e-6
-        else:
-            vol_threshold = -1e-30
-        negative_count = int(np.sum(volumes < vol_threshold))
+        negative_count = 0
         return volumes, negative_count
 
     # ------------------------------------------------------------------

@@ -59,6 +59,47 @@ ENGINES: dict[str, tuple[str, str]] = {
 }
 
 
+def _selected_engines() -> list[str]:
+    """Return enabled verifier engines from AUTO_TESSELL_VERIFY_ENGINES."""
+    raw = os.environ.get("AUTO_TESSELL_VERIFY_ENGINES", "").strip()
+    if not raw:
+        return list(ENGINES)
+
+    tokens = [
+        part.strip().lower()
+        for chunk in raw.split(",")
+        for part in chunk.split()
+        if part.strip()
+    ]
+    if not tokens or any(token in {"all", "*"} for token in tokens):
+        return list(ENGINES)
+
+    aliases = {
+        "hex_dominant": "hex",
+        "native_hex": "hex",
+        "voro_poly": "poly",
+        "native_poly": "poly",
+        "wildmesh": "tet",
+        "tier_wildmesh": "tet",
+    }
+    selected: list[str] = []
+    invalid: list[str] = []
+    for token in tokens:
+        engine = aliases.get(token, token)
+        if engine not in ENGINES:
+            invalid.append(token)
+            continue
+        if engine not in selected:
+            selected.append(engine)
+    if invalid:
+        valid = ", ".join(ENGINES)
+        raise SystemExit(
+            "Unknown AUTO_TESSELL_VERIFY_ENGINES value(s): "
+            f"{', '.join(invalid)}. Valid engines: {valid}"
+        )
+    return selected or list(ENGINES)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -649,8 +690,9 @@ def main() -> int:
 
     rows: list[dict[str, Any]] = []
     inputs = _stl_inputs()
+    engines = _selected_engines()
     for stl_path in inputs:
-        for engine in ("tet", "hex", "poly"):
+        for engine in engines:
             row = _run_case(stl_path, engine)
             rows.append(row)
             print(_status_line(row), flush=True)

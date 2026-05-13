@@ -723,6 +723,7 @@ def evaluate(
 @click.option("--domain-scale", type=float, default=1.0, help="도메인 전체 스케일 팩터")
 # --- Max cell limit ---
 @click.option("--max-cells", type=click.IntRange(min=1), default=None, help="최대 셀 수 제한 (초과 시 셀 크기 자동 확대)")
+@click.option("--target-cells", type=click.IntRange(min=1), default=None, help="목표 셀 수 근사값 (tier_specific_params 로 전달). 실측: wildmesh 일반 STL 경로는 pytetwild의 quality-driven loop 때문에 ±40 % over-shoot, fastpath (axis-aligned box) 만 ±5 % 정확.")
 # --- Boundary Layer ---
 @click.option("--bl-layers", type=int, default=None, help="BL 레이어 수 (0=비활성)")
 @click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]. --target-yplus 와 함께 쓰면 자동 계산값 override.")
@@ -987,6 +988,7 @@ def run(
     domain_lateral: float | None,
     domain_scale: float,
     max_cells: int | None,
+    target_cells: int | None,
     bl_layers: int | None,
     bl_first_height: float | None,
     fluid: str,
@@ -1251,6 +1253,10 @@ def run(
     # BL, domain 파라미터들을 tier_specific_params에 추가 (orchestrator 내부 처리용)
     if bl_layers is not None:
         tier_params["bl_layers"] = bl_layers
+    # U-8 (2026-05-11) — --target-cells: 사용자가 입력한 셀 개수 근사값.
+    # tier_specific_params 의 target_cells 로 전달, 각 tier 가 element size 보정.
+    if target_cells is not None:
+        tier_params["target_cells"] = target_cells
     # beta96: y⁺ 자동 계산 — bl_first_height 미지정 시 target_yplus 로 역산.
     if bl_first_height is None and target_yplus is not None:
         try:

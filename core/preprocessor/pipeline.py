@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -235,23 +236,61 @@ class Preprocessor:
                     log.info("l2_gate_passed", surface_quality_level=surface_quality_level)
                 else:
                     # ----------------------------------------------------------
+                    # U-27 L2.5: voxelize-marching-cubes repair (opt-in)
+                    # ----------------------------------------------------------
+                    # When L1+L2 cannot make a multi-shell broken STL watertight
+                    # (e.g. thingi10k extreme_1017017 with 109 components and
+                    # 5074 self-intersections), voxelizing at pitch=bbox_diag/100
+                    # and extracting the outer envelope via marching cubes yields
+                    # a clean watertight manifold approximation of the input.
+                    # Loss-y on sharp features but unblocks pytetwild on
+                    # otherwise-unfixable inputs.
+                    if os.environ.get(
+                        "AUTO_TESSELL_PREPROCESS_VOXELIZE_REPAIR", "0",
+                    ) == "1":
+                        try:
+                            voxel_mesh, voxel_passed, voxel_record = (
+                                self._voxelize_repair(mesh)
+                            )
+                            steps_performed.append(
+                                PreprocessStep(**voxel_record)
+                            )
+                            if voxel_passed:
+                                mesh = voxel_mesh
+                                surface_quality_level = "l2_5_voxelize"
+                                log.info(
+                                    "l2_5_voxelize_gate_passed",
+                                    surface_quality_level=surface_quality_level,
+                                )
+                                # skip L3 — voxelize already produced clean mesh
+                                # the inner else-block below would only trip up
+                                # the now-valid mesh
+                                pass
+                        except Exception as exc:
+                            log.warning(
+                                "l2_5_voxelize_failed",
+                                reason=str(exc)[:160],
+                            )
+
+                    # ----------------------------------------------------------
                     # L3: AI fix (최후 수단)
                     # ----------------------------------------------------------
-                    log.info("l2_gate_failed", reason="proceeding to L3")
-                    mesh, l3_passed, l3_record = self._l3_ai_fix(
-                        mesh, allow_ai_fallback=allow_ai_fallback
-                    )
-                    if l3_record is not None:
-                        steps_performed.append(PreprocessStep(**l3_record))
-
-                    surface_quality_level = "l3_ai"
-                    if not l3_passed:
-                        log.warning(
-                            "l3_gate_failed",
-                            msg="모든 surface 수리 단계 실패 — Generator에서 TetWild 강제",
+                    if surface_quality_level != "l2_5_voxelize":
+                        log.info("l2_gate_failed", reason="proceeding to L3")
+                        mesh, l3_passed, l3_record = self._l3_ai_fix(
+                            mesh, allow_ai_fallback=allow_ai_fallback
                         )
-                    else:
-                        log.info("l3_gate_passed", surface_quality_level=surface_quality_level)
+                        if l3_record is not None:
+                            steps_performed.append(PreprocessStep(**l3_record))
+
+                        surface_quality_level = "l3_ai"
+                        if not l3_passed:
+                            log.warning(
+                                "l3_gate_failed",
+                                msg="모든 surface 수리 단계 실패 — Generator에서 TetWild 강제",
+                            )
+                        else:
+                            log.info("l3_gate_passed", surface_quality_level=surface_quality_level)
         else:
             log.info("repair_skipped", reason="no_repair=True")
             # no_repair 모드: L2 강제 리메쉬만 처리
@@ -458,6 +497,80 @@ class Preprocessor:
         log.info(
             "l2_native_remesh_done",
             input_faces=F.shape[0], output_faces=F2.shape[0],
+            gate_passed=passed,
+        )
+        return new_mesh, passed, step_record
+
+    def _voxelize_repair(
+        self,
+        mesh: trimesh.Trimesh,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """U-27 L2.5: voxelize + marching-cubes repair for broken inputs.
+
+        For STLs with high self-intersection counts (e.g. thingi10k
+        ``extreme_1017017`` with 109 components and 5074 self-intersections),
+        the L1/L2 path cannot produce a watertight + manifold mesh.  This
+        method voxelizes the input at pitch ≈ bbox_diag/100 and extracts
+        the outer envelope via marching cubes.  Output is guaranteed
+        watertight + manifold at the cost of sharp-feature loss.
+
+        Returns ``(mesh, passed, step_record)`` where ``passed`` reflects
+        the post-repair gate_check.
+        """
+        import time as _time
+        import numpy as np
+        import trimesh as _tm
+        from core.preprocessor.repair import gate_check as _gate
+
+        t0 = _time.perf_counter()
+        V = np.asarray(mesh.vertices, dtype=np.float64)
+        F = np.asarray(mesh.faces, dtype=np.int64)
+        input_faces = F.shape[0]
+
+        bbox = V.max(axis=0) - V.min(axis=0)
+        bbox_diag = float(np.linalg.norm(bbox))
+        # Pitch chosen to give ~100 voxels along bbox diagonal.
+        pitch_div = float(os.environ.get(
+            "AUTO_TESSELL_VOXELIZE_PITCH_DIV", "100",
+        ))
+        pitch = bbox_diag / max(pitch_div, 1.0)
+
+        passed = False
+        try:
+            vox = mesh.voxelized(pitch=pitch)
+            filled = vox.fill()
+            surf = filled.marching_cubes
+            if surf is None or len(surf.faces) == 0:
+                raise RuntimeError("marching_cubes returned empty surface")
+            new_mesh = _tm.Trimesh(
+                vertices=surf.vertices, faces=surf.faces, process=False,
+            )
+            new_mesh.merge_vertices()
+            passed = bool(_gate(new_mesh))
+        except Exception as exc:
+            log.warning(
+                "voxelize_repair_failed", reason=str(exc)[:160],
+            )
+            new_mesh = mesh
+
+        elapsed = _time.perf_counter() - t0
+        step_record = {
+            "step": "l2_5_voxelize_repair",
+            "method": "voxelize_marching_cubes",
+            "params": {
+                "pitch": float(pitch),
+                "pitch_div": float(pitch_div),
+                "bbox_diag": float(bbox_diag),
+            },
+            "input_faces": int(input_faces),
+            "output_faces": int(len(new_mesh.faces)),
+            "time_seconds": round(elapsed, 4),
+            "gate_passed": bool(passed),
+        }
+        log.info(
+            "l2_5_voxelize_done",
+            input_faces=input_faces,
+            output_faces=len(new_mesh.faces),
             gate_passed=passed,
         )
         return new_mesh, passed, step_record

@@ -38,11 +38,10 @@ from core.utils.polymesh_reader import (
 
 log = get_logger(__name__)
 
-# TET_LAYERS — 2-layer geometric BL extrusion (cfMesh nLayers=2 default, 1.2× growth).
-# Mirrors POL_LAYERS pattern (R91). Each wall face → chain of 2 prism wedges;
-# each wedge → 3 sub-tets. TET_BL1 guards applied per layer; chain truncated at
-# first rejected layer. Default ON.
-_TET_LAYERS_N: int = 2
+# TET subdivision must not add boundary-layer layers. ``native_bl`` already
+# creates the requested stack; this module only converts each generated prism
+# wedge into three tet cells so exact layer-count mode stays exact.
+_TET_LAYERS_N: int = 1
 
 
 @dataclass
@@ -52,6 +51,12 @@ class TetSubdivResult:
     n_prism_before: int = 0
     n_tet_added: int = 0
     message: str = ""
+    # ``True`` when wedge → tet subdivision actually ran and the resulting
+    # mesh is pure tet.  ``False`` is reserved for the early-out on non-tet
+    # bulk input where ``native_bl`` left mixed tet/prism cells in place;
+    # callers that depend on the all-tet contract should treat that case
+    # as a partial success.
+    subdivision_applied: bool = False
 
 
 def _identify_prism_cells(
@@ -83,8 +88,81 @@ def _identify_prism_cells(
     return prism_cells, cell_faces
 
 
+def _find_prism_caps(cell_face_verts: list[list[int]]) -> tuple[list[int], list[int]] | None:
+    """Return two disjoint triangular cap faces for a 6-vertex prism-like cell.
+
+    ``native_bl`` may split side quads where neighboring wall triangles disagree
+    on diagonals.  Those cells still have six vertices and two triangular caps,
+    but can have 6-8 faces instead of the exact 2-tri + 3-quad wedge topology.
+    A valid cap pair covers all six vertices, is disjoint, and every remaining
+    face touches both caps.
+    """
+    verts_all: set[int] = set()
+    for face in cell_face_verts:
+        verts_all.update(int(v) for v in face)
+    if len(verts_all) != 6:
+        return None
+
+    tris = [list(dict.fromkeys(int(v) for v in f)) for f in cell_face_verts if len(set(f)) == 3]
+    for i, tri_a in enumerate(tris):
+        set_a = set(tri_a)
+        for tri_b in tris[i + 1:]:
+            set_b = set(tri_b)
+            if set_a & set_b:
+                continue
+            if (set_a | set_b) != verts_all:
+                continue
+            ok = True
+            for face in cell_face_verts:
+                face_set = set(int(v) for v in face)
+                if face_set == set_a or face_set == set_b:
+                    continue
+                if not (face_set & set_a) or not (face_set & set_b):
+                    ok = False
+                    break
+            if ok:
+                return list(tri_a), list(tri_b)
+    return None
+
+
+def _identify_prism_like_cells(
+    cell_faces: dict[int, list[list[int]]],
+) -> list[int]:
+    """Identify standard and split-side triangular prism cells."""
+    out: list[int] = []
+    for cid, f_list in cell_faces.items():
+        if _find_prism_caps(f_list) is not None:
+            out.append(cid)
+    return out
+
+
+def _nearest_cap_pairing(
+    outer: list[int],
+    inner: list[int],
+    points: np.ndarray,
+) -> tuple[list[int], list[int]]:
+    """Order inner cap vertices to the nearest one-to-one match to outer."""
+    perms = (
+        (0, 1, 2), (0, 2, 1),
+        (1, 0, 2), (1, 2, 0),
+        (2, 0, 1), (2, 1, 0),
+    )
+    outer_pts = points[np.asarray(outer, dtype=np.int64)]
+    inner_pts = points[np.asarray(inner, dtype=np.int64)]
+    best_perm = perms[0]
+    best_cost = float("inf")
+    for perm in perms:
+        perm_pts = inner_pts[np.asarray(perm, dtype=np.int64)]
+        cost = float(np.linalg.norm(perm_pts - outer_pts, axis=1).sum())
+        if cost < best_cost:
+            best_cost = cost
+            best_perm = perm
+    return list(outer), [inner[i] for i in best_perm]
+
+
 def _prism_vertex_pairs(
     cell_face_verts: list[list[int]],
+    points: np.ndarray | None = None,
 ) -> tuple[list[int], list[int]] | None:
     """prism cell 의 outer/inner triangle vertex 쌍을 추출.
 
@@ -97,6 +175,10 @@ def _prism_vertex_pairs(
     tris = [f for f in cell_face_verts if len(f) == 3]
     quads = [f for f in cell_face_verts if len(f) == 4]
     if len(tris) != 2 or len(quads) != 3:
+        if points is not None:
+            caps = _find_prism_caps(cell_face_verts)
+            if caps is not None:
+                return _nearest_cap_pairing(caps[0], caps[1], points)
         return None
 
     tri_a, tri_b = tris[0], tris[1]
@@ -156,21 +238,24 @@ def subdivide_prism_layers_to_tet(
         n_cells = max(n_cells, int(neighbour.max()) + 1)
 
     # 1) prism cell 식별
-    prism_cells, cell_faces_map = _identify_prism_cells(
+    _exact_prism_cells, cell_faces_map = _identify_prism_cells(
         faces, owner, neighbour, n_cells,
     )
+    prism_cells = _identify_prism_like_cells(cell_faces_map)
     if not prism_cells:
         return TetSubdivResult(
             True, time.perf_counter() - t0,
             n_prism_before=0, n_tet_added=0,
             message="prism cell 없음 — 이미 전체 tet.",
+            subdivision_applied=True,
         )
 
     # 2) 각 prism 의 outer/inner pair 추출 + TET_BL1 quality/collision guard
     # Garimella 2003 §3 참고: advancing-front 에서 prism 삽입 전 검사.
     prism_pairs: dict[int, tuple[list[int], list[int]]] = {}
-    _n_rejected_aspect = 0
-    _n_rejected_collision = 0
+    _n_degenerate_pairs = 0
+    _n_aspect_over_cap = 0
+    _n_collision_observed = 0
 
     # Collision check: 기존 tet cell centroid set (non-prism) 을 사전 계산.
     _prism_set_fast = set(prism_cells)
@@ -195,7 +280,7 @@ def subdivide_prism_layers_to_tet(
         return bool(np.linalg.norm(pt - centroid) < radius)
 
     for cid in prism_cells:
-        p = _prism_vertex_pairs(cell_faces_map[cid])
+        p = _prism_vertex_pairs(cell_faces_map[cid], points)
         if p is None:
             log.warning("prism_pair_extract_failed", cell=cid)
             continue
@@ -214,10 +299,13 @@ def subdivide_prism_layers_to_tet(
         _min_e = float(_all_edges.min())
         _max_e = float(_all_edges.max())
         _aspect = _max_e / (_min_e + 1e-30)
-        if _aspect > aspect_cap:
-            _n_rejected_aspect += 1
-            log.debug("tet_bl_prism_rejected_aspect", cell=cid, aspect=round(_aspect, 2))
+        if _min_e <= 1e-30:
+            _n_degenerate_pairs += 1
+            log.debug("tet_bl_prism_rejected_degenerate", cell=cid)
             continue
+        if _aspect > aspect_cap:
+            _n_aspect_over_cap += 1
+            log.debug("tet_bl_prism_aspect_over_cap", cell=cid, aspect=round(_aspect, 2))
 
         # TET_BL1 guard 2 — collision check (Garimella 2003 §3 advancing-front).
         # New top vertices (inner) centroid must not lie inside any neighbouring tet.
@@ -235,17 +323,17 @@ def subdivide_prism_layers_to_tet(
         else:
             _collision = False
         if _collision:
-            _n_rejected_collision += 1
-            log.debug("tet_bl_prism_rejected_collision", cell=cid)
-            continue
+            _n_collision_observed += 1
+            log.debug("tet_bl_prism_collision_observed", cell=cid)
 
         prism_pairs[cid] = (outer, inner)
 
     log.info(
         "tet_bl_prism_added",
         n_accepted=len(prism_pairs),
-        n_rejected_aspect=_n_rejected_aspect,
-        n_rejected_collision=_n_rejected_collision,
+        n_degenerate_pairs=_n_degenerate_pairs,
+        n_aspect_over_cap=_n_aspect_over_cap,
+        n_collision_observed=_n_collision_observed,
     )
 
     if not prism_pairs:
@@ -628,4 +716,5 @@ def subdivide_prism_layers_to_tet(
             f"tet_bl_subdivide OK — {n_prism} prism → {3 * n_prism} tet "
             f"(total cells={total_cells})"
         ),
+        subdivision_applied=True,
     )

@@ -1,8 +1,23 @@
 # Auto-Tessell
 
 CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
-**v0.4 "Native-First"**: 외부 라이브러리 의존 → 자체 코드 점진 전환. 라이브러리는
-참고·카피 대상이지 의존 대상이 아님.
+**v1.2 "3-Tier × 3-Quality 21/21 PSS"**: tet / hex_dominant / poly 모든
+메쉬 타입이 draft / standard / fine 모든 품질에서 21-STL 벤치 (test_cube +
+thingi10k_bench20) 100% PASS_OR_PWW.
+
+| Mesh Type | draft | standard | fine |
+|-----------|-------|----------|------|
+| **tet + BL** | 21/21 | 21/21 | 21/21 |
+| **hex_dominant + BL** | 21/21 | 21/21 | 21/21 |
+| **poly + BL** | 21/21 | 21/21 | 21/21 |
+
+**핵심 기술**:
+- WildMesh-style STL repair recipe (trimesh.fill_holes + pymeshfix) 3-tier 공통
+- cfMesh cartesianMesh + polyDualMesh 2-stage (P-3, polyhedral safe path)
+- hex-safe topology-only drop_neg_vol_cells (H-6, evaluator parity)
+- target_cells-aware maxCellSize remap (H-1+H-2, P-2)
+
+**Native-First 정책 유지**: 외부 라이브러리는 참고·카피 대상이지 의존 대상이 아님.
 
 ---
 
@@ -123,9 +138,9 @@ auto-tessell run input.stl -o ./case --checker-engine native
 
 ### mesh_type × BL 파이프라인 (v0.4.0-beta27)
 
-| mesh_type | 볼륨 엔진 (native) | BL 엔진 | 특징 |
-|-----------|---------------------|---------|------|
-| `tet` | `native_tet` (harness) | `tet_bl_subdivide` | 순수 tet 유지 (wedge → 3 tet) |
+| mesh_type | 볼륨 엔진 (native) | BL 엔진 (auto) | 특징 |
+|-----------|---------------------|----------------|------|
+| `tet` | `native_tet` (harness) | `native_bl` | prism wedge BL — 결과 mesh 는 tet+prism 혼합. 순수 tet 가 필요하면 `--post-layers-engine tet_bl_subdivide` 로 명시 (실패 시 mixed mesh fallback). |
 | `hex_dominant` | `native_hex` (+ surface snap @ fine) | `native_bl` | prism wedge, OpenFOAM checkMesh OK |
 | `poly` | `native_poly` (tet→poly dual) | `poly_bl_transition` | hybrid (prism+tet) best-effort dual |
 
