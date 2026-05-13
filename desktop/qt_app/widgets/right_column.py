@@ -773,31 +773,14 @@ class ExportPane(QWidget):
 
         self._fmt_group = QButtonGroup(self)
         self._fmt_value = "openfoam"
-        # beta2281: GUI export 6 → 18 formats (CLI/mesh_exporter 동등).
-        # 17 mesh_exporter formats + OpenFOAM polyMesh = 18.
+        # QA-fix (2026-05-13) — user request: keep only OpenFOAM polyMesh
+        # and VTU.  Other formats are routed through meshio/pyvista paths
+        # whose source-mesh detection can fail and trigger
+        # "변환할 mesh 파일을 찾을 수 없습니다" errors.  Both kept formats
+        # use polyMesh directly so the GUI never sees the error.
         for value, label, ext in [
             ("openfoam", "OpenFOAM", "polyMesh/"),
-            # CFD volume
-            ("su2", "SU2", ".su2"),
-            ("fluent", "Fluent MSH", ".msh"),
-            ("cgns", "CGNS", ".cgns"),
-            ("vtu", "VTU (ParaView)", ".vtu"),
-            ("vtk", "VTK Legacy", ".vtk"),
-            ("vtp", "VTP", ".vtp"),
-            ("xdmf", "XDMF", ".xdmf"),
-            # Mesh
-            ("gmsh22", "Gmsh 2.2", ".msh"),
-            ("gmsh40", "Gmsh 4.0", ".msh"),
-            ("gmsh41", "Gmsh 4.1", ".msh"),
-            ("medit", "Medit", ".mesh"),
-            ("tecplot", "Tecplot", ".dat"),
-            # FEA
-            ("nastran", "Nastran", ".bdf"),
-            ("abaqus", "Abaqus", ".inp"),
-            # Surface
-            ("stl", "STL (Surface)", ".stl"),
-            ("obj", "OBJ (Surface)", ".obj"),
-            ("ply", "PLY (Surface)", ".ply"),
+            ("vtu",      "VTU (ParaView)", ".vtu"),
         ]:
             row = QFrame()
             row.setStyleSheet(

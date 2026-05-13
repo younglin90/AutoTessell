@@ -4453,56 +4453,35 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._export_via_meshio(fmt, target_dir)
 
     def _export_via_meshio(self, fmt: str, target_dir: Path) -> None:  # pragma: no cover
-        """beta2282 — mesh_exporter (17 formats) 통해 polyMesh → 다양한 포맷.
+        """QA-fix (2026-05-13) — only VTU supported in GUI (besides OpenFOAM).
 
-        이전: 5 format ext_map. 이후: full mesh_exporter routing (17 formats).
+        Converts polyMesh directly via core.utils.vtk_exporter to avoid
+        the meshio/pyvista-fallback paths that previously triggered
+        "변환할 mesh 파일을 찾을 수 없습니다" errors on missing intermediates.
+        Other formats remain available through the CLI / mesh_exporter API
+        if needed but are not exposed in the GUI.
         """
-        # Path 1 — polyMesh 가 있으면 mesh_exporter 사용 (17 formats 지원).
-        poly_dir = self._output_dir / "constant" / "polyMesh"
-        if poly_dir.exists() and (poly_dir / "points").exists():
-            try:
-                from core.utils.mesh_exporter import (
-                    export_mesh as _exp,
-                    _FORMAT_EXTENSIONS as _F_EXT,
-                )
-                ext = _F_EXT.get(fmt, f".{fmt}")
-                dst_file = target_dir / f"mesh{ext}"
-                result = _exp(self._output_dir, output_path=dst_file, fmt=fmt)
-                if result is not None and result.exists():
-                    self._log(f"[OK] {fmt.upper()} 저장 (mesh_exporter): {dst_file}")
-                    return
-            except Exception as exc:
-                self._log(f"[WARN] mesh_exporter 실패 ({exc}), meshio fallback 시도")
-
-        # Path 2 — fallback: 기존 meshio convert (legacy ext_map).
-        src_file: Path | None = None
-        for pattern in ("**/*.vtu", "**/*.vtk", "**/*.msh"):
-            candidates = list(self._output_dir.glob(pattern))
-            if candidates:
-                src_file = max(candidates, key=lambda p: p.stat().st_mtime)
-                break
-        if src_file is None:
+        if fmt != "vtu":
             raise RuntimeError(
-                f"변환할 mesh 파일을 찾을 수 없습니다 (format={fmt}).\n"
-                "파이프라인이 polyMesh / VTU / VTK / MSH 를 생성했는지 확인하세요."
+                f"GUI는 OpenFOAM polyMesh와 VTU만 지원합니다 (요청: {fmt}).\n"
+                "다른 포맷은 CLI: ``auto-tessell export --fmt <fmt>`` 를 사용하세요."
             )
-        ext_map = {
-            "vtu": ".vtu", "vtk": ".vtk", "vtp": ".vtp", "xdmf": ".xdmf",
-            "cgns": ".cgns", "su2": ".su2",
-            "nastran": ".bdf", "abaqus": ".inp", "tecplot": ".dat",
-            "fluent": ".msh", "gmsh": ".msh",
-            "gmsh22": ".msh", "gmsh40": ".msh", "gmsh41": ".msh",
-            "medit": ".mesh", "stl": ".stl", "obj": ".obj", "ply": ".ply",
-        }
-        ext = ext_map.get(fmt, f".{fmt}")
-        dst_file = target_dir / f"mesh{ext}"
-        try:
-            import meshio
-        except ImportError:
-            raise RuntimeError("meshio 미설치 — pip install meshio") from None
-        mesh = meshio.read(str(src_file))
-        meshio.write(str(dst_file), mesh)
-        self._log(f"[OK] {fmt.upper()} 저장 (meshio fallback): {dst_file}")
+        poly_dir = self._output_dir / "constant" / "polyMesh"
+        if not (poly_dir.exists() and (poly_dir / "points").exists()):
+            raise RuntimeError(
+                f"polyMesh가 출력 디렉토리에 없습니다: {poly_dir}\n"
+                "파이프라인을 먼저 실행해 메시를 생성하세요."
+            )
+        from core.utils.vtk_exporter import export_vtk
+        dst_file = target_dir / "mesh.vtu"
+        result = export_vtk(
+            self._output_dir, output_path=dst_file, include_quality=True,
+        )
+        if result is None or not Path(result).exists():
+            raise RuntimeError(
+                "VTU 변환 실패 — polyMesh 파싱 오류일 수 있습니다."
+            )
+        self._log(f"[OK] VTU 저장: {result}")
 
     def _export_report_json(self, target_dir: Path) -> None:  # pragma: no cover
         """checkMesh 리포트를 JSON으로 복사/생성."""
