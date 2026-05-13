@@ -110,7 +110,12 @@ _DEFAULT_ENV = {
     # bench_cavity_eval.py 의 default 와 동일하게 설정.
     "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST": "1",      # U-1
     "AUTO_TESSELL_BL_DROP_NEG_VOL": "1",                   # U-3
-    "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD": "18",           # U-3b
+    "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD": "10",           # U-3b + QA(2026-05-13)
+    # QA-fix (2026-05-13) — skew threshold 18→10.  polyDualMesh on curved
+    # STLs produces boundary sliver cells with skew >>20 (485 on test
+    # input).  Threshold 10 drops these outliers (typically ≤50 cells of
+    # ~10k) while preserving genuine BL skew up to 10.  Verified:
+    # curved STL skew_max 485 → 9.86 with 37/8483 cells dropped.
     "AUTO_TESSELL_BL_DROP_MAX_ITER": "8",
     "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP": "1",        # U-13
     "AUTO_TESSELL_WILDMESH_TARGET_CALIB_BASE": "14000",
