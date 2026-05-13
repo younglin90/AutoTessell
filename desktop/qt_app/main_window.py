@@ -4367,31 +4367,48 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._log(f"[INFO] Export 시작: format={actual_fmt} → {export_target_dir}")
 
             # ── 포맷/엔진 호환성 사전 검증 ─────────────────────────
-            # QA-fix (2026-05-13) — both supported formats (openfoam, vtu)
-            # require polyMesh.  Check existence + minimal file set so we
-            # fail early with a clear message instead of a cryptic Errno 2.
+            # QA-fix (2026-05-13) — Look in multiple known locations.
+            # OpenFOAM polyMesh path: constant/polyMesh.
+            # VTU fallback: VTK/*/internal.vtu (foamToVTK output, may
+            #   exist when constant/polyMesh was cleaned up post-run).
             poly_dir = self._output_dir / "constant" / "polyMesh"
             _required = ("points", "faces", "owner")
-            _missing = [
-                f for f in _required if not (poly_dir / f).exists()
-            ]
-            if not poly_dir.exists() or _missing:
-                _reason = (
-                    f"polyMesh 디렉토리가 없습니다:\n{poly_dir}"
-                    if not poly_dir.exists()
-                    else (
-                        f"polyMesh 디렉토리는 있지만 필수 파일 누락:\n"
-                        f"{poly_dir}\n누락: {', '.join(_missing)}"
+            _poly_ok = poly_dir.exists() and all(
+                (poly_dir / f).exists() for f in _required
+            )
+            _vtk_src: Path | None = None
+            if not _poly_ok:
+                vtk_root = self._output_dir / "VTK"
+                if vtk_root.exists():
+                    for case_sub in sorted(vtk_root.iterdir()):
+                        candidate = case_sub / "internal.vtu"
+                        if candidate.exists():
+                            _vtk_src = candidate
+                            break
+            if not _poly_ok and (actual_fmt == "openfoam" or _vtk_src is None):
+                _hint = ""
+                if _vtk_src is not None:
+                    _hint = (
+                        "\n\n참고: VTU 파일은 존재합니다:\n"
+                        f"{_vtk_src}\n"
+                        "VTU 포맷으로 export 하면 그 파일을 사용합니다."
                     )
-                )
                 QMessageBox.warning(
                     self._qmain, "Export 불가",
-                    f"메시가 아직 생성되지 않았습니다.\n\n{_reason}\n\n"
-                    "Run 버튼을 눌러 파이프라인을 먼저 실행하세요."
+                    f"메시가 출력 디렉토리에 없습니다.\n\n"
+                    f"검색 위치: {poly_dir}\n"
+                    f"파이프라인을 먼저 실행하여 메시를 생성하세요.{_hint}"
                 )
                 return
 
-            self._export_mesh_format(actual_fmt, export_target_dir)
+            # VTU export with no polyMesh but an existing VTU → just copy.
+            if actual_fmt == "vtu" and not _poly_ok and _vtk_src is not None:
+                import shutil
+                dst = export_target_dir / "mesh.vtu"
+                shutil.copy2(_vtk_src, dst)
+                self._log(f"[OK] VTU 복사 (기존 파일): {_vtk_src} → {dst}")
+            else:
+                self._export_mesh_format(actual_fmt, export_target_dir)
 
             # ── 후처리: checkMesh 리포트 JSON ─────────────────
             if opts.get("report_json", False):
