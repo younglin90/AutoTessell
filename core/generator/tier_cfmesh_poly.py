@@ -126,15 +126,19 @@ class CfMeshPolyGenerator:
                     _max_from_target = (
                         (_dvol / _target_cells) ** (1.0 / 3.0)
                     ) * _calib
-                    if _max_from_target < max_cell:
-                        logger.info(
-                            "cfmesh_poly_max_remap_from_target",
-                            target_cells=_target_cells,
-                            domain_vol=_dvol,
-                            prev_max=max_cell,
-                            new_max=_max_from_target,
-                        )
-                        max_cell = _max_from_target
+                    # QA-fix (2026-05-13) — user reported "cell count 안먹힘"
+                    # for small target_cells (e.g. 2000) because the previous
+                    # guard ``_max_from_target < max_cell`` only allowed
+                    # refinement, never coarsening.  When the user explicitly
+                    # passes target_cells we honor it bidirectionally.
+                    logger.info(
+                        "cfmesh_poly_max_remap_from_target",
+                        target_cells=_target_cells,
+                        domain_vol=_dvol,
+                        prev_max=max_cell,
+                        new_max=_max_from_target,
+                    )
+                    max_cell = _max_from_target
             except Exception as _exc:
                 logger.debug(
                     "cfmesh_poly_remap_skipped", error=str(_exc)[:120],

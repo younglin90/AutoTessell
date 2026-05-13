@@ -1908,14 +1908,28 @@ class TierWildMeshGenerator:
                 "wildmesh_tet_bl_external_body_only",
                 reason="preserve_input_surface_as_wall_for_tet_bl",
             )
+        # QA-fix (2026-05-13) — user reported "tet 로 했을 때 (BL 없이),
+        # hex 로 나오는 문제".  The structured box fastpath writes hex cells
+        # (6 quad faces per cell) and only makes sense for the tet+BL bench
+        # (where BL layers naturally form aligned wall-cells).  When the user
+        # explicitly picks mesh_type=tet with BL OFF, fall through to the
+        # real wildmesh pipeline so genuine tetrahedra come out.
+        # bench (bl_layers=3) is unaffected.
+        _bl_layers_probe = int(
+            params.get("post_layers_num_layers")
+            or params.get("bl_layers")
+            or params.get("cfmesh_bl_n_layers")
+            or 0
+        )
         if (
             flow_type != "external"
             and _mesh_type_fast == "tet"
+            and _bl_layers_probe > 0
             and os.environ.get("AUTO_TESSELL_WILDMESH_BOX_FASTPATH", "1") != "0"
             and _is_axis_aligned_box_surface(surf)
         ):
             target_cells = int(params.get("max_cells") or params.get("target_cells") or 10000)
-            bl_layers = int(params.get("post_layers_num_layers") or params.get("bl_layers") or 3)
+            bl_layers = _bl_layers_probe
             mesh_stats = _write_structured_box_polymesh(
                 surf,
                 case_dir,

@@ -345,19 +345,22 @@ class Tier15CfMeshGenerator:
                                 _max_from_target = (
                                     (_dvol / _target_cells) ** (1.0 / 3.0)
                                 ) * _calib
-                                # Only override if it makes cells SMALLER
-                                # (i.e., cell count larger).  Never coarsen
-                                # the default — that risks worse quality.
-                                if _max_from_target < _max:
-                                    logger.info(
-                                        "cfmesh_max_remap_from_target_cells",
-                                        target_cells=_target_cells,
-                                        domain_vol=_dvol,
-                                        prev_max=_max,
-                                        new_max=_max_from_target,
-                                        calib=_calib,
-                                    )
-                                    _max = _max_from_target
+                                # QA-fix (2026-05-13) — user reported
+                                # "cell count 안먹힘" for small target_cells
+                                # (e.g. 2000).  Previous guard
+                                # ``_max_from_target < _max`` only allowed
+                                # refinement, blocking coarsening.  When
+                                # the user explicitly sets target_cells
+                                # honor it in both directions.
+                                logger.info(
+                                    "cfmesh_max_remap_from_target_cells",
+                                    target_cells=_target_cells,
+                                    domain_vol=_dvol,
+                                    prev_max=_max,
+                                    new_max=_max_from_target,
+                                    calib=_calib,
+                                )
+                                _max = _max_from_target
                                 # H-13/H-15 (autoresearch-deep hex loop,
                                 # 2026-05-12) — broken-multi-shell
                                 # detection via ORIGINAL STL body count.
