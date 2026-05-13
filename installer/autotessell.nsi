@@ -13,7 +13,7 @@ Unicode True
 
 ; ── 기본 설정 ────────────────────────────────────────────────────────────────
 !ifndef VERSION
-  !define VERSION "0.4.0-beta49"
+  !define VERSION "1.2.0"
 !endif
 !ifndef SRCROOT
   !define SRCROOT ".."
@@ -359,15 +359,13 @@ Section /o "OpenFOAM for Windows (snappy/cfMesh, ~2GB)" SecOpenFOAM
             DetailPrint "OpenFOAM 설치 완료"
         ${Else}
             DetailPrint "OpenFOAM 설치 실패 (ExitCode=$0)"
-            MessageBox MB_ICONINFORMATION \
-                "OpenFOAM 자동 설치에 실패했습니다.$\r$\n$\r$\n아래 주소에서 수동으로 설치하세요:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n설치 후 AutoTessell의 Fine quality 티어가 활성화됩니다." \
-                MB_OK
+            MessageBox MB_OK|MB_ICONINFORMATION \
+                "OpenFOAM 자동 설치에 실패했습니다.$\r$\n$\r$\n아래 주소에서 수동으로 설치하세요:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n설치 후 AutoTessell의 Fine quality 티어가 활성화됩니다."
         ${EndIf}
     ${Else}
         DetailPrint "OpenFOAM 다운로드 실패 — 수동 설치 필요"
-        MessageBox MB_ICONINFORMATION \
-            "OpenFOAM 다운로드에 실패했습니다.$\r$\n$\r$\n수동 설치 주소:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n또는 winget을 통해:$\r$\n  winget install ESI.OpenFOAM" \
-            MB_OK
+        MessageBox MB_OK|MB_ICONINFORMATION \
+            "OpenFOAM 다운로드에 실패했습니다.$\r$\n$\r$\n수동 설치 주소:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n또는 winget을 통해:$\r$\n  winget install ESI.OpenFOAM"
     ${EndIf}
 
     openfoam_done:
@@ -391,7 +389,7 @@ Section /o "고급 Hex 메셔 바이너리 (cinolib/RobustHex)" SecHexBins
     ${If} ${FileExists} "$TEMP\cinolib_hex.pyd"
         ; Python site-packages 경로에 복사 — PS1 방식
         FileOpen $R9 "$TEMP\at_copypyd.ps1" w
-        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path(""purelib""))'$\n"
+        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path($\"purelib$\"))'$\n"
         FileWrite $R9 "Copy-Item '$TEMP\cinolib_hex.pyd' (Join-Path $$sp 'cinolib_hex.pyd') -Force$\n"
         FileWrite $R9 "Copy-Item '$TEMP\cinolib_hex.pyd' '$INSTDIR\bin\cinolib_hex.pyd' -Force$\n"
         FileClose $R9
@@ -415,7 +413,7 @@ Section /o "고급 Hex 메셔 바이너리 (cinolib/RobustHex)" SecHexBins
         "$TEMP\robusthex.pyd" "robusthex.pyd"
     ${If} ${FileExists} "$TEMP\robusthex.pyd"
         FileOpen $R9 "$TEMP\at_copypyd2.ps1" w
-        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path(""purelib""))'$\n"
+        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path($\"purelib$\"))'$\n"
         FileWrite $R9 "Copy-Item '$TEMP\robusthex.pyd' (Join-Path $$sp 'robusthex.pyd') -Force$\n"
         FileWrite $R9 "Copy-Item '$TEMP\robusthex.pyd' '$INSTDIR\bin\robusthex.pyd' -Force$\n"
         FileClose $R9
