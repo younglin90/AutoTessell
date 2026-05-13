@@ -172,16 +172,18 @@ class CfMeshPolyGenerator:
         if "cfmesh_bl_max_first_layer" in params:
             max_first = float(params["cfmesh_bl_max_first_layer"])
 
-        # P-3 (autoresearch-deep poly loop, 2026-05-12) — backend selector.
-        # ``cfmesh_pmesh`` (legacy): vendored pMesh executable directly
-        # produces polyhedral cells.  Segfaults on broken multi-shell
-        # STLs (13/21 NO_QR on bench).  ``cartesian_dual`` (default):
-        # use cartesianMesh (same as tier15_cfmesh hex+BL, proven
-        # 21/21 stable) followed by OpenFOAM polyDualMesh utility.
-        # cfMesh family (cartesianMesh) is preserved per user spec
-        # while the polyhedral conversion goes through a stable utility.
+        # Backend selector (default: ``tet_dual`` per user QA 2026-05-13).
+        # - ``tet_dual`` (default, 2026-05-13): fTetWild tet primal →
+        #   polyDualMesh.  Produces TRUE polyhedral cells: pentagon/hexagon
+        #   dominant face mix (4-vert 31 %, 5-vert 40 %, 6-vert 21 %,
+        #   up to 15-vert).  Matches user expectation of "다면체".
+        # - ``cartesian_dual``: cartesianMesh octree primal → polyDualMesh.
+        #   Mostly quad faces (95 %) due to uniform octree connectivity.
+        #   Faster than tet_dual but visually hex-like.  Stable on bench.
+        # - ``cfmesh_pmesh`` (legacy): vendored pMesh exe direct.
+        #   Segfaults on broken multi-shell STLs (13/21 NO_QR on bench).
         _backend = os.environ.get(
-            "AUTO_TESSELL_POLY_BACKEND", "cartesian_dual",
+            "AUTO_TESSELL_POLY_BACKEND", "tet_dual",
         ).lower()
 
         t_step = time.monotonic()
@@ -200,8 +202,13 @@ class CfMeshPolyGenerator:
             # n_primal_internal_verts ≈ n_primal_cells / 6 for clean tet
             # mesh from fTetWild.  But fTetWild often overshoots target by
             # 2-3× on simple geometries; tune scale to ~1.5× by default.
+            # Empirical (test_cube, target=10000):
+            #   scale=1.5 → 3049 dual cells (-70 %)
+            #   scale=3.0 → 5693 dual cells (-43 %, primal_s ≈ 4 s)
+            #   scale=6.0 → 93658 dual cells (+836 %, primal_s ≈ 90 s)
+            # Default 3.0 balances target accuracy and runtime.
             _scale = float(os.environ.get(
-                "AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE", "1.5",
+                "AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE", "3.0",
             ))
             _scaled_target = max(int(_target_cells * _scale), 1000) if _target_cells > 0 else 0
             primal_strategy = strategy
@@ -356,7 +363,9 @@ class CfMeshPolyGenerator:
         step_time = time.monotonic() - t_step
         elapsed = time.monotonic() - t_start
 
-        if _backend != "cartesian_dual" and not r.get("success"):
+        # Legacy pMesh failure check — tet_dual and cartesian_dual return
+        # early on failure, so this branch only matters for cfmesh_pmesh.
+        if _backend not in ("cartesian_dual", "tet_dual") and not r.get("success"):
             return TierAttempt(
                 tier=TIER_NAME,
                 status="failed",

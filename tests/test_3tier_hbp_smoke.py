@@ -131,17 +131,17 @@ def test_hex_dominant_cube_smoke(tmp_path: Path) -> None:
 
 
 def test_poly_cube_smoke(tmp_path: Path) -> None:
-    """P-series: poly + cartesian_dual (cartesianMesh + polyDualMesh)."""
+    """Poly backend: tet_dual default (fTetWild + polyDualMesh)."""
     report = _run_cli("poly", tmp_path / "poly")
     _assert_pass_states(report, "poly")
     cells = report["evaluation_summary"]["checkmesh"]["cells"]
-    # polyDualMesh of test_cube hex (~22k) produces ~30k poly cells.
-    # If P-3 cartesian_dual silently fell back to pMesh, cells would
-    # be in the 40k-120k range; if it skipped polyDualMesh entirely,
-    # cells would be in the 22k hex range.  Bench measured 29785.
-    assert cells > 20000, (
-        f"P-3 cartesian_dual: cells={cells} — polyDualMesh may not "
-        f"have run (expected ~29785)"
+    # QA-fix (2026-05-13): default backend is now ``tet_dual`` which
+    # produces TRUE polyhedral cells (pentagon/hexagon dominant) at
+    # roughly target/2 cells (target=10000 → ~5000 cells with
+    # PRIMAL_SCALE=3.0 default).  Accept a wide window since fTetWild
+    # cell count depends on input geometry.
+    assert cells > 1000, (
+        f"poly tet_dual: cells={cells} — polyDualMesh may not have run"
     )
 
 

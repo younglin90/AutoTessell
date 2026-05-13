@@ -136,8 +136,12 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
     # - epsilon 0.0003, edge_length_r 0.02  → knot 류 563s timeout
     # - epsilon 0.001,  edge_length_r 0.05  → TetWild 매칭, 15s PASS (sweet spot)
     _defaults: dict[str, dict[str, Any]] = {
-        # draft: 단순 형상 빠른 통과 — cube/box 기준
-        "draft": {"stop_quality": 20.0, "max_its": 40, "epsilon": 0.002, "edge_length_r": 0.06},
+        # draft: CFD-grade quality with reasonable speed.
+        # QA-fix (2026-05-13) — stop_quality 20→10 (max_non_ortho 77°→68°),
+        # max_its 40→60 (room for swap/split to clear severely non-ortho
+        # faces).  test_cube: cells 6753→8855, non_ortho 77°→68°,
+        # severely_non_ortho_faces 2→0.  Time: 3.4s → ~6.5s.
+        "draft": {"stop_quality": 10.0, "max_its": 60, "epsilon": 0.002, "edge_length_r": 0.06},
         # standard: TetWild 매칭 — 복잡 형상(knot, gear 등) 첫 시도 PASS
         "standard": {"stop_quality": 10.0, "max_its": 80, "epsilon": 0.001, "edge_length_r": 0.05},
         # fine: standard 보다 tight 하되 fTetWild 수렴 가능한 한계

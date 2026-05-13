@@ -132,7 +132,11 @@ _DEFAULT_ENV = {
     "AUTO_TESSELL_BL_DROP_MAX_ITER": "24",
     # P-1 / P-2 / P-3 (2026-05-12) — poly+cfMesh loop.  cartesian_dual
     # backend bench로 6/21 → 21/21 PSS 도달.  pMesh segfault 우회.
-    "AUTO_TESSELL_POLY_BACKEND": "cartesian_dual",   # P-3
+    # QA-fix (2026-05-13) — user expects true polyhedral cells when picking
+    # ``poly`` (pentagon/hexagon dominant), not the hex-like cartesian_dual
+    # output.  Default switched to ``tet_dual`` (fTetWild + polyDualMesh).
+    "AUTO_TESSELL_POLY_BACKEND": "tet_dual",         # P-3 QA upgrade
+    "AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE": "3.0", # primal cell scale (target/2 dual cells)
     "AUTO_TESSELL_POLY_CFMESH_REPAIR_SURFACE": "1",  # P-1 WildMesh repair
     "AUTO_TESSELL_POLY_CFMESH_TARGET_CALIB": "1.4",  # P-2 pMesh density compensation
 }
