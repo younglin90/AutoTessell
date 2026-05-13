@@ -737,12 +737,17 @@ class ExportPane(QWidget):
         sec1_v = QVBoxLayout(sec1)
         sec1_v.setContentsMargins(0, 0, 0, 14)
         sec1_v.setSpacing(6)
-        sec1_v.addWidget(_section_title("출력 디렉토리"))
+        sec1_v.addWidget(_section_title("Export 저장 폴더"))
 
         path_row = QHBoxLayout()
         path_row.setSpacing(6)
         self.path_box = QLineEdit()
-        self.path_box.setPlaceholderText("~/meshes/…")
+        self.path_box.setPlaceholderText("Export 시 메쉬 저장 폴더 (예: ~/meshes/…)")
+        self.path_box.setToolTip(
+            "Export 버튼 누를 때 메쉬가 저장될 폴더.\n"
+            "파이프라인 실행 결과는 임시 디렉토리에 보관되므로,\n"
+            "이 폴더는 Export 시점에만 사용됩니다."
+        )
         self.path_box.setStyleSheet(
             "QLineEdit { background: #161a20; border: 1px solid #323a46; "
             "color: #b6bdc9; font-family: 'JetBrains Mono', monospace; "

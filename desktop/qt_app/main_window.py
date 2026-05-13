@@ -5,9 +5,12 @@ CAD 다크 팔레트 (ParaView/Rhino 스타일), 3-column layout, 모든 데코 
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import sys
+import tempfile
 from enum import StrEnum
 from pathlib import Path
 
@@ -415,7 +418,12 @@ class AutoTessellWindow:  # type: ignore[misc]
     def __init__(self) -> None:
         # ── 상태 ─────────────────────────────────────────
         self._input_path: Path | None = None
+        # QA-fix (2026-05-13) — Option A: pipeline output goes to a temp
+        # directory so we never touch the user's workspace.  Files only
+        # land in user-visible paths via the explicit Export action.
         self._output_dir: Path | None = None
+        self._pipeline_temp_dirs: list[Path] = []
+        atexit.register(self._cleanup_pipeline_temp_dirs)
         self._quality_level: QualityLevel = QualityLevel.DRAFT
         self._worker: object | None = None
         self._preview_loader: object | None = None
@@ -567,8 +575,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         if not resolved.exists():
             raise ValueError(f"입력 파일이 존재하지 않습니다: {resolved}")
         self._input_path = resolved
-        if self._output_dir is None:
-            self._output_dir = resolved.parent / f"{resolved.stem}_case"
+        # Option A (2026-05-13) — no longer pre-assign self._output_dir
+        # from input path.  Run will create a fresh temp dir; the Export
+        # panel keeps whatever the user explicitly chose as destination.
         # UI 업데이트 (안전하게 None 체크)
         self._sync_input_to_ui(resolved)
         # 최근 파일 기록 갱신
@@ -625,10 +634,17 @@ class AutoTessellWindow:  # type: ignore[misc]
         return self._input_path
 
     def set_output_dir(self, path: str | Path) -> None:
-        self._output_dir = Path(path).expanduser()
+        """Set the EXPORT destination (Option A 2026-05-13).
+
+        The pipeline always writes to an internal temp dir; this method
+        only updates the visible Export panel path_box.  ``self._output_dir``
+        is no longer touched by this setter — it is owned by Run.
+        """
         if self._output_path_edit is not None:
             try:
-                self._output_path_edit.setText(str(self._output_dir))  # type: ignore[union-attr]
+                self._output_path_edit.setText(  # type: ignore[union-attr]
+                    str(Path(path).expanduser())
+                )
             except Exception:
                 pass
         if self._output_path_label is not None:
@@ -3040,8 +3056,21 @@ class AutoTessellWindow:  # type: ignore[misc]
         if self._qmain is None:
             return
         from PySide6.QtWidgets import QFileDialog
-        cur = str(self._output_dir) if self._output_dir else str(Path.home())
-        path = QFileDialog.getExistingDirectory(self._qmain, "출력 폴더 선택", cur)
+        # Option A: this picker controls the EXPORT destination only.
+        # Default to current path_box value or, if empty, input file's
+        # parent dir (workspace-visible) — never the temp pipeline dir.
+        cur = ""
+        try:
+            cur = self._output_path_edit.text().strip() if self._output_path_edit else ""
+        except Exception:
+            cur = ""
+        if not cur and self._input_path is not None:
+            cur = str(self._input_path.parent)
+        if not cur:
+            cur = str(Path.home())
+        path = QFileDialog.getExistingDirectory(
+            self._qmain, "Export 저장 폴더 선택", cur,
+        )
         if path:
             self.set_output_dir(path)
 
@@ -3082,12 +3111,44 @@ class AutoTessellWindow:  # type: ignore[misc]
         )
         return resp == QMessageBox.Yes
 
+    def _cleanup_pipeline_temp_dirs(self) -> None:
+        """Remove every temp dir we created for pipeline runs (atexit)."""
+        for d in self._pipeline_temp_dirs:
+            try:
+                if d.exists():
+                    shutil.rmtree(str(d), ignore_errors=True)
+            except Exception:
+                pass
+        self._pipeline_temp_dirs.clear()
+
+    def _new_pipeline_workdir(self) -> Path:
+        """Create a fresh temp dir for one pipeline run and remember it.
+
+        Option A (2026-05-13) — pipeline output never touches the user's
+        workspace.  Files land in the user's chosen directory only via
+        the explicit Export action.
+        """
+        stem = self._input_path.stem if self._input_path else "case"
+        d = Path(tempfile.mkdtemp(prefix=f"autotessell_{stem}_"))
+        self._pipeline_temp_dirs.append(d)
+        return d
+
     def _on_run_clicked(self) -> None:  # pragma: no cover
         if self._input_path is None:
             self._log("[WARN] 입력 파일이 없습니다 — 먼저 파일을 드롭하세요")
             return
-        if self._output_dir is None:
-            self._output_dir = self._input_path.parent / f"{self._input_path.stem}_case"
+        # Each Run gets a fresh temp dir.  The Export panel's path_box is
+        # the user-visible destination (decoupled from the pipeline output).
+        prev_dir = self._output_dir
+        self._output_dir = self._new_pipeline_workdir()
+        self._log(f"[INFO] Pipeline workdir (temp): {self._output_dir}")
+        if prev_dir is not None and prev_dir in self._pipeline_temp_dirs[:-1]:
+            # eagerly drop the previous run's temp to limit disk churn
+            try:
+                shutil.rmtree(str(prev_dir), ignore_errors=True)
+                self._pipeline_temp_dirs.remove(prev_dir)
+            except Exception:
+                pass
 
         # wildmesh_only 모드 preflight — 위험 케이스 발견시 사용자 경고
         if not self._run_wildmesh_preflight_if_applicable():
@@ -4334,23 +4395,50 @@ class AutoTessellWindow:  # type: ignore[misc]
             except Exception:
                 opts = {}
 
-        # 출력 디렉토리 결정 (Export 탭 입력값 우선, fallback → self._output_dir)
+        # QA-fix (2026-05-13) — Option A.  Pipeline output lives in a temp
+        # dir; Export saves to the user-visible path_box in the Export tab.
+        # Reject saving back into the temp dir (would be invisible to user).
         export_dir_str = opts.get("output_dir", "").strip()
-        if export_dir_str:
-            export_target_dir = Path(export_dir_str).expanduser().resolve()
-        elif self._output_dir is not None:
-            export_target_dir = self._output_dir.resolve()
+        if not export_dir_str:
+            # Default destination = <input_dir>/<stem>_export/ — visible
+            # next to the input STL so the user can find it easily.
+            if self._input_path is not None:
+                default = (
+                    self._input_path.parent / f"{self._input_path.stem}_export"
+                )
+                export_target_dir = default.resolve()
+                if self._right_column is not None:
+                    try:
+                        self._right_column.export_pane.path_box.setText(
+                            str(export_target_dir)
+                        )
+                    except Exception:
+                        pass
+                self._log(
+                    f"[INFO] Export 경로 미지정 — 기본값 사용: {export_target_dir}"
+                )
+            else:
+                QMessageBox.warning(
+                    self._qmain, "저장 경로 필요",
+                    "Export 탭에서 저장할 디렉토리를 지정하세요."
+                )
+                return
         else:
-            QMessageBox.warning(
-                self._qmain, "저장 경로 없음",
-                "출력 디렉토리를 먼저 지정하세요."
-            )
-            return
+            export_target_dir = Path(export_dir_str).expanduser().resolve()
 
         if self._output_dir is None or not self._output_dir.exists():
             QMessageBox.warning(
                 self._qmain, "결과 없음",
                 "파이프라인을 먼저 실행하여 결과를 생성하세요."
+            )
+            return
+
+        # Guard: refuse to "export" into the temp pipeline workdir.
+        if export_target_dir == self._output_dir.resolve():
+            QMessageBox.warning(
+                self._qmain, "잘못된 경로",
+                "Export 경로가 파이프라인 임시 디렉토리와 동일합니다.\n"
+                "다른 경로를 선택해 주세요."
             )
             return
 
@@ -5178,11 +5266,13 @@ class AutoTessellWindow:  # type: ignore[misc]
                     except Exception:
                         pass
 
-            # 출력 디렉토리 복원
+            # 출력 디렉토리 복원 — Option A (2026-05-13): the saved path
+            # now represents the Export destination, not the pipeline
+            # workdir.  Pipeline output is always recreated as a fresh
+            # temp dir on the next Run.
             output_dir = data.get("output_dir")
             if output_dir:
                 output_dir_path = Path(output_dir)
-                self._output_dir = output_dir_path
                 if self._output_path_edit is not None:
                     try:
                         self._output_path_edit.setText(output_dir)
