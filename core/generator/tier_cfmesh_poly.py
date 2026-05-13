@@ -185,7 +185,88 @@ class CfMeshPolyGenerator:
         ).lower()
 
         t_step = time.monotonic()
-        if _backend == "cartesian_dual":
+        if _backend == "tet_dual":
+            # QA-fix (2026-05-13) — user reported "Poly 다면체를 기대했는데
+            # hex-dom 같다".  cartesianMesh octree primal → polyDualMesh
+            # gives mostly quad faces (95 %).  tet primal → polyDualMesh
+            # yields true polyhedra: quad/pentagon/hexagon mix (test_cube:
+            # 3577/2410/3399 + heptagon/octagon).
+            # Trade-off: dual_cells ≈ primal_points, so target_cells must
+            # be multiplied by ~6 when generating the tet primal.
+            from core.generator.tier_wildmesh import TierWildMeshGenerator
+            from core.utils.openfoam_utils import run_openfoam
+            # Boost primal target_cells so dual ends up near user target.
+            # Empirically: 1 dual cell ≈ 1 primal internal vertex, and
+            # n_primal_internal_verts ≈ n_primal_cells / 6 for clean tet
+            # mesh from fTetWild.  But fTetWild often overshoots target by
+            # 2-3× on simple geometries; tune scale to ~1.5× by default.
+            _scale = float(os.environ.get(
+                "AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE", "1.5",
+            ))
+            _scaled_target = max(int(_target_cells * _scale), 1000) if _target_cells > 0 else 0
+            primal_strategy = strategy
+            if _scaled_target > 0:
+                # mutate a copy of tier_specific_params for the tet generator
+                if primal_strategy.tier_specific_params is None:
+                    primal_strategy.tier_specific_params = {}
+                primal_strategy.tier_specific_params = dict(primal_strategy.tier_specific_params)
+                primal_strategy.tier_specific_params["target_cells"] = _scaled_target
+                primal_strategy.tier_specific_params["max_cells"] = _scaled_target
+                # disable fastpaths so we get pure tet primal
+                primal_strategy.tier_specific_params["bl_layers"] = 0
+                primal_strategy.tier_specific_params["post_layers_engine"] = "disabled"
+            # Step 1: tet primal via WildMesh (fTetWild real path).
+            _t_primal = time.monotonic()
+            tet_gen = TierWildMeshGenerator()
+            tet_attempt = tet_gen.run(primal_strategy, stl_path, case_dir)
+            if tet_attempt.status != "success":
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=time.monotonic() - t_start,
+                    error_message=(
+                        f"tet_dual stage 1 (WildMesh tet primal) 실패: "
+                        f"{tet_attempt.error_message or ''}"
+                    ),
+                )
+            # Step 2: polyDualMesh — convert tet primal → polyhedral dual.
+            try:
+                self._writer.write_control_dict(case_dir, application="polyDualMesh")
+                self._writer.write_fv_schemes(case_dir)
+                self._writer.write_fv_solution(case_dir)
+                _feat = float(params.get("bl_feature_angle", 30.0))
+                _t_dual = time.monotonic()
+                run_openfoam("polyDualMesh", case_dir, [str(_feat)])
+                # polyDualMesh writes into 1/polyMesh (or 0/polyMesh
+                # depending on the case's startTime).  Promote whichever
+                # exists to constant/polyMesh.
+                _to = case_dir / "constant" / "polyMesh"
+                for _t in ("1", "0"):
+                    _from = case_dir / _t / "polyMesh"
+                    if _from.exists():
+                        if _to.exists():
+                            shutil.rmtree(str(_to))
+                        shutil.copytree(str(_from), str(_to))
+                        break
+                logger.info(
+                    "cfmesh_poly_tet_dual_used",
+                    polymesh=str(_to),
+                    feature_angle=_feat,
+                    primal_target_cells=_scaled_target,
+                    primal_s=round(_t_dual - _t_primal, 3),
+                    dual_s=round(time.monotonic() - _t_dual, 3),
+                )
+            except Exception as exc:
+                return TierAttempt(
+                    tier=TIER_NAME,
+                    status="failed",
+                    time_seconds=time.monotonic() - t_start,
+                    error_message=(
+                        f"tet_dual stage 2 (polyDualMesh) 실패: "
+                        f"{str(exc)[:300]}"
+                    ),
+                )
+        elif _backend == "cartesian_dual":
             # Step 1: cartesianMesh (hex+BL volume mesh, segfault-free
             # path already proven by tier15_cfmesh H-series 21/21).
             r = cfm.cartesian_mesh(

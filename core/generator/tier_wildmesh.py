@@ -1946,8 +1946,14 @@ class TierWildMeshGenerator:
             elapsed = time.monotonic() - t_start
             return TierAttempt(tier=TIER_NAME, status="success", time_seconds=elapsed)
 
+        # QA-fix (2026-05-13) — extrusion fastpath produces prism cells
+        # (5 faces: 2 tri + 3 quad).  When the user picks mesh_type=tet
+        # with BL OFF, they expect pure tets (all-triangle surface).  Only
+        # fire this fastpath for the tet+BL bench case (bl_layers > 0).
+        # Real fTetWild path produces 14081/14082 tri faces on test_cube.
         if (
             _mesh_type_fast == "tet"
+            and _bl_layers_probe > 0
             and os.environ.get("AUTO_TESSELL_WILDMESH_EXTRUSION_FASTPATH", "1") != "0"
         ):
             # U-24 (2026-05-11) — quality-level-aware validation.
