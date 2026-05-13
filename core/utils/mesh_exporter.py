@@ -53,17 +53,20 @@ _FORMAT_EXTENSIONS: dict[str, str] = {
 # beta2269: surface-only 포맷 — boundary face 만 export.
 _SURFACE_FORMATS: frozenset[str] = frozenset({"stl", "obj", "ply"})
 
+# QA-fix (2026-05-13) — corrected meshio writer aliases.
+# meshio supports: ansys (= Ansys/Fluent .msh), gmsh (generic),
+# gmsh22 (legacy v2.2), but not "fluent"/"gmsh40"/"gmsh41"/"vtp".
+# vtp is handled separately via pyvista (XML PolyData).
 _MESHIO_FORMAT: dict[str, str] = {
     "su2": "su2",
-    "fluent": "fluent",
+    "fluent": "ansys",      # meshio "ansys" writes Fluent/Ansys-compatible .msh
     "cgns": "cgns",
     "vtu": "vtu",
     "vtk": "vtk",
-    "vtp": "vtp",
     "xdmf": "xdmf",
     "gmsh22": "gmsh22",
-    "gmsh40": "gmsh40",
-    "gmsh41": "gmsh41",
+    "gmsh40": "gmsh",       # meshio "gmsh" = latest gmsh version
+    "gmsh41": "gmsh",       # alias to same
     "nastran": "nastran",
     "abaqus": "abaqus",
     "tecplot": "tecplot",
@@ -71,6 +74,7 @@ _MESHIO_FORMAT: dict[str, str] = {
     "stl": "stl",
     "obj": "obj",
     "ply": "ply",
+    # vtp is NOT in this dict — handled by _write_vtp_via_pyvista.
 }
 
 
@@ -85,6 +89,44 @@ _EXTENSION_TO_FORMAT: dict[str, str] = {
     # .msh: 기본 fluent (cfMesh/ANSYS Fluent .msh). gmsh 는 명시 fmt 필요.
     ".msh": "fluent",
 }
+
+
+def _write_vtp_via_pyvista(
+    case_dir: Path, output_path: Path,
+) -> Path | None:
+    """VTP (XML PolyData) writer using pyvista — surface only.
+
+    meshio doesn't support VTP; pyvista writes the boundary surface as
+    PolyData triangles.  Falls back gracefully if pyvista is missing.
+    """
+    try:
+        import pyvista as pv
+    except ImportError:
+        log.error("mesh_exporter_vtp_pyvista_missing", hint="pip install pyvista")
+        return None
+    # Reuse the boundary-surface meshio path by writing an intermediate
+    # .vtu (which contains both volume and surface), then extract surface
+    # and save as .vtp.
+    tmp_vtu = case_dir / "_tmp_for_vtp.vtu"
+    try:
+        export_mesh(case_dir, output_path=tmp_vtu, fmt="vtu")
+        if not tmp_vtu.exists():
+            return None
+        m = pv.read(str(tmp_vtu))
+        surf = m.extract_surface(algorithm="dataset_surface")
+        surf.save(str(output_path))
+        log.info(
+            "mesh_exported", fmt="vtp", path=str(output_path),
+            source="pyvista_surface",
+        )
+        return output_path
+    except Exception as exc:
+        log.warning("mesh_export_write_failed", fmt="vtp", error=str(exc)[:120])
+        return None
+    finally:
+        if tmp_vtu.exists():
+            try: tmp_vtu.unlink()
+            except Exception: pass
 
 
 def export_mesh(
@@ -120,6 +162,11 @@ def export_mesh(
             )
         else:
             fmt = "su2"
+
+    # QA-fix (2026-05-13) — VTP handled via pyvista (meshio lacks support).
+    if fmt == "vtp":
+        out = output_path or (case_dir / "surface.vtp")
+        return _write_vtp_via_pyvista(case_dir, out)
 
     poly_dir = case_dir / "constant" / "polyMesh"
     if not poly_dir.exists():

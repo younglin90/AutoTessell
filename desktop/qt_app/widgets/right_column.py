@@ -667,22 +667,30 @@ class QualityPane(QWidget):
             sec2_v.addWidget(row)
         v.addWidget(sec2)
 
-        # ── 합격 기준 ─────────────────────────────────
+        # ── 권장 참고값 (CFD reference) ─────────────────────────────────
+        # QA-fix (2026-05-13) — user wanted to remove judgmental "합격 기준"
+        # PASS/FAIL labels and instead see the recommended reference values
+        # so they don't forget what good CFD mesh quality looks like.
+        # Quality-level-aware: draft (loose), standard (typical), fine (tight).
         sec3 = QFrame()
         sec3.setStyleSheet("QFrame { border: none; }")
         sec3_v = QVBoxLayout(sec3)
         sec3_v.setContentsMargins(0, 0, 0, 0)
         sec3_v.setSpacing(0)
-        sec3_v.addWidget(_section_title("합격 기준"))
+        sec3_v.addWidget(_section_title("권장 참고값 (CFD)"))
 
+        # All three quality levels shown side-by-side per metric so the
+        # user can pick what's appropriate for their solver.
         self.pass_rows: dict[str, _PassRow] = {}
         for key, label in [
-            ("nonortho", "Non-ortho < 65°"),
-            ("skew", "Skewness < 4.0"),
-            ("aspect", "Aspect ratio < 100"),
-            ("negvol", "Negative volumes = 0"),
+            ("nonortho", "Non-ortho       draft<80  std<70  fine<65 (°)"),
+            ("skew",     "Skewness        draft<6   std<4   fine<3"),
+            ("aspect",   "Aspect ratio    draft<1k  std<200 fine<100"),
+            ("negvol",   "Negative vols   = 0 (any quality)"),
         ]:
             row = _PassRow(label)
+            # Show the metric is informational only, not a pass/fail gate.
+            row.set_verdict("pend", "REF")
             self.pass_rows[key] = row
             sec3_v.addWidget(row)
         v.addWidget(sec3)

@@ -4263,25 +4263,22 @@ class AutoTessellWindow:  # type: ignore[misc]
                 q.set_metric("neg_vols", 0.02 if neg_i == 0 else 1.0,
                              str(neg_i), warn=(neg_i > 0))
 
-            # pass rows 업데이트
-            pass_map = [
-                ("nonortho", metrics.get("max_non_ortho")),
-                ("skew", metrics.get("max_skewness")),
-                ("aspect", metrics.get("max_aspect_ratio")),
+            # QA-fix (2026-05-13) — display actual measured value next to
+            # the recommended-reference labels instead of binary PASS/FAIL.
+            # User can compare to the ref values shown in the row label
+            # without the framework being judgmental.
+            value_map = [
+                ("nonortho", metrics.get("max_non_ortho"), "{:.1f}°"),
+                ("skew",     metrics.get("max_skewness"), "{:.2f}"),
+                ("aspect",   metrics.get("max_aspect_ratio"), "{:.1f}"),
             ]
-            thresholds = {"nonortho": 65.0, "skew": 4.0, "aspect": 100.0}
-            for key, val in pass_map:
+            for key, val, fmt in value_map:
                 if val is not None and key in q.pass_rows:
-                    ok = float(val) < thresholds.get(key, 1e9)
-                    q.pass_rows[key].set_verdict("ok" if ok else "err",
-                                                 "PASS" if ok else "FAIL")
+                    q.pass_rows[key].set_verdict("pend", fmt.format(float(val)))
             if neg is not None:
                 neg_i = int(neg)
                 if "negvol" in q.pass_rows:
-                    q.pass_rows["negvol"].set_verdict(
-                        "ok" if neg_i == 0 else "err",
-                        "PASS" if neg_i == 0 else f"FAIL ({neg_i})"
-                    )
+                    q.pass_rows["negvol"].set_verdict("pend", str(neg_i))
         except Exception as e:
             self._log(f"[DBG] quality_update 처리 실패: {e}")
 
@@ -4310,20 +4307,17 @@ class AutoTessellWindow:  # type: ignore[misc]
             q.set_metric("neg_vols", 0.02 if neg == 0 else 1.0,
                          str(neg), warn=(neg > 0))
 
-            # pass rows
-            pass_map = [
-                ("nonortho", metrics.get("max_non_ortho", 0) < 65,
-                    "< 65°" if metrics.get("max_non_ortho", 0) < 65 else "FAIL"),
-                ("skew", metrics.get("max_skewness", 0) < 4.0,
-                    "< 4.0" if metrics.get("max_skewness", 0) < 4.0 else "FAIL"),
-                ("aspect", metrics.get("max_aspect_ratio", 0) < 100,
-                    "< 100" if metrics.get("max_aspect_ratio", 0) < 100 else "FAIL"),
-                ("negvol", neg == 0, "PASS" if neg == 0 else f"FAIL ({neg})"),
+            # QA-fix (2026-05-13) — show measured value next to ref labels
+            # instead of PASS/FAIL judgment.
+            measured = [
+                ("nonortho", metrics.get("max_non_ortho"), "{:.1f}°"),
+                ("skew",     metrics.get("max_skewness"), "{:.2f}"),
+                ("aspect",   metrics.get("max_aspect_ratio"), "{:.1f}"),
+                ("negvol",   neg, "{}"),
             ]
-            for key, ok, label in pass_map:
-                if key in q.pass_rows:
-                    q.pass_rows[key].set_verdict("ok" if ok else "err",
-                                                 "PASS" if ok else label)
+            for key, val, fmt in measured:
+                if val is not None and key in q.pass_rows:
+                    q.pass_rows[key].set_verdict("pend", fmt.format(val))
         except Exception as e:
             self._log(f"[DBG] Quality 탭 갱신 실패: {e}")
 
