@@ -4367,16 +4367,29 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._log(f"[INFO] Export 시작: format={actual_fmt} → {export_target_dir}")
 
             # ── 포맷/엔진 호환성 사전 검증 ─────────────────────────
-            if actual_fmt in ("openfoam", "OpenFOAM polyMesh"):
-                poly_dir = self._output_dir / "constant" / "polyMesh"
-                if not poly_dir.exists():
-                    QMessageBox.warning(
-                        self._qmain, "Export 불가",
-                        "선택한 포맷은 OpenFOAM polyMesh이지만\n"
-                        f"출력 디렉토리에 polyMesh가 없습니다:\n{poly_dir}\n\n"
-                        "snappyHexMesh/cfMesh 엔진으로 실행했는지 확인하세요."
+            # QA-fix (2026-05-13) — both supported formats (openfoam, vtu)
+            # require polyMesh.  Check existence + minimal file set so we
+            # fail early with a clear message instead of a cryptic Errno 2.
+            poly_dir = self._output_dir / "constant" / "polyMesh"
+            _required = ("points", "faces", "owner")
+            _missing = [
+                f for f in _required if not (poly_dir / f).exists()
+            ]
+            if not poly_dir.exists() or _missing:
+                _reason = (
+                    f"polyMesh 디렉토리가 없습니다:\n{poly_dir}"
+                    if not poly_dir.exists()
+                    else (
+                        f"polyMesh 디렉토리는 있지만 필수 파일 누락:\n"
+                        f"{poly_dir}\n누락: {', '.join(_missing)}"
                     )
-                    return
+                )
+                QMessageBox.warning(
+                    self._qmain, "Export 불가",
+                    f"메시가 아직 생성되지 않았습니다.\n\n{_reason}\n\n"
+                    "Run 버튼을 눌러 파이프라인을 먼저 실행하세요."
+                )
+                return
 
             self._export_mesh_format(actual_fmt, export_target_dir)
 
@@ -4424,33 +4437,25 @@ class AutoTessellWindow:  # type: ignore[misc]
                     pass
 
     def _export_mesh_format(self, fmt: str, target_dir: Path) -> None:  # pragma: no cover
-        """실제 메시 포맷 변환 + 복사."""
+        """OpenFOAM polyMesh 또는 VTU export 실행 (둘 다 polyMesh 필요).
+
+        Caller (``_on_export_save``) verifies polyMesh existence before
+        invoking; this routine assumes it.
+        """
         import shutil
-
         src_polymesh = self._output_dir / "constant" / "polyMesh"
-
         if fmt == "openfoam":
-            # polyMesh 폴더 복사
             dst = target_dir / "constant" / "polyMesh"
-            if src_polymesh.exists():
-                if dst.exists():
-                    shutil.rmtree(dst)
-                shutil.copytree(src_polymesh, dst)
-                self._log(f"[OK] OpenFOAM polyMesh 복사: {dst}")
-            else:
-                # 결과 디렉토리 전체 복사 fallback
-                for item in self._output_dir.iterdir():
-                    dst_item = target_dir / item.name
-                    if item.is_dir():
-                        if dst_item.exists():
-                            shutil.rmtree(dst_item)
-                        shutil.copytree(item, dst_item)
-                    else:
-                        shutil.copy2(item, dst_item)
-                self._log(f"[OK] 결과 디렉토리 복사 완료")
-        else:
-            # meshio 기반 변환
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(src_polymesh, dst)
+            self._log(f"[OK] OpenFOAM polyMesh 복사: {dst}")
+        elif fmt == "vtu":
             self._export_via_meshio(fmt, target_dir)
+        else:
+            raise RuntimeError(
+                f"GUI에서 지원하지 않는 포맷: {fmt} (openfoam / vtu만 지원)"
+            )
 
     def _export_via_meshio(self, fmt: str, target_dir: Path) -> None:  # pragma: no cover
         """QA-fix (2026-05-13) — only VTU supported in GUI (besides OpenFOAM).
