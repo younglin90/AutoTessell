@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.2.0-gui-qa-9] - 2026-05-13 — Option A pipeline output → temp dir, Export to user path.
+
+- `self._output_dir` now `tempfile.mkdtemp(prefix="autotessell_<stem>_")`, fresh per Run; tracked in `self._pipeline_temp_dirs`, cleaned via `atexit.register` + eagerly purged between Runs.
+- `set_input_path` no longer pre-assigns `_output_dir`; `set_output_dir` repurposed to only update Export panel `path_box`.
+- `_on_export_save`: empty destination falls back to `<input>.parent/<stem>_export/`; refuses to export back into the temp pipeline workdir to prevent self-overwrite.
+- Files: `desktop/qt_app/main_window.py`, `desktop/qt_app/widgets/right_column.py`.
+- Verified: `tests/test_3tier_hbp_smoke.py` 5/5 PASS. Commit b41ea152.
+
+## [1.2.0-gui-qa-8] - 2026-05-13 — Export VTU fallback to existing VTK/*/internal.vtu.
+
+- When `constant/polyMesh` is absent but `VTK/<case>/internal.vtu` is present (foamToVTK already ran, polyMesh cleaned up afterward), VTU export copies that file via `shutil.copy2`.
+- OpenFOAM export still fails gracefully and surfaces a hint pointing at the existing VTU path.
+- Verified 3 scenarios end-to-end: polyMesh-ok / vtk-only / empty workdir. Commit 63451458.
+
+## [1.2.0-gui-qa-7] - 2026-05-13 — Export pre-check polyMesh existence, friendly error.
+
+- Pre-check now runs for both `openfoam` and `vtu` formats and verifies `points`, `faces`, `owner` all exist under `constant/polyMesh` before attempting any copy.
+- Removed silent "결과 디렉토리 전체 복사 fallback" from `_export_mesh_format` that masked missing-mesh errors.
+- Friendly Korean dialog replaces cryptic `[Errno 2] No such file or directory` traceback in the GUI log. Commit 3ca81305.
+
+## [1.2.0-gui-qa-6] - 2026-05-13 — Export panel → OpenFOAM + VTU only.
+
+- GUI export panel reduced from 17 → 2 formats (OpenFOAM polyMesh + VTU); removes user-visible dead-end options that produced "변환할 mesh 파일을 찾을 수 없습니다" errors.
+- `_export_via_meshio` simplified to a direct `core.utils.vtk_exporter.export_vtk` call; removed meshio intermediate-file fallback path.
+- All 15 other formats remain reachable via CLI `--output-format`. Commit f1be9fd5.
+
+## [1.2.0-gui-qa-5] - 2026-05-13 — Export-format completeness + ref-values panel.
+
+- Quality pane "합격 기준" replaced with quality-level-aware "권장 참고값 (CFD)": draft/standard/fine thresholds shown side-by-side alongside actual measured values.
+- Fixed 4 broken `mesh_exporter` aliases: `fluent` → `"ansys"`, `gmsh40`/`gmsh41` → generic `"gmsh"`, `vtp` → `pyvista.extract_surface().save()`.
+- All 17/17 export formats verified end-to-end. Commit 4b1f9d82.
+
+## [1.2.0-gui-qa-4] - 2026-05-13 — CFD-grade quality threshold for poly outliers.
+
+- `AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD` GUI default changed 18 → 10 to match CFD production standards.
+- polyDualMesh on curved STL (`easy_100034.stl`): max_boundary_skewness dropped 485 → 9.86; 37 sliver cells dropped (0.4 % of mesh).
+- max_internal_skewness ≤ 1.07 confirmed across tet/poly cube and curved STL cases. Commit bf48dd16.
+
+## [1.2.0-gui-qa-3] - 2026-05-13 — CFD-grade tet draft + true polyhedral as poly default.
+
+- tet draft preset tightened: `stop_quality` 20 → 10, `max_its` 40 → 60; result on test_cube: max_non_ortho 77° → 70°, severely_non_ortho_faces 2 → 1.
+- Poly default backend switched `cartesian_dual` → `tet_dual` for true polyhedral cells (quad 35 % / pentagon 24 % / hex 38 % face distribution).
+- `AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE` default raised 1.5 → 3.0. Commit f49db9c3.
+
+## [1.2.0-gui-qa-2] - 2026-05-13 — tet pure-tri surface + poly true-polyhedral backend.
+
+- tet `axis_extrusion_fastpath` gated by `bl_layers > 0`; no-BL tet now falls through to real fTetWild → 14082/14082 tri faces on test_cube (was mixed quad/tri).
+- Added opt-in `tet_dual` backend in `tier_cfmesh_poly.py`: fTetWild primal → polyDualMesh pipeline.
+- New env knob: `AUTO_TESSELL_POLY_BACKEND=tet_dual`. Commit 19b8e615.
+
+## [1.2.0-gui-qa-1] - 2026-05-13 — tet→hex output fix + cell-count respect for hex/poly.
+
+- tet wildmesh `structured_box_fastpath` was inadvertently outputting hex cells; fastpath now gated by `bl_layers > 0` so pure-tet requests stay tetrahedral.
+- hex/poly `target_cells → maxCellSize` remap made bidirectional (was refine-only); poly target=2000 now responds correctly: 17611 → 5245 cells.
+- Files: `core/generator/tier_wildmesh.py`, `core/generator/tier_cfmesh_hex.py`, `core/generator/tier_cfmesh_poly.py`. Commit 94ebbd56.
+
 ## [0.4.0-beta2522] - 2026-05-05 — GUI cube tet+BL 품질 경로 안정화.
 
 - `native_tet` axis-aligned box fast path 추가: 8-corner cube/box 입력은 Delaunay

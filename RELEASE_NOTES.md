@@ -1,5 +1,40 @@
 # Auto-Tessell Release Notes
 
+## v1.2.0 GUI QA hardening (2026-05-13)
+
+9 커밋에 걸친 GUI QA 루프로 mesh-type 출력 정확성, CFD 품질 지표, Quality 패널 UX, Export 간소화, 파이프라인 출력 경로 분리를 일괄 개선했다. 사용자 워크스페이스는 Export 클릭 전까지 절대 수정되지 않으며, polyDualMesh 기반 진짜 다면체 셀이 GUI 기본값으로 활성화된다.
+
+**Mesh output correctness**:
+- tet (no BL) 경로가 wildmesh의 `structured_box_fastpath` 및 `axis_extrusion_fastpath`를 통해 hex/prism 셀을 누출하던 문제 수정 — 두 fastpath를 `bl_layers > 0` 조건으로 게이팅하여 no-BL tet 경로가 실제 fTetWild로 fallthrough. test_cube 기준 14 082/14 082 삼각 표면 면 달성. Commits 94ebbd56, 19b8e615.
+- `target_cells → maxCellSize` 리맵이 단방향(refine-only)이었던 버그 수정 → 양방향 변환. poly target=2000 설정 시 셀 수가 17 611에서 5 245로 반응. Commit 94ebbd56.
+- 신규 opt-in poly 백엔드 `tet_dual` (fTetWild primal → polyDualMesh): 진짜 다면체 셀 구성 (4-vert 31 %, 5-vert 40 %, 6-vert 21 %, 최대 15-vert) — 기존 cartesianMesh-octree dual (95 % quad) 대체. 환경 변수: `AUTO_TESSELL_POLY_BACKEND=tet_dual` (GUI `_DEFAULT_ENV` 기본값). Commits 19b8e615, f49db9c3.
+
+**CFD-grade quality**:
+- tet draft 프리셋 강화 (`stop_quality` 20→10, `max_its` 40→60): test_cube 기준 `max_non_ortho` 77°→70°, `severely_non_ortho_faces` 2→1. Commit f49db9c3.
+- polyDualMesh 경계 슬리버 정리: GUI `_DEFAULT_ENV`에서 `AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD` 18→10 하향. 곡면 STL (`easy_100034.stl`) 기준 `max_boundary_skewness` 485→9.86, 슬리버 셀 37개 drop (전체 메쉬의 0.4 %). `max_internal_skewness` ≤1.07 (CFD 내부 영역 우수). Commit bf48dd16.
+
+**Quality panel UX**:
+- PASS/FAIL 판정 레이블 제거 → quality-level별 참조값을 실측값과 나란히 표시:
+
+  | 지표 | draft | standard | fine |
+  |------|-------|----------|------|
+  | Non-ortho (°) | < 80 | < 70 | < 65 |
+  | Skewness | < 6 | < 4 | < 3 |
+  | Aspect ratio | < 1 000 | < 200 | < 100 |
+  | Negative vols | 0 | 0 | 0 |
+
+  Commit 4b1f9d82.
+
+**Export simplified**:
+- GUI Export 패널 포맷 수 17 → 2 (OpenFOAM polyMesh + VTU only). 나머지 15 포맷은 CLI (`auto-tessell export --fmt <fmt>`) 에서 그대로 사용 가능. Commit f1be9fd5.
+- mesh_exporter 내 meshio alias 오류 4건 수정 (fluent / gmsh40 / gmsh41 / vtp) — 17/17 포맷 end-to-end 정상 동작. Commit 4b1f9d82.
+- polyMesh 존재 여부 사전 확인 + 한국어 친화 다이얼로그; polyMesh가 run 후 정리된 경우 기존 `VTK/*/internal.vtu` 로 자동 fallback. Commits 3ca81305, 63451458.
+
+**Pipeline output → temp dir (Option A)**:
+- 파이프라인 출력 디렉터리를 `tempfile.mkdtemp(prefix="autotessell_<stem>_")` 로 분리, `atexit` 등록 및 Run 사이 즉시 정리. Export 패널 `path_box`가 유일한 사용자 가시 목적지가 된다. Export 클릭 전까지 사용자 워크스페이스 무수정 보장. Commit b41ea152.
+
+Regression: `tests/test_3tier_hbp_smoke.py` 5/5 PASS across all 9 commits.
+
 ## v1.2 "3-Tier × 3-Quality Matrix 21/21 PSS" (2026-05-13)
 
 S-1 카드: cfMesh+BL standard/fine 평가 기준 완화로 quality level matrix 완전 도달.

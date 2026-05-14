@@ -3,13 +3,37 @@
 CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
 **v1.2 "3-Tier × 3-Quality 21/21 PSS"**: tet / hex_dominant / poly 모든
 메쉬 타입이 draft / standard / fine 모든 품질에서 21-STL 벤치 (test_cube +
-thingi10k_bench20) 100% PASS_OR_PWW.
+thingi10k_bench20) 100% PASS_OR_PWW. + GUI QA hardening (2026-05-13)
 
 | Mesh Type | draft | standard | fine |
 |-----------|-------|----------|------|
 | **tet + BL** | 21/21 | 21/21 | 21/21 |
 | **hex_dominant + BL** | 21/21 | 21/21 | 21/21 |
 | **poly + BL** | 21/21 | 21/21 | 21/21 |
+
+## v1.2 GUI QA Improvements (2026-05-13)
+
+### 메쉬 출력 정합성 (mesh type/cells)
+
+tet (no-BL) 가 `structured_box_fastpath` / `axis_extrusion_fastpath` 를 통해 hex/prism 을 출력하던 버그를 수정, 실제 tet 셀 출력 (14082/14082 tri faces). `target_cells` 가 축소 방향에서도 동작하도록 양방향 remap 적용 (hex/poly 공통). draft preset `stop_quality=10`, `max_its=60` 으로 강화 → test_cube max_non_ortho 77° → 70°. opt-in `tet_dual` 백엔드 추가 (fTetWild primal → polyDualMesh, 진성 다면체 셀).
+
+### CFD-grade 품질 (poly outlier cleanup)
+
+GUI 기본값 `AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD` 18 → 10 으로 하향. 곡면 STL (easy_100034.stl) 에서 `polyDualMesh` 경계 sliver 37 셀 (전체 0.4%) 제거, max_skew 485 → 9.86. tet/poly cube 및 곡면 STL 모두 max_internal_skewness ≤ 1.07 확인.
+
+### Quality 패널 — 권장 참고값
+
+"합격 기준" PASS/FAIL 표시를 **권장 참고값 (CFD)** 으로 교체. 메쉬 품질 레벨별 3가지 임계값 (draft / standard / fine) 을 각 지표마다 나란히 표시하고, 실측값도 인라인 표기.
+
+### Export 단순화
+
+내보내기 패널을 17개 포맷 → **OpenFOAM polyMesh + VTU 2개** 로 단순화 (나머지 15개는 CLI 유지). meshio alias 오류 4건 (fluent / gmsh40 / gmsh41 / vtp) 수정 → 17/17 포맷 정상 동작. polyMesh 미존재 시 친화적 한국어 다이얼로그 표시 (기존 `Errno 2` 대체). `constant/polyMesh` 없이 `VTK/*/internal.vtu` 만 있을 경우 VTU 내보내기가 해당 파일을 직접 복사.
+
+### 임시 작업 디렉토리 (Option A)
+
+파이프라인이 실행마다 `tempfile.mkdtemp()` 독립 임시 디렉토리에 출력. Run 중 사용자 작업 경로는 건드리지 않으며, `atexit` 로 자동 정리. Export 버튼 클릭 시에만 사용자가 지정한 경로로 복사.
+
+---
 
 **핵심 기술**:
 - WildMesh-style STL repair recipe (trimesh.fill_holes + pymeshfix) 3-tier 공통
