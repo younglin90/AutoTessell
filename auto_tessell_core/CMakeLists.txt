@@ -9,6 +9,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR source)" ON)
 option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
 option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
+option(BUILD_NATIVE_METRICS "Build native metric kernels for Python checker" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -43,6 +44,16 @@ pybind11_add_module(cinolib_hex cinolib_hex_bind.cpp)
 target_include_directories(cinolib_hex PRIVATE "${CINOLIB_DIR}/include")
 target_compile_options(cinolib_hex PRIVATE ${_CINOLIB_FLAGS})
 target_link_libraries(cinolib_hex PRIVATE Eigen3::Eigen)
+
+# ── native metric kernels ────────────────────────────────────────────────────
+if(BUILD_NATIVE_METRICS)
+  pybind11_add_module(native_metrics native_metrics_bind.cpp)
+  if(MSVC)
+    target_compile_options(native_metrics PRIVATE /O2 /W3)
+  else()
+    target_compile_options(native_metrics PRIVATE -O3)
+  endif()
+endif()
 
 # ── robusthex module (optional) ──────────────────────────────────────────────
 # Only build if ROBUSTHEX_DIR contains the expected source tree.

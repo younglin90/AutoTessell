@@ -35,7 +35,11 @@ cmake "$SCRIPT_DIR" \
     -Dpybind11_DIR="$PYBIND11_DIR" \
     -Wno-dev
 
-# Build both targets
+# Build core native metric kernels first; they have no third-party meshing
+# source dependency and speed up NativeMeshChecker when present.
+cmake --build . --target native_metrics -j"$(nproc)"
+echo "native_metrics built: $BUILD_DIR/native_metrics*.so"
+
 cmake --build . --target cinolib_hex -j"$(nproc)"
 echo ""
 echo "cinolib_hex built: $BUILD_DIR/cinolib_hex*.so"

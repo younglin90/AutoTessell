@@ -28,7 +28,10 @@ works without neatmesh.
 
 from __future__ import annotations
 
+import importlib
+import os
 from pathlib import Path
+import sys
 from typing import Any
 
 import numpy as np
@@ -43,6 +46,43 @@ from core.utils.polymesh_reader import (
 )
 
 log = get_logger(__name__)
+
+_NATIVE_METRICS: Any | None = None
+_NATIVE_METRICS_IMPORT_ATTEMPTED = False
+
+
+def _load_native_metrics() -> Any | None:
+    """Load optional pybind11 geometry kernels for NativeMeshChecker.
+
+    The extension is deliberately optional.  Source builds and CI can run with
+    the pure-Python/NumPy implementation, while developer or release builds can
+    place ``native_metrics*.so`` in ``auto_tessell_core/build`` or set
+    ``AUTOTESSELL_EXT_BUILD_DIR``.
+    """
+    global _NATIVE_METRICS, _NATIVE_METRICS_IMPORT_ATTEMPTED
+    if _NATIVE_METRICS_IMPORT_ATTEMPTED:
+        return _NATIVE_METRICS
+    _NATIVE_METRICS_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    repo_root = Path(__file__).resolve().parents[2]
+    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
+
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_METRICS = importlib.import_module("native_metrics")
+    except Exception as exc:  # noqa: BLE001
+        log.debug("native_metrics extension unavailable", error=str(exc))
+        _NATIVE_METRICS = None
+    return _NATIVE_METRICS
 
 try:
     import meshio as _meshio
@@ -101,7 +141,7 @@ class NativeMeshChecker:
         raw_faces = parse_foam_faces(faces_file)
         owner_list = parse_foam_labels(owner_file)
         neighbour_list = parse_foam_labels(neighbour_file)
-        parse_foam_boundary(boundary_file)
+        bnd_entries = parse_foam_boundary(boundary_file)
 
         if not raw_points or not raw_faces or not owner_list:
             log.warning("Empty polyMesh — returning degenerate CheckMeshResult")
@@ -110,6 +150,27 @@ class NativeMeshChecker:
         points = np.array(raw_points, dtype=np.float64)  # (N, 3)
         owner = np.array(owner_list, dtype=np.int64)       # (F,)
         neighbour = np.array(neighbour_list, dtype=np.int64)  # (I,)
+
+        # iter-0005 autoresearch (2026-05-15): polyMesh data-integrity fix.
+        # cfMesh-style writers emit a `neighbour` list of length
+        # len(faces) with `-1` as a sentinel for boundary faces.  The
+        # OpenFOAM convention is len(neighbour) == nInternalFaces.
+        # Using the cfMesh-style file directly causes:
+        #   • cell_sum[neighbour[fi]] for fi >= n_internal → Python
+        #     negative indexing → updates last-cell phantom centroid
+        #   • phantom centroid spreads to cube center, producing fake
+        #     87-90° non_orthogonality on the affected cell's real faces.
+        # Authoritative source for nInternalFaces = minimum startFace
+        # over all patches in `boundary`.  Strip the trailing entries.
+        if bnd_entries:
+            _min_start = min(int(p.get("startFace", len(raw_faces)))
+                             for p in bnd_entries)
+            if 0 < _min_start < neighbour.shape[0]:
+                neighbour = neighbour[:_min_start]
+        # Belt + suspenders: also drop any leading -1 sentinels that
+        # survived (some pMesh writers put them at the front).
+        if neighbour.size and (neighbour < 0).any():
+            neighbour = neighbour[neighbour >= 0]
 
         n_points = len(points)
         n_faces = len(raw_faces)
@@ -130,8 +191,12 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         # 2. Pre-compute face centres and face normals (area-weighted)
         # ------------------------------------------------------------------
-        face_centres = self._compute_face_centres(points, raw_faces)   # (F, 3)
-        face_normals, face_areas = self._compute_face_normals_areas(points, raw_faces)
+        face_geometry = self._compute_face_geometry(points, raw_faces)
+        if face_geometry is not None:
+            face_centres, face_normals, face_areas = face_geometry
+        else:
+            face_centres = self._compute_face_centres(points, raw_faces)   # (F, 3)
+            face_normals, face_areas = self._compute_face_normals_areas(points, raw_faces)
         # face_normals: (F, 3) unit normals; face_areas: (F,) scalar areas
 
         # ------------------------------------------------------------------
@@ -213,7 +278,7 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         cell_volumes, negative_volumes = self._compute_cell_volumes(
             points, raw_faces, face_normals, face_areas, owner, neighbour,
-            n_cells, n_internal, cell_centres
+            n_cells, n_internal, cell_centres, face_centres
         )
 
         # ------------------------------------------------------------------
@@ -347,6 +412,25 @@ class NativeMeshChecker:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _compute_face_geometry(
+        points: np.ndarray, faces: list[list[int]]
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Return face centres/normals/areas through the optional C++ kernel."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is None:
+            return None
+        try:
+            centres, normals, areas = native_metrics.compute_face_geometry(points, faces)
+            return (
+                np.asarray(centres, dtype=np.float64),
+                np.asarray(normals, dtype=np.float64),
+                np.asarray(areas, dtype=np.float64),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native_metrics.compute_face_geometry failed", error=str(exc))
+            return None
+
+    @staticmethod
     def _compute_face_centres(
         points: np.ndarray, faces: list[list[int]]
     ) -> np.ndarray:
@@ -467,6 +551,18 @@ class NativeMeshChecker:
         """
         if n_cells <= 0:
             return np.zeros((0, 3), dtype=np.float64)
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                centres = native_metrics.compute_cell_centres_from_vertices(
+                    points, faces, owner, neighbour, int(n_cells)
+                )
+                return np.asarray(centres, dtype=np.float64)
+            except Exception as exc:  # noqa: BLE001
+                log.debug(
+                    "native_metrics.compute_cell_centres_from_vertices failed",
+                    error=str(exc),
+                )
         cell_vertices: list[set[int]] = [set() for _ in range(n_cells)]
         n_internal = len(neighbour) if neighbour is not None else 0
         for face_i, face in enumerate(faces):
@@ -513,6 +609,27 @@ class NativeMeshChecker:
         """
         if n_internal == 0:
             return 0.0, 0.0, 0
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                max_non_ortho, avg_non_ortho, severe_count = (
+                    native_metrics.compute_non_orthogonality(
+                        face_centres,
+                        face_normals,
+                        cell_centres,
+                        owner,
+                        neighbour,
+                        int(n_internal),
+                        float(self.SEVERE_NON_ORTHO_THRESHOLD),
+                    )
+                )
+                return (
+                    float(max_non_ortho),
+                    float(avg_non_ortho),
+                    int(severe_count),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native_metrics.compute_non_orthogonality failed", error=str(exc))
 
         own_idx = owner[:n_internal]
         nbr_idx = neighbour[:n_internal]
@@ -564,6 +681,20 @@ class NativeMeshChecker:
         """
         if n_internal == 0:
             return 0.0
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                return float(
+                    native_metrics.compute_skewness(
+                        face_centres,
+                        cell_centres,
+                        owner,
+                        neighbour,
+                        int(n_internal),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native_metrics.compute_skewness failed", error=str(exc))
 
         own_idx = owner[:n_internal]
         nbr_idx = neighbour[:n_internal]
@@ -605,6 +736,20 @@ class NativeMeshChecker:
         """
         if len(face_centres) <= n_internal:
             return 0.0
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                return float(
+                    native_metrics.compute_boundary_skewness(
+                        face_centres,
+                        face_normals,
+                        cell_centres,
+                        owner,
+                        int(n_internal),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native_metrics.compute_boundary_skewness failed", error=str(exc))
         b_idx = np.arange(n_internal, len(face_centres), dtype=np.int64)
         if b_idx.size == 0:
             return 0.0
@@ -763,6 +908,7 @@ class NativeMeshChecker:
         n_cells: int,
         n_internal: int,
         cell_centres: np.ndarray | None = None,
+        face_centres: np.ndarray | None = None,
     ) -> tuple[np.ndarray, int]:
         """Estimate cell volumes from face pyramids around each cell centre.
 
@@ -774,12 +920,31 @@ class NativeMeshChecker:
         if n_cells <= 0:
             return np.zeros(0, dtype=np.float64), 0
 
-        fc = NativeMeshChecker._compute_face_centres(points, faces)
+        if face_centres is None:
+            fc = NativeMeshChecker._compute_face_centres(points, faces)
+        else:
+            fc = face_centres
         area_vecs = face_normals * face_areas[:, np.newaxis]
         if cell_centres is None or len(cell_centres) != n_cells:
             cell_centres = NativeMeshChecker._compute_cell_centres_from_vertices(
                 points, faces, owner, n_cells, neighbour,
             )
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                volumes, negative_count = native_metrics.compute_cell_volumes(
+                    fc,
+                    face_normals,
+                    face_areas,
+                    cell_centres,
+                    owner,
+                    neighbour,
+                    int(n_cells),
+                    int(n_internal),
+                )
+                return np.asarray(volumes, dtype=np.float64), int(negative_count)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native_metrics.compute_cell_volumes failed", error=str(exc))
 
         volumes = np.zeros(n_cells, dtype=np.float64)
         n_faces = len(faces)
