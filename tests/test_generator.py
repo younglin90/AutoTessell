@@ -1000,10 +1000,16 @@ class TestPipeline:
         assert log.execution_summary is not None
         assert log.execution_summary.total_time_seconds >= 0.0
 
-    def test_pipeline_explicit_tier_no_fallback(
+    def test_pipeline_explicit_tier_follows_fallback_chain(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """명시적 selected_tier 실패 시 fallback 없이 즉시 중단 확인."""
+        """명시적 selected_tier 실패 시 strategy.fallback_tiers 순서로 이어간다.
+
+        (web-QA 계약 변경: 이전에는 fallback 없이 즉시 중단했으나, wildmesh 등
+        미설치 환경에서 mesh_type 매핑 tier 가 즉사하는 문제로
+        docstring/CLAUDE.md 정책대로 fallback 체인을 따르도록 수정.
+        단일 tier 강제는 strict_tier=True → fallback_tiers 가 비워짐.)
+        """
         from core.generator.pipeline import MeshGenerator
 
         generator = MeshGenerator()
@@ -1021,9 +1027,31 @@ class TestPipeline:
         with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
             log = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
-        # selected_tier만 호출 — fallback_tiers는 시도하지 않음
-        assert called_tiers == ["tier1_snappy"]
+        # selected_tier → fallback_tiers 순서 (fixture: cfmesh, tetwild)
+        assert called_tiers == ["tier1_snappy", "tier15_cfmesh", "tier2_tetwild"]
         assert log.execution_summary.tiers_attempted[0].status == "failed"
+
+    def test_pipeline_explicit_tier_strict_no_fallback(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """strict_tier 경로(fallback_tiers 비움) — 명시 tier 만 시도."""
+        from core.generator.pipeline import MeshGenerator
+
+        generator = MeshGenerator()
+        called_tiers: list[str] = []
+        mesh_strategy.fallback_tiers = []  # orchestrator strict_tier 가 하는 일
+
+        def mock_run_tier(tier, strategy, path, case):
+            called_tiers.append(tier)
+            return TierAttempt(
+                tier=tier, status="failed", time_seconds=0.01,
+                error_message=f"{tier} mock fail",
+            )
+
+        with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
+            generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert called_tiers == ["tier1_snappy"]
 
     def test_auto_mode_fallback_order(
         self, tmp_path: Path, dummy_stl: Path
@@ -1112,7 +1140,7 @@ class TestPipeline:
     def test_pipeline_tiers_attempted_recorded(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """명시적 tier 실패 시 1개 attempt만 기록됨 확인."""
+        """명시 tier 실패 시 fallback 포함 모든 attempt 가 기록됨 확인."""
         from core.generator.pipeline import MeshGenerator
 
         generator = MeshGenerator()
@@ -1127,10 +1155,11 @@ class TestPipeline:
             log = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
         attempted = log.execution_summary.tiers_attempted
-        # 명시적 tier 선택 시 fallback 없이 selected_tier만 시도됨
-        assert len(attempted) == 1
+        # (web-QA 계약 변경) 명시 tier + fixture 의 fallback 2개 = 총 3회 시도
+        assert len(attempted) == 3
         assert attempted[0].tier == "tier1_snappy"
-        assert attempted[0].status == "failed"
+        assert [a.tier for a in attempted[1:]] == ["tier15_cfmesh", "tier2_tetwild"]
+        assert all(a.status == "failed" for a in attempted)
 
     def test_pipeline_work_dir_cleaned_between_tiers(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
@@ -1156,8 +1185,8 @@ class TestPipeline:
                 )
                 pipeline.MeshGenerator().run(mesh_strategy, dummy_stl, tmp_path)
 
-        # 명시적 tier 선택 → selected_tier만 실행 → clean 1번 호출
-        assert call_count == 1
+        # (web-QA 계약 변경) 명시 tier + fallback 2개 = 3회 시도 → clean 3번 호출
+        assert call_count == 3
 
 
 # ---------------------------------------------------------------------------
@@ -1390,7 +1419,11 @@ class TestTierOrderByQualityLevel:
         ]
 
     def test_explicit_tier_overrides_quality_level(self) -> None:
-        """selected_tier가 명시적으로 지정되면 quality_level 기반 순서 무시."""
+        """selected_tier가 명시적으로 지정되면 quality_level 기반 순서 무시.
+
+        (web-QA 계약 변경) 명시 tier 뒤에 strategy.fallback_tiers 가 이어진다.
+        단일 tier 강제는 strict_tier=True (fallback_tiers 비움) 경로.
+        """
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
@@ -1399,9 +1432,13 @@ class TestTierOrderByQualityLevel:
         strategy.fallback_tiers = ["tier15_cfmesh"]
         order = gen._get_tier_order(strategy)
 
-        # 명시적 tier 선택 시 fallback 없음 — selected_tier만 반환
-        assert order[0] == "tier1_snappy", "명시적 selected_tier가 우선되어야 합니다"
-        assert len(order) == 1, "명시적 모드에서는 fallback_tiers를 포함하지 않음"
+        assert order == ["tier1_snappy", "tier15_cfmesh"], (
+            "명시 selected_tier + fallback_tiers 순서를 따라야 합니다"
+        )
+
+        # strict 경로: fallback_tiers 가 비어 있으면 selected_tier 만
+        strategy.fallback_tiers = []
+        assert gen._get_tier_order(strategy) == ["tier1_snappy"]
 
     def test_explicit_tier_alias_overrides_quality_level(self) -> None:
         """별칭(snappy)으로 지정해도 명시적 모드로 인식."""
@@ -1453,11 +1490,14 @@ class TestTierOrderByQualityLevel:
         assert log.execution_summary.quality_level == "standard"
 
     def test_draft_uses_large_epsilon(
-        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path,
+        monkeypatch,
     ) -> None:
         """Draft 모드 → TetWild epsilon=0.02, stop_energy=20.0 사용 확인."""
         from core.generator.tier2_tetwild import Tier2TetWildGenerator
 
+        # in-process 경로 검증 (subprocess 격리는 mock 을 우회하므로 OFF)
+        monkeypatch.setenv("AUTO_TESSELL_TETWILD_SUBPROCESS", "0")
         mesh_strategy.quality_level = QualityLevel.DRAFT
         # tier_specific_params에 epsilon/stop_energy 없음 → 기본값 사용
         mesh_strategy.tier_specific_params.pop("tetwild_epsilon", None)
@@ -1490,11 +1530,14 @@ class TestTierOrderByQualityLevel:
         assert captured_kwargs.get("stop_energy") == pytest.approx(20.0)
 
     def test_standard_uses_standard_epsilon(
-        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path,
+        monkeypatch,
     ) -> None:
         """Standard 모드 → TetWild stop_energy=10.0 (기본값) 사용 확인."""
         from core.generator.tier2_tetwild import Tier2TetWildGenerator
 
+        # in-process 경로 검증 (subprocess 격리는 mock 을 우회하므로 OFF)
+        monkeypatch.setenv("AUTO_TESSELL_TETWILD_SUBPROCESS", "0")
         mesh_strategy.quality_level = QualityLevel.STANDARD
         mesh_strategy.tier_specific_params.pop("tetwild_stop_energy", None)
 
@@ -3226,7 +3269,7 @@ class TestTierHOHQMesh:
         from core.generator.tier_hohqmesh import _build_control_file
         control_path = _build_control_file(mesh_strategy, tmp_path / "out.mesh", tmp_path)
         assert control_path.exists()
-        content = control_path.read_text()
+        content = control_path.read_text(encoding="utf-8")
         assert "BACKGROUND_GRID" in content
         assert "SIMPLE_EXTRUSION" in content
         assert "CONTROL_INPUT" in content

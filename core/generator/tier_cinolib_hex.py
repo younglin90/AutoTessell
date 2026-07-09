@@ -141,7 +141,18 @@ def _load_cinolib_hex():
     except ImportError:
         pass
 
-    # 3차: 자동 빌드
+    # 3차: 자동 빌드 — 기본 OFF (web-QA).
+    # git clone(네트워크, ≤120s) + cmake 빌드가 사용자 메쉬 요청 *도중에*
+    # 실행되면 fallback 체인 지연·비결정성의 원인이 된다.  개발자가 명시적으로
+    # AUTO_TESSELL_TIER_AUTOBUILD=1 을 설정한 경우에만 시도한다.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_TIER_AUTOBUILD", "0") != "1":
+        logger.info(
+            "cinolib_hex_autobuild_disabled",
+            hint="set AUTO_TESSELL_TIER_AUTOBUILD=1 to build in-request",
+        )
+        return None
+
     logger.info("cinolib_hex_not_found_auto_building")
     if _ensure_cinolib_cloned() and _build_cinolib_hex():
         return _try_load_so()

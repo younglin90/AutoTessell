@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { --accent: #5ee5d6; --accent-2: #9b87ff; }
+      * { margin: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        background:
+          radial-gradient(520px at 30% -10%, rgba(94, 229, 214, 0.10), transparent 60%),
+          radial-gradient(520px at 80% 120%, rgba(155, 135, 255, 0.10), transparent 60%),
+          #070a12;
+        color: #dbe2f2;
+        font-family: "Segoe UI", system-ui, "Malgun Gothic", sans-serif;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 18px; -webkit-user-select: none; user-select: none;
+        border: 1px solid rgba(255,255,255,0.06);
+      }
+      .logo {
+        width: 64px; height: 64px; display: grid; place-items: center;
+        color: var(--accent); filter: drop-shadow(0 0 16px rgba(94,229,214,0.5));
+        animation: float 3s ease-in-out infinite;
+      }
+      @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+      .title { font-size: 20px; font-weight: 700; letter-spacing: .4px; color: #f2f5fc; }
+      .title b { color: var(--accent); font-weight: 700; }
+      .ver { font-size: 11px; color: #8d97b0; margin-top: -10px; }
+      .spinner {
+        width: 30px; height: 30px; border-radius: 50%;
+        border: 3px solid rgba(94,229,214,0.15);
+        border-top-color: var(--accent);
+        animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg) } }
+      #status { font-size: 12px; color: #8d97b0; min-height: 16px; letter-spacing: .2px; }
+    </style>
+  </head>
+  <body>
+    <div class="logo">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path d="M3 8l9-5 9 5-9 5-9-5z" />
+        <path d="M3 8v8l9 5 9-5V8" opacity="0.55" />
+        <path d="M12 13v8" opacity="0.55" />
+        <path d="M7.5 5.5l9 5M16.5 5.5l-9 5" opacity="0.35" />
+      </svg>
+    </div>
+    <div class="title">Auto<b>Tessell</b></div>
+    <div class="ver" id="ver"></div>
+    <div class="spinner"></div>
+    <div id="status">준비 중…</div>
+    <script>
+      window.__setStatus = function (t) {
+        var el = document.getElementById("status");
+        if (el) el.textContent = t;
+      };
+    </script>
+  </body>
+</html>

@@ -173,6 +173,72 @@ def _hausdorff_log(
         logger.debug("tetwild_hausdorff_skipped", error=str(e))
 
 
+def _run_tetwild_subprocess(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    tetra_kwargs: dict[str, Any],
+    timeout_sec: int,
+    work_dir: Path,
+) -> tuple[np.ndarray, np.ndarray]:
+    """pytetwild.tetrahedralize 를 별도 Python 프로세스에서 실행한다.
+
+    web-QA (2026-07-02): pytetwild(fTetWild) 는 native extension —
+    극단 입력에서 segfault(0xC0000005 실증) 시 호출 프로세스(웹서버/GUI)가
+    통째로 죽는다.  tier_wildmesh 의 subprocess 격리 패턴과 동일하게
+    npz 파일로 배열을 교환하고 child 에서만 native 코드를 실행한다.
+    """
+    import json
+    import sys
+    import tempfile
+
+    child_code = r"""
+import json, sys
+import numpy as np
+import pytetwild
+inp, outp, kw_json = sys.argv[1:4]
+kw = json.loads(kw_json)
+d = np.load(inp)
+tv, tf = pytetwild.tetrahedralize(
+    np.asarray(d["v"], dtype=np.float64),
+    np.asarray(d["f"], dtype=np.int32),
+    **kw,
+)
+np.savez(outp, tv=np.asarray(tv, dtype=np.float64), tf=np.asarray(tf, dtype=np.int64))
+"""
+    tmp = Path(tempfile.mkdtemp(prefix="tw_iso_", dir=str(work_dir) if work_dir.exists() else None))
+    in_npz = tmp / "in.npz"
+    out_npz = tmp / "out.npz"
+    np.savez(in_npz, v=vertices, f=faces)
+    cmd = [sys.executable, "-c", child_code, str(in_npz), str(out_npz),
+           json.dumps(tetra_kwargs)]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(
+            f"pytetwild timeout after {timeout_sec}s — "
+            "epsilon을 키우거나 edge_length_fac를 올리면 빨라집니다."
+        ) from e
+    if proc.returncode != 0:
+        rc = proc.returncode
+        detail = (proc.stderr or "")[-300:]
+        crash = " (native crash 격리됨 — 서버는 계속 동작)" if rc and rc < 0 or rc == 3221225477 else ""
+        raise RuntimeError(
+            f"pytetwild subprocess 실패 rc={rc}{crash}: {detail}"
+        )
+    if not out_npz.exists():
+        raise RuntimeError("pytetwild subprocess 가 출력을 생성하지 않았습니다.")
+    data = np.load(out_npz)
+    tet_v = np.asarray(data["tv"], dtype=np.float64)
+    tet_f = np.asarray(data["tf"], dtype=np.int64)
+    try:
+        shutil.rmtree(tmp)
+    except Exception:  # noqa: BLE001
+        pass
+    return tet_v, tet_f
+
+
 class Tier2TetWildGenerator:
     """TetWild + MMG 기반 테트라헤드럴 메쉬 생성기.
 
@@ -276,9 +342,15 @@ class Tier2TetWildGenerator:
         surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
 
         # 열린 표면 닫기 시도
+        # web-QA (2026-07-02): fill_holes 는 networkx 의존 — 미설치 등 어떤
+        # 실패도 tier 를 죽이지 않게 방어 (열린 표면은 아래 self-filter 가
+        # GWN 으로 처리 가능).
         if not surf.is_watertight:
             logger.info("tetwild_pre_close_open_surface")
-            surf.fill_holes()
+            try:
+                surf.fill_holes()
+            except Exception as _fh_exc:  # noqa: BLE001
+                logger.warning("tetwild_fill_holes_failed", error=str(_fh_exc)[:100])
             if not surf.is_watertight:
                 try:
                     import pymeshfix
@@ -292,6 +364,40 @@ class Tier2TetWildGenerator:
                 logger.warning("tetwild_surface_still_open_proceeding")
 
         orig_surf = surf  # snap 후처리에 사용
+
+        # ── web-QA (2026-07-02): 목표 셀 수 N → edge_length_abs 역산 ──────
+        # 사용자가 target_cells 를 지정했고 edge 를 명시하지 않았으면
+        # N ≈ k·V/ℓ³ 를 역산 (fTetWild 관행: 1-pass 근사, k 는 실측 캘리브레이션).
+        # cube 실측: ℓ=0.173, V=1 → 3719 tets ⇒ k≈19.3.  BL 층이 있으면
+        # 프리즘 추가분(≈×1.4)을 감안해 base 목표를 낮춘다.
+        _target_cells = params.get("target_cells") or params.get("max_cells")
+        _user_edge = ("tetwild_edge_length" in params
+                      or "tetwild_edge_length_fac" in params)
+        if _target_cells and not _user_edge and edge_length_abs is None:
+            try:
+                _N = float(_target_cells)
+                _vol = abs(float(surf.volume)) if surf.is_watertight else 0.0
+                if not np.isfinite(_vol) or _vol <= 0:
+                    # 열린/쓰레기 표면 — bbox 부피 × 0.4 로 근사.
+                    _ext = np.asarray(surf.bounds[1] - surf.bounds[0], dtype=float)
+                    _vol = float(np.prod(np.clip(_ext, 1e-12, None))) * 0.4
+                # k 실측 (cube sweep): 미세 edge 영역에서 k≈10; 큰 edge 는
+                # 기하 플로어가 지배해 비선형 → 1-pass 근사 후 아래
+                # 2-pass 재보정으로 수렴시킨다.
+                _k = 10.0
+                _n_base = max(_N / (1.4 if params.get("bl_layers") else 1.05), 100.0)
+                _edge = (_k * _vol / _n_base) ** (1.0 / 3.0)
+                _diag = float(np.linalg.norm(surf.bounds[1] - surf.bounds[0]))
+                _edge = float(np.clip(_edge, _diag / 500.0, _diag / 5.0))
+                edge_length_abs = _edge
+                self._n_target_base = _n_base  # 2-pass 재보정용
+                logger.info(
+                    "tetwild_edge_from_target_cells",
+                    target_cells=int(_N), volume=round(_vol, 6),
+                    edge_length_abs=round(_edge, 6), k=_k,
+                )
+            except Exception as _exc:  # noqa: BLE001 — 역산 실패 시 기본 fac 사용
+                logger.debug("tetwild_edge_from_target_failed", error=str(_exc))
 
         # External flow: 도메인 박스 + 물체 복합 지오메트리
         flow_type = getattr(strategy, "flow_type", "internal")
@@ -330,23 +436,122 @@ class Tier2TetWildGenerator:
         _TW_TIMEOUT_SEC = {"draft": 60, "standard": 120, "fine": 300}
         timeout_sec = int(params.get("tetwild_timeout", _TW_TIMEOUT_SEC.get(quality_level, 120)))
 
-        def _run_tetwild() -> tuple[Any, Any]:
-            return pytetwild.tetrahedralize(
-                np.asarray(vertices, dtype=np.float64),
-                np.asarray(faces, dtype=np.int32),
-                **tetra_kwargs,
-            )
+        # ── web-QA (2026-07-02): 열린/쓰레기 표면 대응 ──────────────────────
+        # pytetwild 내장 winding filter 는 열린 표면에서 tets 를 전부 버려
+        # "빈 메쉬" 실패가 된다 (fTetWild 는 floodfill 노브가 있으나 pytetwild
+        # 바인딩은 미노출).  closed 가 아니면 filtering 을 끄고 배경 tet 전체를
+        # 받은 뒤 우리 GWN(inside_robust)으로 자체 필터한다 — soup 에서도
+        # 0.5 임계로 강건 (use_input_for_wn 동등).
+        _needs_self_filter = False
+        try:
+            from core.utils.geometry import surface_is_closed as _sic
+            if not _sic(np.asarray(faces, dtype=np.int64)):
+                tetra_kwargs["disable_filtering"] = True
+                _needs_self_filter = True
+                # filtering off = 배경 tet 전체 최적화 — 작업량이 늘어
+                # draft 60s 로는 부족 (실증: open hemisphere timeout).
+                timeout_sec = max(timeout_sec, timeout_sec * 3)
+                logger.info(
+                    "tetwild_open_surface_self_filter_mode",
+                    timeout=timeout_sec,
+                )
+        except Exception:  # noqa: BLE001
+            pass
 
         logger.info("tetwild_tetrahedralize_start", timeout=timeout_sec, **tetra_kwargs)
-        try:
-            with _cf.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_run_tetwild)
-                tet_v, tet_f = future.result(timeout=timeout_sec)
-        except _cf.TimeoutError as e:
-            raise RuntimeError(
-                f"pytetwild timeout after {timeout_sec}s — "
-                "epsilon을 키우거나 edge_length_fac를 올리면 빨라집니다."
-            ) from e
+
+        # ── web-QA (2026-07-02): subprocess 격리 (기본 ON) ────────────────
+        # pytetwild 는 native extension — 극단 입력(needle 등)에서 segfault
+        # (0xC0000005 실증) 가 나면 스레드 timeout 으로는 복구 불가하고
+        # GUI/웹서버 프로세스가 통째로 죽는다.  tier_wildmesh 와 동일하게
+        # npz 교환 + child process 로 격리.  AUTO_TESSELL_TETWILD_SUBPROCESS=0
+        # 으로 기존 in-process 실행 (이미 격리된 bench 워커 등).
+        import os as _os
+        _use_subproc = _os.environ.get("AUTO_TESSELL_TETWILD_SUBPROCESS", "1") == "1"
+
+        def _tetrahedralize_once(kw: dict[str, Any]) -> tuple[Any, Any]:
+            if _use_subproc:
+                return _run_tetwild_subprocess(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int32),
+                    kw, timeout_sec, case_dir,
+                )
+
+            def _run_tetwild() -> tuple[Any, Any]:
+                return pytetwild.tetrahedralize(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int32),
+                    **kw,
+                )
+
+            try:
+                with _cf.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_run_tetwild)
+                    return future.result(timeout=timeout_sec)
+            except _cf.TimeoutError as e:
+                raise RuntimeError(
+                    f"pytetwild timeout after {timeout_sec}s — "
+                    "epsilon을 키우거나 edge_length_fac를 올리면 빨라집니다."
+                ) from e
+
+        tet_v, tet_f = _tetrahedralize_once(tetra_kwargs)
+
+        # ── web-QA: 2-pass N 재보정 ────────────────────────────────────────
+        # fTetWild 의 edge↔셀수 관계는 비선형 (큰 edge 는 기하 플로어 지배).
+        # 1-pass 결과가 목표 밴드를 벗어나면 실측 비율로 edge 를 한 번
+        # 재보정해 재실행한다 (문헌 관행: 1~2 pass 로 ±20-30% 수렴).
+        _n_base_target = getattr(self, "_n_target_base", None)
+        if (
+            _n_base_target
+            and "edge_length_abs" in tetra_kwargs
+            and len(tet_f) > 0
+            and not (0.45 * _n_base_target <= len(tet_f) <= 2.2 * _n_base_target)
+        ):
+            _ratio = (len(tet_f) / float(_n_base_target)) ** (1.0 / 3.0)
+            _e2 = float(tetra_kwargs["edge_length_abs"]) * _ratio
+            _diag2 = float(np.linalg.norm(
+                np.asarray(vertices, dtype=np.float64).max(axis=0)
+                - np.asarray(vertices, dtype=np.float64).min(axis=0)
+            ))
+            _e2 = float(np.clip(_e2, _diag2 / 500.0, _diag2 / 5.0))
+            logger.info(
+                "tetwild_second_pass_recalibrate",
+                n_pass1=len(tet_f), n_target_base=int(_n_base_target),
+                edge_pass1=round(float(tetra_kwargs["edge_length_abs"]), 6),
+                edge_pass2=round(_e2, 6),
+            )
+            try:
+                _kw2 = dict(tetra_kwargs)
+                _kw2["edge_length_abs"] = _e2
+                _tv2, _tf2 = _tetrahedralize_once(_kw2)
+                # 2-pass 가 1-pass 보다 목표에 가까울 때만 채택
+                if len(_tf2) > 0 and abs(len(_tf2) - _n_base_target) < abs(
+                    len(tet_f) - _n_base_target
+                ):
+                    tet_v, tet_f = _tv2, _tf2
+            except Exception as _exc2:  # noqa: BLE001 — 2-pass 실패 시 1-pass 유지
+                logger.warning("tetwild_second_pass_failed", error=str(_exc2)[:120])
+
+        # 열린 표면 self-filter — 배경 tet 전체에서 GWN 으로 내부만 선별.
+        if _needs_self_filter and len(tet_f) > 0:
+            try:
+                from core.utils.geometry import inside_generalized_winding_number
+                _cent = np.asarray(tet_v)[np.asarray(tet_f)].mean(axis=1)
+                _keep = inside_generalized_winding_number(
+                    _cent,
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int64),
+                )
+                if _keep.any():
+                    tet_f = np.asarray(tet_f)[_keep]
+                    logger.info(
+                        "tetwild_self_filter_done",
+                        kept=int(_keep.sum()), total=int(len(_keep)),
+                    )
+                else:
+                    logger.warning("tetwild_self_filter_empty_keeping_all")
+            except Exception as _sf_exc:  # noqa: BLE001
+                logger.warning("tetwild_self_filter_failed", error=str(_sf_exc)[:120])
 
         logger.info("tetwild_tetrahedralize_done", num_vertices=len(tet_v), num_tets=len(tet_f))
 

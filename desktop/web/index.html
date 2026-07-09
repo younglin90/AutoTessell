@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoTessell</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ============ CUSTOM TITLEBAR ============ -->
+    <header id="titlebar" class="titlebar">
+      <div class="tb-brand no-drag">
+        <span class="tb-logo" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M3 8l9-5 9 5-9 5-9-5z" />
+            <path d="M3 8v8l9 5 9-5V8" opacity="0.55" />
+            <path d="M12 13v8" opacity="0.55" />
+          </svg>
+        </span>
+        <span class="tb-title">Auto<b>Tessell</b></span>
+        <span class="tb-ver" id="server-version"></span>
+      </div>
+
+      <div class="tb-drag"></div>
+
+      <div class="tb-status no-drag" title="server status">
+        <span id="server-dot" class="dot dot-off"></span>
+        <span id="server-text">연결 중…</span>
+      </div>
+
+      <div class="tb-tools no-drag">
+        <button id="toggle-left" class="tb-btn" title="왼쪽 패널 접기" aria-label="왼쪽 패널 접기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+        </button>
+        <button id="toggle-right" class="tb-btn" title="오른쪽 패널 접기" aria-label="오른쪽 패널 접기">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/></svg>
+        </button>
+      </div>
+
+      <div class="tb-window no-drag">
+        <button id="win-min" class="win-btn" aria-label="최소화" title="최소화">
+          <svg width="11" height="11" viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button id="win-max" class="win-btn" aria-label="최대화" title="최대화">
+          <svg width="11" height="11" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+        <button id="win-close" class="win-btn win-close" aria-label="닫기" title="닫기">
+          <svg width="11" height="11" viewBox="0 0 12 12"><line x1="3" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="3" x2="3" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- ============ LEFT: controls ============ -->
+      <aside class="sidebar glass" id="sidebar">
+        <section class="card">
+          <h3>입력 파일</h3>
+          <div id="dropzone" class="dropzone">
+            <input id="file-input" type="file"
+              accept=".stl,.obj,.ply,.off,.3mf,.step,.stp,.iges,.igs,.brep,.msh,.cas" hidden />
+            <div class="dz-inner">
+              <div class="dz-icon" aria-hidden="true">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/></svg>
+              </div>
+              <div class="dz-text">CAD/메쉬 파일을 드래그하거나 <u>클릭</u></div>
+              <div class="dz-hint">STL · OBJ · PLY · OFF · 3MF · STEP · IGES · BREP</div>
+            </div>
+          </div>
+          <div id="file-meta" class="file-meta hidden"></div>
+        </section>
+
+        <section class="card">
+          <h3>메쉬 타입</h3>
+          <div id="mesh-type" class="seg seg-grid" data-value="auto">
+            <button data-v="auto" class="active">Auto</button>
+            <button data-v="tet">Tet</button>
+            <button data-v="hex_dominant">Hex-dom</button>
+            <button data-v="poly">Poly</button>
+          </div>
+
+          <h3>품질 레벨</h3>
+          <div id="quality" class="seg" data-value="draft">
+            <button data-v="draft" class="active">Draft</button>
+            <button data-v="standard">Standard</button>
+            <button data-v="fine">Fine</button>
+          </div>
+          <p id="quality-hint" class="hint">draft · TetWild/Netgen · 빠른 검증 (~30초)</p>
+
+          <h3>볼륨 엔진 (tier)</h3>
+          <select id="tier">
+            <option value="auto">Auto (strategist 선택)</option>
+            <optgroup label="자체 엔진 (native-first)">
+              <option value="native_tet">Native Tet</option>
+              <option value="native_hex">Native Hex</option>
+              <option value="native_poly">Native Poly</option>
+            </optgroup>
+            <optgroup label="참고용 엔진">
+              <option value="tetwild">TetWild</option>
+              <option value="wildmesh">WildMesh</option>
+              <option value="netgen">Netgen</option>
+              <option value="snappy">snappyHexMesh</option>
+              <option value="cfmesh">cfMesh</option>
+              <option value="polyhedral">polyDualMesh</option>
+            </optgroup>
+          </select>
+        </section>
+
+        <section class="card">
+          <h3>주요 파라미터</h3>
+          <label class="row">
+            <span>목표 셀 수 N <i class="ttip" title="최종 격자 갯수 목표. 엔진이 이 값에 맞춰 셀 크기를 자동 결정 (상한으로도 적용). 0 = 자동.">ⓘ</i></span>
+            <input id="max_cells" type="number" min="0" step="1000" value="15000" />
+          </label>
+          <label class="row">
+            <span>BL 레이어 수 <i class="ttip" title="벽면 프리즘 레이어 수. 0 = 비활성(draft).">ⓘ</i></span>
+            <input id="bl_layers" type="number" min="0" max="20" step="1" value="0" />
+          </label>
+          <label class="row">
+            <span>표면 셀 크기 [m] <i class="ttip" title="0 = 자동 (characteristic_length 기반).">ⓘ</i></span>
+            <input id="element_size" type="number" min="0" step="0.001" value="0" />
+          </label>
+          <label class="row">
+            <span>배경 셀 크기 [m] <i class="ttip" title="0 = 자동 (표면 셀 × 4).">ⓘ</i></span>
+            <input id="base_cell_size" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label class="row">
+            <span>최대 재시도 <i class="ttip" title="FAIL 시 파라미터 조정 후 재시도. 1 = 재시도 없음.">ⓘ</i></span>
+            <input id="max_iterations" type="number" min="1" max="10" step="1" value="1" />
+          </label>
+        </section>
+
+        <details class="card adv">
+          <summary>고급 설정</summary>
+          <h3>엔진 선택</h3>
+          <label class="row"><span>수리</span>
+            <select id="repair_engine"><option>auto</option><option>pymeshfix</option><option>trimesh</option><option>none</option></select></label>
+          <label class="row"><span>리메쉬</span>
+            <select id="remesh_engine"><option>auto</option><option>vorpalite</option><option>pyacvd</option><option>pymeshlab</option><option>none</option></select></label>
+          <label class="row"><span>검증</span>
+            <select id="checker_engine"><option>auto</option><option>native</option><option>openfoam</option></select></label>
+          <label class="row"><span>후처리</span>
+            <select id="postprocess_engine"><option>none</option><option>auto</option><option>mmg</option></select></label>
+
+          <h3>플래그</h3>
+          <label class="check"><input id="no_repair" type="checkbox" /> 수리 건너뛰기</label>
+          <label class="check"><input id="force_remesh" type="checkbox" /> 리메쉬 강제</label>
+          <label class="check"><input id="allow_ai_fallback" type="checkbox" /> AI 표면 재생성 (GPU)</label>
+          <label class="check"><input id="dry_run" type="checkbox" /> Dry-run (전략까지만)</label>
+        </details>
+
+        <div class="actions">
+          <button id="run-btn" class="btn btn-primary" disabled>메쉬 생성 <kbd>F5</kbd></button>
+          <button id="stop-btn" class="btn btn-ghost" disabled>중지 <kbd>Esc</kbd></button>
+        </div>
+      </aside>
+
+      <!-- splitter L -->
+      <div class="splitter" id="split-left" role="separator" aria-orientation="vertical" tabindex="0" aria-label="왼쪽 패널 크기"></div>
+
+      <!-- ============ CENTER: 3D viewport ============ -->
+      <section class="viewport">
+        <div class="vp-toolbar">
+          <div class="seg seg-sm" id="view-mode" data-value="surface">
+            <button data-v="surface" class="active">표면</button>
+            <button data-v="result" disabled>결과 메쉬</button>
+          </div>
+          <label class="vp-select">컬러맵
+            <select id="colormap">
+              <option value="solid">Solid</option>
+              <option value="patch">Patch</option>
+              <option value="aspect">Aspect ratio</option>
+              <option value="skewness">Skewness</option>
+              <option value="non-ortho">Non-ortho (서버)</option>
+            </select>
+          </label>
+          <label class="check inline"><input id="wireframe" type="checkbox" /> 와이어프레임</label>
+          <button id="reset-view" class="btn btn-mini">뷰 리셋</button>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="gl"></canvas>
+
+          <div id="kpi" class="kpi glass hidden">
+            <div class="kpi-row"><span>verdict</span><b id="kpi-verdict" class="badge">—</b></div>
+            <div class="kpi-row"><span>tier</span><b id="kpi-tier">—</b></div>
+            <div class="kpi-row"><span>cells</span><b id="kpi-cells">—</b></div>
+            <div class="kpi-row"><span>non-ortho</span><b id="kpi-nonortho">—</b></div>
+            <div class="kpi-row"><span>skewness</span><b id="kpi-skew">—</b></div>
+          </div>
+
+          <div id="legend" class="legend glass hidden">
+            <div class="legend-bar"></div>
+            <div class="legend-labels"><span>good</span><span id="legend-mid"></span><span>bad</span></div>
+          </div>
+
+          <div id="vp-empty" class="vp-empty">
+            <div class="vp-empty-art" aria-hidden="true">
+              <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.7">
+                <path d="M3 8l9-5 9 5-9 5-9-5z"/>
+                <path d="M3 8v8l9 5 9-5V8"/>
+                <path d="M12 13v8"/>
+                <path d="M3 8l9 5 9-5"/>
+              </svg>
+            </div>
+            <div class="vp-empty-text">CAD 파일을 끌어다 놓거나</div>
+            <button id="vp-empty-open" class="btn btn-mini">파일 열기</button>
+          </div>
+        </div>
+
+        <!-- run dock: 5-agent pipeline stepper + progress -->
+        <div class="run-dock" id="run-dock">
+          <ol id="pipeline" class="pipeline" aria-label="메쉬 파이프라인 단계">
+            <li class="pl-node idle" data-stage="analyze"><span class="pl-dot"></span><span class="pl-name">Analyzer</span></li>
+            <li class="pl-node idle" data-stage="preprocess"><span class="pl-dot"></span><span class="pl-name">Preprocessor</span></li>
+            <li class="pl-node idle" data-stage="strategize"><span class="pl-dot"></span><span class="pl-name">Strategist</span></li>
+            <li class="pl-node idle" data-stage="generate"><span class="pl-dot"></span><span class="pl-name">Generator</span></li>
+            <li class="pl-node idle" data-stage="evaluate"><span class="pl-dot"></span><span class="pl-name">Evaluator</span></li>
+          </ol>
+          <div class="progress-row">
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="progress-label" class="progress-label" aria-live="polite">대기 중</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- splitter R -->
+      <div class="splitter" id="split-right" role="separator" aria-orientation="vertical" tabindex="0" aria-label="오른쪽 패널 크기"></div>
+
+      <!-- ============ RIGHT: log + downloads ============ -->
+      <aside class="rightbar glass" id="rightbar">
+        <section class="card grow">
+          <div class="log-head">
+            <h3>로그</h3>
+            <select id="log-filter" class="log-filter">
+              <option value="all">전체</option>
+              <option value="info">info+</option>
+              <option value="warn">warn+</option>
+              <option value="error">error</option>
+            </select>
+          </div>
+          <div id="log" class="log"></div>
+        </section>
+
+        <section class="card">
+          <h3>다운로드</h3>
+          <button id="dl-zip" class="btn btn-block" disabled>polyMesh.zip</button>
+          <p class="hint">생성 완료 후 OpenFOAM <code>constant/polyMesh</code> 전체를 ZIP 으로 받습니다.</p>
+          <div class="export-row">
+            <label class="export-label" for="export-format">다른 포맷</label>
+            <select id="export-format">
+              <option value="vtu">VTK .vtu</option>
+              <option value="vtk">VTK legacy</option>
+              <option value="fluent">Fluent .msh</option>
+              <option value="cgns">CGNS</option>
+              <option value="su2">SU2</option>
+              <option value="nastran">Nastran .bdf</option>
+              <option value="tecplot">Tecplot</option>
+              <option value="stl">STL (surface)</option>
+              <option value="obj">OBJ (surface)</option>
+              <option value="ply">PLY (surface)</option>
+            </select>
+            <button id="dl-export" class="btn btn-mini" disabled>내보내기</button>
+          </div>
+          <button id="open-folder" class="btn btn-block electron-only hidden" disabled>결과 폴더 열기</button>
+        </section>
+      </aside>
+    </main>
+
+    <!-- toast stack -->
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <script src="viewer.js"></script>
+    <script src="ui.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

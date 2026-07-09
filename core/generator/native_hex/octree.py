@@ -23,7 +23,9 @@ from pathlib import Path
 
 import numpy as np
 
-from core.utils.geometry import inside_winding_number as _iwn
+# web-QA (2026-07-02): 쓰레기 표면 강건화 — inside_robust 디스패처
+# (closed→ray parity, open/soup→generalized winding number).
+from core.utils.geometry import inside_robust as _iwn
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)

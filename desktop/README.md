@@ -2,6 +2,42 @@
 
 Production-ready Qt (PySide6) desktop application for autonomous CAD/mesh → OpenFOAM polyMesh generation.
 
+> **Electron desktop app** ⭐ — the modern GUI. A frameless Electron shell wraps
+> the web GUI with a premium dark engineering redesign (custom titlebar,
+> 5-agent pipeline stepper, glass panels, native save dialogs). See
+> [Electron app](#electron-app-electron) below.
+>
+> **Prefer a browser?** The same UI also runs in any browser — run
+> `./start_web_gui.sh` (or `start_web_gui.bat`) and open
+> <http://localhost:9720/>. See [`web/README.md`](web/README.md).
+
+## Electron app (`electron/`)
+
+The Electron shell (`desktop/electron/`) detects a local Python, spawns
+`python -m desktop.server` on a free port, and loads the web GUI in a frameless
+window. The Python backend is **not** bundled — it reuses the existing
+interpreter (`AUTOTESSELL_PYTHON` env, or the NSIS-installed
+`%LOCALAPPDATA%\AutoTessell\conda\envs\autotessell\python.exe`, or `python` on PATH).
+
+```bash
+# dev run
+cd desktop/electron
+npm install          # electron + electron-builder
+npm start            # detects python → spawns server → opens window
+
+# package a shell installer (NSIS)
+npm run dist         # → desktop/electron/dist/AutoTessell-Shell-<ver>-Setup.exe
+```
+
+- The renderer detects Electron via `window.autotessell`; in a plain browser the
+  custom window buttons hide and downloads fall back to `window.open`.
+- **WSL/UNC note:** if the repo lives on a `\\wsl.localhost\…` UNC path, `npm`
+  lifecycle scripts fail (cmd.exe rejects UNC cwd). Map a drive first
+  (`net use`/`subst` to a local mirror) or run from a local clone. The **running**
+  app tolerates UNC — `main.js` spawns Python with `shell:false`, `cwd=%TEMP%`,
+  and `PYTHONPATH=<repo>` (the server is cwd-independent).
+- Icon: `desktop/electron/assets/icon.ico` (generated from `godot/assets/icon.svg`).
+
 ## Quick Start
 
 ### Installation

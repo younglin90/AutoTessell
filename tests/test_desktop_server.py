@@ -55,7 +55,7 @@ def _upload_sphere(client: TestClient) -> str:
     return body["job_id"]
 
 
-async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
     """Mock _run_mesh_pipeline that sends standard WS messages."""
     await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock init"})
     await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock analyze"})
@@ -276,6 +276,24 @@ def _make_mock_orchestrator(
     )
     orch._reporter.evaluate.return_value = quality_report
 
+    # _run_mesh_pipeline now drives the unified orchestrator.run() entry (same as
+    # the Qt GUI), so wire a real PipelineResult — a bare MagicMock return would
+    # not be JSON-serialisable when the server emits the result message.
+    from core.pipeline.orchestrator import PipelineResult
+
+    orch.run.return_value = PipelineResult(
+        success=(
+            generator_status == "success"
+            and verdict in ("PASS", "PASS_WITH_WARNINGS")
+        ),
+        geometry_report=geometry_report,
+        preprocessed_report=preprocessed_report,
+        strategy=strategy,
+        generator_log=generator_log,
+        quality_report=quality_report,
+        iterations=1,
+    )
+
     return orch
 
 
@@ -438,7 +456,7 @@ class TestWebSocketMesh:
         job_id = _upload_sphere(client)
 
         # Mock the entire _run_mesh_pipeline to avoid real evaluation
-        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
@@ -469,7 +487,7 @@ class TestWebSocketMesh:
         job_id = _upload_sphere(client)
 
         # Mock the entire _run_mesh_pipeline to avoid real evaluation
-        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
@@ -581,7 +599,7 @@ class TestWebSocketMesh:
     def test_websocket_all_tiers_failed(self, client):
         job_id = _upload_sphere(client)
 
-        async def _mock_fail_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+        async def _mock_fail_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "result", "success": False, "message": "All tiers failed"})
             job["status"] = "failed"

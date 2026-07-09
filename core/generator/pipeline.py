@@ -227,14 +227,34 @@ def _run_tier(
         )
 
     logger.info("running_tier", tier=tier_name)
-    generator = generator_class()
 
-    result: TierAttempt = generator.run(
-        strategy=strategy,
-        preprocessed_path=preprocessed_path,
-        case_dir=case_dir,
-    )
-    return result
+    # web-QA (2026-07-02) — tier 하나의 내부 예외(TypeError 등 코드 버그 포함)가
+    # generate 단계 전체를 죽이면 "Tier 실패 시 다음 Tier, 전체 중단 금지"
+    # (CLAUDE.md) 정책이 깨진다.  실증: tier_native_ai 의 잘못된 kwarg 가
+    # self-intersecting 입력 전체를 0-mesh 로 만들었음.  모든 예외를
+    # TierAttempt(failed) 로 포장해 fallback 체인이 계속 돌게 한다.
+    import time as _t
+    _t0 = _t.monotonic()
+    try:
+        generator = generator_class()
+        result: TierAttempt = generator.run(
+            strategy=strategy,
+            preprocessed_path=preprocessed_path,
+            case_dir=case_dir,
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "tier_crashed",
+            tier=tier_name,
+            error=f"{exc.__class__.__name__}: {exc}",
+        )
+        return TierAttempt(
+            tier=tier_name,
+            status="failed",
+            time_seconds=_t.monotonic() - _t0,
+            error_message=f"tier 내부 예외: {exc.__class__.__name__}: {str(exc)[:160]}",
+        )
 
 
 class MeshGenerator:
@@ -262,10 +282,18 @@ class MeshGenerator:
         if hasattr(quality_level, "value"):
             quality_level = quality_level.value
 
-        # selected_tier가 명시적으로 지정된 경우 (auto 아님) → 해당 Tier만 실행, fallback 없음
+        # selected_tier가 명시적으로 지정된 경우 (auto 아님) →
+        # docstring 대로 selected_tier + strategy.fallback_tiers 순서를 사용한다.
+        # (web-QA 수정: 이전 코드는 fallback_tiers 를 무시해 wildmesh 등
+        # 미설치 환경에서 mesh_type 매핑 tier 가 즉사 → "All tiers failed".
+        # 사용자가 단일 tier 를 강제하려면 strict_tier=True — 이때 상위
+        # orchestrator 가 strategy.fallback_tiers 를 비우므로 동작 동일.)
         auto_mode = strategy.selected_tier.lower() in ("auto", "")
         if not auto_mode:
-            return [_resolve_tier(strategy.selected_tier)]
+            return [_resolve_tier(strategy.selected_tier)] + [
+                _resolve_tier(fb)
+                for fb in (getattr(strategy, "fallback_tiers", None) or [])
+            ]
 
         # Auto 모드: quality_level 기반 기본 순서
         if quality_level == "draft":

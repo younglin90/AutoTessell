@@ -1,0 +1,42 @@
+{
+  "name": "autotessell-shell",
+  "version": "1.2.0",
+  "description": "AutoTessell desktop shell — Electron wrapper around the FastAPI web GUI",
+  "main": "main.js",
+  "author": "AutoTessell",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.autotessell.app",
+    "productName": "AutoTessell",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "assets/icon.ico"
+    ],
+    "asar": true,
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "AutoTessell-Shell-${version}-Setup.${ext}",
+      "shortcutName": "AutoTessell"
+    }
+  }
+}

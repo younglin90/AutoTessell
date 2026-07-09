@@ -100,23 +100,28 @@ def _policy_filter_tier(
 _MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
     "tet": {
         # draft: GUI=wildmesh 99% match goal — tier_wildmesh primary (BETA2822 wire-in).
+        # web-QA: 외부 엔진 전무한 환경(Windows 미설치 등)에서도 tet 계약을
+        # 지키도록 자체 구현 tier 를 같은 계열 마지막 fallback 으로 포함.
         "draft":    ["tier_wildmesh",  "tier2_tetwild", "tier05_netgen",
-                     "tier_meshpy",    "tier_jigsaw_fallback"],
+                     "tier_meshpy",    "tier_jigsaw_fallback",
+                     "tier_cfmesh_tet", "tier_native_tet"],
         # standard: 엔지니어링 용. Netgen 기본.
         "standard": ["tier05_netgen",  "tier_wildmesh", "tier2_tetwild",
-                     "tier_meshpy",    "tier_mmg3d"],
+                     "tier_meshpy",    "tier_mmg3d",
+                     "tier_cfmesh_tet", "tier_native_tet"],
         # fine: 고품질. WildMesh tight ε + MMG 후처리.
         "fine":     ["tier_wildmesh",  "tier2_tetwild", "tier_mmg3d",
-                     "tier05_netgen",  "tier_meshpy"],
+                     "tier05_netgen",  "tier_meshpy",
+                     "tier_cfmesh_tet", "tier_native_tet"],
     },
     "hex_dominant": {
         "draft":    ["tier15_cfmesh",  "tier1_snappy",  "tier_hex_classy_blocks",
-                     "tier_gmsh_hex",  "tier_cinolib_hex"],
+                     "tier_gmsh_hex",  "tier_cinolib_hex", "tier_native_hex"],
         "standard": ["tier15_cfmesh",  "tier1_snappy",  "tier_hex_classy_blocks",
-                     "tier_gmsh_hex",  "tier_cinolib_hex"],
+                     "tier_gmsh_hex",  "tier_cinolib_hex", "tier_native_hex"],
         # fine: snappy + BL 을 기본. cfmesh 는 fallback.
         "fine":     ["tier1_snappy",   "tier15_cfmesh", "tier_hex_classy_blocks",
-                     "tier_robust_hex","tier_algohex"],
+                     "tier_robust_hex","tier_algohex",  "tier_native_hex"],
     },
     "poly": {
         # BETA2856 — user policy (BETA2845): poly default = vendored cfMesh pMesh.
@@ -155,6 +160,21 @@ _MESH_TYPE_TIER_MAP_NATIVE: dict[str, dict[str, list[str]]] = {
         "fine":     ["tier_cfmesh_poly", "tier_native_poly", "tier_voro_poly"],
     },
 }
+
+
+def mesh_type_family_tiers(mesh_type: str) -> frozenset[str]:
+    """해당 mesh_type 계열에 속하는 모든 tier 이름 집합.
+
+    _MESH_TYPE_TIER_MAP + _MESH_TYPE_TIER_MAP_NATIVE 의 모든 quality 목록 합집합.
+    mesh_type 명시 시 fallback 을 이 집합으로 제한해 타입 계약을 지킨다.
+    """
+    mt = str(mesh_type or "").lower()
+    tiers: set[str] = set()
+    for table in (_MESH_TYPE_TIER_MAP.get(mt), _MESH_TYPE_TIER_MAP_NATIVE.get(mt)):
+        if table:
+            for lst in table.values():
+                tiers.update(lst)
+    return frozenset(tiers)
 
 
 def resolve_mesh_type_tier(
@@ -485,7 +505,17 @@ class TierSelector:
                 issues=[f"{i.type}:{i.description}" for i in critical_issues[:2]]
             )
             # Use most robust fallback for critical issues
+            # web-QA (2026-07-02): mesh_type 이 명시된 경우 같은 계열 tier 를
+            # fallback 앞쪽에 배치 — critical 입력이라도 사용자가 고른
+            # mesh_type 계약을 우선 시도하고, 계열 전멸 시에만 타 계열로.
+            # (실증: self-intersecting hex 요청이 tet 메쉬로 우회되던 문제.)
             fallbacks = [t for t in _TIER_ORDER if t != "tier_jigsaw_fallback"]
+            _family = mesh_type_family_tiers(mt)
+            if _family:
+                fallbacks = (
+                    [t for t in fallbacks if t in _family]
+                    + [t for t in fallbacks if t not in _family]
+                )
             selected, fallbacks = _policy_filter_tier("tier_jigsaw_fallback", fallbacks)
             self.last_selection_context = {
                 "source": "auto",
@@ -523,7 +553,16 @@ class TierSelector:
                 l3_primary = "tier_cfmesh_poly"
                 l3_reason = "l3_ai_poly_routes_cfmesh_poly"
             log.info("tier_forced_l3ai", tier=l3_primary, mesh_type=mt)
+            # web-QA (2026-07-02): critical 분기와 동일 — mesh_type 계열을
+            # fallback 앞쪽에 (실증: l3_ai hex/poly 요청이 cfMesh 미설치
+            # 환경에서 tier_native_tet 으로 우회돼 tet 메쉬 반환).
             fallbacks = [t for t in _TIER_ORDER if t != l3_primary]
+            _family = mesh_type_family_tiers(mt)
+            if _family:
+                fallbacks = (
+                    [t for t in fallbacks if t in _family]
+                    + [t for t in fallbacks if t not in _family]
+                )
             selected, fallbacks = _policy_filter_tier(l3_primary, fallbacks)
             self.last_selection_context = {
                 "source": "surface_quality_forced",
@@ -540,10 +579,22 @@ class TierSelector:
         mt_resolved = resolve_mesh_type_tier(mt, ql, prefer_native=prefer_native_tier)
         if mt_resolved is not None:
             mt_primary, mt_fallbacks = mt_resolved
-            # 카테고리 외 나머지 tier 를 마지막 fallback 으로 추가 (last-resort)
-            extras = [t for t in _TIER_ORDER
-                      if t != mt_primary and t not in mt_fallbacks]
-            all_fallbacks = list(mt_fallbacks) + extras
+            # web-QA: 사용자가 mesh_type 을 명시했으므로 fallback 도 같은 계열
+            # tier 로 제한한다 (tet 요청이 hex 로 새는 것 방지 — CLAUDE.md
+            # "Generator 내부 fallback (같은 mesh_type 다른 Tier) 은 유지").
+            # web-QA (2026-07-03): family 를 우선하되, 계열이 전멸할 수 있는
+            # 쓰레기 입력을 위해 나머지 계열도 *최후 안전망*으로 붙인다.
+            # (실증: non-manifold 입력에서 hex/poly 계열이 전멸해 "모든 tier
+            # 실패"로 크래시 → tet 계열이라도 나오도록.  mesh_type 은 선호이지
+            # 절대 계약이 아님 — "쓰레기 표면도 반드시 볼륨 메쉬" 우선.)
+            family = mesh_type_family_tiers(mt)
+            family_extras = [t for t in _TIER_ORDER
+                             if t in family
+                             and t != mt_primary and t not in mt_fallbacks]
+            cross_family = [t for t in _TIER_ORDER
+                            if t not in family
+                            and t != mt_primary and t not in mt_fallbacks]
+            all_fallbacks = list(mt_fallbacks) + family_extras + cross_family
             mt_primary, all_fallbacks = _policy_filter_tier(
                 mt_primary, all_fallbacks,
             )

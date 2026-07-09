@@ -351,10 +351,11 @@ def ftetwild_main_loop(
         logger.debug("ftetwild_final_collapse_skipped", extra={"error": str(e)})
 
     # 4) §3.5 winding-number filter → interior cells only.
+    # web-QA (2026-07-02): inside_robust — soup 입력은 GWN 자동 전환.
     try:
-        from core.utils.geometry import inside_winding_number
+        from core.utils.geometry import inside_robust
         centroids = pts[tets].mean(axis=1)
-        inside = inside_winding_number(centroids, V, F)
+        inside = inside_robust(centroids, V, F)
         tets = tets[inside]
     except Exception as e:
         logger.debug("ftetwild_winding_filter_skipped", extra={"error": str(e)})

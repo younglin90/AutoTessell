@@ -152,3 +152,46 @@ def inside_generalized_winding_number(
         w = omega.sum(axis=1) / (4.0 * np.pi)                     # (B,)
         inside[qi:qi + B] = np.abs(w) > threshold
     return inside
+
+
+def surface_is_closed(F: np.ndarray) -> bool:
+    """모든 undirected edge 가 정확히 2번 등장하면 closed (2-manifold) 표면.
+
+    O(F) — inside-test 디스패치용 저비용 판정.  boundary edge(1회) 나
+    non-manifold edge(3회+)가 하나라도 있으면 False.
+    """
+    F = np.asarray(F, dtype=np.int64)
+    if F.size == 0:
+        return False
+    edges = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=0)
+    edges.sort(axis=1)
+    _, counts = np.unique(edges, axis=0, return_counts=True)
+    return bool((counts == 2).all())
+
+
+def inside_robust(
+    query: np.ndarray, V: np.ndarray, F: np.ndarray,
+    *, surface_closed: bool | None = None,
+) -> np.ndarray:
+    """강건 inside 판정 디스패처 (web-QA robust-meshing, 2026-07-02).
+
+    - closed manifold 표면 → ``inside_winding_number`` (ray parity, 빠름).
+    - 구멍·non-manifold·soup → ``inside_generalized_winding_number``
+      (Jacobson 2013 GWN — ray parity 는 구멍을 지나는 ray 의 홀짝이 뒤집혀
+      쓰레기 입력에서 inside/outside 를 오판한다).
+
+    ``surface_closed`` 를 caller 가 알고 있으면 전달해 판정 비용을 아낄 수
+    있다.  env ``AUTO_TESSELL_INSIDE_TEST`` = ``ray`` | ``gwn`` | ``auto``
+    (기본 auto) 로 강제 가능.
+    """
+    import os
+    mode = os.environ.get("AUTO_TESSELL_INSIDE_TEST", "auto").lower()
+    if mode == "ray":
+        return inside_winding_number(query, V, F)
+    if mode == "gwn":
+        return inside_generalized_winding_number(query, V, F)
+    if surface_closed is None:
+        surface_closed = surface_is_closed(F)
+    if surface_closed:
+        return inside_winding_number(query, V, F)
+    return inside_generalized_winding_number(query, V, F)

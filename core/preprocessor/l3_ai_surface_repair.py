@@ -172,13 +172,17 @@ def _sdf_marching_cubes(
         dist = d.min(axis=1)
 
     # sign via winding number (inside = negative).
+    # web-QA (2026-07-02): inside_safe 의 KDTree top-K prune 은 ray 가 지나는
+    # 원거리 face 를 버려 구조적으로 오판 (연구조사 rank 1 지적).
+    # inside_robust(GWN 디스패처)를 1순위로 — L3 는 정의상 쓰레기 표면이므로
+    # 대부분 GWN 경로를 탄다.
     try:
-        from core.utils.inside_safe import inside_safe
-        inside = inside_safe(grid_pts, V, F, k_neighbors=32)
+        from core.utils.geometry import inside_robust
+        inside = inside_robust(grid_pts, V, F)
     except Exception:
         try:
-            from core.utils.geometry import inside_winding_number
-            inside = inside_winding_number(grid_pts, V, F)
+            from core.utils.inside_safe import inside_safe
+            inside = inside_safe(grid_pts, V, F, k_neighbors=32)
         except Exception:
             inside = np.zeros(grid_pts.shape[0], dtype=bool)
 
@@ -201,7 +205,22 @@ def _sdf_marching_cubes(
         )
         sdf = smooth
 
-    # marching cubes.
+    # 등위면 추출 — native-first (CLAUDE.md): 자체 Surface Nets 우선.
+    # L3 sdf 는 inside<0 규약, surface_nets 는 inside>0 규약 → 부호 반전.
+    try:
+        from core.utils.surface_nets import surface_nets as _sn
+
+        sx = float(spacing[0]) if isinstance(spacing, (tuple, list, np.ndarray)) else float(spacing)
+        verts, tris = _sn(
+            -sdf, np.asarray(bbox_min, dtype=np.float64), sx,
+            iso=-float(iso_value),
+        )
+        if verts.shape[0] >= 4 and tris.shape[0] >= 4:
+            return verts.astype(np.float64), tris.astype(np.int64), method + "_surfacenets"
+    except Exception as _sn_exc:  # noqa: BLE001
+        log.debug("surface_nets_l3_failed", error=str(_sn_exc)[:120])
+
+    # 선택적 가속: skimage 가 있으면 사용 (없으면 위 native 로 이미 처리됨).
     try:
         from skimage.measure import marching_cubes
         verts, tris, _, _ = marching_cubes(
@@ -210,7 +229,6 @@ def _sdf_marching_cubes(
         verts = verts + np.array([bbox_min[0], bbox_min[1], bbox_min[2]])
         return verts.astype(np.float64), tris.astype(np.int64), method + "_skimage"
     except Exception:
-        # fallback: 간단 voxel boundary face extraction (낮은 품질).
         return _fallback_voxel_surface(sdf, bbox_min, spacing)
 
 

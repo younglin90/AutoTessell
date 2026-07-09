@@ -210,26 +210,15 @@ def _write_boundary(p: Path, patches: list[dict]) -> None:
     p.write_text(head + "\n".join(body) + _FOOTER)
 
 
-def _high_skewness_cells(
+def _cell_centres_vertex_mean(
     points: np.ndarray,
     faces: list[list[int]],
     owner: np.ndarray,
     neighbour: np.ndarray,
     n_cells: int,
-    *,
-    skew_threshold: float,
-) -> set[int]:
-    """Identify cells whose adjacent internal-face skewness exceeds
-    ``skew_threshold``.  Mirrors NativeMeshChecker's per-face skewness
-    formula: ``|face_centre - line(p_own, p_nbr)| / |p_own - p_nbr|``.
-    """
-    if not faces or owner.size == 0 or neighbour.size == 0:
-        return set()
+) -> np.ndarray:
+    """Cell centres via vertex-set mean (matches NativeMeshChecker)."""
     n_internal = int(neighbour.shape[0])
-    if n_internal == 0:
-        return set()
-
-    # Cell centres via vertex-set mean (matches checker).
     cell_verts: list[set[int]] = [set() for _ in range(n_cells)]
     for fi in range(len(faces)):
         own = int(owner[fi]) if fi < len(owner) else -1
@@ -244,6 +233,103 @@ def _high_skewness_cells(
         if cell_verts[ci]:
             idx = np.fromiter(cell_verts[ci], dtype=np.int64)
             cell_centres[ci] = points[idx].mean(axis=0)
+    return cell_centres
+
+
+def _high_non_ortho_cells(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    n_cells: int,
+    *,
+    non_ortho_threshold_deg: float,
+    cell_centres: np.ndarray | None = None,
+) -> set[int]:
+    """Identify cells adjacent to a face whose non-orthogonality exceeds
+    ``non_ortho_threshold_deg``.
+
+    Mirrors NativeMeshChecker: internal face → angle between the
+    owner→neighbour centre vector and the face normal; boundary face →
+    angle between the owner→face-centre vector and the face normal.
+    Uses ``|cos|`` so face-winding orientation does not matter.
+
+    web-QA (2026-07-02): native_bl 이 계단형(voxel) 표면 위에 프리즘을
+    삽입하면 계단 모서리 부근 소수 face 가 85–90° non-ortho 를 갖는다.
+    이 셀들을 skew drop 과 같은 방식으로 제거해 evaluator 의
+    max_non_orthogonality 캡을 통과시킨다.
+    """
+    if not faces or owner.size == 0:
+        return set()
+    n_internal = int(neighbour.shape[0])
+    if cell_centres is None:
+        cell_centres = _cell_centres_vertex_mean(
+            points, faces, owner, neighbour, n_cells,
+        )
+    cos_limit = abs(float(np.cos(np.radians(non_ortho_threshold_deg))))
+
+    def _face_normal(face: list[int]) -> np.ndarray | None:
+        if len(face) < 3:
+            return None
+        fp = points[np.asarray(face, dtype=np.int64)]
+        v0 = fp[0]
+        n_vec = np.cross(fp[1:-1] - v0, fp[2:] - v0).sum(axis=0)
+        n_mag = float(np.linalg.norm(n_vec))
+        if n_mag < 1e-30:
+            return None
+        return n_vec / n_mag
+
+    bad: set[int] = set()
+    for fi in range(len(faces)):
+        own = int(owner[fi]) if fi < len(owner) else -1
+        if not (0 <= own < n_cells):
+            continue
+        n_hat = _face_normal(faces[fi])
+        if n_hat is None:
+            continue
+        if fi < n_internal:
+            nbr = int(neighbour[fi])
+            if not (0 <= nbr < n_cells):
+                continue
+            d = cell_centres[nbr] - cell_centres[own]
+        else:
+            fp = points[np.asarray(faces[fi], dtype=np.int64)]
+            d = fp.mean(axis=0) - cell_centres[own]
+        d_mag = float(np.linalg.norm(d))
+        if d_mag < 1e-30:
+            continue
+        cos_ang = abs(float(np.dot(d, n_hat))) / d_mag
+        if cos_ang < cos_limit:  # angle > threshold
+            bad.add(own)
+            if fi < n_internal:
+                bad.add(int(neighbour[fi]))
+    return bad
+
+
+def _high_skewness_cells(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    n_cells: int,
+    *,
+    skew_threshold: float,
+    cell_centres: np.ndarray | None = None,
+) -> set[int]:
+    """Identify cells whose adjacent internal-face skewness exceeds
+    ``skew_threshold``.  Mirrors NativeMeshChecker's per-face skewness
+    formula: ``|face_centre - line(p_own, p_nbr)| / |p_own - p_nbr|``.
+    """
+    if not faces or owner.size == 0 or neighbour.size == 0:
+        return set()
+    n_internal = int(neighbour.shape[0])
+    if n_internal == 0:
+        return set()
+
+    if cell_centres is None:
+        cell_centres = _cell_centres_vertex_mean(
+            points, faces, owner, neighbour, n_cells,
+        )
 
     bad: set[int] = set()
     # Internal face skewness — distance from face centre to the
@@ -302,6 +388,7 @@ def drop_neg_vol_cells_iterative(
     vol_tol: float = 1e-15,
     new_patch_name: str = "droppedShell",
     skew_drop_threshold: float | None = None,
+    non_ortho_drop_threshold: float | None = None,
     max_iterations: int = 8,
     topo_check: bool = True,
     geometric_check: bool = True,
@@ -315,6 +402,7 @@ def drop_neg_vol_cells_iterative(
     agg = {
         "n_cells_pre": 0, "n_cells_post": 0, "n_dropped": 0,
         "n_dropped_inverted": 0, "n_dropped_skew": 0,
+        "n_dropped_non_ortho": 0,
         "n_faces_pre": 0, "n_faces_post": 0,
         "n_new_boundary_faces": 0, "n_dropped_boundary_faces": 0,
         "n_iterations": 0,
@@ -326,6 +414,7 @@ def drop_neg_vol_cells_iterative(
             vol_tol=vol_tol,
             new_patch_name=new_patch_name,
             skew_drop_threshold=skew_drop_threshold,
+            non_ortho_drop_threshold=non_ortho_drop_threshold,
             topo_check=topo_check,
             geometric_check=geometric_check,
         )
@@ -339,6 +428,7 @@ def drop_neg_vol_cells_iterative(
         agg["n_dropped"] += res["n_dropped"]
         agg["n_dropped_inverted"] += res.get("n_dropped_inverted", 0)
         agg["n_dropped_skew"] += res.get("n_dropped_skew", 0)
+        agg["n_dropped_non_ortho"] += res.get("n_dropped_non_ortho", 0)
         agg["n_new_boundary_faces"] += res["n_new_boundary_faces"]
         agg["n_dropped_boundary_faces"] += res["n_dropped_boundary_faces"]
         if res["n_dropped"] == 0:
@@ -352,6 +442,7 @@ def drop_neg_vol_cells(
     vol_tol: float = 1e-15,
     new_patch_name: str = "droppedShell",
     skew_drop_threshold: float | None = None,
+    non_ortho_drop_threshold: float | None = None,
     topo_check: bool = True,
     geometric_check: bool = True,
 ) -> dict[str, int]:
@@ -416,17 +507,42 @@ def drop_neg_vol_cells(
         topo_set = set()
     inverted_set = geometric_set | topo_set
     skew_set: set[int] = set()
-    if skew_drop_threshold is not None and skew_drop_threshold > 0:
-        skew_set = _high_skewness_cells(
-            pts, faces, owner, neighbour, n_cells,
-            skew_threshold=skew_drop_threshold,
-        )
-    drop_set = inverted_set | skew_set
+    non_ortho_set: set[int] = set()
+    if (skew_drop_threshold is not None and skew_drop_threshold > 0) or (
+        non_ortho_drop_threshold is not None and non_ortho_drop_threshold > 0
+    ):
+        _centres = _cell_centres_vertex_mean(pts, faces, owner, neighbour, n_cells)
+        if skew_drop_threshold is not None and skew_drop_threshold > 0:
+            skew_set = _high_skewness_cells(
+                pts, faces, owner, neighbour, n_cells,
+                skew_threshold=skew_drop_threshold,
+                cell_centres=_centres,
+            )
+        if non_ortho_drop_threshold is not None and non_ortho_drop_threshold > 0:
+            non_ortho_set = _high_non_ortho_cells(
+                pts, faces, owner, neighbour, n_cells,
+                non_ortho_threshold_deg=non_ortho_drop_threshold,
+                cell_centres=_centres,
+            )
+    quality_set = skew_set | non_ortho_set
+    drop_set = inverted_set | quality_set
 
-    if not drop_set:
+    # iter-0002 autoresearch (2026-05-14): over-prune guard.  When an
+    # aggressive skew threshold (e.g. standard=4.0) selects > 50 % of
+    # cells, dropping them empties the mesh and leaves the survivors
+    # with worse non_ortho (sliver neighbours).  Bail out instead of
+    # producing a broken polyMesh.  Inverted cells (geometric / topo)
+    # are still always dropped — only the quality tier is gated.
+    if quality_set and len(drop_set) > 0.5 * max(n_cells, 1):
+        # Keep only the inverted set; skip the quality portion.
+        drop_set = set(inverted_set)
+        skew_set = set()
+        non_ortho_set = set()
+    if not drop_set or (n_cells - len(drop_set)) < 10:
         return {
             "n_cells_pre": n_cells, "n_cells_post": n_cells,
             "n_dropped": 0, "n_dropped_inverted": 0, "n_dropped_skew": 0,
+            "n_dropped_non_ortho": 0,
             "n_faces_pre": n_total_faces,
             "n_faces_post": n_total_faces,
             "n_new_boundary_faces": 0, "n_dropped_boundary_faces": 0,
@@ -568,6 +684,7 @@ def drop_neg_vol_cells(
         "n_dropped": len(drop_set),
         "n_dropped_inverted": len(inverted_set),
         "n_dropped_skew": len(skew_set - inverted_set),
+        "n_dropped_non_ortho": len(non_ortho_set - inverted_set - skew_set),
         "n_faces_pre": n_total_faces,
         "n_faces_post": len(new_faces),
         "n_new_boundary_faces": len(dropped_shell),

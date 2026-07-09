@@ -90,68 +90,12 @@ def _configure_pyvista_runtime() -> None:
         pass  # PyVista 미설치 또는 초기화 실패
 
 
-_DEFAULT_ENV = {
-    # GUI-DEFAULT / beta2810 — GUI 실행 시 즉시 최적 default 활성화.
-    # 모든 self-impl tet 강화 + multi-fallback chain + BL aspect cap +
-    # P4D pytetwild fallback + AGGR/L3 repair (extreme 입력 회복).
-    "AUTO_TESSELL_STELLAR_KLINGNER": "1",   # Klingner edge contract (P2.1).
-    "AUTO_TESSELL_BL_ASPECT_ENFORCE": "1",  # post-extrude aspect cap.
-    "AUTO_TESSELL_BL_ASPECT_TARGET": "1000",
-    "AUTO_TESSELL_P4C_PYTETWILD": "1",      # P4-C external fallback.
-    "AUTO_TESSELL_VVV2_QUEUE": "1",         # Stellar swap queue.
-    "AUTO_TESSELL_RRR2_TARGETED": "1",      # AMIPS targeted smoothing.
-    "AUTO_TESSELL_P3_SSS_REVIVAL": "1",     # surface vertex relocate.
-    "AUTO_TESSELL_CVT3D_QUALITY_WEIGHT": "0",  # opt-in only (heavier).
-    "AUTO_TESSELL_AGGR_REPAIR": "0",        # off by default (heavier).
-    "AUTO_TESSELL_L3_AI_REPAIR": "0",       # off by default (very heavy).
-    "AUTO_TESSELL_POLY_GRADE_RETRY": "1",   # poly retry chain.
-    # U-1 / U-3 / U-3b / U-13 / U-17 (2026-05-11) — bench 와 parity.
-    # 이 env 들이 빠지면 GUI 21-STL 결과가 18/21 수준으로 떨어진다.
-    # bench_cavity_eval.py 의 default 와 동일하게 설정.
-    "AUTO_TESSELL_BL_TRIANGULATE_QUAD_SHORTEST": "1",      # U-1
-    "AUTO_TESSELL_BL_DROP_NEG_VOL": "1",                   # U-3
-    "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD": "10",           # U-3b + QA(2026-05-13)
-    # QA-fix (2026-05-13) — skew threshold 18→10.  polyDualMesh on curved
-    # STLs produces boundary sliver cells with skew >>20 (485 on test
-    # input).  Threshold 10 drops these outliers (typically ≤50 cells of
-    # ~10k) while preserving genuine BL skew up to 10.  Verified:
-    # curved STL skew_max 485 → 9.86 with 37/8483 cells dropped.
-    "AUTO_TESSELL_BL_DROP_MAX_ITER": "8",
-    "AUTO_TESSELL_WILDMESH_TARGET_CELL_REMAP": "1",        # U-13
-    "AUTO_TESSELL_WILDMESH_TARGET_CALIB_BASE": "14000",
-    "AUTO_TESSELL_WILDMESH_TARGET_OVERSHOOT": "1.4",
-    "AUTO_TESSELL_WILDMESH_BOX_TARGET_FRAC": "0.95",       # U-12
-    "AUTO_TESSELL_WILDMESH_EXTRUSION_TARGET_FACTOR": "1.5",  # U-17
-    "AUTO_TESSELL_WILDMESH_EXTRUSION_OUTER_FACTOR": "0.9",
-    # H-1 / H-3 / H-6 / H-7 / H-10 / H-11 (2026-05-12) — hex+cfMesh loop.
-    # bench_hex_cavity_eval.py default와 동일.  이 env 들이 빠지면
-    # GUI 21-STL hex+BL 결과가 12/21 baseline 수준으로 떨어진다.
-    "AUTO_TESSELL_ALLOW_EXTERNAL_OPENFOAM": "1",           # cfMesh는 OpenFOAM external
-    "AUTO_TESSELL_HEX_CFMESH_TARGET_CALIB": "0.85",        # H-2
-    "AUTO_TESSELL_HEX_CFMESH_REPAIR_SURFACE": "1",         # H-10 WildMesh repair
-    "AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK": "0",        # H-6 hex-safe
-    "AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK": "1",
-    # tet loop default 8 < H-7's 24.  hex+BL 의 broken-input cleanup 에
-    # 더 많은 iter 필요.  tet+BL bench도 8 → 24 로 올라가지만 (모든 카드
-    # PASS) tet loop 측정상 negative effect 없음.
-    "AUTO_TESSELL_BL_DROP_MAX_ITER": "24",
-    # P-1 / P-2 / P-3 (2026-05-12) — poly+cfMesh loop.  cartesian_dual
-    # backend bench로 6/21 → 21/21 PSS 도달.  pMesh segfault 우회.
-    # QA-fix (2026-05-13) — user expects true polyhedral cells when picking
-    # ``poly`` (pentagon/hexagon dominant), not the hex-like cartesian_dual
-    # output.  Default switched to ``tet_dual`` (fTetWild + polyDualMesh).
-    "AUTO_TESSELL_POLY_BACKEND": "tet_dual",         # P-3 QA upgrade
-    "AUTO_TESSELL_POLY_TETDUAL_PRIMAL_SCALE": "3.0", # primal cell scale (target/2 dual cells)
-    "AUTO_TESSELL_POLY_CFMESH_REPAIR_SURFACE": "1",  # P-1 WildMesh repair
-    "AUTO_TESSELL_POLY_CFMESH_TARGET_CALIB": "1.4",  # P-2 pMesh density compensation
-}
-
-
-def _apply_default_env() -> None:
-    """default 환경변수 적용 (사용자가 미리 설정하지 않은 것만)."""
-    import os
-    for k, v in _DEFAULT_ENV.items():
-        os.environ.setdefault(k, v)
+# GUI-DEFAULT / beta2810 — GUI 실행 시 즉시 최적 default 활성화.
+# (beta-web) 이 dict 와 apply 함수는 web GUI 서버(desktop/server.py)와 공유하기
+# 위해 Qt-비의존 모듈 ``desktop/default_env.py`` 로 이관됐다.  아래 alias 는
+# 기존 import (``from desktop.qt_main import _DEFAULT_ENV``) 하위호환용.
+from desktop.default_env import DEFAULT_ENV as _DEFAULT_ENV
+from desktop.default_env import apply_default_env as _apply_default_env
 
 
 def main() -> None:  # pragma: no cover

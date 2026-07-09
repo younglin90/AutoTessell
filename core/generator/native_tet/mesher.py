@@ -71,7 +71,8 @@ def _seed_points_uniform(
     return np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
 
 
-from core.utils.geometry import inside_winding_number as _inside_winding_number
+# web-QA (2026-07-02): 쓰레기 표면 강건화 — inside_robust 디스패처.
+from core.utils.geometry import inside_robust as _inside_winding_number
 
 
 def _surf_edges_from_faces(F: np.ndarray) -> set:

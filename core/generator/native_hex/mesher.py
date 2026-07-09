@@ -176,7 +176,10 @@ _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
 )
 
 
-from core.utils.geometry import inside_winding_number as _inside_winding_number
+# web-QA (2026-07-02): ray-parity → inside_robust 디스패처.
+# closed manifold 는 기존 ray parity(빠름) 그대로, 구멍·non-manifold·soup 는
+# generalized winding number 로 자동 전환 — 쓰레기 표면 inside 오판 방지.
+from core.utils.geometry import inside_robust as _inside_winding_number
 
 
 def _write_polymesh_hex(

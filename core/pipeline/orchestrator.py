@@ -295,6 +295,7 @@ class PipelineOrchestrator:
 
             quality_report: QualityReport | None = None
             _last_iter_cells: int | None = None  # strict_tier early-stop 용
+            _reconstruct_retried = False  # web-QA rank 3: 최후 재구성 1회 가드
 
             for iteration in range(1, effective_iters + 1):
                 loop_start = 45 + int((iteration - 1) * (45 / effective_iters))
@@ -385,11 +386,48 @@ class PipelineOrchestrator:
                 self._save_json(output_dir / "generator_log.json", generator_log)
                 emit_progress(loop_generate_done, f"Generate 완료 {iteration}/{max_iterations}")
 
-                # 모든 Tier 실패 시 루프 종료
+                # 모든 Tier 실패 시 — 최후의 재구성 안전망 (web-QA rank 3).
+                # 모든 볼륨 메셔가 실패한 쓰레기 표면을 GWN voxel + 자체
+                # Surface Nets 로 watertight 재구성한 뒤 *같은 tier 시퀀스로*
+                # 딱 1회 재시도한다.  작동하는 경로엔 손대지 않고 크래시만
+                # 막는다 (부피가 없는 degenerate 입력은 reconstruct 가 None →
+                # 그대로 실패 보고).
                 successful_tier = self._find_successful_tier(generator_log)
+                if successful_tier is None and not _reconstruct_retried:
+                    _recon_path = self._reconstruct_surface_last_resort(
+                        preprocessed_path, work_dir, strategy,
+                    )
+                    if _recon_path is not None:
+                        log.warning(
+                            "all_tiers_failed_retry_with_reconstructed_surface",
+                            reconstructed=str(_recon_path),
+                        )
+                        emit_progress(
+                            loop_generate_done,
+                            "모든 tier 실패 — 표면 재구성 후 재시도",
+                        )
+                        _reconstruct_retried = True
+                        preprocessed_path = _recon_path
+                        generator_log = self._generator.run(
+                            strategy=strategy,
+                            preprocessed_path=preprocessed_path,
+                            case_dir=case_dir,
+                        )
+                        result.generator_log = generator_log
+                        successful_tier = self._find_successful_tier(generator_log)
                 if successful_tier is None:
                     log.warning("All tiers failed", iteration=iteration)
-                    result.error = "All mesh generation tiers failed"
+                    # 재구성까지 시도했는데도 실패 = 부피가 정의되지 않는
+                    # degenerate 입력일 가능성 (삼각형 몇 개, 평면 sheet 등).
+                    if _reconstruct_retried:
+                        result.error = (
+                            "모든 볼륨 메셔 + 표면 재구성 실패 — 입력 표면이 "
+                            "닫힌 부피를 이루지 못합니다 (self-intersection·구멍이 "
+                            "너무 크거나 입력이 평면/조각 sheet). 유효한 solid "
+                            "표면인지 확인하세요."
+                        )
+                    else:
+                        result.error = "All mesh generation tiers failed"
                     break
 
                 # beta86: tier 완료 progress (tier name + cells)
@@ -472,11 +510,24 @@ class PipelineOrchestrator:
                         _skew_thr_raw = os.environ.get(
                             "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD", "",
                         ).strip()
-                        _skew_thr = (
-                            float(_skew_thr_raw)
-                            if _skew_thr_raw
-                            else None
-                        )
+                        if _skew_thr_raw:
+                            _skew_thr = float(_skew_thr_raw)
+                        else:
+                            # autoresearch-deep iter-0001 (2026-05-14):
+                            # quality-level-aware default — match the
+                            # CFD spec the user picked.  Previously env
+                            # had to be set or no skew dropping kicked
+                            # in, which left poly meshes with skew 5–18.
+                            _ql = (
+                                strategy.quality_level.value
+                                if strategy is not None and hasattr(strategy, "quality_level")
+                                else "standard"
+                            )
+                            _skew_thr = {
+                                "draft": 18.0,
+                                "standard": 4.0,
+                                "fine": 3.0,
+                            }.get(_ql, 4.0)
                         _max_iter = int(os.environ.get(
                             "AUTO_TESSELL_BL_DROP_MAX_ITER", "8",
                         ))
@@ -492,9 +543,37 @@ class PipelineOrchestrator:
                                 "1",
                             ) == "1"
                         )
+                        # web-QA (2026-07-02) — non-ortho outlier drop.
+                        # native_bl 이 계단형 표면 위 프리즘을 만들 때 소수
+                        # face 가 evaluator 캡(draft 85°)을 살짝 초과하는
+                        # 문제 → quality-level 캡보다 1° 낮은 임계로 해당
+                        # 셀만 drop.  env 로 override/비활성(0) 가능.
+                        _no_thr_raw = os.environ.get(
+                            "AUTO_TESSELL_BL_DROP_NONORTHO_THRESHOLD", "",
+                        ).strip()
+                        if _no_thr_raw:
+                            _no_thr: float | None = float(_no_thr_raw)
+                            if _no_thr <= 0:
+                                _no_thr = None
+                        else:
+                            _ql_no = (
+                                strategy.quality_level.value
+                                if strategy is not None
+                                and hasattr(strategy, "quality_level")
+                                else "standard"
+                            )
+                            # soft 한계(80/65/60) 바로 아래로 잡아야 잔존
+                            # max 가 soft fail 로 남지 않는다 (실증: 84 로
+                            # drop 시 83.x 가 남아 2-soft-fail FAIL 다발).
+                            _no_thr = {
+                                "draft": 79.0,
+                                "standard": 64.0,
+                                "fine": 59.0,
+                            }.get(_ql_no, 64.0)
                         _drop_stats = _drop_nvc(
                             case_dir,
                             skew_drop_threshold=_skew_thr,
+                            non_ortho_drop_threshold=_no_thr,
                             max_iterations=_max_iter,
                             topo_check=_topo_check,
                             geometric_check=_geom_check,
@@ -508,6 +587,9 @@ class PipelineOrchestrator:
                             n_dropped_skew=_drop_stats.get(
                                 "n_dropped_skew", 0,
                             ),
+                            n_dropped_non_ortho=_drop_stats.get(
+                                "n_dropped_non_ortho", 0,
+                            ),
                             n_cells_post=_drop_stats.get(
                                 "n_cells_post", 0,
                             ),
@@ -518,6 +600,42 @@ class PipelineOrchestrator:
                     except Exception as exc:
                         log.warning(
                             "drop_neg_vol_cells_skipped",
+                            error=str(exc)[:120],
+                        )
+
+                # iter-0004 autoresearch (2026-05-15): Taubin volumetric
+                # smoother for interior vertices.  Default OFF; opt-in via
+                # AUTO_TESSELL_BL_TAUBIN=1.  Addresses non-orthogonality
+                # sliver cells that drop_neg_vol_cells can't fix without
+                # destroying the surface — Taubin moves vertices instead.
+                if (
+                    os.environ.get(
+                        "AUTO_TESSELL_BL_TAUBIN", "0",
+                    ) == "1"
+                ):
+                    try:
+                        from core.utils.volume_smoother import (
+                            taubin_smooth_polymesh,
+                        )
+                        _n_iter = int(os.environ.get(
+                            "AUTO_TESSELL_BL_TAUBIN_ITERS", "5",
+                        ))
+                        _lam = float(os.environ.get(
+                            "AUTO_TESSELL_BL_TAUBIN_LAMBDA", "0.5",
+                        ))
+                        _mu = float(os.environ.get(
+                            "AUTO_TESSELL_BL_TAUBIN_MU", "0.53",
+                        ))
+                        _t_stats = taubin_smooth_polymesh(
+                            case_dir,
+                            n_iterations=_n_iter,
+                            lambda_pos=_lam,
+                            mu_neg=_mu,
+                        )
+                        log.info("taubin_smooth_done", **_t_stats)
+                    except Exception as exc:
+                        log.warning(
+                            "taubin_smooth_skipped",
                             error=str(exc)[:120],
                         )
 
@@ -796,6 +914,55 @@ class PipelineOrchestrator:
             if attempt.status == "success":
                 return attempt.tier
         return None
+
+    @staticmethod
+    def _reconstruct_surface_last_resort(
+        preprocessed_path: Path,
+        work_dir: Path,
+        strategy: object,
+    ) -> Path | None:
+        """모든 볼륨 tier 가 실패했을 때의 최후 재구성 (web-QA rank 3).
+
+        GWN voxel + 자체 Surface Nets 로 임의 soup 을 watertight manifold 표면
+        으로 재구성해 새 STL 로 저장한다.  부피가 정의되지 않는 degenerate
+        입력(삼각형 몇 개)은 None 을 반환 → 재시도 없이 정직하게 실패.
+
+        해상도는 target_cells 에 맞춰 잡아 재시도 볼륨 메쉬가 N 에 근접하도록.
+        """
+        try:
+            import numpy as np
+            import trimesh as _tm
+
+            from core.utils.surface_nets import reconstruct_surface
+
+            m = _tm.load(str(preprocessed_path), force="mesh")
+            V = np.asarray(m.vertices, dtype=np.float64)
+            F = np.asarray(m.faces, dtype=np.int64)
+            if V.shape[0] < 4 or F.shape[0] < 2:
+                return None
+
+            # target_cells 로부터 voxel 해상도 근사 (N^(1/3) 스케일).
+            tsp = getattr(strategy, "tier_specific_params", None) or {}
+            n_target = int(tsp.get("target_cells") or tsp.get("max_cells") or 0)
+            if n_target > 0:
+                res = int(np.clip(round(1.6 * (n_target ** (1.0 / 3.0))), 32, 160))
+            else:
+                res = 72
+
+            out = reconstruct_surface(V, F, resolution=res)
+            if out is None:
+                return None
+            V2, F2 = out
+            recon_path = work_dir / "reconstructed_surface.stl"
+            _tm.Trimesh(vertices=V2, faces=F2, process=True).export(str(recon_path))
+            log.info(
+                "surface_reconstructed_last_resort",
+                path=str(recon_path), n_faces=int(len(F2)), resolution=res,
+            )
+            return recon_path
+        except Exception as exc:  # noqa: BLE001
+            log.warning("surface_reconstruct_last_resort_failed", error=str(exc)[:120])
+            return None
 
     @staticmethod
     def _save_json(path: Path, model: object) -> None:

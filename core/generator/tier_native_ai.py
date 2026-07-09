@@ -50,11 +50,19 @@ class TierNativeAIGenerator:
         case_dir: Path,
     ) -> TierAttempt:
         # mesh_type 은 strategy 에서 추출.
+        # web-QA (2026-07-02): 두 버그 수정 —
+        #   (1) run_native_tier 는 mesh_type kwarg 를 받지 않음 →
+        #       TypeError 로 tier 진입 전에 죽어 "전체 중단 금지" 정책 위반.
+        #       extra_kwargs 로 전달해야 _runner 까지 도달한다.
+        #   (2) strategy.mesh_type 값 "hex_dominant" 가 ("tet","hex","poly")
+        #       화이트리스트에 없어 무조건 "tet" 으로 강등되던 매핑 누락.
         mesh_type = getattr(strategy, "mesh_type", "tet")
-        if mesh_type not in ("tet", "hex", "poly"):
-            mesh_type = "tet"
+        mt = str(getattr(mesh_type, "value", mesh_type) or "tet").lower()
+        mt = {"hex_dominant": "hex", "poly_dominant": "poly"}.get(mt, mt)
+        if mt not in ("tet", "hex", "poly"):
+            mt = "tet"
         return run_native_tier(
             _runner, self.TIER_NAME,
             strategy, preprocessed_path, case_dir,
-            mesh_type=mesh_type,
+            extra_kwargs={"mesh_type": mt},
         )

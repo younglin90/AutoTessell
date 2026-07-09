@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autotessell-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "desktop.server", "--port", "9737"],
+      "port": 9737
+    }
+  ]
+}

@@ -179,7 +179,9 @@ def _build_control_file(
 """
 
     control_path = work_dir / "auto_tessell.control"
-    control_path.write_text(control_content)
+    # encoding 명시 — 한국어 Windows(cp949) 에서 '—' 등 비-cp949 문자로
+    # UnicodeEncodeError 가 나는 것을 방지 (web-QA).
+    control_path.write_text(control_content, encoding="utf-8")
 
     logger.info(
         "hohqmesh_control_written",

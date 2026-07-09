@@ -14,6 +14,7 @@ import asyncio
 import io
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -25,12 +26,31 @@ from typing import Any
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from core.utils.logging import get_logger
 from core.version import APP_VERSION
+from desktop.default_env import apply_default_env
+
+# On Korean/legacy Windows the console encoding defaults to cp949, which cannot
+# encode characters the meshing pipeline prints/logs (em-dash, °, ·, …).  Force
+# the process std streams to UTF-8 so a stray print() inside a worker thread
+# never crashes the run with UnicodeEncodeError.
+import sys as _sys  # noqa: E402
+
+for _stream in (_sys.stdout, _sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001 — older/odd streams lack reconfigure
+        pass
 
 log = get_logger(__name__)
+
+# Apply the same AUTO_TESSELL_* defaults the Qt desktop GUI uses so a mesh
+# produced from the browser matches the Windows GUI bit-for-bit.  setdefault
+# semantics → user/CI overrides still win.
+apply_default_env()
 
 
 @asynccontextmanager
@@ -69,6 +89,10 @@ ALLOWED_EXTENSIONS = {
     ".msh", ".cas",
 }
 
+# CAD formats that need server-side tessellation to a preview STL (the browser
+# STL parser cannot read them directly).
+CAD_PREVIEW_EXTS = {".step", ".stp", ".iges", ".igs", ".brep"}
+
 # Jobs are auto-deleted after this many seconds of inactivity.
 JOB_TTL_SECONDS = 3600  # 1 hour
 
@@ -96,6 +120,17 @@ def _purge_stale_temp_dirs() -> None:
         log.info("purged_stale_temp_dirs", count=count)
 
 
+class _PipelineCancelled(BaseException):
+    """Raised inside ``progress_callback`` to abort ``orchestrator.run()``.
+
+    Must derive from ``BaseException`` (not ``Exception``): the orchestrator
+    wraps the progress callback — and every pipeline stage — in
+    ``except Exception``, so an ``Exception`` subclass would be swallowed and the
+    run would continue. A ``BaseException`` slips past all those guards and
+    propagates out of ``run()`` to the awaiting coroutine.
+    """
+
+
 def _create_job(input_filename: str) -> dict[str, Any]:
     job_id = str(uuid.uuid4())[:8]
     job = {
@@ -110,6 +145,9 @@ def _create_job(input_filename: str) -> dict[str, Any]:
         "error": None,
         "created_at": time.time(),
         "updated_at": time.time(),
+        # Cooperative-cancellation flag, set by POST /jobs/{id}/cancel and
+        # polled inside the pipeline progress callback.
+        "cancel_event": threading.Event(),
     }
     _jobs[job_id] = job
     return job
@@ -205,6 +243,23 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     job["input_path"] = str(input_path)
     log.info("file_uploaded", job_id=job["id"], filename=file.filename, size=len(content))
 
+    # CAD inputs (STEP/IGES/BREP) are not parseable by the browser's STL reader.
+    # Tessellate to a preview STL at upload time so the viewer can show the
+    # surface before a run.  Best-effort: never block the upload on failure.
+    if ext in CAD_PREVIEW_EXTS:
+        try:
+            from core.analyzer.file_reader import load_mesh
+
+            mesh = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: load_mesh(input_path)
+            )
+            preview_path = work_dir / "preview.stl"
+            mesh.export(str(preview_path))
+            job["preview_path"] = str(preview_path)
+            log.info("cad_preview_generated", job_id=job["id"], path=str(preview_path))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("cad_preview_failed", job_id=job["id"], error=str(exc))
+
     return JSONResponse({
         "job_id": job["id"],
         "filename": file.filename,
@@ -245,6 +300,24 @@ async def get_job(job_id: str) -> JSONResponse:
     })
 
 
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str) -> JSONResponse:
+    """실행 중인 작업을 협조적으로 취소한다.
+
+    cancel_event 를 set 하면 다음 파이프라인 단계(progress_callback)에서
+    _PipelineCancelled 가 발생해 orchestrator.run() 이 중단된다.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    ev = job.get("cancel_event")
+    if ev is not None:
+        ev.set()
+    _touch_job(job)
+    log.info("job_cancel_requested", job_id=job_id, status=job.get("status"))
+    return JSONResponse({"status": "cancelling", "job_id": job_id})
+
+
 @app.get("/jobs/{job_id}/download/polyMesh.zip")
 async def download_polymesh_zip(job_id: str) -> Response:
     """polyMesh 디렉터리 전체를 ZIP으로 묶어 반환한다."""
@@ -274,6 +347,59 @@ async def download_polymesh_zip(job_id: str) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="polyMesh_{job_id}.zip"'},
     )
+
+
+# Formats offered to the web GUI (subset of mesh_exporter.SupportedFormat that
+# makes sense as a single downloadable file).
+EXPORT_FORMATS: tuple[str, ...] = (
+    "vtu", "vtk", "fluent", "cgns", "su2", "nastran", "tecplot", "stl", "obj", "ply",
+)
+
+
+@app.get("/jobs/{job_id}/export")
+async def export_job_mesh(job_id: str, format: str = "vtu") -> Response:
+    """생성된 polyMesh 를 요청한 CFD/시각화 포맷으로 변환해 다운로드한다.
+
+    core.utils.mesh_exporter.export_mesh 를 재사용한다 (VTU/Fluent/CGNS/...).
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    fmt = (format or "vtu").lower()
+    if fmt not in EXPORT_FORMATS:
+        return JSONResponse(
+            {"error": f"Unsupported format: {fmt}", "allowed": list(EXPORT_FORMATS)},
+            status_code=400,
+        )
+
+    case_dir = Path(job["work_dir"]) / "case"
+    if not (case_dir / "constant" / "polyMesh" / "points").exists():
+        return JSONResponse(
+            {"error": "polyMesh not found — mesh not yet generated"},
+            status_code=404,
+        )
+
+    _touch_job(job)
+    try:
+        from core.utils.mesh_exporter import _FORMAT_EXTENSIONS, export_mesh
+
+        ext = _FORMAT_EXTENSIONS.get(fmt, ".vtu")
+        out_path = case_dir / f"mesh_{job_id}{ext}"
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: export_mesh(case_dir, out_path, fmt)  # type: ignore[arg-type]
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.error("export_failed", job_id=job_id, fmt=fmt, error=str(exc))
+        return JSONResponse({"error": f"Export failed: {exc}"}, status_code=500)
+
+    if not result or not Path(result).exists():
+        return JSONResponse(
+            {"error": f"Export produced no output for format '{fmt}'"},
+            status_code=500,
+        )
+    log.info("mesh_exported_for_download", job_id=job_id, fmt=fmt, path=str(result))
+    return FileResponse(Path(result), filename=Path(result).name)
 
 
 @app.get("/jobs/{job_id}/download/{filename}")
@@ -325,14 +451,17 @@ async def websocket_mesh(websocket: WebSocket, job_id: str) -> None:
         if action == "start":
             quality = data.get("quality", "standard")
             tier = data.get("tier", "auto")
-            max_iterations = data.get("max_iterations", 3)
+            mesh_type = data.get("mesh_type", "auto")
+            max_iterations = data.get("max_iterations", 1)
 
-            # 추가 파라미터 (params_panel에서 전달)
+            # 추가 파라미터 (params_panel / 웹 GUI에서 전달)
             extra_params = {k: v for k, v in data.items()
-                          if k not in ("action", "quality", "tier", "max_iterations")}
+                          if k not in ("action", "quality", "tier",
+                                       "mesh_type", "max_iterations")}
 
             await _run_mesh_pipeline(
-                websocket, job, quality, tier, max_iterations, extra_params
+                websocket, job, quality, tier, max_iterations,
+                extra_params, mesh_type=mesh_type,
             )
         else:
             await websocket.send_json({"type": "error", "message": f"Unknown action: {action}"})
@@ -347,6 +476,113 @@ async def websocket_mesh(websocket: WebSocket, job_id: str) -> None:
             pass
 
 
+def _build_run_kwargs(
+    quality: str,
+    tier: str,
+    mesh_type: str,
+    max_iterations: int,
+    extra: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """WebSocket start payload → ``orchestrator.run()`` 키워드 인자로 변환.
+
+    Qt GUI 의 propagation 규칙과 동일하게 매핑한다 (CLAUDE.md v1.1):
+    - Max Cells → max_cells kwarg + tier_specific_params['target_cells','max_cells']
+    - BL layers → tier_specific_params['bl_layers','cfmesh_bl_n_layers']
+    - 그 외 알 수 없는 키 → tier_specific_params 로 자동 머지.
+    """
+    extra = dict(extra or {})
+    tsp: dict[str, Any] = {}
+
+    try:
+        n_iter = max(1, int(max_iterations))
+    except (TypeError, ValueError):
+        n_iter = 1
+
+    kwargs: dict[str, Any] = {
+        "quality_level": quality,
+        "mesh_type": mesh_type,
+        "tier_hint": tier,
+        "max_iterations": n_iter,
+        # >1 회 명시 시에만 자동 재시도 (기본은 off — CLAUDE.md 정책).
+        "auto_retry": "continue" if n_iter > 1 else "off",
+        "write_of_case": True,
+    }
+
+    def _pos_float(key: str) -> float | None:
+        val = extra.get(key)
+        try:
+            f = float(val)
+        except (TypeError, ValueError):
+            return None
+        return f if f > 0 else None
+
+    def _pos_int(key: str) -> int | None:
+        val = extra.get(key)
+        try:
+            i = int(float(val))
+        except (TypeError, ValueError):
+            return None
+        return i if i > 0 else None
+
+    # --- 셀 크기 ---
+    es = _pos_float("element_size")
+    if es is not None:
+        kwargs["element_size"] = es
+    bcs = _pos_float("base_cell_size")
+    if bcs is not None:
+        tsp["base_cell_size"] = bcs
+
+    # --- 최대 셀 수 ---
+    mc = _pos_int("max_cells")
+    if mc is not None:
+        kwargs["max_cells"] = mc
+        tsp["max_cells"] = mc
+        tsp["target_cells"] = mc
+
+    # --- Boundary Layer ---
+    bl = _pos_int("bl_layers")
+    if bl is not None:
+        tsp["bl_layers"] = bl
+        tsp["cfmesh_bl_n_layers"] = bl
+
+    # --- 불리언 플래그 ---
+    if extra.get("no_repair"):
+        kwargs["no_repair"] = True
+    if extra.get("force_remesh") or extra.get("surface_remesh"):
+        kwargs["surface_remesh"] = True
+    if extra.get("allow_ai_fallback"):
+        kwargs["allow_ai_fallback"] = True
+    if extra.get("dry_run"):
+        kwargs["dry_run"] = True
+
+    # --- 엔진 선택 ---
+    re_engine = extra.get("remesh_engine")
+    if re_engine and re_engine != "auto":
+        kwargs["remesh_engine"] = re_engine
+    chk = extra.get("checker_engine")
+    if chk and chk != "auto":
+        kwargs["validator_engine"] = chk
+
+    # --- 나머지 키 → tier_specific_params 자동 머지 ---
+    _skip = {
+        "action", "quality", "tier", "mesh_type", "max_iterations",
+        "element_size", "base_cell_size", "max_cells", "bl_layers",
+        "no_repair", "force_remesh", "surface_remesh", "allow_ai_fallback",
+        "dry_run", "remesh_engine", "checker_engine", "repair_engine",
+        "volume_engine", "postprocess_engine", "cad_engine", "export_vtk",
+    }
+    for k, v in extra.items():
+        if k in _skip:
+            continue
+        if v is None or v == "" or v == 0:
+            continue
+        tsp[k] = v
+
+    if tsp:
+        kwargs["tier_specific_params"] = tsp
+    return kwargs
+
+
 async def _run_mesh_pipeline(
     ws: WebSocket,
     job: dict[str, Any],
@@ -354,14 +590,24 @@ async def _run_mesh_pipeline(
     tier: str,
     max_iterations: int,
     extra_params: dict[str, Any] | None = None,
+    mesh_type: str = "auto",
 ) -> None:
-    """메쉬 생성 파이프라인을 실행하며 진행상황을 WebSocket으로 전달한다."""
+    """메쉬 생성 파이프라인을 실행하며 진행상황을 WebSocket으로 전달한다.
+
+    Qt GUI 와 동일한 ``orchestrator.run()`` 진입점을 사용해 mesh_type
+    (tet / hex_dominant / poly) 별 BL·후처리까지 완전 parity 를 보장한다.
+    파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
+    스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
+    """
     from core.pipeline.orchestrator import PipelineOrchestrator
 
     job["status"] = "running"
     _touch_job(job)
     input_path = Path(job["input_path"])
     output_dir = Path(job["work_dir"]) / "case"
+    loop = asyncio.get_event_loop()
+    cancel_event: threading.Event = job.get("cancel_event") or threading.Event()
+    cancel_event.clear()  # fresh start (job objects can be re-run)
 
     async def send_progress(stage: str, progress: float, message: str = "") -> None:
         job["stage"] = stage
@@ -375,250 +621,189 @@ async def _run_mesh_pipeline(
             "message": message,
         })
 
+    def _send_threadsafe(payload: dict[str, Any]) -> None:
+        """worker 스레드의 progress_callback 에서 호출 — 이벤트 루프로 스케줄."""
+        try:
+            asyncio.run_coroutine_threadsafe(ws.send_json(payload), loop)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def progress_callback(percent: int, message: str) -> None:
+        # Cooperative cancellation: this runs in the worker thread on every
+        # pipeline stage.  Raising here aborts orchestrator.run() (see
+        # _PipelineCancelled docstring for why it must be a BaseException).
+        if cancel_event.is_set():
+            raise _PipelineCancelled()
+        frac = max(0.0, min(1.0, percent / 100.0))
+        job["progress"] = frac
+        job["stage"] = message
+        job["message"] = message
+        _send_threadsafe({
+            "type": "progress",
+            "stage": message,
+            "progress": frac,
+            "message": message,
+        })
+        _send_threadsafe({
+            "type": "log",
+            "level": "info",
+            "message": f"[Server] {percent:3d}% · {message}",
+        })
+
     await send_progress("init", 0.0, "파이프라인 초기화")
+    await ws.send_json({
+        "type": "log",
+        "level": "info",
+        "message": (
+            f"[Server] mesh_type={mesh_type} quality={quality} "
+            f"tier={tier} max_iter={max_iterations}"
+        ),
+    })
 
-    # 동기 파이프라인을 별도 스레드에서 실행
-    loop = asyncio.get_event_loop()
-
+    run_kwargs = _build_run_kwargs(quality, tier, mesh_type, max_iterations, extra_params)
     orchestrator = PipelineOrchestrator()
 
     try:
         import time as _t
-
-        # 1. Analyze
-        await send_progress("analyze", 0.1, "지오메트리 분석 중...")
-        await ws.send_json({"type": "log", "level": "debug", "message": f"[Server] Analyzer 시작: {input_path.name}"})
         _t0 = _t.perf_counter()
-        geometry_report = await loop.run_in_executor(
-            None, orchestrator._analyzer.analyze, input_path
+        result = await loop.run_in_executor(
+            None,
+            lambda: orchestrator.run(
+                input_path,
+                output_dir,
+                progress_callback=progress_callback,
+                **run_kwargs,
+            ),
         )
-        await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Analyzer 완료: {geometry_report.geometry.surface.num_faces} faces, watertight={geometry_report.geometry.surface.is_watertight} ({_t.perf_counter()-_t0:.2f}s)"})
-
-        # 2. Preprocess
-        await send_progress("preprocess", 0.3, "표면 전처리 중...")
-        await ws.send_json({"type": "log", "level": "debug", "message": "[Server] Preprocessor 시작..."})
-        work_dir = output_dir / "_work"
-        work_dir.mkdir(parents=True, exist_ok=True)
-        _t0 = _t.perf_counter()
-
-        def _preprocess() -> tuple[Path, Any]:
-            return orchestrator._preprocessor.run(
-                input_path=input_path,
-                geometry_report=geometry_report,
-                output_dir=work_dir,
-            )
-
-        preprocessed_path, preprocessed_report = await loop.run_in_executor(None, _preprocess)
-        _sq = preprocessed_report.preprocessing_summary.surface_quality_level or "l1"
-        await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Preprocessor 완료: surface_quality={_sq} ({_t.perf_counter()-_t0:.2f}s)"})
-
-        # 3. Strategize
-        await send_progress("strategize", 0.4, f"전략 수립 중... (quality={quality})")
-
-        def _strategize() -> Any:
-            return orchestrator._planner.plan(
-                geometry_report=geometry_report,
-                preprocessed_report=preprocessed_report,
-                tier_hint=tier,
-                quality_level=quality,
-            )
-
-        strategy = await loop.run_in_executor(None, _strategize)
-
-        # extra_params로 strategy override (GUI에서 설정한 값)
-        if extra_params:
-            ep = extra_params
-            # surface mesh 공통 파라미터
-            if ep.get("element_size", 0) > 0:
-                strategy.surface_mesh.target_cell_size = float(ep["element_size"])
-                strategy.surface_mesh.min_cell_size = float(ep["element_size"]) / 4
-            if ep.get("base_cell_size", 0) > 0:
-                strategy.domain.base_cell_size = ep["base_cell_size"]
-            if ep.get("max_cells", 0) > 0:
-                strategy.mesh_params["max_cells"] = int(ep["max_cells"])
-                domain_vol = 1.0
-                for i in range(3):
-                    domain_vol *= strategy.domain.max[i] - strategy.domain.min[i]
-                est = domain_vol / (strategy.domain.base_cell_size ** 3)
-                if est > ep["max_cells"]:
-                    strategy.domain.base_cell_size = (domain_vol / ep["max_cells"]) ** (1/3)
-            # bl_layers
-            if ep.get("bl_layers", 0) > 0:
-                strategy.boundary_layer.n_layers = int(ep["bl_layers"])
-            # 모든 나머지 파라미터를 tier_specific_params에 자동 머지
-            # (element_size, max_cells, bl_layers, action, quality, tier, max_iterations 제외)
-            _skip = {
-                "element_size", "max_cells", "bl_layers", "action", "quality", "tier",
-                "max_iterations", "no_repair", "surface_remesh", "allow_ai_fallback",
-                "remesh_engine", "base_cell_size",
-            }
-            for k, v in ep.items():
-                if k not in _skip and v is not None and v != "" and v != 0:
-                    strategy.tier_specific_params[k] = v
-
-        await ws.send_json({
-            "type": "strategy",
-            "selected_tier": strategy.selected_tier,
-            "quality_level": strategy.quality_level.value
-            if hasattr(strategy.quality_level, "value")
-            else str(strategy.quality_level),
-            "cell_size": strategy.surface_mesh.target_cell_size,
-        })
-
-        # 4. Generate + Evaluate loop
-        for iteration in range(1, max_iterations + 1):
-            progress_base = 0.5 + (iteration - 1) * 0.15
-            await send_progress(
-                "generate",
-                progress_base,
-                f"메쉬 생성 중... (iteration {iteration}/{max_iterations})",
-            )
-
-            await ws.send_json({"type": "log", "level": "debug", "message": f"[Server] Generator 시작: {strategy.selected_tier}"})
-            _gen_t0 = _t.perf_counter()
-
-            def _generate() -> Any:
-                return orchestrator._generator.run(strategy, preprocessed_path, output_dir)
-
-            generator_log = await loop.run_in_executor(None, _generate)
-            await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Generator 완료 ({_t.perf_counter()-_gen_t0:.2f}s)"})
-
-            # 생성 결과 로그를 Godot 콘솔에 전달
-            for tier_attempt in generator_log.execution_summary.tiers_attempted:
-                await ws.send_json({
-                    "type": "log",
-                    "level": "info" if tier_attempt.status == "success" else "warn",
-                    "message": f"[Server] {tier_attempt.tier}: {tier_attempt.status} ({tier_attempt.time_seconds:.1f}s)"
-                    + (f" — {tier_attempt.error_message[:100]}" if tier_attempt.error_message else ""),
-                })
-
-            # 성공 tier 확인
-            successful_tier = orchestrator._find_successful_tier(generator_log)
-            if successful_tier is None:
-                await ws.send_json({
-                    "type": "result",
-                    "success": False,
-                    "message": "모든 Tier 실패",
-                })
-                job["status"] = "failed"
-                job["error"] = "All tiers failed"
-                _touch_job(job)
-                return
-
-            # Evaluate — 직접 실행 (run_in_executor 사용하지 않음)
-            await send_progress(
-                "evaluate",
-                progress_base + 0.1,
-                f"품질 검증 중... ({successful_tier})",
-            )
-
-            # 즉시 PASS 반환 — NativeMeshChecker는 별도 스레드 없이 직접 실행
-            import time as _eval_time
-            _eval_start = _eval_time.perf_counter()
-            log.info("desktop_evaluate_start", case_dir=str(output_dir))
-            await ws.send_json({"type": "log", "level": "debug", "message": "[Server] NativeMeshChecker 시작..."})
-
-            try:
-                from core.evaluator.native_checker import NativeMeshChecker
-                checkmesh = NativeMeshChecker().run(output_dir)
-                log.info("native_checker_done", cells=checkmesh.cells,
-                         non_ortho=checkmesh.max_non_orthogonality)
-                await ws.send_json({"type": "log", "level": "info",
-                    "message": f"[Server] NativeMeshChecker 완료: {checkmesh.cells} cells, non-ortho={checkmesh.max_non_orthogonality:.1f}°"})
-            except Exception as _eval_exc:
-                log.error("native_checker_failed", error=str(_eval_exc))
-                await ws.send_json({"type": "log", "level": "error",
-                    "message": f"[Server] NativeMeshChecker 에러: {_eval_exc}"})
-                from core.schemas import CheckMeshResult
-                checkmesh = CheckMeshResult(
-                    cells=0, faces=0, points=0,
-                    max_non_orthogonality=0, avg_non_orthogonality=0,
-                    max_skewness=0, max_aspect_ratio=0,
-                    min_face_area=0, min_cell_volume=1.0,
-                    min_determinant=1.0, negative_volumes=0,
-                    severely_non_ortho_faces=0, failed_checks=0,
-                    mesh_ok=True,
-                )
-
-            from core.schemas import AdditionalMetrics, CellVolumeStats
-            _metrics = AdditionalMetrics(cell_volume_stats=CellVolumeStats(
-                min=0.0, max=0.0, mean=0.0, std=0.0, ratio_max_min=0.0,
-            ))
-
-            _eval_elapsed = _eval_time.perf_counter() - _eval_start
-            log.info("desktop_evaluate_done", elapsed=f"{_eval_elapsed:.2f}s")
-
-            quality_report = orchestrator._reporter.evaluate(
-                checkmesh=checkmesh,
-                strategy=strategy,
-                metrics=_metrics,
-                geometry_fidelity=None,
-                iteration=iteration,
-                tier=successful_tier,
-                elapsed=_eval_elapsed,
-                quality_level=quality,
-            )
-
-            verdict = quality_report.evaluation_summary.verdict
-            # Verdict is a str-Enum: use .value for wire-safe serialisation
-            verdict_str: str = verdict.value if hasattr(verdict, "value") else str(verdict)
-            cm = quality_report.evaluation_summary.checkmesh
-
-            await ws.send_json({
-                "type": "evaluation",
-                "iteration": iteration,
-                "verdict": verdict_str,
-                "tier": successful_tier,
-                "cells": cm.cells,
-                "max_non_ortho": cm.max_non_orthogonality,
-                "max_skewness": cm.max_skewness,
-            })
-
-            if verdict_str in ("PASS", "PASS_WITH_WARNINGS"):
-                await send_progress("done", 1.0, f"완료! {verdict_str}")
-                job["status"] = "completed"
-                job["result"] = {
-                    "success": True,
-                    "verdict": verdict_str,
-                    "cells": cm.cells,
-                    "tier": successful_tier,
-                    "output_dir": str(output_dir),
-                }
-                _touch_job(job)
-
-                await ws.send_json({
-                    "type": "result",
-                    "success": True,
-                    "verdict": verdict_str,
-                    "cells": cm.cells,
-                    "tier": successful_tier,
-                    "max_non_ortho": cm.max_non_orthogonality,
-                    "max_skewness": cm.max_skewness,
-                    "output_dir": str(output_dir),
-                })
-                return
-
-        # 모든 iteration 실패
+        elapsed = _t.perf_counter() - _t0
+    except _PipelineCancelled:
+        log.info("pipeline_cancelled", job_id=job["id"])
+        job["status"] = "cancelled"
+        job["error"] = "cancelled by user"
+        _touch_job(job)
+        try:
+            await ws.send_json({"type": "log", "level": "warn",
+                "message": "[Server] 사용자가 메쉬 생성을 취소했습니다."})
+            await send_progress("cancelled", job.get("progress", 0.0), "취소됨")
+        except Exception:
+            pass
         await ws.send_json({
             "type": "result",
             "success": False,
-            "message": f"{max_iterations}회 반복 후 실패",
+            "verdict": "CANCELLED",
+            "message": "사용자가 취소했습니다.",
         })
-        job["status"] = "failed"
-        job["error"] = f"Failed after {max_iterations} iterations"
-        _touch_job(job)
-
-    except Exception as exc:
+        return
+    except Exception as exc:  # noqa: BLE001
         log.error("pipeline_error", error=str(exc))
         job["status"] = "failed"
         job["error"] = str(exc)
+        _touch_job(job)
         try:
             await ws.send_json({"type": "log", "level": "error",
                 "message": f"[Server] 파이프라인 에러: {exc}"})
         except Exception:
             pass
-        _touch_job(job)
         await ws.send_json({"type": "error", "message": str(exc)})
+        return
+
+    # --- tier 시도 내역 로그 (성공/실패 사유를 브라우저 콘솔에 그대로) ---
+    try:
+        for _att in (result.generator_log.execution_summary.tiers_attempted or []):
+            await ws.send_json({
+                "type": "log",
+                "level": "info" if _att.status == "success" else "warn",
+                "message": f"[Server] {_att.tier}: {_att.status} ({_att.time_seconds:.1f}s)"
+                + (f" — {(_att.error_message or '')[:120]}" if _att.error_message else ""),
+            })
+    except Exception:  # noqa: BLE001
+        pass
+
+    # --- 전략(strategy) 메시지 ---
+    strategy = result.strategy
+    selected_tier = getattr(strategy, "selected_tier", tier) if strategy else tier
+    # 실제 성공한 tier 를 보고 (fallback 체인으로 다른 tier 가 성공했을 수 있음)
+    try:
+        for _att in (result.generator_log.execution_summary.tiers_attempted or []):
+            if _att.status == "success":
+                selected_tier = _att.tier
+                break
+    except Exception:  # noqa: BLE001 — generator_log 없으면 strategy 값 유지
+        pass
+    if strategy is not None:
+        ql = getattr(strategy, "quality_level", quality)
+        ql_str = ql.value if hasattr(ql, "value") else str(ql)
+        mt = getattr(strategy, "mesh_type", mesh_type)
+        mt_str = mt.value if hasattr(mt, "value") else str(mt)
+        try:
+            cell_size = float(strategy.surface_mesh.target_cell_size)
+        except Exception:  # noqa: BLE001
+            cell_size = 0.0
+        await ws.send_json({
+            "type": "strategy",
+            "selected_tier": selected_tier,
+            "quality_level": ql_str,
+            "mesh_type": mt_str,
+            "cell_size": cell_size,
+        })
+
+    # --- 평가(evaluation) + 결과(result) 메시지 ---
+    qr = result.quality_report
+    if qr is not None:
+        cm = qr.evaluation_summary.checkmesh
+        verdict = qr.evaluation_summary.verdict
+        verdict_str = verdict.value if hasattr(verdict, "value") else str(verdict)
+        await ws.send_json({
+            "type": "evaluation",
+            "iteration": result.iterations,
+            "verdict": verdict_str,
+            "tier": selected_tier,
+            "cells": cm.cells,
+            "max_non_ortho": cm.max_non_orthogonality,
+            "max_skewness": cm.max_skewness,
+        })
+        await ws.send_json({"type": "log", "level": "info",
+            "message": (
+                f"[Server] 완료 {verdict_str}: {cm.cells} cells, "
+                f"non-ortho={cm.max_non_orthogonality:.1f}°, "
+                f"skew={cm.max_skewness:.2f} ({elapsed:.1f}s)"
+            )})
+    else:
+        verdict_str = "FAIL"
+        cm = None
+
+    if result.success:
+        await send_progress("done", 1.0, f"완료! {verdict_str}")
+        job["status"] = "completed"
+        job["result"] = {
+            "success": True,
+            "verdict": verdict_str,
+            "cells": cm.cells if cm else 0,
+            "tier": selected_tier,
+            "output_dir": str(output_dir),
+        }
+        _touch_job(job)
+        await ws.send_json({
+            "type": "result",
+            "success": True,
+            "verdict": verdict_str,
+            "cells": cm.cells if cm else 0,
+            "tier": selected_tier,
+            "max_non_ortho": cm.max_non_orthogonality if cm else 0.0,
+            "max_skewness": cm.max_skewness if cm else 0.0,
+            "output_dir": str(output_dir),
+        })
+    else:
+        job["status"] = "failed"
+        job["error"] = result.error or "Mesh generation failed"
+        _touch_job(job)
+        await ws.send_json({
+            "type": "result",
+            "success": False,
+            "verdict": verdict_str,
+            "message": result.error or "메쉬 생성 실패",
+            "tier": selected_tier,
+        })
 
 
 # ---------------------------------------------------------------------------
@@ -626,9 +811,73 @@ async def _run_mesh_pipeline(
 # ---------------------------------------------------------------------------
 
 
+def _per_face_quality(poly_dir: Path, raw_points: Any, raw_faces: Any) -> dict[str, list[float]] | None:
+    """Per-GLOBAL-face non-orthogonality (deg) + skewness arrays.
+
+    Reuses NativeMeshChecker's geometry helpers so the colours line up with the
+    KPI numbers.  For boundary faces the "neighbour" is the face centre, so
+    non-ortho = angle(face_centre - owner_centre, face_normal).  Returns arrays
+    indexed by global face id, or None on any failure (caller omits quality).
+    """
+    try:
+        import numpy as np
+
+        from core.evaluator.native_checker import NativeMeshChecker
+        from core.utils.polymesh_reader import parse_foam_labels
+
+        owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+        nb_file = poly_dir / "neighbour"
+        neighbour = (
+            np.asarray(parse_foam_labels(nb_file), dtype=np.int64)
+            if nb_file.exists() else np.asarray([], dtype=np.int64)
+        )
+        if neighbour.size:
+            neighbour = neighbour[neighbour >= 0]
+        points = np.asarray(raw_points, dtype=np.float64)
+
+        chk = NativeMeshChecker()
+        geom = chk._compute_face_geometry(points, raw_faces)
+        if geom is not None:
+            face_centres, face_normals, face_areas = geom
+        else:
+            face_centres = chk._compute_face_centres(points, raw_faces)
+            face_normals, face_areas = chk._compute_face_normals_areas(points, raw_faces)
+
+        n_cells = int(owner.max()) + 1 if owner.size else 0
+        if neighbour.size:
+            n_cells = max(n_cells, int(neighbour.max()) + 1)
+        cell_centres = chk._compute_cell_centres_from_vertices(
+            points, raw_faces, owner, n_cells, neighbour
+        )
+
+        d = face_centres - cell_centres[owner]                 # owner → face
+        nrm = np.linalg.norm(face_normals, axis=1)
+        n_hat = face_normals / np.clip(nrm[:, None], 1e-30, None)
+        # orient normals owner-outward (match the checker)
+        sign = np.sign(np.einsum("ij,ij->i", d, n_hat))
+        sign[sign == 0] = 1.0
+        n_hat *= sign[:, None]
+
+        dn = np.clip(np.linalg.norm(d, axis=1), 1e-30, None)
+        cosang = np.clip(np.einsum("ij,ij->i", d, n_hat) / dn, -1.0, 1.0)
+        non_ortho = np.degrees(np.arccos(cosang))
+        # lateral offset of face centre from the owner→normal line, normalised
+        # by face size → boundary skewness proxy (0 = perfectly orthogonal).
+        d_perp = d - (np.einsum("ij,ij->i", d, n_hat))[:, None] * n_hat
+        skew = np.linalg.norm(d_perp, axis=1) / np.sqrt(np.clip(face_areas, 1e-30, None))
+        return {"non_ortho": non_ortho.tolist(), "skewness": skew.tolist()}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("per_face_quality_failed", error=str(exc))
+        return None
+
+
 @app.get("/jobs/{job_id}/mesh")
-async def get_mesh_data(job_id: str) -> JSONResponse:
-    """생성된 메쉬의 vertex/face 데이터를 JSON으로 반환 (Godot 3D 뷰어용)."""
+async def get_mesh_data(job_id: str, quality: int = 0) -> JSONResponse:
+    """생성된 메쉬의 vertex/face 데이터를 JSON으로 반환 (3D 뷰어용).
+
+    quality=1 이면 boundary face 별 non-ortho/skewness 배열을 함께 반환한다
+    (서버-side 실제 품질 컬러맵용 — boundary_faces 와 동일 순서).
+    """
     job = _jobs.get(job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
@@ -648,23 +897,34 @@ async def get_mesh_data(job_id: str) -> JSONResponse:
         faces = parse_foam_faces(poly_dir / "faces")
         boundary = parse_foam_boundary(poly_dir / "boundary")
 
+        face_quality = _per_face_quality(poly_dir, points, faces) if quality else None
+
         # Boundary faces만 추출 (3D 뷰어용 — 내부 면은 불필요)
         boundary_faces = []
+        bf_non_ortho: list[float] = []
+        bf_skew: list[float] = []
         for patch in boundary:
             start = patch["startFace"]
             n = patch["nFaces"]
             for i in range(start, start + n):
                 if i < len(faces):
                     boundary_faces.append(faces[i])
+                    if face_quality is not None and i < len(face_quality["non_ortho"]):
+                        bf_non_ortho.append(face_quality["non_ortho"][i])
+                        bf_skew.append(face_quality["skewness"][i])
 
-        return JSONResponse({
+        resp: dict[str, Any] = {
             "points": points,
             "boundary_faces": boundary_faces,
             "patches": boundary,
             "num_cells": int(max(
                 parse_foam_labels(poly_dir / "owner") if (poly_dir / "owner").exists() else [0]
             )) + 1 if (poly_dir / "owner").exists() else 0,
-        })
+        }
+        if face_quality is not None:
+            resp["face_non_ortho"] = bf_non_ortho
+            resp["face_skewness"] = bf_skew
+        return JSONResponse(resp)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -678,14 +938,41 @@ async def get_surface_stl(job_id: str) -> Response:
 
     _touch_job(job)
     work_dir = Path(job["work_dir"])
-    stl_path = work_dir / "case" / "_work" / "preprocessed.stl"
-    if not stl_path.exists():
-        # 원본 입력 파일 반환
-        stl_path = Path(job.get("input_path", ""))
-    if not stl_path.exists():
-        return JSONResponse({"error": "Surface file not found"}, status_code=404)
+    input_path = Path(job.get("input_path", ""))
+    input_ext = input_path.suffix.lower()
+    # Preference order: preprocessed surface (post-run) → CAD preview STL
+    # (generated at upload for STEP/IGES) → raw input *only if it's an STL*.
+    candidates = [
+        work_dir / "case" / "_work" / "preprocessed.stl",
+        work_dir / "preview.stl",
+    ]
+    if input_ext == ".stl":
+        candidates.append(input_path)
+    stl_path = next((p for p in candidates if p and p.exists()), None)
+    if stl_path is None:
+        # Never hand the raw CAD/non-STL file to the browser STL parser — it
+        # would feed it garbage.  Return a clear 404 the client can surface.
+        if input_ext in CAD_PREVIEW_EXTS:
+            msg = "CAD 미리보기를 생성할 수 없습니다 (OCP/cadquery/gmsh 미설치). 메쉬 생성 후 결과 메쉬를 볼 수 있습니다."
+        else:
+            msg = "Surface preview not available for this format yet."
+        return JSONResponse({"error": msg}, status_code=404)
 
     return FileResponse(stl_path, filename="surface.stl", media_type="application/octet-stream")
+
+
+# ---------------------------------------------------------------------------
+# Static web GUI (single-page app)
+# ---------------------------------------------------------------------------
+# Mounted LAST so the explicit API routes above (/health, /upload, /jobs/*,
+# /ws/*) always take precedence; the catch-all StaticFiles mount only serves
+# the SPA shell and its assets.  ``html=True`` serves ``index.html`` at "/".
+_WEB_DIR = Path(__file__).resolve().parent / "web"
+if _WEB_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
+    log.info("web_gui_mounted", directory=str(_WEB_DIR))
+else:  # pragma: no cover
+    log.warning("web_gui_dir_missing", directory=str(_WEB_DIR))
 
 
 # ---------------------------------------------------------------------------
@@ -747,7 +1034,8 @@ def main() -> None:
 
     _kill_existing(port)
 
-    print(f"Auto-Tessell Desktop Server starting on http://localhost:{port}")
+    print(f"Auto-Tessell Server starting on http://localhost:{port}")
+    print(f"  Web GUI:   http://localhost:{port}/        ← open this in a browser")
     print(f"  WebSocket: ws://localhost:{port}/ws/mesh/{{job_id}}")
     print(f"  Health:    http://localhost:{port}/health")
 
