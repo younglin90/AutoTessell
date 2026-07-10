@@ -967,9 +967,22 @@ async def get_surface_stl(job_id: str) -> Response:
 # Mounted LAST so the explicit API routes above (/health, /upload, /jobs/*,
 # /ws/*) always take precedence; the catch-all StaticFiles mount only serves
 # the SPA shell and its assets.  ``html=True`` serves ``index.html`` at "/".
+class _NoCacheStatic(StaticFiles):
+    """Serve SPA assets with ``no-cache`` so edits always show on reload.
+
+    This is a local desktop tool — HTTP caching of ``styles.css``/``app.js``
+    buys nothing but stale-asset confusion during live UI iteration.
+    """
+
+    def file_response(self, *args: object, **kwargs: object) -> object:
+        resp = super().file_response(*args, **kwargs)  # type: ignore[arg-type]
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
+
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 if _WEB_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
+    app.mount("/", _NoCacheStatic(directory=str(_WEB_DIR), html=True), name="web")
     log.info("web_gui_mounted", directory=str(_WEB_DIR))
 else:  # pragma: no cover
     log.warning("web_gui_dir_missing", directory=str(_WEB_DIR))

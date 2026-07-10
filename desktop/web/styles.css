@@ -20,27 +20,27 @@
 }
 
 :root {
-  /* --- cyanotype paper --- */
-  --bg-0: #0b2038;            /* deep prussian print */
-  --bg-1: #0e2642;            /* panel paper */
-  --bg-2: #123152;            /* card surface */
-  --bg-3: #17395f;            /* raised */
-  --grid-minor: rgba(146, 190, 230, 0.055);
-  --grid-major: rgba(146, 190, 230, 0.11);
-  --line: #24466e;            /* drafted line */
-  --line-soft: #1b3a5e;
-  --ink: #d9e9f7;             /* chalk ink */
-  --ink-strong: #f4faff;
-  --muted: #86aacb;
-  --faint: #52759c;
+  /* --- whiteprint vellum (light) --- */
+  --bg-0: #eaf0f7;            /* pale blueprint paper (also 3D viewport) */
+  --bg-1: #f2f6fb;            /* panel paper */
+  --bg-2: #ffffff;            /* card surface — crisp white */
+  --bg-3: #f7fafd;            /* raised */
+  --grid-minor: rgba(38, 88, 148, 0.055);
+  --grid-major: rgba(38, 88, 148, 0.11);
+  --line: #c2d3e6;            /* drafted line */
+  --line-soft: #d8e3f0;
+  --ink: #17324f;             /* prussian ink text */
+  --ink-strong: #0b2038;
+  --muted: #5a7590;
+  --faint: #90a6bd;
 
   /* --- stamps & data --- */
-  --orange: #ff6b2b;          /* international orange — THE accent */
-  --orange-ink: #241005;
-  --cyan: #7fd4ff;            /* data readouts */
-  --ok: #62dd9a;
-  --warn: #ffc24d;
-  --err: #ff5c5c;
+  --orange: #f2560f;          /* international orange — THE accent (deepened for light) */
+  --orange-ink: #fff2ec;
+  --cyan: #0e79ad;            /* data readouts (teal-blue on light) */
+  --ok: #1f9d57;
+  --warn: #b7791a;
+  --err: #d63b3b;
 
   /* --- type --- */
   --disp: "Big Shoulders", "Malgun Gothic", sans-serif;
@@ -50,8 +50,8 @@
   /* --- scales --- */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
   --r-1: 3px; --r-2: 5px;   /* drafting = crisp corners */
-  --e-1: 0 1px 0 rgba(0,0,0,.35);
-  --e-2: 0 6px 24px rgba(2, 10, 22, .5);
+  --e-1: 0 1px 0 rgba(38, 88, 148, .10);
+  --e-2: 0 8px 24px rgba(30, 66, 110, .14);
 
   /* --- motion --- */
   --dur-1: 120ms; --dur-2: 220ms; --dur-3: 420ms;
@@ -89,7 +89,7 @@ body {
 kbd {
   font: 600 9px var(--mono); color: var(--faint);
   border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
-  background: rgba(0,0,0,.25); margin-left: 5px; vertical-align: 1px;
+  background: rgba(38,88,148,.08); margin-left: 5px; vertical-align: 1px;
 }
 
 /* staged drafting reveal on load */
@@ -258,7 +258,7 @@ kbd {
   padding: 18px 10px;
   text-align: center;
   cursor: pointer;
-  background: rgba(11, 32, 56, 0.4);
+  background: rgba(38, 88, 148, 0.04);
   transition: border-color var(--dur-2), background var(--dur-2), transform var(--dur-2);
 }
 .dropzone:hover { border-color: var(--cyan); }
@@ -268,7 +268,7 @@ kbd {
   box-shadow: 0 0 0 3px rgba(255,107,43,.15);
 }
 .dropzone.flash { animation: dz-flash var(--dur-3) var(--ease-draft); }
-@keyframes dz-flash { 0% { background: rgba(98,221,154,.2) } 100% { background: rgba(11,32,56,.4) } }
+@keyframes dz-flash { 0% { background: rgba(31,157,87,.18) } 100% { background: rgba(38,88,148,.04) } }
 .dz-icon { color: var(--cyan); display: flex; justify-content: center; transition: transform var(--dur-2); }
 .dropzone:hover .dz-icon { transform: translateY(-2px); }
 .dz-text { margin-top: 6px; color: var(--ink); font-size: var(--fs-1); }
@@ -276,7 +276,7 @@ kbd {
 .dz-hint { margin-top: 5px; font-size: 9px; letter-spacing: .06em; color: var(--faint); }
 .file-meta {
   margin-top: var(--sp-2); font-size: var(--fs-1); padding: 7px 9px;
-  background: rgba(127,212,255,.05); border: 1px solid var(--line); border-radius: var(--r-1);
+  background: rgba(14,121,173,.06); border: 1px solid var(--line); border-radius: var(--r-1);
   border-left: 3px solid var(--cyan);
 }
 .file-meta b { color: var(--cyan); }
@@ -369,7 +369,7 @@ details.adv[open] summary::before { content: "▾ "; }
 .vp-toolbar {
   flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
   padding: 7px 14px; border-bottom: 1px solid var(--line);
-  background: rgba(14, 38, 66, 0.72);
+  background: rgba(255, 255, 255, 0.72);
   font-size: var(--fs-0);
 }
 .vp-select { display: flex; align-items: center; gap: 6px; font-size: var(--fs-0); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
@@ -400,7 +400,7 @@ details.adv[open] summary::before { content: "▾ "; }
 /* KPI — instrument readout plate */
 .kpi {
   position: absolute; top: 12px; left: 12px; z-index: 3;
-  background: rgba(11, 32, 56, 0.88);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--line); border-radius: var(--r-2);
   padding: 9px 11px; font-size: var(--fs-1); min-width: 172px;
   box-shadow: var(--e-2);
@@ -432,7 +432,7 @@ details.adv[open] summary::before { content: "▾ "; }
 
 .legend {
   position: absolute; bottom: 14px; left: 12px; z-index: 3;
-  background: rgba(11, 32, 56, 0.88);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--line); border-radius: var(--r-2); padding: 8px;
   width: 184px; box-shadow: var(--e-2);
 }
