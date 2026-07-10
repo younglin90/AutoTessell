@@ -31,21 +31,22 @@
   --line-soft: #d8e3f0;
   --ink: #17324f;             /* prussian ink text */
   --ink-strong: #0b2038;
-  --muted: #5a7590;
-  --faint: #90a6bd;
+  --muted: #47617b;           /* secondary text — darkened for legibility */
+  --faint: #6d849c;           /* labels/hints — darkened (was too pale on white) */
 
   /* --- stamps & data --- */
-  --orange: #f2560f;          /* international orange — THE accent (deepened for light) */
+  --orange: #e04c0a;          /* international orange — THE accent (deepened for light) */
   --orange-ink: #fff2ec;
-  --cyan: #0e79ad;            /* data readouts (teal-blue on light) */
-  --ok: #1f9d57;
-  --warn: #b7791a;
-  --err: #d63b3b;
+  --cyan: #0a6f9f;            /* data readouts (teal-blue on light) */
+  --ok: #16824a;
+  --warn: #9c6712;
+  --err: #cc3232;
 
   /* --- type --- */
   --disp: "Big Shoulders", "Malgun Gothic", sans-serif;
   --mono: "Martian Mono", "Malgun Gothic", monospace;
-  --fs-0: 10px; --fs-1: 11px; --fs-2: 12px; --fs-3: 14px; --fs-4: 20px;
+  /* Martian Mono is wide → reads small at a given px; scale up across the board */
+  --fs-0: 11.5px; --fs-1: 12.5px; --fs-2: 13.5px; --fs-3: 15px; --fs-4: 22px;
 
   /* --- scales --- */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
@@ -87,7 +88,7 @@ body {
 }
 
 kbd {
-  font: 600 9px var(--mono); color: var(--faint);
+  font: 600 10px var(--mono); color: var(--faint);
   border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px;
   background: rgba(38,88,148,.08); margin-left: 5px; vertical-align: 1px;
 }
@@ -138,7 +139,7 @@ kbd {
 }
 .tb-title b { color: var(--orange); font-weight: 800; }
 .tb-ver {
-  font-size: 9px; color: var(--faint); letter-spacing: .12em;
+  font-size: 10.5px; color: var(--faint); letter-spacing: .1em;
   border: 1px solid var(--line); padding: 2px 6px; border-radius: 3px;
 }
 
@@ -242,7 +243,7 @@ kbd {
 .sidebar section.card > h3:first-of-type::before {
   counter-increment: sec;
   content: counter(sec, decimal-leading-zero);
-  font-family: var(--mono); font-weight: 700; font-size: 10px;
+  font-family: var(--mono); font-weight: 700; font-size: 11px;
   color: var(--orange); letter-spacing: 0;
 }
 .card h3:not(:first-child) { margin-top: var(--sp-4); }
@@ -273,7 +274,7 @@ kbd {
 .dropzone:hover .dz-icon { transform: translateY(-2px); }
 .dz-text { margin-top: 6px; color: var(--ink); font-size: var(--fs-1); }
 .dz-text u { color: var(--orange); text-decoration-color: rgba(255,107,43,.5); }
-.dz-hint { margin-top: 5px; font-size: 9px; letter-spacing: .06em; color: var(--faint); }
+.dz-hint { margin-top: 5px; font-size: 10.5px; letter-spacing: .05em; color: var(--faint); }
 .file-meta {
   margin-top: var(--sp-2); font-size: var(--fs-1); padding: 7px 9px;
   background: rgba(14,121,173,.06); border: 1px solid var(--line); border-radius: var(--r-1);
@@ -292,7 +293,7 @@ kbd {
 .seg button {
   flex: 1; border: 0; background: transparent; color: var(--muted);
   padding: 7px 6px; border-radius: var(--r-1); cursor: pointer;
-  font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase;
+  font: 600 var(--fs-1) var(--mono); letter-spacing: .03em; text-transform: uppercase;
   white-space: nowrap;
   transition: color var(--dur-1), background var(--dur-2), box-shadow var(--dur-2);
 }
@@ -302,7 +303,7 @@ kbd {
   box-shadow: 0 0 12px rgba(255,107,43,.35);
 }
 .seg button:disabled { opacity: .35; cursor: not-allowed; }
-.seg-sm button { padding: 4px 8px; font-size: 9px; }
+.seg-sm button { padding: 4px 8px; font-size: 10.5px; }
 
 /* ==========================================================================
    Inputs
@@ -407,7 +408,7 @@ details.adv[open] summary::before { content: "▾ "; }
 }
 .kpi::before {
   content: "READOUT"; display: block; margin-bottom: 5px;
-  font: 700 8px var(--mono); letter-spacing: .28em; color: var(--faint);
+  font: 700 9.5px var(--mono); letter-spacing: .24em; color: var(--faint);
 }
 .kpi-row { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
 .kpi-row span { color: var(--muted); font-size: var(--fs-0); text-transform: uppercase; letter-spacing: .05em; }
@@ -415,8 +416,8 @@ details.adv[open] summary::before { content: "▾ "; }
 
 /* verdict — rubber stamp */
 .badge {
-  padding: 1px 8px; border-radius: 3px; font: 700 10px var(--mono);
-  letter-spacing: .08em; background: var(--bg-3); color: var(--muted);
+  padding: 2px 9px; border-radius: 3px; font: 700 11.5px var(--mono);
+  letter-spacing: .07em; background: var(--bg-3); color: var(--muted);
   border: 1.5px solid currentColor;
 }
 .badge.pass { color: var(--ok); background: rgba(98,221,154,.08); }
@@ -437,7 +438,7 @@ details.adv[open] summary::before { content: "▾ "; }
   width: 184px; box-shadow: var(--e-2);
 }
 .legend-bar { height: 9px; border-radius: 2px; background: linear-gradient(90deg, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); }
-.legend-labels { display: flex; justify-content: space-between; font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.legend-labels { display: flex; justify-content: space-between; font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 
 /* ==========================================================================
    Run dock — survey stations along a dimension line
@@ -470,7 +471,7 @@ details.adv[open] summary::before { content: "▾ "; }
   transition: background var(--dur-2), border-color var(--dur-2), box-shadow var(--dur-2);
 }
 .pl-name {
-  font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  font: 600 11px var(--mono); letter-spacing: .05em; text-transform: uppercase;
   color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: color var(--dur-2);
 }
@@ -514,7 +515,7 @@ details.adv[open] summary::before { content: "▾ "; }
 .log-filter { width: auto; font-size: var(--fs-0); padding: 3px 6px; }
 .log {
   flex: 1 1 auto; margin-top: var(--sp-2); overflow-y: auto; min-height: 120px;
-  font: 400 10px/1.65 var(--mono);
+  font: 400 var(--fs-1)/1.7 var(--mono);
   background: var(--bg-0); border: 1px solid var(--line); border-radius: var(--r-1); padding: 8px;
   -webkit-user-select: text; user-select: text;
 }
