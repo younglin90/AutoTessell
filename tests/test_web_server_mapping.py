@@ -153,7 +153,7 @@ class TestStaticMount:
         for path, needle in [
             ("/app.js", "MeshViewer"),
             ("/viewer.js", "MeshViewer"),
-            ("/styles.css", "--accent"),
+            ("/styles.css", "--orange"),  # blueprint design token
         ]:
             r = client.get(path)
             assert r.status_code == 200, path
