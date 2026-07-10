@@ -293,6 +293,7 @@ kbd {
   flex: 1; border: 0; background: transparent; color: var(--muted);
   padding: 7px 6px; border-radius: var(--r-1); cursor: pointer;
   font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase;
+  white-space: nowrap;
   transition: color var(--dur-1), background var(--dur-2), box-shadow var(--dur-2);
 }
 .seg button:hover:not(:disabled) { color: var(--ink); }
@@ -339,6 +340,7 @@ details.adv[open] summary::before { content: "▾ "; }
   border: 1px solid var(--line); background: var(--bg-2); color: var(--ink);
   padding: 9px 12px; border-radius: var(--r-1); cursor: pointer;
   font: 700 var(--fs-1) var(--mono); letter-spacing: .05em;
+  white-space: nowrap;
   transition: border-color var(--dur-1), background var(--dur-1),
     transform var(--dur-1), box-shadow var(--dur-2);
 }
@@ -525,7 +527,8 @@ details.adv[open] summary::before { content: "▾ "; }
 
 .export-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 .export-label { flex: 0 0 auto; font-size: var(--fs-0); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.export-row select { flex: 1 1 auto; }
+.export-row select { flex: 1 1 auto; min-width: 0; }
+.export-row .btn-mini { flex: 0 0 auto; }
 
 /* ==========================================================================
    Toasts — inspection tags

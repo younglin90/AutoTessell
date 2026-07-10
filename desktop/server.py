@@ -1032,7 +1032,11 @@ def main() -> None:
         if arg == "--port" and i + 1 < len(sys.argv):
             port = int(sys.argv[i + 1])
 
-    _kill_existing(port)
+    # Electron 셸은 이미 빈 포트를 스캔해 넘겨준다 — 그 경우 근처에서 리슨 중인
+    # 프로세스(강제종료 후 남은 고아 서버 등)를 taskkill 하면 연쇄 킬이 된다.
+    import os as _os
+    if _os.environ.get("AUTO_TESSELL_SKIP_PORT_KILL", "0") != "1":
+        _kill_existing(port)
 
     print(f"Auto-Tessell Server starting on http://localhost:{port}")
     print(f"  Web GUI:   http://localhost:{port}/        ← open this in a browser")

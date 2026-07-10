@@ -177,6 +177,9 @@ function spawnServer(python, srcRoot, port) {
     PYTHONPATH: srcRoot + path.delimiter + (process.env.PYTHONPATH || ""),
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8",
+    // We already scanned a FREE port — the server must not taskkill whatever
+    // listens nearby (orphan-vs-new kill chains after a force-quit).
+    AUTO_TESSELL_SKIP_PORT_KILL: "1",
   });
   const child = spawn(python, ["-m", "desktop.server", "--port", String(port)], {
     cwd,
@@ -383,6 +386,10 @@ async function boot() {
   serverChild = spawnServer(python, srcRoot, serverPort);
   let earlyExit = false;
   serverChild.on("exit", (code, signal) => {
+    // Intentional shutdown (window closed → cleanupServer taskkills the
+    // server) also fires this handler with mainWin already null — that is
+    // NOT a failure. Only report deaths we did not cause ourselves.
+    if (cleanedUp) return;
     if (!mainWin) {
       earlyExit = true;
       showFatal(
