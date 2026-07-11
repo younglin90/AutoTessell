@@ -129,6 +129,61 @@ def _write_vtp_via_pyvista(
             except Exception: pass
 
 
+def _write_polyhedral_vtu(case_dir: Path, output_path: Path) -> Path | None:
+    """Write the volume mesh to VTU as VTK_POLYHEDRON cells (face streams).
+
+    polyMesh is face-based and so is VTK_POLYHEDRON, so we hand each cell its
+    actual faces — no per-cell node reordering.  This is the correct fix for
+    hex-dominant / polyhedral meshes, whose cells looked "tangled" when the old
+    path fed VTK_HEXAHEDRON a vertex SET sorted by index (VTK requires a strict
+    node order for hex/wedge/pyramid).
+    """
+    import meshio
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    points = np.array(parse_foam_points(poly_dir / "points"), dtype=np.float64)
+    faces = parse_foam_faces(poly_dir / "faces")
+    owner = parse_foam_labels(poly_dir / "owner")
+    neighbour = parse_foam_labels(poly_dir / "neighbour")
+
+    n_internal = len(neighbour)
+    n_cells = (max(int(max(owner, default=-1)),
+                   int(max(neighbour, default=-1))) + 1) if owner else 0
+    if n_cells <= 0:
+        log.warning("mesh_exporter_no_cells", n_cells=n_cells)
+        return None
+
+    # cell → list of faces; owner keeps the polyMesh (owner-outward) winding,
+    # the neighbour copy is reversed so every face points out of its own cell.
+    cell_faces: list[list[list[int]]] = [[] for _ in range(n_cells)]
+    for fi, f in enumerate(faces):
+        fl = [int(v) for v in f]
+        o = int(owner[fi])
+        if 0 <= o < n_cells:
+            cell_faces[o].append(fl)
+        if fi < n_internal:
+            nb = int(neighbour[fi])
+            if 0 <= nb < n_cells:
+                cell_faces[nb].append(fl[::-1])
+
+    cell_faces = [cf for cf in cell_faces if cf]
+    if not cell_faces:
+        log.warning("mesh_exporter_no_cells", n_cells=n_cells)
+        return None
+
+    mesh = meshio.Mesh(
+        points=points, cells=[meshio.CellBlock("polyhedron", cell_faces)]
+    )
+    try:
+        meshio.write(str(output_path), mesh, file_format="vtu")
+        log.info("mesh_exported", fmt="vtu", path=str(output_path),
+                 n_cells=len(cell_faces), mode="polyhedron")
+        return output_path
+    except Exception as exc:
+        log.warning("mesh_export_write_failed", fmt="vtu", error=str(exc))
+        return None
+
+
 def export_mesh(
     case_dir: Path,
     output_path: Path | None = None,
@@ -167,6 +222,13 @@ def export_mesh(
     if fmt == "vtp":
         out = output_path or (case_dir / "surface.vtp")
         return _write_vtp_via_pyvista(case_dir, out)
+
+    # VTU: face-stream polyhedra so hex-dominant / polyhedral cells keep their
+    # true shape (the standard-cell path below reorders vertices by index,
+    # which tangles anything that isn't a tet).
+    if fmt == "vtu":
+        out = output_path or (case_dir / "mesh.vtu")
+        return _write_polyhedral_vtu(case_dir, out)
 
     poly_dir = case_dir / "constant" / "polyMesh"
     if not poly_dir.exists():

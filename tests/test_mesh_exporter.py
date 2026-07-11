@@ -122,6 +122,50 @@ def test_export_default_output_path_uses_case_dir(tmp_path: Path) -> None:
     assert out.name == "mesh.su2"
 
 
+def _make_hex_polymesh(case_dir: Path) -> None:
+    """Single unit-cube hex cell (6 quad faces, 8 points)."""
+    V = np.array(
+        [
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+            [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+        ],
+        dtype=np.float64,
+    )
+    hexc = [
+        [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+        [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+    ]
+    write_generic_polymesh(V, [hexc], case_dir)
+
+
+@pytest.mark.skipif(not _has_meshio(), reason="meshio not installed")
+def test_vtu_hex_exports_as_polyhedron_with_correct_volume(tmp_path: Path) -> None:
+    """VTU hex-dominant/poly cells must keep their shape (regression for the
+    'cells tangled in VTU' bug — old path fed VTK_HEXAHEDRON index-sorted
+    vertices).  New path writes VTK_POLYHEDRON face streams."""
+    import meshio
+
+    _make_hex_polymesh(tmp_path)
+    out = export_mesh(tmp_path, fmt="vtu")
+    assert out is not None and out.exists()
+
+    m = meshio.read(str(out))
+    # exactly one polyhedron cell (not a tangled hexahedron block)
+    assert len(m.cells) == 1
+    assert m.cells[0].type.startswith("polyhedron")
+
+    # volume from the face stream (divergence theorem) must be the unit cube's 1.0
+    faces = m.cells[0].data[0]  # list of faces (each a list of point ids)
+    pts = m.points
+    vol = 0.0
+    for f in faces:
+        a = pts[f[0]]
+        for k in range(1, len(f) - 1):
+            b, c = pts[f[k]], pts[f[k + 1]]
+            vol += float(np.dot(a, np.cross(b, c)))
+    assert abs(abs(vol) / 6.0 - 1.0) < 1e-6
+
+
 def test_export_corrupt_polymesh_returns_none(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
