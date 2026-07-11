@@ -449,9 +449,31 @@ details.adv[open] summary::before { content: "▾ "; }
   content: "READOUT"; display: block; margin-bottom: 5px;
   font: 700 9.5px var(--mono); letter-spacing: .24em; color: var(--faint);
 }
-.kpi-row { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
+.kpi-row { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; position: relative; }
 .kpi-row span { color: var(--muted); font-size: var(--fs-0); text-transform: uppercase; letter-spacing: .05em; }
 .kpi-row b { color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* hover breakdown tips (cell/face shapes, metric histograms) */
+.kpi-row.kpi-hover { cursor: help; }
+.kpi-row.kpi-hover:hover { background: rgba(14,121,173,.05); }
+.kpi-tip {
+  display: none; position: absolute; left: calc(100% + 10px); top: -4px;
+  min-width: 150px; z-index: 6; padding: 8px 10px;
+  background: rgba(255,255,255,.97); border: 1px solid var(--line);
+  border-left: 3px solid var(--orange); border-radius: var(--r-1);
+  box-shadow: var(--e-2); pointer-events: none;
+}
+.kpi-row.kpi-hover:hover .kpi-tip:not(:empty) { display: block; }
+.tip-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.tip-row span { color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.tip-row b { color: var(--ink-strong); font-size: 11px; font-variant-numeric: tabular-nums; }
+.hist { display: flex; align-items: flex-end; gap: 2px; height: 44px; width: 168px; }
+.hist i {
+  flex: 1; background: var(--cyan); border-radius: 1px 1px 0 0; min-height: 3px;
+}
+.hist i.z { background: var(--line-soft); }
+.hist-lbl { display: flex; justify-content: space-between; margin-top: 4px; }
+.hist-lbl span { font-size: 9.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* verdict — rubber stamp */
 .badge {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=15" />
+    <link rel="stylesheet" href="styles.css?v=16" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -82,7 +82,7 @@
             <button data-v="poly">Poly</button>
           </div>
 
-          <h3>품질 레벨</h3>
+          <h3>품질 레벨 <i class="ttip" title="셀 수가 아니라 '얼마나 엄격하게'를 정합니다: 엔진 티어(draft=tetwild 거친 ε / standard=netgen / fine=wildmesh 조밀 ε+BL)와 Evaluator 합격 기준(non-ortho·skewness 임계값). 셀 수는 목표 셀 수 N이 결정.">ⓘ</i></h3>
           <div id="quality" class="seg" data-value="draft">
             <button data-v="draft" class="active">Draft</button>
             <button data-v="standard">Standard</button>
@@ -174,7 +174,7 @@
               <option value="patch">Patch</option>
               <option value="aspect">Aspect ratio</option>
               <option value="skewness">Skewness</option>
-              <option value="non-ortho">Non-ortho (서버)</option>
+              <option value="non-ortho">Non-ortho</option>
             </select>
           </label>
           <label class="check inline"><input id="wireframe" type="checkbox" checked /> 와이어프레임</label>
@@ -199,9 +199,15 @@
           <div id="kpi" class="kpi glass hidden">
             <div class="kpi-row"><span>verdict</span><b id="kpi-verdict" class="badge">—</b></div>
             <div class="kpi-row"><span>tier</span><b id="kpi-tier">—</b></div>
-            <div class="kpi-row"><span>cells</span><b id="kpi-cells">—</b></div>
-            <div class="kpi-row"><span>non-ortho</span><b id="kpi-nonortho">—</b></div>
-            <div class="kpi-row"><span>skewness</span><b id="kpi-skew">—</b></div>
+            <div class="kpi-row"><span>vertices</span><b id="kpi-verts">—</b></div>
+            <div class="kpi-row kpi-hover"><span>cells</span><b id="kpi-cells">—</b>
+              <div class="kpi-tip" id="tip-cells"></div></div>
+            <div class="kpi-row kpi-hover"><span>faces</span><b id="kpi-faces">—</b>
+              <div class="kpi-tip" id="tip-faces"></div></div>
+            <div class="kpi-row kpi-hover"><span>non-ortho</span><b id="kpi-nonortho">—</b>
+              <div class="kpi-tip" id="tip-nonortho"></div></div>
+            <div class="kpi-row kpi-hover"><span>skewness</span><b id="kpi-skew">—</b>
+              <div class="kpi-tip" id="tip-skew"></div></div>
           </div>
 
           <div id="legend" class="legend glass hidden">
@@ -287,8 +293,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=15"></script>
-    <script src="ui.js?v=15"></script>
-    <script src="app.js?v=15"></script>
+    <script src="viewer.js?v=16"></script>
+    <script src="ui.js?v=16"></script>
+    <script src="app.js?v=16"></script>
   </body>
 </html>

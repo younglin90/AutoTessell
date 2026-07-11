@@ -254,6 +254,32 @@ class TestMeshInternalFaces:
         assert "internal_faces" not in j
         assert len(j["boundary_faces"]) == 2
 
+    def test_stats_counts_and_shapes(self, client):
+        job = _create_job("x.stl")
+        self._write_polymesh(job)
+        j = client.get(f"/jobs/{job['id']}/mesh?quality=1").json()
+        s = j.get("stats")
+        assert s, j.get("error")
+        assert s["n_points"] == 5
+        assert s["n_faces"] == 3
+        assert s["n_cells"] == 2
+        # all 3 faces are triangles
+        assert s["face_shapes"] == {"tri": 3, "quad": 0, "poly": 0}
+        # neither cell has a full tet signature (only 2 faces each) → poly
+        assert s["cell_shapes"]["poly"] == 2
+        # histograms present with min <= max and 14 bins
+        for key in ("non_ortho", "skewness"):
+            h = s[key]
+            assert h is None or (
+                h["min"] <= h["max"] and len(h["counts"]) == 14
+            )
+
+    def test_stats_absent_without_quality(self, client):
+        job = _create_job("x.stl")
+        self._write_polymesh(job)
+        j = client.get(f"/jobs/{job['id']}/mesh").json()
+        assert "stats" not in j
+
 
 class TestExportEndpoint:
     def test_unknown_job_returns_404(self, client):

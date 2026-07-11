@@ -32,6 +32,7 @@
   try {
     viewer = new MeshViewer($("gl"));
     window.__viewer = viewer; // exposed for E2E pixel-probing / debugging
+    window.__at = window.__at || {}; // E2E handles registered below
   } catch (e) {
     log("error", "WebGL 초기화 실패: " + e.message);
   }
@@ -419,6 +420,47 @@
     if (m.max_non_ortho != null) cu($("kpi-nonortho"), Number(m.max_non_ortho), { decimals: 1, suffix: "°" });
     if (m.max_skewness != null) cu($("kpi-skew"), Number(m.max_skewness), { decimals: 2 });
   }
+
+  // Enriched KPI from /mesh?quality=1 stats: exact counts, min–max ranges,
+  // and hover breakdowns (cell/face shapes + metric histograms).
+  function renderKpiStats(s) {
+    if (!s) return;
+    const fmt = (n) => Number(n).toLocaleString();
+    if (s.n_points != null) $("kpi-verts").textContent = fmt(s.n_points);
+    if (s.n_cells != null) $("kpi-cells").textContent = fmt(s.n_cells);
+    if (s.n_faces != null) $("kpi-faces").textContent = fmt(s.n_faces);
+
+    const shapeTip = (el, shapes) => {
+      if (!el || !shapes) return;
+      const rows = Object.entries(shapes)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `<div class="tip-row"><span>${k.toUpperCase()}</span><b>${fmt(n)}</b></div>`)
+        .join("");
+      el.innerHTML = rows || '<div class="tip-row"><span>—</span></div>';
+    };
+    shapeTip($("tip-cells"), s.cell_shapes);
+    shapeTip($("tip-faces"), s.face_shapes);
+
+    const metric = (valEl, tipEl, h, opts) => {
+      if (!valEl || !h) return;
+      const d = opts.decimals;
+      valEl.textContent =
+        `${h.min.toFixed(d)}–${h.max.toFixed(d)}${opts.suffix || ""}`;
+      if (!tipEl) return;
+      const peak = Math.max.apply(null, h.counts) || 1;
+      const bars = h.counts
+        .map((c) => `<i style="height:${Math.max(3, Math.round((c / peak) * 100))}%"${c ? "" : ' class="z"'}></i>`)
+        .join("");
+      tipEl.innerHTML =
+        `<div class="hist">${bars}</div>` +
+        `<div class="hist-lbl"><span>${h.min.toFixed(d)}${opts.suffix || ""}</span>` +
+        `<span>${h.max.toFixed(d)}${opts.suffix || ""}</span></div>`;
+    };
+    metric($("kpi-nonortho"), $("tip-nonortho"), s.non_ortho, { decimals: 1, suffix: "°" });
+    metric($("kpi-skew"), $("tip-skew"), s.skewness, { decimals: 2 });
+  }
+  if (window.__at) window.__at.renderKpiStats = renderKpiStats; // E2E handle
   function verdictClass(v) {
     if (v === "PASS") return "pass";
     if (v === "PASS_WITH_WARNINGS" || v === "CANCELLED") return "warn";
@@ -478,6 +520,7 @@
       viewer.setPolyMesh(j.points, j.boundary_faces, j.patches, fm, j.internal_faces || []);
       setNonOrthoAvailable(viewer.hasFaceMetrics());
       setSliceAvailable(true, j.internal_available !== false && !!(j.internal_faces && j.internal_faces.length));
+      renderKpiStats(j.stats);
       applyColormap();
       $("vp-empty").classList.add("hidden");
       $("dl-export").disabled = false;

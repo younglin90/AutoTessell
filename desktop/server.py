@@ -876,6 +876,62 @@ def _per_face_quality(poly_dir: Path, raw_points: Any, raw_faces: Any) -> dict[s
 _SLICE_INTERNAL_CELL_CAP = 250_000
 
 
+def _cell_shape_counts(
+    faces: list[list[int]], owner: list[int], neighbour: list[int], n_cells: int
+) -> dict[str, int]:
+    """Classify each cell by its face-size signature (KPI hover breakdown).
+
+    tet = 4 tri, hex = 6 quad, pyramid = 4 tri + 1 quad, prism = 2 tri + 3 quad;
+    anything else counts as poly.
+    """
+    n_faces_of = [0] * n_cells
+    n_tri_of = [0] * n_cells
+    n_quad_of = [0] * n_cells
+
+    def _add(cell: int, size: int) -> None:
+        if 0 <= cell < n_cells:
+            n_faces_of[cell] += 1
+            if size == 3:
+                n_tri_of[cell] += 1
+            elif size == 4:
+                n_quad_of[cell] += 1
+
+    for i, f in enumerate(faces):
+        sz = len(f)
+        if i < len(owner):
+            _add(owner[i], sz)
+        if i < len(neighbour):
+            _add(neighbour[i], sz)
+
+    shapes = {"tet": 0, "hex": 0, "prism": 0, "pyramid": 0, "poly": 0}
+    for c in range(n_cells):
+        nf, t, q = n_faces_of[c], n_tri_of[c], n_quad_of[c]
+        if nf == 4 and t == 4:
+            shapes["tet"] += 1
+        elif nf == 6 and q == 6:
+            shapes["hex"] += 1
+        elif nf == 5 and t == 2 and q == 3:
+            shapes["prism"] += 1
+        elif nf == 5 and t == 4 and q == 1:
+            shapes["pyramid"] += 1
+        else:
+            shapes["poly"] += 1
+    return shapes
+
+
+def _metric_hist(vals: Any, bins: int = 14) -> dict[str, Any] | None:
+    """min/max + fixed-bin histogram for the KPI hover charts."""
+    import numpy as np
+
+    a = np.asarray(vals, dtype=float)
+    a = a[np.isfinite(a)]
+    if a.size == 0:
+        return None
+    lo, hi = float(a.min()), float(a.max())
+    counts, _ = np.histogram(a, bins=bins, range=(lo, hi if hi > lo else lo + 1e-9))
+    return {"min": lo, "max": hi, "counts": counts.tolist()}
+
+
 @app.get("/jobs/{job_id}/mesh")
 async def get_mesh_data(
     job_id: str, quality: int = 0, internal: int = 0
@@ -935,6 +991,32 @@ async def get_mesh_data(
         if face_quality is not None:
             resp["face_non_ortho"] = bf_non_ortho
             resp["face_skewness"] = bf_skew
+
+        if quality:
+            # KPI readout stats: counts, shape breakdowns, metric histograms.
+            owner_l = (
+                parse_foam_labels(poly_dir / "owner")
+                if (poly_dir / "owner").exists() else []
+            )
+            neigh_l = (
+                parse_foam_labels(poly_dir / "neighbour")
+                if (poly_dir / "neighbour").exists() else []
+            )
+            face_shapes = {"tri": 0, "quad": 0, "poly": 0}
+            for f in faces:
+                k = len(f)
+                face_shapes["tri" if k == 3 else "quad" if k == 4 else "poly"] += 1
+            resp["stats"] = {
+                "n_points": len(points),
+                "n_faces": len(faces),
+                "n_cells": num_cells,
+                "cell_shapes": _cell_shape_counts(faces, owner_l, neigh_l, num_cells),
+                "face_shapes": face_shapes,
+                "non_ortho": _metric_hist(face_quality["non_ortho"])
+                if face_quality else None,
+                "skewness": _metric_hist(face_quality["skewness"])
+                if face_quality else None,
+            }
 
         if internal:
             # OpenFOAM orders faces as [interior 0..nInternalFaces) then boundary].
