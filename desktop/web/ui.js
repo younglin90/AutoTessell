@@ -252,12 +252,61 @@
   }
 
   // =====================================================================
+  // ⓘ tooltips — native title only shows after a long hover and never on
+  // click/touch; replace with a click-or-hover popover (fixed-position so
+  // the sidebar's overflow can't clip it).
+  // =====================================================================
+  function bindTooltips() {
+    let pop = null;
+    let owner = null;
+    const hide = () => {
+      if (pop) pop.remove();
+      pop = null; owner = null;
+    };
+    const show = (el) => {
+      hide();
+      const text = el.dataset.tip;
+      if (!text) return;
+      pop = document.createElement("div");
+      pop.className = "tip-pop";
+      pop.setAttribute("role", "tooltip");
+      pop.textContent = text;
+      document.body.appendChild(pop);
+      const r = el.getBoundingClientRect();
+      pop.style.maxWidth = Math.min(280, window.innerWidth - 24) + "px";
+      const pw = pop.offsetWidth, ph = pop.offsetHeight;
+      const x = Math.min(Math.max(8, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 8);
+      let y = r.bottom + 8;
+      if (y + ph > window.innerHeight - 8) y = r.top - ph - 8; // flip above
+      pop.style.left = x + "px";
+      pop.style.top = y + "px";
+      owner = el;
+    };
+    document.querySelectorAll(".ttip[title]").forEach((el) => {
+      el.dataset.tip = el.getAttribute("title") || "";
+      el.removeAttribute("title"); // suppress the flaky native tooltip
+      el.setAttribute("tabindex", "0");
+      el.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (owner === el) hide(); else show(el);
+      });
+      el.addEventListener("mouseenter", () => { if (!owner) show(el); });
+      el.addEventListener("mouseleave", () => { if (owner === el) hide(); });
+    });
+    document.addEventListener("click", (e) => {
+      if (pop && !(e.target.closest && e.target.closest(".ttip"))) hide();
+    });
+    window.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  }
+
+  // =====================================================================
   // init
   // =====================================================================
   function init() {
     bindWindowControls();
     bindPanels();
     bindShortcuts();
+    bindTooltips();
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

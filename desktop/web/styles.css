@@ -339,7 +339,17 @@ select:focus, input:focus { outline: none; border-color: var(--cyan); box-shadow
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 7px 0; }
 .row > span { flex: 0 0 52%; color: var(--ink); font-size: var(--fs-1); }
 .row input, .row select { flex: 1 1 auto; }
-.ttip { color: var(--cyan); cursor: help; font-style: normal; font-size: var(--fs-0); }
+.ttip { color: var(--cyan); cursor: pointer; font-style: normal; font-size: var(--fs-0); }
+.ttip:hover, .ttip:focus-visible { color: var(--orange); outline: none; }
+/* click/hover popover rendered by ui.js (fixed → never clipped by overflow) */
+.tip-pop {
+  position: fixed; z-index: 40; padding: 9px 11px;
+  background: rgba(255,255,255,.98); color: var(--ink);
+  border: 1px solid var(--line); border-left: 3px solid var(--cyan);
+  border-radius: var(--r-1); box-shadow: var(--e-2);
+  font: 400 var(--fs-1)/1.55 var(--mono);
+  word-break: keep-all;
+}
 .hint { font-size: var(--fs-0); color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
 .check { display: flex; align-items: center; gap: 7px; margin: 7px 0; cursor: pointer; font-size: var(--fs-1); }
 .check.inline { margin: 0; font-size: var(--fs-0); color: var(--muted); }
@@ -389,19 +399,22 @@ details.adv[open] summary::before { content: "▾ "; }
    ========================================================================== */
 .viewport { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 .vp-toolbar {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 12px 14px;
+  flex-wrap: wrap;                     /* never crush/clip items — wrap lines */
   padding: 7px 14px; border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.72);
   font-size: var(--fs-0);
 }
-.vp-select { display: flex; align-items: center; gap: 6px; font-size: var(--fs-0); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.vp-toolbar .check.inline { white-space: nowrap; }
+.vp-select { display: flex; align-items: center; gap: 6px; font-size: var(--fs-0); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .vp-select select { width: auto; }
 
-/* slice / cutaway controls */
+/* slice / cutaway controls — axis row on top, position slider below */
 .slice-group { display: flex; align-items: center; gap: 10px; }
-.slice-ctl { display: flex; align-items: center; gap: 8px; }
+.slice-ctl { display: flex; flex-direction: column; gap: 5px; min-width: 130px; }
+.slice-ctl-row { display: flex; align-items: center; gap: 6px; }
 .slice-ctl input[type="range"] {
-  -webkit-appearance: none; appearance: none; width: 120px; height: 3px;
+  -webkit-appearance: none; appearance: none; width: 100%; height: 3px;
   background: var(--line); border-radius: 2px; cursor: pointer; outline: none;
 }
 .slice-ctl input[type="range"]::-webkit-slider-thumb {

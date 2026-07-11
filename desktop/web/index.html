@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=16" />
+    <link rel="stylesheet" href="styles.css?v=17" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -113,11 +113,11 @@
           <h3>주요 파라미터</h3>
           <label class="row">
             <span>목표 셀 수 N <i class="ttip" title="최종 격자 갯수 목표. 엔진이 이 값에 맞춰 셀 크기를 자동 결정 (상한으로도 적용). 0 = 자동.">ⓘ</i></span>
-            <input id="max_cells" type="number" min="0" step="1000" value="15000" />
+            <input id="max_cells" type="number" min="0" step="100" value="100" />
           </label>
           <label class="row">
             <span>BL 레이어 수 <i class="ttip" title="벽면 프리즘 레이어 수. 0 = 비활성(draft).">ⓘ</i></span>
-            <input id="bl_layers" type="number" min="0" max="20" step="1" value="0" />
+            <input id="bl_layers" type="number" min="0" max="20" step="1" value="3" />
           </label>
           <label class="row">
             <span>표면 셀 크기 [m] <i class="ttip" title="0 = 자동 (characteristic_length 기반).">ⓘ</i></span>
@@ -181,13 +181,15 @@
           <div class="slice-group" id="slice-group" hidden>
             <label class="check inline"><input id="slice-on" type="checkbox" /> 단면</label>
             <div class="slice-ctl" id="slice-ctl" hidden>
-              <div class="seg seg-sm" id="slice-axis" data-value="0">
-                <button data-v="0" class="active">X</button>
-                <button data-v="1">Y</button>
-                <button data-v="2">Z</button>
+              <div class="slice-ctl-row">
+                <div class="seg seg-sm" id="slice-axis" data-value="0">
+                  <button data-v="0" class="active">X</button>
+                  <button data-v="1">Y</button>
+                  <button data-v="2">Z</button>
+                </div>
+                <button id="slice-flip" class="btn btn-mini" title="자르는 방향 반전">⇄</button>
               </div>
               <input id="slice-pos" type="range" min="0" max="1" step="0.01" value="0.5" title="단면 위치" />
-              <button id="slice-flip" class="btn btn-mini" title="자르는 방향 반전">⇄</button>
             </div>
           </div>
           <button id="reset-view" class="btn btn-mini">뷰 리셋</button>
@@ -293,8 +295,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=16"></script>
-    <script src="ui.js?v=16"></script>
-    <script src="app.js?v=16"></script>
+    <script src="viewer.js?v=17"></script>
+    <script src="ui.js?v=17"></script>
+    <script src="app.js?v=17"></script>
   </body>
 </html>
