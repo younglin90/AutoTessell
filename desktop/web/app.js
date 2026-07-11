@@ -462,8 +462,9 @@
   async function loadResultMesh() {
     if (!state.jobId || !viewer) return false;
     try {
-      // quality=1 → server returns per-boundary-face non-ortho/skewness arrays.
-      const r = await fetch(`${API}/jobs/${state.jobId}/mesh?quality=1`, { cache: "no-store" });
+      // quality=1 → per-boundary-face non-ortho/skewness; internal=1 → interior
+      // faces so the slice/cutaway can reveal the volume cells.
+      const r = await fetch(`${API}/jobs/${state.jobId}/mesh?quality=1&internal=1`, { cache: "no-store" });
       const j = await r.json();
       if (j.error || !j.points || !j.points.length) {
         if (j.error) log("warn", "결과 메쉬 없음: " + j.error);
@@ -474,8 +475,9 @@
         ? { non_ortho: j.face_non_ortho, skewness: j.face_skewness }
         : null;
       state.faceMetrics = fm;
-      viewer.setPolyMesh(j.points, j.boundary_faces, j.patches, fm);
+      viewer.setPolyMesh(j.points, j.boundary_faces, j.patches, fm, j.internal_faces || []);
       setNonOrthoAvailable(viewer.hasFaceMetrics());
+      setSliceAvailable(true, j.internal_available !== false && !!(j.internal_faces && j.internal_faces.length));
       applyColormap();
       $("vp-empty").classList.add("hidden");
       $("dl-export").disabled = false;
@@ -493,6 +495,37 @@
   $("colormap").addEventListener("change", applyColormap);
   $("wireframe").addEventListener("change", (e) => viewer && viewer.setWireframe(e.target.checked));
   $("reset-view").addEventListener("click", () => viewer && viewer.resetView());
+
+  // ---- slice / cutaway controls ----
+  $("slice-on").addEventListener("change", (e) => {
+    if (!viewer) return;
+    const on = e.target.checked;
+    viewer.setSlice(on);
+    $("slice-ctl").hidden = !on;
+    if (on && !(viewer.hasInternalFaces && viewer.hasInternalFaces())) {
+      log("info", "단면: 내부 면이 없어 경계면 컷어웨이로 표시합니다 (메쉬가 크거나 표면 뷰).");
+    }
+  });
+  bindSeg($("slice-axis"), (v) => viewer && viewer.setSliceAxis(parseInt(v, 10)));
+  $("slice-pos").addEventListener("input", (e) => viewer && viewer.setSlicePos(parseFloat(e.target.value)));
+  $("slice-flip").addEventListener("click", () => {
+    if (!viewer) return;
+    viewer.setSliceFlip(!viewer.slice.flip);
+  });
+
+  // Slice only makes sense on a loaded volume result. Show/reset accordingly.
+  function setSliceAvailable(show, hasInternal) {
+    const grp = $("slice-group");
+    if (!grp) return;
+    grp.hidden = !show;
+    if (!show) {
+      // leaving result view → force slice off
+      $("slice-on").checked = false;
+      $("slice-ctl").hidden = true;
+      if (viewer) viewer.setSlice(false);
+    }
+    grp.classList.toggle("slice-boundary-only", show && !hasInternal);
+  }
   $("dl-zip").addEventListener("click", () => {
     if (!state.jobId) return;
     download(`${API}/jobs/${state.jobId}/download/polyMesh.zip`, `polyMesh_${state.jobId}.zip`);
@@ -559,14 +592,15 @@
     if (v === "surface" && state.surfaceBuf) {
       viewer.setSTL(state.surfaceBuf);
       setNonOrthoAvailable(false);
+      setSliceAvailable(false);          // slice is a volume-result feature
     } else if (v === "result" && state.resultMesh) {
+      const rm = state.resultMesh;
       viewer.setPolyMesh(
-        state.resultMesh.points,
-        state.resultMesh.boundary_faces,
-        state.resultMesh.patches,
-        state.faceMetrics || null
+        rm.points, rm.boundary_faces, rm.patches,
+        state.faceMetrics || null, rm.internal_faces || []
       );
       setNonOrthoAvailable(viewer.hasFaceMetrics());
+      setSliceAvailable(true, rm.internal_available !== false && !!(rm.internal_faces && rm.internal_faces.length));
     }
     applyColormap();
   }

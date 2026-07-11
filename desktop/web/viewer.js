@@ -81,18 +81,25 @@
     uniform mat4 uView;
     varying vec3 vNormal;
     varying vec3 vColor;
+    varying vec3 vPos;
     void main() {
       vNormal = aNormal;
       vColor = aColor;
+      vPos = aPos;                 // object == world (no model matrix)
       gl_Position = uProj * uView * vec4(aPos, 1.0);
     }`;
   const FRAG_SRC = `
     precision mediump float;
     varying vec3 vNormal;
     varying vec3 vColor;
+    varying vec3 vPos;
     uniform vec3 uLightDir;    // key light = camera direction (headlamp)
     uniform float uFlatLine;   // 0 = shaded faces, 1 = solid wire color
+    uniform float uClipOn;     // 1 = slice/cutaway active
+    uniform vec3 uClipNormal;  // half-space to KEEP: keep where dot(pos,n) <= dist
+    uniform float uClipDist;
     void main() {
+      if (uClipOn > 0.5 && dot(vPos, uClipNormal) > uClipDist) discard;  // cutaway
       if (uFlatLine > 0.5) { gl_FragColor = vec4(0.05, 0.06, 0.09, 1.0); return; }
       vec3 n = normalize(vNormal);
       if (!(dot(n, n) > 0.0)) n = vec3(0.0, 0.0, 1.0);   // guard NaN/zero normals
@@ -141,6 +148,9 @@
         uView: gl.getUniformLocation(this.prog, "uView"),
         uLightDir: gl.getUniformLocation(this.prog, "uLightDir"),
         uFlatLine: gl.getUniformLocation(this.prog, "uFlatLine"),
+        uClipOn: gl.getUniformLocation(this.prog, "uClipOn"),
+        uClipNormal: gl.getUniformLocation(this.prog, "uClipNormal"),
+        uClipDist: gl.getUniformLocation(this.prog, "uClipDist"),
       };
       this.posBuf = gl.createBuffer();
       this.normBuf = gl.createBuffer();
@@ -164,7 +174,10 @@
       this.dist = 3;
       this.target = [0, 0, 0];
       this.radius = 1;
-      this.wireframe = false;
+      this.wireframe = true;
+      // slice / cutaway clip plane. axis 0/1/2 = x/y/z, t in [0,1] across bbox.
+      this.slice = { on: false, axis: 0, t: 0.5, flip: false };
+      this._internalFaces = [];
       this.colormap = "solid";
 
       this._mesh = null; // {points, faces}
@@ -184,14 +197,34 @@
     /**
      * points: [[x,y,z],...], faces: [[i,j,k,...polygon],...]
      * faceMetrics (optional): { non_ortho:[...], skewness:[...] } aligned to faces.
+     * internalFaces (optional): interior polyMesh faces, drawn ONLY in slice mode
+     *   so the cutaway reveals the volume cells behind the boundary.
      */
-    setPolyMesh(points, faces, patches, faceMetrics) {
-      this._mesh = { points, faces, patches: patches || [] };
+    setPolyMesh(points, faces, patches, faceMetrics, internalFaces) {
+      this._points = points;
+      this._patches = patches || [];
+      this._boundaryFaces = faces;
+      this._internalFaces = internalFaces || [];
       this._faceMetrics = faceMetrics || null;
-      this._buildPatchMap();
-      this._buildGeometryCache(); // upload positions/normals/lines ONCE
+      this._rebuildMesh();
       this._frameCamera();
-      this.applyColormap(this.colormap); // only (re)builds the colour buffer
+    }
+
+    /** (Re)assemble the active face set (boundary + internal when slicing),
+     *  then rebuild GPU buffers and the colour buffer. */
+    _rebuildMesh() {
+      const faces = this.slice.on && this._internalFaces.length
+        ? this._boundaryFaces.concat(this._internalFaces)
+        : this._boundaryFaces;
+      this._nBoundary = this._boundaryFaces.length; // faces >= this index are internal
+      this._mesh = { points: this._points, faces, patches: this._patches };
+      this._buildPatchMap();
+      this._buildGeometryCache();
+      this.applyColormap(this.colormap);
+    }
+
+    hasInternalFaces() {
+      return !!(this._internalFaces && this._internalFaces.length);
     }
 
     /** Replace mesh with a triangle soup parsed from an STL ArrayBuffer. */
@@ -216,6 +249,30 @@
     setWireframe(on) {
       this.wireframe = !!on;
       this.render();
+    }
+
+    // ---- slice / cutaway -------------------------------------------------
+    /** Toggle the cutaway. Rebuilds geometry so internal faces join (on) or
+     *  leave (off) the draw set, then re-renders. */
+    setSlice(on) {
+      this.slice.on = !!on;
+      if (this._boundaryFaces) this._rebuildMesh();
+      this.render();
+    }
+    setSliceAxis(a) { this.slice.axis = a | 0; this.render(); }
+    setSlicePos(t) { this.slice.t = Math.max(0, Math.min(1, t)); this.render(); }
+    setSliceFlip(f) { this.slice.flip = !!f; this.render(); }
+
+    /** Clip plane in world space from the current slice state + mesh bbox. */
+    _clipPlane() {
+      const a = this.slice.axis;
+      const lo = this._lo || [-1, -1, -1];
+      const hi = this._hi || [1, 1, 1];
+      const planePos = lo[a] + this.slice.t * (hi[a] - lo[a]);
+      const s = this.slice.flip ? -1 : 1;
+      const n = [0, 0, 0];
+      n[a] = s;
+      return { normal: n, dist: s * planePos };
     }
 
     setColormap(name) {
@@ -273,6 +330,8 @@
           if (p[k] > hi[k]) hi[k] = p[k];
         }
       }
+      this._lo = lo;
+      this._hi = hi;
       this.target = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
       this.radius = Math.max(1e-6, len(sub(hi, lo)) / 2);
       this.dist = this.radius * 3.0;
@@ -425,6 +484,16 @@
       gl.uniformMatrix4fv(this.loc.uView, false, new Float32Array(view));
       const ld = norm(sub(eye, this.target));
       gl.uniform3f(this.loc.uLightDir, ld[0], ld[1], ld[2]);
+
+      // slice / cutaway clip plane
+      if (this.slice.on) {
+        const cp = this._clipPlane();
+        gl.uniform1f(this.loc.uClipOn, 1.0);
+        gl.uniform3f(this.loc.uClipNormal, cp.normal[0], cp.normal[1], cp.normal[2]);
+        gl.uniform1f(this.loc.uClipDist, cp.dist);
+      } else {
+        gl.uniform1f(this.loc.uClipOn, 0.0);
+      }
 
       // faces — drawArrays count is in VERTICES (3 per triangle), not triangles;
       // passing _triCount silently dropped 2/3 of every mesh's faces.

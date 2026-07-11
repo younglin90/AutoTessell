@@ -212,6 +212,49 @@ class TestCancelEndpoint:
 # ---------------------------------------------------------------------------
 
 
+class TestMeshInternalFaces:
+    """GET /jobs/{id}/mesh?internal=1 must return interior faces for the slice
+    viewer.  OpenFOAM orders faces [interior .. boundary]; nInternalFaces equals
+    the neighbour-list length."""
+
+    def _write_polymesh(self, job):
+        from pathlib import Path
+
+        poly = Path(job["work_dir"]) / "case" / "constant" / "polyMesh"
+        poly.mkdir(parents=True, exist_ok=True)
+        # 5 points, 3 faces: face0 interior, faces 1-2 boundary (one patch).
+        (poly / "points").write_text(
+            "5\n(\n(0 0 0)\n(1 0 0)\n(1 1 0)\n(0 1 0)\n(1 1 1)\n)\n"
+        )
+        (poly / "faces").write_text(
+            "3\n(\n3(0 1 2)\n3(0 1 3)\n3(1 2 4)\n)\n"
+        )
+        (poly / "owner").write_text("3\n(\n0\n0\n1\n)\n")
+        (poly / "neighbour").write_text("1\n(\n1\n)\n")  # 1 interior face
+        (poly / "boundary").write_text(
+            "1\n(\n    walls { type wall; nFaces 2; startFace 1; }\n)\n"
+        )
+
+    def test_internal_faces_returned_when_requested(self, client):
+        job = _create_job("x.stl")
+        self._write_polymesh(job)
+        r = client.get(f"/jobs/{job['id']}/mesh?internal=1")
+        assert r.status_code == 200, r.text
+        j = r.json()
+        # interior face count == neighbour length (1); boundary faces == 2
+        assert j.get("internal_available") is True
+        assert len(j["internal_faces"]) == 1
+        assert j["internal_faces"][0] == [0, 1, 2]
+        assert len(j["boundary_faces"]) == 2
+
+    def test_internal_faces_omitted_by_default(self, client):
+        job = _create_job("x.stl")
+        self._write_polymesh(job)
+        j = client.get(f"/jobs/{job['id']}/mesh").json()
+        assert "internal_faces" not in j
+        assert len(j["boundary_faces"]) == 2
+
+
 class TestExportEndpoint:
     def test_unknown_job_returns_404(self, client):
         assert client.get("/jobs/nonexistent/export?format=vtu").status_code == 404

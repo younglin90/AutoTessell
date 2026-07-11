@@ -396,6 +396,24 @@ details.adv[open] summary::before { content: "▾ "; }
 }
 .vp-select { display: flex; align-items: center; gap: 6px; font-size: var(--fs-0); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .vp-select select { width: auto; }
+
+/* slice / cutaway controls */
+.slice-group { display: flex; align-items: center; gap: 10px; }
+.slice-ctl { display: flex; align-items: center; gap: 8px; }
+.slice-ctl input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 120px; height: 3px;
+  background: var(--line); border-radius: 2px; cursor: pointer; outline: none;
+}
+.slice-ctl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 13px;
+  border-radius: 50%; background: var(--orange); cursor: pointer;
+  border: 2px solid var(--bg-2); box-shadow: 0 0 0 1px var(--orange);
+}
+.slice-ctl input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: var(--orange);
+  cursor: pointer; border: 2px solid var(--bg-2);
+}
+.slice-group.slice-boundary-only .slice-ctl { opacity: .85; }
 .canvas-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
 #gl { width: 100%; height: 100%; display: block; }
 #gl.loaded { animation: sheet-in var(--dur-3) var(--ease-draft); }

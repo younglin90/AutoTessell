@@ -871,12 +871,21 @@ def _per_face_quality(poly_dir: Path, raw_points: Any, raw_faces: Any) -> dict[s
         return None
 
 
+# Above this cell count we do not ship interior faces (payload would balloon);
+# the slice UI then falls back to a boundary-only cutaway.
+_SLICE_INTERNAL_CELL_CAP = 250_000
+
+
 @app.get("/jobs/{job_id}/mesh")
-async def get_mesh_data(job_id: str, quality: int = 0) -> JSONResponse:
+async def get_mesh_data(
+    job_id: str, quality: int = 0, internal: int = 0
+) -> JSONResponse:
     """생성된 메쉬의 vertex/face 데이터를 JSON으로 반환 (3D 뷰어용).
 
     quality=1 이면 boundary face 별 non-ortho/skewness 배열을 함께 반환한다
     (서버-side 실제 품질 컬러맵용 — boundary_faces 와 동일 순서).
+    internal=1 이면 내부 면(interior faces)도 함께 반환한다 (뷰어 slice/cutaway
+    가 내부 셀 구조를 드러내도록) — 단 셀 수가 상한을 넘으면 생략한다.
     """
     job = _jobs.get(job_id)
     if not job:
@@ -913,17 +922,33 @@ async def get_mesh_data(job_id: str, quality: int = 0) -> JSONResponse:
                         bf_non_ortho.append(face_quality["non_ortho"][i])
                         bf_skew.append(face_quality["skewness"][i])
 
+        num_cells = int(max(
+            parse_foam_labels(poly_dir / "owner") if (poly_dir / "owner").exists() else [0]
+        )) + 1 if (poly_dir / "owner").exists() else 0
+
         resp: dict[str, Any] = {
             "points": points,
             "boundary_faces": boundary_faces,
             "patches": boundary,
-            "num_cells": int(max(
-                parse_foam_labels(poly_dir / "owner") if (poly_dir / "owner").exists() else [0]
-            )) + 1 if (poly_dir / "owner").exists() else 0,
+            "num_cells": num_cells,
         }
         if face_quality is not None:
             resp["face_non_ortho"] = bf_non_ortho
             resp["face_skewness"] = bf_skew
+
+        if internal:
+            # OpenFOAM orders faces as [interior 0..nInternalFaces) then boundary].
+            # nInternalFaces == number of entries in the neighbour file.
+            nb_file = poly_dir / "neighbour"
+            n_internal = 0
+            if nb_file.exists():
+                n_internal = len(parse_foam_labels(nb_file))
+            if 0 < num_cells <= _SLICE_INTERNAL_CELL_CAP:
+                resp["internal_faces"] = faces[:n_internal]
+                resp["internal_available"] = True
+            else:
+                resp["internal_faces"] = []
+                resp["internal_available"] = num_cells == 0  # unknown → let client try
         return JSONResponse(resp)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)

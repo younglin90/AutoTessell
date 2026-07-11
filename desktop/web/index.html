@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -177,7 +177,19 @@
               <option value="non-ortho">Non-ortho (서버)</option>
             </select>
           </label>
-          <label class="check inline"><input id="wireframe" type="checkbox" /> 와이어프레임</label>
+          <label class="check inline"><input id="wireframe" type="checkbox" checked /> 와이어프레임</label>
+          <div class="slice-group" id="slice-group" hidden>
+            <label class="check inline"><input id="slice-on" type="checkbox" /> 단면</label>
+            <div class="slice-ctl" id="slice-ctl" hidden>
+              <div class="seg seg-sm" id="slice-axis" data-value="0">
+                <button data-v="0" class="active">X</button>
+                <button data-v="1">Y</button>
+                <button data-v="2">Z</button>
+              </div>
+              <input id="slice-pos" type="range" min="0" max="1" step="0.01" value="0.5" title="단면 위치" />
+              <button id="slice-flip" class="btn btn-mini" title="자르는 방향 반전">⇄</button>
+            </div>
+          </div>
           <button id="reset-view" class="btn btn-mini">뷰 리셋</button>
         </div>
 
@@ -275,8 +287,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=14"></script>
-    <script src="ui.js?v=14"></script>
-    <script src="app.js?v=14"></script>
+    <script src="viewer.js?v=15"></script>
+    <script src="ui.js?v=15"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>
