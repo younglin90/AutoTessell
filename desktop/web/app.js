@@ -512,6 +512,16 @@
     }
   }
 
+  // Pack the server's crinkle-slice data (cell centroids + per-face cell ids).
+  function cellDataOf(j) {
+    return j.cell_centroids ? {
+      centroids: j.cell_centroids,
+      boundaryCells: j.boundary_cells,
+      internalOwner: j.internal_owner,
+      internalNeighbour: j.internal_neighbour,
+    } : null;
+  }
+
   async function loadResultMesh() {
     if (!state.jobId || !viewer) return false;
     try {
@@ -528,7 +538,7 @@
         ? { non_ortho: j.face_non_ortho, skewness: j.face_skewness }
         : null;
       state.faceMetrics = fm;
-      viewer.setPolyMesh(j.points, j.boundary_faces, j.patches, fm, j.internal_faces || []);
+      viewer.setPolyMesh(j.points, j.boundary_faces, j.patches, fm, j.internal_faces || [], cellDataOf(j));
       setNonOrthoAvailable(viewer.hasFaceMetrics());
       setSliceAvailable(true, j.internal_available !== false && !!(j.internal_faces && j.internal_faces.length));
       renderKpiStats(j.stats);
@@ -562,6 +572,7 @@
   });
   bindSeg($("slice-axis"), (v) => viewer && viewer.setSliceAxis(parseInt(v, 10)));
   $("slice-pos").addEventListener("input", (e) => viewer && viewer.setSlicePos(parseFloat(e.target.value)));
+  $("slice-crinkle").addEventListener("change", (e) => viewer && viewer.setCrinkle(e.target.checked));
   $("slice-flip").addEventListener("click", () => {
     if (!viewer) return;
     viewer.setSliceFlip(!viewer.slice.flip);
@@ -651,7 +662,7 @@
       const rm = state.resultMesh;
       viewer.setPolyMesh(
         rm.points, rm.boundary_faces, rm.patches,
-        state.faceMetrics || null, rm.internal_faces || []
+        state.faceMetrics || null, rm.internal_faces || [], cellDataOf(rm)
       );
       setNonOrthoAvailable(viewer.hasFaceMetrics());
       setSliceAvailable(true, rm.internal_available !== false && !!(rm.internal_faces && rm.internal_faces.length));

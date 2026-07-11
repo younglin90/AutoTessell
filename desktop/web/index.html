@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=19" />
+    <link rel="stylesheet" href="styles.css?v=20" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -188,6 +188,7 @@
                   <button data-v="2">Z</button>
                 </div>
                 <button id="slice-flip" class="btn btn-mini" title="자르는 방향 반전">⇄</button>
+                <label class="check inline" title="ParaView Crinkle Clip — 셀을 자르지 않고 통째로 남겨 계단형 단면"><input id="slice-crinkle" type="checkbox" checked /> 크링클</label>
               </div>
               <input id="slice-pos" type="range" min="0" max="1" step="0.01" value="0.5" title="단면 위치" />
             </div>
@@ -295,8 +296,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=19"></script>
-    <script src="ui.js?v=19"></script>
-    <script src="app.js?v=19"></script>
+    <script src="viewer.js?v=20"></script>
+    <script src="ui.js?v=20"></script>
+    <script src="app.js?v=20"></script>
   </body>
 </html>

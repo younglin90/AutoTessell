@@ -280,6 +280,18 @@ class TestMeshInternalFaces:
         j = client.get(f"/jobs/{job['id']}/mesh").json()
         assert "stats" not in j
 
+    def test_crinkle_data_present_with_internal(self, client):
+        # cell centroids + per-face cell ids for the crinkle slice
+        job = _create_job("x.stl")
+        self._write_polymesh(job)
+        j = client.get(f"/jobs/{job['id']}/mesh?internal=1").json()
+        assert len(j["cell_centroids"]) == j["num_cells"] == 2
+        # boundary faces: 2, each owned by a cell (0 or 1)
+        assert len(j["boundary_cells"]) == len(j["boundary_faces"]) == 2
+        # 1 interior face straddling cells 0 and 1
+        assert j["internal_owner"] == [0]
+        assert j["internal_neighbour"] == [1]
+
 
 class TestExportEndpoint:
     def test_unknown_job_returns_404(self, client):

@@ -176,7 +176,8 @@
       this.radius = 1;
       this.wireframe = true;
       // slice / cutaway clip plane. axis 0/1/2 = x/y/z, t in [0,1] across bbox.
-      this.slice = { on: false, axis: 0, t: 0.5, flip: false };
+      // crinkle=true → ParaView Crinkle Clip (keep whole cells, jagged cut).
+      this.slice = { on: false, axis: 0, t: 0.5, flip: false, crinkle: true };
       this._internalFaces = [];
       this.colormap = "solid";
 
@@ -200,27 +201,69 @@
      * internalFaces (optional): interior polyMesh faces, drawn ONLY in slice mode
      *   so the cutaway reveals the volume cells behind the boundary.
      */
-    setPolyMesh(points, faces, patches, faceMetrics, internalFaces) {
+    setPolyMesh(points, faces, patches, faceMetrics, internalFaces, cellData) {
       this._points = points;
       this._patches = patches || [];
       this._boundaryFaces = faces;
       this._internalFaces = internalFaces || [];
       this._faceMetrics = faceMetrics || null;
+      // crinkle-slice data (optional): keep/drop WHOLE cells by their centroid.
+      this._cellData = cellData && cellData.centroids ? cellData : null;
       this._rebuildMesh();
       this._frameCamera();
     }
 
-    /** (Re)assemble the active face set (boundary + internal when slicing),
-     *  then rebuild GPU buffers and the colour buffer. */
+    hasCellData() { return !!this._cellData; }
+
+    /** (Re)assemble the active face set, then rebuild GPU buffers + colours.
+     *  - slice off               → boundary only
+     *  - slice + smooth (plane)   → boundary + internal, shader clips fragments
+     *  - slice + crinkle          → only faces on the kept-cell region's surface
+     *                               (whole cells; no fragment clip) */
     _rebuildMesh() {
-      const faces = this.slice.on && this._internalFaces.length
-        ? this._boundaryFaces.concat(this._internalFaces)
-        : this._boundaryFaces;
+      let faces;
+      this._crinkleActive = false;
+      if (this.slice.on && this.slice.crinkle && this._cellData) {
+        faces = this._crinkleFaces();
+        this._crinkleActive = true;
+      } else if (this.slice.on && this._internalFaces.length) {
+        faces = this._boundaryFaces.concat(this._internalFaces);
+      } else {
+        faces = this._boundaryFaces;
+      }
       this._nBoundary = this._boundaryFaces.length; // faces >= this index are internal
       this._mesh = { points: this._points, faces, patches: this._patches };
       this._buildPatchMap();
       this._buildGeometryCache();
       this.applyColormap(this.colormap);
+    }
+
+    /** Faces on the surface of the kept-cell set (ParaView Crinkle Clip):
+     *  boundary faces of kept cells + internal faces straddling the cut. */
+    _crinkleFaces() {
+      const cd = this._cellData;
+      const cp = this._clipPlane();
+      const cen = cd.centroids;
+      const n = cp.normal, d = cp.dist;
+      const nCells = cen.length;
+      const kept = new Uint8Array(nCells);
+      for (let c = 0; c < nCells; c++) {
+        const p = cen[c];
+        kept[c] = (p[0] * n[0] + p[1] * n[1] + p[2] * n[2]) <= d ? 1 : 0;
+      }
+      const out = [];
+      const bc = cd.boundaryCells || [];
+      for (let i = 0; i < this._boundaryFaces.length; i++) {
+        const c = bc[i];
+        if (c == null || c < 0 || kept[c]) out.push(this._boundaryFaces[i]); // wall of kept cells
+      }
+      const io = cd.internalOwner || [], inb = cd.internalNeighbour || [];
+      for (let i = 0; i < this._internalFaces.length; i++) {
+        const o = io[i], nb = inb[i];
+        // straddling face → exposed cut surface
+        if ((kept[o] ? 1 : 0) !== (kept[nb] ? 1 : 0)) out.push(this._internalFaces[i]);
+      }
+      return out;
     }
 
     hasInternalFaces() {
@@ -259,9 +302,22 @@
       if (this._boundaryFaces) this._rebuildMesh();
       this.render();
     }
-    setSliceAxis(a) { this.slice.axis = a | 0; this.render(); }
-    setSlicePos(t) { this.slice.t = Math.max(0, Math.min(1, t)); this.render(); }
-    setSliceFlip(f) { this.slice.flip = !!f; this.render(); }
+    setCrinkle(on) {
+      this.slice.crinkle = !!on;
+      if (this._boundaryFaces) this._rebuildMesh();
+      this.render();
+    }
+    // In crinkle mode the geometry itself depends on the plane, so moving it
+    // rebuilds the kept-cell surface; smooth mode just re-clips in the shader.
+    _sliceChanged() {
+      if (this._crinkleActive || (this.slice.on && this.slice.crinkle && this._cellData)) {
+        this._rebuildMesh();
+      }
+      this.render();
+    }
+    setSliceAxis(a) { this.slice.axis = a | 0; this._sliceChanged(); }
+    setSlicePos(t) { this.slice.t = Math.max(0, Math.min(1, t)); this._sliceChanged(); }
+    setSliceFlip(f) { this.slice.flip = !!f; this._sliceChanged(); }
 
     /** Clip plane in world space from the current slice state + mesh bbox. */
     _clipPlane() {
@@ -485,8 +541,9 @@
       const ld = norm(sub(eye, this.target));
       gl.uniform3f(this.loc.uLightDir, ld[0], ld[1], ld[2]);
 
-      // slice / cutaway clip plane
-      if (this.slice.on) {
+      // slice / cutaway. Smooth mode clips fragments at the plane; crinkle mode
+      // already trimmed to whole kept cells, so no fragment clip is needed.
+      if (this.slice.on && !this._crinkleActive) {
         const cp = this._clipPlane();
         gl.uniform1f(this.loc.uClipOn, 1.0);
         gl.uniform3f(this.loc.uClipNormal, cp.normal[0], cp.normal[1], cp.normal[2]);

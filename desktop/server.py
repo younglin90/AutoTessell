@@ -919,6 +919,38 @@ def _cell_shape_counts(
     return shapes
 
 
+def _cell_centroids(
+    points: Any, faces: list[list[int]], owner: list[int],
+    neighbour: list[int], n_cells: int,
+) -> list[list[float]]:
+    """Approx cell centers = mean of each cell's face centroids.
+
+    Used by the viewer's crinkle-slice, which keeps/drops WHOLE cells by the
+    side of the plane their centroid falls on (ParaView "Crinkle Clip").
+    """
+    import numpy as np
+
+    pts = np.asarray(points, dtype=float)
+    acc = np.zeros((n_cells, 3), dtype=float)
+    cnt = np.zeros(n_cells, dtype=np.int64)
+    n_int = len(neighbour)
+    for fi, f in enumerate(faces):
+        if not f:
+            continue
+        fc = pts[np.asarray(f, dtype=np.int64)].mean(axis=0)
+        o = owner[fi] if fi < len(owner) else -1
+        if 0 <= o < n_cells:
+            acc[o] += fc
+            cnt[o] += 1
+        if fi < n_int:
+            nb = neighbour[fi]
+            if 0 <= nb < n_cells:
+                acc[nb] += fc
+                cnt[nb] += 1
+    cnt = np.maximum(cnt, 1)
+    return (acc / cnt[:, None]).tolist()
+
+
 def _metric_hist(vals: Any, bins: int = 14) -> dict[str, Any] | None:
     """min/max + fixed-bin histogram for the KPI hover charts."""
     import numpy as np
@@ -966,6 +998,7 @@ async def get_mesh_data(
 
         # Boundary faces만 추출 (3D 뷰어용 — 내부 면은 불필요)
         boundary_faces = []
+        boundary_face_ids: list[int] = []  # global face id, aligned to boundary_faces
         bf_non_ortho: list[float] = []
         bf_skew: list[float] = []
         for patch in boundary:
@@ -974,6 +1007,7 @@ async def get_mesh_data(
             for i in range(start, start + n):
                 if i < len(faces):
                     boundary_faces.append(faces[i])
+                    boundary_face_ids.append(i)
                     if face_quality is not None and i < len(face_quality["non_ortho"]):
                         bf_non_ortho.append(face_quality["non_ortho"][i])
                         bf_skew.append(face_quality["skewness"][i])
@@ -1028,6 +1062,18 @@ async def get_mesh_data(
             if 0 < num_cells <= _SLICE_INTERNAL_CELL_CAP:
                 resp["internal_faces"] = faces[:n_internal]
                 resp["internal_available"] = True
+                # crinkle-slice data: whole-cell classification needs cell
+                # centroids + which cell each face belongs to.
+                owner_l = parse_foam_labels(poly_dir / "owner") if (poly_dir / "owner").exists() else []
+                neigh_l = parse_foam_labels(poly_dir / "neighbour") if (poly_dir / "neighbour").exists() else []
+                resp["cell_centroids"] = _cell_centroids(
+                    points, faces, owner_l, neigh_l, num_cells
+                )
+                resp["boundary_cells"] = [
+                    owner_l[i] if i < len(owner_l) else -1 for i in boundary_face_ids
+                ]
+                resp["internal_owner"] = owner_l[:n_internal]
+                resp["internal_neighbour"] = neigh_l[:n_internal]
             else:
                 resp["internal_faces"] = []
                 resp["internal_available"] = num_cells == 0  # unknown → let client try
