@@ -31,6 +31,7 @@
   let viewer;
   try {
     viewer = new MeshViewer($("gl"));
+    window.__viewer = viewer; // exposed for E2E pixel-probing / debugging
   } catch (e) {
     log("error", "WebGL 초기화 실패: " + e.message);
   }

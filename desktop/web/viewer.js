@@ -426,12 +426,13 @@
       const ld = norm(sub(eye, this.target));
       gl.uniform3f(this.loc.uLightDir, ld[0], ld[1], ld[2]);
 
-      // faces
+      // faces — drawArrays count is in VERTICES (3 per triangle), not triangles;
+      // passing _triCount silently dropped 2/3 of every mesh's faces.
       gl.uniform1f(this.loc.uFlatLine, 0.0);
       this._bindAttr(this.posBuf, this.loc.aPos);
       this._bindAttr(this.normBuf, this.loc.aNormal);
       this._bindAttr(this.colorBuf, this.loc.aColor);
-      gl.drawArrays(gl.TRIANGLES, 0, this._triCount);
+      gl.drawArrays(gl.TRIANGLES, 0, this._triCount * 3);
 
       // wireframe overlay
       if (this.wireframe && this._lineCount) {
