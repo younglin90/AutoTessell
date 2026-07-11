@@ -1046,9 +1046,12 @@ class NativeMeshChecker:
         csr_ptr[0] = 0
         np.cumsum(cell_counts, out=csr_ptr[1:])
 
-        # 대형 메쉬는 샘플링 (전체 대비 대표성 충분, 시간 급감).
-        if n_cells > 100_000:
-            step = max(1, n_cells // 50_000)
+        # 대형 메쉬는 샘플링 (전체 대비 대표성 충분, 시간 급감). 이 per-cell
+        # 파이썬 루프는 셀당 numpy 오버헤드가 커서 ~70k 셀이면 30초+ 걸린다 —
+        # 상한을 두어 평가가 멈추는 것처럼 보이지 않게 한다 (max-aspect 추정치).
+        _AR_SAMPLE_CAP = 25_000
+        if n_cells > _AR_SAMPLE_CAP:
+            step = max(1, n_cells // _AR_SAMPLE_CAP)
             cell_indices_arr = np.arange(0, n_cells, step, dtype=np.int64)
         else:
             cell_indices_arr = np.arange(n_cells, dtype=np.int64)

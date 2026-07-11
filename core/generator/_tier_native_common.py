@@ -10,14 +10,70 @@ per-quality 기본값 획득.
 """
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+import numpy as np
 
 from core.schemas import MeshStats, MeshStrategy, QualityLevel, TierAttempt
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+# Volume per unit-edge cell, by family — used to turn a target CELL COUNT into
+# a target EDGE LENGTH so the user's "목표 셀 수 N" actually controls cell count
+# (the strategist's auto surface edge ignores N and can explode to 70k+ cells
+# for a coarse request).  n_cells ≈ V_domain / (factor·edge³)  ⇒
+# edge ≈ (V_domain / (factor·N))**(1/3).
+# Only native_tet is validated so far; the aspect-ratio sampling cap already
+# protects hex/poly from the eval hang, so N→edge for them can follow later.
+_CELL_VOL_FACTOR = {
+    "tier_native_tet": 1.0 / (6.0 * math.sqrt(2.0)),  # regular tet volume
+}
+
+
+def _mesh_enclosed_volume(vertices: np.ndarray, faces: np.ndarray) -> float:
+    """|signed volume| of a (roughly) closed triangle surface (divergence thm)."""
+    try:
+        v = np.asarray(vertices, dtype=float)
+        tris = [f for f in faces if len(f) >= 3]
+        vol = 0.0
+        for f in tris:
+            a, b, c = v[f[0]], v[f[1]], v[f[2]]
+            vol += float(np.dot(a, np.cross(b, c)))
+        return abs(vol) / 6.0
+    except Exception:
+        return 0.0
+
+
+def _edge_from_target_cells(
+    vertices: np.ndarray, faces: np.ndarray, tier_name: str, n_cells: int
+) -> float | None:
+    """Target edge length that yields ≈ ``n_cells`` cells for this family.
+
+    Returns None when it can't estimate (open surface / degenerate), so the
+    caller keeps the strategist's edge.  Clamped to [bbox_diag/200, bbox_diag/2].
+    """
+    if n_cells <= 0:
+        return None
+    factor = _CELL_VOL_FACTOR.get(tier_name)
+    if factor is None:
+        return None
+    vol = _mesh_enclosed_volume(vertices, faces)
+    v = np.asarray(vertices, dtype=float)
+    if v.size == 0:
+        return None
+    bbox_diag = float(np.linalg.norm(v.max(axis=0) - v.min(axis=0)))
+    if bbox_diag <= 0:
+        return None
+    if vol <= 0:  # open/degenerate surface → fall back to bbox volume
+        vol = float(np.prod(v.max(axis=0) - v.min(axis=0))) * 0.5
+    if vol <= 0:
+        return None
+    edge = (vol / (factor * n_cells)) ** (1.0 / 3.0)
+    return float(min(max(edge, bbox_diag / 200.0), bbox_diag / 2.0))
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +313,27 @@ def run_native_tier(
         )
 
     target_edge = _parse_target_edge(strategy)
+
+    # N-driven edge: when the user gives a target cell budget, derive the tet
+    # edge from it so N actually controls cell count. The strategist's auto
+    # surface edge ignores N — e.g. a unit cube with N=100 seeded 72k cells and
+    # then stalled for 30s+ in the aspect-ratio evaluator (the "tet+BL 안됨" bug).
+    _tsp = getattr(strategy, "tier_specific_params", None) or {}
+    _n_target = _tsp.get("target_cells") or _tsp.get("max_cells")
+    if _n_target:
+        try:
+            _edge_n = _edge_from_target_cells(
+                m.vertices, m.faces, tier_name, int(_n_target)
+            )
+        except Exception:
+            _edge_n = None
+        if _edge_n:
+            log.info(
+                "native_tier_edge_from_target_cells",
+                tier=tier_name, target_cells=int(_n_target),
+                auto_edge=target_edge, n_driven_edge=round(_edge_n, 5),
+            )
+            target_edge = _edge_n
 
     # beta17: tier × quality 기본값
     params = get_harness_params(tier_name, strategy.quality_level)
