@@ -123,6 +123,54 @@
     if (f) uploadFile(f);
   });
 
+  // -------------------------------------------------------------------
+  // demo data — one-click sample meshes (fetched from the server, then
+  // wrapped in a File and pushed through the normal upload path so the
+  // preview + Run-enable flow is identical to a real drop).
+  // -------------------------------------------------------------------
+  (async function initDemos() {
+    const row = $("demo-row");
+    const chips = $("demo-chips");
+    if (!row || !chips) return;
+    let demos = [];
+    try {
+      const r = await fetch(API + "/demos", { cache: "no-store" });
+      if (r.ok) demos = (await r.json()).demos || [];
+    } catch { /* offline / no demos — leave hidden */ }
+    if (!demos.length) return;
+    chips.innerHTML = "";
+    for (const d of demos) {
+      const b = document.createElement("button");
+      b.className = "demo-chip";
+      b.type = "button";
+      b.textContent = d.label;
+      b.title = d.hint || d.name;
+      b.addEventListener("click", () => loadDemo(d));
+      chips.appendChild(b);
+    }
+    row.hidden = false;
+  })();
+
+  async function loadDemo(d) {
+    const chips = $("demo-chips");
+    if (chips) chips.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    log("info", `데모 로드: ${d.label}`);
+    setProgress(0, "데모 불러오는 중…");
+    try {
+      const r = await fetch(`${API}/demos/${d.key}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(`demo ${r.status}`);
+      const blob = await r.blob();
+      const file = new File([blob], d.name, { type: "application/octet-stream" });
+      uploadFile(file); // reuses preview + Run-enable + toast path
+    } catch (err) {
+      setProgress(0, "대기 중");
+      log("error", "데모 로드 실패: " + (err.message || err));
+      toast("error", "데모를 불러오지 못했습니다", { title: "오류" });
+    } finally {
+      if (chips) chips.querySelectorAll("button").forEach((b) => (b.disabled = false));
+    }
+  }
+
   function uploadFile(file) {
     log("info", `업로드 중: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
     setProgress(0, "업로드 중…");

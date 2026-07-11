@@ -159,6 +159,37 @@ class TestStaticMount:
             assert r.status_code == 200, path
             assert needle in r.text, path
 
+    def test_static_assets_are_no_cache(self, client):
+        # Live UI edits must always show on reload (local desktop tool).
+        r = client.get("/styles.css")
+        assert "no-store" in r.headers.get("cache-control", "")
+
+
+# ---------------------------------------------------------------------------
+# Demo data endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestDemoEndpoints:
+    def test_list_demos_returns_available(self, client):
+        r = client.get("/demos")
+        assert r.status_code == 200
+        demos = r.json()["demos"]
+        # At least the cube ships with the repo; each item is client-consumable.
+        keys = {d["key"] for d in demos}
+        assert "cube" in keys
+        for d in demos:
+            assert d["label"] and d["name"] and "key" in d
+
+    def test_get_demo_returns_file_bytes(self, client):
+        r = client.get("/demos/cube")
+        assert r.status_code == 200
+        assert r.content.startswith(b"solid") or len(r.content) > 0
+        assert "demo_cube.stl" in r.headers.get("content-disposition", "")
+
+    def test_unknown_demo_returns_404(self, client):
+        assert client.get("/demos/nope").status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # Cancel endpoint

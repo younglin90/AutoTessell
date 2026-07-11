@@ -962,6 +962,58 @@ async def get_surface_stl(job_id: str) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# Demo data — curated sample meshes bundled with the repo, so a first-time
+# user can try the full pipeline with one click (no file needed).
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEMOS: dict[str, dict[str, str]] = {
+    "cube": {
+        "file": "tests/stl/01_easy_cube.stl",
+        "name": "demo_cube.stl",
+        "label": "큐브",
+        "hint": "가장 단순한 watertight 육면체 · 빠른 확인용",
+    },
+    "cylinder": {
+        "file": "tests/stl/02_medium_cylinder.stl",
+        "name": "demo_cylinder.stl",
+        "label": "실린더",
+        "hint": "곡면 포함 원기둥 · 표면 리메쉬 확인용",
+    },
+    "bracket": {
+        "file": "tests/stl/03_hard_bracket.stl",
+        "name": "demo_bracket.stl",
+        "label": "브래킷",
+        "hint": "기계 부품형 CAD · 특징선/구멍 포함",
+    },
+}
+
+
+@app.get("/demos")
+async def list_demos() -> Response:
+    """설치본에 포함된 데모 메쉬 목록 (파일 존재하는 것만)."""
+    items = [
+        {"key": k, "label": v["label"], "hint": v["hint"], "name": v["name"]}
+        for k, v in _DEMOS.items()
+        if (_REPO_ROOT / v["file"]).is_file()
+    ]
+    return JSONResponse({"demos": items})
+
+
+@app.get("/demos/{key}")
+async def get_demo(key: str) -> Response:
+    """데모 메쉬 바이트 반환 — 프런트가 File로 감싸 업로드 경로로 재사용한다."""
+    meta = _DEMOS.get(key)
+    if not meta:
+        return JSONResponse({"error": "Unknown demo"}, status_code=404)
+    path = _REPO_ROOT / meta["file"]
+    if not path.is_file():
+        return JSONResponse({"error": "Demo file missing"}, status_code=404)
+    return FileResponse(
+        path, filename=meta["name"], media_type="application/octet-stream"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Static web GUI (single-page app)
 # ---------------------------------------------------------------------------
 # Mounted LAST so the explicit API routes above (/health, /upload, /jobs/*,

@@ -282,6 +282,27 @@ kbd {
 }
 .file-meta b { color: var(--cyan); }
 
+/* demo data — one-click sample meshes */
+.demo-row { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: 6px; }
+.demo-label {
+  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--faint); font-weight: 600;
+}
+.demo-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.demo-chip {
+  border: 1px dashed var(--line); background: var(--bg-2); color: var(--muted);
+  padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  font: 600 var(--fs-1) var(--mono); letter-spacing: .02em; white-space: nowrap;
+  transition: color var(--dur-1), border-color var(--dur-1),
+    background var(--dur-1), transform var(--dur-1);
+}
+.demo-chip:hover:not(:disabled) {
+  color: var(--orange); border-color: var(--orange); border-style: solid;
+  background: rgba(224,76,10,.06); transform: translateY(-1px);
+}
+.demo-chip:active:not(:disabled) { transform: translateY(0); }
+.demo-chip:disabled { opacity: .5; cursor: default; }
+
 /* ==========================================================================
    Segmented controls — drafting tabs
    ========================================================================== */
