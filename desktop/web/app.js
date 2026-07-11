@@ -95,7 +95,18 @@
     standard: "standard · Netgen/cfMesh · 엔지니어링 해석 (~수분)",
     fine: "fine · snappy + BL · 최종 CFD 제출용 (~30분+)",
   };
-  bindSeg($("mesh-type"));
+  // Selecting a mesh type defaults the tier to the matching NATIVE engine
+  // (native-first policy); "Auto" hands the choice back to the strategist.
+  const MESH_TYPE_DEFAULT_TIER = {
+    auto: "auto",
+    tet: "native_tet",
+    hex_dominant: "native_hex",
+    poly: "native_poly",
+  };
+  bindSeg($("mesh-type"), (v) => {
+    const t = MESH_TYPE_DEFAULT_TIER[v];
+    if (t) $("tier").value = t;
+  });
   bindSeg($("quality"), (v) => ($("quality-hint").textContent = QUALITY_HINTS[v] || ""));
   bindSeg($("view-mode"), (v) => switchView(v));
 
