@@ -90,14 +90,24 @@
     precision mediump float;
     varying vec3 vNormal;
     varying vec3 vColor;
-    uniform vec3 uLightDir;
+    uniform vec3 uLightDir;    // key light = camera direction (headlamp)
     uniform float uFlatLine;   // 0 = shaded faces, 1 = solid wire color
     void main() {
+      if (uFlatLine > 0.5) { gl_FragColor = vec4(0.05, 0.06, 0.09, 1.0); return; }
       vec3 n = normalize(vNormal);
-      float diff = abs(dot(n, normalize(uLightDir)));
-      float shade = 0.35 + 0.65 * diff;          // headlamp-ish
-      vec3 c = mix(vColor * shade, vec3(0.05, 0.06, 0.09), uFlatLine);
-      gl_FragColor = vec4(c, 1.0);
+      if (!(dot(n, n) > 0.0)) n = vec3(0.0, 0.0, 1.0);   // guard NaN/zero normals
+      // Three-term studio rig so EVERY surface orientation is differentiated —
+      // a single headlamp lets grazing faces (e.g. a cylinder wall viewed near
+      // its axis) collapse into flat ambient and read as "hollow". Two-sided
+      // via abs() so back faces of open surfaces stay lit.
+      vec3 key  = normalize(uLightDir);
+      vec3 fill = normalize(vec3(-0.45, 0.65, 0.35));  // cool fill, upper-left
+      vec3 rim  = normalize(vec3(0.30, -0.55, -0.60)); // warm-ish back rim
+      float kd = abs(dot(n, key));
+      float fd = abs(dot(n, fill));
+      float rd = abs(dot(n, rim));
+      float shade = 0.34 + 0.52 * kd + 0.20 * fd + 0.10 * rd;
+      gl_FragColor = vec4(min(vColor * shade, 1.0), 1.0);
     }`;
 
   function compile(gl, type, src) {
@@ -147,9 +157,10 @@
       } catch (e) { /* keep fallback */ }
       gl.clearColor(bg[0], bg[1], bg[2], 1.0);
 
-      // camera (orbit) state
-      this.az = 0.9;
-      this.el = 0.5;
+      // camera (orbit) state — classic (1,1,1)-ish isometric default so any
+      // model reads as 3D on load (oblique to all principal axes).
+      this.az = 0.86;
+      this.el = 0.62;
       this.dist = 3;
       this.target = [0, 0, 0];
       this.radius = 1;
@@ -212,8 +223,8 @@
     }
 
     resetView() {
-      this.az = 0.9;
-      this.el = 0.5;
+      this.az = 0.86;
+      this.el = 0.62;
       this._frameCamera();
       this.render();
     }

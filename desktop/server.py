@@ -974,10 +974,10 @@ _DEMOS: dict[str, dict[str, str]] = {
         "hint": "가장 단순한 watertight 육면체 · 빠른 확인용",
     },
     "cylinder": {
-        "file": "tests/stl/02_medium_cylinder.stl",
+        "file": "tests/benchmarks/cylinder.stl",
         "name": "demo_cylinder.stl",
         "label": "실린더",
-        "hint": "곡면 포함 원기둥 · 표면 리메쉬 확인용",
+        "hint": "닫힌 solid 원기둥 · 곡면 표면 리메쉬 확인용",
     },
     "bracket": {
         "file": "tests/stl/03_hard_bracket.stl",
