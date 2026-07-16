@@ -698,22 +698,54 @@
     }
   }
 
+  // Detail-log streaming (engine-level records, not just stage progress) can
+  // emit hundreds of lines per run — log() must be O(1) per line (append one
+  // DOM node), not rebuild the whole panel's innerHTML on every message.
   const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+  const LOG_CAP = 1000;
   const logEntries = [];
+  let logEmptyEl = null; // "표시할 로그가 없습니다" placeholder, tracked to remove on first line
   $("log-filter").addEventListener("change", renderLog);
-  function log(level, message) {
-    logEntries.push({ level, message });
-    if (logEntries.length > 1000) logEntries.shift();
-    renderLog();
-  }
-  function renderLog() {
+
+  function logPasses(entry) {
     const filter = $("log-filter").value;
     const min = filter === "all" ? -1 : LEVELS[filter] ?? -1;
+    return (LEVELS[entry.level] ?? 1) >= min;
+  }
+  function logRow(entry) {
+    const div = document.createElement("div");
+    div.className = `l ${entry.level}`;
+    div.textContent = entry.message;
+    return div;
+  }
+  function log(level, message) {
+    const entry = { level, message };
+    logEntries.push(entry);
     const el = $("log");
-    const rows = logEntries.filter((e) => (LEVELS[e.level] ?? 1) >= min);
-    el.innerHTML = rows.length
-      ? rows.map((e) => `<div class="l ${e.level}">${escapeHtml(e.message)}</div>`).join("")
-      : `<div class="log-empty">표시할 로그가 없습니다.</div>`;
+    if (logEntries.length > LOG_CAP) {
+      const evicted = logEntries.shift();
+      if (logPasses(evicted)) el.querySelector(".l")?.remove();
+    }
+    if (logPasses(entry)) {
+      if (logEmptyEl) { logEmptyEl.remove(); logEmptyEl = null; }
+      el.appendChild(logRow(entry));
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+  /** Full rebuild — only needed when the level filter dropdown changes. */
+  function renderLog() {
+    const el = $("log");
+    const rows = logEntries.filter(logPasses);
+    el.innerHTML = "";
+    if (rows.length) {
+      const frag = document.createDocumentFragment();
+      for (const e of rows) frag.appendChild(logRow(e));
+      el.appendChild(frag);
+      logEmptyEl = null;
+    } else {
+      el.innerHTML = `<div class="log-empty">표시할 로그가 없습니다.</div>`;
+      logEmptyEl = el.firstChild;
+    }
     el.scrollTop = el.scrollHeight;
   }
   function escapeHtml(s) {

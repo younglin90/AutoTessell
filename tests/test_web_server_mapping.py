@@ -19,7 +19,13 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from desktop.default_env import DEFAULT_ENV, apply_default_env  # noqa: E402
-from desktop.server import _build_run_kwargs, _create_job, _jobs, app  # noqa: E402
+from desktop.server import (  # noqa: E402
+    _build_run_kwargs,
+    _create_job,
+    _jobs,
+    _ThreadScopedLogHandler,
+    app,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -306,3 +312,62 @@ class TestExportEndpoint:
         job = _create_job("x.stl")  # work dir exists but no polyMesh yet
         r = client.get(f"/jobs/{job['id']}/export?format=vtu")
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# _ThreadScopedLogHandler — GUI detail-log streaming
+# ---------------------------------------------------------------------------
+
+
+class TestThreadScopedLogHandler:
+    """The handler must forward ONLY records from its own worker thread —
+    this is what keeps two concurrent jobs' detail logs from crossing over
+    (each job's ``run_in_executor`` callable runs start-to-finish on one OS
+    thread; contextvars don't propagate into it, so thread-id is the seam)."""
+
+    def _record(self, logger_name="core.x", msg="event", level=20, thread=1):
+        import logging
+        r = logging.LogRecord(logger_name, level, __file__, 1, msg, (), None)
+        r.thread = thread
+        return r
+
+    def test_forwards_only_matching_thread(self):
+        box: dict = {"id": 111}
+        sunk: list = []
+        h = _ThreadScopedLogHandler(box, sunk.append)
+        h.emit(self._record(thread=111))
+        h.emit(self._record(thread=222))  # different thread → dropped
+        assert len(sunk) == 1
+
+    def test_drops_everything_before_thread_id_is_set(self):
+        box: dict = {"id": None}
+        sunk: list = []
+        h = _ThreadScopedLogHandler(box, sunk.append)
+        h.emit(self._record(thread=111))
+        assert sunk == []
+
+    def test_level_mapping_and_prefix(self):
+        box: dict = {"id": 5}
+        sunk: list = []
+        h = _ThreadScopedLogHandler(box, sunk.append)
+        for lvl, expect in [(10, "debug"), (20, "info"), (30, "warn"), (40, "error"), (50, "error")]:
+            h.emit(self._record(level=lvl, thread=5))
+        levels = [p["level"] for p in sunk]
+        assert levels == ["debug", "info", "warn", "error", "error"]
+        assert all(p["message"].startswith("[Engine] ") for p in sunk)
+        assert all(p["type"] == "log" for p in sunk)
+
+    def test_bad_record_does_not_raise(self):
+        # a broken formatter must not kill the emitting thread — falls back
+        # to record.getMessage().
+        box: dict = {"id": 1}
+        sunk: list = []
+        h = _ThreadScopedLogHandler(box, sunk.append)
+
+        class _BadFormatter:
+            def format(self, record):
+                raise ValueError("boom")
+
+        h.formatter = _BadFormatter()
+        h.emit(self._record(thread=1, msg="fallback message"))
+        assert sunk and "fallback message" in sunk[0]["message"]

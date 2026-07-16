@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import shutil
 import tempfile
 import threading
@@ -21,7 +22,7 @@ import zipfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +30,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from core.utils.logging import get_logger
+from core.utils.logging import configure_logging, get_logger, make_processor_formatter
 from core.version import APP_VERSION
 from desktop.default_env import apply_default_env
 
@@ -129,6 +130,45 @@ class _PipelineCancelled(BaseException):
     run would continue. A ``BaseException`` slips past all those guards and
     propagates out of ``run()`` to the awaiting coroutine.
     """
+
+
+_LEVEL_NAME_MAP = {
+    "DEBUG": "debug", "INFO": "info", "WARNING": "warn",
+    "ERROR": "error", "CRITICAL": "error",
+}
+_DETAIL_LOG_FORMATTER = make_processor_formatter(colors=False)
+
+
+class _ThreadScopedLogHandler(logging.Handler):
+    """Streams every ``structlog``/``logging`` record from ONE worker thread
+    to the GUI, so the log panel shows the same engine-level detail (tier
+    iterations, BL passes, per-iteration metrics, ...) the terminal already
+    prints — not just the ~10 coarse stage-progress lines.
+
+    Scoped by ``record.thread`` (the OS thread id), not a job id: two jobs
+    running concurrently execute on two distinct worker threads (each
+    ``run_in_executor`` callable runs start-to-finish on one thread), so
+    filtering on thread id keeps their detail logs from crossing streams
+    without needing contextvars propagation into the executor thread (which
+    ``run_in_executor`` does not do).
+    """
+
+    def __init__(self, thread_id_box: dict[str, int | None], sink: Callable[[dict[str, Any]], None]):
+        super().__init__()
+        self._thread_id_box = thread_id_box
+        self._sink = sink
+        self.setFormatter(_DETAIL_LOG_FORMATTER)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        wanted = self._thread_id_box.get("id")
+        if wanted is None or record.thread != wanted:
+            return
+        try:
+            text = self.format(record)
+        except Exception:  # noqa: BLE001 — never let a bad record kill the run
+            text = record.getMessage()
+        level = _LEVEL_NAME_MAP.get(record.levelname, "info")
+        self._sink({"type": "log", "level": level, "message": f"[Engine] {text}"})
 
 
 def _create_job(input_filename: str) -> dict[str, Any]:
@@ -663,18 +703,29 @@ async def _run_mesh_pipeline(
     run_kwargs = _build_run_kwargs(quality, tier, mesh_type, max_iterations, extra_params)
     orchestrator = PipelineOrchestrator()
 
+    # Stream every engine-level log record (tier iterations, BL passes,
+    # per-pass metrics, ...) emitted on the worker thread while it runs, so
+    # the GUI log panel matches the terminal's detail instead of only the
+    # ~10 coarse stage-progress lines from progress_callback.
+    _thread_box: dict[str, int | None] = {"id": None}
+    _detail_handler = _ThreadScopedLogHandler(_thread_box, _send_threadsafe)
+    logging.getLogger().addHandler(_detail_handler)
+
+    def _tracked_run() -> Any:
+        _thread_box["id"] = threading.get_ident()
+        return orchestrator.run(
+            input_path, output_dir,
+            progress_callback=progress_callback,
+            **run_kwargs,
+        )
+
     try:
         import time as _t
         _t0 = _t.perf_counter()
-        result = await loop.run_in_executor(
-            None,
-            lambda: orchestrator.run(
-                input_path,
-                output_dir,
-                progress_callback=progress_callback,
-                **run_kwargs,
-            ),
-        )
+        try:
+            result = await loop.run_in_executor(None, _tracked_run)
+        finally:
+            logging.getLogger().removeHandler(_detail_handler)
         elapsed = _t.perf_counter() - _t0
     except _PipelineCancelled:
         log.info("pipeline_cancelled", job_id=job["id"])
@@ -1244,6 +1295,14 @@ def main() -> None:
     import sys
 
     import uvicorn
+
+    # Root-logger-based, not at module import time (would clobber pytest's
+    # caplog handler for every test that merely imports this module). Without
+    # this, structlog runs on its stock PrintLogger default — never touches
+    # `logging.getLogger()` at all — so the GUI's per-run detail-log handler
+    # (which attaches to the root logger) silently receives nothing, even
+    # though the terminal still looks fine (PrintLogger prints on its own).
+    configure_logging(verbose=True, json=False)
 
     port = 9720
     for i, arg in enumerate(sys.argv):
