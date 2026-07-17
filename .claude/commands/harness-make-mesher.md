@@ -73,6 +73,13 @@ $ARGUMENTS
 **Advisor(메인 세션)가 직접 검증한다. 서브에이전트의 자기보고를 믿고 커밋하지 않는다.**
 회귀 여부는 **scoped stash A/B** 로 확인 — "사전 결함" 주장은 실측으로만 인정.
 
+**속도 — inner loop 는 스모크로.** 계측/A-B 반복은 `python scripts/smoke_native_tet.py`
+(cube N=500, **~1.5s**, solid 4-불변식 검사 + skew 보고, 실패 시 exit≠0)를 써라.
+전체 파이프라인(N=2000, ~3.5s/run)을 A/B 마다 수십 번 돌리면 사이클이 10분+ 로 늘어난다.
+모든 N 이 solid 불변식·skew 결함을 동일하게 보이므로 스모크가 완전히 대표적이다.
+**N=2000 pytest 게이트(`test_native_tet_solid_volume.py`)는 최종 검증에만.**
+`AUTO_TESSELL_TEST_CELLS=500 pytest ...` 로 그 게이트도 스모크 크기로 돌릴 수 있다(dev 한정).
+
 ## 금지 — 위반 시 카드 무효
 
 - **가짜 PASS**: 임계값 완화 / 평가자 수정 / 테스트 허용오차 확대로 통과시키기.

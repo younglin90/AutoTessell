@@ -28,6 +28,7 @@ geometry, not tuning knobs.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -45,13 +46,22 @@ _TRUE_VOLUME = 1.0
 _PLANES = 0.5       # |x| = |y| = |z| = 0.5
 
 
+# Default N=2000 (calibrated gate). Dev/smoke may set AUTO_TESSELL_TEST_CELLS
+# smaller — the solid invariants below (surface 6.0, void 0, volume ~1.0,
+# no degenerate) hold at every N, so a smaller mesh is a faithful, ~3x faster
+# check. See scripts/smoke_native_tet.py.
+_TEST_CELLS = int(os.environ.get("AUTO_TESSELL_TEST_CELLS", "2000"))
+
+
 def _run_native_tet(case: Path) -> Path:
     PipelineOrchestrator().run(
         _CUBE, case,
         quality_level="draft", mesh_type="tet", tier_hint="native_tet",
         max_iterations=1, auto_retry="off", write_of_case=True,
-        max_cells=2000,
-        tier_specific_params={"max_cells": 2000, "target_cells": 2000},
+        max_cells=_TEST_CELLS,
+        tier_specific_params={
+            "max_cells": _TEST_CELLS, "target_cells": _TEST_CELLS,
+        },
     )
     poly = case / "constant" / "polyMesh"
     assert (poly / "points").exists(), "polyMesh was not written"
