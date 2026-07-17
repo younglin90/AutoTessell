@@ -103,3 +103,7 @@ auto_tessell_core/*.so
 b_aYczSLScZNH/.next/
 b_aYczSLScZNH/node_modules/
 b_aYczSLScZNH/tsconfig.tsbuildinfo
+
+# CFD paper search — large PDFs & converted text (keep summaries only)
+papers/pdf/
+papers/md/
