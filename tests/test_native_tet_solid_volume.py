@@ -5,37 +5,40 @@ input surface itself.  Its total boundary area must therefore equal the input
 STL's surface area.  Any excess means the volume has holes punched through it,
 and every hole's wall is counted as "boundary" with an arbitrary normal.
 
-STATUS (measured 2026-07-17, cube.stl / draft / N=2000, P4-C disabled so the
-self-implemented engine is isolated)::
+STATUS (re-measured 2026-07-17 after BETA2822, cube.stl / draft / N=2000,
+P4-C disabled so the self-implemented engine is isolated).  This test was
+xfail(strict) until the sliver filter's removal predicate was corrected;
+it is now a permanent regression guard::
 
-    true surface area (1x1x1 cube)   6.000
-    self-impl boundary area         20.409   <-- 3.40x  == Swiss cheese
-    distinct boundary normals           18   (a cube has 6)
+    config                          boundary area    max skew   cells
+    legacy (void_free=False)        20.269 (3.38x)      10.5     2034  <- voids
+    void_free=True   (default)       6.128 (1.02x)     107.9     2377  <- solid
 
-Root cause — ``core/generator/native_tet/filter.py:104``::
+Root cause (fixed) — ``core/generator/native_tet/filter.py``::
 
-    keep = inside_mask & (q >= thr)
+    keep = inside_mask & (q >= thr)      # was: deletes interior slivers
+    keep = inside_mask                   # now: void_free, reference predicate
 
-The sliver filter *deletes* low-quality tets.  Deleting a tet from a
-tetrahedralization leaves a void; nothing fills it.  ``protect_boundary_faces``
-(filter.py:107) only guarantees each *surface vertex* stays covered — it never
-checks volumetric integrity.  The revert guard at ``mesher.py:1221`` measures
-``area_coverage`` (surface plane coverage), which interior deletion does not
-reduce, so the guard never fires.  ``cavity_retri.py`` (cavity re-meshing)
-exists but is referenced 0 times from mesher.py.
+Deleting a tet from a tetrahedralization leaves a void; nothing fills it.
+The vendored reference has no such deletion: fTetWild's ``filter_outside``
+(``third_party/fTetWild/src/MeshImprovement.cpp:1638``) removes on winding
+number alone (``W <= 0.5``) and contains no quality term at all, so a sliver
+with ``W > 0.5`` is always kept.  ``protect_boundary_faces`` never compensated
+(it only checks *surface vertex* coverage, and fired 0 times); the revert guard
+at ``mesher.py:1182`` measures ``area_coverage`` (surface plane coverage),
+which interior deletion does not reduce, so it never fired either.
 
-Why this is xfail rather than fixed: neither obvious lever works alone —
+The 2 % residual (6.128 vs 6.000) is NOT a void: the bbox is exactly
+[-0.5, 0.5]^3 and the excess is boundary triangles sitting a few degrees off
+the cube planes (469 of 482 are not axis-aligned) — a surface-wrinkle defect
+tracked separately, not Swiss cheese.
 
-    config                     boundary area      skew
-    HEAD (delete slivers)      20.409 (3.40x)     10.5   <- voids
-    no interior delete          5.939 (0.99x)     63.3   <- solid, slivers stay
-    no delete + passes on       5.870 (0.98x)   1.3e15   <- solid, degenerate
-
-fTetWild's answer is that slivers are neither deleted nor tolerated: they are
-removed by local operations (collapse / swap / smooth) that preserve the
-tetrahedralization.  Those operators exist here (local_ops.py, flip.py,
-amips.py, klingner_full_sweep.py) but currently degrade the mesh, so making
-this test pass is an algorithmic project, not a patch.
+Slivers are now *retained*, not deleted, and the debt is reported by
+``FilterResult.n_slivers_retained`` (362 on this case — the same tets the old
+predicate silently dropped).  That debt is why skew rose 10.5 -> 107.9: the old
+10.5 was obtained by deleting the evidence, not by meshing well.  fTetWild
+removes slivers by local operations (collapse / swap / smooth) that preserve
+the tetrahedralization; driving that debt to 0 is the follow-up work.
 
 Do NOT "fix" this test by widening the tolerance.  The 1.0x identity is exact
 geometry, not a tuning knob.
@@ -47,7 +50,6 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from core.analyzer.readers import read_stl
 from core.pipeline.orchestrator import PipelineOrchestrator
@@ -83,15 +85,6 @@ def _boundary_area(poly_dir: Path) -> float:
     return total
 
 
-@pytest.mark.xfail(
-    reason=(
-        "native_tet's sliver filter deletes interior tets and leaves voids: "
-        "boundary area is 3.40x the true surface (20.409 vs 6.000) on "
-        "cube.stl. See this module's docstring for the measured evidence and "
-        "why no single lever fixes it."
-    ),
-    strict=True,
-)
 def test_native_tet_mesh_is_solid(tmp_path: Path, monkeypatch) -> None:
     """Boundary area must equal the input surface area (no interior voids)."""
     # Isolate the self-implemented engine: no external pytetwild rescue.

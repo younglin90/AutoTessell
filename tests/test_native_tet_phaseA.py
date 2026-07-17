@@ -48,8 +48,14 @@ def test_detect_features_sphere_has_few() -> None:
 # ======================================================================
 
 
-def test_filter_slivers_protects_boundary() -> None:
-    """경계 tet 는 interior 보다 관대한 threshold 로 보존됨."""
+def test_filter_slivers_protects_boundary_legacy() -> None:
+    """legacy(void_free=False): 경계 tet 는 interior 보다 관대한 threshold 로 보존.
+
+    BETA2822 이후 품질 기반 내부 삭제는 기본값에서 제거됐다 (void 를 남기므로 —
+    ``tests/test_native_tet_solid_volume.py`` 참고).  이 차등 threshold 동작은
+    A/B 비교용으로 ``void_free=False`` 뒤에 보존돼 있고, 이 테스트는 그 legacy
+    분기를 검증한다.  플래그를 명시하는 것은 완화가 아니라 원래 의도의 복원이다.
+    """
     from core.generator.native_tet.filter import filter_slivers
 
     # 4 tet: 3 boundary (surface vertex 포함), 1 interior only.
@@ -80,11 +86,57 @@ def test_filter_slivers_protects_boundary() -> None:
         q_threshold_interior=0.5,   # interior tet 은 탈락 유도
         q_threshold_boundary=0.0,   # boundary 는 전부 통과
         protect_boundary_faces=False,
+        void_free=False,            # legacy 삭제 분기를 명시적으로 요청
     )
     # 3 개 boundary tet 모두 유지.
     assert fr.keep_mask[:3].all()
     # interior degenerate tet 은 탈락.
     assert not fr.keep_mask[3]
+
+
+def test_filter_slivers_void_free_keeps_interior_sliver() -> None:
+    """기본값(void_free=True): 내부 sliver 를 삭제하지 않고 유지한다.
+
+    tet 을 삭제하면 그 자리에 void 가 남는다 (BETA2822).  vendored 원본
+    ``third_party/fTetWild/src/MeshImprovement.cpp:1638`` 의 제거 술어는
+    winding number 단독이며 quality 항이 없다 — ``W > 0.5`` 인 sliver 는 무조건
+    유지된다.  위 legacy 테스트와 **동일한 입력·동일한 threshold** 로 반대
+    결과가 나오는지 확인해, 기본값이 실제로 바뀌었음을 고정한다.
+    """
+    from core.generator.native_tet.filter import filter_slivers
+
+    tets = np.array(
+        [
+            [0, 1, 2, 4],
+            [0, 1, 3, 4],
+            [2, 3, 4, 5],
+            [4, 5, 4, 5],   # interior degenerate sliver
+        ],
+        dtype=np.int64,
+    )
+    pts = np.array(
+        [
+            [0, 0, 0], [1, 0, 0], [0.5, 0.866, 0], [0.5, 0.289, 0.816],
+            [0.4, 0.3, 0.2], [0.6, 0.5, 0.4],
+        ],
+        dtype=np.float64,
+    )
+    inside = np.ones(4, dtype=bool)
+
+    fr = filter_slivers(
+        tets, pts, inside,
+        n_surface_vertices=4,
+        q_threshold_interior=0.5,   # legacy 라면 탈락시켰을 threshold
+        q_threshold_boundary=0.0,
+        protect_boundary_faces=False,
+        # void_free 기본값(True) 사용 — 인자 생략이 곧 새 기본 동작 검증.
+    )
+    # 삭제 없음 — inside 인 tet 은 품질과 무관하게 전부 유지.
+    assert fr.keep_mask.all(), "void_free 인데 tet 이 삭제됨 (void 발생)"
+    assert fr.n_dropped == 0
+    assert fr.n_interior_dropped == 0
+    # 유지된 sliver 는 삭제 대신 '부채' 로 보고된다 (다음 사이클이 0 으로 몰 대상).
+    assert fr.n_slivers_retained >= 1
 
 
 # ======================================================================

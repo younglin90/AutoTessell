@@ -1,5 +1,23 @@
-file: core/generator/native_poly/voronoi.py
-functions: _detect_cell_self_intersect, NativeVoroPolyResult
-lines_added: 54
-lines_removed: 0
-card: BETA2821_POLY_SELF_INTERSECT_DETECT
+card: BETA2822_SOLID_VOID_FREE_FILTER
+
+file: core/generator/native_tet/filter.py
+functions: filter_slivers, FilterResult
+lines_added: 47
+lines_removed: 5
+  - filter_slivers(..., void_free: bool = True); void_free -> keep = inside_mask.copy()
+    (drops the `& (q >= thr)` conjunction; reference filter_outside predicate)
+  - q still computed, report-only: FilterResult.n_slivers_retained /
+    n_interior_slivers_retained (362 / 356 on cube draft N=2000)
+  - protect_boundary_faces loop skipped under void_free (structural no-op)
+  - void_free=False keeps legacy path verbatim (A/B verified)
+  - structlog "native_tet.filter_slivers" logs the retained-sliver debt
+
+file: tests/test_native_tet_solid_volume.py   (card-sanctioned 2nd file)
+lines_added: 37
+lines_removed: 38
+  - removed @pytest.mark.xfail(strict=True) block -> permanent regression guard
+  - STATUS docstring refreshed with measured A/B; `assert ratio <= 1.05` untouched
+  - removed now-unused `import pytest` (ruff F401 caused by marker removal)
+
+measured: legacy 20.269 (3.38x) skew 10.5 | void_free 6.128 (1.02x) skew 107.9
+BLOCKER (not fixed, reported): tests/test_native_tet_phaseA.py:87 asserts legacy delete

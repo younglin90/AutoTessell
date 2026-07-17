@@ -15,6 +15,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.utils.logging import get_logger
+
+log = get_logger(__name__)
+
 
 @dataclass
 class FilterResult:
@@ -24,6 +28,10 @@ class FilterResult:
     n_interior_dropped: int
     q_thresh_boundary: float
     q_thresh_interior: float
+    # 유지된 sliver = 삭제로 숨기지 않고 그대로 안고 가는 품질 부채.
+    # 다음 사이클이 local op (split/collapse/swap/smooth) 로 0 으로 몰아야 할 지표.
+    n_slivers_retained: int = 0
+    n_interior_slivers_retained: int = 0
 
 
 def _tet_shape_quality(points_per_tet: np.ndarray) -> np.ndarray:
@@ -61,6 +69,7 @@ def filter_slivers(
     q_threshold_interior: float = 0.05,
     q_threshold_boundary: float = 0.005,
     protect_boundary_faces: bool = True,
+    void_free: bool = True,
 ) -> FilterResult:
     """inside tet 중 sliver 를 boundary-aware 로 제거.
 
@@ -75,6 +84,20 @@ def filter_slivers(
             기본 0.005 — 실질적 "탈락시키지 않음".
         protect_boundary_faces: True 면 제거 후 surface triangle 이 더이상 어떤
             tet 의 face 에 포함되지 않게 되는 경우 해당 tet 되살림.
+        void_free: True (기본) 면 제거 술어는 ``inside_mask`` **단독** — 레퍼런스
+            fTetWild ``filter_outside`` (MeshImprovement.cpp:1638, ``W <= 0.5``)
+            와 동일. quality 항은 그 함수에 존재하지 않는다.
+
+            근거 (void 정리): kept set K 의 경계는 정확히 1 개의 kept tet 에 속한
+            face 들이다. 내부 tet (4 face 를 모두 inside tet 과 공유) 을 K 에서
+            빼면 그 4 face 가 ∂K 에 편입되지만 입력 표면 S 에는 속하지 않는다
+            ⇒ void 벽. 즉 품질 기반 내부 삭제는 solidity 와 원리적으로 양립
+            불가능하며 임계값 조율로 해소되지 않는다. 슬리버는 삭제가 아니라
+            위상 보존 국소 연산 (split/collapse/swap/smooth) 으로 제거해야 한다
+            (Hu et al. 2020 §3.4 루프 → §3.5 winding filter 순서).
+
+            q 는 계속 계산하되 **보고 전용** (``n_slivers_retained``).
+            False 면 legacy 동작 (``keep = inside_mask & (q >= thr)``) 유지 — A/B 용.
 
     Returns:
         FilterResult.
@@ -101,10 +124,17 @@ def filter_slivers(
         float(q_threshold_boundary),
         float(q_threshold_interior),
     )
-    keep = inside_mask & (q >= thr)
+    is_sliver = q < thr
+
+    if void_free:
+        # 레퍼런스 술어와 동일: inside 단독. q 는 보고용으로만 쓴다.
+        keep = inside_mask.copy()
+    else:
+        keep = inside_mask & ~is_sliver
 
     n_boundary_protected = 0
-    if protect_boundary_faces and not keep.all():
+    # void_free 하에선 dropped_idx 가 공집합이라 아래 루프는 구조적 no-op — skip.
+    if not void_free and protect_boundary_faces and not keep.all():
         # 제거 후 각 surface vertex 가 최소 1 개 tet 에 포함되는지 확인.
         # 그렇지 않으면 해당 vertex 에 인접했던 가장 quality 높은 dropped tet 을
         # 되살려 hole 방지.
@@ -138,6 +168,22 @@ def filter_slivers(
     dropped_total = int(inside_mask.sum() - keep.sum())
     interior_dropped = int((~has_surf & inside_mask & ~keep).sum())
 
+    # 유지된 슬리버 = 품질 부채. 삭제로 숨기던 수치가 여기서 그대로 드러난다.
+    slivers_retained = int((keep & is_sliver).sum())
+    interior_slivers_retained = int((~has_surf & keep & is_sliver).sum())
+
+    log.info(
+        "native_tet.filter_slivers",
+        void_free=void_free,
+        n_inside=int(inside_mask.sum()),
+        n_kept=int(keep.sum()),
+        n_dropped=dropped_total,
+        n_interior_dropped=interior_dropped,
+        n_boundary_protected=n_boundary_protected,
+        n_slivers_retained=slivers_retained,
+        n_interior_slivers_retained=interior_slivers_retained,
+    )
+
     return FilterResult(
         keep_mask=keep,
         n_dropped=dropped_total,
@@ -145,4 +191,6 @@ def filter_slivers(
         n_interior_dropped=interior_dropped,
         q_thresh_boundary=float(q_threshold_boundary),
         q_thresh_interior=float(q_threshold_interior),
+        n_slivers_retained=slivers_retained,
+        n_interior_slivers_retained=interior_slivers_retained,
     )
