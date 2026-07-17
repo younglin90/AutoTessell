@@ -12,7 +12,9 @@ import pytest
 from core.layers.native_bl import (
     BLConfig,
     NativeBLResult,
+    _bl_bad_internal_face_histogram,
     _build_edge_to_wall_faces,
+    _cell_centres_from_faces,
     _collect_wall_faces,
     _compute_collision_distance,
     _detect_feature_vertices,
@@ -668,3 +670,134 @@ def test_per_vertex_first_thickness_scale_applied() -> None:
 
     # scale=0.5 적용 후 총 두께 = ft * num_layers * scale = 0.01 * 3 * 0.5 = 0.015
     _np.testing.assert_allclose(cum[-1], ft * num_layers * v_scale, rtol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-17 — bracket+BL hang regression (native_tet BL on a complex mesh
+# never finished). Root cause: _bl_bad_internal_face_histogram ran a full
+# O(n_total_faces) analysis (_bl_cavity_shell_summary, itself calling
+# _cell_centres_from_faces) for EVERY detected "bad" connected component, but
+# the final output only keeps the biggest `max_worst`. The bracket mesh had
+# 2636 such components; each redid full-mesh work that was mostly discarded.
+# ---------------------------------------------------------------------------
+
+
+def test_cell_centres_from_faces_matches_naive_per_face_mean() -> None:
+    """Vectorized batch-by-face-size result must match the definition
+    exactly: each cell's centre is the mean of its faces' centroids."""
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+            [2.0, 0.0, 0.0], [2.0, 1.0, 0.0], [2.0, 0.0, 1.0], [2.0, 1.0, 1.0],
+        ]
+    )
+    # cell 0: two triangles (owner-only); cell 1: one quad (owner) + shares
+    # one triangle as neighbour with cell 0 (mixed face sizes on purpose).
+    faces = [
+        [0, 1, 2],        # internal, owner=0, neighbour=1
+        [0, 1, 3],        # boundary of cell 0
+        [4, 5, 6, 7],      # boundary of cell 1 (quad)
+    ]
+    owner = np.array([0, 0, 1], dtype=np.int64)
+    neighbour = np.array([1], dtype=np.int64)
+    n_cells = 2
+
+    got = _cell_centres_from_faces(points, faces, owner, neighbour, n_cells)
+
+    face_centroids = [np.asarray(points[f]).mean(axis=0) for f in faces]
+    expected = np.zeros((n_cells, 3))
+    counts = np.zeros(n_cells)
+    for fi, fc in enumerate(face_centroids):
+        expected[owner[fi]] += fc
+        counts[owner[fi]] += 1
+        if fi < len(neighbour):
+            expected[neighbour[fi]] += fc
+            counts[neighbour[fi]] += 1
+    expected /= counts[:, None]
+
+    np.testing.assert_allclose(got, expected, rtol=1e-12)
+
+
+def _many_isolated_bad_components(n: int):
+    """n independent cell-pairs, each joined by ONE zero-area (degenerate,
+    hence always-"bad") internal face — n disconnected components."""
+    points = np.array([[0.0, 0.0, 0.0]])
+    faces = [[0, 0, 0] for _ in range(n)]  # degenerate: area == 0
+    owner = np.array([2 * k for k in range(n)], dtype=np.int64)
+    neighbour = np.array([2 * k + 1 for k in range(n)], dtype=np.int64)
+    return points, faces, owner, neighbour
+
+
+def test_bad_component_analysis_capped_at_max_worst() -> None:
+    """The expensive per-component analysis must run for at most
+    `max_worst` components, regardless of how many bad components exist —
+    this is what turned a diagnostic into an unbounded (multi-minute+) hang
+    on the bracket+BL case (2636 real components observed)."""
+    n_components = 300
+    max_worst = 5
+    points, faces, owner, neighbour = _many_isolated_bad_components(n_components)
+
+    summary = _bl_bad_internal_face_histogram(
+        points, faces, owner, neighbour,
+        base_n_cells=2 * n_components,
+        prism_cell_start=2 * n_components,
+        prism_cell_end=2 * n_components,
+        max_worst=max_worst,
+    )
+
+    assert summary["n_bad_faces"] == n_components
+    assert summary["n_components_total"] == n_components
+    assert summary["n_components_analyzed"] == max_worst
+    assert len(summary["components"]) == max_worst
+
+
+def test_bad_component_analysis_not_capped_when_under_limit() -> None:
+    n_components = 3
+    points, faces, owner, neighbour = _many_isolated_bad_components(n_components)
+
+    summary = _bl_bad_internal_face_histogram(
+        points, faces, owner, neighbour,
+        base_n_cells=2 * n_components,
+        prism_cell_start=2 * n_components,
+        prism_cell_end=2 * n_components,
+        max_worst=12,
+    )
+
+    assert summary["n_components_total"] == n_components
+    assert summary["n_components_analyzed"] == n_components
+    assert len(summary["components"]) == n_components
+
+
+def test_bad_component_analysis_only_runs_expensive_work_on_kept_components(
+    monkeypatch,
+) -> None:
+    """Direct call-count guard: _bl_cavity_shell_summary (the O(n_faces)
+    per-component analysis that caused the hang) must be invoked exactly
+    `max_worst` times, never once per total component."""
+    import core.layers.native_bl as native_bl_mod
+
+    n_components = 200
+    max_worst = 7
+    points, faces, owner, neighbour = _many_isolated_bad_components(n_components)
+
+    calls = {"n": 0}
+    real_fn = native_bl_mod._bl_cavity_shell_summary
+
+    def _counting_wrapper(*args, **kwargs):
+        calls["n"] += 1
+        return real_fn(*args, **kwargs)
+
+    monkeypatch.setattr(native_bl_mod, "_bl_cavity_shell_summary", _counting_wrapper)
+
+    native_bl_mod._bl_bad_internal_face_histogram(
+        points, faces, owner, neighbour,
+        base_n_cells=2 * n_components,
+        prism_cell_start=2 * n_components,
+        prism_cell_end=2 * n_components,
+        max_worst=max_worst,
+    )
+
+    assert calls["n"] == max_worst, (
+        f"_bl_cavity_shell_summary called {calls['n']} times for "
+        f"{n_components} components (expected exactly max_worst={max_worst})"
+    )

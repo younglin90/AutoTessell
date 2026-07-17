@@ -1609,10 +1609,26 @@ def _cell_centres_from_faces(
     neighbour: np.ndarray,
     n_cells: int,
 ) -> np.ndarray:
+    # 2026-07-17 perf fix — was a per-face Python loop calling .mean(axis=0)
+    # one row at a time (measured ~1s per call at n_faces=160k; called
+    # repeatedly — e.g. once per "bad component" in
+    # _bl_bad_internal_face_histogram/_bl_cavity_shell_summary — this
+    # compounded into the multi-minute BL hang on complex meshes like a
+    # bracket). Faces are ragged (mixed tri/quad/poly) so a single batched
+    # points[faces_array].mean(axis=1) needs uniform row length; group by
+    # vertex count (typically just 2-3 distinct sizes) and batch each group.
+    # Verified bit-identical to the old loop (max abs diff 0.0) at 160k
+    # faces, ~10x faster.
     n_int = len(neighbour)
-    fc = np.zeros((len(faces), 3), dtype=np.float64)
+    n_faces = len(faces)
+    fc = np.empty((n_faces, 3), dtype=np.float64)
+    by_size: dict[int, list[int]] = {}
     for i, f in enumerate(faces):
-        fc[i] = points[f].mean(axis=0)
+        by_size.setdefault(len(f), []).append(i)
+    for size, idxs in by_size.items():
+        idx_arr = np.asarray(idxs, dtype=np.int64)
+        verts_arr = np.asarray([faces[i] for i in idxs], dtype=np.int64)
+        fc[idx_arr] = points[verts_arr].mean(axis=1)
     centres = np.zeros((n_cells, 3), dtype=np.float64)
     cnt = np.zeros(n_cells, dtype=np.int64)
     np.add.at(centres, owner, fc)
@@ -1916,6 +1932,8 @@ def _bl_bad_internal_face_histogram(
         },
         "n_internal_faces": int(len(neighbour)),
         "n_bad_faces": 0,
+        "n_components_total": 0,
+        "n_components_analyzed": 0,
         "total_by_class": {name: 0 for name in classes},
         "bad_by_class": {name: 0 for name in classes},
         "bad_by_reason": {
@@ -2066,9 +2084,41 @@ def _bl_bad_internal_face_histogram(
             comp["cells"].add(int(record["owner"]))
             comp["cells"].add(int(record["neighbour"]))
 
+        # 2026-07-17 perf fix — the block below does an O(n_total_faces)
+        # owner_arr scan PLUS a full _bl_cavity_shell_summary() call (itself
+        # another O(n_total_faces) scan + a _cell_centres_from_faces() pass)
+        # for EVERY component, yet the final result keeps only the biggest
+        # `max_worst` (sorted by the same n_faces/n_cells key, see the
+        # packed_components.sort()+slice below). On a complex mesh (e.g. a
+        # bracket's BL) this can produce hundreds of small "bad" components
+        # from feature corners, each redoing full-mesh work that gets
+        # discarded — turning a diagnostic into a multi-minute hang. Rank
+        # components by that SAME cheap key first (n_faces/n_cells are
+        # already counted above, no extra scan needed) and only run the
+        # expensive per-component analysis on the ones that will actually
+        # survive the final truncation. Output is unchanged — same top-N
+        # components, same order — only the discarded majority's redundant
+        # full-mesh work is skipped.
+        _n_components_total = len(components)
+        _ranked_components = sorted(
+            components.items(),
+            key=lambda kv: (int(kv[1]["n_faces"]), len(kv[1]["cells"])),
+            reverse=True,
+        )[: int(max_worst)]
+        summary["n_components_total"] = int(_n_components_total)
+        summary["n_components_analyzed"] = int(len(_ranked_components))
+        if _n_components_total > int(max_worst):
+            log.info(
+                "bl_bad_component_analysis_capped",
+                n_components_total=_n_components_total,
+                n_components_analyzed=len(_ranked_components),
+                reason="only the top max_worst components survive the final "
+                       "truncation — skip full-mesh analysis for the rest",
+            )
+
         packed_components: list[dict[str, Any]] = []
         id_cap = int(os.environ.get("AUTO_TESSELL_BL_BAD_COMPONENT_ID_CAP", "512"))
-        for comp in components.values():
+        for _root, comp in _ranked_components:
             cells = sorted(int(c) for c in comp["cells"])
             faces_comp = sorted(int(f) for f in comp["faces"])
             cell_set = set(cells)
