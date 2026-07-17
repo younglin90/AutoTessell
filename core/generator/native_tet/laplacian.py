@@ -309,7 +309,14 @@ def reduce_nonortho_tet(
     def _local_max_no(ti0: int, ti1: int) -> float:
         incident: set[tuple[int, int, int]] = set()
         for ci in (ti0, ti1):
-            for fl in _TET_FACES:
+            # NOTE (2026-07-17): 종전 ``_TET_FACES`` 참조 → NameError.
+            # C-PERF-44 (beta2495) 의 vectorize 리팩터가 이 상수를
+            # ``_TET_FACES_IDX`` 로 개명하면서 이 줄만 놓쳤다.  ``_local_max_no``
+            # 는 ``bad`` 가 비어있지 않을 때만 호출되므로 — 즉 **고칠 non-ortho
+            # face 가 실제로 존재할 때만** — 예외가 났고, 그 예외는 mesher 의
+            # ``except Exception`` → ``log.debug`` 로 삼켜졌다.  결과적으로
+            # TET_QUALITY1 은 "필요한 순간에만 죽는" 패스였다.
+            for fl in _TET_FACES_IDX:
                 k2: tuple[int, int, int] = tuple(sorted(int(tets[ci, k]) for k in fl))  # type: ignore[assignment]
                 incident.add(k2)
         vals = []
