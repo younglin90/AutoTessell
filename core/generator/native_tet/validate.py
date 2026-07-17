@@ -60,11 +60,30 @@ def drop_extreme_slivers(
     *,
     min_dihedral_deg: float = 0.5,
     min_aspect_regular: float = 10000.0,
+    void_free: bool = True,
 ) -> tuple[np.ndarray, int]:
-    """dihedral 이 극단적으로 작거나 (대략 공면) aspect 가 비정상적으로 큰 tet 제거.
+    """극단 sliver (거의 공면이거나 aspect 비정상) 를 센다. 기본값은 제거하지 않는다.
 
-    boundary 보호: surface triangle 이 유지되는지는 caller 가 별도 체크 필요.
-    본 함수는 단순히 "수치적으로 무의미한" tet 만 제거.
+    Args:
+        void_free: True (기본) 면 **세기만 하고 지우지 않는다**.
+
+            사면체 분할에서 tet 을 삭제하면 그 face 들이 경계에 편입되지만 입력
+            표면에 속하지 않는다 ⇒ void 벽이고, 아무도 그 구멍을 메우지 않는다
+            (BETA2822 가 ``filter.py`` 에 세운 불변식). 이 함수의 원래 docstring 은
+            *"boundary 보호: surface triangle 이 유지되는지는 caller 가 별도 체크
+            필요"* 라고 적어 두었으나 어떤 caller 도 그 체크를 하지 않았고, 부피
+            내부 구멍은 애초에 surface triangle 체크로는 잡히지 않는다.
+
+            실측 (cube/draft/N=2000/P4C=0): 이 함수가 5 회 호출에 **260 개**를
+            삭제해 (한 호출에 300 개 중 51 개 = 17%) 남은 void 벽 면적의 최대
+            기여자였다.
+
+            fTetWild 는 sliver 를 삭제하지 않고 위상 보존 국소 연산 (split /
+            collapse / swap / smooth) 으로 제거한다 (Hu et al. 2020 §3.4).
+            반환하는 count 는 그 국소 연산이 갚아야 할 부채다.
+            False 면 legacy 동작 (실제 삭제) — A/B 용.
+
+    Returns: (tets, n_extreme_slivers). ``void_free`` 면 tets 는 입력 그대로.
     """
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
@@ -78,6 +97,8 @@ def drop_extreme_slivers(
     asp = tet_aspect_ratio(pts, tets)
     drop = (dih < float(min_dihedral_deg)) | (asp > float(min_aspect_regular))
     n_drop = int(drop.sum())
+    if void_free:
+        return tets, n_drop
     return tets[~drop], n_drop
 
 

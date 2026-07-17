@@ -132,21 +132,22 @@ def test_native_tet_covers_input_surface(tmp_path: Path, monkeypatch) -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Interior voids remain: 1.959 of boundary area sits off the cube's "
-        "planes (was 5.908 before BETA2823's boundary-vertex lock). Slivers "
-        "are still deleted somewhere in the pipeline, and deleting a tet "
-        "leaves a void nothing fills — the same defect BETA2822 fixed in "
-        "filter.py, not yet swept from every call site."
-    ),
-    strict=True,
-)
 def test_native_tet_has_no_interior_voids(tmp_path: Path, monkeypatch) -> None:
     """No boundary area may lie off the input surface (that would be a void wall).
 
     A watertight input has exactly one boundary: itself.  Any boundary face not
     on the input surface is the wall of a hole in the volume.
+
+    History — off-plane area on cube.stl as the deletion sites were swept::
+
+        5.908   before any fix
+        1.959   after BETA2823 locked the real surface vertices
+        0.000   after drop_extreme_slivers stopped deleting (BETA2824)
+
+    Four sites deleted tets; the invariant "a deleted tet leaves a void nothing
+    fills" had to be applied to all of them.  clip_to_input_surface is the one
+    legitimate remover — it drops tets OUTSIDE the surface, which is exactly
+    fTetWild's filter_outside and creates no void.
     """
     monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
     poly = _run_native_tet(tmp_path / "case")
