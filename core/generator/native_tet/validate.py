@@ -90,13 +90,34 @@ def smooth_then_drop_slivers(
     min_aspect_regular: float = 10000.0,
     n_smooth_iter: int = 2,
     relax: float = 0.3,
+    void_free: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, int, int]:
     """beta1130 (R110) — drop 대신 sliver 주변 vertex smoothing 으로 complete.
 
     1) 극단 sliver 감지.
     2) sliver 가 포함하는 non-locked interior vertex 를 1-ring 평균 방향으로
        relax × n_smooth_iter 이동.
-    3) 그래도 여전히 sliver 인 tet 만 drop.
+    3) ``void_free=False`` 면 그래도 여전히 sliver 인 tet 을 drop.
+
+    Args:
+        void_free: True (기본) 면 3) 의 drop 을 하지 않는다 — smoothing 만 하고
+            남은 sliver 는 그대로 안고 간다.
+
+            근거는 BETA2822 가 ``filter.py`` 에 세운 것과 **동일한 void 정리**:
+            사면체 분할에서 tet 을 삭제하면 그 face 들이 경계에 편입되지만 입력
+            표면에 속하지 않는다 ⇒ void 벽. 아무도 그 구멍을 메우지 않는다.
+            그 불변식이 이 호출에는 적용돼 있지 않았다.
+
+            특히 경계 정점을 올바르게 lock 하면 (BETA2823) 이 결함이 **드러난다**:
+            line 128 의 ``affected &= ~locked_mask`` 때문에 lock 된 경계 sliver 는
+            smoothing 으로 빠져나갈 수 없고 → 전부 drop 으로 떨어진다.
+            실측 (cube/draft/N=2000): n_drop/call 4 → ~50 (12배), 경계면 446 → 574
+            (한 호출에 +128 = 내부 void). 부피는 정확히 1.0 인데 면적만 1.32x 인
+            것이 증거 — 부피 0 인 내부 균열이라 발산정리엔 안 잡히고 면적에만 잡힌다.
+
+            fTetWild 는 sliver 를 삭제하지 않고 위상 보존 국소 연산 (split /
+            collapse / swap / smooth) 으로 제거한다 (Hu et al. 2020 §3.4).
+            False 면 legacy 동작 — A/B 용.
 
     Returns: (pts_new, tets_new, n_smooth_moved, n_dropped).
     """
@@ -148,6 +169,10 @@ def smooth_then_drop_slivers(
     asp = tet_aspect_ratio(pts, tets)
     drop = (dih < float(min_dihedral_deg)) | (asp > float(min_aspect_regular))
     n_drop = int(drop.sum())
+    if void_free:
+        # 삭제하지 않는다 (void 정리 — docstring 참고). 남은 sliver 수는 계속
+        # 보고해 국소 연산이 갚아야 할 부채로 가시화한다.
+        return pts, tets, n_moved, 0
     tets_out = tets[~drop]
     return pts, tets_out, n_moved, n_drop
 

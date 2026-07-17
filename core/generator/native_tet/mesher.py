@@ -1803,12 +1803,42 @@ def generate_native_tet(
     # P4-B-5e (beta2245e): _phase_bc_skip 시 후속 sliver 처리도 무의미 (P4-C 가 통째 재생성).
     if enable_phase_a and final_tets.shape[0] > 0 and not _phase_bc_skip:
         try:
+            from core.generator.native_tet.plane_coverage import (
+                _tet_boundary_faces,
+            )
+            from core.generator.native_tet.plane_coverage import (
+                plane_coverage as _pc_jj3,
+            )
             from core.generator.native_tet.validate import (
                 smooth_then_drop_slivers,
             )
+
+            # JJ3-lock (beta2823) — V.shape[0] 는 *입력 STL* 정점 수(cube: 8)이지
+            # 메쉬의 표면 정점 수가 아니다.  BSP 삽입이 표면 위에 만든 정점은
+            # lock 밖이라 Laplacian 이 이웃 무게중심(대부분 내부)쪽으로 끌어당겨
+            # 표면을 함몰시켰다 (실측: median off-plane 0.0 -> 0.0319, 한 호출).
+            # carve 직후 boundary vertex 는 입력 표면 위에 정확히 있으므로
+            # (median off-plane = 0.0) 경계 정점 전체를 lock 하는 것은 근사가
+            # 아니라 정확하다.  fTetWild §3.5 — smoothing 은 surface vertex 를
+            # 입력 표면 밖으로 내보내지 않는다.
             n_surface_in = int(V.shape[0])
-            locked_smooth = np.arange(min(n_surface_in, final_pts.shape[0]),
-                                       dtype=np.int64)
+            _B = _tet_boundary_faces(final_tets)
+            _bnd = np.unique(_B.ravel())
+            locked_smooth = np.union1d(
+                np.arange(min(n_surface_in, final_pts.shape[0]),
+                          dtype=np.int64),
+                _bnd.astype(np.int64),
+            )
+
+            prev_pts_jj3 = final_pts.copy()
+            prev_tets_jj3 = final_tets.copy()
+            try:
+                prev_area_jj3 = float(
+                    _pc_jj3(V, F, prev_pts_jj3, prev_tets_jj3).area_coverage
+                )
+            except Exception:
+                prev_area_jj3 = -1.0
+
             new_pts, new_tets, n_moved, n_drop_jj = smooth_then_drop_slivers(
                 final_pts, final_tets,
                 locked_vertex_ids=locked_smooth,
@@ -1820,7 +1850,28 @@ def generate_native_tet(
                 # 셀 손실 10% 이내일 때만 채택.
                 final_pts = new_pts
                 final_tets = new_tets
-                if n_moved > 0 or n_drop_jj > 0:
+
+                # 이웃 블록(1764-1799 / 1832-1870)과 동일한 surface-aware
+                # revert guard.  lock 이 옳다면 0 회 발화한다.
+                try:
+                    new_area_jj3 = float(
+                        _pc_jj3(V, F, final_pts, final_tets).area_coverage
+                    )
+                except Exception:
+                    new_area_jj3 = prev_area_jj3
+                if (
+                    prev_area_jj3 > 0
+                    and new_area_jj3 + 0.05 < prev_area_jj3
+                ):
+                    log.warning(
+                        "native_tet_smooth_then_drop_revert",
+                        prev_area=round(prev_area_jj3, 3),
+                        new_area=round(new_area_jj3, 3),
+                        reason="smoothing broke surface plane coverage",
+                    )
+                    final_pts = prev_pts_jj3
+                    final_tets = prev_tets_jj3
+                elif n_moved > 0 or n_drop_jj > 0:
                     log.info(
                         "native_tet_smooth_then_drop",
                         moved=int(n_moved), dropped=int(n_drop_jj),

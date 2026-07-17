@@ -1,23 +1,25 @@
-card: BETA2822_SOLID_VOID_FREE_FILTER
+card: BETA2823_SMOOTH_LOCK_BOUNDARY_VERTS
+file: core/generator/native_tet/mesher.py   (single file)
+functions: generate_native_tet — smooth_then_drop_slivers block (was 1804-1829)
+lines_added: 54
+lines_removed: 3
+ruff: 101 = pristine baseline (my block 0)
 
-file: core/generator/native_tet/filter.py
-functions: filter_slivers, FilterResult
-lines_added: 47
-lines_removed: 5
-  - filter_slivers(..., void_free: bool = True); void_free -> keep = inside_mask.copy()
-    (drops the `& (q >= thr)` conjunction; reference filter_outside predicate)
-  - q still computed, report-only: FilterResult.n_slivers_retained /
-    n_interior_slivers_retained (362 / 356 on cube draft N=2000)
-  - protect_boundary_faces loop skipped under void_free (structural no-op)
-  - void_free=False keeps legacy path verbatim (A/B verified)
-  - structlog "native_tet.filter_slivers" logs the retained-sliver debt
+implemented exactly as carded:
+  1. import _tet_boundary_faces + plane_coverage as _pc_jj3
+  2. lock = union(arange(n_surface_in), unique(_tet_boundary_faces(final_tets)))
+  3. revert guard native_tet_smooth_then_drop_revert (area_coverage +0.05)
+  4. adoption cond new_tets >= final_tets*0.9 untouched
 
-file: tests/test_native_tet_solid_volume.py   (card-sanctioned 2nd file)
-lines_added: 37
-lines_removed: 38
-  - removed @pytest.mark.xfail(strict=True) block -> permanent regression guard
-  - STATUS docstring refreshed with measured A/B; `assert ratio <= 1.05` untouched
-  - removed now-unused `import pytest` (ruff F401 caused by marker removal)
+LOCK PROVEN CORRECT (cube/draft/N=2000/P4C=0):
+  bnd locked 8/163 -> 163/163; moved 133 -> 0; max_move 0.114 -> 0.0
+  per-call median off-plane 0.0->0.0319  =>  0.0->0.0
+  final: div-volume 0.750 -> 1.0000 exact; axis-aligned 14.9% -> 79.0%
+         max_skew 107.9 -> 10.05; off-plane median 0.0324 -> 0.000000
+  my revert guard fired 0x (guard is structurally BLIND to voids)
 
-measured: legacy 20.269 (3.38x) skew 10.5 | void_free 6.128 (1.02x) skew 107.9
-BLOCKER (not fixed, reported): tests/test_native_tet_phaseA.py:87 asserts legacy delete
+BLOCKER — DO NOT COMMIT AS-IS: boundary area 6.129 -> 7.903 (1.32x)
+  test_native_tet_solid_volume FAILS = card criterion 4 (immediate FAIL).
+  cause: same fn's DROP half. n_drop/call 4 -> ~50, bnd faces 446 -> 574.
+  validate.py:128 `affected &= ~locked_mask` — lock removes smoothing's escape
+  hatch, slivers survive smooth then get DELETED = voids (BETA2822 rule).
