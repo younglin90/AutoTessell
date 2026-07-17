@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=22" />
+    <link rel="stylesheet" href="styles.css?v=23" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -118,6 +118,10 @@
           <label class="row">
             <span>BL 레이어 수 <i class="ttip" title="벽면 프리즘 레이어 수. 0 = 비활성(draft).">ⓘ</i></span>
             <input id="bl_layers" type="number" min="0" max="20" step="1" value="3" />
+          </label>
+          <label class="row">
+            <span>BL 확장비 <i class="ttip" title="레이어가 벽에서 멀어질수록 두꺼워지는 배율 (등비 성장). layer i 두께 = 첫 레이어 두께 × 확장비^i. cfMesh/snappyHexMesh 기본값과 동일한 1.2.">ⓘ</i></span>
+            <input id="bl_growth_ratio" type="number" min="1" max="3" step="0.05" value="1.2" />
           </label>
           <label class="row">
             <span>표면 셀 크기 [m] <i class="ttip" title="0 = 자동 (characteristic_length 기반).">ⓘ</i></span>
@@ -298,8 +302,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=22"></script>
-    <script src="ui.js?v=22"></script>
-    <script src="app.js?v=22"></script>
+    <script src="viewer.js?v=23"></script>
+    <script src="ui.js?v=23"></script>
+    <script src="app.js?v=23"></script>
   </body>
 </html>

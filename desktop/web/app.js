@@ -282,6 +282,7 @@
     };
     if (num("max_cells") > 0) p.max_cells = parseInt($("max_cells").value, 10);
     if (num("bl_layers") > 0) p.bl_layers = parseInt($("bl_layers").value, 10);
+    if (num("bl_growth_ratio") > 0) p.bl_growth_ratio = num("bl_growth_ratio");
     if (num("element_size") > 0) p.element_size = num("element_size");
     if (num("base_cell_size") > 0) p.base_cell_size = num("base_cell_size");
     ["repair_engine", "remesh_engine", "checker_engine", "postprocess_engine"].forEach((k) => {
