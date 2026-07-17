@@ -50,6 +50,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.analyzer.readers import read_stl
 from core.pipeline.orchestrator import PipelineOrchestrator
@@ -85,12 +86,33 @@ def _boundary_area(poly_dir: Path) -> float:
     return total
 
 
-def test_native_tet_mesh_is_solid(tmp_path: Path, monkeypatch) -> None:
-    """Boundary area must equal the input surface area (no interior voids)."""
-    # Isolate the self-implemented engine: no external pytetwild rescue.
-    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+def _cell_volumes(poly_dir: Path) -> np.ndarray:
+    """Signed volume of every cell, via the divergence theorem over its faces."""
+    pts = np.asarray(parse_foam_points(poly_dir / "points"), dtype=float)
+    faces = [list(f) for f in parse_foam_faces(poly_dir / "faces")]
+    owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+    nb = np.asarray(parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64)
+    n_internal = len(nb)
+    n_cells = int(max(owner.max(), nb.max() if nb.size else 0)) + 1
 
-    case = tmp_path / "case"
+    vols = np.zeros(n_cells, dtype=float)
+    for fi, face in enumerate(faces):
+        p = pts[np.asarray(face, dtype=int)]
+        a = np.zeros(3)
+        for i in range(1, len(face) - 1):
+            a = a + np.cross(p[i] - p[0], p[i + 1] - p[0]) / 2.0
+        contrib = float(np.dot(p.mean(axis=0), a)) / 3.0
+        o = int(owner[fi])
+        if 0 <= o < n_cells:
+            vols[o] += contrib
+        if fi < n_internal:
+            n_ = int(nb[fi])
+            if 0 <= n_ < n_cells:
+                vols[n_] -= contrib
+    return vols
+
+
+def _run_native_tet(case: Path) -> Path:
     PipelineOrchestrator().run(
         _CUBE, case,
         quality_level="draft", mesh_type="tet", tier_hint="native_tet",
@@ -98,9 +120,24 @@ def test_native_tet_mesh_is_solid(tmp_path: Path, monkeypatch) -> None:
         max_cells=2000,
         tier_specific_params={"max_cells": 2000, "target_cells": 2000},
     )
-
     poly = case / "constant" / "polyMesh"
     assert (poly / "points").exists(), "polyMesh was not written"
+    return poly
+
+
+def test_native_tet_mesh_is_solid(tmp_path: Path, monkeypatch) -> None:
+    """Boundary area must equal the input surface area (no interior voids).
+
+    NOTE: this is *necessary but not sufficient* — see
+    ``test_native_tet_mesh_encloses_true_volume`` below.  An inward crater
+    preserves area while eating volume, so this gate alone cannot certify
+    solidity.  It does guard the specific defect fixed in BETA2822 (interior
+    tet deletion, which drove the ratio to 3.4x), which is why it is kept.
+    """
+    # Isolate the self-implemented engine: no external pytetwild rescue.
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+
+    poly = _run_native_tet(tmp_path / "case")
 
     expected = _stl_surface_area(_CUBE)
     actual = _boundary_area(poly)
@@ -111,4 +148,51 @@ def test_native_tet_mesh_is_solid(tmp_path: Path, monkeypatch) -> None:
         f"boundary area {actual:.3f} is {ratio:.2f}x the input surface area "
         f"{expected:.3f} — the volume has interior voids (Swiss cheese). "
         f"Slivers must be removed by local operations, not deleted."
+    )
+
+
+@pytest.mark.xfail(
+    reason=(
+        "The boundary encloses the wrong volume even though its AREA is right: "
+        "measured on cube.stl (true volume 1.000) the cells sum to 1.451x while "
+        "the boundary encloses 0.770x. Root cause located at mesher.py:1809 — "
+        "`n_surface_in = int(V.shape[0])` locks only the INPUT STL's vertices "
+        "(8 for a cube), leaving the ~155 surface vertices BSP created unlocked, "
+        "so the Laplacian in smooth_then_drop_slivers pulls the boundary inward. "
+        "Tracked as harness CARD BETA2823."
+    ),
+    strict=True,
+)
+def test_native_tet_mesh_encloses_true_volume(tmp_path: Path, monkeypatch) -> None:
+    """Cell volumes must sum to the input's true volume, and none may invert.
+
+    Why this exists: ``test_native_tet_mesh_is_solid`` gates on boundary AREA
+    and passes (0.99x) while the mesh is still wrong.  A crater pushed inward
+    keeps the area but removes volume, so area is blind to it.  Two independent
+    measures must agree with the truth for the mesh to be a valid
+    tetrahedralization of the input::
+
+        cube.stl true         volume 1.000
+        sum |cell volume|            1.451   <- cells overlap / are tangled
+        boundary-enclosed volume     0.770   <- boundary crumpled inward
+
+    In a valid mesh both equal 1.000 and each other.  Do NOT widen these
+    tolerances — the unit cube's volume is exact geometry, not a tuning knob.
+    """
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+
+    poly = _run_native_tet(tmp_path / "case")
+
+    vols = _cell_volumes(poly)
+    total = float(np.abs(vols).sum())
+    true_volume = 1.0  # cube.stl is the unit cube (bbox exactly [-0.5, 0.5]^3)
+
+    n_inverted = int((vols < 0).sum())
+    assert n_inverted == 0, f"{n_inverted}/{vols.size} cells have negative volume"
+
+    ratio = total / true_volume
+    assert 0.95 <= ratio <= 1.05, (
+        f"cell volumes sum to {total:.3f} = {ratio:.2f}x the input's true "
+        f"volume {true_volume:.3f}. Area can look right while the boundary is "
+        f"crumpled inward or cells overlap — this is the sufficient check."
     )
