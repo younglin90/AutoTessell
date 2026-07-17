@@ -498,8 +498,24 @@ class PipelineOrchestrator:
                 # post-extrusion emergent inversions; this helper removes
                 # them outright (typically 1-3 cells) so checkMesh's
                 # negative_volumes drops to 0.  Default OFF.
+                #
+                # 2026-07-17 GATE — this destructive drop pass exists ONLY to
+                # clean *post-BL-extrusion* emergent inversions.  It must never
+                # run on a pure tet/hex/poly mesh with no boundary layer: on a
+                # curved wall the non-ortho/skew outlier set is broadly
+                # distributed and dropping it cascades into large surface
+                # craters ("찌글거림", measured 25 % of cells on the cylinder
+                # demo).  Require BL to actually be enabled — identical
+                # condition to the post_layers_engine auto-populate above.
+                _bl_active_for_drop = (
+                    strategy is not None
+                    and strategy.boundary_layers is not None
+                    and bool(strategy.boundary_layers.enabled)
+                    and int(strategy.boundary_layers.num_layers) > 0
+                )
                 if (
-                    os.environ.get(
+                    _bl_active_for_drop
+                    and os.environ.get(
                         "AUTO_TESSELL_BL_DROP_NEG_VOL", "0",
                     ) == "1"
                 ):

@@ -18,6 +18,7 @@ behaves like any other wall).  The cost is minimal — checkMesh's
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 
@@ -382,6 +383,36 @@ def _high_skewness_cells(
     return bad
 
 
+def _resolve_max_drop_fraction(
+    max_drop_fraction: float | None,
+) -> float | None:
+    """Resolve the per-iteration drop-fraction cap.
+
+    ``None`` → read ``AUTO_TESSELL_BL_DROP_MAX_FRACTION`` (default ``0`` =
+    disabled).  A value ``<= 0`` disables the cap (returns ``None``).
+
+    Default OFF (2026-07-17): a fraction cap cannot distinguish *legitimate*
+    large BL cleanup from a pathological cascade.  Measured: a healthy
+    tet+BL cube drops ~38 % of cells in the first pass (native_bl leaves
+    many inverted/skew cells that MUST be removed to pass checkMesh), while
+    the cylinder "찌글거림" cascade dropped a *smaller* 25 %.  So a low cap
+    (e.g. 0.05) would wrongly block the cube while missing the cylinder.
+    The real discriminator is the orchestrator BL gate — the destructive
+    pass now only runs on BL-enabled meshes, where large drops are expected.
+    This knob remains available (opt-in) for a user who hits a specific
+    cascade and wants a hard ceiling.
+    """
+    if max_drop_fraction is None:
+        raw = os.environ.get("AUTO_TESSELL_BL_DROP_MAX_FRACTION", "0").strip()
+        try:
+            max_drop_fraction = float(raw)
+        except ValueError:
+            max_drop_fraction = 0.0
+    if max_drop_fraction <= 0.0:
+        return None
+    return max_drop_fraction
+
+
 def drop_neg_vol_cells_iterative(
     case_dir: Path,
     *,
@@ -392,20 +423,30 @@ def drop_neg_vol_cells_iterative(
     max_iterations: int = 8,
     topo_check: bool = True,
     geometric_check: bool = True,
+    max_drop_fraction: float | None = None,
 ) -> dict[str, int]:
     """Iterate ``drop_neg_vol_cells`` until no more cells are dropped
     or ``max_iterations`` reached.  After each pass, newly exposed
     surviving cells may themselves exceed the skew threshold (the
     drop creates a cavity whose surrounding cells inherit the bad
     geometry).  Stop when a pass drops zero cells.
+
+    Optional cascade guard (2026-07-17, opt-in): ``max_drop_fraction`` caps
+    how many cells a *single* pass may remove relative to the current cell
+    count.  When a pass would exceed the cap it is *not applied* (mesh left
+    untouched) and iteration stops.  ``None`` resolves from
+    ``AUTO_TESSELL_BL_DROP_MAX_FRACTION`` (default ``0`` = **disabled** — see
+    ``_resolve_max_drop_fraction`` for why a fraction cap cannot safely
+    discriminate legitimate BL cleanup from a cascade).
     """
+    max_drop_fraction = _resolve_max_drop_fraction(max_drop_fraction)
     agg = {
         "n_cells_pre": 0, "n_cells_post": 0, "n_dropped": 0,
         "n_dropped_inverted": 0, "n_dropped_skew": 0,
         "n_dropped_non_ortho": 0,
         "n_faces_pre": 0, "n_faces_post": 0,
         "n_new_boundary_faces": 0, "n_dropped_boundary_faces": 0,
-        "n_iterations": 0,
+        "n_iterations": 0, "fraction_cap_hit": 0,
     }
     first = True
     for it in range(max_iterations):
@@ -417,6 +458,7 @@ def drop_neg_vol_cells_iterative(
             non_ortho_drop_threshold=non_ortho_drop_threshold,
             topo_check=topo_check,
             geometric_check=geometric_check,
+            max_drop_fraction=max_drop_fraction,
         )
         agg["n_iterations"] = it + 1
         if first:
@@ -431,6 +473,18 @@ def drop_neg_vol_cells_iterative(
         agg["n_dropped_non_ortho"] += res.get("n_dropped_non_ortho", 0)
         agg["n_new_boundary_faces"] += res["n_new_boundary_faces"]
         agg["n_dropped_boundary_faces"] += res["n_dropped_boundary_faces"]
+        if res.get("fraction_cap_hit"):
+            # This pass would have cratered the mesh — nothing was written.
+            # Stop iterating and leave the mesh in its current (safe) state.
+            agg["fraction_cap_hit"] = 1
+            log.warning(
+                "drop_neg_vol_cells_fraction_cap_hit",
+                iteration=it + 1,
+                n_would_drop=res.get("n_would_drop", 0),
+                n_cells=res.get("n_cells_pre", 0),
+                max_fraction=max_drop_fraction,
+            )
+            break
         if res["n_dropped"] == 0:
             break
     return agg
@@ -445,6 +499,7 @@ def drop_neg_vol_cells(
     non_ortho_drop_threshold: float | None = None,
     topo_check: bool = True,
     geometric_check: bool = True,
+    max_drop_fraction: float | None = None,
 ) -> dict[str, int]:
     """Remove cells with ``signed_vol <= vol_tol`` from polyMesh.
 
@@ -538,6 +593,36 @@ def drop_neg_vol_cells(
         drop_set = set(inverted_set)
         skew_set = set()
         non_ortho_set = set()
+
+    # 2026-07-17 cascade-perforation cap.  A pass wanting to remove more
+    # than ``max_drop_fraction`` of the current cells is not the "typically
+    # 1-3 cells" this helper targets; on curved walls the non-ortho/skew set
+    # is broadly distributed and removing it craters the surface (the
+    # cavity's surviving neighbours inherit the bad geometry and cascade).
+    # Abort WITHOUT writing so the mesh is left untouched, and signal the
+    # caller (``drop_neg_vol_cells_iterative``) to stop iterating.
+    if (
+        max_drop_fraction is not None
+        and max_drop_fraction > 0.0
+        and len(drop_set) > max_drop_fraction * max(n_cells, 1)
+    ):
+        log.warning(
+            "drop_neg_vol_cells_fraction_cap_hit",
+            n_would_drop=len(drop_set),
+            n_cells=n_cells,
+            fraction=round(len(drop_set) / max(n_cells, 1), 4),
+            max_fraction=max_drop_fraction,
+        )
+        return {
+            "n_cells_pre": n_cells, "n_cells_post": n_cells,
+            "n_dropped": 0, "n_dropped_inverted": 0, "n_dropped_skew": 0,
+            "n_dropped_non_ortho": 0,
+            "n_faces_pre": n_total_faces,
+            "n_faces_post": n_total_faces,
+            "n_new_boundary_faces": 0, "n_dropped_boundary_faces": 0,
+            "fraction_cap_hit": 1, "n_would_drop": len(drop_set),
+        }
+
     if not drop_set or (n_cells - len(drop_set)) < 10:
         return {
             "n_cells_pre": n_cells, "n_cells_post": n_cells,

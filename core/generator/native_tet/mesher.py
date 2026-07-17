@@ -4241,6 +4241,14 @@ def generate_native_tet(
     # python wrapper (pytetwild) 로 재생성. 결과 final_pts/final_tets 교체
     # → 다음 단계 (polymesh_writer + native_bl) 그대로 작동.
     # CLAUDE.md 정책 일부 완화 (외부 의존 — pytetwild 는 이미 pyproject.toml 에).
+    #
+    # 2026-07-17 — non-skip 경로 버그: _phase_bc_skip=False 이면 polyMesh 는
+    # 이미 line 1887 에서 (P4-C 이전 mesh 로) 쓰여 있다.  P4-C 가
+    # final_pts/final_tets 를 grade-A mesh 로 재할당해도 아래 4428 의 re-write
+    # 가 _phase_bc_skip 만 검사해 실행되지 않아, on-disk polyMesh 는 P4-C 이전의
+    # 저품질 mesh 로 남는다 (실린더: 8601-cell 충실 mesh → 1841-cell 왜곡 mesh).
+    # 이 플래그로 "P4-C 가 mesh 를 재할당했다" 를 추적해 re-write 를 강제한다.
+    _p4c_rewrote = False
     if (
         grade in ("C", "D", "?")
         and os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
@@ -4347,6 +4355,9 @@ def generate_native_tet(
                 n_cells = int(_best_f.shape[0])
                 n_points = int(_best_v.shape[0])
                 grade = _best_grade
+                # non-skip 경로에서도 아래 4428 re-write 가 P4-C mesh 를
+                # 반드시 persist 하도록 표시.
+                _p4c_rewrote = True
                 log.info(
                     "native_tet_p4c_pytetwild_fallback",
                     grade_old=_grade_old, grade_new=grade,
@@ -4425,7 +4436,10 @@ def generate_native_tet(
 
     # P4-B-5h (beta2245i): _phase_bc_skip 으로 deferred 된 경우 (또는 P4-C 가
     # final_pts/tets 를 재할당한 경우) polyMesh 를 정확한 최종 mesh 로 write.
-    if _phase_bc_skip:
+    # 2026-07-17: 조건에 ``_p4c_rewrote`` 를 추가.  이전에는 _phase_bc_skip 만
+    # 검사해, non-skip 경로에서 P4-C 가 grade-A mesh 로 재할당해도 on-disk
+    # polyMesh 가 line 1887 의 P4-C 이전 저품질 mesh 로 남았다 (곡면 벽 왜곡).
+    if _phase_bc_skip or _p4c_rewrote:
         try:
             stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
             n_cells = int(stats.get("num_cells", final_tets.shape[0]))
@@ -4433,6 +4447,8 @@ def generate_native_tet(
             log.info(
                 "native_tet_polymesh_write_post_p4c",
                 num_cells=n_cells, num_points=n_points,
+                phase_bc_skip=bool(_phase_bc_skip),
+                p4c_rewrote=bool(_p4c_rewrote),
             )
         except Exception as exc:
             return NativeTetResult(
