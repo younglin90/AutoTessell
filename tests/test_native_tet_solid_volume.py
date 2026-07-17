@@ -31,7 +31,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
@@ -195,22 +194,19 @@ def test_native_tet_mesh_encloses_true_volume(tmp_path: Path, monkeypatch) -> No
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "50 of 2398 cells are degenerate (volume exactly 0) on cube.stl. They "
-        "are the source of max_skewness 1.7e29. They were previously deleted "
-        "by drop_extreme_slivers, which hid them at the cost of punching voids "
-        "(BETA2824); they must instead be removed by topology-preserving local "
-        "operations — collapse / swap / smooth — per fTetWild section 3.4."
-    ),
-    strict=True,
-)
 def test_native_tet_has_no_degenerate_cells(tmp_path: Path, monkeypatch) -> None:
     """No cell may have (near) zero volume.
 
     A zero-volume tet is four coplanar points: it has no interior, its skewness
     is unbounded, and a solver cannot integrate over it.  This is the last
     remaining defect once the boundary is exact and the cells tile the volume.
+
+    STATUS: fixed by BETA2825 — the ~47 degenerate cells (which drove
+    max_skewness to 1.68e29) are removed WITHOUT deletion by topology-preserving
+    signed 3-2 flips plus coplanar surface-flap removal per fTetWild section 3.4.
+    Measured cube.stl/draft/N=2000/P4C=0: n_degenerate 47 -> 0, max_skewness
+    1.68e29 -> 10.0 (finite), on-plane area 6.000, off-plane 0.000, sum|vol|
+    1.0043 all unchanged (was xfail strict).
     """
     monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
     poly = _run_native_tet(tmp_path / "case")

@@ -1,25 +1,19 @@
-card: BETA2823_SMOOTH_LOCK_BOUNDARY_VERTS
-file: core/generator/native_tet/mesher.py   (single file)
-functions: generate_native_tet — smooth_then_drop_slivers block (was 1804-1829)
-lines_added: 54
-lines_removed: 3
-ruff: 101 = pristine baseline (my block 0)
+card: BETA2825_DEGENERATE_SLIVER_REMOVAL
 
-implemented exactly as carded:
-  1. import _tet_boundary_faces + plane_coverage as _pc_jj3
-  2. lock = union(arange(n_surface_in), unique(_tet_boundary_faces(final_tets)))
-  3. revert guard native_tet_smooth_then_drop_revert (area_coverage +0.05)
-  4. adoption cond new_tets >= final_tets*0.9 untouched
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (insert before _prog("write",0.9), non-skip disk-mesh point)
+lines_added: 156
+lines_removed: 0
+detail: signed 3-2 flip (분리삼각형 sign(orient(x,y,z,u))!=sign(...v); flip.py 재사용 안 함)
+        + Phase 2 공면 flap 제거 (입력면 평면 4정점 coplanar) + extra_area/area_coverage revert 가드.
 
-LOCK PROVEN CORRECT (cube/draft/N=2000/P4C=0):
-  bnd locked 8/163 -> 163/163; moved 133 -> 0; max_move 0.114 -> 0.0
-  per-call median off-plane 0.0->0.0319  =>  0.0->0.0
-  final: div-volume 0.750 -> 1.0000 exact; axis-aligned 14.9% -> 79.0%
-         max_skew 107.9 -> 10.05; off-plane median 0.0324 -> 0.000000
-  my revert guard fired 0x (guard is structurally BLIND to voids)
+file: tests/test_native_tet_solid_volume.py
+functions: test_native_tet_has_no_degenerate_cells
+lines_added: 7
+lines_removed: 11
+detail: xfail(strict) 제거(XPASS 승격, assert 불가침) + docstring STATUS 실측 갱신 + unused import pytest 제거.
 
-BLOCKER — DO NOT COMMIT AS-IS: boundary area 6.129 -> 7.903 (1.32x)
-  test_native_tet_solid_volume FAILS = card criterion 4 (immediate FAIL).
-  cause: same fn's DROP half. n_drop/call 4 -> ~50, bnd faces 446 -> 574.
-  validate.py:128 `affected &= ~locked_mask` — lock removes smoothing's escape
-  hatch, slivers survive smooth then get DELETED = voids (BETA2822 rule).
+measured cube/draft/N=2000/P4C=0 (PRE -> POST):
+  n_degenerate 47->0 | on 6.0000->6.0000 | off 0.0000->0.0000 | sum|vol| 1.0043->1.0043
+  max_skewness 1.684e29 -> 10.018 (finite) | revert 발화 0회 | n_flip32~35-40 n_flap~3-12
+tests: solid_volume 4/4 PASS ; target_cells+cylinder+harness+phaseA 27/27 PASS

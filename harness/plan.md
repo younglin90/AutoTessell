@@ -1,57 +1,31 @@
-# CARD BETA2823_SMOOTH_LOCK_BOUNDARY_VERTS (beta2823) — mesher.py: Laplacian smoothing 의 lock set 을 boundary vertex 전체로 (표면 주름의 진범)
+# CARD BETA2825_DEGENERATE_SLIVER_REMOVAL (beta2825) — mesher.py: 축퇴 tet 50개를 위상보존 3-2 flip + 표면 대각 flip 으로 제거 (skew 1.7e29 → 유한, XPASS)
 
 **target_engine**: tet
-**모티프**: fTetWild §3.5 — smoothing 은 surface vertex 를 입력 표면 밖으로 절대 내보내지 않는다 (`third_party/fTetWild/src/MeshImprovement.cpp` smooth 단계는 `is_surface_fs` 정점을 표면에 구속). 우리 코드엔 그 구속이 8 개 정점에만 걸려 있다.
+**모티프**: fTetWild §3.4 (topology-preserving sliver removal) + Klingner 2008 §"edge removal" (3-2 flip). 축퇴 제거를 **삭제 없이** 위상보존 국소연산으로.
 
-## 이론적 근거
+## 이론적 근거 (planner 실측 — cube/draft/N=2000/P4C=0)
 
-- **사이클 2 전제 정정 (실측)**. Advisor 가 제시한 "경계면적 6.128 = 2% 잔차 = 몇 도짜리 주름" 은 **면적 메트릭이 눈이 멀어서 생긴 과소평가**다. 실측 (cube.stl / draft / N=2000 / P4C=0):
-  - 경계면적 **5.939 (0.99x)** — solid 테스트는 **통과**한다.
-  - 그런데 **∑|cell volume| = 0.869** (참값 1.0) → **부피의 13% 가 없다**. 발산정리 값은 0.770 이지만 경계에 **불일치 방향 edge 62/1330** 이 있어 (닫힌 orientable manifold 가 아님) 신뢰 불가 — 두 값의 불일치 자체가 증상이다.
-  - 경계 정점 **199/236 이 입력 표면에서 이탈**, median **0.0319**, max **0.153** (= 큐브 한 변의 15%). "몇 도" 가 아니다.
-  - 면적이 0.99x 인 이유: 안쪽으로 우그러진 주름은 부피를 13% 먹으면서 면적은 거의 보존한다. **면적 ratio ≤1.05 게이트는 크레이터에 대해 구조적으로 맹목**이다.
-- **문제 정의**. carve (winding filter) 직후 메쉬는 **완벽하다**: `plane_coverage=1.00`, 경계면 **322/322 전부 축정렬**, boundary vertex median off-plane **0.00000**. 표면은 이미 정합돼 있다. 그 다음 한 호출이 그것을 부순다.
-- **범인 (call-site 단위 계측)**. `plane_coverage` 를 caller line 별로 spy:
-
-  | caller | n_tets | bnd | axis-aligned | pc | median off-plane |
-  |---|---|---|---|---|---|
-  | mesher.py:1290 | 1520 | 322 | **322** | 1.00 | 0.00000 |
-  | mesher.py:1304 | 1520 | 322 | 1 | 0.00 | 0.06363 | ← 손상, 그러나 **guard 가 revert** |
-  | mesher.py:1771 | 1520 | 322 | **322** | 1.00 | 0.00000 | ← 복구됨 |
-  | mesher.py:1842 | 1518 | 330 | **5** | 0.00 | 0.03199 | ← 손상, **revert 없음 → 최종 메쉬로 유출** |
-
-  1779 과 1842 사이의 유일한 point-이동 블록 = `smooth_then_drop_slivers` (**mesher.py:1804-1829**).
-- **직접 계측** (`smooth_then_drop_slivers` 입출력 spy, 동일 호출):
-  ```
-  n_pts=300  n_locked=8  (max_lock_id=7)
-  boundary_verts=163  →  LOCKED=8,  UNLOCKED=155
-  boundary verts MOVED by smoothing: 133/163,  max_move=0.11392
-  median off-plane  BEFORE=0.00000  →  AFTER=0.03186
-  ```
-  **한 호출에서 0.0 → 0.0319.** 최종 메쉬의 결함값과 정확히 일치한다. 증명 끝.
-- **근본 원인** (mesher.py:1809-1811):
-  ```python
-  n_surface_in = int(V.shape[0])                      # cube.stl → 8 (dedup 된 STL 정점)
-  locked_smooth = np.arange(min(n_surface_in, final_pts.shape[0]))   # = [0,8) = 8 개 코너뿐
-  ```
-  `V.shape[0]` 은 **입력 STL 정점 수**이지 메쉬의 표면 정점 수가 아니다. BSP 삽입이 큐브 면 위에 만든 155 개 표면 정점은 lock 밖 → Laplacian (`n_smooth_iter=2, relax=0.25`) 이 이웃 무게중심(대부분 내부)쪽으로 끌어당김 = 교과서적 **Laplacian 부피 수축**. 부피 13% 손실, 법선 ~7° 기울어짐, skew 63~108 전부 여기서 나온다.
-  **주의**: `n_surface = V.shape[0]` (mesher.py:797) 이므로 `arange(n_surface)` 로 바꾸는 것은 **같은 8** 이다. 무의미. 코드베이스에 "표면 정점 전체" 집합은 **존재하지 않는다** — carve 된 메쉬의 boundary face 에서 유도해야 한다.
-- **가드 누락**. 이 블록의 채택 조건은 `new_tets.shape[0] >= final_tets.shape[0] * 0.9` — **셀 수만** 본다. 바로 앞 블록(1764-1799)과 바로 뒤 블록(1832-1870)은 **둘 다 `plane_coverage` revert guard 를 갖고 있다**. point 를 움직이는 유일한 블록만 그 가드가 없다.
-- **레퍼런스**: fTetWild §3.5 (smoothing 은 surface 정점을 표면에 구속), Hu et al. 2020 §3.2 `track_surface_fs`; 코드 내 동일 패턴 `mesher.py:1764-1799`, `mesher.py:1832-1870`.
-- **혁신성**: novelty 2 (표면 정점 집합을 carve 된 경계에서 유도 — 기존에 없던 구속) / rigor 3 (call-site 단위 before/after 실측 + 함수 입출력 직접 spy, 0.0→0.0319 단일 호출 귀속) / impact 3 (부피 13% 손실 + skew 의 단일 진범) = **8**.
+- **문제**: 최종 on-disk 메쉬에 축퇴 tet **50/2398** (|det|/6 < 1e-9). 전부 cap/sliver, min-edge 0.798×mean (짧은 변 없음 → collapse 무력), 50/50 경계 접촉. 이들이 max_skew 를 **1.7e29** 로, min_q 를 **0.0** 으로 만든다. fTetWild 는 같은 큐브에 축퇴 0/12866 — 벽이 아니라 우리 결함.
+- **실측 분해 (핵심 발견)**: 50 = **37 내부 sliver + 13 표면 flap**. 계측 `scratchpad/exp_residual.py`:
+  - 13 flap 은 전부 **4정점이 한 큐브 면 평면에 공면** (`verts_on_cube_plane=4/4`, `flat_in_cube_face=True`), 경계면 2/4, 경계변 5/6, 내부변 1/6. apex 가 자기 공유면과 공면이라 **모든 2-3 flip 이 축퇴** → 어떤 부피보존 내부연산으로도 못 뒤집는 구조적 BSP 표면 잔재.
+- **`flip.py` 잠복 버그 (재사용 금지 근거)**: 기존 `flip_faces_23`/`flip_edges_32`/`flip_edges_44` 의 유효성 검사는 `abs(vol6) >= 1e-20` (**절대값**)뿐 — 비볼록(overlap) flip 을 수용한다. 실측: `face_flip_pass` 를 그대로 돌리면 축퇴는 50→0 이지만 **∑|vol| 1.003→1.569 (56% 겹침)**, 경계 파손 (`scratchpad/exp_flip_clears.py`). **이 카드는 그 함수들을 쓰지 말고** 아래 부호기반 유효성을 새로 구현한다.
+- **본 카드의 핵심 (2단계, 둘 다 부피·경계 정확 보존 — 실측)**:
+  1. **Phase 1 — 부호기반 3-2 flip**: 내부 edge (u,v) 를 3 tet 이 공유하고 반대삼각형 xyz 가 u,v 를 **분리**할 때만 (`sign(orient(x,y,z,u)) ≠ sign(orient(x,y,z,v))`, 둘 다 |·|>eps) → {u,xyz},{v,xyz}. 이는 3-tet 합집합 = 2-tet 의 **정확 항등식** → ∑|vol| 불변. 축퇴 접촉 edge 만 대상, 수렴까지 반복. **실측 50→13, ∑|vol| 1.0034 그대로, 경계 446 그대로** (`exp_signed_flip.py`).
+  2. **Phase 2 — 표면 flap 제거 (표면 대각 flip)**: |vol|<1e-9 이고 4정점이 입력면 평면과 공면인 tet 제거. 그 4 face 가 모두 그 평면 안이라 삭제 시 내부 2 face 가 **같은 평면 위 경계면**으로 재노출 → on-surface 면적 보존, 부피변화 0, off-plane void 0. **금지된 '내부 sliver 삭제'와 다르다** (내부 sliver 삭제는 off-plane void 벽을 노출; flap 은 공면이라 노출 안 함). **실측: 13 제거 후 축퇴 0, ∑|vol| 1.0034, on 6.0000, off 0.0000** (`exp_combined.py`).
+- **단조 가드 (안전망, 일반 입력 대응)**: Phase 전후 `plane_coverage(V,F,·,·)` 의 `extra_area`(off-surface 면적)와 `area_coverage` 측정. `extra_area_post > extra_area_pre + 1e-6` 또는 `area_coverage_post < area_coverage_pre − 1e-3` 이면 **전체 pass revert**. cylinder 등 곡면에서 flap 조건이 오발동해도 revert 로 무해화.
+- **레퍼런스**: Klingner & Shewchuk 2008 (edge removal / 3-2); Hu et al. 2020 fTetWild §3.4; 코드 `plane_coverage.py:_tet_boundary_faces/plane_coverage`, `validate.py:signed_volume6`.
+- **혁신성**: novelty 2 (signed-validity 교정 + 37/13 분해 + 표면 대각 flip) / rigor 3 (분리삼각형 정확항등식 + 부피·경계 불변 실측 + extra_area revert) / impact 3 (마지막 solid 결함 제거 → skew 1e29→유한, 축퇴 0/N fTetWild 동급) = **8**.
 
 ## 변경
 
 - 파일: `core/generator/native_tet/mesher.py` (**단일 파일**)
-- 함수: `generate_native_tet`, 블록 **line 1804-1829** (`smooth_then_drop_slivers`)
-- 핵심 변경 (≤30줄):
-  1. `from core.generator.native_tet.plane_coverage import _tet_boundary_faces, plane_coverage as _pc_jj3` 추가.
-  2. **lock set 교정**: `_B = _tet_boundary_faces(final_tets)` → `_bnd = np.unique(_B.ravel())` →
-     `locked_smooth = np.union1d(np.arange(min(n_surface_in, final_pts.shape[0]), dtype=np.int64), _bnd.astype(np.int64))`.
-     근거: carve 직후 boundary vertex 는 **입력 표면 위에 정확히** 있다 (median off-plane = 0.00000 실측). 그러므로 lock 은 근사가 아니라 정확하다.
-  3. **가드 추가** (이웃 블록과 동일 패턴): 호출 전 `prev_pts_jj3 / prev_tets_jj3 / prev_area_jj3 = _pc_jj3(...).area_coverage`, 채택 후 `new_area_jj3` 재측정 → `prev_area_jj3 > 0 and new_area_jj3 + 0.05 < prev_area_jj3` 이면 `log.warning("native_tet_smooth_then_drop_revert", ...)` + `final_pts, final_tets = prev_pts_jj3, prev_tets_jj3`.
-  4. 기존 `new_tets.shape[0] >= final_tets.shape[0] * 0.9` 채택 조건은 **그대로 유지** (건드리지 않음).
-- **단조 가드**: 2번(lock)이 근본 수정, 3번(revert)이 안전망. **검증 신호**: lock 이 옳다면 revert 는 **0 회 발화**해야 한다 (`native_tet_smooth_then_drop_revert` 로그 부재 = lock 정확성 증명). 발화하면 lock set 유도가 틀린 것 → 그 로그를 근거로 보고.
+- 함수: `generate_native_tet`, **line 1923 직후 / `_prog("write", 0.9, …)` (line 1925) 직전** 에 try-block 삽입. 근거: non-skip 경로의 유일 write 는 **line 1938**; 이후 W3/flip/VAL1 은 in-memory 만 바꾸고 disk 미반영 → 이 지점의 `final_pts/final_tets` 가 disk 메쉬. 여기서 축퇴 50개가 존재. `V, F, final_pts, final_tets` 모두 scope 내 (1893/1906 에서 이미 사용).
+- 핵심 변경 (≤70줄):
+  1. `n_degen_pre` 및 `plane_coverage(V,F,…)` 의 `extra_area_pre/area_cov_pre` 측정. 축퇴 0 이면 no-op.
+  2. **Phase 1**: edge→tets(dict) 구성 → 축퇴 접촉 내부 edge 중 owners==3 인 것에 부호기반 3-2 flip (분리삼각형 검사) → 새 2 tet 전부 재배향 후 +eps 양수 확인 → 교체. 축퇴 잔존 시 재빌드, 최대 6 sweep.
+  3. **Phase 2**: 잔존 |vol|<1e-9 tet 중 입력면 평면과 공면(4정점 coplanar)인 것 제거.
+  4. **가드**: `extra_area_post/area_cov_post` 재측정 → 위 revert 조건 위배 시 `final_pts,final_tets = pre_pts,pre_tets` + `log.warning("native_tet_degenerate_removal_revert", …)`. 통과 시 `log.info("native_tet_degenerate_removal", n_flip32=…, n_flap=…, n_degen_pre=…, n_degen_post=…)`.
+- **단조 가드**: n_degen_post ≤ n_degen_pre AND extra_area 비증가 AND area_coverage 비감소. **검증 신호**: revert 로그 **0회** 발화 = flap 조건과 3-2 유효성이 정확하다는 증명.
 
 ## 검증 명령 (unit_tester 가 그대로 실행)
 
@@ -62,28 +36,19 @@ PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python -m pytest tests/test_native_tet_targe
 
 ## 합격 기준 (validator 가 평가)
 
-**기준선은 planner 실측** (cube.stl / draft / N=2000 / P4C=0). Advisor 제시값(482 중 469 이탈, skew 107.9, area 6.128)과 다른 것은 mesher 가 다중 pass 를 돌리고 `_score` 가 그중 하나를 고르기 때문의 run 간 변동 — 방향은 동일.
+1. **(정의 지표) `test_native_tet_solid_volume.py::test_native_tet_has_no_degenerate_cells` XPASS** (축퇴 0). XPASS 확인되면 **xfail 마커만 제거**해 영구 가드 승격 (assert 불가침). 실측 근거: 50→13(3-2)→0(flap).
+2. **(최우선 회귀 금지) 3개 solid 게이트 계속 통과**: `test_native_tet_covers_input_surface` (on 6.000), `test_native_tet_has_no_interior_voids` (off 0), `test_native_tet_mesh_encloses_true_volume` (∑|vol| 1.003x). 실측 전부 불변. 하나라도 되돌리면 즉시 FAIL.
+3. **max skew 유한화**: 1.7e29 → 유한 (축퇴 0 의 직접 귀결). draft 임계 8.0 도달은 보너스, 미달이어도 이 카드 사유로 revert 금지.
+4. 회귀 가드 계속 통과: `test_native_tet_target_cells`(셀수 2398→2348, target 2000 에 더 근접), `test_cylinder_wall_fidelity`, `test_native_tet_harness`, `test_native_tet_phaseA`.
+   **알려진 결함 — 쫓지 말 것**: `test_native_tet_phase_a_improves_cube_boundary`(플래키), `test_generator.py::TestTierGracefulFail::{test_tier_wildmesh_quality_params_draft, test_tier_wildmesh_section_topology_detects_hole}`(pristine HEAD 도 실패).
+5. bench ≤ 기존 +15% (edge-map O(T) + 6 sweep, 2400 tet 무시 가능).
 
-1. **(최우선) boundary vertex median off-plane: 0.0319 → ≤ 1e-9.** 이 카드의 정의 지표.
-2. **∑|cell volume|: 0.869 → ≥ 0.97** (참값 1.0). 면적이 못 보는 크레이터를 보는 지표.
-3. **축정렬 경계면 비율: 10/464 → ≥ 95%.**
-4. `tests/test_native_tet_solid_volume.py` **계속 통과** (area ratio 0.99 → ~1.00, 여전히 ≤1.05). solid 회귀는 즉시 FAIL.
-5. skew: 63.3 → **큰 폭 하락 기대** (주름이 진범이므로). draft 임계 8.0 미도달이어도 **이 카드 사유로 revert 금지** — 방향과 폭만 본다.
-6. 회귀 가드: `test_native_tet_target_cells`, `test_cylinder_wall_fidelity`, `test_native_tet_harness`, `test_native_tet_phaseA`. **기존 플래키/실패는 쫓지 말 것**: `test_native_tet_phase_a_improves_cube_boundary` (플래키), `test_generator.py::TestTierGracefulFail::{test_tier_wildmesh_quality_params_draft, test_tier_wildmesh_section_topology_detects_hole}` (pristine HEAD 에서도 실패).
-7. bench 시간 ≤ 기존 +15% (`_tet_boundary_faces` 1 회 O(T) 추가, 2400 tet 기준 무시 가능).
+## 예상 부작용 (정직 기록 — revert 사유 아님)
 
-## 예상 부작용 (정직 기록 — revert 사유가 **아님**)
-
-- **worst_mq 0.208 이 하락할 수 있다.** `smooth_then_drop_slivers` 는 지금 163 중 133 개 경계 정점을 자유롭게 움직여 sliver 를 "고쳐" 왔다 — **표면을 부수는 대가로**. 자유도를 뺏으면 sliver 개선폭이 준다. 사이클 1 과 동일한 판정 원칙: **형상을 부숴서 얻은 품질 수치는 가짜다.** validator 는 이 카드에 한해 worst_mq/grade 회귀를 수용하고 **기준 1-4 (fidelity) 로만 판정**한다.
-- 반대로 skew/non-ortho 는 크게 좋아질 것이다 (주름 제거).
+- 축퇴 tet 제거로 in-memory mean_q/min_q 가 바뀌나 **disk 메쉬만 판정 대상**이고 min_q 는 0.0→양수로 **개선**된다. Phase 2 는 삭제지만 **공면 flap 한정 + extra_area 가드**라 사이클 1~3 의 void-free 불변식을 깨지 않음 (off 0.0000 실측). 일반 곡면 입력에선 flap 조건 미충족 → Phase 2 no-op (안전).
 
 ## 카드 시퀀스 위치
 
-solid-volume 시퀀스 **2/4** (사이클 1 의 "다음 카드 후보" 를 실측으로 재정의 — area_coverage 가드 교체가 아니라 **가드가 아예 없는 블록** 이 진범이었다).
+solid-volume 시퀀스 **4/4 (마감)**. 1✅ 술어교정(BETA2822) → 2✅ smoothing lock(BETA2823) → 3✅ sliver-drop void-free(BETA2824) → **4 축퇴 위상보존 제거(본 카드)**. 이 카드 PASS 시 cube 는 표면·void·부피·축퇴 4 불변식 전부 만족 = self-impl tet 이 큐브에서 fTetWild 급 solid.
 
-1. ✅ (BETA2822) 술어 교정 → solid 확보.
-2. **(본 카드)** smoothing lock set 교정 → 표면 정점 고정, 부피/평면성 회복.
-3. `_score` (mesher.py:1920) 가 fidelity 를 무시한다 — 실측: 후보 중 `pc=1.00 axis=322/322` 인 **완벽한 후보가 존재했는데 broken 후보가 선택**됐다. scoring 에 plane_coverage 반영.
-4. 슬리버 부채 감축 (solid 불변식 하에서 §3.4 local op). **AVOID 준수**: BSP 직후 `smooth_amips_*` 금지(4회), flip 후 `collapse_short_edges` 금지, 신규 Steiner 금지(3회), `envelope_relocate.py` 재활성 금지(2회).
-
-**다음 카드 후보**: BETA2824 — `n_surface = V.shape[0]` (mesher.py:797) 잠복 버그. `filter_slivers` 의 `has_surf = (tets < n_surface)` 가 8 개 코너만 boundary tet 으로 인식 (void_free 가 현재 무해화 중이나 legacy 경로엔 잔존).
+**다음 카드 후보** (본 카드 PASS 후, tet 회전): hard-mesh(V>500) worst_mq 0.076→0.20 격차 — `flip.py` 의 signed-validity 교정을 hard mesh 의 mean_q<0.15 경로 flip 패스에 적용 (본 카드에서 발견한 abs-value 버그를 산업 격차 축소로 확장). 또는 poly/hex 회전.

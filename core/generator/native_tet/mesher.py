@@ -1922,6 +1922,162 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_drop_slivers_skipped", reason=str(exc))
 
+    # BETA2825 — 축퇴 tet 위상보존 제거 (signed 3-2 flip + 공면 flap 제거).
+    # non-skip 경로의 disk 메쉬 = 아래 line 의 write(final_pts/final_tets).
+    # cube/draft 에서 이 지점에 축퇴 tet 50개(|det|/6<1e-9) → max_skew 1.7e29.
+    # fTetWild §3.4 처럼 삭제 없이 위상보존 국소연산으로 제거 (Phase 2 만 공면
+    # flap 한정 삭제 + extra_area/area_coverage revert 가드).
+    if not _phase_bc_skip:
+        try:
+            from core.utils.predicates import orient3d as _o3d
+            from core.generator.native_tet.validate import (
+                signed_volume6 as _sv6,
+            )
+            from core.generator.native_tet.plane_coverage import (
+                plane_coverage as _pc_deg,
+                _triangle_planes_and_areas as _tpa_deg,
+                _group_by_plane as _grp_deg,
+            )
+
+            _DEGEN_V6 = 6e-9  # |det|/6 < 1e-9  ⇔  |vol6| < 6e-9.
+            _EPAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+
+            n_degen_pre = int((np.abs(_sv6(final_pts, final_tets)) < _DEGEN_V6).sum())
+            if n_degen_pre > 0:
+                pre_pts = final_pts
+                pre_tets = final_tets.copy()
+                _pcr_pre = _pc_deg(V, F, final_pts, final_tets)
+                extra_area_pre = float(_pcr_pre.extra_area)
+                area_cov_pre = float(_pcr_pre.area_coverage)
+
+                work_tets = final_tets.copy().astype(np.int64)
+                n_flip32 = 0
+
+                # --- Phase 1: 부호기반 3-2 flip (위상보존, ∑|vol| 불변) ---
+                for _sweep in range(6):
+                    degen_mask = np.abs(_sv6(final_pts, work_tets)) < _DEGEN_V6
+                    if not degen_mask.any():
+                        break
+                    edge_owners: dict[tuple[int, int], list[int]] = {}
+                    degen_edges: set[tuple[int, int]] = set()
+                    for ti in range(work_tets.shape[0]):
+                        t = work_tets[ti]
+                        is_dg = bool(degen_mask[ti])
+                        for a, b in _EPAIRS:
+                            i, j = int(t[a]), int(t[b])
+                            e = (i, j) if i < j else (j, i)
+                            edge_owners.setdefault(e, []).append(ti)
+                            if is_dg:
+                                degen_edges.add(e)
+                    consumed: set[int] = set()
+                    del_tets: set[int] = set()
+                    new_rows: list[list[int]] = []
+                    for (u, v) in degen_edges:
+                        owners = edge_owners.get((u, v), [])
+                        if len(owners) != 3 or any(o in consumed for o in owners):
+                            continue
+                        ring: list[int] = []
+                        for o in owners:
+                            for w in work_tets[o].tolist():
+                                if w != u and w != v and w not in ring:
+                                    ring.append(int(w))
+                        if len(ring) != 3:
+                            continue
+                        x, y, z = ring
+                        su = _o3d(final_pts[x], final_pts[y], final_pts[z],
+                                  final_pts[u], tol=_DEGEN_V6)
+                        sv = _o3d(final_pts[x], final_pts[y], final_pts[z],
+                                  final_pts[v], tol=_DEGEN_V6)
+                        # 분리삼각형: xyz 평면이 u,v 를 반대편으로 분리 (둘 다 비공면).
+                        if su == 0 or sv == 0 or su == sv:
+                            continue
+                        fixed: list[list[int]] = []
+                        ok = True
+                        for row in ([x, y, z, u], [x, y, z, v]):
+                            vol6 = float(_sv6(
+                                final_pts, np.asarray([row], dtype=np.int64))[0])
+                            if vol6 < 0:
+                                row = [row[0], row[1], row[3], row[2]]
+                                vol6 = -vol6
+                            if vol6 <= _DEGEN_V6:
+                                ok = False
+                                break
+                            fixed.append(row)
+                        if not ok:
+                            continue
+                        for o in owners:
+                            consumed.add(o)
+                            del_tets.add(o)
+                        new_rows.extend(fixed)
+                        n_flip32 += 1
+                    if not del_tets:
+                        break
+                    keep = np.ones(work_tets.shape[0], dtype=bool)
+                    keep[list(del_tets)] = False
+                    if new_rows:
+                        work_tets = np.vstack([
+                            work_tets[keep],
+                            np.asarray(new_rows, dtype=np.int64),
+                        ])
+                    else:
+                        work_tets = work_tets[keep]
+
+                # --- Phase 2: 입력면 평면과 공면인 flap 제거 (부피변화 0, void 0) ---
+                n_flap = 0
+                degen_b = np.abs(_sv6(final_pts, work_tets)) < _DEGEN_V6
+                if degen_b.any():
+                    bbox_diag = float(np.linalg.norm(
+                        V.max(axis=0) - V.min(axis=0))) + 1e-30
+                    in_unit, in_off, _ = _tpa_deg(V, F)
+                    groups = _grp_deg(
+                        in_unit, in_off, bbox_diag=bbox_diag,
+                        normal_tol=5e-2, offset_rel_tol=5e-3,
+                    )
+                    planes: list[tuple[np.ndarray, float]] = [
+                        (in_unit[ix[0]], float(in_off[ix[0]]))
+                        for ix in groups.values()
+                    ]
+                    tol_plane = 1e-6 * bbox_diag
+                    keep2 = np.ones(work_tets.shape[0], dtype=bool)
+                    for ti in np.nonzero(degen_b)[0].tolist():
+                        P = final_pts[work_tets[ti]]
+                        for (nrm, off) in planes:
+                            if float(np.abs(P @ nrm - off).max()) <= tol_plane:
+                                keep2[ti] = False
+                                n_flap += 1
+                                break
+                    if not keep2.all():
+                        work_tets = work_tets[keep2]
+
+                # --- 단조 가드: extra_area 비증가 AND area_coverage 비감소 ---
+                n_degen_post = int((np.abs(_sv6(final_pts, work_tets))
+                                    < _DEGEN_V6).sum())
+                _pcr_post = _pc_deg(V, F, final_pts, work_tets)
+                extra_area_post = float(_pcr_post.extra_area)
+                area_cov_post = float(_pcr_post.area_coverage)
+                if (
+                    extra_area_post > extra_area_pre + 1e-6
+                    or area_cov_post < area_cov_pre - 1e-3
+                ):
+                    final_pts, final_tets = pre_pts, pre_tets
+                    log.warning(
+                        "native_tet_degenerate_removal_revert",
+                        extra_area_pre=round(extra_area_pre, 6),
+                        extra_area_post=round(extra_area_post, 6),
+                        area_cov_pre=round(area_cov_pre, 4),
+                        area_cov_post=round(area_cov_post, 4),
+                    )
+                else:
+                    final_tets = work_tets
+                    log.info(
+                        "native_tet_degenerate_removal",
+                        n_flip32=int(n_flip32), n_flap=int(n_flap),
+                        n_degen_pre=int(n_degen_pre),
+                        n_degen_post=int(n_degen_post),
+                    )
+        except Exception as exc:
+            log.debug("native_tet_degenerate_removal_skipped", reason=str(exc))
+
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기.
