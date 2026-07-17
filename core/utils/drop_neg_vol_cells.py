@@ -424,6 +424,7 @@ def drop_neg_vol_cells_iterative(
     topo_check: bool = True,
     geometric_check: bool = True,
     max_drop_fraction: float | None = None,
+    min_surviving_cells: int = 10,
 ) -> dict[str, int]:
     """Iterate ``drop_neg_vol_cells`` until no more cells are dropped
     or ``max_iterations`` reached.  After each pass, newly exposed
@@ -459,6 +460,7 @@ def drop_neg_vol_cells_iterative(
             topo_check=topo_check,
             geometric_check=geometric_check,
             max_drop_fraction=max_drop_fraction,
+            min_surviving_cells=min_surviving_cells,
         )
         agg["n_iterations"] = it + 1
         if first:
@@ -500,6 +502,7 @@ def drop_neg_vol_cells(
     topo_check: bool = True,
     geometric_check: bool = True,
     max_drop_fraction: float | None = None,
+    min_surviving_cells: int = 10,
 ) -> dict[str, int]:
     """Remove cells with ``signed_vol <= vol_tol`` from polyMesh.
 
@@ -507,6 +510,14 @@ def drop_neg_vol_cells(
     with skewness above ``skew_drop_threshold`` (set None to disable).
     Skewness >> 1 indicates a degenerate sliver cell that pulls the
     mesh-wide max_skewness above the evaluator hard cap.
+
+    ``min_surviving_cells`` (default 10): abort without dropping anything
+    if fewer than this many cells would remain — a real mesh's "typically
+    1-3" inverted cells should never approach emptying it, so a large drop
+    relative to a near-empty survivor count signals something is wrong
+    (over-aggressive threshold / cascade) rather than the narrow cleanup
+    this helper is for.  Lower it (e.g. 0) for small synthetic meshes in
+    tests, where the production default would silently no-op.
 
     Returns a dict with diagnostic counts:
       * ``n_cells_pre`` / ``n_cells_post``
@@ -623,7 +634,7 @@ def drop_neg_vol_cells(
             "fraction_cap_hit": 1, "n_would_drop": len(drop_set),
         }
 
-    if not drop_set or (n_cells - len(drop_set)) < 10:
+    if not drop_set or (n_cells - len(drop_set)) < min_surviving_cells:
         return {
             "n_cells_pre": n_cells, "n_cells_post": n_cells,
             "n_dropped": 0, "n_dropped_inverted": 0, "n_dropped_skew": 0,

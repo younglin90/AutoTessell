@@ -99,7 +99,10 @@ def test_no_drop_when_all_positive(tmp_path):
 
 def test_drop_one_inverted_tet(tmp_path):
     case = _two_tet_polyMesh(tmp_path, second_tet_inverted=True)
-    res = drop_neg_vol_cells(case)
+    # This 2-cell fixture is far smaller than the production
+    # min_surviving_cells=10 floor (a real-mesh safeguard against
+    # emptying the mesh) — override it to actually exercise the drop.
+    res = drop_neg_vol_cells(case, min_surviving_cells=0)
     assert res["n_dropped"] == 1, res
     assert res["n_cells_post"] == 1
     # 7 faces pre -> 4 faces post (3 boundary of tet0 + 1 new shell).
@@ -108,7 +111,7 @@ def test_drop_one_inverted_tet(tmp_path):
 
 def test_droppedShell_patch_added(tmp_path):
     case = _two_tet_polyMesh(tmp_path, second_tet_inverted=True)
-    drop_neg_vol_cells(case)
+    drop_neg_vol_cells(case, min_surviving_cells=0)
     patches = parse_foam_boundary(
         case / "constant" / "polyMesh" / "boundary",
     )
@@ -118,7 +121,7 @@ def test_droppedShell_patch_added(tmp_path):
 
 def test_no_negative_volume_after_drop(tmp_path):
     case = _two_tet_polyMesh(tmp_path, second_tet_inverted=True)
-    drop_neg_vol_cells(case)
+    drop_neg_vol_cells(case, min_surviving_cells=0)
     poly = case / "constant" / "polyMesh"
     from core.utils.drop_neg_vol_cells import _read_points
     pts = _read_points(poly / "points")
@@ -137,3 +140,20 @@ def test_idempotent_when_clean(tmp_path):
     drop_neg_vol_cells(case)
     res2 = drop_neg_vol_cells(case)
     assert res2["n_dropped"] == 0
+
+
+def test_min_surviving_cells_guard_blocks_small_mesh(tmp_path):
+    """Production default (10): dropping the 1 inverted cell would leave
+    only 1 survivor (< 10) — the guard must no-op rather than empty the
+    mesh, exactly as it does for a real mesh whose quality thresholds
+    would otherwise crater a curved wall (see test_cylinder_wall_fidelity.py)."""
+    case = _two_tet_polyMesh(tmp_path, second_tet_inverted=True)
+    res = drop_neg_vol_cells(case)  # default min_surviving_cells=10
+    assert res["n_dropped"] == 0, res
+    assert res["n_cells_post"] == 2, res
+
+
+def test_min_surviving_cells_guard_override_allows_drop(tmp_path):
+    case = _two_tet_polyMesh(tmp_path, second_tet_inverted=True)
+    res = drop_neg_vol_cells(case, min_surviving_cells=0)
+    assert res["n_dropped"] == 1, res
