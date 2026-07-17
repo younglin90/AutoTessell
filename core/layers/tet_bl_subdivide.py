@@ -3,16 +3,18 @@
 tet 메쉬용 BL 전략: native_bl 로 prism (wedge) layer 를 먼저 삽입한 뒤, 각 wedge
 cell 을 3 tet 로 분할해 전체를 순수 tet 메쉬로 유지한다.
 
-Prism wedge (6 verts: outer tri a0,a1,a2 + inner tri b0,b1,b2) 를 3 tet 로 분할하는
-표준 패턴:
-    tet1 = (a0, a1, a2, b0)
-    tet2 = (a1, a2, b0, b1)
-    tet3 = (a2, b0, b1, b2)
+Prism wedge (6 verts: cap tri a0,a1,a2 + cap tri b0,b1,b2, lateral edge a_i-b_i) 를
+3 tet 로 분할할 때, 3 side quad 를 각각 대각선으로 잘라 triangle pair 로 만든다.
+다른 prism 과 공유되는 quad 의 경우 **양쪽에서 같은 대각선을 선택해야** 일관된
+(conformal) topology 가 된다. 이 조건을 만족하지 못하면 공유 quad 의 두 절반이
+어긋나 "face key 가 3 cell 공유 — manifold 위반" 으로 실패한다.
 
-이 분할은 3 side quad 를 각각 대각선으로 잘라 triangle pair 로 만들며, 다른 prism
-과 공유되는 quad 의 경우 **양쪽에서 같은 대각선을 선택해야** 일관된 topology 가
-된다. 본 구현은 wall triangle 의 두 vertex 중 **낮은 global ID** 를 대각선 시작점
-으로 삼아 결정론적으로 선택한다.
+본 구현은 Dompierre et al. (1999) *"How to Subdivide Pyramids, Prisms and Hexahedra
+into Tetrahedra"* 의 규칙을 따른다: **각 quad face 의 대각선을 그 quad 위 4 vertex 중
+전역(global) ID 가 가장 작은 vertex 에서 출발하도록** 선택한다. 이렇게 하면 quad 를
+공유하는 두 prism 이 (그 quad 의 4 개 global ID 만 보고) 항상 같은 대각선을 고르므로
+자동으로 conformal 하다. 이 규칙은 어느 cap 을 outer/inner 로 부르든(즉 face 저장
+순서에 무관) 결과가 동일하다 — ``_prism_to_tets`` 참고.
 
 사용:
     from core.layers.tet_bl_subdivide import subdivide_prism_layers_to_tet
@@ -88,7 +90,10 @@ def _identify_prism_cells(
     return prism_cells, cell_faces
 
 
-def _find_prism_caps(cell_face_verts: list[list[int]]) -> tuple[list[int], list[int]] | None:
+def _find_prism_caps(
+    cell_face_verts: list[list[int]],
+    points: np.ndarray | None = None,
+) -> tuple[list[int], list[int]] | None:
     """Return two disjoint triangular cap faces for a 6-vertex prism-like cell.
 
     ``native_bl`` may split side quads where neighboring wall triangles disagree
@@ -96,6 +101,19 @@ def _find_prism_caps(cell_face_verts: list[list[int]]) -> tuple[list[int], list[
     but can have 6-8 faces instead of the exact 2-tri + 3-quad wedge topology.
     A valid cap pair covers all six vertices, is disjoint, and every remaining
     face touches both caps.
+
+    **Geometric disambiguation (critical for conformity).** A split-side prism
+    often admits *several* topologically-valid cap pairings (a face key can play
+    the role of a cap in more than one partition).  Picking an arbitrary one lets
+    two neighbouring prisms interpret their shared wall/extruded quad differently
+    (one as a lateral quad, the other as a cap + overhang), which makes the
+    diagonal split disagree and yields ``face … shared by 3 cells`` (manifold
+    violation).  When ``points`` is given we therefore select the pairing whose
+    **lateral edges are shortest** — the true wall↔extruded links span only the
+    (thin) layer thickness, whereas a spurious pairing pairs vertices across a
+    full surface-triangle edge.  This recovers the real prism caps so both
+    neighbours agree on the shared quad.  Without ``points`` (pure topology
+    query, e.g. ``_identify_prism_like_cells``) the first valid pair is returned.
     """
     verts_all: set[int] = set()
     for face in cell_face_verts:
@@ -104,6 +122,7 @@ def _find_prism_caps(cell_face_verts: list[list[int]]) -> tuple[list[int], list[
         return None
 
     tris = [list(dict.fromkeys(int(v) for v in f)) for f in cell_face_verts if len(set(f)) == 3]
+    candidates: list[tuple[list[int], list[int]]] = []
     for i, tri_a in enumerate(tris):
         set_a = set(tri_a)
         for tri_b in tris[i + 1:]:
@@ -121,8 +140,26 @@ def _find_prism_caps(cell_face_verts: list[list[int]]) -> tuple[list[int], list[
                     ok = False
                     break
             if ok:
-                return list(tri_a), list(tri_b)
-    return None
+                candidates.append((list(tri_a), list(tri_b)))
+                if points is None:
+                    # topology-only query — first valid pair suffices.
+                    return candidates[0]
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Geometric tie-break: minimise total lateral-edge length under the best
+    # nearest-vertex matching (see docstring).  ``_nearest_cap_pairing`` is
+    # defined later in the module but resolved at call-time, so this is safe.
+    def _lateral_cost(pair: tuple[list[int], list[int]]) -> float:
+        a, b = pair
+        _, b_ordered = _nearest_cap_pairing(a, b, points)
+        ap = points[np.asarray(a, dtype=np.int64)]
+        bp = points[np.asarray(b_ordered, dtype=np.int64)]
+        return float(np.linalg.norm(bp - ap, axis=1).sum())
+
+    return min(candidates, key=_lateral_cost)
 
 
 def _identify_prism_like_cells(
@@ -176,7 +213,7 @@ def _prism_vertex_pairs(
     quads = [f for f in cell_face_verts if len(f) == 4]
     if len(tris) != 2 or len(quads) != 3:
         if points is not None:
-            caps = _find_prism_caps(cell_face_verts)
+            caps = _find_prism_caps(cell_face_verts, points)
             if caps is not None:
                 return _nearest_cap_pairing(caps[0], caps[1], points)
         return None
@@ -205,6 +242,42 @@ def _prism_vertex_pairs(
     outer = list(tri_a)
     inner = [pair_map[a] for a in outer]
     return outer, inner
+
+
+def _prism_to_tets(
+    outer: list[int],
+    inner: list[int],
+) -> list[tuple[int, int, int, int]]:
+    """Triangular prism 을 conformal 한 3 tet 로 분할 (Dompierre 1999).
+
+    ``outer[i]`` 와 ``inner[i]`` 는 lateral edge 로 연결된 짝이다. Prism 은 두 개의
+    삼각형 cap (``outer``, ``inner``) 과 세 개의 quad side face
+    ``{outer[i], outer[j], inner[j], inner[i]}`` 로 이루어진다.
+
+    분할은 오직 **전역 vertex ID** 만으로 결정된다: 각 quad 위 대각선은 그 quad 의
+    4 vertex 중 전역 ID 가 가장 작은 vertex 에서 출발한다. 따라서 quad 를 공유하는
+    두 prism 은 반드시 같은 대각선을 선택하며 (그 quad 의 global ID 집합이 동일하므로)
+    자동으로 conformal 하다. 어느 cap 을 ``outer`` 라 부르든 결과가 같으므로 face
+    저장 순서에 따른 outer/inner 역전 (기존 결함) 에 면역이다.
+
+    구현: 6 vertex 중 전역 최소 vertex 를 ``v0`` (그것이 속한 cap 을 bottom) 로 놓고
+    lateral 짝·삼각형 순회를 유지하며 재라벨한다. 그러면 v0 를 포함하는 두 quad
+    (QF_A={v0,v1,v4,v3}, QF_C={v2,v0,v3,v5}) 대각선은 항상 v0 에서 출발하고
+    (0-4, 0-5), v0 를 포함하지 않는 QF_B={v1,v2,v5,v4} 만 min(v1,v5) vs min(v2,v4)
+    로 갈린다.
+    """
+    verts = list(outer) + list(inner)  # [o0,o1,o2,i0,i1,i2]
+    m = min(range(6), key=lambda k: verts[k])
+    if m < 3:
+        k, bottom, top = m, outer, inner
+    else:
+        k, bottom, top = m - 3, inner, outer
+    k1, k2 = (k + 1) % 3, (k + 2) % 3
+    v0, v1, v2 = bottom[k], bottom[k1], bottom[k2]
+    v3, v4, v5 = top[k], top[k1], top[k2]
+    if min(v1, v5) < min(v2, v4):
+        return [(v0, v3, v4, v5), (v0, v1, v2, v5), (v0, v1, v4, v5)]
+    return [(v0, v3, v4, v5), (v0, v1, v2, v4), (v0, v2, v4, v5)]
 
 
 def subdivide_prism_layers_to_tet(
@@ -564,9 +637,13 @@ def subdivide_prism_layers_to_tet(
     for pid, pair in prism_pairs.items():
         outer, inner = pair
         t1, t2, t3 = prism_tets[pid]
-        cell_vertices[t1] = (outer[0], outer[1], outer[2], inner[0])
-        cell_vertices[t2] = (outer[1], outer[2], inner[0], inner[1])
-        cell_vertices[t3] = (outer[2], inner[0], inner[1], inner[2])
+        # Dompierre global-ID 규칙 — 공유 quad 에서 이웃 prism 과 같은 대각선을
+        # 선택하므로 conformal (기존의 고정 template 은 outer/inner 역전 시 대각선이
+        # 어긋나 manifold 위반을 유발했다). ``_prism_to_tets`` docstring 참고.
+        tet_a, tet_b, tet_c = _prism_to_tets(outer, inner)
+        cell_vertices[t1] = tet_a
+        cell_vertices[t2] = tet_b
+        cell_vertices[t3] = tet_c
 
 
     # 4c) 모든 face 를 수집 (cell → 4 face vertex tuple)
