@@ -430,6 +430,7 @@
     if (m.cells != null) cu($("kpi-cells"), Number(m.cells), { format: (v) => Math.round(v).toLocaleString() });
     if (m.max_non_ortho != null) cu($("kpi-nonortho"), Number(m.max_non_ortho), { decimals: 1, suffix: "°" });
     if (m.max_skewness != null) cu($("kpi-skew"), Number(m.max_skewness), { decimals: 2 });
+    if (m.max_aspect_ratio != null) cu($("kpi-aspect"), Number(m.max_aspect_ratio), { decimals: 1 });
   }
 
   // Enriched KPI from /mesh?quality=1 stats: exact counts, min–max ranges,
@@ -470,6 +471,7 @@
     };
     metric($("kpi-nonortho"), $("tip-nonortho"), s.non_ortho, { decimals: 1, suffix: "°" });
     metric($("kpi-skew"), $("tip-skew"), s.skewness, { decimals: 2 });
+    metric($("kpi-aspect"), $("tip-aspect"), s.aspect_ratio, { decimals: 1 });
   }
   if (window.__at) window.__at.renderKpiStats = renderKpiStats; // E2E handle
   function verdictClass(v) {

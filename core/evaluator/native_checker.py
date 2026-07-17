@@ -995,16 +995,36 @@ class NativeMeshChecker:
         n_cells: int,
         n_internal: int,
     ) -> float:
-        """Max aspect ratio (max_edge / min_edge per cell) — 대형 메쉬 대응.
+        """Max aspect ratio across cells — see ``_per_cell_aspect_ratios``."""
+        _, ars = NativeMeshChecker._per_cell_aspect_ratios(
+            points, faces, owner, n_cells, n_internal,
+        )
+        return float(ars.max()) if ars.size else 1.0
 
-        기존 구현은 Python 이중 loop 로 500k cells 에 2분+ 소요.
+    @staticmethod
+    def _per_cell_aspect_ratios(
+        points: np.ndarray,
+        faces: list[list[int]],
+        owner: np.ndarray,
+        n_cells: int,
+        n_internal: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Per-(sampled)-cell aspect ratio (max_edge / min_edge per cell).
+
+        대형 메쉬 대응: 기존 구현은 Python 이중 loop 로 500k cells 에 2분+ 소요.
         개선:
           1) 각 cell 의 vertex 집합 생성까지는 동일.
           2) inner pair-distance loop 를 numpy broadcasting 으로 대체.
           3) cell 수 > 100k 면 균등 샘플링으로 대표값 추정 (전수 스캔 대신).
+
+        Returns ``(cell_ids, aspect_ratios)`` — ``cell_ids`` are the (possibly
+        sampled) cell indices the ratios correspond to, so a caller can map
+        ratios back to owner faces / colour a colormap. ``_compute_max_aspect_ratio``
+        (mesh-wide PASS/FAIL gate) just takes ``.max()`` of this — kept as a
+        thin wrapper so the two never drift apart.
         """
         if n_cells == 0:
-            return 1.0
+            return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
 
         # ── Build cell → vertex list using CSR-style vectorized scatter ──
         # Flatten all face vertex indices alongside their owner cell ids.
@@ -1022,7 +1042,7 @@ class NativeMeshChecker:
                 flat_cells.append(cell_id)
 
         if not flat_verts:
-            return 1.0
+            return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
 
         flat_verts_arr = np.asarray(flat_verts, dtype=np.int64)
         flat_cells_arr = np.asarray(flat_cells, dtype=np.int64)
@@ -1056,7 +1076,8 @@ class NativeMeshChecker:
         else:
             cell_indices_arr = np.arange(n_cells, dtype=np.int64)
 
-        max_ar = 1.0
+        out_cells: list[int] = []
+        out_ars: list[float] = []
         for ci in cell_indices_arr:
             start, end = int(csr_ptr[ci]), int(csr_ptr[ci + 1])
             if end - start < 2:
@@ -1074,10 +1095,12 @@ class NativeMeshChecker:
             if d2u_pos.size == 0:
                 continue
             ar = float(np.sqrt(d2u_pos.max() / d2u_pos.min()))
-            if ar > max_ar:
-                max_ar = ar
+            out_cells.append(int(ci))
+            out_ars.append(ar)
 
-        return max_ar
+        if not out_ars:
+            return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
+        return np.asarray(out_cells, dtype=np.int64), np.asarray(out_ars, dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Min determinant estimate

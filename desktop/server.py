@@ -812,12 +812,14 @@ async def _run_mesh_pipeline(
             "cells": cm.cells,
             "max_non_ortho": cm.max_non_orthogonality,
             "max_skewness": cm.max_skewness,
+            "max_aspect_ratio": cm.max_aspect_ratio,
         })
         await ws.send_json({"type": "log", "level": "info",
             "message": (
                 f"[Server] 완료 {verdict_str}: {cm.cells} cells, "
                 f"non-ortho={cm.max_non_orthogonality:.1f}°, "
-                f"skew={cm.max_skewness:.2f} ({elapsed:.1f}s)"
+                f"skew={cm.max_skewness:.2f}, "
+                f"aspect={cm.max_aspect_ratio:.1f} ({elapsed:.1f}s)"
             )})
     else:
         verdict_str = "FAIL"
@@ -842,6 +844,7 @@ async def _run_mesh_pipeline(
             "tier": selected_tier,
             "max_non_ortho": cm.max_non_orthogonality if cm else 0.0,
             "max_skewness": cm.max_skewness if cm else 0.0,
+            "max_aspect_ratio": cm.max_aspect_ratio if cm else 0.0,
             "output_dir": str(output_dir),
         })
     else:
@@ -1091,6 +1094,24 @@ async def get_mesh_data(
             for f in faces:
                 k = len(f)
                 face_shapes["tri" if k == 3 else "quad" if k == 4 else "poly"] += 1
+
+            aspect_hist = None
+            try:
+                import numpy as np
+
+                from core.evaluator.native_checker import NativeMeshChecker
+
+                _, cell_ars = NativeMeshChecker._per_cell_aspect_ratios(
+                    np.asarray(points, dtype=np.float64),
+                    faces,
+                    np.asarray(owner_l, dtype=np.int64),
+                    num_cells,
+                    len(neigh_l),
+                )
+                aspect_hist = _metric_hist(cell_ars)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("aspect_ratio_stats_failed", error=str(exc))
+
             resp["stats"] = {
                 "n_points": len(points),
                 "n_faces": len(faces),
@@ -1101,6 +1122,7 @@ async def get_mesh_data(
                 if face_quality else None,
                 "skewness": _metric_hist(face_quality["skewness"])
                 if face_quality else None,
+                "aspect_ratio": aspect_hist,
             }
 
         if internal:
