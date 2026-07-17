@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from core.generator._tier_native_common import _edge_from_target_cells
 from core.generator.native_tet.harness import (
     TetHarnessResult,
     run_native_tet_harness,
@@ -78,6 +79,65 @@ def test_harness_max_cells_safety_cap(tmp_path: Path) -> None:
     )
     # cell 수가 cap 을 넘으면 seed 조정 후 재시도. 최종 결과는 꼭 성공이 아니어도 OK.
     assert isinstance(result, TetHarnessResult)
+
+
+def test_harness_hits_target_cells_at_draft_max_iter_1(tmp_path: Path) -> None:
+    """draft (max_iter=1) 에서도 target_cells 보정이 동작해야 한다.
+
+    회귀 대상: 기존 cap-retry 는 ``if res.n_cells > max_cells and it < max_iter``
+    였고 draft 의 ``max_iter`` 는 1 이라 ``1 < 1`` = False → **절대 발화하지 않는**
+    dead code 였다.  따라서 셀 수 보정은 오직 standard/fine 에서만 (그것도 blunt
+    ``edge x 1.6`` 로) 일어났다.  이제 보정은 ``max_iter`` 와 무관한 자체 pass
+    예산을 가진 measured-ratio closed loop 라 draft 에서도 수렴한다.
+
+    실측 (unit cube, N=2000): 수정 전 1318 cells (0.66x) — 보정 미발화.
+    수정 후 ~2035 cells (1.02x).
+    """
+    V, F = _unit_cube()
+    target = 2000
+    # run_native_tier 가 하는 것과 동일하게 N 에서 edge 를 유도.
+    edge = _edge_from_target_cells(V, F, "tier_native_tet", target)
+    assert edge is not None
+
+    result = run_native_tet_harness(
+        V, F, tmp_path,
+        target_edge_length=edge,
+        seed_density=10,
+        max_iter=1,                 # ← draft 의 예산
+        sliver_quality_threshold=0.02,
+        target_cells=target,
+        max_cells=target,
+    )
+    assert result.n_cells > 0
+    ratio = result.n_cells / target
+    assert 0.75 <= ratio <= 1.45, (
+        f"draft(max_iter=1) 에서 target_cells={target} → {result.n_cells} cells "
+        f"(ratio {ratio:.2f}x) — 셀 수 보정이 발화하지 않았다"
+    )
+
+
+def test_harness_bare_max_cells_is_one_sided_cap(tmp_path: Path) -> None:
+    """target_cells 없이 max_cells 만 주면 cap 으로만 쓰이고 셀을 늘리지 않는다.
+
+    ``max_cells`` 의 signature default 는 50000 이라 "사용자가 50000 을 원했다" 와
+    구분할 수 없다.  이를 양방향 target 으로 오해하면 모든 mesh 가 50000 쪽으로
+    부풀려진다 — 이 테스트가 그 회귀를 막는다.
+    """
+    V, F = _unit_cube()
+    edge = _edge_from_target_cells(V, F, "tier_native_tet", 500)
+    assert edge is not None
+    result = run_native_tet_harness(
+        V, F, tmp_path,
+        target_edge_length=edge,
+        seed_density=10, max_iter=1,
+        sliver_quality_threshold=0.02,
+        max_cells=50000,            # cap 만 (default 값) — target 아님
+    )
+    # cap 쪽으로 부풀지 않고 edge 가 의도한 규모 (~수백 cell) 를 유지.
+    assert 0 < result.n_cells < 5000, (
+        f"bare max_cells=50000 이 target 으로 오해되어 {result.n_cells} cells 로 "
+        f"부풀었다"
+    )
 
 
 def test_harness_deterministic_for_same_inputs(tmp_path: Path) -> None:

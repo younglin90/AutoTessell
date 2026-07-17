@@ -4266,20 +4266,57 @@ def generate_native_tet(
             _mq_old = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
             _n_cells_old = int(final_tets.shape[0])
 
+            # N-RESPECT (2026-07) — P4-C 가 사용자의 목표 셀 수 N 을 무시하던 버그.
+            # 이전엔 edge_length_fac 이 항상 0.05 (bbox diag 대비 고정 비율) 라서,
+            # self-impl 이 grade A 에 못 미쳐 P4-C 가 발동하면 N 과 무관한 셀 수가
+            # 나왔다 (unit cube N=100 → 35 cell grade D → P4-C 가 ~9.9k cell 로 교체,
+            # 99× overshoot).  pytetwild 의 edge_length_fac 은 fTetWild `-l` 과 동일한
+            # "ideal_edge_length / bbox_diag" 이므로, N 에서 유도된 target_edge_length
+            # 을 bbox diag 로 나누면 그대로 쓸 수 있다.
+            # N 이 없으면 (target_cells=None) 기존 env 기본값 0.05 를 그대로 유지.
+            _elf_env = float(os.environ.get("AUTO_TESSELL_P4C_EDGE_LEN_FAC", "0.05"))
+            _elf_base = _elf_env
+            _elf_from_n = False
+            if (
+                os.environ.get("AUTO_TESSELL_P4C_EDGE_FROM_TARGET", "1") != "0"
+                and target_cells is not None
+                and int(target_cells) > 0
+                and target_edge_length is not None
+                and float(target_edge_length) > 0.0
+                and _diag_fb > 0.0
+            ):
+                # fTetWild 권장 범위로 clamp — 너무 작으면 셀 폭증, 너무 크면
+                # envelope 를 못 채운다.
+                _elf_base = float(
+                    min(max(float(target_edge_length) / _diag_fb, 0.002), 0.5)
+                )
+                _elf_from_n = True
+                log.info(
+                    "native_tet_p4c_edge_from_target_cells",
+                    target_cells=int(target_cells),
+                    target_edge=round(float(target_edge_length), 6),
+                    bbox_diag=round(_diag_fb, 6),
+                    edge_length_fac=round(_elf_base, 5),
+                    edge_length_fac_default=_elf_env,
+                )
+
             # 3 단계 파라미터 schedule. base default + tighter retries.
+            # N-RESPECT: N 유도 모드에선 retry tier 도 base 의 상대 비율 (0.6× / 0.4×
+            # — 기존 절대값 0.05/0.03/0.02 와 같은 비율) 로 스케일한다.  절대값을
+            # 그대로 쓰면 tier2/3 가 다시 N 을 무시하고 셀을 폭증시킨다.
             _p4d_schedule = [
                 # (edge_len_fac, epsilon, stop_energy, num_opt_iter, label)
                 (
-                    float(os.environ.get("AUTO_TESSELL_P4C_EDGE_LEN_FAC", "0.05")),
+                    _elf_base,
                     float(os.environ.get("AUTO_TESSELL_P4C_EPSILON", "0.001")),
                     float(os.environ.get("AUTO_TESSELL_P4C_STOP_ENERGY", "10.0")),
                     int(os.environ.get("AUTO_TESSELL_P4C_NUM_OPT_ITER", "80")),
                     "tier1_default",
                 ),
                 # tier 2: tighter envelope + smaller edge → 더 정밀 mesh.
-                (0.03, 5e-4, 8.0, 120, "tier2_tighter"),
+                (_elf_base * 0.6 if _elf_from_n else 0.03, 5e-4, 8.0, 120, "tier2_tighter"),
                 # tier 3: 가장 공격적 envelope (extreme mesh 회복).
-                (0.02, 2e-4, 5.0, 200, "tier3_aggressive"),
+                (_elf_base * 0.4 if _elf_from_n else 0.02, 2e-4, 5.0, 200, "tier3_aggressive"),
             ]
 
             _best_v: np.ndarray | None = None
