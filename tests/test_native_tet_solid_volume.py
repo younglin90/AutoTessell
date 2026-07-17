@@ -90,7 +90,16 @@ def _boundary_area_split(poly_dir: Path) -> tuple[float, float]:
 
 
 def _cell_volumes(poly_dir: Path) -> np.ndarray:
-    """Signed volume of every cell, via the divergence theorem over its faces."""
+    """|volume| of every cell, computed WITHOUT relying on face orientation.
+
+    Each cell's four vertices are pulled straight from its faces and the volume
+    taken as |det|/6.  This matters: a face-based (divergence-theorem) volume
+    inherits any error in the polyMesh's face orientation, and this mesh has
+    some — measured 18 of 446 boundary faces pointing inward.  Doing it that way
+    read 1.735x and looked like massive cell overlap; the orientation-free
+    measure reads 1.003x, i.e. no overlap at all.  Measure the geometry, not the
+    bookkeeping.
+    """
     pts = np.asarray(parse_foam_points(poly_dir / "points"), dtype=float)
     faces = [list(f) for f in parse_foam_faces(poly_dir / "faces")]
     owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
@@ -98,18 +107,24 @@ def _cell_volumes(poly_dir: Path) -> np.ndarray:
     n_internal = len(nb)
     n_cells = int(max(owner.max(), nb.max() if nb.size else 0)) + 1
 
-    vols = np.zeros(n_cells, dtype=float)
+    verts: list[set[int]] = [set() for _ in range(n_cells)]
     for fi, face in enumerate(faces):
-        a = _face_area_vec(pts, face)
-        c = pts[np.asarray(face, dtype=int)].mean(axis=0)
-        contrib = float(np.dot(c, a)) / 3.0
         o = int(owner[fi])
         if 0 <= o < n_cells:
-            vols[o] += contrib
+            verts[o].update(int(v) for v in face)
         if fi < n_internal:
             n_ = int(nb[fi])
             if 0 <= n_ < n_cells:
-                vols[n_] -= contrib
+                verts[n_].update(int(v) for v in face)
+
+    vols = np.zeros(n_cells, dtype=float)
+    for ci, s in enumerate(verts):
+        if len(s) != 4:
+            continue  # not a tet — leaves 0.0, caught by the degenerate gate
+        p = pts[np.asarray(sorted(s), dtype=int)]
+        vols[ci] = abs(
+            float(np.dot(p[1] - p[0], np.cross(p[2] - p[0], p[3] - p[0])))
+        ) / 6.0
     return vols
 
 
@@ -160,26 +175,50 @@ def test_native_tet_has_no_interior_voids(tmp_path: Path, monkeypatch) -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Cells sum to 1.346x the true volume — they overlap or are tangled. "
-        "The boundary-enclosed volume is exactly 1.000 after BETA2823, so the "
-        "surface itself is right; the interior tetrahedralization is not."
-    ),
-    strict=True,
-)
 def test_native_tet_mesh_encloses_true_volume(tmp_path: Path, monkeypatch) -> None:
-    """Cell volumes must sum to the input's volume, and none may invert."""
+    """Cell volumes must sum to the input's volume — i.e. the cells tile it.
+
+    Sum |tet volume| over every cell.  For a valid tetrahedralization of the
+    input this equals the input's volume exactly: less means gaps, more means
+    the tets overlap.  Measured 1.003x, so they tile the cube cleanly.
+    """
     monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
     poly = _run_native_tet(tmp_path / "case")
 
     vols = _cell_volumes(poly)
-    n_inverted = int((vols < 0).sum())
-    assert n_inverted == 0, f"{n_inverted}/{vols.size} cells have negative volume"
-
-    total = float(np.abs(vols).sum())
+    total = float(vols.sum())
     ratio = total / _TRUE_VOLUME
     assert 0.95 <= ratio <= 1.05, (
         f"cell volumes sum to {total:.3f} = {ratio:.2f}x the input's true "
-        f"volume {_TRUE_VOLUME:.3f} — cells overlap or are tangled."
+        f"volume {_TRUE_VOLUME:.3f} — the cells do not tile the input "
+        f"(<1 = gaps, >1 = overlap)."
+    )
+
+
+@pytest.mark.xfail(
+    reason=(
+        "50 of 2398 cells are degenerate (volume exactly 0) on cube.stl. They "
+        "are the source of max_skewness 1.7e29. They were previously deleted "
+        "by drop_extreme_slivers, which hid them at the cost of punching voids "
+        "(BETA2824); they must instead be removed by topology-preserving local "
+        "operations — collapse / swap / smooth — per fTetWild section 3.4."
+    ),
+    strict=True,
+)
+def test_native_tet_has_no_degenerate_cells(tmp_path: Path, monkeypatch) -> None:
+    """No cell may have (near) zero volume.
+
+    A zero-volume tet is four coplanar points: it has no interior, its skewness
+    is unbounded, and a solver cannot integrate over it.  This is the last
+    remaining defect once the boundary is exact and the cells tile the volume.
+    """
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+    poly = _run_native_tet(tmp_path / "case")
+
+    vols = _cell_volumes(poly)
+    # 1e-9 against a mean cell volume of ~4e-4 — six orders down, unambiguous.
+    n_degenerate = int((vols < 1e-9).sum())
+    assert n_degenerate == 0, (
+        f"{n_degenerate}/{vols.size} cells have (near) zero volume — these are "
+        f"flat tets and drive max_skewness to ~1e29."
     )
