@@ -165,6 +165,13 @@ def parse_foam_faces(faces_file: Path) -> list[list[int]]:
 
 def parse_foam_labels_array(label_file: Path) -> np.ndarray:
     """Parse a polyMesh label list file into an int64 array."""
+    native_metrics = _load_native_metrics()
+    if native_metrics is not None:
+        try:
+            return native_metrics.parse_foam_labels_file(label_file)
+        except Exception:  # noqa: BLE001
+            pass
+
     text = label_file.read_text()
     text = _strip_foam_comments(text)
     start = text.find("(")

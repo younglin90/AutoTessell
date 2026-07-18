@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
+from core.utils import polymesh_reader as reader
 from core.utils.polymesh_reader import (
     parse_foam_labels,
     parse_foam_labels_array,
@@ -103,3 +105,26 @@ def test_parse_foam_labels_array_malformed_is_empty(tmp_path: Path) -> None:
     assert labels.dtype == np.dtype(np.int64)
     assert labels.shape == (0,)
     assert parse_foam_labels(labels_file) == []
+
+
+def test_parse_foam_labels_array_falls_back_after_native_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels_file = tmp_path / "owner"
+    labels_file.write_text("4\n(\n0 2 2 5\n)\n", encoding="utf-8")
+
+    class FailingNativeMetrics:
+        @staticmethod
+        def parse_foam_labels_file(_path: Path) -> np.ndarray:
+            raise RuntimeError("forced native parser failure")
+
+    monkeypatch.setattr(reader, "_NATIVE_METRICS", FailingNativeMetrics())
+    monkeypatch.setattr(reader, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+
+    labels = reader.parse_foam_labels_array(labels_file)
+
+    assert labels.dtype == np.dtype(np.int64)
+    assert labels.shape == (4,)
+    assert labels.tolist() == [0, 2, 2, 5]
+    assert reader.parse_foam_labels(labels_file) == [0, 2, 2, 5]

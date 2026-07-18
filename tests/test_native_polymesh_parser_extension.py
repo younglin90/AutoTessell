@@ -17,6 +17,13 @@ def _native_metrics_or_skip():
     return module
 
 
+def _native_labels_or_skip():
+    module = _native_metrics_or_skip()
+    if not hasattr(module, "parse_foam_labels_file"):
+        pytest.skip("native_metrics labels parser extension is not built")
+    return module
+
+
 def _write_faces(path: Path, body: str) -> Path:
     path.write_text(
         "FoamFile\n"
@@ -26,6 +33,22 @@ def _write_faces(path: Path, body: str) -> Path:
         "    class faceList;\n"
         '    location "constant/polyMesh";\n'
         "    object faces;\n"
+        "}\n"
+        f"{body}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _write_labels(path: Path, body: str) -> Path:
+    path.write_text(
+        "FoamFile\n"
+        "{\n"
+        "    version 2.0;\n"
+        "    format ascii;\n"
+        "    class labelList;\n"
+        '    location "constant/polyMesh";\n'
+        f"    object {path.name};\n"
         "}\n"
         f"{body}\n",
         encoding="utf-8",
@@ -189,3 +212,86 @@ def test_parse_foam_faces_falls_back_after_native_failure(
     monkeypatch.setattr(reader, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
 
     assert reader.parse_foam_faces(faces_file) == [[0, 1, 2], [2, 1, 3]]
+
+
+def test_native_labels_parser_matches_python_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _native_labels_or_skip()
+    labels_file = _write_labels(
+        tmp_path / "owner",
+        "4 // declared label count\n(\n+0\n-2 /* middle */\n2\n+5\n)",
+    )
+
+    native = module.parse_foam_labels_file(labels_file)
+    monkeypatch.setattr(reader, "_NATIVE_METRICS", None)
+    monkeypatch.setattr(reader, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    python = reader.parse_foam_labels_array(labels_file)
+
+    assert native.dtype == np.dtype(np.int64)
+    assert native.shape == (4,)
+    np.testing.assert_array_equal(native, python)
+
+
+def test_native_labels_parser_accepts_empty_list(tmp_path: Path) -> None:
+    module = _native_labels_or_skip()
+    labels_file = _write_labels(tmp_path / "neighbour", "0\n(\n)")
+
+    labels = module.parse_foam_labels_file(labels_file)
+
+    assert labels.dtype == np.dtype(np.int64)
+    assert labels.shape == (0,)
+
+
+def test_native_labels_parser_skips_raw_trivia_and_signed_limits(
+    tmp_path: Path,
+) -> None:
+    module = _native_labels_or_skip()
+    labels_file = _write_labels(
+        tmp_path / "owner",
+        '''"99(999)" /* 88(888) */ 4 "count/list separator"
+        (
+            +0 "ignored label" -1
+            9223372036854775807 // maximum
+            -9223372036854775808
+        ) "trailing value" ; // trailing comment''',
+    )
+
+    labels = module.parse_foam_labels_file(labels_file)
+
+    np.testing.assert_array_equal(
+        labels,
+        np.array(
+            [0, -1, 9223372036854775807, -9223372036854775808],
+            dtype=np.int64,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("2 ( 0 )", "count does not match"),
+        ("1 ( 0 1 )", "count does not match"),
+        ("1 ( value )", "expected signed integer"),
+        ("1 ( 0", "count does not match"),
+        ("-1 ( )", "count must be non-negative"),
+        ("9223372036854775808 ( )", "integer out of range"),
+        ("1 ( 9223372036854775808 )", "integer out of range"),
+        ("1 ( -9223372036854775809 )", "integer out of range"),
+        ("0 ( ) trailing", "unexpected trailing data"),
+        ("0 ( ) /*", "unterminated block comment"),
+        ('0 ( ) "unterminated', "unterminated quoted string"),
+    ],
+)
+def test_native_labels_parser_rejects_malformed(
+    tmp_path: Path,
+    body: str,
+    message: str,
+) -> None:
+    module = _native_labels_or_skip()
+    labels_file = _write_labels(tmp_path / "owner", body)
+
+    with pytest.raises(ValueError, match=message):
+        module.parse_foam_labels_file(labels_file)

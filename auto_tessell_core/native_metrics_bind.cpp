@@ -15,7 +15,6 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <iterator>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -30,6 +29,8 @@ namespace py = pybind11;
 namespace {
 
 using Point3 = std::array<double, 3>;
+
+py::array_t<long long> copy_index_vector(const std::vector<long long>& values);
 
 void skip_foam_trivia(std::string_view text, size_t& pos)
 {
@@ -52,7 +53,7 @@ void skip_foam_trivia(std::string_view text, size_t& pos)
                 const size_t end = text.find("*/", pos + 2);
                 if (end == std::string_view::npos) {
                     throw std::invalid_argument(
-                        "unterminated block comment in faces file");
+                        "unterminated block comment in OpenFOAM file");
                 }
                 pos = end + 2;
                 continue;
@@ -73,7 +74,7 @@ void skip_foam_trivia(std::string_view text, size_t& pos)
             }
             if (!closed) {
                 throw std::invalid_argument(
-                    "unterminated quoted string in faces file");
+                    "unterminated quoted string in OpenFOAM file");
             }
             continue;
         }
@@ -98,7 +99,7 @@ long long parse_signed_integer(std::string_view text, size_t& pos)
     if (pos >= text.size()
         || !std::isdigit(static_cast<unsigned char>(text[pos]))) {
         pos = start;
-        throw std::invalid_argument("expected signed integer in faces file");
+        throw std::invalid_argument("expected signed integer in OpenFOAM file");
     }
 
     constexpr unsigned long long positive_limit =
@@ -110,7 +111,7 @@ long long parse_signed_integer(std::string_view text, size_t& pos)
            && std::isdigit(static_cast<unsigned char>(text[pos]))) {
         const auto digit = static_cast<unsigned long long>(text[pos] - '0');
         if (value > (limit - digit) / 10ULL) {
-            throw std::invalid_argument("integer out of range in faces file");
+            throw std::invalid_argument("integer out of range in OpenFOAM file");
         }
         value = value * 10ULL + digit;
         ++pos;
@@ -125,7 +126,9 @@ long long parse_signed_integer(std::string_view text, size_t& pos)
     return static_cast<long long>(value);
 }
 
-std::pair<long long, size_t> find_face_list(std::string_view text)
+std::pair<long long, size_t> find_foam_list(
+    std::string_view text,
+    std::string_view list_name)
 {
     for (size_t pos = 0; pos < text.size();) {
         skip_foam_trivia(text, pos);
@@ -164,11 +167,65 @@ std::pair<long long, size_t> find_face_list(std::string_view text)
         size_t parse_pos = pos;
         const long long count = parse_signed_integer(text, parse_pos);
         if (count < 0) {
-            throw std::invalid_argument("face-list count must be non-negative");
+            throw std::invalid_argument(
+                std::string(list_name) + " count must be non-negative");
         }
         return {count, opening + 1};
     }
-    throw std::invalid_argument("missing face list in faces file");
+    throw std::invalid_argument(
+        "missing " + std::string(list_name) + " in OpenFOAM file");
+}
+
+void finish_foam_list(
+    std::string_view text,
+    size_t& pos,
+    std::string_view list_name)
+{
+    skip_foam_trivia(text, pos);
+    if (pos >= text.size() || text[pos] != ')') {
+        throw std::invalid_argument(
+            std::string(list_name) + " count does not match list");
+    }
+    ++pos;
+    skip_foam_trivia(text, pos);
+    if (pos < text.size() && text[pos] == ';') {
+        ++pos;
+        skip_foam_trivia(text, pos);
+    }
+    if (pos != text.size()) {
+        throw std::invalid_argument(
+            "unexpected trailing data after " + std::string(list_name));
+    }
+}
+
+std::string read_foam_file(
+    const std::string& filename,
+    std::string_view file_kind)
+{
+    std::ifstream input(filename, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error(
+            "unable to open " + std::string(file_kind) + " file: " + filename);
+    }
+    input.seekg(0, std::ios::end);
+    const std::streampos end = input.tellg();
+    if (end < 0
+        || static_cast<unsigned long long>(end)
+               > static_cast<unsigned long long>(
+                   std::numeric_limits<std::streamsize>::max())) {
+        throw std::runtime_error(
+            "unable to read " + std::string(file_kind) + " file: " + filename);
+    }
+    std::string text(static_cast<size_t>(end), '\0');
+    input.seekg(0, std::ios::beg);
+    if (!text.empty()) {
+        input.read(text.data(), static_cast<std::streamsize>(text.size()));
+    }
+    if (!input) {
+        throw std::runtime_error(
+            "unable to read " + std::string(file_kind) + " file: " + filename);
+    }
+    return text;
 }
 
 struct NativeFaceTopology {
@@ -199,7 +256,7 @@ struct NativeFaceTopology {
 
 NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
 {
-    const auto [face_count, list_start] = find_face_list(text);
+    const auto [face_count, list_start] = find_foam_list(text, "face-list");
     if (static_cast<unsigned long long>(face_count) > text.size()) {
         throw std::invalid_argument("face-list count exceeds file size");
     }
@@ -240,20 +297,30 @@ NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
             static_cast<long long>(topology.indices.size()));
     }
 
-    skip_foam_trivia(text, pos);
-    if (pos >= text.size() || text[pos] != ')') {
-        throw std::invalid_argument("face-list count does not match list");
-    }
-    ++pos;
-    skip_foam_trivia(text, pos);
-    if (pos < text.size() && text[pos] == ';') {
-        ++pos;
-        skip_foam_trivia(text, pos);
-    }
-    if (pos != text.size()) {
-        throw std::invalid_argument("unexpected trailing data after face list");
-    }
+    finish_foam_list(text, pos, "face-list");
     return topology;
+}
+
+std::vector<long long> parse_foam_labels_text(std::string_view text)
+{
+    const auto [label_count, list_start] = find_foam_list(text, "label-list");
+    if (static_cast<unsigned long long>(label_count) > text.size()) {
+        throw std::invalid_argument("label-list count exceeds file size");
+    }
+
+    std::vector<long long> labels;
+    labels.reserve(static_cast<size_t>(label_count));
+    size_t pos = list_start;
+    for (long long label_i = 0; label_i < label_count; ++label_i) {
+        skip_foam_trivia(text, pos);
+        if (pos >= text.size() || text[pos] == ')') {
+            throw std::invalid_argument(
+                "label-list count does not match list");
+        }
+        labels.push_back(parse_signed_integer(text, pos));
+    }
+    finish_foam_list(text, pos, "label-list");
+    return labels;
 }
 
 NativeFaceTopology parse_foam_faces_topology_file(const py::object& path)
@@ -263,16 +330,7 @@ NativeFaceTopology parse_foam_faces_topology_file(const py::object& path)
     NativeFaceTopology topology;
     {
         py::gil_scoped_release release;
-        std::ifstream input(filename, std::ios::binary);
-        if (!input) {
-            throw std::runtime_error("unable to open faces file: " + filename);
-        }
-        const std::string text{
-            std::istreambuf_iterator<char>(input),
-            std::istreambuf_iterator<char>()};
-        if (input.bad()) {
-            throw std::runtime_error("unable to read faces file: " + filename);
-        }
+        const std::string text = read_foam_file(filename, "faces");
         topology = parse_foam_face_topology_text(text);
     }
     return topology;
@@ -281,6 +339,19 @@ NativeFaceTopology parse_foam_faces_topology_file(const py::object& path)
 py::list parse_foam_faces_file(const py::object& path)
 {
     return parse_foam_faces_topology_file(path).to_lists();
+}
+
+py::array_t<long long> parse_foam_labels_file(const py::object& path)
+{
+    const std::string filename =
+        py::module_::import("os").attr("fspath")(path).cast<std::string>();
+    std::vector<long long> labels;
+    {
+        py::gil_scoped_release release;
+        const std::string text = read_foam_file(filename, "labels");
+        labels = parse_foam_labels_text(text);
+    }
+    return copy_index_vector(labels);
 }
 
 long long as_vertex_index(const py::handle& value, long long n_points)
@@ -1297,6 +1368,7 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("parse_foam_faces_topology_file",
           &parse_foam_faces_topology_file, py::arg("path"));
     m.def("parse_foam_faces_file", &parse_foam_faces_file, py::arg("path"));
+    m.def("parse_foam_labels_file", &parse_foam_labels_file, py::arg("path"));
     m.def("compute_face_geometry_topology", &compute_face_geometry_topology,
           py::arg("points"), py::arg("topology"));
     m.def("compute_face_geometry", &compute_face_geometry,
