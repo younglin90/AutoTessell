@@ -2078,6 +2078,75 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_degenerate_removal_skipped", reason=str(exc))
 
+    # BETA2826 — surface-locked AMIPS smooth, disk-write 직전 (pre-write Stage-4).
+    # P4C=0 경로에서 sweep/post-write AMIPS 는 아래 write *이후* 실행되어
+    # in-memory 만 바꾸고 버려진다. 4-op 중 smooth 만 inversion-safe
+    # (amips.py:336 per-vertex det>0 가드) 이므로, 모든 경계(표면) 정점을
+    # lock 한 채 write 직전에 단독 적용해 disk 에 반영한다. split/flip 은
+    # abs(vol6) 검사 잠복버그로 inversion 을 주입하므로 여기선 쓰지 않는다.
+    # (계측 cube/draft/N2000/P4C0: skew 10.02→2.03, surf 이동 0.0, inv 0.)
+    if not _phase_bc_skip and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.amips import smooth_amips as _sm_bc
+            from core.generator.native_tet.validate import (
+                signed_volume6 as _sv6_bc,
+            )
+            from core.generator.native_tet.plane_coverage import (
+                _tet_boundary_faces as _bf_bc,
+            )
+
+            _surf_ids = np.unique(_bf_bc(final_tets).ravel()).astype(np.int64)
+            _pre_pts = final_pts.copy()
+            _sv6_pre = _sv6_bc(final_pts, final_tets)
+            _pre_abs = float(np.abs(_sv6_pre).sum())
+            _, _new_pts = _sm_bc(
+                final_pts, final_tets,
+                locked_vertex_ids=_surf_ids, n_iter=5,
+            )
+            _sv6_new = _sv6_bc(_new_pts, final_tets)
+            _vol_ratio = float(np.abs(_sv6_new).sum()) / max(_pre_abs, 1e-30)
+            _surf_moved = float(
+                np.abs(_new_pts[_surf_ids] - _pre_pts[_surf_ids]).max()
+            ) if _surf_ids.size else 0.0
+            # inversion 판정은 **전후 부호 비교** — 이 메쉬의 in-memory 정점
+            # 순서는 균일 양수 방향이 아니다 (writer 가 write 시 winding 정규화;
+            # validate 로그상 전 tet 이 "flipped" 인 경우도 정상). 절대 부호
+            # (min>0) 를 요구하면 기존 음수-순서 tet 때문에 항상 revert 된다
+            # — 실측: 14/14 호출 전부 revert, min_sv6=-0.0012 는 smooth 가
+            # 만든 게 아니라 원래 있던 저장-순서 음수였다. 기하를 재라,
+            # 장부를 재지 말고.
+            _no_inv = bool(
+                np.all(np.sign(_sv6_new) == np.sign(_sv6_pre))
+                and np.all(np.abs(_sv6_new) > 1e-12)
+            )
+            _accept = bool(
+                _no_inv
+                and 0.97 <= _vol_ratio <= 1.03
+                and _surf_moved <= 1e-9
+            )
+            if _accept:
+                final_pts = _new_pts
+            else:
+                final_pts = _pre_pts
+                log.warning(
+                    "native_tet_prewrite_locked_smooth_revert",
+                    n_surf=int(_surf_ids.shape[0]),
+                    min_sv6=float(_sv6_new.min()),
+                    vol_ratio=round(_vol_ratio, 6),
+                    surf_moved=round(_surf_moved, 9),
+                )
+            log.info(
+                "native_tet_prewrite_locked_smooth",
+                n_surf=int(_surf_ids.shape[0]),
+                vol_ratio=round(_vol_ratio, 6),
+                surf_moved=round(_surf_moved, 9),
+                accepted=_accept,
+            )
+        except Exception as exc:
+            log.debug(
+                "native_tet_prewrite_locked_smooth_skipped", reason=str(exc)
+            )
+
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기.

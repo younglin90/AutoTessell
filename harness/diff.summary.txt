@@ -1,19 +1,12 @@
-card: BETA2825_DEGENERATE_SLIVER_REMOVAL
+card: BETA2826_SURFACE_LOCKED_AMIPS_SMOOTH_PREWRITE
 
 file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (insert before _prog("write",0.9), non-skip disk-mesh point)
-lines_added: 156
+functions: generate_native_tet (insert before _prog("write",0.9), disk-write 직전)
+lines_added: 61
 lines_removed: 0
-detail: signed 3-2 flip (분리삼각형 sign(orient(x,y,z,u))!=sign(...v); flip.py 재사용 안 함)
-        + Phase 2 공면 flap 제거 (입력면 평면 4정점 coplanar) + extra_area/area_coverage revert 가드.
-
-file: tests/test_native_tet_solid_volume.py
-functions: test_native_tet_has_no_degenerate_cells
-lines_added: 7
-lines_removed: 11
-detail: xfail(strict) 제거(XPASS 승격, assert 불가침) + docstring STATUS 실측 갱신 + unused import pytest 제거.
-
-measured cube/draft/N=2000/P4C=0 (PRE -> POST):
-  n_degenerate 47->0 | on 6.0000->6.0000 | off 0.0000->0.0000 | sum|vol| 1.0043->1.0043
-  max_skewness 1.684e29 -> 10.018 (finite) | revert 발화 0회 | n_flip32~35-40 n_flap~3-12
-tests: solid_volume 4/4 PASS ; target_cells+cylinder+harness+phaseA 27/27 PASS
+detail: `if not _phase_bc_skip and final_tets.shape[0] > 100:` 블록.
+        surf_ids = unique(_tet_boundary_faces(final_tets))  (BETA2823 lock 재사용, V.shape[0] 미사용)
+        smooth_amips(locked_vertex_ids=surf_ids, n_iter=5)
+        accept iff sv6_new.min()>1e-12 AND vol_ratio<=1.03 AND surf_moved<=1e-9
+        else final_pts=pre_pts + log.warning ; log.info native_tet_prewrite_locked_smooth.
+        split/flip/collapse 미사용. 임계·평가자·테스트·P4C 불변.
