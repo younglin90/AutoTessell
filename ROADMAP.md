@@ -86,9 +86,29 @@ selective repair UI.
   seeding-stage-only hook, proven not to leak onto the boundary) — as an
   unplanned bonus, even this unrefined seeding measured skew 44.9→40.8
   before any of the filtering/guarding follow-up cards.
-  Remaining: CYLSKEW2-4 (wall-adjacent filtering, monotone accept/revert,
-  default-on), 12-STL hard-geometry bench sweep beyond the shapes above,
-  full 4-op schedule.
+  Sequence continued (CYLSKEW2-4): the originally-planned wall-adjacent
+  filter was measured and falsified twice (cylinder has no pure side-wall
+  vertex to filter for since it only has 2 z-rings; sphere's regression at
+  N=500 is a holistic seed-density effect, not a per-vertex class problem),
+  redirecting the sequence to a monotone best-of-two selector instead:
+  scale-invariant guards (CYLSKEW2), a pure decision function verified
+  against 3 measured cases including sphere's default-ON-breaking regression
+  (CYLSKEW3), and wiring via a cheap pre-optimization Delaunay proxy since
+  full best-of-two doubles bench time past budget (CYLSKEW4, default path
+  unchanged, proxy/final correlation still open — the one case checked
+  disagreed with the known-good full-pipeline result, flagged for CYLSKEW5).
+  **Coverage-collapse-adjacent quality cluster** (naca0012, was FAIL from
+  degen 17 + skew 58.83): THINSLIVER1 closed most of the degenerate axis
+  (22->11 in a controlled config, correctness win, permanent regression
+  lock + xfail(strict) for the remaining higher-valence victims). THINSLIVER2
+  set out to fix the skew axis but, on independent reconfirmation, measured
+  zero effect on the *current* baseline (which had already dropped from
+  82.44 to ~60.3 via the cards above stacking) — the 123-line mechanism was
+  discarded rather than kept as unexercised complexity; what's real (the
+  ~60.3 state) is now a regression-locked permanent gate. A real skew fix
+  needs fresh diagnosis against that baseline, not the stale one.
+  Remaining: 12-STL hard-geometry bench sweep beyond the shapes closed so
+  far, full 4-op schedule, CYLSKEW5 (proxy/final correlation, default-ON).
 - **native_hex ~45%**: solid gates green on the cube (surface 6.000/void
   0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed on
   both quality levels (3-card sequence, all permanent gates now):
