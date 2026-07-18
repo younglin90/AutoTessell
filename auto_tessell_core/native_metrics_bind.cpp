@@ -684,15 +684,70 @@ py::tuple compute_cell_centres_and_aspect_ratios_topology(
         throw std::overflow_error("point index cannot be packed safely");
     }
 
-    std::vector<std::vector<TaggedVertex>> cell_vertices(
-        static_cast<size_t>(n_cells));
+    if (static_cast<unsigned long long>(n_cells)
+        >= static_cast<unsigned long long>(
+            std::numeric_limits<size_t>::max())) {
+        throw std::overflow_error("cell count cannot be indexed safely");
+    }
+    const auto n_cells_size = static_cast<size_t>(n_cells);
+    std::vector<size_t> cell_offsets;
+    std::vector<TaggedVertex> cell_vertices;
     std::vector<Point3> centre_values(
-        static_cast<size_t>(n_cells), Point3{0.0, 0.0, 0.0});
+        n_cells_size, Point3{0.0, 0.0, 0.0});
     std::vector<long long> out_cells;
     std::vector<double> out_ratios;
 
     {
         py::gil_scoped_release release;
+
+        cell_offsets.assign(n_cells_size + 1, 0);
+        for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+            const auto own_cell = own(face_i);
+            const bool add_owner = own_cell >= 0 && own_cell < n_cells;
+
+            long long nbr_cell = -1;
+            bool add_neighbour = false;
+            if (face_i < n_internal) {
+                nbr_cell = neighbour_values[static_cast<size_t>(face_i)];
+                add_neighbour = nbr_cell >= 0 && nbr_cell < n_cells;
+            }
+            if (!add_owner && !add_neighbour) {
+                continue;
+            }
+
+            const auto begin = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i)]);
+            const auto end = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i) + 1]);
+            const auto face_vertex_count = end - begin;
+            const auto add_contribution = [&](long long cell_i) {
+                auto& count = cell_offsets[static_cast<size_t>(cell_i) + 1];
+                if (face_vertex_count
+                    > std::numeric_limits<size_t>::max() - count) {
+                    throw std::overflow_error(
+                        "cell vertex contribution count overflow");
+                }
+                count += face_vertex_count;
+            };
+            if (add_owner) {
+                add_contribution(own_cell);
+            }
+            if (add_neighbour) {
+                add_contribution(nbr_cell);
+            }
+        }
+
+        for (size_t cell_i = 0; cell_i < n_cells_size; ++cell_i) {
+            if (cell_offsets[cell_i + 1]
+                > cell_vertices.max_size() - cell_offsets[cell_i]) {
+                throw std::overflow_error(
+                    "cell vertex contribution prefix sum overflow");
+            }
+            cell_offsets[cell_i + 1] += cell_offsets[cell_i];
+        }
+        cell_vertices.resize(cell_offsets.back());
+        std::vector<size_t> write_positions(
+            cell_offsets.begin(), cell_offsets.end() - 1);
 
         // Low bit records owner-face membership; remaining bits hold the
         // validated non-negative vertex index.
@@ -719,12 +774,13 @@ py::tuple compute_cell_centres_and_aspect_ratios_topology(
                 const auto packed_vertex =
                     static_cast<TaggedVertex>(vertex_i) << 1;
                 if (add_owner) {
-                    cell_vertices[static_cast<size_t>(own_cell)].push_back(
-                        packed_vertex | owner_vertex_flag);
+                    cell_vertices[write_positions[
+                        static_cast<size_t>(own_cell)]++] =
+                        packed_vertex | owner_vertex_flag;
                 }
                 if (add_neighbour) {
-                    cell_vertices[static_cast<size_t>(nbr_cell)].push_back(
-                        packed_vertex);
+                    cell_vertices[write_positions[
+                        static_cast<size_t>(nbr_cell)]++] = packed_vertex;
                 }
             }
         }
@@ -733,57 +789,68 @@ py::tuple compute_cell_centres_and_aspect_ratios_topology(
         const long long step = n_cells > sample_cap
             ? std::max(1LL, n_cells / sample_cap)
             : 1LL;
-        out_cells.reserve(static_cast<size_t>((n_cells + step - 1) / step));
+        const auto step_size = static_cast<size_t>(step);
+        const auto sample_count = n_cells_size == 0
+            ? 0
+            : 1 + (n_cells_size - 1) / step_size;
+        out_cells.reserve(sample_count);
         out_ratios.reserve(out_cells.capacity());
 
         for (long long cell_i = 0; cell_i < n_cells; ++cell_i) {
-            auto& vertices = cell_vertices[static_cast<size_t>(cell_i)];
-            std::sort(vertices.begin(), vertices.end());
-            if (vertices.empty()) {
+            const auto begin = cell_offsets[static_cast<size_t>(cell_i)];
+            const auto end = cell_offsets[static_cast<size_t>(cell_i) + 1];
+            std::sort(
+                cell_vertices.begin() + static_cast<std::ptrdiff_t>(begin),
+                cell_vertices.begin() + static_cast<std::ptrdiff_t>(end));
+            if (begin == end) {
                 continue;
             }
 
-            size_t unique_count = 0;
-            for (size_t read_i = 0; read_i < vertices.size();) {
-                const auto vertex_i = vertices[read_i] >> 1;
+            size_t unique_end = begin;
+            for (size_t read_i = begin; read_i < end;) {
+                const auto vertex_i = cell_vertices[read_i] >> 1;
                 TaggedVertex owner_flag = 0;
                 do {
-                    owner_flag |= vertices[read_i] & owner_vertex_flag;
+                    owner_flag |=
+                        cell_vertices[read_i] & owner_vertex_flag;
                     ++read_i;
-                } while (read_i < vertices.size()
-                         && (vertices[read_i] >> 1) == vertex_i);
-                vertices[unique_count++] =
+                } while (read_i < end
+                         && (cell_vertices[read_i] >> 1) == vertex_i);
+                cell_vertices[unique_end++] =
                     (vertex_i << 1) | owner_flag;
             }
-            vertices.resize(unique_count);
+            const auto unique_count = unique_end - begin;
 
             Point3 sum{0.0, 0.0, 0.0};
-            for (const auto packed_vertex : vertices) {
+            for (size_t slot = begin; slot < unique_end; ++slot) {
+                const auto packed_vertex = cell_vertices[slot];
                 const auto vertex_i = static_cast<long long>(packed_vertex >> 1);
                 sum[0] += pts(vertex_i, 0);
                 sum[1] += pts(vertex_i, 1);
                 sum[2] += pts(vertex_i, 2);
             }
-            const double inv = 1.0 / static_cast<double>(vertices.size());
+            const double inv = 1.0 / static_cast<double>(unique_count);
             centre_values[static_cast<size_t>(cell_i)] = {
                 sum[0] * inv, sum[1] * inv, sum[2] * inv};
 
-            if (cell_i % step != 0 || vertices.size() < 2) {
+            if (cell_i % step != 0 || unique_count < 2) {
                 continue;
             }
 
             double min_d2 = std::numeric_limits<double>::infinity();
             double max_d2 = 0.0;
-            for (size_t i = 0; i + 1 < vertices.size(); ++i) {
-                if ((vertices[i] & owner_vertex_flag) == 0) {
+            for (size_t i = begin; i + 1 < unique_end; ++i) {
+                if ((cell_vertices[i] & owner_vertex_flag) == 0) {
                     continue;
                 }
-                const auto vi = static_cast<long long>(vertices[i] >> 1);
-                for (size_t j = i + 1; j < vertices.size(); ++j) {
-                    if ((vertices[j] & owner_vertex_flag) == 0) {
+                const auto vi =
+                    static_cast<long long>(cell_vertices[i] >> 1);
+                for (size_t j = i + 1; j < unique_end; ++j) {
+                    if ((cell_vertices[j] & owner_vertex_flag) == 0) {
                         continue;
                     }
-                    const auto vj = static_cast<long long>(vertices[j] >> 1);
+                    const auto vj =
+                        static_cast<long long>(cell_vertices[j] >> 1);
                     const double dx = pts(vi, 0) - pts(vj, 0);
                     const double dy = pts(vi, 1) - pts(vj, 1);
                     const double dz = pts(vi, 2) - pts(vj, 2);
