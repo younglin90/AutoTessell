@@ -105,6 +105,56 @@ def test_native_faces_parser_accepts_empty_outer_list(tmp_path: Path) -> None:
     assert module.parse_foam_faces_file(faces_file) == []
 
 
+def test_native_faces_parser_skips_raw_trivia_between_tokens(tmp_path: Path) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = _write_faces(
+        tmp_path / "faces",
+        '''"99(1(999))" /* 88(1(888)) */ 2 "count/list separator"
+        (
+            3/* count/list */(0 "ignored vertex" 1 // line comment
+                2)
+            0/* empty face */(/* no vertices */)
+        ) "trailing value" ; // trailing comment''',
+    )
+
+    assert module.parse_foam_faces_file(faces_file) == [[0, 1, 2], []]
+
+
+def test_native_faces_parser_accepts_signed_integer_limits(tmp_path: Path) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = _write_faces(
+        tmp_path / "faces",
+        "1 ( 2(9223372036854775807 -9223372036854775808) )",
+    )
+
+    assert module.parse_foam_faces_file(faces_file) == [
+        [9223372036854775807, -9223372036854775808]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("1 ( 3(0 1 2) ) /*", "unterminated block comment"),
+        ('1 ( 3(0 1 2) ) "unterminated', "unterminated quoted string"),
+        ("9223372036854775808 ( )", "integer out of range"),
+        ("1 ( 9223372036854775808() )", "integer out of range"),
+        ("1 ( 1(9223372036854775808) )", "integer out of range"),
+        ("1 ( 1(-9223372036854775809) )", "integer out of range"),
+    ],
+)
+def test_native_faces_parser_rejects_invalid_trivia_and_overflow(
+    tmp_path: Path,
+    body: str,
+    message: str,
+) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = _write_faces(tmp_path / "faces", body)
+
+    with pytest.raises(ValueError, match=message):
+        module.parse_foam_faces_file(faces_file)
+
+
 @pytest.mark.parametrize(
     "body",
     [

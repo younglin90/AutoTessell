@@ -31,75 +31,54 @@ namespace {
 
 using Point3 = std::array<double, 3>;
 
-std::string strip_foam_comments_and_strings(std::string_view text)
+void skip_foam_trivia(std::string_view text, size_t& pos)
 {
-    enum class State { normal, line_comment, block_comment, quoted };
-
-    std::string clean;
-    clean.reserve(text.size());
-    State state = State::normal;
-    char quote = '\0';
-    bool escaped = false;
-
-    for (size_t i = 0; i < text.size(); ++i) {
-        const char ch = text[i];
-        const char next = i + 1 < text.size() ? text[i + 1] : '\0';
-
-        if (state == State::line_comment) {
-            if (ch == '\n') {
-                clean.push_back('\n');
-                state = State::normal;
-            } else {
-                clean.push_back(' ');
+    while (pos < text.size()) {
+        const char ch = text[pos];
+        if (std::isspace(static_cast<unsigned char>(ch))) {
+            ++pos;
+            continue;
+        }
+        if (ch == '/' && pos + 1 < text.size()) {
+            const char next = text[pos + 1];
+            if (next == '/') {
+                pos += 2;
+                while (pos < text.size() && text[pos] != '\n') {
+                    ++pos;
+                }
+                continue;
+            }
+            if (next == '*') {
+                const size_t end = text.find("*/", pos + 2);
+                if (end == std::string_view::npos) {
+                    throw std::invalid_argument(
+                        "unterminated block comment in faces file");
+                }
+                pos = end + 2;
+                continue;
+            }
+        }
+        if (ch == '\'' || ch == '"') {
+            const char quote = ch;
+            ++pos;
+            bool closed = false;
+            while (pos < text.size()) {
+                const char quoted_ch = text[pos++];
+                if (quoted_ch == '\\' && pos < text.size()) {
+                    ++pos;
+                } else if (quoted_ch == quote) {
+                    closed = true;
+                    break;
+                }
+            }
+            if (!closed) {
+                throw std::invalid_argument(
+                    "unterminated quoted string in faces file");
             }
             continue;
         }
-        if (state == State::block_comment) {
-            clean.push_back(ch == '\n' ? '\n' : ' ');
-            if (ch == '*' && next == '/') {
-                clean.push_back(' ');
-                ++i;
-                state = State::normal;
-            }
-            continue;
-        }
-        if (state == State::quoted) {
-            clean.push_back(ch == '\n' ? '\n' : ' ');
-            if (escaped) {
-                escaped = false;
-            } else if (ch == '\\') {
-                escaped = true;
-            } else if (ch == quote) {
-                state = State::normal;
-            }
-            continue;
-        }
-
-        if (ch == '/' && next == '/') {
-            clean.append("  ");
-            ++i;
-            state = State::line_comment;
-        } else if (ch == '/' && next == '*') {
-            clean.append("  ");
-            ++i;
-            state = State::block_comment;
-        } else if (ch == '\'' || ch == '"') {
-            clean.push_back(' ');
-            quote = ch;
-            escaped = false;
-            state = State::quoted;
-        } else {
-            clean.push_back(ch);
-        }
+        return;
     }
-
-    if (state == State::block_comment) {
-        throw std::invalid_argument("unterminated block comment in faces file");
-    }
-    if (state == State::quoted) {
-        throw std::invalid_argument("unterminated quoted string in faces file");
-    }
-    return clean;
 }
 
 bool is_integer_boundary(char ch)
@@ -146,25 +125,23 @@ long long parse_signed_integer(std::string_view text, size_t& pos)
     return static_cast<long long>(value);
 }
 
-void skip_whitespace(std::string_view text, size_t& pos)
-{
-    while (pos < text.size()
-           && std::isspace(static_cast<unsigned char>(text[pos]))) {
-        ++pos;
-    }
-}
-
 std::pair<long long, size_t> find_face_list(std::string_view text)
 {
-    for (size_t pos = 0; pos < text.size(); ++pos) {
+    for (size_t pos = 0; pos < text.size();) {
+        skip_foam_trivia(text, pos);
+        if (pos >= text.size()) {
+            break;
+        }
         const char ch = text[pos];
         const bool has_sign = ch == '+' || ch == '-';
         if (!std::isdigit(static_cast<unsigned char>(ch))
             && !(has_sign && pos + 1 < text.size()
                  && std::isdigit(static_cast<unsigned char>(text[pos + 1])))) {
+            ++pos;
             continue;
         }
         if (pos > 0 && !is_integer_boundary(text[pos - 1])) {
+            ++pos;
             continue;
         }
 
@@ -174,12 +151,13 @@ std::pair<long long, size_t> find_face_list(std::string_view text)
             ++end;
         }
         if (end < text.size() && !is_integer_boundary(text[end])) {
+            pos = end;
             continue;
         }
         size_t opening = end;
-        skip_whitespace(text, opening);
+        skip_foam_trivia(text, opening);
         if (opening >= text.size() || text[opening] != '(') {
-            pos = end - 1;
+            pos = opening;
             continue;
         }
 
@@ -221,9 +199,8 @@ struct NativeFaceTopology {
 
 NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
 {
-    const std::string clean = strip_foam_comments_and_strings(text);
-    const auto [face_count, list_start] = find_face_list(clean);
-    if (static_cast<unsigned long long>(face_count) > clean.size()) {
+    const auto [face_count, list_start] = find_face_list(text);
+    if (static_cast<unsigned long long>(face_count) > text.size()) {
         throw std::invalid_argument("face-list count exceeds file size");
     }
 
@@ -235,27 +212,27 @@ NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
     }
     size_t pos = list_start;
     for (long long face_i = 0; face_i < face_count; ++face_i) {
-        skip_whitespace(clean, pos);
-        const long long vertex_count = parse_signed_integer(clean, pos);
+        skip_foam_trivia(text, pos);
+        const long long vertex_count = parse_signed_integer(text, pos);
         if (vertex_count < 0) {
             throw std::invalid_argument("face vertex count must be non-negative");
         }
-        if (static_cast<unsigned long long>(vertex_count) > clean.size()) {
+        if (static_cast<unsigned long long>(vertex_count) > text.size()) {
             throw std::invalid_argument("face vertex count exceeds file size");
         }
-        skip_whitespace(clean, pos);
-        if (pos >= clean.size() || clean[pos] != '(') {
+        skip_foam_trivia(text, pos);
+        if (pos >= text.size() || text[pos] != '(') {
             throw std::invalid_argument("expected '(' after face vertex count");
         }
         ++pos;
 
         topology.all_triangles = topology.all_triangles && vertex_count == 3;
         for (long long vertex_i = 0; vertex_i < vertex_count; ++vertex_i) {
-            skip_whitespace(clean, pos);
-            topology.indices.push_back(parse_signed_integer(clean, pos));
+            skip_foam_trivia(text, pos);
+            topology.indices.push_back(parse_signed_integer(text, pos));
         }
-        skip_whitespace(clean, pos);
-        if (pos >= clean.size() || clean[pos] != ')') {
+        skip_foam_trivia(text, pos);
+        if (pos >= text.size() || text[pos] != ')') {
             throw std::invalid_argument("face vertex count does not match list");
         }
         ++pos;
@@ -263,17 +240,17 @@ NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
             static_cast<long long>(topology.indices.size()));
     }
 
-    skip_whitespace(clean, pos);
-    if (pos >= clean.size() || clean[pos] != ')') {
+    skip_foam_trivia(text, pos);
+    if (pos >= text.size() || text[pos] != ')') {
         throw std::invalid_argument("face-list count does not match list");
     }
     ++pos;
-    skip_whitespace(clean, pos);
-    if (pos < clean.size() && clean[pos] == ';') {
+    skip_foam_trivia(text, pos);
+    if (pos < text.size() && text[pos] == ';') {
         ++pos;
-        skip_whitespace(clean, pos);
+        skip_foam_trivia(text, pos);
     }
-    if (pos != clean.size()) {
+    if (pos != text.size()) {
         throw std::invalid_argument("unexpected trailing data after face list");
     }
     return topology;
