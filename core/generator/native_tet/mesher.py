@@ -246,6 +246,74 @@ def _nonortho_proxy(pts: np.ndarray, tets: np.ndarray) -> float:
     return float(np.nanmax(angle_deg)) if angle_deg.size else 0.0
 
 
+_OFFSET_RING_AUTO_MAX_VERTICES = 1000
+_OFFSET_RING_AUTO_MAX_FACES = 2000
+_OFFSET_RING_VOLUME_REL_TOL = 1e-12
+
+
+def _offset_ring_mode(
+    value: str | None, n_vertices: int, n_faces: int,
+) -> tuple[str, bool]:
+    """Resolve unset as off; explicit auto remains size-bounded."""
+    mode = "off" if value is None else value.strip().lower()
+    if mode in {"0", "off", "false"}:
+        return "off", False
+    if mode in {"1", "on", "true"}:
+        return "on", True
+    if mode == "auto":
+        enabled = (
+            n_vertices <= _OFFSET_RING_AUTO_MAX_VERTICES
+            and n_faces <= _OFFSET_RING_AUTO_MAX_FACES
+        )
+        return "auto", enabled
+    return "invalid", False
+
+
+def _raw_proxy_metrics(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    rel_volume_tol: float = _OFFSET_RING_VOLUME_REL_TOL,
+) -> tuple[dict[str, float], int, int]:
+    """Compute proxy metrics after removing scale-relative degenerate tets."""
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    raw_count = int(tets.shape[0]) if tets.ndim >= 1 else 0
+    if pts.ndim != 2 or pts.shape[1:] != (3,) or tets.ndim != 2:
+        return {}, raw_count, 0
+    if tets.shape[1:] != (4,) or raw_count == 0 or not np.isfinite(pts).all():
+        return {}, raw_count, 0
+
+    bbox_diag = float(np.linalg.norm(np.ptp(pts, axis=0)))
+    if not np.isfinite(bbox_diag) or bbox_diag <= 0.0:
+        return {}, raw_count, 0
+    try:
+        tet_pts = pts[tets]
+    except (IndexError, ValueError):
+        return {}, raw_count, 0
+    volumes = np.abs(np.einsum(
+        "ij,ij->i",
+        np.cross(tet_pts[:, 1] - tet_pts[:, 0], tet_pts[:, 2] - tet_pts[:, 0]),
+        tet_pts[:, 3] - tet_pts[:, 0],
+    )) / 6.0
+    volume_floor = bbox_diag ** 3 * max(0.0, float(rel_volume_tol))
+    valid = np.isfinite(volumes) & (volumes > volume_floor)
+    valid_count = int(valid.sum())
+    if valid_count == 0:
+        return {}, raw_count, 0
+
+    clean_tets = tets[valid]
+    try:
+        metrics = {
+            "skew": _skew_proxy(pts, clean_tets),
+            "nonortho": _nonortho_proxy(pts, clean_tets),
+        }
+    except Exception:
+        return {}, raw_count, valid_count
+    if not all(np.isfinite(value) for value in metrics.values()):
+        return {}, raw_count, valid_count
+    return metrics, raw_count, valid_count
+
+
 def generate_native_tet(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -946,35 +1014,38 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_steiner_skipped", reason=str(exc))
 
-    # CYLSKEW1 (beta2822) — near-wall offset-ring Delaunay seeds (default OFF,
-    # AUTO_TESSELL_TET_OFFSET_RING=1). Seeding-only; envelope/clip/surface-lock
-    # 하류 로직은 건드리지 않는다 — Delaunay 시드가 늘 뿐이다.
-    # CYLSKEW4 (beta2831) — env=1 경로: off/on 두 seed set 에 값싼 raw Delaunay
-    # (표면회복/최적화 前) 후 _skew_proxy/_nonortho_proxy 를 select_offset_ring_variant
-    # 에 공급해 채택 여부를 게이트한다. env 미설정(기본)은 완전 무변경 — 회귀 0.
+    # CYLSKEW5 — bounded auto offset ring with cleaned raw-Delaunay proxies.
     _offset_ring_pts = np.zeros((0, 3), dtype=np.float64)
-    if os.environ.get("AUTO_TESSELL_TET_OFFSET_RING") == "1":
+    _offset_mode, _offset_enabled = _offset_ring_mode(
+        os.environ.get("AUTO_TESSELL_TET_OFFSET_RING"),
+        int(V.shape[0]),
+        int(F.shape[0]),
+    )
+    _decision = "disabled"
+    off_metrics: dict[str, float] = {}
+    on_metrics: dict[str, float] = {}
+    off_raw = off_valid = on_raw = on_valid = 0
+    if _offset_enabled:
         from core.generator.native_tet.offset_ring import (
-            offset_ring_seed_points, select_offset_ring_variant,
+            offset_ring_seed_points,
+            select_offset_ring_variant,
         )
+
         _cand_pts, _or_info = offset_ring_seed_points(V, F, float(target_edge_length))
         log.info("native_tet_offset_ring", **_or_info)
+        _decision = "no_candidates"
         if _cand_pts.shape[0]:
-            off_metrics: dict[str, float] = {}
-            on_metrics: dict[str, float] = {}
             try:
                 from scipy.spatial import Delaunay as _RawDelaunay
                 off_tri = _RawDelaunay(all_pts)
                 on_pts = np.vstack([all_pts, _cand_pts])
                 on_tri = _RawDelaunay(on_pts)
-                off_metrics = {
-                    "skew": _skew_proxy(all_pts, off_tri.simplices),
-                    "nonortho": _nonortho_proxy(all_pts, off_tri.simplices),
-                }
-                on_metrics = {
-                    "skew": _skew_proxy(on_pts, on_tri.simplices),
-                    "nonortho": _nonortho_proxy(on_pts, on_tri.simplices),
-                }
+                off_metrics, off_raw, off_valid = _raw_proxy_metrics(
+                    all_pts, off_tri.simplices,
+                )
+                on_metrics, on_raw, on_valid = _raw_proxy_metrics(
+                    on_pts, on_tri.simplices,
+                )
             except Exception as _proxy_exc:
                 log.debug(
                     "native_tet_offset_ring_proxy_failed",
@@ -983,16 +1054,23 @@ def generate_native_tet(
             _offset_ring_pts, _sel_info = select_offset_ring_variant(
                 _cand_pts, off_metrics, on_metrics,
             )
-            log.info(
-                "native_tet_offset_ring_select",
-                decision=_sel_info.get("decision"),
-                off_skew=off_metrics.get("skew"),
-                on_skew=on_metrics.get("skew"),
-                off_nonortho=off_metrics.get("nonortho"),
-                on_nonortho=on_metrics.get("nonortho"),
-            )
+            _decision = str(_sel_info.get("decision"))
         if _offset_ring_pts.shape[0]:
             all_pts = np.vstack([all_pts, _offset_ring_pts])
+    log.info(
+        "native_tet_offset_ring_select",
+        mode=_offset_mode,
+        enabled=_offset_enabled,
+        decision=_decision,
+        off_raw_tets=off_raw,
+        off_valid_tets=off_valid,
+        on_raw_tets=on_raw,
+        on_valid_tets=on_valid,
+        off_skew=off_metrics.get("skew"),
+        on_skew=on_metrics.get("skew"),
+        off_nonortho=off_metrics.get("nonortho"),
+        on_nonortho=on_metrics.get("nonortho"),
+    )
 
     log.info("native_tet_seed", n_points=all_pts.shape[0], n_grid_inside=grid.shape[0])
 
