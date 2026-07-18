@@ -281,3 +281,102 @@ def fix_inverted_tets(
         n_fixed_by_swap=int(fixed),
         n_degenerate=n_degen,
     )
+
+
+def flat_allsurf_sliver_candidates(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    n_surface_vertices: int,
+    *,
+    q_flat: float = 0.01,
+    bskew_thresh: float = 4.0,
+) -> dict:
+    """FSL1 — all-surface flat-sliver 후보 특성화. 읽기 전용, caller 없음, default OFF.
+
+    tets/pts 를 절대 변경하지 않는다 (skeleton — 다음 카드가 flip 을 붙인다).
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    pts = np.asarray(pts, dtype=np.float64)
+    empty = {"n_cand": 0, "n_flip_eligible": 0, "n_core_unflippable": 0,
+             "max_bskew": 0.0, "worst_tet": -1}
+    if tets.size == 0:
+        return empty
+
+    v = pts[tets]  # (T,4,3)
+    all_surface = (tets < int(n_surface_vertices)).all(axis=1)
+    e = [np.linalg.norm(v[:, i] - v[:, j], axis=1)
+         for i, j in ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))]
+    edge_max = np.maximum.reduce(e)
+    vol = np.abs(np.einsum(
+        "ij,ij->i", v[:, 1] - v[:, 0],
+        np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+    )) / 6.0
+    q = np.zeros_like(edge_max)
+    safe = edge_max > 1e-30
+    q[safe] = 8.48 * vol[safe] / (edge_max[safe] ** 3)
+
+    cand = np.where(all_surface & (q < float(q_flat)))[0]
+    if cand.size == 0:
+        return empty
+
+    # face -> owner adjacency: sorted-key + lexsort grouping (count-based).
+    local = np.array([[1, 2, 3], [0, 2, 3], [0, 1, 3], [0, 1, 2]])
+    sorted_faces = np.sort(tets[:, local].reshape(-1, 3), axis=1)
+    order = np.lexsort((sorted_faces[:, 2], sorted_faces[:, 1], sorted_faces[:, 0]))
+    sk = sorted_faces[order]
+    match_next = np.all(sk[1:] == sk[:-1], axis=1)
+    partner = np.full(order.size, -1, dtype=np.int64)
+    pi = np.where(match_next)[0]
+    partner[order[pi]] = order[pi + 1]
+    partner[order[pi + 1]] = order[pi]
+
+    def sv(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> float:
+        return float(np.dot(b - a, np.cross(c - a, d - a)))
+
+    n_flip_eligible = 0
+    n_core_unflippable = 0
+    max_bskew = 0.0
+    worst_tet = -1
+    for ti in cand.tolist():
+        n_boundary = 0
+        flip_ok = False
+        for lf in range(4):
+            nb_flat = partner[4 * ti + lf]
+            s0, s1, s2 = tets[ti, local[lf]]
+            if nb_flat < 0:
+                n_boundary += 1
+                fc = (pts[s0] + pts[s1] + pts[s2]) / 3.0
+                nrm = np.cross(pts[s1] - pts[s0], pts[s2] - pts[s0])
+                nmag = np.linalg.norm(nrm)
+                if nmag < 1e-30:
+                    continue
+                nrm = nrm / nmag
+                cc = v[ti].mean(axis=0)
+                to_face = fc - cc
+                normal_dist = float(np.dot(to_face, nrm))
+                tangential = to_face - normal_dist * nrm
+                bskew = float(np.linalg.norm(tangential)) / max(abs(normal_dist), 1e-30)
+                if bskew > max_bskew:
+                    max_bskew, worst_tet = bskew, ti
+            else:
+                nb_tet, nb_lf = divmod(int(nb_flat), 4)
+                apex1, apex2 = tets[ti, lf], tets[nb_tet, nb_lf]
+                p_s0, p_s1, p_s2 = pts[s0], pts[s1], pts[s2]
+                p1, p2 = pts[apex1], pts[apex2]
+                vols = [sv(p_s0, p_s1, p1, p2), sv(p_s1, p_s2, p1, p2), sv(p_s2, p_s0, p1, p2)]
+                if all(abs(x) > 1e-18 for x in vols) and (
+                    all(x > 0 for x in vols) or all(x < 0 for x in vols)
+                ):
+                    flip_ok = True
+        if flip_ok:
+            n_flip_eligible += 1
+        elif n_boundary >= 2:
+            n_core_unflippable += 1
+
+    return {
+        "n_cand": int(cand.size),
+        "n_flip_eligible": n_flip_eligible,
+        "n_core_unflippable": n_core_unflippable,
+        "max_bskew": max_bskew,
+        "worst_tet": worst_tet,
+    }
