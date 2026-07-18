@@ -64,9 +64,14 @@ selective repair UI.
   `core/utils/aabb.py:closest_points_all_shared` (71% of profiled wall,
   660k scalar-per-query calls to a leaf routine vectorized only over its own
   <=8 triangles). Fixed by batching the whole active-query set through each
-  leaf in one call — cumtime 62.4s -> ~2.8s, sphere.stl bench 87.8s ->
-  38.9s (PASS, was TIMEOUT). sphere_watertight/high_genus_dual_torus not
-  yet re-measured. Same investigation also caught a **pre-existing
+  leaf in one call — cumtime 62.4s -> ~2.8s. All 3 former TIMEOUT bench rows
+  re-measured (2026-07-18): `sphere.stl` 143.5s->29s **PASS**,
+  `sphere_watertight.stl` same **PASS**. `high_genus_dual_torus.stl`
+  >120s->55s but **FAIL** — the timeout was masking a real solid-invariant
+  defect (area-ratio 0.562, vol-ratio 0.472: mesh covers/fills only ~half the
+  input on this genus-2 topology), joining the perforated_plate/sharp_ridge
+  coverage-collapse cluster as the next thing to root-cause. Same speed
+  investigation also caught a **pre-existing
   correctness bug**: `TriangleBVH.build()`'s recursive split wrote a local
   argsort rank as if it were a global triangle id, corrupting `tri_order`
   below the root (27/137 triangles duplicated/dropped in a repro) — this

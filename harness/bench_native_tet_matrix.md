@@ -13,29 +13,33 @@ Protocol per shape: draft / tier_hint=native_tet / N=2000 / P4C disabled / 120s 
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | cube.stl | Y/1 | 2346 | 1.000 | 1.006 | 0 | 0 | 0 | 1.81 | 88.2 | PASS | 7s |
 | cylinder.stl | Y/1 | 1851 | 1.000 | 1.003 | 0 | 0 | 0 | 44.94 | 89.2 | FAIL | 5s |
-| sphere.stl | N/- | — | — | — | — | — | — | — | — | **TIMEOUT** (TIMEOUT) | 120s |
-| sphere_watertight.stl | N/- | — | — | — | — | — | — | — | — | **TIMEOUT** (TIMEOUT) | 120s |
+| sphere.stl | Y/1 | 2453 | 1.000 | 1.008 | 0 | 0 | 0 | 2.62 | 89.2 | PASS | 29s |
+| sphere_watertight.stl | Y/1 | 2453 | 1.000 | 1.008 | 0 | 0 | 0 | 2.62 | 89.2 | PASS | 29s |
 | naca0012.stl | Y/1 | 4041 | 1.000 | 1.004 | 17 | 0 | 0 | 58.83 | 90.0 | FAIL | 100s |
 | trimesh_box.stl | Y/1 | 1758 | 1.000 | 1.006 | 0 | 0 | 0 | 1.90 | 86.1 | PASS | 2s |
 | external_flow_isolated_box.stl | Y/1 | 2346 | 1.000 | 1.006 | 0 | 0 | 0 | 1.81 | 88.2 | PASS | 8s |
 | very_thin_disk_0_01mm.stl | Y/1 | 2129 | 1.000 | 1.000 | 4 | 0 | 0 | 23809523916666683947502010368.00 | 89.6 | FAIL | 7s |
 | extreme_aspect_ratio_needle.stl | Y/1 | 126 | 1.000 | 1.001 | 0 | 0 | 0 | 559.20 | 90.0 | FAIL | 4s |
-| high_genus_dual_torus.stl | N/- | — | — | — | — | — | — | — | — | **TIMEOUT** (TIMEOUT) | 120s |
+| high_genus_dual_torus.stl | Y/1 | 7776 | 0.562 | 0.472 | 0 | 0 | 0 | 19.76 | 89.7 | FAIL | 55s |
 | multi_scale_sphere_with_micro_spikes.stl | Y/9 | 2296 | 0.996 | 1.006 | 0 | 0 | 0 | 1.50 | 74.1 | PASS | 16s |
 | many_small_features_perforated_plate.stl | Y/65 | 1962 | 0.011 | 0.003 | 0 | 0 | 0 | 36.41 | 89.8 | FAIL | 5s |
 | sharp_features_micro_ridge.stl | N/1 | 1727 | 0.345 | 1.006 | 0 | 0 | 0 | 125.38 | 90.0 | FAIL | 18s |
 
 ## Notes
 
-- **TIMEOUT rows carry no data** — the `wt/bodies` column shows `N/-` only because the
-  subprocess was killed before it could emit metrics, *not* because the STL is open.
-- **sphere is time-bound, not quality-bound.** Re-run with an extended wall,
-  `sphere.stl` completes at **143.5 s** with **PASS**-grade quality
-  (cells 2453, area-ratio 1.000, vol-ratio 1.008, degen 0, skew **2.62**,
-  nonOrtho 89.2, wt Y/1). It fails the 120 s matrix wall purely on speed — the
-  native_tet curved-closed-surface path is ~70x slower than the cube (2 s) for the
-  same 2000-cell budget. `sphere_watertight.stl` and `high_genus_dual_torus.stl`
-  are expected to be the same or worse (genus adds work).
+- **Update 2026-07-18 (BETA2831):** `closest_points_all_shared` (`core/utils/aabb.py`)
+  was profiled (cProfile) as 71% of native_tet's wall time on curved-closed
+  surfaces — a BVH leaf routine called once per query point (660k calls on
+  sphere.stl) instead of batched. Vectorizing the leaf branch over the whole
+  active-query set dropped that function's cumtime 62.4s→2.8s with bit-identical
+  results (oracle-equivalence tested). All 3 former TIMEOUT rows now complete
+  well inside the 120s wall: `sphere.stl` 143.5s→**29s**, `sphere_watertight.stl`
+  same, `high_genus_dual_torus.stl` >120s→**55s**. sphere/sphere_watertight are
+  now clean PASS. **high_genus_dual_torus is not** — it was masked by the
+  timeout and now shows a real solid-invariant defect: area-ratio 0.562,
+  vol-ratio 0.472 (mesh covers/fills roughly half the input surface/volume).
+  This joins the perforated_plate/sharp_ridge cluster below (coverage collapse
+  on complex topology) as the next thing to root-cause, not a speed problem.
 - **nonOrtho ≈ 88–90 is endemic** (boundary tets), present even on PASS shapes
   (cube 88.2). It is not the FAIL discriminator here — **skewness** is.
 - **`very_thin_disk` skew 2.4e28** is an effectively-degenerate sliver reported with
