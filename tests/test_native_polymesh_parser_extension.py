@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from core.utils import polymesh_reader as reader
@@ -62,6 +63,39 @@ def test_native_faces_parser_matches_python_forms(
     python = _parse_with_python_fallback(monkeypatch, faces_file)
 
     assert native == python == [[0, 1, 2, 3], [4, -5, 6], [], [7, 8]]
+
+
+def test_native_face_topology_parser_matches_list_api(tmp_path: Path) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = _write_faces(
+        tmp_path / "faces",
+        "4 ( 3(0 1 2) 4(2 3 4 5) 0() 3(5 6 7) )",
+    )
+
+    topology = module.parse_foam_faces_topology_file(faces_file)
+
+    assert topology.face_count == 4
+    assert topology.all_triangles is False
+    np.testing.assert_array_equal(
+        np.asarray(topology.indices),
+        np.array([0, 1, 2, 2, 3, 4, 5, 5, 6, 7], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(topology.offsets),
+        np.array([0, 3, 7, 7, 10], dtype=np.int64),
+    )
+    assert topology.to_lists() == module.parse_foam_faces_file(faces_file)
+
+
+def test_native_face_topology_tracks_all_triangles(tmp_path: Path) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = _write_faces(tmp_path / "faces", "2 ( 3(0 1 2) 3(2 1 3) )")
+
+    topology = module.parse_foam_faces_topology_file(faces_file)
+
+    assert topology.face_count == 2
+    assert topology.all_triangles is True
+    assert topology.to_lists() == [[0, 1, 2], [2, 1, 3]]
 
 
 def test_native_faces_parser_accepts_empty_outer_list(tmp_path: Path) -> None:

@@ -191,7 +191,33 @@ std::pair<long long, size_t> find_face_list(std::string_view text)
     throw std::invalid_argument("missing face list in faces file");
 }
 
-std::vector<std::vector<long long>> parse_foam_faces_text(std::string_view text)
+struct NativeFaceTopology {
+    std::vector<long long> indices;
+    std::vector<long long> offsets{0};
+    bool all_triangles = true;
+
+    [[nodiscard]] py::ssize_t face_count() const
+    {
+        return static_cast<py::ssize_t>(offsets.size() - 1);
+    }
+
+    [[nodiscard]] py::list to_lists() const
+    {
+        py::list faces;
+        for (size_t face_i = 0; face_i + 1 < offsets.size(); ++face_i) {
+            py::list face;
+            const auto begin = static_cast<size_t>(offsets[face_i]);
+            const auto end = static_cast<size_t>(offsets[face_i + 1]);
+            for (size_t i = begin; i < end; ++i) {
+                face.append(indices[i]);
+            }
+            faces.append(std::move(face));
+        }
+        return faces;
+    }
+};
+
+NativeFaceTopology parse_foam_face_topology_text(std::string_view text)
 {
     const std::string clean = strip_foam_comments_and_strings(text);
     const auto [face_count, list_start] = find_face_list(clean);
@@ -199,8 +225,12 @@ std::vector<std::vector<long long>> parse_foam_faces_text(std::string_view text)
         throw std::invalid_argument("face-list count exceeds file size");
     }
 
-    std::vector<std::vector<long long>> faces;
-    faces.reserve(static_cast<size_t>(face_count));
+    NativeFaceTopology topology;
+    topology.offsets.reserve(static_cast<size_t>(face_count) + 1);
+    const auto face_count_size = static_cast<size_t>(face_count);
+    if (face_count_size <= std::numeric_limits<size_t>::max() / 4) {
+        topology.indices.reserve(face_count_size * 4);
+    }
     size_t pos = list_start;
     for (long long face_i = 0; face_i < face_count; ++face_i) {
         skip_whitespace(clean, pos);
@@ -217,18 +247,18 @@ std::vector<std::vector<long long>> parse_foam_faces_text(std::string_view text)
         }
         ++pos;
 
-        std::vector<long long> vertices;
-        vertices.reserve(static_cast<size_t>(vertex_count));
+        topology.all_triangles = topology.all_triangles && vertex_count == 3;
         for (long long vertex_i = 0; vertex_i < vertex_count; ++vertex_i) {
             skip_whitespace(clean, pos);
-            vertices.push_back(parse_signed_integer(clean, pos));
+            topology.indices.push_back(parse_signed_integer(clean, pos));
         }
         skip_whitespace(clean, pos);
         if (pos >= clean.size() || clean[pos] != ')') {
             throw std::invalid_argument("face vertex count does not match list");
         }
         ++pos;
-        faces.push_back(std::move(vertices));
+        topology.offsets.push_back(
+            static_cast<long long>(topology.indices.size()));
     }
 
     skip_whitespace(clean, pos);
@@ -244,14 +274,14 @@ std::vector<std::vector<long long>> parse_foam_faces_text(std::string_view text)
     if (pos != clean.size()) {
         throw std::invalid_argument("unexpected trailing data after face list");
     }
-    return faces;
+    return topology;
 }
 
-std::vector<std::vector<long long>> parse_foam_faces_file(const py::object& path)
+NativeFaceTopology parse_foam_faces_topology_file(const py::object& path)
 {
     const std::string filename =
         py::module_::import("os").attr("fspath")(path).cast<std::string>();
-    std::vector<std::vector<long long>> faces;
+    NativeFaceTopology topology;
     {
         py::gil_scoped_release release;
         std::ifstream input(filename, std::ios::binary);
@@ -264,9 +294,14 @@ std::vector<std::vector<long long>> parse_foam_faces_file(const py::object& path
         if (input.bad()) {
             throw std::runtime_error("unable to read faces file: " + filename);
         }
-        faces = parse_foam_faces_text(text);
+        topology = parse_foam_face_topology_text(text);
     }
-    return faces;
+    return topology;
+}
+
+py::list parse_foam_faces_file(const py::object& path)
+{
+    return parse_foam_faces_topology_file(path).to_lists();
 }
 
 long long as_vertex_index(const py::handle& value, long long n_points)
@@ -316,9 +351,52 @@ double norm3(double x, double y, double z)
     return std::sqrt(x * x + y * y + z * z);
 }
 
-py::tuple compute_face_geometry(
+NativeFaceTopology topology_from_python_faces(
+    py::sequence faces,
+    long long n_points)
+{
+    NativeFaceTopology topology;
+    const auto n_faces = static_cast<py::ssize_t>(faces.size());
+    topology.offsets.reserve(static_cast<size_t>(n_faces) + 1);
+    const auto n_faces_size = static_cast<size_t>(n_faces);
+    if (n_faces_size <= std::numeric_limits<size_t>::max() / 4) {
+        topology.indices.reserve(n_faces_size * 4);
+    }
+    for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+        py::sequence face = faces[face_i].cast<py::sequence>();
+        const auto n_vertices = static_cast<py::ssize_t>(face.size());
+        topology.all_triangles = topology.all_triangles && n_vertices == 3;
+        for (py::ssize_t vertex_i = 0; vertex_i < n_vertices; ++vertex_i) {
+            topology.indices.push_back(as_vertex_index(face[vertex_i], n_points));
+        }
+        topology.offsets.push_back(
+            static_cast<long long>(topology.indices.size()));
+    }
+    return topology;
+}
+
+void validate_topology(const NativeFaceTopology& topology, long long n_points)
+{
+    if (topology.offsets.empty() || topology.offsets.front() != 0
+        || topology.offsets.back()
+            != static_cast<long long>(topology.indices.size())) {
+        throw std::invalid_argument("invalid face topology offsets");
+    }
+    for (size_t i = 1; i < topology.offsets.size(); ++i) {
+        if (topology.offsets[i] < topology.offsets[i - 1]) {
+            throw std::invalid_argument("face topology offsets must be monotonic");
+        }
+    }
+    for (const auto idx : topology.indices) {
+        if (idx < 0 || idx >= n_points) {
+            throw py::index_error("face vertex index out of bounds");
+        }
+    }
+}
+
+py::tuple compute_face_geometry_topology(
     py::array_t<double, py::array::c_style | py::array::forcecast> points,
-    py::sequence faces)
+    const NativeFaceTopology& topology)
 {
     const auto pts = points.unchecked<2>();
     if (pts.ndim() != 2 || pts.shape(1) != 3) {
@@ -326,7 +404,8 @@ py::tuple compute_face_geometry(
     }
 
     const auto n_points = static_cast<long long>(pts.shape(0));
-    const auto n_faces = static_cast<py::ssize_t>(faces.size());
+    validate_topology(topology, n_points);
+    const auto n_faces = topology.face_count();
 
     py::array_t<double> centres({n_faces, static_cast<py::ssize_t>(3)});
     py::array_t<double> normals({n_faces, static_cast<py::ssize_t>(3)});
@@ -336,68 +415,83 @@ py::tuple compute_face_geometry(
     auto n = normals.mutable_unchecked<2>();
     auto a = areas.mutable_unchecked<1>();
 
-    for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
-        py::sequence face = faces[face_i].cast<py::sequence>();
-        const auto k = static_cast<py::ssize_t>(face.size());
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+            const auto begin = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i)]);
+            const auto end = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i) + 1]);
+            const auto k = end - begin;
 
-        double cx = 0.0;
-        double cy = 0.0;
-        double cz = 0.0;
-        std::vector<long long> idxs;
-        idxs.reserve(static_cast<size_t>(k));
+            double cx = 0.0;
+            double cy = 0.0;
+            double cz = 0.0;
 
-        for (py::ssize_t j = 0; j < k; ++j) {
-            const auto idx = as_vertex_index(face[j], n_points);
-            idxs.push_back(idx);
-            cx += pts(idx, 0);
-            cy += pts(idx, 1);
-            cz += pts(idx, 2);
-        }
+            for (size_t j = begin; j < end; ++j) {
+                const auto idx = topology.indices[j];
+                cx += pts(idx, 0);
+                cy += pts(idx, 1);
+                cz += pts(idx, 2);
+            }
 
-        if (k > 0) {
-            c(face_i, 0) = cx / static_cast<double>(k);
-            c(face_i, 1) = cy / static_cast<double>(k);
-            c(face_i, 2) = cz / static_cast<double>(k);
-        } else {
-            c(face_i, 0) = 0.0;
-            c(face_i, 1) = 0.0;
-            c(face_i, 2) = 0.0;
-        }
+            if (k > 0) {
+                c(face_i, 0) = cx / static_cast<double>(k);
+                c(face_i, 1) = cy / static_cast<double>(k);
+                c(face_i, 2) = cz / static_cast<double>(k);
+            } else {
+                c(face_i, 0) = 0.0;
+                c(face_i, 1) = 0.0;
+                c(face_i, 2) = 0.0;
+            }
 
-        n(face_i, 0) = 0.0;
-        n(face_i, 1) = 0.0;
-        n(face_i, 2) = 0.0;
-        a(face_i) = 0.0;
+            n(face_i, 0) = 0.0;
+            n(face_i, 1) = 0.0;
+            n(face_i, 2) = 0.0;
+            a(face_i) = 0.0;
 
-        if (k < 3) {
-            continue;
-        }
+            if (k < 3) {
+                continue;
+            }
 
-        const Point3 p0 = point_at(pts, idxs[0]);
-        Point3 area_vec{0.0, 0.0, 0.0};
+            const Point3 p0 = point_at(pts, topology.indices[begin]);
+            Point3 area_vec{0.0, 0.0, 0.0};
 
-        for (py::ssize_t j = 1; j + 1 < k; ++j) {
-            const Point3 p1 = point_at(pts, idxs[static_cast<size_t>(j)]);
-            const Point3 p2 = point_at(pts, idxs[static_cast<size_t>(j + 1)]);
-            const Point3 cr = cross(sub(p1, p0), sub(p2, p0));
-            area_vec[0] += cr[0];
-            area_vec[1] += cr[1];
-            area_vec[2] += cr[2];
-        }
+            for (size_t j = begin + 1; j + 1 < end; ++j) {
+                const Point3 p1 = point_at(pts, topology.indices[j]);
+                const Point3 p2 = point_at(pts, topology.indices[j + 1]);
+                const Point3 cr = cross(sub(p1, p0), sub(p2, p0));
+                area_vec[0] += cr[0];
+                area_vec[1] += cr[1];
+                area_vec[2] += cr[2];
+            }
 
-        const double mag = std::sqrt(
-            area_vec[0] * area_vec[0]
-            + area_vec[1] * area_vec[1]
-            + area_vec[2] * area_vec[2]);
-        a(face_i) = 0.5 * mag;
-        if (mag > 0.0) {
-            n(face_i, 0) = area_vec[0] / mag;
-            n(face_i, 1) = area_vec[1] / mag;
-            n(face_i, 2) = area_vec[2] / mag;
+            const double mag = std::sqrt(
+                area_vec[0] * area_vec[0]
+                + area_vec[1] * area_vec[1]
+                + area_vec[2] * area_vec[2]);
+            a(face_i) = 0.5 * mag;
+            if (mag > 0.0) {
+                n(face_i, 0) = area_vec[0] / mag;
+                n(face_i, 1) = area_vec[1] / mag;
+                n(face_i, 2) = area_vec[2] / mag;
+            }
         }
     }
 
     return py::make_tuple(centres, normals, areas);
+}
+
+py::tuple compute_face_geometry(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::sequence faces)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    auto topology = topology_from_python_faces(
+        std::move(faces), static_cast<long long>(points.shape(0)));
+    return compute_face_geometry_topology(std::move(points), topology);
 }
 
 py::array_t<double> compute_cell_centres_from_vertices(
@@ -501,9 +595,9 @@ void sort_unique(std::vector<long long>& values)
     values.erase(std::unique(values.begin(), values.end()), values.end());
 }
 
-py::tuple compute_cell_centres_and_aspect_ratios(
+py::tuple compute_cell_centres_and_aspect_ratios_topology(
     py::array_t<double, py::array::c_style | py::array::forcecast> points,
-    py::sequence faces,
+    const NativeFaceTopology& topology,
     py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
     py::object neighbour_obj,
     long long n_cells)
@@ -517,11 +611,12 @@ py::tuple compute_cell_centres_and_aspect_ratios(
         throw std::invalid_argument("n_cells must be non-negative");
     }
 
-    const auto n_faces = static_cast<py::ssize_t>(faces.size());
+    const auto n_faces = topology.face_count();
     if (own.shape(0) < n_faces) {
         throw std::invalid_argument("owner must contain one entry per face");
     }
     const auto n_points = static_cast<long long>(pts.shape(0));
+    validate_topology(topology, n_points);
 
     std::vector<long long> neighbour_values;
     if (!neighbour_obj.is_none()) {
@@ -540,43 +635,45 @@ py::tuple compute_cell_centres_and_aspect_ratios(
         static_cast<size_t>(n_cells));
     std::vector<std::vector<long long>> aspect_vertices(
         static_cast<size_t>(n_cells));
-
-    // Convert each Python face once. Centre vertices include both cells on an
-    // internal face; aspect vertices preserve the owner-face-only contract.
-    for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
-        const auto own_cell = own(face_i);
-        const bool add_owner = own_cell >= 0 && own_cell < n_cells;
-
-        long long nbr_cell = -1;
-        bool add_neighbour = false;
-        if (face_i < n_internal) {
-            nbr_cell = neighbour_values[static_cast<size_t>(face_i)];
-            add_neighbour = nbr_cell >= 0 && nbr_cell < n_cells;
-        }
-        if (!add_owner && !add_neighbour) {
-            continue;
-        }
-
-        py::sequence face = faces[face_i].cast<py::sequence>();
-        const auto n_vertices = static_cast<py::ssize_t>(face.size());
-        for (py::ssize_t j = 0; j < n_vertices; ++j) {
-            const auto vertex_i = as_vertex_index(face[j], n_points);
-            if (add_owner) {
-                centre_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
-                aspect_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
-            }
-            if (add_neighbour) {
-                centre_vertices[static_cast<size_t>(nbr_cell)].push_back(vertex_i);
-            }
-        }
-    }
-
     std::vector<Point3> centre_values(
         static_cast<size_t>(n_cells), Point3{0.0, 0.0, 0.0});
     std::vector<long long> out_cells;
     std::vector<double> out_ratios;
+
     {
         py::gil_scoped_release release;
+
+        // Centre vertices include both cells on an internal face; aspect
+        // vertices preserve the owner-face-only contract.
+        for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+            const auto own_cell = own(face_i);
+            const bool add_owner = own_cell >= 0 && own_cell < n_cells;
+
+            long long nbr_cell = -1;
+            bool add_neighbour = false;
+            if (face_i < n_internal) {
+                nbr_cell = neighbour_values[static_cast<size_t>(face_i)];
+                add_neighbour = nbr_cell >= 0 && nbr_cell < n_cells;
+            }
+            if (!add_owner && !add_neighbour) {
+                continue;
+            }
+
+            const auto begin = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i)]);
+            const auto end = static_cast<size_t>(
+                topology.offsets[static_cast<size_t>(face_i) + 1]);
+            for (size_t j = begin; j < end; ++j) {
+                const auto vertex_i = topology.indices[j];
+                if (add_owner) {
+                    centre_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
+                    aspect_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
+                }
+                if (add_neighbour) {
+                    centre_vertices[static_cast<size_t>(nbr_cell)].push_back(vertex_i);
+                }
+            }
+        }
 
         for (long long cell_i = 0; cell_i < n_cells; ++cell_i) {
             auto& vertices = centre_vertices[static_cast<size_t>(cell_i)];
@@ -658,6 +755,23 @@ py::tuple compute_cell_centres_and_aspect_ratios(
         ratios_out(static_cast<py::ssize_t>(i)) = out_ratios[i];
     }
     return py::make_tuple(centres, cell_ids, ratios);
+}
+
+py::tuple compute_cell_centres_and_aspect_ratios(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::sequence faces,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::object neighbour_obj,
+    long long n_cells)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    auto topology = topology_from_python_faces(
+        std::move(faces), static_cast<long long>(points.shape(0)));
+    return compute_cell_centres_and_aspect_ratios_topology(
+        std::move(points), topology, std::move(owner),
+        std::move(neighbour_obj), n_cells);
 }
 
 py::tuple compute_non_orthogonality(
@@ -985,12 +1099,42 @@ py::tuple compute_per_cell_aspect_ratios(
     return py::make_tuple(cell_ids, ratios);
 }
 
+py::array_t<long long> copy_index_vector(const std::vector<long long>& values)
+{
+    py::array_t<long long> result(
+        {static_cast<py::ssize_t>(values.size())});
+    auto out = result.mutable_unchecked<1>();
+    for (size_t i = 0; i < values.size(); ++i) {
+        out(static_cast<py::ssize_t>(i)) = values[i];
+    }
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_metrics, m)
 {
     m.doc() = "C++ metric kernels for AutoTessell NativeMeshChecker";
+    py::class_<NativeFaceTopology>(m, "NativeFaceTopology")
+        .def_property_readonly(
+            "face_count", &NativeFaceTopology::face_count)
+        .def_readonly("all_triangles", &NativeFaceTopology::all_triangles)
+        .def_property_readonly(
+            "indices",
+            [](const NativeFaceTopology& topology) {
+                return copy_index_vector(topology.indices);
+            })
+        .def_property_readonly(
+            "offsets",
+            [](const NativeFaceTopology& topology) {
+                return copy_index_vector(topology.offsets);
+            })
+        .def("to_lists", &NativeFaceTopology::to_lists);
+    m.def("parse_foam_faces_topology_file",
+          &parse_foam_faces_topology_file, py::arg("path"));
     m.def("parse_foam_faces_file", &parse_foam_faces_file, py::arg("path"));
+    m.def("compute_face_geometry_topology", &compute_face_geometry_topology,
+          py::arg("points"), py::arg("topology"));
     m.def("compute_face_geometry", &compute_face_geometry,
           py::arg("points"), py::arg("faces"));
     m.def("compute_cell_centres_from_vertices",
@@ -1000,6 +1144,10 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("compute_cell_centres_and_aspect_ratios",
           &compute_cell_centres_and_aspect_ratios,
           py::arg("points"), py::arg("faces"), py::arg("owner"),
+          py::arg("neighbour"), py::arg("n_cells"));
+    m.def("compute_cell_centres_and_aspect_ratios_topology",
+          &compute_cell_centres_and_aspect_ratios_topology,
+          py::arg("points"), py::arg("topology"), py::arg("owner"),
           py::arg("neighbour"), py::arg("n_cells"));
     m.def("compute_non_orthogonality", &compute_non_orthogonality,
           py::arg("face_centres"), py::arg("face_normals"),

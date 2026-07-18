@@ -138,12 +138,42 @@ class NativeMeshChecker:
                 raise FileNotFoundError(f"polyMesh 파일 없음: {f}")
 
         points = parse_foam_points_array(points_file)
-        raw_faces = parse_foam_faces(faces_file)
+        native_metrics = _load_native_metrics()
+        face_topology: Any | None = None
+        raw_faces: list[list[int]] | None = None
+        topology_parser = (
+            getattr(native_metrics, "parse_foam_faces_topology_file", None)
+            if native_metrics is not None
+            else None
+        )
+        if topology_parser is not None:
+            try:
+                face_topology = topology_parser(faces_file)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native face topology parser failed", error=str(exc))
+        if face_topology is None:
+            raw_faces = parse_foam_faces(faces_file)
+
+        def materialize_faces() -> list[list[int]]:
+            nonlocal raw_faces
+            if raw_faces is not None:
+                return raw_faces
+            assert face_topology is not None
+            try:
+                raw_faces = face_topology.to_lists()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("native face topology materialization failed", error=str(exc))
+                raw_faces = parse_foam_faces(faces_file)
+            return raw_faces
+
         owner = parse_foam_labels_array(owner_file)
         neighbour = parse_foam_labels_array(neighbour_file)
         bnd_entries = parse_foam_boundary(boundary_file)
 
-        if points.size == 0 or not raw_faces or owner.size == 0:
+        n_faces = (
+            int(face_topology.face_count) if face_topology is not None else len(raw_faces or ())
+        )
+        if points.size == 0 or n_faces == 0 or owner.size == 0:
             log.warning("Empty polyMesh — returning degenerate CheckMeshResult")
             return self._empty_result()
 
@@ -159,7 +189,7 @@ class NativeMeshChecker:
         # Authoritative source for nInternalFaces = minimum startFace
         # over all patches in `boundary`.  Strip the trailing entries.
         if bnd_entries:
-            _min_start = min(int(p.get("startFace", len(raw_faces)))
+            _min_start = min(int(p.get("startFace", n_faces))
                              for p in bnd_entries)
             if 0 < _min_start < neighbour.shape[0]:
                 neighbour = neighbour[:_min_start]
@@ -169,7 +199,6 @@ class NativeMeshChecker:
             neighbour = neighbour[neighbour >= 0]
 
         n_points = len(points)
-        n_faces = len(raw_faces)
         n_internal = len(neighbour)
         max_cell_id = int(owner.max()) if len(owner) > 0 else -1
         if len(neighbour) > 0:
@@ -187,31 +216,58 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         # 2. Pre-compute face centres and face normals (area-weighted)
         # ------------------------------------------------------------------
-        face_geometry = self._compute_face_geometry(points, raw_faces)
+        if face_topology is not None:
+            face_geometry = self._compute_face_geometry_topology(points, face_topology)
+            if face_geometry is None:
+                face_geometry = self._compute_face_geometry(points, materialize_faces())
+        else:
+            face_geometry = self._compute_face_geometry(points, materialize_faces())
         if face_geometry is not None:
             face_centres, face_normals, face_areas = face_geometry
         else:
-            face_centres = self._compute_face_centres(points, raw_faces)   # (F, 3)
-            face_normals, face_areas = self._compute_face_normals_areas(points, raw_faces)
+            faces = materialize_faces()
+            face_centres = self._compute_face_centres(points, faces)  # (F, 3)
+            face_normals, face_areas = self._compute_face_normals_areas(points, faces)
         # face_normals: (F, 3) unit normals; face_areas: (F,) scalar areas
 
         # ------------------------------------------------------------------
         # 3. Cell centres
         # ------------------------------------------------------------------
-        combined_cell_metrics = self._compute_combined_cell_metrics(
-            points,
-            raw_faces,
-            owner,
-            n_cells,
-            neighbour,
-        )
+        if face_topology is not None:
+            combined_cell_metrics = self._compute_combined_cell_metrics_topology(
+                points,
+                face_topology,
+                owner,
+                n_cells,
+                neighbour,
+            )
+            if combined_cell_metrics is None:
+                combined_cell_metrics = self._compute_combined_cell_metrics(
+                    points,
+                    materialize_faces(),
+                    owner,
+                    n_cells,
+                    neighbour,
+                )
+        else:
+            combined_cell_metrics = self._compute_combined_cell_metrics(
+                points,
+                materialize_faces(),
+                owner,
+                n_cells,
+                neighbour,
+            )
         precomputed_aspect: tuple[np.ndarray, np.ndarray] | None = None
         if combined_cell_metrics is not None:
             cell_centres, aspect_cell_ids, aspect_ratios = combined_cell_metrics
             precomputed_aspect = (aspect_cell_ids, aspect_ratios)
         else:
             cell_centres = self._compute_cell_centres_from_vertices(
-                points, raw_faces, owner, n_cells, neighbour,
+                points,
+                materialize_faces(),
+                owner,
+                n_cells,
+                neighbour,
             )  # (C, 3)
 
         # ------------------------------------------------------------------
@@ -297,16 +353,19 @@ class NativeMeshChecker:
             max_aspect_ratio = float(aspect_ratios.max()) if aspect_ratios.size else 1.0
         else:
             max_aspect_ratio = self._compute_max_aspect_ratio(
-                points, raw_faces, owner, n_cells, n_internal
+                points, materialize_faces(), owner, n_cells, n_internal
             )
 
         # ------------------------------------------------------------------
         # 8. Min face area
         # ------------------------------------------------------------------
         min_face_area = float(face_areas.min()) if len(face_areas) > 0 else 0.0
-        max_concavity, max_face_warpage = self._compute_face_concavity_warpage(
-            points, raw_faces, face_normals, face_areas, face_centres
-        )
+        if face_topology is not None and bool(face_topology.all_triangles):
+            max_concavity, max_face_warpage = 0.0, 0.0
+        else:
+            max_concavity, max_face_warpage = self._compute_face_concavity_warpage(
+                points, materialize_faces(), face_normals, face_areas, face_centres
+            )
         (
             min_face_weight,
             min_vol_ratio,
@@ -422,6 +481,28 @@ class NativeMeshChecker:
     # ------------------------------------------------------------------
     # Face geometry helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_face_geometry_topology(
+        points: np.ndarray, topology: Any
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Return face geometry directly from native flat topology storage."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is None:
+            return None
+        kernel = getattr(native_metrics, "compute_face_geometry_topology", None)
+        if kernel is None:
+            return None
+        try:
+            centres, normals, areas = kernel(points, topology)
+            return (
+                np.asarray(centres, dtype=np.float64),
+                np.asarray(normals, dtype=np.float64),
+                np.asarray(areas, dtype=np.float64),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native topology face geometry failed", error=str(exc))
+            return None
 
     @staticmethod
     def _compute_face_geometry(
@@ -615,23 +696,57 @@ class NativeMeshChecker:
             return None
 
         try:
-            centres, cell_ids, aspect_ratios = kernel(points, faces, owner, neighbour, int(n_cells))
-            centres_array = np.asarray(centres, dtype=np.float64)
-            cell_ids_array = np.asarray(cell_ids, dtype=np.int64)
-            aspect_array = np.asarray(aspect_ratios, dtype=np.float64)
-            if centres_array.shape != (n_cells, 3):
-                raise ValueError("combined native cell centres have invalid shape")
-            if cell_ids_array.ndim != 1 or aspect_array.ndim != 1:
-                raise ValueError("combined native aspect arrays must be one-dimensional")
-            if cell_ids_array.size != aspect_array.size:
-                raise ValueError("combined native aspect arrays have different lengths")
-            return centres_array, cell_ids_array, aspect_array
+            result = kernel(points, faces, owner, neighbour, int(n_cells))
+            return NativeMeshChecker._validate_combined_cell_metrics(result, n_cells)
         except Exception as exc:  # noqa: BLE001
             log.debug(
                 "native_metrics.compute_cell_centres_and_aspect_ratios failed",
                 error=str(exc),
             )
             return None
+
+    @staticmethod
+    def _compute_combined_cell_metrics_topology(
+        points: np.ndarray,
+        topology: Any,
+        owner: np.ndarray,
+        n_cells: int,
+        neighbour: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Return combined metrics directly from native flat topology."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is None:
+            return None
+        kernel = getattr(
+            native_metrics,
+            "compute_cell_centres_and_aspect_ratios_topology",
+            None,
+        )
+        if kernel is None:
+            return None
+        try:
+            result = kernel(points, topology, owner, neighbour, int(n_cells))
+            return NativeMeshChecker._validate_combined_cell_metrics(result, n_cells)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native topology combined cell metrics failed", error=str(exc))
+            return None
+
+    @staticmethod
+    def _validate_combined_cell_metrics(
+        result: Any,
+        n_cells: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        centres, cell_ids, aspect_ratios = result
+        centres_array = np.asarray(centres, dtype=np.float64)
+        cell_ids_array = np.asarray(cell_ids, dtype=np.int64)
+        aspect_array = np.asarray(aspect_ratios, dtype=np.float64)
+        if centres_array.shape != (n_cells, 3):
+            raise ValueError("combined native cell centres have invalid shape")
+        if cell_ids_array.ndim != 1 or aspect_array.ndim != 1:
+            raise ValueError("combined native aspect arrays must be one-dimensional")
+        if cell_ids_array.size != aspect_array.size:
+            raise ValueError("combined native aspect arrays have different lengths")
+        return centres_array, cell_ids_array, aspect_array
 
     # ------------------------------------------------------------------
     # Non-orthogonality
@@ -947,7 +1062,7 @@ class NativeMeshChecker:
     @staticmethod
     def _compute_cell_volumes(
         points: np.ndarray,
-        faces: list[list[int]],
+        faces: list[list[int]] | None,
         face_normals: np.ndarray,
         face_areas: np.ndarray,
         owner: np.ndarray,
@@ -968,11 +1083,15 @@ class NativeMeshChecker:
             return np.zeros(0, dtype=np.float64), 0
 
         if face_centres is None:
+            if faces is None:
+                raise ValueError("faces required when face centres are not precomputed")
             fc = NativeMeshChecker._compute_face_centres(points, faces)
         else:
             fc = face_centres
         area_vecs = face_normals * face_areas[:, np.newaxis]
         if cell_centres is None or len(cell_centres) != n_cells:
+            if faces is None:
+                raise ValueError("faces required when cell centres are not precomputed")
             cell_centres = NativeMeshChecker._compute_cell_centres_from_vertices(
                 points, faces, owner, n_cells, neighbour,
             )
@@ -994,7 +1113,7 @@ class NativeMeshChecker:
                 log.debug("native_metrics.compute_cell_volumes failed", error=str(exc))
 
         volumes = np.zeros(n_cells, dtype=np.float64)
-        n_faces = len(faces)
+        n_faces = len(fc)
         own_arr = np.asarray(owner, dtype=np.int64)
         n_owner_use = min(n_faces, own_arr.shape[0])
         if n_owner_use > 0:

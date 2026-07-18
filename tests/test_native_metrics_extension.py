@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -14,6 +16,21 @@ def _native_metrics_or_skip():
     if module is None:
         pytest.skip("native_metrics extension is not built")
     return module
+
+
+def _parse_native_topology(
+    tmp_path: Path,
+    faces: list[list[int]],
+    name: str = "faces",
+):
+    module = _native_metrics_or_skip()
+    faces_file = tmp_path / name
+    body = "\n".join(f"{len(face)}({' '.join(str(vertex) for vertex in face)})" for face in faces)
+    faces_file.write_text(
+        f"{len(faces)}\n(\n{body}\n)\n",
+        encoding="utf-8",
+    )
+    return module.parse_foam_faces_topology_file(faces_file)
 
 
 class _NoIndexPoints(np.ndarray):
@@ -161,6 +178,45 @@ def test_native_metrics_face_geometry_matches_python() -> None:
     np.testing.assert_allclose(areas_cpp, areas_py, rtol=0.0, atol=1e-15)
 
 
+@pytest.mark.parametrize(
+    ("faces", "all_triangles"),
+    [
+        ([[0, 1, 2], [1, 4, 2]], True),
+        ([[0, 1, 4, 2], [0, 3, 1]], False),
+    ],
+    ids=["triangles", "polygon"],
+)
+def test_native_metrics_topology_face_geometry_matches_list_kernel(
+    tmp_path: Path,
+    faces: list[list[int]],
+    all_triangles: bool,
+) -> None:
+    module = _native_metrics_or_skip()
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+            [2.0, 2.0, 0.25],
+        ],
+        dtype=np.float64,
+    )
+    topology = _parse_native_topology(tmp_path, faces)
+
+    topology_result = module.compute_face_geometry_topology(points, topology)
+    list_result = module.compute_face_geometry(points, faces)
+
+    assert topology.all_triangles is all_triangles
+    for topology_values, list_values in zip(topology_result, list_result, strict=True):
+        np.testing.assert_allclose(
+            np.asarray(topology_values),
+            np.asarray(list_values),
+            rtol=0.0,
+            atol=1e-15,
+        )
+
+
 def test_native_metrics_cell_centres_match_python_fallback() -> None:
     _native_metrics_or_skip()
     points = np.array(
@@ -202,7 +258,9 @@ def test_native_metrics_cell_centres_match_python_fallback() -> None:
     np.testing.assert_allclose(centres_cpp, centres_py, rtol=0.0, atol=1e-15)
 
 
-def test_native_metrics_combined_cell_metrics_match_standalone_kernels() -> None:
+def test_native_metrics_combined_cell_metrics_match_standalone_kernels(
+    tmp_path: Path,
+) -> None:
     module = _native_metrics_or_skip()
     points = np.array(
         [
@@ -226,6 +284,12 @@ def test_native_metrics_combined_cell_metrics_match_standalone_kernels() -> None
     centres, cell_ids, aspect_ratios = _native_combined_cell_metrics(
         points, faces, owner, neighbour, n_cells
     )
+    topology = _parse_native_topology(tmp_path, faces)
+    topology_centres, topology_cell_ids, topology_aspect_ratios = (
+        module.compute_cell_centres_and_aspect_ratios_topology(
+            points, topology, owner, neighbour, n_cells
+        )
+    )
     standalone_centres = np.asarray(
         module.compute_cell_centres_from_vertices(points, faces, owner, neighbour, n_cells),
         dtype=np.float64,
@@ -244,6 +308,11 @@ def test_native_metrics_combined_cell_metrics_match_standalone_kernels() -> None
     )
     np.testing.assert_allclose(centres[1], points[[0, 1, 2, 3]].mean(axis=0), rtol=0.0, atol=1e-15)
     np.testing.assert_allclose(aspect_ratios, np.array([1.0, 1.0]))
+    np.testing.assert_allclose(np.asarray(topology_centres), centres, rtol=0.0, atol=1e-15)
+    np.testing.assert_array_equal(np.asarray(topology_cell_ids), cell_ids)
+    np.testing.assert_allclose(
+        np.asarray(topology_aspect_ratios), aspect_ratios, rtol=0.0, atol=1e-15
+    )
 
 
 def test_native_metrics_quality_metrics_match_python_fallback() -> None:
@@ -534,3 +603,163 @@ def test_native_metrics_run_falls_back_when_combined_kernel_fails(
     assert result.cells == 1
     assert result.max_aspect_ratio == pytest.approx(np.sqrt(2.0))
     assert calls == {"combined": 1, "centres": 1, "aspect": 1}
+
+
+def _prepare_triangle_checker_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, np.ndarray, list[list[int]], np.ndarray]:
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True)
+    for name in ("points", "owner", "neighbour", "boundary"):
+        (poly_dir / name).touch()
+
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 2, 1],
+        [0, 1, 3],
+        [0, 3, 2],
+        [1, 2, 3],
+    ]
+    owner = np.zeros(4, dtype=np.int64)
+    faces_file = poly_dir / "faces"
+    body = "\n".join(f"3({' '.join(str(vertex) for vertex in face)})" for face in faces)
+    faces_file.write_text(f"4\n(\n{body}\n)\n", encoding="utf-8")
+
+    monkeypatch.setattr(nc, "parse_foam_points_array", lambda _path: points)
+    monkeypatch.setattr(
+        nc,
+        "parse_foam_labels_array",
+        lambda path: owner if path.name == "owner" else np.empty(0, dtype=np.int64),
+    )
+    monkeypatch.setattr(nc, "parse_foam_boundary", lambda _path: [{"startFace": 0}])
+    monkeypatch.setattr(NativeMeshChecker, "neatmesh_available", staticmethod(lambda: False))
+    return faces_file, points, faces, owner
+
+
+def test_native_metrics_run_keeps_triangle_topology_native(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _native_metrics_or_skip()
+    faces_file, _points, _faces, _owner = _prepare_triangle_checker_case(tmp_path, monkeypatch)
+    topology = module.parse_foam_faces_topology_file(faces_file)
+
+    class NoMaterializeTopology:
+        face_count = topology.face_count
+        all_triangles = topology.all_triangles
+
+        @staticmethod
+        def to_lists() -> list[list[int]]:
+            raise AssertionError("triangle topology must stay native")
+
+    wrapped_topology = NoMaterializeTopology()
+
+    class TrackingNativeMetrics:
+        @staticmethod
+        def parse_foam_faces_topology_file(_path: Path):
+            return wrapped_topology
+
+        @staticmethod
+        def compute_face_geometry_topology(points, _topology):
+            return module.compute_face_geometry_topology(points, topology)
+
+        @staticmethod
+        def compute_cell_centres_and_aspect_ratios_topology(
+            points, _topology, owner, neighbour, n_cells
+        ):
+            return module.compute_cell_centres_and_aspect_ratios_topology(
+                points, topology, owner, neighbour, n_cells
+            )
+
+        def __getattr__(self, name: str):
+            return getattr(module, name)
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", TrackingNativeMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    monkeypatch.setattr(
+        nc,
+        "parse_foam_faces",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("triangle topology must not use list parser")
+        ),
+    )
+    monkeypatch.setattr(
+        NativeMeshChecker,
+        "_compute_face_concavity_warpage",
+        staticmethod(
+            lambda *_args: (_ for _ in ()).throw(
+                AssertionError("triangle topology must skip polygon metrics")
+            )
+        ),
+    )
+
+    result = NativeMeshChecker().run(tmp_path)
+
+    assert result.cells == 1
+    assert result.faces == 4
+    assert result.max_concavity == 0.0
+    assert result.max_face_warpage == 0.0
+
+
+def test_native_metrics_run_materializes_after_topology_kernel_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _native_metrics_or_skip()
+    faces_file, _points, faces, _owner = _prepare_triangle_checker_case(tmp_path, monkeypatch)
+    topology = module.parse_foam_faces_topology_file(faces_file)
+    calls = {"topology_combined": 0, "to_lists": 0}
+
+    class TrackingTopology:
+        face_count = topology.face_count
+        all_triangles = topology.all_triangles
+
+        @staticmethod
+        def to_lists() -> list[list[int]]:
+            calls["to_lists"] += 1
+            return topology.to_lists()
+
+    wrapped_topology = TrackingTopology()
+
+    class FailingTopologyMetrics:
+        @staticmethod
+        def parse_foam_faces_topology_file(_path: Path):
+            return wrapped_topology
+
+        @staticmethod
+        def compute_face_geometry_topology(points, _topology):
+            return module.compute_face_geometry_topology(points, topology)
+
+        @staticmethod
+        def compute_cell_centres_and_aspect_ratios_topology(*_args):
+            calls["topology_combined"] += 1
+            raise RuntimeError("forced topology combined failure")
+
+        def __getattr__(self, name: str):
+            return getattr(module, name)
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", FailingTopologyMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    monkeypatch.setattr(
+        nc,
+        "parse_foam_faces",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("topology.to_lists should provide fallback faces")
+        ),
+    )
+
+    result = NativeMeshChecker().run(tmp_path)
+
+    assert result.cells == 1
+    assert result.faces == len(faces)
+    assert result.max_aspect_ratio == pytest.approx(np.sqrt(2.0))
+    assert calls == {"topology_combined": 1, "to_lists": 1}
