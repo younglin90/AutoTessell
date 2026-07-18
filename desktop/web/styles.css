@@ -310,7 +310,6 @@ kbd {
   display: flex; gap: 3px; background: var(--bg-0);
   border: 1px solid var(--line); border-radius: var(--r-2); padding: 3px;
 }
-.seg-grid { display: grid; grid-template-columns: repeat(2, 1fr); }
 .seg button {
   flex: 1; border: 0; background: transparent; color: var(--muted);
   padding: 7px 6px; border-radius: var(--r-1); cursor: pointer;
