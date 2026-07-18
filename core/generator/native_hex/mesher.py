@@ -383,6 +383,10 @@ def _reduce_nonortho_post(
 
     Returns updated hex_pts (copy if any moves accepted).
     """
+    from core.generator.native_hex.quality import (  # noqa: PLC0415
+        _native_hex_face_nonorthogonality,
+    )
+
     pts = hex_pts.copy()
     n_cells = hex_cells.shape[0]
 
@@ -412,17 +416,40 @@ def _reduce_nonortho_post(
         cos_a = min(1.0, cos_a)
         return float(np.degrees(np.arccos(cos_a)))
 
+    def _face_nonortho_many(
+        p: np.ndarray,
+        specs: list[tuple[tuple[int, int, int, int], int, int]],
+    ) -> np.ndarray:
+        if not specs:
+            return np.zeros(0, dtype=np.float64)
+        face_array = np.asarray([spec[0] for spec in specs], dtype=np.int64)
+        owner_array = np.asarray(
+            [[spec[1], spec[2]] for spec in specs], dtype=np.int64
+        )
+        native_angles = _native_hex_face_nonorthogonality(
+            p, hex_cells, face_array, owner_array
+        )
+        if native_angles is not None:
+            return native_angles
+        return np.asarray(
+            [_face_nonortho(p, spec[0]) for spec in specs],
+            dtype=np.float64,
+        )
+
     # Collect internal faces and their non-ortho angles.
     internal: list[tuple[float, tuple[int, int, int, int], int, int]] = []
+    internal_specs: list[tuple[tuple[int, int, int, int], int, int]] = []
     for ci in range(n_cells):
         for face_local in _HEX_FACES:
             v4 = tuple(int(hex_cells[ci, k]) for k in face_local)
             key = tuple(sorted(v4))  # type: ignore[assignment]
             owners = face_map.get(key, [])  # type: ignore[arg-type]
             if len(owners) == 2 and owners[0] == ci:  # process once per face
-                ang = _face_nonortho(pts, v4)  # type: ignore[arg-type]
-                if ang > threshold_deg:
-                    internal.append((ang, v4, owners[0], owners[1]))  # type: ignore[arg-type]
+                internal_specs.append((v4, owners[0], owners[1]))  # type: ignore[arg-type]
+    internal_angles = _face_nonortho_many(pts, internal_specs)
+    for ang, (v4, owner0, owner1) in zip(internal_angles, internal_specs):
+        if ang > threshold_deg:
+            internal.append((float(ang), v4, owner0, owner1))
 
     if not internal:
         return pts  # nothing to do
@@ -453,18 +480,25 @@ def _reduce_nonortho_post(
         delta = 0.1 * proj * n_hat * cc_len
 
         # pre-incident non-ortho for guard
-        incident_faces: list[tuple[int, int, int, int]] = []
+        incident_specs: list[tuple[tuple[int, int, int, int], int, int]] = []
         for ci in (ci0, ci1):
             for fl in _HEX_FACES:
-                incident_faces.append(tuple(int(hex_cells[ci, k]) for k in fl))  # type: ignore[arg-type]
-        pre_max = max((_face_nonortho(pts, f) for f in incident_faces), default=0.0)
+                incident_face = tuple(int(hex_cells[ci, k]) for k in fl)
+                incident_owners = face_map.get(tuple(sorted(incident_face)), [])
+                if len(incident_owners) >= 2:
+                    incident_specs.append(
+                        (incident_face, incident_owners[0], incident_owners[1])
+                    )
+                else:
+                    incident_specs.append((incident_face, -1, -1))
+        pre_max = float(np.max(_face_nonortho_many(pts, incident_specs)))
 
         # Apply move
         orig = {vi: pts[vi].copy() for vi in v4}
         for vi in v4:
             pts[vi] = pts[vi] + delta
 
-        post_max = max((_face_nonortho(pts, f) for f in incident_faces), default=0.0)
+        post_max = float(np.max(_face_nonortho_many(pts, incident_specs)))
         if post_max <= pre_max - min_improve_deg:
             n_moved += 1
         else:

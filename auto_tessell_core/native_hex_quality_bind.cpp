@@ -560,6 +560,91 @@ py::tuple generic_side_metrics(
         static_cast<double>(negative_volumes));
 }
 
+py::array_t<double> hex_face_nonorthogonality(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::array_t<Label, py::array::c_style | py::array::forcecast> hexes,
+    py::array_t<Label, py::array::c_style | py::array::forcecast> faces,
+    py::array_t<Label, py::array::c_style | py::array::forcecast> owners)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (hexes.ndim() != 2 || hexes.shape(1) != 8) {
+        throw std::invalid_argument("hexes must have shape (C, 8)");
+    }
+    if (faces.ndim() != 2 || faces.shape(1) != 4) {
+        throw std::invalid_argument("faces must have shape (F, 4)");
+    }
+    if (owners.ndim() != 2 || owners.shape(1) != 2
+        || owners.shape(0) != faces.shape(0)) {
+        throw std::invalid_argument("owners must have shape (F, 2)");
+    }
+
+    const auto point_view = points.unchecked<2>();
+    const auto hex_view = hexes.unchecked<2>();
+    const auto face_view = faces.unchecked<2>();
+    const auto owner_view = owners.unchecked<2>();
+    const py::ssize_t point_count = points.shape(0);
+    const py::ssize_t cell_count = hexes.shape(0);
+    const py::ssize_t face_count = faces.shape(0);
+    py::array_t<double> angles({face_count});
+    auto output = angles.mutable_unchecked<1>();
+
+    {
+        py::gil_scoped_release release;
+        std::vector<Point3> centroids(static_cast<size_t>(cell_count));
+        for (py::ssize_t cell = 0; cell < cell_count; ++cell) {
+            Point3 sum{0.0, 0.0, 0.0};
+            for (int local = 0; local < 8; ++local) {
+                sum = add(
+                    sum,
+                    load_hex_point(point_view, hex_view, cell, local, point_count));
+            }
+            centroids[static_cast<size_t>(cell)] = scale(sum, 0.125);
+        }
+
+        for (py::ssize_t face = 0; face < face_count; ++face) {
+            const Label first_owner = owner_view(face, 0);
+            const Label second_owner = owner_view(face, 1);
+            if (first_owner < 0 || second_owner < 0
+                || first_owner >= cell_count || second_owner >= cell_count) {
+                output(face) = 0.0;
+                continue;
+            }
+            const Point3 delta = subtract(
+                centroids[static_cast<size_t>(second_owner)],
+                centroids[static_cast<size_t>(first_owner)]);
+            const double delta_length = norm(delta);
+            if (delta_length < 1e-30) {
+                output(face) = 0.0;
+                continue;
+            }
+            std::array<Point3, 4> vertices{};
+            for (int slot = 0; slot < 4; ++slot) {
+                vertices[static_cast<size_t>(slot)] = load_point(
+                    point_view, face_view(face, slot), point_count);
+            }
+            const Point3 normal = cross(
+                subtract(vertices[2], vertices[0]),
+                subtract(vertices[3], vertices[1]));
+            const double normal_length = norm(normal);
+            if (normal_length < 1e-30) {
+                output(face) = 0.0;
+                continue;
+            }
+            double cosine = std::abs(dot(normal, delta))
+                / (normal_length * delta_length);
+            if (std::isnan(cosine)) {
+                cosine = 1.0;
+            } else if (cosine > 1.0) {
+                cosine = 1.0;
+            }
+            output(face) = std::acos(cosine) * (180.0 / std::acos(-1.0));
+        }
+    }
+    return angles;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_hex_quality, module)
@@ -585,4 +670,11 @@ PYBIND11_MODULE(native_hex_quality, module)
         &generic_side_metrics,
         py::arg("points"),
         py::arg("cell_faces"));
+    module.def(
+        "hex_face_nonorthogonality",
+        &hex_face_nonorthogonality,
+        py::arg("points"),
+        py::arg("hexes"),
+        py::arg("faces"),
+        py::arg("owners"));
 }

@@ -120,6 +120,25 @@ def _native_generic_side_metrics(
         return None
 
 
+def _native_hex_face_nonorthogonality(
+    points: np.ndarray,
+    hexes: np.ndarray,
+    faces: np.ndarray,
+    owners: np.ndarray,
+) -> np.ndarray | None:
+    module = _load_native_hex_quality()
+    kernel = getattr(module, "hex_face_nonorthogonality", None) if module is not None else None
+    if kernel is None:
+        return None
+    try:
+        angles = np.asarray(kernel(points, hexes, faces, owners), dtype=np.float64)
+        if angles.shape != (len(faces),):
+            raise ValueError("native face non-orthogonality returned invalid shape")
+        return angles
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # OpenFOAM hex face local indexing (mesher.py 와 동일).
 _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
     (0, 3, 2, 1),

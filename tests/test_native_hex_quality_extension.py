@@ -240,3 +240,30 @@ def test_native_generic_side_metrics_match_relax_fallback(
         rtol=2e-13,
         atol=2e-13,
     )
+
+
+def test_native_face_nonorthogonality_matches_postpass_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.generator.native_hex.mesher import (  # noqa: PLC0415
+        _reduce_nonortho_post,
+    )
+
+    native = _native_or_skip()
+    assert hasattr(native, "hex_face_nonorthogonality")
+    points, cells = _structured_hexes(4, 3, 2)
+    rng = np.random.default_rng(29)
+    points = points + rng.normal(scale=0.08, size=points.shape)
+
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY", native)
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED", True)
+    native_points = _reduce_nonortho_post(
+        points, cells, threshold_deg=0.0, top_k=10, min_improve_deg=0.1
+    )
+
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY", None)
+    python_points = _reduce_nonortho_post(
+        points, cells, threshold_deg=0.0, top_k=10, min_improve_deg=0.1
+    )
+
+    np.testing.assert_allclose(native_points, python_points, atol=2e-13)
