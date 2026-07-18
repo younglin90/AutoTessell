@@ -1,91 +1,71 @@
-# CARD BETA2827 (cycle6) — 곡면 cap-sliver 를 scale-relative 3-2 flip 로 제거 (곡면 축퇴 일반화)
+# CARD BETA2828 (beta2828) — BETA2826 smooth: evaluator-faithful skew non-worsening guard
 
 **target_engine**: tet
-**모티프**: BETA2825 Phase 1 (signed 3-2 flip) 의 gate 를 절대부피 → **scale-relative flatness** 로 일반화. fTetWild §3.4 / TetWild §3.2 (topology-preserving, no vertex move).
+**모티프**: fTetWild §3.5 smoothing 은 quality 를 악화시키면 안 된다 — accept 를 *실제* evaluator
+metric 으로 판정 (Klingner 2008 §3.3 per-op monotone accept).
 
-## 이론적 근거 (전부 계측 확정 — 추측 아님, 태스크 전제 일부 반증)
-- **skew 4159 의 진짜 원인 = boundary skewness (내부 아님).** internal-face skew max = **5.0**.
-  max_skewness=max(internal, boundary) 이고 boundary 성분이 **4159**. (native_checker.py:724
-  `_compute_boundary_skewness`: `sk=|fc-proj|/normal_dist`, normal_dist=(면중심−소유셀중심)·n.)
-- **원인 셀 = 곡면 벽에 눌린 flat cap-sliver.** owner 중심이 자기 boundary face 에 근접
-  → normal_dist→0 → skew 폭발. 최악 셀 normal_dist **2.0e-5**, vol **1.31e-6**, flat=vol/maxe³≈0.
-  분포: bskew>1000: 1셀, >100: 2, >10: 20, >4: 44 (긴 꼬리, 최악 1셀 지배).
-- **왜 BETA2825 가 곡면에서 no-op 인가 (핵심).** BETA2825 gate `|sv6|<6e-9` ⇔ vol<1e-9.
-  cylinder 최소 vol=**3.41e-8 > 1e-9** → `n_degen_pre=0` → **블록 전체 미발화**. 즉 태스크가 가정한
-  "축퇴(vol~0) 셀 잔존" 은 틀림 — vol~1e-6 near-degenerate sliver 다. 옳은 판별은 **절대부피가 아니라
-  곡률/스케일 불변인 flatness** f=|vol6|/maxe³ (BSP 전면에 무관, 곡면에도 그대로 성립).
-- **flap 삭제(태스크 (a)) 도 부적합 — 계측 반증.** 최악 flat 셀들: all-4-boundary **0/30**,
-  ≥2 boundary-face(flap) **0/30**. cap-sliver 는 boundary face 1개 + 내부로 향한 3면 → 삭제 시
-  void 발생. 삭제 불가. **smooth(태스크 (b)) 도 불가**: 최악 bskew 상위 10셀 apex 전부
-  boundary(lock)=True → interior-apex 만 fatten 해도 bskew **4159 그대로**. lock 안 깨고 유일하게
-  가능한 건 **정점 불이동 flip**.
-- **본 카드 핵심 = signed 3-2 flip 을 flatness gate 로 확장** (정점 0 이동, 부피·경계 exact).
-  내부 edge (u,v) 가 정확히 3 tet 공유 + 대변삼각 xyz 가 u,v 분리 → {xyz,u},{xyz,v} 로 재삼각.
-  gate `|sv6|<6e-9` → `|sv6|/maxe³ < 1e-3`, orient tol 절대 6e-9 → scale-relative `1e-6·bbox³`.
-- **실측 (P4C=0, N=2000, 결정적 2-run 동일):**
-  - CYL: n_flip **18**, bskew **4159.4 → 179.7**, inverted **0→0**, wall_verts_lost **0**, n_tets 1851→1833.
-  - CUBE(회귀): n_flip 6, bskew **1.8 → 1.8** (무변), inverted 0, wall_verts_lost 0. 손상 없음.
-  - 179.7 = "수백 이하" **부분 성공 달성**. 잔여(179.7=2nd sliver, apex lock)는 2-3 flip 필요(다음 카드).
-- **레퍼런스**: BETA2825(dc5bbf0f) Phase 1; TetWild 2018 §3.2 op(2); Klingner 2008 sliver 3-2;
-  `papers/01,03`. `native_checker.py:724`, `mesher.py:1930-2079`, `predicates.orient3d`.
-- **혁신성**: novelty 2(절대→scale/곡률불변 gate 일반화) rigor 3(정점불이동·부피/경계 exact·
-  inversion 0·bskew 단조가드·결정적) impact 3(곡면 skew 4159→180, 23×). 합 **8**.
+## 이론적 근거 (전부 이번 라운드 실측 — scoped stash A/B, 정본 스크립트)
+
+- **문제 정의**: cylinder skew 280 의 원인은 flip 이 아니라 **BETA2826 locked-smooth 자체**다.
+  A/B (scripts/smoke_native_cylinder.py, BETA2826 gate 를 scoped 로 OFF 후 mesher.py 복원 확인):
+  - BETA2826 **ON**(현재): CYL skew=**280** · cube N500=**3.8** · N2000=**1.81**
+  - BETA2826 **OFF**: CYL skew=**44.9** · cube N500=**25.7** · N2000=**10.0**
+  smooth 는 cube 을 크게 개선(25.7→3.8, 10→1.81)하나 cylinder 는 악화(44.9→**280**).
+  기전: interior AMIPS 이동이 owner-cell centroid 를 곡면 boundary face 로 밀어 normal_dist→0,
+  boundary skew 폭발 (surface vertex 는 lock → wall_dev 0.000 유지). ⇒ 설계갈림길 **(C) 확정**.
+- **핵심 아이디어**: BETA2826 은 *마지막* mutation(직후 disk write) → 이 블록 accept = **최종 판정**
+  (BETA2827 이 못 지킨 필수조건 1 을 구조적으로 충족: 하류가 없다). accept 에 **evaluator 동일 공식**
+  skew 비악화를 추가. smooth 중 topology 불변 → face-map 1회 build, `_pre_pts`/`_new_pts` 각각 평가.
+  1. internal skew = native_checker.py:698-721 (cc=pts[tets].mean(1), fc=pts[face].mean(1),
+     skew=|fc-proj|/|d|, d=cc_nbr-cc_own; own/nbr 순서·normal 부호 무관 = orient-free).
+  2. boundary skew = native_checker.py:762-779 (skew=|fc-proj|/max(|normal_dist|,1e-30)).
+  3. `skew_proxy = max(internal_max, boundary_max)` — evaluator max_skewness 와 방향 일치 보장.
+- **레퍼런스**: core/evaluator/native_checker.py:698-721(internal),762-779(boundary);
+  fTetWild(Hu 2020) §3.5; Klingner & Shewchuk 2008 §3.3. 현 블록 mesher.py:2081-2148.
+- **혁신성**: novelty 1(guard hardening) · rigor 3(evaluator 공식 정확재현·reported metric 대비
+  provably monotone·양끝점 A/B 실측) · impact 2(곡면 skew 6.2×↓, CFD 필수). 합 = **6**.
 
 ## 변경 (단일 파일)
-- 파일: `core/generator/native_tet/mesher.py` (BETA2825 블록, line 1930-2079 내부만 수정).
-- 핵심 (≤60줄, Phase 1 만 일반화 / Phase 2 절대 gate 유지):
-  1. **`_FLAT6_THR = 1e-3`, `_ORIENT_REL = 1e-6`** 상수 추가. `bbox_diag = norm(V.max0−V.min0)` 를
-     Phase 1 앞에서 계산(현재 Phase 2 안에만 있음). `otol = _ORIENT_REL * bbox_diag**3`.
-  2. **flat 헬퍼**(벡터화): `p=final_pts[tt]; v6=|sv6(final_pts,tt)|; maxe=6-edge max;
-     flat=v6/maximum(maxe**3,1e-30)`.
-  3. **block gate**(line 1945-46): `n_degen_pre` → `n_flat_pre=(flat(final_tets)<_FLAT6_THR).sum()`,
-     `if n_flat_pre>0:`.
-  4. **Phase-1 mask**(line 1958): `degen_mask = flat(work_tets) < _FLAT6_THR`.
-  5. **orient**(line 1987-90): `tol=_DEGEN_V6` → `tol=otol` (2곳).
-  6. **new-row validity**(line 2002): `if vol6<=_DEGEN_V6:` → 새 tet 의 `vol6/me**3 <= _FLAT6_THR: ok=False`
-     (더 flat 한 tet 생성 거부). `me`=새 row 6-edge max.
-  7. **Phase 2 (line 2025-2050) 절대 gate `_DEGEN_V6` 그대로** — 곡면 sliver 는 입력평면 비공면이라
-     자연히 n_flap=0 (void 방지). 변경 금지.
-- **단조 가드 강화** (line 2052-2077 확장): 기존 extra_area↓·area_coverage↓ 가드에 **bskew 단조** 추가.
-  `_bskew_max(pts,tt)` 헬퍼(≤12줄): boundary face(count==1)+owner tet 중심 → `|fc−proj|/max(|nd|,eps)`.
-  revert 조건에 **`bskew_post > bskew_pre*1.001` OR `sv6(work).min() <= 0`(inversion)** 추가. 하나라도
-  악화면 `final_pts,final_tets = pre_pts,pre_tets`. (3e-3 에서 bskew 4159 재발 계측 → 가드 필수.)
-- **금지 준수**: 정점 0 이동(fidelity 구조적 보존), 임계·평가자·테스트 불변, P4C 미변경, 삭제 미사용
-  (Phase 1 은 재삼각), 외부 의존 0.
 
-## 검증 명령 (unit_tester 가 그대로 실행)
+- 파일: **core/generator/native_tet/mesher.py** (BETA2826 블록 ~2081-2148 + module-level helper 1개)
+- 함수: `generate_native_tet` 내 BETA2826 accept 로직 / 신규 `_skew_proxy(pts, tets)`
+- 핵심 (≤75줄):
+  1. helper `_skew_proxy(pts, tets)`: tet 4-face → sorted-face→owner list dict 1회 build,
+     internal(len==2)·boundary(len==1) 분리, 위 두 공식 벡터화, `max` 반환 (empty·1e-30 가드).
+  2. BETA2826 안(n_iter=5 smooth 직후): `_sk_pre=_skew_proxy(_pre_pts, final_tets)`,
+     `_sk_post=_skew_proxy(_new_pts, final_tets)`.
+  3. `_accept` 에 `and _sk_post <= _sk_pre * (1.0 + 1e-6)` 추가. log 에 sk_pre/sk_post emit.
+- 단조 가드: skew 악화(post>pre) 시 `_accept=False` → 기존 else 경로 `final_pts=_pre_pts` (revert).
+  기존 `_no_inv`(부호비교 상대식 = 필수조건 2 이미 충족)·vol_ratio·surf_moved 가드 **그대로 유지**.
+  flip(BETA2827) 은 도입하지 않음 — 원인(smooth) 을 직접 교정하므로 불요.
+
+## 검증 명령 (unit_tester 가 그대로 실행 · Windows: PYTHONUTF8=1 PYTHONIOENCODING=utf-8, WSL python)
+
 ```bash
-PYTHONUTF8=1 PYTHONIOENCODING=utf-8 AUTO_TESSELL_P4C_PYTETWILD=0 python3 scripts/smoke_native_tet.py 2000
-PYTHONUTF8=1 PYTHONIOENCODING=utf-8 AUTO_TESSELL_P4C_PYTETWILD=0 python3 scripts/smoke_native_tet_cyl.py   # 신설(아래)
-PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 -m pytest tests/test_native_tet_solid_volume.py \
-  tests/test_native_tet_target_cells.py tests/test_native_tet_harness.py \
-  tests/test_native_tet_phaseA.py tests/test_flip_signed_validity.py -q
-PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python3 -m pytest tests/test_cylinder_wall_fidelity.py -q  # 단독(스위트 플래키)
+AUTO_TESSELL_P4C_PYTETWILD=0 timeout 200 python3 scripts/smoke_native_cylinder.py
+AUTO_TESSELL_P4C_PYTETWILD=0 timeout 120 python3 scripts/smoke_native_tet.py
+AUTO_TESSELL_P4C_PYTETWILD=0 timeout 120 python3 scripts/smoke_native_tet.py 2000
+timeout 90 python3 -m pytest tests/test_native_tet_solid_volume.py tests/test_native_tet_target_cells.py tests/test_native_tet_harness.py tests/test_native_tet_phaseA.py tests/test_flip_signed_validity.py -q
+timeout 90 python3 -m pytest tests/test_cylinder_wall_fidelity.py -q   # 단독(스위트 플래키)
 ```
-- **신설 `scripts/smoke_native_tet_cyl.py`** (smoke 패턴 복제, cylinder.stl, P4C=0): max_skewness +
-  wall_dev(side r−0.5) 측정 → `assert skew < 300 and wall_dev_max <= 0.05` (계측 179.7 / 0.000, 여유).
 
 ## 합격 기준 (validator)
-1. **CYL P4C=0: bskew 4159 → ≤ 300** (계측 179.7 = 부분 성공). PASS 면 완전 성공(비필수).
-2. **wall_dev_max ≤ 0.05 유지** (계측 0.000 — 정점 불이동이라 구조적 보존).
-3. **CUBE 회귀 금지**: smoke 2000 solid 4-게이트 + skew 무변(계측 1.8→1.8), inversion 0.
-4. 회귀 스위트(solid_volume/target_cells/harness/phaseA/flip_signed) 전부 PASS. bench ≤ 기존+15%
-   (flip 18~6개 국소, <1s).
 
-## 필수 회귀 가드 / 알려진 결함
-- 가드: `test_native_tet_solid_volume test_native_tet_target_cells test_cylinder_wall_fidelity
-  test_native_tet_harness test_native_tet_phaseA test_flip_signed_validity`.
-- 결함(쫓지 말 것): `test_cylinder_wall_fidelity` 스위트문맥 간헐 ~2/3 실패(A/B 무관 규명) → **단독 실행 판정**.
-  `phase_a_improves_cube_boundary` 플래키. `test_generator.py::TestTierGracefulFail` pristine 실패.
+- **CYL 부분성공**: smoke_native_cylinder skew **280 → ≤ 45** (예측 44.9, revert 로 pre-smooth 복귀),
+  **wall_dev_max 0.000 유지**, cells≈1847, nonOrt ≤ +1°. "수백 이하" 목표 달성.
+- **cube 회귀 금지**: smoke_native_tet N=500 skew ≤ 4.0 (현 3.8, smooth 유지=accept),
+  N=2000 skew ≤ 2.0 (현 1.81); solid invariants 4종 전부 ok.
+- **회귀 PASS**: 위 pytest 세트 (알려진 flaky 제외: phase_a, cylinder 스위트 간헐, TestTierGracefulFail 2건).
+- **tet grade 불악화**: bench C=2/D=3, worst_mq ≥ 0.203 (guard 는 skew 악화 시에만 revert →
+  smooth 이득 mesh 는 유지, grade 단조). bench 시간 ≤ base +15% (proxy 는 O(faces) 벡터화, <50ms).
+- **maker 필수 로그 확인**: sk_pre/sk_post 를 cube·cylinder 양쪽에서 emit —
+  cylinder: sk_post > sk_pre (revert 발화), cube: sk_post ≤ sk_pre (smooth 유지). 방향 어긋나면
+  proxy 공식/부호 재점검 후에만 wiring (부분활성 규율).
 
-## 예상 부작용
-- CUBE 에서 3-2 flip 6개 추가 발화(scale-relative gate 가 vol>1e-9 flat sliver 포함) — 계측상
-  bskew·solid 무변, inversion 0. n_tets 소폭 감소(2346→2340). CYL n_tets 1851→1833.
-- Phase 2 무변(곡면 n_flap=0 유지). BETA2826 smooth 는 이후 실행, boundary-lock sliver 불변.
+## 카드 시퀀스 위치 (곡면 boundary-skew 시퀀스, 총 3장 예상 · 본 카드 1/3)
 
-## 카드 시퀀스 위치 (곡면 자립 시퀀스, 총 3장 예상 · 본 카드 1/3)
-- **1/3 (본 카드)**: scale-relative 3-2 flip → CYL bskew 4159→180 (부분성공, solid/fidelity-safe).
-- 2/3: 잔여 boundary-lock cap-sliver 를 **signed 2-3 flip**(Klingner sliver removal)로 제거 →
-  bskew 180→수십. `flip.py` signed-validity(ed56fd31) 이미 확보 전제, per-flip min_q 가드.
-- 3/3: CYL verdict PASS 마감 (skew≤threshold) — 필요 시 interior-apex 50셀 targeted smooth 병행.
-- **다음 카드 후보(본 PASS 후)**: BETA2828 = signed 2-3 flip for residual cap-slivers (2/3).
+- **1/3 (본 카드)**: smooth 의 net-악화 차단으로 CYL 280→44.9 (부분성공, solid/fidelity-safe).
+  BETA2827 flip 노선은 폐기(하류 재악화·필수조건 1 위배) — 본 카드가 근본원인(smooth)을 직접 교정.
+- **다음 카드 후보(PASS 후) — BETA2829**: 잔여 44.9 의 flat cap-sliver(vol~1e-6, owner 자기-경계 근접)
+  를 scale-relative signed 3-2 flip 으로 국소 제거하되 **BETA2826 이후(진짜 disk 직전)** 배치 =
+  하류 없음 → 필수조건 1 자동충족 (설계갈림길 A 를 flip 에 적용).

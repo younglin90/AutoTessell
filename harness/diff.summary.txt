@@ -1,12 +1,17 @@
-card: BETA2826_SURFACE_LOCKED_AMIPS_SMOOTH_PREWRITE
+card: BETA2828 — BETA2826 smooth evaluator-faithful skew non-worsening guard
 
 file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (insert before _prog("write",0.9), disk-write 직전)
-lines_added: 61
-lines_removed: 0
-detail: `if not _phase_bc_skip and final_tets.shape[0] > 100:` 블록.
-        surf_ids = unique(_tet_boundary_faces(final_tets))  (BETA2823 lock 재사용, V.shape[0] 미사용)
-        smooth_amips(locked_vertex_ids=surf_ids, n_iter=5)
-        accept iff sv6_new.min()>1e-12 AND vol_ratio<=1.03 AND surf_moved<=1e-9
-        else final_pts=pre_pts + log.warning ; log.info native_tet_prewrite_locked_smooth.
-        split/flip/collapse 미사용. 임계·평가자·테스트·P4C 불변.
+functions:
+  _skew_proxy  (new module-level helper, before generate_native_tet)
+  generate_native_tet  (BETA2826 pre-write locked-smooth accept block)
+lines_added: 85
+lines_removed: 4
+detail: _skew_proxy(pts,tets): single tet 4-face-map build (sorted-face key).
+        internal(count==2) skew = native_checker.py 698-721,
+        boundary(count==1) skew = 762-779; vectorized, orient-free,
+        returns max(internal_max, boundary_max); empty/1e-30 guards.
+        BETA2826 accept: _sk_pre/_sk_post = _skew_proxy(_pre_pts/_new_pts,
+        final_tets); added `and _sk_post <= _sk_pre*(1+1e-6)` to _accept
+        (revert->final_pts=_pre_pts on worsening).
+        Existing _no_inv/vol_ratio/surf_moved guards unchanged; no flip.
+        sk_pre/sk_post emitted in log.info + revert log.warning.

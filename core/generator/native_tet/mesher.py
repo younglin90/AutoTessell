@@ -95,6 +95,75 @@ def _surf_faces_from_F(F: np.ndarray) -> set:
     return set(map(tuple, Fs.tolist()))
 
 
+def _skew_proxy(pts: np.ndarray, tets: np.ndarray) -> float:
+    """Evaluator-faithful max-skewness proxy (BETA2828).
+
+    Reproduces core/evaluator/native_checker.py internal (698-721) and
+    boundary (762-779) skewness on an in-memory tet mesh so the pre-write
+    locked-smooth accept guard can veto any net worsening of the reported
+    metric.  Orientation-free: internal own/nbr order and boundary normal
+    sign both cancel out of the projection distance.  Single face-map build.
+    """
+    T = int(tets.shape[0])
+    if T == 0:
+        return 0.0
+    faces = np.concatenate([
+        tets[:, [0, 1, 2]],
+        tets[:, [0, 1, 3]],
+        tets[:, [0, 2, 3]],
+        tets[:, [1, 2, 3]],
+    ], axis=0)                                    # (4T, 3)
+    owners = np.tile(np.arange(T, dtype=np.int64), 4)  # (4T,)
+    sfaces = np.sort(faces, axis=1)
+    uniq, inv, counts = np.unique(
+        sfaces, axis=0, return_inverse=True, return_counts=True
+    )
+    inv = np.asarray(inv).ravel()
+    cc = pts[tets].mean(axis=1)                   # (T, 3) cell centres
+    fc_all = pts[uniq].mean(axis=1)               # (U, 3) face centres
+    own_sorted = owners[np.argsort(inv, kind="stable")]  # grouped by face id
+    starts = np.zeros(counts.shape[0], dtype=np.int64)
+    starts[1:] = np.cumsum(counts)[:-1]
+
+    internal_max = 0.0
+    int_mask = counts == 2
+    if bool(int_mask.any()):
+        st = starts[int_mask]
+        p_own = cc[own_sorted[st]]
+        p_nbr = cc[own_sorted[st + 1]]
+        fc = fc_all[int_mask]
+        d = p_nbr - p_own
+        d_mag = np.linalg.norm(d, axis=1)
+        v = d_mag > 1e-30
+        if bool(v.any()):
+            diff = fc[v] - p_own[v]
+            t = np.einsum("ij,ij->i", diff, d[v]) / (d_mag[v] ** 2)
+            proj = p_own[v] + t[:, None] * d[v]
+            internal_max = float(
+                (np.linalg.norm(fc[v] - proj, axis=1) / d_mag[v]).max()
+            )
+
+    boundary_max = 0.0
+    bnd_mask = counts == 1
+    if bool(bnd_mask.any()):
+        st = starts[bnd_mask]
+        fv = pts[uniq[bnd_mask]]                   # (B, 3, 3)
+        n = np.cross(fv[:, 1] - fv[:, 0], fv[:, 2] - fv[:, 0])
+        n_mag = np.linalg.norm(n, axis=1)
+        vn = n_mag > 1e-30
+        if bool(vn.any()):
+            n_unit = n[vn] / n_mag[vn, None]
+            cc_own = cc[own_sorted[st]][vn]
+            fc = fc_all[bnd_mask][vn]
+            nd = np.einsum("ij,ij->i", fc - cc_own, n_unit)
+            proj = cc_own + nd[:, None] * n_unit
+            denom = np.maximum(np.abs(nd), 1e-30)
+            skew = np.linalg.norm(fc - proj, axis=1) / denom
+            if skew.size:
+                boundary_max = float(np.nanmax(skew))
+
+    return max(internal_max, boundary_max)
+
 
 def generate_native_tet(
     vertices: np.ndarray,
@@ -2119,10 +2188,18 @@ def generate_native_tet(
                 np.all(np.sign(_sv6_new) == np.sign(_sv6_pre))
                 and np.all(np.abs(_sv6_new) > 1e-12)
             )
+            # BETA2828 — evaluator-공식 skew 비악화 가드. smooth 는 이 블록 뒤
+            # 곧바로 disk write → 여기 accept = 최종 판정 (하류 없음). interior
+            # AMIPS 이동이 곡면 boundary 에서 skew 를 폭발시키면(cylinder) revert,
+            # cube 처럼 개선하면 유지 → 방향-일치 monotone accept. topology
+            # 불변이므로 _pre/_new 각각 동일 face-map 으로 평가한다.
+            _sk_pre = _skew_proxy(_pre_pts, final_tets)
+            _sk_post = _skew_proxy(_new_pts, final_tets)
             _accept = bool(
                 _no_inv
                 and 0.97 <= _vol_ratio <= 1.03
                 and _surf_moved <= 1e-9
+                and _sk_post <= _sk_pre * (1.0 + 1e-6)
             )
             if _accept:
                 final_pts = _new_pts
@@ -2134,12 +2211,16 @@ def generate_native_tet(
                     min_sv6=float(_sv6_new.min()),
                     vol_ratio=round(_vol_ratio, 6),
                     surf_moved=round(_surf_moved, 9),
+                    sk_pre=round(_sk_pre, 4),
+                    sk_post=round(_sk_post, 4),
                 )
             log.info(
                 "native_tet_prewrite_locked_smooth",
                 n_surf=int(_surf_ids.shape[0]),
                 vol_ratio=round(_vol_ratio, 6),
                 surf_moved=round(_surf_moved, 9),
+                sk_pre=round(_sk_pre, 4),
+                sk_post=round(_sk_post, 4),
                 accepted=_accept,
             )
         except Exception as exc:
