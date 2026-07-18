@@ -519,6 +519,9 @@ class SurfaceRemesher:
         try:
             import igl
 
+            pre_area = float(mesh.area)
+            diag = float(np.linalg.norm(mesh.extents)) or 1.0
+
             V = np.asarray(mesh.vertices, dtype=np.float64)
             F = np.asarray(mesh.faces, dtype=np.int64)
 
@@ -542,6 +545,22 @@ class SurfaceRemesher:
                 faces=F,
                 process=False,
             )
+
+            post_area = float(result.area)
+            try:
+                _, d, _ = mesh.nearest.on_surface(result.vertices)
+                hd = float(d.max())
+            except Exception:
+                hd = 0.0
+
+            if post_area < 0.5 * pre_area or hd > 0.05 * diag:
+                log.warning(
+                    "laplacian_shape_guard_revert",
+                    pre_area=pre_area,
+                    post_area=post_area,
+                    hd_rel=hd / diag,
+                )
+                return mesh
 
             log.info(
                 "laplacian_smoothing_done",
