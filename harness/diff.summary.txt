@@ -1,30 +1,31 @@
-card: BOOLMERGE1
+card: BOOLMERGE2
 
-file: core/utils/geometry.py
-functions: inside_union_winding_number (new, ~35 lines) — per-input GWN union
-  판정 (fTetWild §3.6). loops surfaces list, calls
-  inside_generalized_winding_number independently per (V_i, F_i), OR-combines
-  masks. Empty list -> all False. Module docstring updated to list new func.
-lines_added: 46
-lines_removed: 0
+file: core/generator/native_tet/boolean_merge.py (new, ~100 lines)
+  UnionMergeResult dataclass + filter_tets_to_union(pts, tets, surfaces,
+  threshold=0.5) — centroid = pts[tets].mean(1); keep via
+  geometry.inside_union_winding_number (BOOLMERGE1, reused not reimplemented);
+  volume_after = Sum(|signed_volume6|)/6 on kept tets (validate.py helper
+  reused). Empty tets/surfaces -> original mesh unchanged (boundary_clip.py
+  convention). pts never mutated. No callers wired anywhere.
 
-file: tests/test_geometry_boolean_merge.py (new, 4 tests)
-  test_overlapping_cubes_union_volume_within_3pct — 60k Monte-Carlo samples,
-    A=[0,1]^3 union B=[0.5,1.5]^3, analytic 1.875, rel_err <= 0.03 (measured
-    well within tolerance).
-  test_disjoint_cubes_bodies_stay_separate — A=[0,1]^3, B=[10,11]^3, midpoint
-    [5,5,5] outside, both interiors inside.
-  test_single_surface_identity — single-surface union path bit-identical to
-    inside_generalized_winding_number.
-  test_empty_surfaces_returns_all_false.
+file: tests/test_native_tet_boolean_merge.py (new, 3 tests, 11.6s)
+  test_overlapping_cubes_union_volume_recovers_analytic — N=24 grid (matches
+    plan's own measured table): volume_after=1.9229 in [1.70,2.05]; vs
+    single-surface control volume_after=1.0307, diff=0.892>=0.5 confirms
+    merge happened; n_after(33527)<n_before(95725), n_after>0.
+  test_disjoint_cubes_no_tets_kept_in_gap — two local fine grids (n=18) fed
+    to one Delaunay call so gap-bridging tets exist; volume_after=2.0718
+    vs analytic 2.0 (rel_err 3.59%, <=5%); no kept centroid falls in the
+    [2,9]^3 gap box.
+  test_single_surface_matches_boundary_clip — union-filter volume vs
+    boundary_clip.clip_to_input_surface volume, rel_err <= 2% (different
+    inside-test algorithms: GWN vs ray-parity), both ~1.0 (unit cube).
 
 verification (measured):
-  pytest tests/test_geometry_inside.py -q        -> 13 passed
-  pytest tests/test_geometry_boolean_merge.py -q -> 4 passed
+  pytest tests/test_native_tet_boolean_merge.py -q      -> 3 passed
+  pytest tests/test_geometry_boolean_merge.py -q        -> 4 passed
+  pytest tests/test_geometry_inside.py -q                -> 13 passed
   pytest tests/test_desktop_server.py::TestMultiSurface -q -> 19 passed
-  git diff core/pipeline/orchestrator.py desktop/server.py -> 0 lines (empty)
+  git diff --stat mesher.py orchestrator.py server.py   -> empty (0 lines)
 
-note: no other files touched; orchestrator/server/gate untouched per card
-scope. Pre-existing black/ruff debt in geometry.py (inside_winding_number,
-inside_generalized_winding_number) left as-is — new function itself is
-black/ruff clean in isolation.
+note: pure isolated helper, no production caller; regression 0.
