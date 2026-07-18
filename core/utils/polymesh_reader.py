@@ -12,7 +12,10 @@ meshes).  Import errors are silently ignored so the module works without Ofpp.
 
 from __future__ import annotations
 
+import importlib
+import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,37 @@ except ImportError:  # pragma: no cover
     _ofpp = None
     _FoamMesh = None
     _OFPP_AVAILABLE = False
+
+
+_NATIVE_METRICS: Any | None = None
+_NATIVE_METRICS_IMPORT_ATTEMPTED = False
+
+
+def _load_native_metrics() -> Any | None:
+    """Load optional polyMesh parser extension without evaluator imports."""
+    global _NATIVE_METRICS, _NATIVE_METRICS_IMPORT_ATTEMPTED
+    if _NATIVE_METRICS_IMPORT_ATTEMPTED:
+        return _NATIVE_METRICS
+    _NATIVE_METRICS_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    repo_root = Path(__file__).resolve().parents[2]
+    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
+
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_METRICS = importlib.import_module("native_metrics")
+    except Exception:  # noqa: BLE001
+        _NATIVE_METRICS = None
+    return _NATIVE_METRICS
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +108,13 @@ def parse_foam_points(points_file: Path) -> list[list[float]]:
 
 def parse_foam_faces(faces_file: Path) -> list[list[int]]:
     """Parse polyMesh/faces and return a list of vertex-index lists."""
+    native_metrics = _load_native_metrics()
+    if native_metrics is not None:
+        try:
+            return native_metrics.parse_foam_faces_file(faces_file)
+        except Exception:  # noqa: BLE001
+            pass
+
     text = faces_file.read_text()
     tokens = _read_foam_list(text)
     faces: list[list[int]] = []

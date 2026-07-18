@@ -11,10 +11,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace py = pybind11;
@@ -22,6 +28,246 @@ namespace py = pybind11;
 namespace {
 
 using Point3 = std::array<double, 3>;
+
+std::string strip_foam_comments_and_strings(std::string_view text)
+{
+    enum class State { normal, line_comment, block_comment, quoted };
+
+    std::string clean;
+    clean.reserve(text.size());
+    State state = State::normal;
+    char quote = '\0';
+    bool escaped = false;
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char ch = text[i];
+        const char next = i + 1 < text.size() ? text[i + 1] : '\0';
+
+        if (state == State::line_comment) {
+            if (ch == '\n') {
+                clean.push_back('\n');
+                state = State::normal;
+            } else {
+                clean.push_back(' ');
+            }
+            continue;
+        }
+        if (state == State::block_comment) {
+            clean.push_back(ch == '\n' ? '\n' : ' ');
+            if (ch == '*' && next == '/') {
+                clean.push_back(' ');
+                ++i;
+                state = State::normal;
+            }
+            continue;
+        }
+        if (state == State::quoted) {
+            clean.push_back(ch == '\n' ? '\n' : ' ');
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == quote) {
+                state = State::normal;
+            }
+            continue;
+        }
+
+        if (ch == '/' && next == '/') {
+            clean.append("  ");
+            ++i;
+            state = State::line_comment;
+        } else if (ch == '/' && next == '*') {
+            clean.append("  ");
+            ++i;
+            state = State::block_comment;
+        } else if (ch == '\'' || ch == '"') {
+            clean.push_back(' ');
+            quote = ch;
+            escaped = false;
+            state = State::quoted;
+        } else {
+            clean.push_back(ch);
+        }
+    }
+
+    if (state == State::block_comment) {
+        throw std::invalid_argument("unterminated block comment in faces file");
+    }
+    if (state == State::quoted) {
+        throw std::invalid_argument("unterminated quoted string in faces file");
+    }
+    return clean;
+}
+
+bool is_integer_boundary(char ch)
+{
+    const auto uch = static_cast<unsigned char>(ch);
+    return !std::isalnum(uch) && ch != '_' && ch != '.';
+}
+
+long long parse_signed_integer(std::string_view text, size_t& pos)
+{
+    const size_t start = pos;
+    bool negative = false;
+    if (pos < text.size() && (text[pos] == '+' || text[pos] == '-')) {
+        negative = text[pos] == '-';
+        ++pos;
+    }
+    if (pos >= text.size()
+        || !std::isdigit(static_cast<unsigned char>(text[pos]))) {
+        pos = start;
+        throw std::invalid_argument("expected signed integer in faces file");
+    }
+
+    constexpr unsigned long long positive_limit =
+        static_cast<unsigned long long>(std::numeric_limits<long long>::max());
+    constexpr unsigned long long negative_limit = positive_limit + 1ULL;
+    const unsigned long long limit = negative ? negative_limit : positive_limit;
+    unsigned long long value = 0;
+    while (pos < text.size()
+           && std::isdigit(static_cast<unsigned char>(text[pos]))) {
+        const auto digit = static_cast<unsigned long long>(text[pos] - '0');
+        if (value > (limit - digit) / 10ULL) {
+            throw std::invalid_argument("integer out of range in faces file");
+        }
+        value = value * 10ULL + digit;
+        ++pos;
+    }
+
+    if (negative) {
+        if (value == negative_limit) {
+            return std::numeric_limits<long long>::min();
+        }
+        return -static_cast<long long>(value);
+    }
+    return static_cast<long long>(value);
+}
+
+void skip_whitespace(std::string_view text, size_t& pos)
+{
+    while (pos < text.size()
+           && std::isspace(static_cast<unsigned char>(text[pos]))) {
+        ++pos;
+    }
+}
+
+std::pair<long long, size_t> find_face_list(std::string_view text)
+{
+    for (size_t pos = 0; pos < text.size(); ++pos) {
+        const char ch = text[pos];
+        const bool has_sign = ch == '+' || ch == '-';
+        if (!std::isdigit(static_cast<unsigned char>(ch))
+            && !(has_sign && pos + 1 < text.size()
+                 && std::isdigit(static_cast<unsigned char>(text[pos + 1])))) {
+            continue;
+        }
+        if (pos > 0 && !is_integer_boundary(text[pos - 1])) {
+            continue;
+        }
+
+        size_t end = pos + (has_sign ? 1U : 0U);
+        while (end < text.size()
+               && std::isdigit(static_cast<unsigned char>(text[end]))) {
+            ++end;
+        }
+        if (end < text.size() && !is_integer_boundary(text[end])) {
+            continue;
+        }
+        size_t opening = end;
+        skip_whitespace(text, opening);
+        if (opening >= text.size() || text[opening] != '(') {
+            pos = end - 1;
+            continue;
+        }
+
+        size_t parse_pos = pos;
+        const long long count = parse_signed_integer(text, parse_pos);
+        if (count < 0) {
+            throw std::invalid_argument("face-list count must be non-negative");
+        }
+        return {count, opening + 1};
+    }
+    throw std::invalid_argument("missing face list in faces file");
+}
+
+std::vector<std::vector<long long>> parse_foam_faces_text(std::string_view text)
+{
+    const std::string clean = strip_foam_comments_and_strings(text);
+    const auto [face_count, list_start] = find_face_list(clean);
+    if (static_cast<unsigned long long>(face_count) > clean.size()) {
+        throw std::invalid_argument("face-list count exceeds file size");
+    }
+
+    std::vector<std::vector<long long>> faces;
+    faces.reserve(static_cast<size_t>(face_count));
+    size_t pos = list_start;
+    for (long long face_i = 0; face_i < face_count; ++face_i) {
+        skip_whitespace(clean, pos);
+        const long long vertex_count = parse_signed_integer(clean, pos);
+        if (vertex_count < 0) {
+            throw std::invalid_argument("face vertex count must be non-negative");
+        }
+        if (static_cast<unsigned long long>(vertex_count) > clean.size()) {
+            throw std::invalid_argument("face vertex count exceeds file size");
+        }
+        skip_whitespace(clean, pos);
+        if (pos >= clean.size() || clean[pos] != '(') {
+            throw std::invalid_argument("expected '(' after face vertex count");
+        }
+        ++pos;
+
+        std::vector<long long> vertices;
+        vertices.reserve(static_cast<size_t>(vertex_count));
+        for (long long vertex_i = 0; vertex_i < vertex_count; ++vertex_i) {
+            skip_whitespace(clean, pos);
+            vertices.push_back(parse_signed_integer(clean, pos));
+        }
+        skip_whitespace(clean, pos);
+        if (pos >= clean.size() || clean[pos] != ')') {
+            throw std::invalid_argument("face vertex count does not match list");
+        }
+        ++pos;
+        faces.push_back(std::move(vertices));
+    }
+
+    skip_whitespace(clean, pos);
+    if (pos >= clean.size() || clean[pos] != ')') {
+        throw std::invalid_argument("face-list count does not match list");
+    }
+    ++pos;
+    skip_whitespace(clean, pos);
+    if (pos < clean.size() && clean[pos] == ';') {
+        ++pos;
+        skip_whitespace(clean, pos);
+    }
+    if (pos != clean.size()) {
+        throw std::invalid_argument("unexpected trailing data after face list");
+    }
+    return faces;
+}
+
+std::vector<std::vector<long long>> parse_foam_faces_file(const py::object& path)
+{
+    const std::string filename =
+        py::module_::import("os").attr("fspath")(path).cast<std::string>();
+    std::vector<std::vector<long long>> faces;
+    {
+        py::gil_scoped_release release;
+        std::ifstream input(filename, std::ios::binary);
+        if (!input) {
+            throw std::runtime_error("unable to open faces file: " + filename);
+        }
+        const std::string text{
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()};
+        if (input.bad()) {
+            throw std::runtime_error("unable to read faces file: " + filename);
+        }
+        faces = parse_foam_faces_text(text);
+    }
+    return faces;
+}
 
 long long as_vertex_index(const py::handle& value, long long n_points)
 {
@@ -579,6 +825,7 @@ py::tuple compute_per_cell_aspect_ratios(
 PYBIND11_MODULE(native_metrics, m)
 {
     m.doc() = "C++ metric kernels for AutoTessell NativeMeshChecker";
+    m.def("parse_foam_faces_file", &parse_foam_faces_file, py::arg("path"));
     m.def("compute_face_geometry", &compute_face_geometry,
           py::arg("points"), py::arg("faces"));
     m.def("compute_cell_centres_from_vertices",
