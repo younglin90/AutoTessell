@@ -51,6 +51,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
@@ -274,7 +275,26 @@ def _cylinder_wall_deviation(poly_dir: Path) -> tuple[float, float, int]:
     return float(dev.max()), float(dev.mean()), int(dev.size)
 
 
-def test_native_hex_curved_wall_fidelity(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "quality_level",
+    [
+        "standard",
+        pytest.param(
+            "fine",
+            marks=pytest.mark.xfail(
+                reason=(
+                    "CARD HEX-WALLFIT-FINE: local-sizing envelope (below) measured "
+                    "n_reject_envelope=0 at fine — envelope was never the limiter for "
+                    "this geometry. The actual blocker is the no-inversion guard "
+                    "rejecting 67/403 candidate snaps (n_reject_vol), which this card "
+                    "explicitly did not touch. max wall deviation still ~0.035."
+                ),
+                strict=True,
+            ),
+        ),
+    ],
+)
+def test_native_hex_curved_wall_fidelity(tmp_path: Path, quality_level: str) -> None:
     """Side-wall vertices of a meshed cylinder must sit on the true radius.
 
     This is why the cube is not enough: the cube is axis-aligned, so a Cartesian
@@ -290,12 +310,22 @@ def test_native_hex_curved_wall_fidelity(tmp_path: Path) -> None:
     a raw staircase), mean 0.0015, negative_volumes 0, mesh_ok True — a fit, not a
     staircase. Was xfail (draft leaves axis-aligned boxes); now a permanent gate
     on the standard snap path.
+
+    STATUS (CARD HEX-WALLFIT-FINE): fine quality (n_levels=4) was hypothesized to
+    fail because the global envelope cap was sized to the finest octree cell, too
+    small for wall vertices sitting on a coarse (level 0/1) cell. The envelope was
+    generalized to per-vertex (``ratio * max(target_edge, local_scale[v])``) and
+    verified harmless (standard unchanged, cube/negative_volumes unaffected) — but
+    measurement showed the hypothesis was wrong: n_reject_envelope=0 both before
+    and after, so envelope was never the actual limiter here. The real blocker is
+    the no-inversion guard (n_reject_vol=67/403), out of this card's scope. fine
+    stays xfail(strict) until a follow-up card addresses that guard.
     """
     case = tmp_path / "case"
     PipelineOrchestrator().run(
         _CYLINDER,
         case,
-        quality_level="standard",
+        quality_level=quality_level,
         mesh_type="hex_dominant",
         tier_hint="native_hex",
         max_iterations=1,
@@ -311,7 +341,7 @@ def test_native_hex_curved_wall_fidelity(tmp_path: Path) -> None:
     max_dev, mean_dev, n_side = _cylinder_wall_deviation(poly)
     assert n_side >= 20, f"too few side-wall vertices ({n_side}) to judge fidelity"
     assert max_dev <= 0.02, (
-        f"cylinder side-wall deviates up to {max_dev:.3f} from the true radius "
-        f"{_CYL_RADIUS} (mean {mean_dev:.3f}, n={n_side}) — the hex grid is "
-        f"staircasing the curved wall instead of fitting it."
+        f"cylinder side-wall ({quality_level}) deviates up to {max_dev:.3f} from "
+        f"the true radius {_CYL_RADIUS} (mean {mean_dev:.3f}, n={n_side}) — the "
+        f"hex grid is staircasing the curved wall instead of fitting it."
     )

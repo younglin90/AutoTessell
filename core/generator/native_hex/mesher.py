@@ -520,7 +520,13 @@ def _wall_fit_snap(
     from core.generator.native_hex.snap import _closest_point_on_triangle  # noqa: PLC0415
     from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
 
-    stats = {"n_target": 0, "n_snapped": 0, "n_reject_vol": 0, "n_reject_dist": 0}
+    stats = {
+        "n_target": 0,
+        "n_snapped": 0,
+        "n_reject_vol": 0,
+        "n_reject_dist": 0,
+        "n_reject_envelope": 0,
+    }
     sF = np.asarray(F, dtype=np.int64)
     sV = np.asarray(V, dtype=np.float64)
     if len(cell_faces) == 0 or sF.shape[0] == 0:
@@ -546,13 +552,30 @@ def _wall_fit_snap(
         for v in {int(x) for face in cell for x in face} & boundary_verts:
             incident[v].add(ci)
 
+    # Local sizing: per boundary vertex, the max edge length among all faces of
+    # its incident cells. Captures the coarse-octree-cell scale at level
+    # transitions so fine quality's per-vertex envelope isn't clamped by the
+    # global finest-cell target_edge (card HEX-WALLFIT-FINE).
+    local_scale: dict[int, float] = {}
+    for v, cells in incident.items():
+        m = 0.0
+        for ci in cells:
+            for face in cell_faces[ci]:
+                fv = [int(x) for x in face]
+                n = len(fv)
+                for i in range(n):
+                    e = float(np.linalg.norm(pts[fv[i]] - pts[fv[(i + 1) % n]]))
+                    if e > m:
+                        m = e
+        local_scale[v] = m
+
     tri_A = sV[sF[:, 0]]
     tri_B = sV[sF[:, 1]]
     tri_C = sV[sF[:, 2]]
     tri_cen = (tri_A + tri_B + tri_C) / 3.0
     tree = NumpyKDTree(tri_cen)
     k = min(8, tri_cen.shape[0])
-    cap = float(ratio * target_edge)
+    cap_floor = float(ratio * target_edge)
     eps = max(1e-15, 1e-6 * target_edge**3)
 
     def _cell_signs(ci: int) -> tuple[np.ndarray, float]:
@@ -616,7 +639,9 @@ def _wall_fit_snap(
             if d0 <= tol:
                 continue
             stats["n_target"] += 1
-            if float(np.linalg.norm(p0 - pts[vi])) > cap:
+            cap_v = max(cap_floor, ratio * local_scale.get(vi, target_edge))
+            if float(np.linalg.norm(p0 - pts[vi])) > cap_v:
+                stats["n_reject_envelope"] += 1
                 continue  # outside envelope
             orig = pts[vi].copy()
             pts[vi] = p0

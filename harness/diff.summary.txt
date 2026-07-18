@@ -1,22 +1,35 @@
-CARD BETA_HEX_WALLFIT — per-vertex guarded wall-fit snap (staircase 제거)
+CARD HEX-WALLFIT-FINE (beta1) — local-sizing wall-fit envelope
 
-Files: core/generator/native_hex/mesher.py (+201, helper _wall_fit_snap + 2 call-sites)
-       tests/test_native_hex_solid_volume.py (±26, xfail 제거 + draft→standard + STATUS)
+file: core/generator/native_hex/mesher.py
+functions: _wall_fit_snap
+lines_added: 23
+lines_removed: 2
+- added local_scale[v] (max incident-cell face-edge length) computed once
+  right after `incident` is built.
+- global `cap` renamed `cap_floor = ratio*target_edge`; per-vertex
+  `cap_v = max(cap_floor, ratio*local_scale[vi])` replaces the envelope
+  check at the "outside envelope" continue.
+- stats dict gained `n_reject_envelope` counter.
+- strict-decrease guard / no-inversion guard untouched (per plan).
 
-What: _wall_fit_snap(pts, cell_faces, V, F, edge, tol, ratio, iters) projects boundary
-  side-wall verts to the closest input triangle inside |p-v|<=ratio*edge; accept ONLY if
-  (a) surface dist strictly decreases AND (b) each incident cell keeps every face's
-  centroid-signed orientation and |vol|>eps; else revert THAT vertex only (local, not
-  global). worst-dev-first, 3 iters, cube early-exit. Generic cell-faces -> works on
-  octree oct_cells AND uniform hex. Legacy global skew-revert kept. env HEX_WALLFIT_OFF.
+file: tests/test_native_hex_solid_volume.py
+functions: test_native_hex_curved_wall_fidelity
+lines_added: 19
+lines_removed: 3
+- parametrized over quality_level in {"standard", "fine"}; both assert
+  max_dev <= 0.02. Added `import pytest`.
 
-CONFLICT w/ card (report): card said "L1057 snap_boundary 블록"; empirically standard
-  uses the adaptive OCTREE branch (returns L969, polyhedral oct_cells) and never reaches
-  L1057. Generalized helper + called it in the octree branch so the standard path (the
-  measurable target) is actually fitted. L1057 uniform call kept too.
-
-Measured (standard, cylinder.stl, N=2000):
-  wall_dev_max 0.0466 -> 0.0032 (<0.02 gate); mean 0.0173 -> 0.0015; n_side 624
-  void 0.0000; bnd_area 1.163x -> 0.996x input; negative_volumes 0; mesh_ok True;
-  skew 0.37 -> 4.64 (finite, no inversion). cube: n_target=0 (early-exit), smoke PASS.
-  pytest tests/test_native_hex_solid_volume.py -q -> 5 passed.
+RESULT (measured — see chat report for full numbers):
+- standard unaffected: wall_dev_max 0.0032 (unchanged, monotonicity held).
+- n_reject_envelope == 0 both BEFORE and AFTER this fix on the real
+  pipeline (cap was already ~0.079 >> the ~0.035 max deviation) — the
+  envelope was NOT the actual blocker, contradicting the plan's
+  target_edge estimate (~0.0045). The real blocker is n_reject_vol=67
+  (the no-inversion guard), out of this card's scope per plan.
+- fine wall_dev_max stays 0.035 — goal (<=0.02) NOT met by this change.
+- pytest tests/test_native_hex_solid_volume.py: 5 passed
+  (4 solid invariants + standard fidelity), 1 failed (fine fidelity).
+- cube fine 4-invariant (extra measurement): on_area=6.0000 off_area=0.0000
+  sum|vol|=1.0000 n_degen=0 — PASS.
+- pre-BL negative_volumes: standard=0, fine=0 — PASS (post-BL fine=16 is
+  the known out-of-scope native_bl defect, unaffected by this card).
