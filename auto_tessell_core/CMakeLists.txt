@@ -12,6 +12,7 @@ option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmes
 option(BUILD_NATIVE_METRICS "Build native metric kernels for Python checker" ON)
 option(BUILD_NATIVE_POLYMESH "Build native polyMesh topology kernel" ON)
 option(BUILD_NATIVE_SNAP "Build native surface snap candidate kernel" ON)
+option(BUILD_NATIVE_HEX_QUALITY "Build native hex quality kernel" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -77,6 +78,17 @@ if(BUILD_NATIVE_SNAP)
     target_compile_options(native_snap PRIVATE /O2 /W3)
   else()
     target_compile_options(native_snap PRIVATE -O3)
+  endif()
+endif()
+
+# ── native hex quality kernel ──────────────────────────────────────────────
+if(BUILD_NATIVE_HEX_QUALITY)
+  pybind11_add_module(native_hex_quality native_hex_quality_bind.cpp)
+  target_compile_features(native_hex_quality PRIVATE cxx_std_23)
+  if(MSVC)
+    target_compile_options(native_hex_quality PRIVATE /O2 /W3)
+  else()
+    target_compile_options(native_hex_quality PRIVATE -O3)
   endif()
 endif()
 

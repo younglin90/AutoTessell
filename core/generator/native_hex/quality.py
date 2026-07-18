@@ -3,11 +3,70 @@
 OpenFOAM checkMesh 의 핵심 메트릭 (non-orthogonality / skewness / aspect)
 을 numpy 로 직접 계산. snappyHexMesh / cfMesh 와 동일한 평가 척도.
 """
+
 from __future__ import annotations
 
+import importlib
+import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
+
+_NATIVE_HEX_QUALITY: Any | None = None
+_NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED = False
+
+
+def _load_native_hex_quality() -> Any | None:
+    """Load optional C++ fixed-topology quality primitives."""
+    global _NATIVE_HEX_QUALITY, _NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED
+    if _NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED:
+        return _NATIVE_HEX_QUALITY
+    _NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    candidate_dirs.append(Path(__file__).resolve().parents[3] / "auto_tessell_core" / "build")
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_HEX_QUALITY = importlib.import_module("native_hex_quality")
+    except Exception:  # noqa: BLE001
+        _NATIVE_HEX_QUALITY = None
+    return _NATIVE_HEX_QUALITY
+
+
+def _native_quality_values(
+    points: np.ndarray, hexes: np.ndarray
+) -> tuple[int, np.ndarray, np.ndarray, np.ndarray, float] | None:
+    module = _load_native_hex_quality()
+    kernel = getattr(module, "hex_quality_primitives", None) if module is not None else None
+    if kernel is None:
+        return None
+    try:
+        face_count, non_orths, skews, aspects, min_face_area = kernel(points, hexes)
+        non_orths = np.asarray(non_orths, dtype=np.float64)
+        skews = np.asarray(skews, dtype=np.float64)
+        aspects = np.asarray(aspects, dtype=np.float64)
+        if (
+            non_orths.ndim != 1
+            or skews.ndim != 1
+            or aspects.shape != (len(hexes),)
+            or non_orths.size == 0
+            or skews.size == 0
+        ):
+            raise ValueError("native hex quality kernel returned invalid shapes")
+        return int(face_count), non_orths, skews, aspects, float(min_face_area)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # OpenFOAM hex face local indexing (mesher.py 와 동일).
@@ -39,7 +98,10 @@ def _quad_normal_centroid_area(
     pts: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """quad face: (N, 4, 3) → (N, 3) normal (unit), centroid, area."""
-    A = pts[:, 0]; B = pts[:, 1]; C = pts[:, 2]; D = pts[:, 3]
+    A = pts[:, 0]
+    B = pts[:, 1]
+    C = pts[:, 2]
+    D = pts[:, 3]
     cen = (A + B + C + D) * 0.25
     # 두 삼각형 분할 평균.
     n1 = np.cross(B - A, C - A)
@@ -67,6 +129,22 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
         return HexQualityReport(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     n_cells = hexes.shape[0]
+    native_values = _native_quality_values(pts, hexes)
+    if native_values is not None:
+        n_faces_total, non_orths_arr, skews_arr, aspects_arr, min_face_area = native_values
+        return HexQualityReport(
+            n_cells=int(n_cells),
+            n_faces=int(n_faces_total),
+            max_non_orthogonality_deg=float(np.max(non_orths_arr)),
+            mean_non_orthogonality_deg=float(np.mean(non_orths_arr)),
+            p95_non_orthogonality_deg=float(np.percentile(non_orths_arr, 95)),
+            max_skewness=float(np.max(skews_arr)),
+            mean_skewness=float(np.mean(skews_arr)),
+            max_aspect=float(np.max(aspects_arr)),
+            mean_aspect=float(np.mean(aspects_arr)),
+            min_face_area=float(min_face_area),
+        )
+
     cell_centroids = pts[hexes].mean(axis=1)
 
     # 각 cell 의 6 face → owner_idx, neighbor 쌍.
@@ -79,19 +157,17 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
     face_verts_flat = face_verts_raw.reshape(-1, 4)  # (n_cells*6, 4)
     face_keys_arr = np.sort(face_verts_flat, axis=1)  # sorted vertex keys
     face_owner_arr = np.repeat(np.arange(n_cells, dtype=np.int64), n_f)  # (n_cells*6,)
-    face_local_arr = np.tile(np.arange(n_f, dtype=np.int64), n_cells)    # (n_cells*6,)
+    face_local_arr = np.tile(np.arange(n_f, dtype=np.int64), n_cells)  # (n_cells*6,)
 
     face_owner = face_owner_arr.tolist()
     face_local = face_local_arr.tolist()
-    face_keys = [tuple(int(x) for x in row) for row in face_keys_arr]
 
     # face → owner cells dict.
     # C-PERF-75 / beta2526 — vectorize via lexsort + group-boundary.
     face_dict: dict[tuple[int, int, int, int], list[int]] = {}
     if face_keys_arr.size > 0:
         order = np.lexsort(
-            (face_keys_arr[:, 3], face_keys_arr[:, 2],
-             face_keys_arr[:, 1], face_keys_arr[:, 0]),
+            (face_keys_arr[:, 3], face_keys_arr[:, 2], face_keys_arr[:, 1], face_keys_arr[:, 0]),
         )
         k_s = face_keys_arr[order]
         i_s = np.arange(face_keys_arr.shape[0])[order]
@@ -99,8 +175,7 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
         starts = np.where(diff)[0]
         ends = np.r_[starts[1:], len(k_s)]
         for s, e in zip(starts.tolist(), ends.tolist()):
-            kt = (int(k_s[s, 0]), int(k_s[s, 1]),
-                  int(k_s[s, 2]), int(k_s[s, 3]))
+            kt = (int(k_s[s, 0]), int(k_s[s, 1]), int(k_s[s, 2]), int(k_s[s, 3]))
             face_dict[kt] = i_s[s:e].tolist()
 
     non_orths: list[float] = []
@@ -110,14 +185,17 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
     for k, idxs in face_dict.items():
         n_faces_total += 1
         if len(idxs) != 2:
-            continue   # boundary face — non-ortho 측정 안 함.
+            continue  # boundary face — non-ortho 측정 안 함.
         i_a, i_b = idxs
-        ca = face_owner[i_a]; cb = face_owner[i_b]
+        ca = face_owner[i_a]
+        cb = face_owner[i_b]
         local_a = face_local[i_a]
         # face vertex 좌표 (cell A 기준).
         verts = pts[hexes[ca, list(_HEX_FACES[local_a])]]
         unit_n, cen_f, area_f = _quad_normal_centroid_area(verts[None])
-        n_vec = unit_n[0]; cen = cen_f[0]; area = float(area_f[0])
+        n_vec = unit_n[0]
+        cen = cen_f[0]
+        area = float(area_f[0])
         if area < min_face_area:
             min_face_area = area
         # cell-cell vector.
@@ -178,10 +256,10 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
 def hex_quality_grade(report: HexQualityReport) -> str:
     """checkMesh 기준 grade.
 
-        A: max_non_ortho < 50°, max_skew < 1.0
-        B: max_non_ortho < 70°, max_skew < 4.0
-        C: max_non_ortho < 80°, max_skew < 8.0
-        D: 그 외 / 빈 mesh.
+    A: max_non_ortho < 50°, max_skew < 1.0
+    B: max_non_ortho < 70°, max_skew < 4.0
+    C: max_non_ortho < 80°, max_skew < 8.0
+    D: 그 외 / 빈 mesh.
     """
     if report.n_cells == 0:
         return "D"
