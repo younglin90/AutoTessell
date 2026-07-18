@@ -153,6 +153,95 @@ def _closest_points_on_triangles_batch(
     return out, ds
 
 
+def _closest_points_on_triangles_matrix(
+    pts: np.ndarray, tri_pts: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """M 개 점 × k 개 triangle 에 대한 closest-point (batched leaf 평가, BETA2831).
+
+    `_closest_points_on_triangles_batch` 의 point-triangle closest 공식을 그대로
+    (M,k) 로 브로드캐스트 승격한 버전 — 결과는 각 (m,k) 쌍에 대해 scalar 버전과
+    bit-exact 동일해야 한다 (분기 순서·tie-break 보존).
+
+    pts: (M, 3). tri_pts: (k, 3, 3).
+    반환: (closest_points (M, k, 3), distances (M, k)).
+    """
+    M = pts.shape[0]
+    k = tri_pts.shape[0]
+    A = tri_pts[:, 0][None, :, :]
+    B = tri_pts[:, 1][None, :, :]
+    C = tri_pts[:, 2][None, :, :]
+    AB = B - A
+    AC = C - A
+    P = pts[:, None, :]
+    AP = P - A
+    d1 = np.einsum("mkj,mkj->mk", AB, AP)
+    d2 = np.einsum("mkj,mkj->mk", AC, AP)
+    BP = P - B
+    d3 = np.einsum("mkj,mkj->mk", AB, BP)
+    d4 = np.einsum("mkj,mkj->mk", AC, BP)
+    CP = P - C
+    d5 = np.einsum("mkj,mkj->mk", AB, CP)
+    d6 = np.einsum("mkj,mkj->mk", AC, CP)
+
+    A_b = np.broadcast_to(A, (M, k, 3))
+    B_b = np.broadcast_to(B, (M, k, 3))
+    C_b = np.broadcast_to(C, (M, k, 3))
+    AB_b = np.broadcast_to(AB, (M, k, 3))
+    AC_b = np.broadcast_to(AC, (M, k, 3))
+
+    out = np.zeros((M, k, 3), dtype=np.float64)
+    done = np.zeros((M, k), dtype=bool)
+
+    # Region A vertex.
+    ra = (d1 <= 0) & (d2 <= 0) & ~done
+    out[ra] = A_b[ra]; done |= ra
+    # Region B.
+    rb = (d3 >= 0) & (d4 <= d3) & ~done
+    out[rb] = B_b[rb]; done |= rb
+    # Edge AB.
+    vc = d1 * d4 - d3 * d2
+    rab = (vc <= 0) & (d1 >= 0) & (d3 <= 0) & ~done
+    if rab.any():
+        denom = np.where(d1[rab] - d3[rab] != 0, d1[rab] - d3[rab], 1.0)
+        v = d1[rab] / denom
+        out[rab] = A_b[rab] + v[:, None] * AB_b[rab]
+        done |= rab
+    # Region C.
+    rc = (d6 >= 0) & (d5 <= d6) & ~done
+    out[rc] = C_b[rc]; done |= rc
+    # Edge AC.
+    vb = d5 * d2 - d1 * d6
+    rac = (vb <= 0) & (d2 >= 0) & (d6 <= 0) & ~done
+    if rac.any():
+        denom = np.where(d2[rac] - d6[rac] != 0, d2[rac] - d6[rac], 1.0)
+        w = d2[rac] / denom
+        out[rac] = A_b[rac] + w[:, None] * AC_b[rac]
+        done |= rac
+    # Edge BC.
+    va = d3 * d6 - d5 * d4
+    rbc = (va <= 0) & (d4 - d3 >= 0) & (d5 - d6 >= 0) & ~done
+    if rbc.any():
+        denom = np.where(
+            (d4[rbc] - d3[rbc]) + (d5[rbc] - d6[rbc]) != 0,
+            (d4[rbc] - d3[rbc]) + (d5[rbc] - d6[rbc]),
+            1.0,
+        )
+        w = (d4[rbc] - d3[rbc]) / denom
+        out[rbc] = B_b[rbc] + w[:, None] * (C_b[rbc] - B_b[rbc])
+        done |= rbc
+    # Interior.
+    rem = ~done
+    if rem.any():
+        denom = va[rem] + vb[rem] + vc[rem]
+        denom = np.where(denom != 0, denom, 1.0)
+        v = vb[rem] / denom
+        w = vc[rem] / denom
+        out[rem] = A_b[rem] + v[:, None] * AB_b[rem] + w[:, None] * AC_b[rem]
+
+    ds = np.linalg.norm(P - out, axis=2)
+    return out, ds
+
+
 @dataclass
 class _BVHNode:
     aabb_min: np.ndarray
@@ -225,8 +314,7 @@ class TriangleBVH:
             ext = tmax - tmin
             axis = int(np.argmax(ext))
             cents = tri_centroid[idxs, axis]
-            sorted_sub = np.argsort(cents) + lo
-            order[lo:hi] = sorted_sub
+            order[lo:hi] = idxs[np.argsort(cents)]
             mid = lo + n // 2
             node.left = _build(lo, mid)
             node.right = _build(mid, hi)
@@ -379,17 +467,20 @@ class TriangleBVH:
                 # per-query × per-tri brute.
                 tri_pts = self.V[self.F[tri_ids]]
                 active_idx = np.where(sub_active)[0]
-                # 각 active query 당 leaf tri 모두 평가.
-                for qi in active_idx:
-                    cps, ds = _closest_points_on_triangles_batch(
-                        points[qi], tri_pts,
-                    )
-                    if ds.size:
-                        j = int(np.argmin(ds))
-                        if ds[j] < best_d[qi]:
-                            best_d[qi] = float(ds[j])
-                            best_cp[qi] = cps[j]
-                            best_ti[qi] = int(tri_ids[j])
+                # active query 전체 x leaf tri 전체를 한 번에 (M,k) 배치 평가
+                # (BETA2831 — per-query 루프 제거, strict `<` 갱신 의미 보존).
+                cps_mk, ds_mk = _closest_points_on_triangles_matrix(
+                    points[active_idx], tri_pts,
+                )
+                j = ds_mk.argmin(axis=1)
+                rows = np.arange(active_idx.shape[0])
+                dmin = ds_mk[rows, j]
+                upd = dmin < best_d[active_idx]
+                if upd.any():
+                    sel = active_idx[upd]
+                    best_d[sel] = dmin[upd]
+                    best_cp[sel] = cps_mk[rows[upd], j[upd]]
+                    best_ti[sel] = tri_ids[j[upd]]
             else:
                 # push both children (RHS popped first).
                 stack.append((int(nright[ni]), sub_active))
