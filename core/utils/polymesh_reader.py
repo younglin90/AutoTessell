@@ -166,7 +166,9 @@ def parse_foam_labels(label_file: Path) -> list[int]:
     end = text.rfind(")")
     if start == -1 or end == -1:
         return []
-    inner = text[start + 1 : end]
+    inner = text[start + 1 : end].strip()
+    if not inner:
+        return []
     vals = np.fromstring(inner, dtype=np.int64, sep="\n")
     if vals.size == 0:
         vals = np.fromstring(inner, dtype=np.int64, sep=" ")
