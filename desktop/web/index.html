@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="stylesheet" href="styles.css?v=27" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -56,17 +56,19 @@
         <section class="card">
           <h3>입력 파일</h3>
           <div id="dropzone" class="dropzone">
-            <input id="file-input" type="file"
+            <input id="file-input" type="file" multiple
               accept=".stl,.obj,.ply,.off,.3mf,.step,.stp,.iges,.igs,.brep,.msh,.cas" hidden />
             <div class="dz-inner">
               <div class="dz-icon" aria-hidden="true">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/></svg>
               </div>
               <div class="dz-text">CAD/메쉬 파일을 드래그하거나 <u>클릭</u></div>
-              <div class="dz-hint">STL · OBJ · PLY · OFF · 3MF · STEP · IGES · BREP</div>
+              <div class="dz-hint">STL · OBJ · PLY · OFF · 3MF · STEP · IGES · BREP · 여러 개 선택 가능</div>
             </div>
           </div>
           <div id="file-meta" class="file-meta hidden"></div>
+          <div id="surface-list" class="surface-list hidden" aria-label="업로드된 표면 목록"></div>
+          <div id="surface-note" class="surface-note hidden"></div>
           <div class="demo-row" id="demo-row" hidden>
             <span class="demo-label">데모 데이터</span>
             <div class="demo-chips" id="demo-chips"></div>
@@ -306,8 +308,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=26"></script>
-    <script src="ui.js?v=26"></script>
-    <script src="app.js?v=26"></script>
+    <script src="viewer.js?v=27"></script>
+    <script src="ui.js?v=27"></script>
+    <script src="app.js?v=27"></script>
   </body>
 </html>

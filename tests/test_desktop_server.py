@@ -55,6 +55,19 @@ def _upload_sphere(client: TestClient) -> str:
     return body["job_id"]
 
 
+def _add_surface(
+    client: TestClient, job_id: str, filename: str = "sphere.stl"
+) -> dict[str, Any]:
+    """POST an extra surface onto an existing job; return the JSON body."""
+    data = _read_sphere_bytes()
+    resp = client.post(
+        f"/jobs/{job_id}/surfaces",
+        files={"file": (filename, io.BytesIO(data), "application/octet-stream")},
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
 async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
     """Mock _run_mesh_pipeline that sends standard WS messages."""
     await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock init"})
@@ -1043,3 +1056,191 @@ class TestJobCleanup:
 
         assert fake_id not in _jobs, "Expired job should have been removed"
         assert not fake_work_dir.exists(), "Temp dir should have been deleted"
+
+
+# ---------------------------------------------------------------------------
+# 13. TestMultiSurface — assembly upload / list / delete / patch names / gate
+# ---------------------------------------------------------------------------
+
+
+class TestMultiSurface:
+    """S1: multiple surface upload, listing, deletion, patch-name uniqueness,
+    and the (temporary) 2+ surface generation rejection."""
+
+    def _collect_messages(self, ws, *, timeout: float = 10.0) -> list[dict]:
+        messages: list[dict] = []
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                raw = ws.receive_text()
+                msg = json.loads(raw)
+                messages.append(msg)
+                if msg.get("type") in ("result", "error"):
+                    break
+            except Exception:
+                break
+        return messages
+
+    # --- upload registers first surface -----------------------------------
+
+    def test_upload_registers_first_surface(self, client):
+        job_id = _upload_sphere(client)
+        assert len(_jobs[job_id]["surfaces"]) == 1
+
+    def test_list_surfaces_after_upload(self, client):
+        job_id = _upload_sphere(client)
+        resp = client.get(f"/jobs/{job_id}/surfaces")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["n_surfaces"] == 1
+        assert len(body["surfaces"]) == 1
+
+    def test_first_surface_name_from_filename(self, client):
+        job_id = _upload_sphere(client)
+        body = client.get(f"/jobs/{job_id}/surfaces").json()
+        assert body["surfaces"][0]["name"] == "sphere"
+
+    # --- summary fields ----------------------------------------------------
+
+    def test_surface_summary_has_expected_fields(self, client):
+        job_id = _upload_sphere(client)
+        surf = client.get(f"/jobs/{job_id}/surfaces").json()["surfaces"][0]
+        for field in (
+            "surface_id", "name", "filename",
+            "n_faces", "watertight", "manifold", "size_bytes", "error",
+        ):
+            assert field in surf, f"Missing field: {field}"
+
+    def test_surface_summary_reports_integrity_for_valid_stl(self, client):
+        job_id = _upload_sphere(client)
+        surf = client.get(f"/jobs/{job_id}/surfaces").json()["surfaces"][0]
+        # sphere.stl is a real mesh → analyzer should succeed (no error) and
+        # report a positive face count plus boolean integrity flags.
+        assert surf["error"] is None
+        assert isinstance(surf["n_faces"], int) and surf["n_faces"] > 0
+        assert isinstance(surf["watertight"], bool)
+        assert isinstance(surf["manifold"], bool)
+
+    def test_surface_does_not_leak_disk_path(self, client):
+        job_id = _upload_sphere(client)
+        surf = client.get(f"/jobs/{job_id}/surfaces").json()["surfaces"][0]
+        assert "path" not in surf
+
+    # --- add additional surfaces ------------------------------------------
+
+    def test_add_second_surface_increments_count(self, client):
+        job_id = _upload_sphere(client)
+        body = _add_surface(client, job_id, "wing.stl")
+        assert body["n_surfaces"] == 2
+        assert len(_jobs[job_id]["surfaces"]) == 2
+
+    def test_add_surface_returns_full_list(self, client):
+        job_id = _upload_sphere(client)
+        body = _add_surface(client, job_id, "wing.stl")
+        names = [s["name"] for s in body["surfaces"]]
+        assert names == ["sphere", "wing"]
+
+    def test_duplicate_filename_gets_suffix(self, client):
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "sphere.stl")
+        _add_surface(client, job_id, "sphere.stl")
+        names = [s["name"] for s in client.get(f"/jobs/{job_id}/surfaces").json()["surfaces"]]
+        assert names == ["sphere", "sphere_1", "sphere_2"]
+
+    def test_add_surface_unknown_job_404(self, client):
+        data = _read_sphere_bytes()
+        resp = client.post(
+            "/jobs/nope/surfaces",
+            files={"file": ("s.stl", io.BytesIO(data), "application/octet-stream")},
+        )
+        assert resp.status_code == 404
+
+    def test_add_surface_wrong_format_400(self, client):
+        job_id = _upload_sphere(client)
+        resp = client.post(
+            f"/jobs/{job_id}/surfaces",
+            files={"file": ("notes.txt", io.BytesIO(b"hi"), "text/plain")},
+        )
+        assert resp.status_code == 400
+
+    def test_add_surface_bad_file_still_succeeds(self, client):
+        """An allowed extension with unparseable/empty bytes must still upload
+        (best-effort summary) — the request never fails on a bad mesh."""
+        job_id = _upload_sphere(client)
+        resp = client.post(
+            f"/jobs/{job_id}/surfaces",
+            files={"file": ("broken.stl", io.BytesIO(b"\x00" * 12), "application/octet-stream")},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["n_surfaces"] == 2
+        # Summary is degraded (error recorded and/or zero faces), not fatal.
+        surf = body["surface"]
+        assert surf["error"] is not None or surf["n_faces"] == 0
+
+    # --- delete ------------------------------------------------------------
+
+    def test_delete_surface_removes_it(self, client):
+        job_id = _upload_sphere(client)
+        add = _add_surface(client, job_id, "wing.stl")
+        wing_id = add["surface"]["surface_id"]
+        resp = client.delete(f"/jobs/{job_id}/surfaces/{wing_id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["n_surfaces"] == 1
+        remaining = [s["name"] for s in body["surfaces"]]
+        assert remaining == ["sphere"]
+
+    def test_delete_unknown_surface_404(self, client):
+        job_id = _upload_sphere(client)
+        resp = client.delete(f"/jobs/{job_id}/surfaces/does-not-exist")
+        assert resp.status_code == 404
+
+    def test_delete_surface_unknown_job_404(self, client):
+        resp = client.delete("/jobs/nope/surfaces/whatever")
+        assert resp.status_code == 404
+
+    def test_delete_first_surface_promotes_next_input(self, client):
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+        first_id = _jobs[job_id]["surfaces"][0]["surface_id"]
+        wing_path = _jobs[job_id]["surfaces"][1]["path"]
+        client.delete(f"/jobs/{job_id}/surfaces/{first_id}")
+        # remaining surface becomes the active single-file input
+        assert _jobs[job_id]["input_path"] == wing_path
+
+    def test_list_surfaces_unknown_job_404(self, client):
+        resp = client.get("/jobs/nope/surfaces")
+        assert resp.status_code == 404
+
+    # --- generation gate ---------------------------------------------------
+
+    def test_two_surfaces_generation_rejected(self, client):
+        """With 2+ surfaces, starting a run must be rejected with a clear
+        boolean-merge message (no real pipeline is run)."""
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+
+        with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+            ws.send_json(
+                {"action": "start", "quality": "draft", "tier": "auto", "max_iterations": 1}
+            )
+            messages = self._collect_messages(ws)
+
+        error_msgs = [m for m in messages if m.get("type") == "error"]
+        assert error_msgs, "Expected an error message for a 2-surface job"
+        assert "boolean" in error_msgs[0].get("message", "").lower()
+        assert _jobs[job_id]["status"] == "failed"
+
+    def test_single_surface_not_gated(self, client):
+        """A 1-surface job must NOT trip the multi-surface gate — the mocked
+        pipeline runs and produces a normal result."""
+        job_id = _upload_sphere(client)
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {"action": "start", "quality": "draft", "tier": "auto", "max_iterations": 1}
+                )
+                messages = self._collect_messages(ws)
+        result_msgs = [m for m in messages if m.get("type") == "result"]
+        assert result_msgs and result_msgs[0].get("success") is True

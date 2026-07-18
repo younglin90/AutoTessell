@@ -20,6 +20,7 @@
   const state = {
     jobId: null,
     fileName: null,
+    surfaces: [],
     ws: null,
     running: false,
     surfaceBuf: null,
@@ -117,7 +118,8 @@
   const fileInput = $("file-input");
   dz.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
-    if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+    if (fileInput.files.length) handleFiles(fileInput.files);
+    fileInput.value = ""; // allow re-selecting the same file
   });
   ["dragenter", "dragover"].forEach((ev) =>
     dz.addEventListener(ev, (e) => {
@@ -132,9 +134,25 @@
     })
   );
   dz.addEventListener("drop", (e) => {
-    const f = e.dataTransfer.files[0];
-    if (f) uploadFile(f);
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
   });
+
+  // Multi-file entry point: the first file (when no job yet) creates the job
+  // via /upload; every other file is added to that job as an extra surface.
+  async function handleFiles(fileList) {
+    const files = Array.from(fileList);
+    if (!files.length) return;
+    let start = 0;
+    if (!state.jobId) {
+      const ok = await uploadFile(files[0]);
+      if (!ok) return; // first upload failed — nothing to attach to
+      start = 1;
+    }
+    for (let i = start; i < files.length; i++) {
+      await addSurface(files[i]);
+    }
+    await refreshSurfaces();
+  }
 
   // -------------------------------------------------------------------
   // demo data — one-click sample meshes (fetched from the server, then
@@ -184,59 +202,191 @@
     }
   }
 
+  // Resolves to true on success (job created) / false on failure.
   function uploadFile(file) {
-    log("info", `업로드 중: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
-    setProgress(0, "업로드 중…");
+    return new Promise((resolve) => {
+      log("info", `업로드 중: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+      setProgress(0, "업로드 중…");
+      const fd = new FormData();
+      fd.append("file", file);
+      // XHR (not fetch) so we get upload progress on large CAD files.
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", API + "/upload");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = (e.loaded / e.total) * 100;
+          setProgress(pct, `업로드 중… ${Math.round(pct)}%`);
+        }
+      };
+      xhr.onerror = () => {
+        setProgress(0, "대기 중");
+        log("error", "업로드 네트워크 오류");
+        resolve(false);
+      };
+      xhr.onload = () => {
+        setProgress(0, "대기 중");
+        let j = {};
+        try {
+          j = JSON.parse(xhr.responseText);
+        } catch {
+          log("error", "업로드 응답 파싱 실패");
+          resolve(false);
+          return;
+        }
+        if (xhr.status !== 200) {
+          log("error", "업로드 실패: " + (j.error || xhr.status));
+          toast("error", j.error || `HTTP ${xhr.status}`, { title: "업로드 실패" });
+          resolve(false);
+          return;
+        }
+        state.jobId = j.job_id;
+        state.fileName = j.filename;
+        state.surfaces = [];
+        state.resultMesh = null;
+        state.faceMetrics = null;
+        $("file-meta").classList.remove("hidden");
+        $("file-meta").innerHTML = `job <code>${escapeHtml(j.job_id)}</code>`;
+        $("run-btn").disabled = false;
+        $("dl-zip").disabled = true;
+        $("dl-export").disabled = true;
+        const of = $("open-folder"); if (of) of.disabled = true;
+        state.outputDir = null;
+        $("kpi").classList.add("hidden");
+        resultBtn().disabled = true;
+        setNonOrthoAvailable(false);
+        setView("surface");
+        log("info", `업로드 완료 · job ${j.job_id}`);
+        const dz = $("dropzone");
+        if (dz && !UI.REDUCED) { dz.classList.remove("flash"); void dz.offsetWidth; dz.classList.add("flash"); }
+        toast("ok", `${j.filename} (${(j.size / 1024).toFixed(0)} KB)`, { title: "업로드 완료" });
+        refreshSurfaces();
+        loadSurface();
+        resolve(true);
+      };
+      xhr.send(fd);
+    });
+  }
+
+  // ===================================================================
+  // multi-surface (assembly) list — add / list / delete
+  // ===================================================================
+  async function addSurface(file) {
+    if (!state.jobId) return false;
+    log("info", `표면 추가: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
     const fd = new FormData();
     fd.append("file", file);
-    // XHR (not fetch) so we get upload progress on large CAD files.
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", API + "/upload");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = (e.loaded / e.total) * 100;
-        setProgress(pct, `업로드 중… ${Math.round(pct)}%`);
+    try {
+      const r = await fetch(`${API}/jobs/${state.jobId}/surfaces`, { method: "POST", body: fd });
+      const j = await r.json();
+      if (!r.ok) {
+        log("error", "표면 추가 실패: " + (j.error || r.status));
+        toast("error", j.error || `HTTP ${r.status}`, { title: "표면 추가 실패" });
+        return false;
       }
-    };
-    xhr.onerror = () => {
-      setProgress(0, "대기 중");
-      log("error", "업로드 네트워크 오류");
-    };
-    xhr.onload = () => {
-      setProgress(0, "대기 중");
-      let j = {};
-      try {
-        j = JSON.parse(xhr.responseText);
-      } catch {
-        log("error", "업로드 응답 파싱 실패");
-        return;
+      log("info", `표면 추가됨 · ${j.surface ? j.surface.name : file.name} (총 ${j.n_surfaces}개)`);
+      return true;
+    } catch (e) {
+      log("error", "표면 추가 네트워크 오류: " + e.message);
+      return false;
+    }
+  }
+
+  async function refreshSurfaces() {
+    if (!state.jobId) { state.surfaces = []; renderSurfaces([]); return; }
+    try {
+      const r = await fetch(`${API}/jobs/${state.jobId}/surfaces`, { cache: "no-store" });
+      const j = await r.json();
+      state.surfaces = (j && j.surfaces) || [];
+    } catch {
+      /* keep previous list on transient error */
+    }
+    renderSurfaces(state.surfaces);
+  }
+
+  async function deleteSurface(surfaceId) {
+    if (!state.jobId) return;
+    try {
+      const r = await fetch(`${API}/jobs/${state.jobId}/surfaces/${surfaceId}`, { method: "DELETE" });
+      const j = await r.json();
+      if (!r.ok) { log("warn", "표면 삭제 실패: " + (j.error || r.status)); return; }
+      state.surfaces = (j && j.surfaces) || [];
+      renderSurfaces(state.surfaces);
+      log("info", `표면 삭제됨 (남은 ${j.n_surfaces}개)`);
+    } catch (e) {
+      log("warn", "표면 삭제 오류: " + e.message);
+    }
+  }
+
+  function renderSurfaces(list) {
+    const box = $("surface-list");
+    const note = $("surface-note");
+    if (!box) return;
+    if (!list || !list.length) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      if (note) note.classList.add("hidden");
+      // A job with no surfaces left cannot be meshed — keep Run disabled.
+      if (state.jobId && !state.running) $("run-btn").disabled = true;
+      return;
+    }
+    if (state.jobId && !state.running) $("run-btn").disabled = false;
+    box.classList.remove("hidden");
+    box.innerHTML = "";
+    for (const s of list) {
+      const item = document.createElement("div");
+      item.className = "surface-item";
+
+      const info = document.createElement("div");
+      info.className = "surf-info";
+      const nm = document.createElement("span");
+      nm.className = "surf-name";
+      nm.textContent = s.name;
+      nm.title = s.filename;
+      const meta = document.createElement("span");
+      meta.className = "surf-meta";
+      const kb = ((s.size_bytes || 0) / 1024).toFixed(0);
+      meta.textContent = `${kb} KB` + (s.n_faces != null ? ` · ${Number(s.n_faces).toLocaleString()} faces` : "");
+      info.appendChild(nm);
+      info.appendChild(meta);
+
+      const badges = document.createElement("div");
+      badges.className = "surf-badges";
+      if (s.watertight === true) {
+        badges.appendChild(makeBadge("watertight", "surf-ok"));
+      } else if (s.watertight === false) {
+        badges.appendChild(makeBadge("open", "surf-bad"));
+      } else if (s.error) {
+        badges.appendChild(makeBadge("요약 불가", "surf-unknown"));
       }
-      if (xhr.status !== 200) {
-        log("error", "업로드 실패: " + (j.error || xhr.status));
-        return;
+
+      const del = document.createElement("button");
+      del.className = "surf-del";
+      del.type = "button";
+      del.title = "표면 삭제";
+      del.setAttribute("aria-label", `${s.name} 표면 삭제`);
+      del.textContent = "✕";
+      del.addEventListener("click", () => deleteSurface(s.surface_id));
+
+      item.appendChild(info);
+      item.appendChild(badges);
+      item.appendChild(del);
+      box.appendChild(item);
+    }
+    if (note) {
+      if (list.length >= 2) {
+        note.classList.remove("hidden");
+        note.textContent = "표면 2개 이상 — boolean 병합은 곧 지원됩니다. 지금은 1개만 남기면 메쉬를 생성할 수 있습니다.";
+      } else {
+        note.classList.add("hidden");
       }
-      state.jobId = j.job_id;
-      state.fileName = j.filename;
-      state.resultMesh = null;
-      state.faceMetrics = null;
-      $("file-meta").classList.remove("hidden");
-      $("file-meta").innerHTML = `<b>${escapeHtml(j.filename)}</b> · ${(j.size / 1024).toFixed(0)} KB · job <code>${escapeHtml(j.job_id)}</code>`;
-      $("run-btn").disabled = false;
-      $("dl-zip").disabled = true;
-      $("dl-export").disabled = true;
-      const of = $("open-folder"); if (of) of.disabled = true;
-      state.outputDir = null;
-      $("kpi").classList.add("hidden");
-      resultBtn().disabled = true;
-      setNonOrthoAvailable(false);
-      setView("surface");
-      log("info", `업로드 완료 · job ${j.job_id}`);
-      const dz = $("dropzone");
-      if (dz && !UI.REDUCED) { dz.classList.remove("flash"); void dz.offsetWidth; dz.classList.add("flash"); }
-      toast("ok", `${j.filename} (${(j.size / 1024).toFixed(0)} KB)`, { title: "업로드 완료" });
-      loadSurface();
-    };
-    xhr.send(fd);
+    }
+  }
+
+  function makeBadge(text, cls) {
+    const b = document.createElement("span");
+    b.className = "surf-badge " + cls;
+    b.textContent = text;
+    return b;
   }
 
   async function loadSurface() {

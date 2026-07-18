@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import shutil
 import tempfile
 import threading
@@ -181,6 +182,10 @@ def _create_job(input_filename: str) -> dict[str, Any]:
         "stage": "",
         "message": "",
         "work_dir": tempfile.mkdtemp(prefix=f"autotessell_{job_id}_"),
+        # Uploaded surface meshes (assembly). The first is also the legacy
+        # single-file input; each entry's ``name`` is the seed for the future
+        # polyMesh patch name (per-patch BL / BC downstream).
+        "surfaces": [],
         "result": None,
         "error": None,
         "created_at": time.time(),
@@ -196,6 +201,157 @@ def _create_job(input_filename: str) -> dict[str, Any]:
 def _touch_job(job: dict[str, Any]) -> None:
     """Update the last-activity timestamp so TTL is measured from last use."""
     job["updated_at"] = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Multi-surface (assembly) support
+# ---------------------------------------------------------------------------
+# A job can hold several surface meshes.  Each surface's ``name`` is derived
+# from its filename and seeds the eventual polyMesh patch name (per-patch BL /
+# BC).  Boolean merging of 2+ surfaces is not implemented yet — mesh generation
+# rejects multi-surface jobs with a clear message until S2 lands.
+
+
+def _patch_name_from_filename(filename: str, existing: set[str]) -> str:
+    """Derive a unique, OpenFOAM-safe patch name from an uploaded filename.
+
+    Sanitises to ``[0-9A-Za-z_]``, avoids a leading digit, and appends
+    ``_1``/``_2``/... on collision so every surface gets a distinct patch seed.
+    """
+    stem = Path(filename).stem
+    name = re.sub(r"[^0-9A-Za-z_]", "_", stem).strip("_")
+    if not name:
+        name = "surface"
+    if name[0].isdigit():
+        name = f"s_{name}"
+    base = name
+    i = 1
+    while name in existing:
+        name = f"{base}_{i}"
+        i += 1
+    return name
+
+
+def _analyze_surface(path: Path) -> dict[str, Any]:
+    """Best-effort integrity summary (n_faces / watertight / manifold).
+
+    Reuses the analyzer's native loader + topology helpers.  Never raises: on
+    any failure the fields are ``None`` and ``error`` carries the reason, so an
+    unreadable upload still succeeds (only its summary is degraded).
+
+    CAD (STEP/IGES/BREP) needs OCP/gmsh tessellation — skipped here so an upload
+    never blocks on it; the preview path tessellates CAD lazily instead.
+    """
+    if path.suffix.lower() in CAD_PREVIEW_EXTS:
+        return {
+            "n_faces": None,
+            "watertight": None,
+            "manifold": None,
+            "error": "CAD 표면 요약은 테셀레이션 후 제공됩니다",
+        }
+    try:
+        import numpy as np
+
+        from core.analyzer import topology as _topo
+        from core.analyzer.file_reader import load_mesh
+
+        mesh = load_mesh(path)
+        faces = np.asarray(mesh.faces, dtype=np.int64)
+        return {
+            "n_faces": int(len(faces)),
+            "watertight": bool(_topo.is_watertight(faces)),
+            "manifold": bool(_topo.is_manifold(faces)),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001 — summary is best-effort
+        log.warning("surface_analyze_failed", path=str(path), error=str(exc))
+        return {
+            "n_faces": None,
+            "watertight": None,
+            "manifold": None,
+            "error": str(exc),
+        }
+
+
+def _surface_public(entry: dict[str, Any]) -> dict[str, Any]:
+    """Client-facing view of a surface entry (drops internal keys)."""
+    return {
+        "surface_id": entry["surface_id"],
+        "name": entry["name"],
+        "filename": entry["filename"],
+        "n_faces": entry["n_faces"],
+        "watertight": entry["watertight"],
+        "manifold": entry["manifold"],
+        "size_bytes": entry["size_bytes"],
+        "error": entry["error"],
+    }
+
+
+def _register_surface(
+    job: dict[str, Any], filename: str, content: bytes
+) -> dict[str, Any]:
+    """Persist an uploaded surface into the job and append a metadata entry.
+
+    Metadata only — the integrity summary is filled in lazily by
+    ``_ensure_surface_analyzed`` so ``/upload`` stays as light as it was before
+    (analysing on every upload perturbs the CAD-preview tessellation path).
+
+    The FIRST surface reuses the legacy single-file path (``input_path`` ==
+    ``work_dir/filename``) so the existing preview / mesh-gen path is unchanged.
+    Later surfaces are stored under ``work_dir/surfaces/`` with an id prefix so
+    duplicate filenames never collide on disk.
+    """
+    surfaces: list[dict[str, Any]] = job["surfaces"]
+    existing_names = {s["name"] for s in surfaces}
+    surface_id = str(uuid.uuid4())[:8]
+    name = _patch_name_from_filename(filename, existing_names)
+    work_dir = Path(job["work_dir"])
+
+    if not surfaces and job.get("input_path"):
+        # /upload already wrote the bytes to input_path — reuse it verbatim.
+        disk_path = Path(job["input_path"])
+    else:
+        surf_dir = work_dir / "surfaces"
+        surf_dir.mkdir(exist_ok=True)
+        disk_path = surf_dir / f"{surface_id}_{filename}"
+        disk_path.write_bytes(content)
+
+    entry: dict[str, Any] = {
+        "surface_id": surface_id,
+        "name": name,
+        "filename": filename,
+        "path": str(disk_path),
+        "size_bytes": len(content),
+        "n_faces": None,
+        "watertight": None,
+        "manifold": None,
+        "error": None,
+        "_analyzed": False,
+    }
+    surfaces.append(entry)
+    _touch_job(job)
+    log.info(
+        "surface_added",
+        job_id=job["id"],
+        surface_id=surface_id,
+        name=name,
+        n_surfaces=len(surfaces),
+    )
+    return entry
+
+
+async def _ensure_surface_analyzed(entry: dict[str, Any]) -> None:
+    """Fill in the integrity summary for a surface once (best-effort, cached)."""
+    if entry.get("_analyzed"):
+        return
+    summary = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _analyze_surface(Path(entry["path"]))
+    )
+    entry["n_faces"] = summary["n_faces"]
+    entry["watertight"] = summary["watertight"]
+    entry["manifold"] = summary["manifold"]
+    entry["error"] = summary["error"]
+    entry["_analyzed"] = True
 
 
 # ---------------------------------------------------------------------------
@@ -235,21 +391,21 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "version": APP_VERSION}
 
 
-@app.post("/upload")
-async def upload_file(file: UploadFile) -> JSONResponse:
-    """CAD/메쉬 파일 업로드 → job 생성.
+async def _read_validated_upload(
+    file: UploadFile,
+) -> tuple[bytes | None, JSONResponse | None]:
+    """Validate filename/extension and stream the body under the size cap.
 
-    Validation:
-    - Filename must be non-empty.
-    - Extension must be in ALLOWED_EXTENSIONS.
-    - File size must not exceed MAX_UPLOAD_SIZE (100 MB).
+    Returns ``(content, None)`` on success or ``(None, error_response)`` on any
+    validation failure.  Shared by ``/upload`` and the multi-surface endpoint so
+    both enforce identical rules.
     """
     if not file.filename:
-        return JSONResponse({"error": "파일명 없음"}, status_code=400)
+        return None, JSONResponse({"error": "파일명 없음"}, status_code=400)
 
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        return JSONResponse(
+        return None, JSONResponse(
             {
                 "error": f"지원하지 않는 파일 형식: {ext}",
                 "allowed": sorted(ALLOWED_EXTENSIONS),
@@ -266,13 +422,30 @@ async def upload_file(file: UploadFile) -> JSONResponse:
             break
         content += chunk
         if len(content) > MAX_UPLOAD_SIZE:
-            return JSONResponse(
+            return None, JSONResponse(
                 {
                     "error": f"파일 크기 초과: 최대 {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
                     "max_bytes": MAX_UPLOAD_SIZE,
                 },
                 status_code=413,
             )
+    return content, None
+
+
+@app.post("/upload")
+async def upload_file(file: UploadFile) -> JSONResponse:
+    """CAD/메쉬 파일 업로드 → job 생성.
+
+    Validation:
+    - Filename must be non-empty.
+    - Extension must be in ALLOWED_EXTENSIONS.
+    - File size must not exceed MAX_UPLOAD_SIZE (100 MB).
+    """
+    content, err = await _read_validated_upload(file)
+    if err is not None:
+        return err
+    assert content is not None and file.filename is not None  # narrowed by err check
+    ext = Path(file.filename).suffix.lower()
 
     job = _create_job(file.filename)
     work_dir = Path(job["work_dir"])
@@ -281,6 +454,9 @@ async def upload_file(file: UploadFile) -> JSONResponse:
     input_path.write_bytes(content)
 
     job["input_path"] = str(input_path)
+    # Register the uploaded file as the job's first surface (assembly seed).
+    # Summary is filled in lazily (GET /surfaces) so /upload stays light.
+    _register_surface(job, file.filename, content)
     log.info("file_uploaded", job_id=job["id"], filename=file.filename, size=len(content))
 
     # CAD inputs (STEP/IGES/BREP) are not parseable by the browser's STL reader.
@@ -356,6 +532,104 @@ async def cancel_job(job_id: str) -> JSONResponse:
     _touch_job(job)
     log.info("job_cancel_requested", job_id=job_id, status=job.get("status"))
     return JSONResponse({"status": "cancelling", "job_id": job_id})
+
+
+# ---------------------------------------------------------------------------
+# Multi-surface (assembly) endpoints — add / list / delete surfaces on a job
+# ---------------------------------------------------------------------------
+
+
+@app.post("/jobs/{job_id}/surfaces")
+async def add_surface(job_id: str, file: UploadFile) -> JSONResponse:
+    """기존 job 에 표면 메쉬를 추가한다 (어셈블리).
+
+    파일명 기반 patch 이름은 중복 시 suffix 로 유일화된다. 무결성 요약
+    (n_faces/watertight/manifold) 은 best-effort — 분석 실패해도 업로드는 성공.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    content, err = await _read_validated_upload(file)
+    if err is not None:
+        return err
+    assert content is not None and file.filename is not None
+
+    entry = _register_surface(job, file.filename, content)
+    await _ensure_surface_analyzed(entry)
+    return JSONResponse(
+        {
+            "job_id": job_id,
+            "surface": _surface_public(entry),
+            "surfaces": [_surface_public(s) for s in job["surfaces"]],
+            "n_surfaces": len(job["surfaces"]),
+        }
+    )
+
+
+@app.get("/jobs/{job_id}/surfaces")
+async def list_surfaces(job_id: str) -> JSONResponse:
+    """job 의 표면 목록을 반환한다."""
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    _touch_job(job)
+    surfaces: list[dict[str, Any]] = job.get("surfaces", [])
+    for s in surfaces:
+        await _ensure_surface_analyzed(s)
+    return JSONResponse(
+        {
+            "surfaces": [_surface_public(s) for s in surfaces],
+            "n_surfaces": len(surfaces),
+        }
+    )
+
+
+@app.delete("/jobs/{job_id}/surfaces/{surface_id}")
+async def delete_surface(job_id: str, surface_id: str) -> JSONResponse:
+    """표면을 목록에서 제거하고 디스크 파일을 삭제한다.
+
+    첫 표면을 지우면 남은 첫 표면을 새 활성 입력(input_path)으로 승격시켜
+    단일-표면 메쉬 생성 경로가 계속 동작하게 한다.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    surfaces: list[dict[str, Any]] = job.get("surfaces", [])
+    idx = next(
+        (i for i, s in enumerate(surfaces) if s["surface_id"] == surface_id), None
+    )
+    if idx is None:
+        return JSONResponse({"error": "Surface not found"}, status_code=404)
+
+    entry = surfaces.pop(idx)
+    try:
+        p = Path(entry["path"])
+        if p.exists():
+            p.unlink()
+    except Exception as exc:  # noqa: BLE001 — never fail a delete on unlink
+        log.warning("surface_unlink_failed", path=entry.get("path"), error=str(exc))
+
+    # Keep the active single-file input consistent with the remaining surfaces.
+    if surfaces:
+        job["input_path"] = surfaces[0]["path"]
+        job["input_file"] = surfaces[0]["filename"]
+
+    _touch_job(job)
+    log.info(
+        "surface_deleted",
+        job_id=job_id,
+        surface_id=surface_id,
+        n_surfaces=len(surfaces),
+    )
+    return JSONResponse(
+        {
+            "deleted": surface_id,
+            "surfaces": [_surface_public(s) for s in surfaces],
+            "n_surfaces": len(surfaces),
+        }
+    )
 
 
 @app.get("/jobs/{job_id}/download/polyMesh.zip")
@@ -639,6 +913,28 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
+    # Multi-surface assembly gate: boolean merging of 2+ surfaces is not
+    # implemented yet (S2). Reject clearly instead of silently meshing only the
+    # first surface. A single surface takes the existing path unchanged.
+    n_surfaces = len(job.get("surfaces", []))
+    if n_surfaces >= 2:
+        msg = (
+            "여러 표면의 boolean 병합은 곧 지원됩니다 — 현재는 표면 1개만 "
+            "메쉬를 생성할 수 있습니다. 표면 목록에서 1개만 남기고 나머지를 "
+            "삭제한 뒤 다시 시도하세요."
+        )
+        job["status"] = "failed"
+        job["error"] = msg
+        _touch_job(job)
+        try:
+            await ws.send_json(
+                {"type": "log", "level": "error", "message": f"[Server] {msg}"}
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        await ws.send_json({"type": "error", "message": msg})
+        return
+
     from core.pipeline.orchestrator import PipelineOrchestrator
 
     job["status"] = "running"
