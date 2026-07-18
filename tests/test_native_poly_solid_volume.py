@@ -30,30 +30,29 @@ outside the input. So each property is gated independently:
   3. volume — cell volumes must sum to 1.000, none degenerate.
   4. no degenerate cells.
 
-MEASURED (beta2823, CARD POLY-S2, cube.stl / draft / tier_native_poly,
-cells=15, time~=45s, skew=2.05, negative_volumes=0, verdict=PASS_WITH_WARNINGS
-— the existing checker/verdict is BLIND to void and volume defects, exactly
-like the tet suite's total-area trap):
+MEASURED (beta2826, CARD POLY-S3, cube.stl / draft / tier_native_poly,
+cells=15, time~=50s, skew=0.457, negative_volumes=0, verdict=PASS):
 
   1. surface coverage:  6.000 (1.00x)  -> PASS  -> permanent gate.
-  2. void (off-plane):  2.435 (>0.30 allowed) -> FAIL -> xfail(strict).
-     Root cause (measured, supersedes the POLY-S1 "open-wall" hypothesis,
-     which measurement disproved): the interior dual interface per tet EDGE
-     is generally non-planar, so per-cell ConvexHull triangulated/merged it
-     differently on each side of the edge -> mismatched vertex-set keys ->
-     the interface leaked as a one-sided boundary face on both cells. POLY-S2
-     replaced the per-cell ConvexHull interior faces with a topological
-     edge-ring construction (dual point = tet centroid, one face per interior
-     tet edge, ordered by face-adjacency walk) which guarantees exactly
-     2-cell sharing and cut void 7.588 -> 2.435 (-68%) while keeping the
-     boundary-vertex surface cap logic untouched (6.000 unaffected). A
-     monotonic guard inside ``tet_to_poly_dual`` compares on/off-plane area
-     of the new topological path against the old ConvexHull path and only
-     adopts the new path when it does not regress either metric.
-  3. volume Sigma|vol|: 1.177 (1.18x, >1.05 allowed) -> FAIL -> xfail(strict).
-     Root cause: the same open boundary cells are unbounded on their missing
-     face, so their centroid-apex pyramid decomposition bulges outside the
-     cube -> Sigma|vol| exceeds the true 1.000 by 18%.
+  2. void (off-plane):  0.000 (<=0.30 allowed) -> PASS -> permanent gate
+     (was 2.435 pre-POLY-S3, 7.588 pre-POLY-S2). Root cause fix: dual.py's
+     ``is_cap`` classifier flagged any hull face touching >=1 surface point
+     as a boundary cap, leaking inward-facing faces as one-sided boundary
+     walls. POLY-S3 filters caps to "all vertices lie on one input surface
+     plane" (``_surface_planes``) and closes the remaining boundary-edge
+     seam with a topological separating face (``_ordered_tet_ring`` open
+     fan + stable boundary-face-centroid / boundary-edge-midpoint dual
+     point ids). A monotonic guard inside ``tet_to_poly_dual`` compares
+     on/off-plane area of the new topological path against the old
+     ConvexHull path and only adopts the new path when it does not regress
+     either metric.
+  3. volume Sigma|vol|: 1.077 (1.08x, >1.05 allowed) -> FAIL -> xfail(strict)
+     (was 1.177 pre-POLY-S3). Root cause: closing the void (item 2) also
+     tightened the boundary-cell decomposition, but a residual ~7.7%
+     over-fill remains unresolved — POLY-S3 did not reach the <=1.05 bar
+     the card targeted (prototype predicted 1.049); recorded here rather
+     than force-closing the gate. See ``harness/plan_poly3.md`` for the next
+     candidate (boundary-cell geometry refinement).
   4. degenerate cells: 0 -> PASS -> permanent gate.
 
 Poly cells are arbitrary convex polyhedra (tet->dual duals), so tet's
@@ -68,9 +67,10 @@ per gate would blow the 3-minute test budget. The pipeline therefore runs
 ONCE per module and all four gates read from the shared measurement.
 
 Do NOT widen the xfail tolerances without re-measuring; do NOT flip the
-permanent gates to xfail. If POLY-S2/S3 fix void/volume, the ``strict=True``
-xfail markers will XPASS and fail the run — update this docstring and gate
-markers together with the fix, per the card sequence in ``harness/plan_poly1.md``.
+permanent gates to xfail. POLY-S3 fixed void (now a permanent gate); if a
+follow-up card fixes volume too, its ``strict=True`` xfail marker will XPASS
+and fail the run — update this docstring and the marker together with the
+fix, per the card sequence in ``harness/plan_poly1.md`` / ``plan_poly3.md``.
 """
 
 from __future__ import annotations
@@ -232,24 +232,14 @@ def test_native_poly_has_no_degenerate_cells(poly_case: Path) -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "measured 2.435 off-plane boundary area (down from 7.588 pre-POLY-S2) "
-        "— the topological edge-ring dual (POLY-S2) removed the interior "
-        "ConvexHull mismatch but does not yet fully close the boundary-cap "
-        "geometry — see module docstring; the residual is scoped to CARD POLY-S3."
-    ),
-    strict=True,
-)
 def test_native_poly_has_no_interior_voids(poly_case: Path) -> None:
     """No boundary area may lie off the input surface (that would be a void wall).
 
     A watertight input has exactly one boundary: itself. Measured cube.stl /
-    draft / tier_native_poly (post-POLY-S2): off-plane boundary area 2.435
-    (was 7.588 pre-POLY-S2) — the topological edge-ring dual construction cut
-    the leaked interior interface area by 68%, but a residual off-plane area
-    remains around the boundary-cap/interior seam. XFAIL(strict) — the
-    residual defect is scoped to CARD POLY-S3.
+    draft / tier_native_poly (post-POLY-S3): off-plane boundary area 0.000
+    (was 2.435 pre-POLY-S3, 7.588 pre-POLY-S2). POLY-S3's on-plane cap filter
+    plus topological boundary-edge separating face closed the leak entirely.
+    PERMANENT gate.
     """
     _, off_area = _boundary_area_split(poly_case)
     assert off_area <= 0.05 * _TRUE_AREA, (
@@ -260,19 +250,21 @@ def test_native_poly_has_no_interior_voids(poly_case: Path) -> None:
 
 @pytest.mark.xfail(
     reason=(
-        "measured 1.177x (Sigma|vol|=1.177) — the same open boundary cells are "
-        "unbounded on their missing face and bulge outside the cube — see module "
-        "docstring, root cause and fix belong to CARD POLY-S3."
+        "measured 1.077x (Sigma|vol|=1.077, down from 1.177 pre-POLY-S3) — "
+        "POLY-S3 closed the interior void (see gate above) but a residual "
+        "~7.7% boundary-cell over-fill remains, still above the 1.05 "
+        "threshold — see module docstring; open for a follow-up card."
     ),
     strict=True,
 )
 def test_native_poly_encloses_true_volume(poly_case: Path) -> None:
     """Cell volumes must sum to the input's volume — i.e. the cells tile it.
 
-    Measured cube.stl / draft / tier_native_poly: Sigma|vol| 1.177 (1.18x) —
-    the open-wall boundary cells (see void gate above) are unbounded on their
-    missing face, so their centroid-apex pyramid volume bulges past the true
-    cube volume. XFAIL(strict) — the exact defect CARD POLY-S3 is scoped to fix.
+    Measured cube.stl / draft / tier_native_poly (post-POLY-S3): Sigma|vol|
+    1.077 (1.08x), down from 1.177 (1.18x) pre-POLY-S3. Closing the interior
+    void (see the void gate above) reduced but did not eliminate the
+    boundary-cell over-fill. XFAIL(strict) — still above the 1.05 tolerance;
+    scoped to a follow-up card (see harness/plan_poly3.md "다음 후보").
     """
     vols = _cell_volumes(poly_case)
     total = float(vols.sum())

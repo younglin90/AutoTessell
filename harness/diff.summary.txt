@@ -1,8 +1,23 @@
-card: FSL4
-file: tests/test_native_tet_dual_torus_limit.py (new)
-functions: _run_dual_torus, _cell_volumes, _input_volume,
-  test_dual_torus_volume_tiling_locked (gate A, PASS lock),
-  test_dual_torus_boundary_skew_cure_target (gate B, xfail strict)
-lines_added: 172
+card: SHARPRIDGE1
+file: core/preprocessor/remesh.py
+functions: apply_laplacian_smoothing
+lines_added: 21
 lines_removed: 0
-core/ untouched.
+
+measured (WSL /usr/bin/python3 3.12, igl+pyacvd present; Windows .venv lacks
+  igl/pyacvd -- must run via WSL to reproduce):
+  sharp_ridge: guard fired once: pre_area=6.16 post_area=0.00011 hd_rel=0.014
+    -> revert to pyACVD 384-face surface. hausdorff_rel 13962 -> 0.04226
+    (target <0.05, PASS). n_cells=2276>0. bench time 19.7s (plan gate <=15s,
+    MISSED -- native_tet itself takes ~16s on this shape, guard overhead
+    negligible).
+  cube (N=500): PASS, cells=417>=400, area 6.000 ok (ratio 1.00).
+  cylinder: verdict=FAIL (pre-existing, unrelated), skew=44.9 (matches known
+    baseline ~45), hausdorff_rel=0.0, no L2/guard invoked (watertight->L1 gate
+    passes, laplacian never reached).
+  perforated_plate: L1 gate passes (watertight) -> L2/laplacian never invoked
+    (confirmed: no laplacian_* log line). native_tet itself did not finish
+    within 90s nor 170s (stuck after VVV12 pass, pre-existing perf issue,
+    NOT caused by this diff). Could not measure area_ratio/neg_vol.
+  dual_torus: completed in 140s, area_ratio=1.0095>=0.95, vol_ratio=1.0098
+    >=0.95, no laplacian log (watertight, L2 skipped) -- no regression.

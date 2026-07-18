@@ -375,6 +375,14 @@ def tet_to_poly_dual(
     tet_point_id = np.array(
         [_add_point(tet_centroids[ti]) for ti in range(n_tets)], dtype=np.int64,
     )
+    # boundary face centroid / boundary edge midpoint 도 안정적인 dual point id 로
+    # 미리 등록한다 (POLY-S3: on-plane cap + boundary-edge separating face 가 공유).
+    bface_pid: dict[tuple[int, int, int], int] = {
+        tri: _add_point(V[list(tri)].mean(axis=0)) for tri in boundary_faces
+    }
+    bedge_pid: dict[tuple[int, int], int] = {
+        e: _add_point(0.5 * (V[e[0]] + V[e[1]])) for e in boundary_edges_set
+    }
 
     n_skipped = 0
     for v_in in range(n_verts):
@@ -522,19 +530,66 @@ def tet_to_poly_dual(
         b_i_own.append(own)
         b_i_nbr.append(cell_index_of_vert[w])
 
+    # 3b') boundary-edge separating face: 인접 boundary cell 이 surface edge 를
+    # 가로질러 공유해야 할 내부면 (line-511 이 skip 하던 boundary edge 를 보완).
+    edge_to_btris: dict[tuple[int, int], list[tuple[int, int, int]]] = defaultdict(list)
+    for tri in boundary_faces:
+        e01 = (min(tri[0], tri[1]), max(tri[0], tri[1]))
+        e12 = (min(tri[1], tri[2]), max(tri[1], tri[2]))
+        e20 = (min(tri[2], tri[0]), max(tri[2], tri[0]))
+        for e in (e01, e12, e20):
+            edge_to_btris[e].append(tri)
+    for e in boundary_edges_set:
+        u, w = e
+        if u not in cell_index_of_vert or w not in cell_index_of_vert:
+            continue
+        btris = edge_to_btris.get(e, [])
+        if len(btris) != 2:
+            continue
+        t_a, t_b = btris
+        ring, _closed = _ordered_tet_ring(e, edge_tets, face_tets, T)
+        if not ring:
+            continue
+        raw = (
+            [bface_pid[t_a]]
+            + [int(tet_point_id[ti]) for ti in ring]
+            + [bface_pid[t_b], bedge_pid[e]]
+        )
+        be_face: list[int] = []
+        for pid in raw:
+            if not be_face or be_face[-1] != pid:
+                be_face.append(pid)
+        if len(be_face) > 1 and be_face[0] == be_face[-1]:
+            be_face.pop()
+        if len(be_face) < 3:
+            continue
+        own = cell_index_of_vert[u]
+        b_i_faces.append(_flip_if_inward(be_face, cell_centroid_list[own]))
+        b_i_own.append(own)
+        b_i_nbr.append(cell_index_of_vert[w])
+
+    # 3c) on-plane cap 필터: is_cap 은 surface 점을 하나라도 포함하면 true 이므로
+    # 내부를 향한 hull face 까지 새어들어온다. 진짜 cap 은 "모든 정점이 한 입력
+    # 평면 위" 인 face 뿐 — off-plane face 는 위 boundary-edge/edge-ring 이 이미
+    # 내부를 닫으므로 버린다.
+    surface_planes = _surface_planes(V, boundary_faces)
+
+    def _is_on_plane(face: list[int], tol: float = 1e-6) -> bool:
+        p = dual_points[np.asarray(face, dtype=int)]
+        return any(np.all(np.abs(p @ n + d) < tol) for n, d in surface_planes)
+
     b_b_faces: list[list[int]] = []
     b_b_own: list[int] = []
     for v_in, ci in cell_index_of_vert.items():
         if not is_boundary_vert[v_in]:
             continue
         for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
-            if is_cap:
+            if is_cap and _is_on_plane(list(f)):
                 b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
                 b_b_own.append(ci)
 
-    # 3c) 단조 가드: on/off-plane boundary area split 으로 path 선택.
+    # 3d) 단조 가드: on/off-plane boundary area split 으로 path 선택.
     # path B 가 void 를 늘리거나 surface coverage 를 깨면 path A 로 복귀한다.
-    surface_planes = _surface_planes(V, boundary_faces)
     pre_on, pre_off = _area_split(dual_points, a_b_faces, surface_planes)
     post_on, post_off = _area_split(dual_points, b_b_faces, surface_planes)
     use_topo = (
