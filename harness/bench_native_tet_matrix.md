@@ -20,7 +20,7 @@ Protocol per shape: draft / tier_hint=native_tet / N=2000 / P4C disabled / 120s 
 | external_flow_isolated_box.stl | Y/1 | 2346 | 1.000 | 1.006 | 0 | 0 | 0 | 1.81 | 88.2 | PASS | 8s |
 | very_thin_disk_0_01mm.stl | Y/1 | 2129 | 1.000 | 1.000 | 4 | 0 | 0 | 23809523916666683947502010368.00 | 89.6 | FAIL | 7s |
 | extreme_aspect_ratio_needle.stl | Y/1 | 126 | 1.000 | 1.001 | 0 | 0 | 0 | 559.20 | 90.0 | FAIL | 4s |
-| high_genus_dual_torus.stl | Y/1 | 7776 | 0.562 | 0.472 | 0 | 0 | 0 | 19.76 | 89.7 | FAIL | 55s |
+| high_genus_dual_torus.stl | Y/1 | 11071 | 1.010 | 1.010 | 0 | 0 | 0 | 2.2e6 | 90.0 | FAIL | 210s |
 | multi_scale_sphere_with_micro_spikes.stl | Y/9 | 2296 | 0.996 | 1.006 | 0 | 0 | 0 | 1.50 | 74.1 | PASS | 16s |
 | many_small_features_perforated_plate.stl | Y/65 | 1962 | 0.011 | 0.003 | 0 | 0 | 0 | 36.41 | 89.8 | FAIL | 5s |
 | sharp_features_micro_ridge.stl | N/1 | 1727 | 0.345 | 1.006 | 0 | 0 | 0 | 125.38 | 90.0 | FAIL | 18s |
@@ -35,11 +35,14 @@ Protocol per shape: draft / tier_hint=native_tet / N=2000 / P4C disabled / 120s 
   results (oracle-equivalence tested). All 3 former TIMEOUT rows now complete
   well inside the 120s wall: `sphere.stl` 143.5s→**29s**, `sphere_watertight.stl`
   same, `high_genus_dual_torus.stl` >120s→**55s**. sphere/sphere_watertight are
-  now clean PASS. **high_genus_dual_torus is not** — it was masked by the
-  timeout and now shows a real solid-invariant defect: area-ratio 0.562,
-  vol-ratio 0.472 (mesh covers/fills roughly half the input surface/volume).
-  This joins the perforated_plate/sharp_ridge cluster below (coverage collapse
-  on complex topology) as the next thing to root-cause, not a speed problem.
+  now clean PASS. **high_genus_dual_torus** was masked by the timeout and
+  first showed area-ratio 0.562 / vol-ratio 0.472 — root-caused (BETA2832) to
+  the preprocessor's keep_largest_component discarding the second torus body
+  whole; the relative component filter (keep >=5% of A_max) restored coverage
+  to 1.010/1.010. Its remaining FAIL is **quality** (skew 2.2e6 boundary
+  slivers on the doubled input) — a separate axis, next card. Its 210s also
+  exceeds the matrix's 120s per-shape subprocess wall (direct --stl runs
+  bypass it); the constant is a bench-harness detail, noted not fixed.
 - **nonOrtho ≈ 88–90 is endemic** (boundary tets), present even on PASS shapes
   (cube 88.2). It is not the FAIL discriminator here — **skewness** is.
 - **`very_thin_disk` skew 2.4e28** is an effectively-degenerate sliver reported with
