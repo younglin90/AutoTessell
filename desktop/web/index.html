@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -94,10 +94,11 @@
           <p id="quality-hint" class="hint">draft · TetWild/Netgen · 빠른 검증 (~30초)</p>
 
           <h3>볼륨 엔진 (tier)</h3>
+          <!-- 기본 엔진 = Native Tet (2026-07-18 사용자 결정, native-first). -->
           <select id="tier">
             <option value="auto">Auto (strategist 선택)</option>
             <optgroup label="자체 엔진 (native-first)">
-              <option value="native_tet">Native Tet</option>
+              <option value="native_tet" selected>Native Tet</option>
               <option value="native_hex">Native Hex</option>
               <option value="native_poly">Native Poly</option>
             </optgroup>
@@ -305,8 +306,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=25"></script>
-    <script src="ui.js?v=25"></script>
-    <script src="app.js?v=25"></script>
+    <script src="viewer.js?v=26"></script>
+    <script src="ui.js?v=26"></script>
+    <script src="app.js?v=26"></script>
   </body>
 </html>
