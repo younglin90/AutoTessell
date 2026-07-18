@@ -97,8 +97,8 @@
   };
   // Selecting a mesh type defaults the tier to the matching NATIVE engine
   // (native-first policy); "Auto" hands the choice back to the strategist.
+  // mesh_type 은 명시 선택 필수 (auto 제거 — index.html 의 주석 참고).
   const MESH_TYPE_DEFAULT_TIER = {
-    auto: "auto",
     tet: "native_tet",
     hex_dominant: "native_hex",
     poly: "native_poly",

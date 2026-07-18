@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=23" />
+    <link rel="stylesheet" href="styles.css?v=24" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -75,9 +75,12 @@
 
         <section class="card">
           <h3>메쉬 타입</h3>
-          <div id="mesh-type" class="seg seg-grid" data-value="auto">
-            <button data-v="auto" class="active">Auto</button>
-            <button data-v="tet">Tet</button>
+          <!-- mesh_type 은 명시 선택 필수 (auto 제거, 2026-07-18 사용자 결정).
+               auto 는 계열 무관 제네릭 tier 사다리로 빠져 tet 요청이 netgen 으로
+               새는 라우팅 손실이 있었다 — 사용자가 타입을 고르면 해당 계열
+               사다리(tet: wildmesh→tetwild→…)를 정확히 탄다. -->
+          <div id="mesh-type" class="seg seg-grid" data-value="tet">
+            <button data-v="tet" class="active">Tet</button>
             <button data-v="hex_dominant">Hex-dom</button>
             <button data-v="poly">Poly</button>
           </div>
@@ -302,8 +305,8 @@
     <!-- toast stack -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script src="viewer.js?v=23"></script>
-    <script src="ui.js?v=23"></script>
-    <script src="app.js?v=23"></script>
+    <script src="viewer.js?v=24"></script>
+    <script src="ui.js?v=24"></script>
+    <script src="app.js?v=24"></script>
   </body>
 </html>
