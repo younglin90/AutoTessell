@@ -381,6 +381,186 @@ def test_native_metrics_quality_metrics_match_python_fallback() -> None:
     assert boundary_skew_cpp == pytest.approx(boundary_skew_py, abs=1e-15)
 
 
+def _python_face_weight_volume_ratio(
+    face_centres: np.ndarray,
+    face_area_vectors: np.ndarray,
+    cell_centres: np.ndarray,
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    cell_volumes: np.ndarray,
+    n_internal: int,
+) -> tuple[float, float, float, float]:
+    old_module = nc._NATIVE_METRICS
+    old_attempted = nc._NATIVE_METRICS_IMPORT_ATTEMPTED
+    try:
+        nc._NATIVE_METRICS = None
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = True
+        return NativeMeshChecker._compute_face_weight_volume_ratio(
+            face_centres,
+            face_area_vectors,
+            cell_centres,
+            owner,
+            neighbour,
+            cell_volumes,
+            n_internal,
+        )
+    finally:
+        nc._NATIVE_METRICS = old_module
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = old_attempted
+
+
+@pytest.mark.parametrize(
+    (
+        "face_centres",
+        "face_area_vectors",
+        "cell_centres",
+        "owner",
+        "neighbour",
+        "volumes",
+        "n_internal",
+    ),
+    [
+        (
+            [[0.5, 0.0, 0.0], [1.5, 0.0, 0.0]],
+            [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
+            [0, 1],
+            [1, 2],
+            [1.0, 8.0, 2.0],
+            2,
+        ),
+        (
+            [[0.5, 0.0, 0.0], [1.5, 0.0, 0.0]],
+            [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+            [-1, 4],
+            [1, 0],
+            [1.0, 2.0],
+            2,
+        ),
+        (
+            [[0.0, 0.0, 0.0]],
+            [[1.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            [0],
+            [1],
+            [1e-30, 1.0],
+            1,
+        ),
+        (
+            [[0.5e-300, 0.0, 0.0]],
+            [[1.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1e-300, 0.0, 0.0]],
+            [0],
+            [1],
+            [1.0, 1.0],
+            1,
+        ),
+        (
+            [[0.5, 0.0, 0.0], [1.5, 0.0, 0.0]],
+            [[np.nan, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]],
+            [0, 1],
+            [1, 2],
+            [1.0, 8.0, np.nan],
+            2,
+        ),
+        (
+            [[1.0, 0.0, 0.0]],
+            [[np.inf, 0.0, 0.0]],
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+            [0],
+            [1],
+            [np.inf, np.inf],
+            1,
+        ),
+        (
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            0,
+        ),
+    ],
+    ids=[
+        "finite",
+        "no-valid-owner-neighbour",
+        "weight-and-volume-thresholds",
+        "weight-denominator-threshold",
+        "nan-filtering",
+        "all-nan-reductions",
+        "empty",
+    ],
+)
+def test_native_face_weight_volume_ratio_matches_python_edge_cases(
+    face_centres,
+    face_area_vectors,
+    cell_centres,
+    owner,
+    neighbour,
+    volumes,
+    n_internal: int,
+) -> None:
+    module = _native_metrics_or_skip()
+    arrays = (
+        np.asarray(face_centres, dtype=np.float64).reshape((-1, 3)),
+        np.asarray(face_area_vectors, dtype=np.float64).reshape((-1, 3)),
+        np.asarray(cell_centres, dtype=np.float64).reshape((-1, 3)),
+        np.asarray(owner, dtype=np.int64),
+        np.asarray(neighbour, dtype=np.int64),
+        np.asarray(volumes, dtype=np.float64),
+    )
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        expected = _python_face_weight_volume_ratio(*arrays, n_internal)
+        actual = module.compute_face_weight_volume_ratio(*arrays, n_internal)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-15, atol=0.0, equal_nan=True)
+
+
+def test_native_face_weight_volume_ratio_falls_back_on_binding_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    face_centres = np.array([[0.5, 0.0, 0.0]], dtype=np.float64)
+    face_area_vectors = np.array([[1.0, 0.0, 0.0]], dtype=np.float64)
+    cell_centres = np.array(
+        [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype=np.float64
+    )
+    owner = np.array([0], dtype=np.int64)
+    neighbour = np.array([1], dtype=np.int64)
+    volumes = np.array([1.0, 8.0], dtype=np.float64)
+    expected = _python_face_weight_volume_ratio(
+        face_centres,
+        face_area_vectors,
+        cell_centres,
+        owner,
+        neighbour,
+        volumes,
+        1,
+    )
+
+    class FailingNativeMetrics:
+        @staticmethod
+        def compute_face_weight_volume_ratio(*_args) -> None:
+            raise RuntimeError("forced binding failure")
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", FailingNativeMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    actual = NativeMeshChecker._compute_face_weight_volume_ratio(
+        face_centres,
+        face_area_vectors,
+        cell_centres,
+        owner,
+        neighbour,
+        volumes,
+        1,
+    )
+
+    assert actual == expected
+
+
 def test_native_metrics_cell_volumes_match_python_fallback() -> None:
     _native_metrics_or_skip()
     points = np.array(

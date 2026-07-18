@@ -958,6 +958,123 @@ double compute_boundary_skewness(
     return max_skew;
 }
 
+py::tuple compute_face_weight_volume_ratio(
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_area_vectors,
+    py::array_t<double, py::array::c_style | py::array::forcecast> cell_centres,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> neighbour,
+    py::array_t<double, py::array::c_style | py::array::forcecast> cell_volumes,
+    long long n_internal)
+{
+    if (n_internal <= 0 || cell_volumes.size() == 0) {
+        return py::make_tuple(1.0, 1.0, 1.0, 1.0);
+    }
+    if (face_centres.ndim() != 2 || face_centres.shape(1) != 3
+        || face_area_vectors.ndim() != 2 || face_area_vectors.shape(1) != 3
+        || cell_centres.ndim() != 2 || cell_centres.shape(1) != 3
+        || owner.ndim() != 1 || neighbour.ndim() != 1
+        || cell_volumes.ndim() != 1) {
+        throw std::invalid_argument(
+            "face and cell centres/vectors must have shape (N, 3); "
+            "owner, neighbour, and cell_volumes must be one-dimensional");
+    }
+
+    const auto own_count = std::min<long long>(n_internal, owner.shape(0));
+    const auto nbr_count = std::min<long long>(n_internal, neighbour.shape(0));
+    if (own_count != nbr_count) {
+        throw std::invalid_argument(
+            "owner and neighbour slices must have equal length");
+    }
+    if (face_centres.shape(0) < own_count
+        || face_area_vectors.shape(0) < own_count) {
+        throw std::invalid_argument(
+            "face arrays must contain every internal owner/neighbour pair");
+    }
+
+    const auto fc = face_centres.unchecked<2>();
+    const auto fa = face_area_vectors.unchecked<2>();
+    const auto cc = cell_centres.unchecked<2>();
+    const auto own = owner.unchecked<1>();
+    const auto nbr = neighbour.unchecked<1>();
+    const auto volumes = cell_volumes.unchecked<1>();
+
+    bool has_valid_face = false;
+    bool has_valid_weight = false;
+    bool has_non_nan_weight = false;
+    bool has_valid_volume = false;
+    bool has_non_nan_ratio = false;
+    double min_face_weight = std::numeric_limits<double>::infinity();
+    double max_adjacent = -std::numeric_limits<double>::infinity();
+
+    {
+        py::gil_scoped_release release;
+        for (long long i = 0; i < own_count; ++i) {
+            const auto oi = own(i);
+            const auto ni = nbr(i);
+            if (oi < 0 || ni < 0 || oi >= cc.shape(0) || ni >= cc.shape(0)
+                || oi >= volumes.shape(0) || ni >= volumes.shape(0)) {
+                continue;
+            }
+            has_valid_face = true;
+
+            const double own_dx = fc(i, 0) - cc(oi, 0);
+            const double own_dy = fc(i, 1) - cc(oi, 1);
+            const double own_dz = fc(i, 2) - cc(oi, 2);
+            const double nbr_dx = cc(ni, 0) - fc(i, 0);
+            const double nbr_dy = cc(ni, 1) - fc(i, 1);
+            const double nbr_dz = cc(ni, 2) - fc(i, 2);
+            const double d_own = std::abs(
+                fa(i, 0) * own_dx + fa(i, 1) * own_dy + fa(i, 2) * own_dz);
+            const double d_nei = std::abs(
+                fa(i, 0) * nbr_dx + fa(i, 1) * nbr_dy + fa(i, 2) * nbr_dz);
+            const double denom = d_own + d_nei;
+            if (denom > 1e-300) {
+                has_valid_weight = true;
+                const double weight = std::min(d_own, d_nei) / denom;
+                if (!std::isnan(weight)) {
+                    has_non_nan_weight = true;
+                    min_face_weight = std::min(min_face_weight, weight);
+                }
+            }
+
+            const double vo = std::abs(volumes(oi));
+            const double vn = std::abs(volumes(ni));
+            if (vo > 1e-30 && vn > 1e-30) {
+                has_valid_volume = true;
+                const double ratio = std::max(vo, vn)
+                    / std::max(std::min(vo, vn), 1e-30);
+                if (!std::isnan(ratio)) {
+                    has_non_nan_ratio = true;
+                    max_adjacent = std::max(max_adjacent, ratio);
+                }
+            }
+        }
+    }
+
+    if (!has_valid_face) {
+        return py::make_tuple(1.0, 1.0, 1.0, 1.0);
+    }
+    if (!has_valid_weight) {
+        min_face_weight = 1.0;
+    } else if (!has_non_nan_weight) {
+        min_face_weight = std::numeric_limits<double>::quiet_NaN();
+    }
+    if (!has_valid_volume) {
+        const double infinity = std::numeric_limits<double>::infinity();
+        return py::make_tuple(min_face_weight, 0.0, infinity, infinity);
+    }
+    if (!has_non_nan_ratio) {
+        max_adjacent = std::numeric_limits<double>::quiet_NaN();
+    }
+    const double min_vol_ratio = std::isnan(max_adjacent)
+        ? max_adjacent
+        : 1.0 / std::max(max_adjacent, 1.0);
+    const double max_growth = std::pow(max_adjacent, 1.0 / 3.0);
+    return py::make_tuple(
+        min_face_weight, min_vol_ratio, max_adjacent, max_growth);
+}
+
 py::tuple compute_cell_volumes(
     py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
     py::array_t<double, py::array::c_style | py::array::forcecast> face_normals,
@@ -1178,6 +1295,11 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("compute_boundary_skewness", &compute_boundary_skewness,
           py::arg("face_centres"), py::arg("face_normals"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("n_internal"));
+    m.def("compute_face_weight_volume_ratio",
+          &compute_face_weight_volume_ratio,
+          py::arg("face_centres"), py::arg("face_area_vectors"),
+          py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
+          py::arg("cell_volumes"), py::arg("n_internal"));
     m.def("compute_cell_volumes", &compute_cell_volumes,
           py::arg("face_centres"), py::arg("face_normals"), py::arg("face_areas"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),

@@ -1007,6 +1007,30 @@ class NativeMeshChecker:
         n_internal: int,
     ) -> tuple[float, float, float, float]:
         """Compute OpenFOAM-style interpolation weight and volume-ratio stats."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                result = native_metrics.compute_face_weight_volume_ratio(
+                    face_centres,
+                    face_area_vectors,
+                    cell_centres,
+                    owner,
+                    neighbour,
+                    cell_volumes,
+                    n_internal,
+                )
+                min_weight, min_ratio, max_ratio, max_growth = result
+                return (
+                    float(min_weight),
+                    float(min_ratio),
+                    float(max_ratio),
+                    float(max_growth),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug(
+                    "native face weight/volume ratio kernel failed",
+                    error=str(exc),
+                )
         if n_internal <= 0 or len(cell_volumes) == 0:
             return 1.0, 1.0, 1.0, 1.0
         own = owner[:n_internal]
