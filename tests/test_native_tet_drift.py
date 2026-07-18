@@ -19,7 +19,7 @@ LATEST = BENCH_DIR / "native_tet_bench_latest.json"
 def _load(p: Path) -> dict:
     if not p.exists():
         return {}
-    rows = json.loads(p.read_text())
+    rows = json.loads(p.read_text(encoding="utf-8"))
     return {r.get("stl"): r for r in rows}
 
 
