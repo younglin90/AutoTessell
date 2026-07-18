@@ -1,14 +1,22 @@
-card: POLY-S1
-file: scripts/smoke_native_poly.py (new)
-functions: _face_area, _cell_volume_orientation_free, _measure, main
-lines_added: 207
+card: FSL3 (guarded 2-3 flip)
+
+file: core/generator/native_tet/validate.py
+functions: apply_flat_sliver_23_flips
+lines_added: ~140
 lines_removed: 0
 
-file: tests/test_native_poly_solid_volume.py (new)
-functions: poly_case (module fixture), _face_area, _boundary_area_split,
-  _cell_volumes, test_native_poly_covers_input_surface (permanent),
-  test_native_poly_has_no_degenerate_cells (permanent),
-  test_native_poly_has_no_interior_voids (xfail strict),
-  test_native_poly_encloses_true_volume (xfail strict)
-lines_added: 246
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (pre-write FSL3 hook, post-BETA2826 locked-smooth)
+lines_added: 28
 lines_removed: 0
+
+file: tests/test_native_tet_flat_sliver_detect.py
+functions: test_fsl3_synthetic_bipyramid_flips, test_fsl3_concave_union_not_flipped,
+           test_fsl3_guard_violation_reverts
+lines_added: ~75
+lines_removed: 0
+
+result: N=600 real repro -> n_eligible=9, n_flipped=0, n_reverted=9 (all 9 blocked by
+guard (a) min_q non-decrease). Acceptance bar n_flipped>=7 NOT met (honest measurement,
+gates not weakened). All other invariants hold trivially since mesh is unchanged
+when n_flipped=0 (accept-check itself is skipped).

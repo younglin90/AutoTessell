@@ -2228,6 +2228,39 @@ def generate_native_tet(
                 "native_tet_prewrite_locked_smooth_skipped", reason=str(exc)
             )
 
+    # FSL3 — guarded 2-3 flip: flip-eligible all-surface flat sliver 제거,
+    # write 직전 (BETA2826 locked-smooth 직후). 이중 가드(최종 mesh 기준):
+    # skew proxy 비증가 + boundary-face count 불변이면 accept, 아니면 전량
+    # revert(final_tets 유지).
+    if not _phase_bc_skip and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.validate import (
+                apply_flat_sliver_23_flips as _fsl3_flip,
+                count_boundary_faces as _fsl3_nbf,
+            )
+
+            _fsl3_pre_nbf = _fsl3_nbf(final_tets)
+            _fsl3_sk_pre = _skew_proxy(final_pts, final_tets)
+            _fsl3_cand, _fsl3_stats = _fsl3_flip(final_pts, final_tets, n_surface)
+            _fsl3_accept = False
+            if _fsl3_stats["n_flipped"] > 0:
+                _fsl3_sk_post = _skew_proxy(final_pts, _fsl3_cand)
+                _fsl3_accept = bool(
+                    _fsl3_sk_post <= _fsl3_sk_pre * (1.0 + 1e-6)
+                    and _fsl3_nbf(_fsl3_cand) == _fsl3_pre_nbf
+                )
+                if _fsl3_accept:
+                    final_tets = _fsl3_cand
+            log.info(
+                "native_tet_fsl3_flip",
+                n_eligible=int(_fsl3_stats["n_eligible"]),
+                n_flipped=int(_fsl3_stats["n_flipped"]),
+                n_reverted=int(_fsl3_stats["n_reverted"]),
+                accepted=_fsl3_accept,
+            )
+        except Exception as exc:
+            log.debug("native_tet_fsl3_flip_skipped", reason=str(exc))
+
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기.

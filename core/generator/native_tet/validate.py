@@ -380,3 +380,141 @@ def flat_allsurf_sliver_candidates(
         "max_bskew": max_bskew,
         "worst_tet": worst_tet,
     }
+
+
+def apply_flat_sliver_23_flips(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    n_surface_vertices: int,
+    *,
+    q_flat: float = 0.01,
+) -> tuple[np.ndarray, dict]:
+    """FSL3 — guarded 2-3 flip. FSL1(``flat_allsurf_sliver_candidates``)의
+    face-partner/eligibility 로직을 재사용해 flip-eligible flat sliver 만 골라
+    실행한다. per-op 상대 가드: (a) affected min_q 비감소, (b) 3 new tet
+    signed-vol 동부호, (c) affected boundary-face skew 비증가, (d) shared
+    face internal(구조적 — eligible 판정 자체가 partner>=0 인 face 만 사용).
+    위반 flip 은 개별 skip(revert). Bipyramid (s0,s1,s2 공유 face + apex
+    p1,p2) 를 edge (p1,p2) 축 3-tet 로 재분할.
+
+    Returns: (tets_new, {"n_eligible", "n_flipped", "n_reverted"}).
+    """
+    tets_in = np.asarray(tets, dtype=np.int64)
+    pts = np.asarray(pts, dtype=np.float64)
+    empty = {"n_eligible": 0, "n_flipped": 0, "n_reverted": 0}
+    if tets_in.size == 0:
+        return tets_in, empty
+
+    v = pts[tets_in]
+    all_surface = (tets_in < int(n_surface_vertices)).all(axis=1)
+    e = [np.linalg.norm(v[:, i] - v[:, j], axis=1)
+         for i, j in ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))]
+    edge_max = np.maximum.reduce(e)
+    vol6a = np.einsum("ij,ij->i", v[:, 1] - v[:, 0],
+                       np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]))
+    q = np.zeros_like(edge_max)
+    safe = edge_max > 1e-30
+    q[safe] = 8.48 * np.abs(vol6a[safe]) / 6.0 / (edge_max[safe] ** 3)
+    cand = np.where(all_surface & (q < float(q_flat)))[0]
+    if cand.size == 0:
+        return tets_in, empty
+
+    local = np.array([[1, 2, 3], [0, 2, 3], [0, 1, 3], [0, 1, 2]])
+    sf = np.sort(tets_in[:, local].reshape(-1, 3), axis=1)
+    order = np.lexsort((sf[:, 2], sf[:, 1], sf[:, 0]))
+    sk = sf[order]
+    match = np.all(sk[1:] == sk[:-1], axis=1)
+    partner = np.full(order.size, -1, dtype=np.int64)
+    pi = np.where(match)[0]
+    partner[order[pi]] = order[pi + 1]
+    partner[order[pi + 1]] = order[pi]
+
+    def sv(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> float:
+        return float(np.dot(b - a, np.cross(c - a, d - a)))
+
+    def qe(tp: np.ndarray) -> float:
+        em = max(float(np.linalg.norm(tp[i] - tp[j]))
+                  for i in range(4) for j in range(i + 1, 4))
+        vv = abs(sv(tp[0], tp[1], tp[2], tp[3])) / 6.0
+        return 8.48 * vv / (em ** 3) if em > 1e-30 else 0.0
+
+    def bsk(fp: np.ndarray, tp: np.ndarray) -> float:
+        fc, cc = fp.mean(axis=0), tp.mean(axis=0)
+        nrm = np.cross(fp[1] - fp[0], fp[2] - fp[0])
+        nm = np.linalg.norm(nrm)
+        if nm < 1e-30:
+            return 0.0
+        nrm = nrm / nm
+        nd = float(np.dot(fc - cc, nrm))
+        tang = (fc - cc) - nd * nrm
+        return float(np.linalg.norm(tang)) / max(abs(nd), 1e-30)
+
+    touched = np.zeros(tets_in.shape[0], dtype=bool)
+    keep = np.ones(tets_in.shape[0], dtype=bool)
+    added: list[np.ndarray] = []
+    n_eligible = n_flipped = n_reverted = 0
+
+    for ti in cand.tolist():
+        chosen = None
+        for lf in range(4):
+            nbf = partner[4 * ti + lf]
+            if nbf < 0:
+                continue
+            s0, s1, s2 = (int(x) for x in tets_in[ti, local[lf]])
+            tj, nblf = divmod(int(nbf), 4)
+            p1i, p2i = int(tets_in[ti, lf]), int(tets_in[tj, nblf])
+            p1v, p2v = pts[p1i], pts[p2i]
+            vols = [sv(pts[s0], pts[s1], p1v, p2v), sv(pts[s1], pts[s2], p1v, p2v),
+                    sv(pts[s2], pts[s0], p1v, p2v)]
+            if all(abs(x) > 1e-18 for x in vols) and (
+                all(x > 0 for x in vols) or all(x < 0 for x in vols)
+            ):
+                chosen = (s0, s1, s2, tj, p1i, p2i, vols)
+                break
+        if chosen is None:
+            continue
+        n_eligible += 1
+        s0, s1, s2, tj, p1i, p2i, vols = chosen
+        if touched[ti] or touched[tj]:
+            continue
+
+        pa, pb = (p1i, p2i) if vols[0] > 0 else (p2i, p1i)
+        new_tets = np.array(
+            [[s0, s1, pa, pb], [s1, s2, pa, pb], [s2, s0, pa, pb]], dtype=np.int64,
+        )
+        nv6 = [sv(pts[t[0]], pts[t[1]], pts[t[2]], pts[t[3]]) for t in new_tets]
+        ok = all(x > 1e-18 for x in nv6)
+
+        q_old = min(qe(pts[tets_in[ti]]), qe(pts[tets_in[tj]]))
+        q_new = min(qe(pts[t]) for t in new_tets)
+        ok = ok and q_new >= q_old - 1e-12
+
+        pairs = {0: (s0, s1), 1: (s1, s2), 2: (s2, s0)}
+        smap = {s2: 0, s0: 1, s1: 2}
+        old_bs: list[float] = []
+        new_bs: list[float] = []
+        for owner, apex in ((ti, p1i), (tj, p2i)):
+            for k in range(4):
+                fv = tets_in[owner, local[k]]
+                fset = set(fv.tolist())
+                if fset == {s0, s1, s2} or partner[4 * owner + k] >= 0:
+                    continue
+                m = smap[({s0, s1, s2} - fset).pop()]
+                old_bs.append(bsk(pts[fv], pts[tets_in[owner]]))
+                gv = np.array([pairs[m][0], pairs[m][1], apex])
+                new_bs.append(bsk(pts[gv], pts[new_tets[m]]))
+        ok = ok and (max(old_bs, default=0.0) + 1e-9 >= max(new_bs, default=0.0))
+
+        if not ok:
+            n_reverted += 1
+            continue
+
+        touched[ti] = touched[tj] = True
+        keep[ti] = keep[tj] = False
+        added.append(new_tets)
+        n_flipped += 1
+
+    stats = {"n_eligible": n_eligible, "n_flipped": n_flipped, "n_reverted": n_reverted}
+    if not added:
+        return tets_in, stats
+    return np.concatenate([tets_in[keep]] + added, axis=0), stats
