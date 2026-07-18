@@ -1,23 +1,10 @@
-card: CYLSKEW2
-file: core/generator/native_tet/offset_ring.py
-functions: offset_ring_seed_points
-lines_added: 9
-lines_removed: 3
+card: POLY-S4
+file: core/generator/native_poly/dual.py
+functions: _smooth_interior_tet_verts (new), tet_to_poly_dual (1-line call site)
+lines_added: 48
+lines_removed: 0
 
-change: absolute dedup guard (d<1e-6) -> relative (d<rel_dedup*target_edge_length,
-  rel_dedup=1e-3); added surf_floor near-tangent reject (d_v<surf_floor*depth,
-  surf_floor=0.25) before accept; signature gained rel_dedup/surf_floor default
-  params (call sites unchanged -> defaults apply); info dict gained dedup_thr,
-  surf_floor fields.
-
-measured (WSL python3, timeout 90):
-  test_native_tet_solid_volume.py -q: 4 passed.
-  ON  (AUTO_TESSELL_TET_OFFSET_RING=1): cells=2296 skew=40.8 wall_dev_max=0.000
-    -- identical to CYLSKEW1 baseline (2296/40.8), confirms new guards are a
-    true no-op on cylinder.stl (n_offset=66, 0 dropped).
-  OFF (default): skew=44.9 wall_dev_max=0.000 (matches plan exactly). cells=1851
-    (ran 3x, deterministic) vs plan doc's stated 1847 -- OFF path never calls
-    offset_ring_seed_points (env-flag gated import in mesher.py:867-869), so
-    this 4-cell gap is pre-existing baseline drift unrelated to this diff, not
-    a regression caused by CYLSKEW2.
-  default still OFF (env var unset -> no-op, confirmed via mesher.py gate).
+file: tests/test_native_poly_solid_volume.py
+functions: test_native_poly_encloses_true_volume (xfail removed -> permanent gate), module docstring
+lines_added: 20
+lines_removed: 28

@@ -281,6 +281,52 @@ def _dual_cell_verts(
     return np.asarray(pts, dtype=np.float64) if pts else np.zeros((0, 3))
 
 
+def _smooth_interior_tet_verts(
+    V: np.ndarray,
+    T: np.ndarray,
+    is_boundary_vert: np.ndarray,
+    edge_tets: dict[tuple[int, int], list[int]],
+    n_iter: int = 10,
+    relax: float = 0.5,
+) -> np.ndarray:
+    """interior tet vertex 만 Laplacian smoothing (boundary vertex 는 고정).
+
+    per-vertex inversion 가드: 이동 후 incident tet vol 이 하나라도
+    ``<= 1e-4*orig_vol`` 이면 그 vertex 이동만 revert. 전역적으로
+    min_tet_vol <= 0 이 남으면 전체 V 를 원본으로 revert.
+    """
+    def _tet_vols(Vc: np.ndarray, idx: np.ndarray) -> np.ndarray:
+        tv = T[idx]
+        p0, p1, p2, p3 = Vc[tv[:, 0]], Vc[tv[:, 1]], Vc[tv[:, 2]], Vc[tv[:, 3]]
+        return np.einsum("ij,ij->i", p1 - p0, np.cross(p2 - p0, p3 - p0)) / 6.0
+
+    V0 = V.copy()
+    orig_vol = np.abs(_tet_vols(V0, np.arange(T.shape[0])))
+    nbrs: dict[int, set[int]] = defaultdict(set)
+    vert_tets: dict[int, list[int]] = defaultdict(list)
+    for a, b in edge_tets:
+        nbrs[a].add(b)
+        nbrs[b].add(a)
+    for ti, tv in enumerate(T):
+        for v in tv:
+            vert_tets[int(v)].append(ti)
+    interior = [v for v in range(V.shape[0]) if not is_boundary_vert[v] and nbrs.get(v)]
+
+    Vs = V0.copy()
+    for _ in range(n_iter):
+        for v in interior:
+            nb = np.array(list(nbrs[v]), dtype=np.int64)
+            old = Vs[v].copy()
+            Vs[v] = old + relax * (Vs[nb].mean(axis=0) - old)
+            idx = np.asarray(vert_tets[v], dtype=np.int64)
+            if np.any(np.abs(_tet_vols(Vs, idx)) <= 1e-4 * orig_vol[idx]):
+                Vs[v] = old
+
+    if np.any(_tet_vols(Vs, np.arange(T.shape[0])) <= 0):
+        return V0
+    return Vs
+
+
 # ---------------------------------------------------------------------------
 # Main entry
 # ---------------------------------------------------------------------------
@@ -341,6 +387,8 @@ def tet_to_poly_dual(
     for (a, b) in boundary_edges_set:
         boundary_edges_of_vert[a].append((a, b))
         boundary_edges_of_vert[b].append((a, b))
+
+    V = _smooth_interior_tet_verts(V, T, is_boundary_vert, edge_tets)
 
     tet_centroids = _compute_tet_centroids(V, T)
 

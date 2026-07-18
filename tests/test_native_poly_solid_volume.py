@@ -30,8 +30,8 @@ outside the input. So each property is gated independently:
   3. volume — cell volumes must sum to 1.000, none degenerate.
   4. no degenerate cells.
 
-MEASURED (beta2826, CARD POLY-S3, cube.stl / draft / tier_native_poly,
-cells=15, time~=50s, skew=0.457, negative_volumes=0, verdict=PASS):
+MEASURED (beta2826, CARD POLY-S4, cube.stl / draft / tier_native_poly,
+cells=15, time~=66s, skew=0.422, negative_volumes=0, verdict=PASS):
 
   1. surface coverage:  6.000 (1.00x)  -> PASS  -> permanent gate.
   2. void (off-plane):  0.000 (<=0.30 allowed) -> PASS -> permanent gate
@@ -46,13 +46,15 @@ cells=15, time~=50s, skew=0.457, negative_volumes=0, verdict=PASS):
      on/off-plane area of the new topological path against the old
      ConvexHull path and only adopts the new path when it does not regress
      either metric.
-  3. volume Sigma|vol|: 1.077 (1.08x, >1.05 allowed) -> FAIL -> xfail(strict)
-     (was 1.177 pre-POLY-S3). Root cause: closing the void (item 2) also
-     tightened the boundary-cell decomposition, but a residual ~7.7%
-     over-fill remains unresolved — POLY-S3 did not reach the <=1.05 bar
-     the card targeted (prototype predicted 1.049); recorded here rather
-     than force-closing the gate. See ``harness/plan_poly3.md`` for the next
-     candidate (boundary-cell geometry refinement).
+  3. volume Sigma|vol|: 1.026 (1.03x, <=1.05 allowed) -> PASS -> permanent
+     gate (was 1.077 pre-POLY-S4, 1.177 pre-POLY-S3). Root cause: the
+     residual over-fill was not boundary logic but sliver interior tets
+     from native_tet's Steiner points making the barycentric dual cell
+     non-convex. POLY-S4 adds ``_smooth_interior_tet_verts`` — Laplacian
+     smoothing of interior tet vertices only (boundary vertices fixed, so
+     gates 1/2 are structurally unaffected), with a per-vertex inversion
+     guard and a global revert-to-original safety net. Matches the
+     offline-prototype prediction (~1.026) exactly.
   4. degenerate cells: 0 -> PASS -> permanent gate.
 
 Poly cells are arbitrary convex polyhedra (tet->dual duals), so tet's
@@ -66,11 +68,10 @@ each run being fast), native_poly's harness path takes ~45s/run — re-running
 per gate would blow the 3-minute test budget. The pipeline therefore runs
 ONCE per module and all four gates read from the shared measurement.
 
-Do NOT widen the xfail tolerances without re-measuring; do NOT flip the
-permanent gates to xfail. POLY-S3 fixed void (now a permanent gate); if a
-follow-up card fixes volume too, its ``strict=True`` xfail marker will XPASS
-and fail the run — update this docstring and the marker together with the
-fix, per the card sequence in ``harness/plan_poly1.md`` / ``plan_poly3.md``.
+Do NOT widen tolerances without re-measuring; do NOT flip these permanent
+gates back to xfail. POLY-S3 fixed void; POLY-S4 fixed volume (all four
+solid-invariant gates are now permanent) — see ``harness/plan_poly1.md`` /
+``plan_poly3.md`` / ``plan_poly4.md`` for the card sequence.
 """
 
 from __future__ import annotations
@@ -248,23 +249,14 @@ def test_native_poly_has_no_interior_voids(poly_case: Path) -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "measured 1.077x (Sigma|vol|=1.077, down from 1.177 pre-POLY-S3) — "
-        "POLY-S3 closed the interior void (see gate above) but a residual "
-        "~7.7% boundary-cell over-fill remains, still above the 1.05 "
-        "threshold — see module docstring; open for a follow-up card."
-    ),
-    strict=True,
-)
 def test_native_poly_encloses_true_volume(poly_case: Path) -> None:
     """Cell volumes must sum to the input's volume — i.e. the cells tile it.
 
-    Measured cube.stl / draft / tier_native_poly (post-POLY-S3): Sigma|vol|
-    1.077 (1.08x), down from 1.177 (1.18x) pre-POLY-S3. Closing the interior
-    void (see the void gate above) reduced but did not eliminate the
-    boundary-cell over-fill. XFAIL(strict) — still above the 1.05 tolerance;
-    scoped to a follow-up card (see harness/plan_poly3.md "다음 후보").
+    Measured cube.stl / draft / tier_native_poly (post-POLY-S4): Sigma|vol|
+    1.026 (1.03x), down from 1.077 (1.08x) pre-POLY-S4 / 1.177 pre-POLY-S3.
+    POLY-S4's interior-tet-vertex Laplacian smoothing (boundary fixed)
+    regularized the sliver tets feeding the barycentric dual, closing the
+    residual over-fill within the 1.05 tolerance. PERMANENT gate.
     """
     vols = _cell_volumes(poly_case)
     total = float(vols.sum())
