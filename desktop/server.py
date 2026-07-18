@@ -913,27 +913,34 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
-    # Multi-surface assembly gate: boolean merging of 2+ surfaces is not
-    # implemented yet (S2). Reject clearly instead of silently meshing only the
-    # first surface. A single surface takes the existing path unchanged.
+    # Multi-surface assembly gate (CARD BOOLMERGE3): boolean union of exactly
+    # 2 surfaces is now supported for mesh_type == "tet" (GWN-additivity
+    # pre-merge, wired through orchestrator.run(additional_input_paths=...)).
+    # Everything else (3+ surfaces, or mesh_type != "tet") is still rejected
+    # with the original "boolean" message — do not change that wording, it is
+    # asserted verbatim by tests/test_desktop_server.py::TestMultiSurface.
     n_surfaces = len(job.get("surfaces", []))
+    additional_input_paths: list[Path] | None = None
     if n_surfaces >= 2:
-        msg = (
-            "여러 표면의 boolean 병합은 곧 지원됩니다 — 현재는 표면 1개만 "
-            "메쉬를 생성할 수 있습니다. 표면 목록에서 1개만 남기고 나머지를 "
-            "삭제한 뒤 다시 시도하세요."
-        )
-        job["status"] = "failed"
-        job["error"] = msg
-        _touch_job(job)
-        try:
-            await ws.send_json(
-                {"type": "log", "level": "error", "message": f"[Server] {msg}"}
+        if mesh_type == "tet" and n_surfaces == 2:
+            additional_input_paths = [Path(job["surfaces"][1]["path"])]
+        else:
+            msg = (
+                "여러 표면의 boolean 병합은 곧 지원됩니다 — 현재는 표면 1개만 "
+                "메쉬를 생성할 수 있습니다. 표면 목록에서 1개만 남기고 나머지를 "
+                "삭제한 뒤 다시 시도하세요."
             )
-        except Exception:  # noqa: BLE001
-            pass
-        await ws.send_json({"type": "error", "message": msg})
-        return
+            job["status"] = "failed"
+            job["error"] = msg
+            _touch_job(job)
+            try:
+                await ws.send_json(
+                    {"type": "log", "level": "error", "message": f"[Server] {msg}"}
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            await ws.send_json({"type": "error", "message": msg})
+            return
 
     from core.pipeline.orchestrator import PipelineOrchestrator
 
@@ -997,6 +1004,8 @@ async def _run_mesh_pipeline(
     })
 
     run_kwargs = _build_run_kwargs(quality, tier, mesh_type, max_iterations, extra_params)
+    if additional_input_paths:
+        run_kwargs["additional_input_paths"] = additional_input_paths
     orchestrator = PipelineOrchestrator()
 
     # Stream every engine-level log record (tier iterations, BL passes,

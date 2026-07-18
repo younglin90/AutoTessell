@@ -85,6 +85,7 @@ class PipelineOrchestrator:
         quality_level: str = "standard",
         mesh_type: str = "auto",
         tier_hint: str = "auto",
+        additional_input_paths: list[Path] | None = None,
         max_iterations: int = 3,
         auto_retry: str = "off",
         dry_run: bool = False,
@@ -113,6 +114,12 @@ class PipelineOrchestrator:
             output_dir: OpenFOAM case 출력 디렉터리.
             quality_level: 품질 레벨 (draft/standard/fine).
             tier_hint: Tier 힌트 (auto/snappy/netgen/...).
+            additional_input_paths: (CARD BOOLMERGE3) 2번째 이상 입력 표면.
+                주어지면 ``input_path`` 와 함께 GWN(generalized winding number)
+                가법성 기반 union pre-merge(``_premerge_surfaces_for_union``)로
+                결합돼 기존 단일-경로 파이프라인에 그대로 흘러간다. None(기본값)
+                이면 기존 단일-경로 호출자(CLI/GUI)는 완전히 동일하게 동작한다
+                — 하위호환 최우선.
             max_iterations: Generator↔Evaluator 최대 반복 횟수.
             dry_run: True이면 전략 수립까지만 수행.
             element_size: 셀 크기 override.
@@ -189,6 +196,24 @@ class PipelineOrchestrator:
                     "max_cells_limit -> base_cell_size enlarge",
                 ],
             )
+
+            # ------ 0. Boolean union pre-merge (CARD BOOLMERGE3) ------
+            # additional_input_paths 가 주어지면 GWN 가법성으로 결합 STL 을
+            # 만들어 input_path 를 치환한다 — Analyze 이전에, 나머지 파이프라인
+            # 은 5-홉 무변경 단일-경로 그대로 진행된다.
+            if additional_input_paths:
+                log.info(
+                    "boolean_union_premerge_requested",
+                    primary=str(input_path),
+                    additional=[str(p) for p in additional_input_paths],
+                )
+                input_path = self._premerge_surfaces_for_union(
+                    [input_path, *additional_input_paths], work=output_dir,
+                )
+                no_repair = True
+                surface_remesh = False
+                emit_progress(2, "다중 표면 union 병합 완료")
+
             # ------ 1. Analyze ------
             stage = "analyze"
             log.info("Pipeline stage: Analyze", input=str(input_path))
@@ -979,6 +1004,78 @@ class PipelineOrchestrator:
         except Exception as exc:  # noqa: BLE001
             log.warning("surface_reconstruct_last_resort_failed", error=str(exc)[:120])
             return None
+
+    @staticmethod
+    def _premerge_surfaces_for_union(paths: list[Path], work: Path) -> Path:
+        """다중 표면을 GWN 가법성 기반 union-mesh 로 결합할 단일 STL 을 만든다.
+
+        CARD BOOLMERGE3 — 사용자 경로(orchestrator/server) 최초 배선.
+
+        수학적 근거 (GWN 가법성): 바깥 방향 폐곡면 A, B 에 대해 결합된 vertex/
+        face soup 의 winding number 는 ``wn_{A∪B}(p) = wn_A(p) + wn_B(p)`` 이다
+        (BOOLMERGE1, ``core/utils/geometry.inside_union_winding_number`` 로
+        단위 테스트됨). 겹치는 내부는 2, 단독 내부는 1, 바깥은 0 이며, 기존
+        단일-경로 파이프라인이 사용하는 ``_inside_winding_number``
+        (``core/generator/native_tet/mesher.py:1313``, threshold 0.5) 는
+        1 이상을 모두 "내부"로 판정하므로, 두 STL 을 단순히 하나의 soup 으로
+        concat 하기만 하면(정점 offset 재인덱싱) 기존 단일-(V,F) 파이프라인이
+        seeding(=union bbox)·filter(=union) 를 **mesher 무변경**으로 그대로
+        재현한다.
+
+        union 전용 헬퍼다 — intersection/difference 는 별도 provenance 가
+        필요한 ``filter_tets_to_union``(BOOLMERGE2, ``core/generator/
+        native_tet``, 격리 헬퍼) 를 참고하되 여기서는 배선하지 않는다
+        (BOOLMERGE4+ 로 이월).
+
+        원본 삼각형은 좌표/인덱스를 그대로 보존한다(수정·리메쉬 없음) — 표면
+        보존 불변식 1 을 구조적으로 지킨다. 호출자(``run()``)는 이 헬퍼가
+        반환한 경로로 진행할 때 ``no_repair=True``, ``surface_remesh=False``
+        를 강제해 리메쉬로 표면이 뭉개지는 것을 막는다.
+
+        Args:
+            paths: 병합할 STL 파일 경로 목록 (2개 이상; 순서는 결과에 영향
+                없음 — GWN 합은 교환법칙).
+            work: 결합 STL 을 쓸 기준 디렉터리(``output_dir``); 실제 파일은
+                ``work / "_work" / "_merged.stl"`` 에 저장된다.
+
+        Returns:
+            결합 STL 경로.
+        """
+        from core.analyzer.readers.stl import read_stl
+        from core.utils.stl_writer import write_stl_binary
+
+        if len(paths) < 2:
+            raise ValueError("boolean union requires at least two input surfaces")
+
+        all_v: list[np.ndarray] = []
+        all_f: list[np.ndarray] = []
+        offset = 0
+        for p in paths:
+            mesh = read_stl(p)
+            v = np.asarray(mesh.vertices, dtype=np.float64)
+            f = np.asarray(mesh.faces, dtype=np.int64)
+            all_v.append(v)
+            all_f.append(f + offset)
+            offset += v.shape[0]
+
+        merged_v = np.concatenate(all_v, axis=0)
+        merged_f = np.concatenate(all_f, axis=0)
+
+        work_dir = Path(work) / "_work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        merged_path = work_dir / "_merged.stl"
+        write_res = write_stl_binary(merged_v, merged_f, merged_path)
+        if not write_res.success:
+            raise RuntimeError(f"failed to write merged surface: {write_res.message}")
+        log.info(
+            "surfaces_premerged_for_union",
+            n_inputs=len(paths),
+            n_vertices=int(merged_v.shape[0]),
+            n_faces=int(merged_f.shape[0]),
+            output=str(merged_path),
+            success=write_res.success,
+        )
+        return merged_path
 
     @staticmethod
     def _save_json(path: Path, model: object) -> None:

@@ -1244,3 +1244,67 @@ class TestMultiSurface:
                 messages = self._collect_messages(ws)
         result_msgs = [m for m in messages if m.get("type") == "result"]
         assert result_msgs and result_msgs[0].get("success") is True
+
+    # --- CARD BOOLMERGE3: tet + exactly-2-surfaces union gate --------------
+
+    def test_two_surface_tet_union_allowed(self, client):
+        """mesh_type='tet' + exactly 2 surfaces must NOT be rejected — the
+        real ``_run_mesh_pipeline`` gate code runs (only the orchestrator
+        itself is mocked), so this exercises the actual gate logic, not a
+        bypass."""
+        mock_orch = _make_mock_orchestrator(verdict="PASS")
+        job_id = _upload_sphere(client)
+        second_path = _add_surface(client, job_id, "wing.stl")["surface"]["surface_id"]
+        assert second_path  # sanity: second surface really got added
+        expected_second_path = Path(_jobs[job_id]["surfaces"][1]["path"])
+
+        with patch(
+            "core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch,
+        ):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {
+                        "action": "start",
+                        "quality": "draft",
+                        "tier": "auto",
+                        "mesh_type": "tet",
+                        "max_iterations": 1,
+                    }
+                )
+                messages = self._collect_messages(ws)
+
+        error_msgs = [m for m in messages if m.get("type") == "error"]
+        assert not error_msgs, f"tet + 2 surfaces must not be rejected: {error_msgs}"
+        result_msgs = [m for m in messages if m.get("type") == "result"]
+        assert result_msgs and result_msgs[0].get("success") is True
+
+        # The gate must have wired the 2nd surface through as
+        # additional_input_paths (not silently dropped / ignored).
+        assert mock_orch.run.called
+        _, run_kwargs = mock_orch.run.call_args
+        assert run_kwargs.get("additional_input_paths") == [expected_second_path]
+
+    def test_three_surface_still_rejected(self, client):
+        """mesh_type='tet' + 3 surfaces must still be rejected with the
+        original boolean-merge message — the union gate only opens at
+        exactly 2 surfaces."""
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+        _add_surface(client, job_id, "tail.stl")
+
+        with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+            ws.send_json(
+                {
+                    "action": "start",
+                    "quality": "draft",
+                    "tier": "auto",
+                    "mesh_type": "tet",
+                    "max_iterations": 1,
+                }
+            )
+            messages = self._collect_messages(ws)
+
+        error_msgs = [m for m in messages if m.get("type") == "error"]
+        assert error_msgs, "Expected an error message for a 3-surface tet job"
+        assert "boolean" in error_msgs[0].get("message", "").lower()
+        assert _jobs[job_id]["status"] == "failed"
