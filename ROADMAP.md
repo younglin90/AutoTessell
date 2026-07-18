@@ -110,23 +110,28 @@ selective repair UI.
   bonus fix — fine's pre-existing (undetected) negative_volumes=8 dropped to
   0 too, now permanently gated on both quality levels. Next: further skew
   reduction, then extend the solid-preservation methodology to poly.
-- **native_poly ~30%** (measured 2026-07-18, S1→S3): canonical smoke
-  (`scripts/smoke_native_poly.py`) + solid gates landed (S1); surface 6.000
-  and degen 0 are permanent gates. S1's working hypothesis (boundary
-  open-wall) was disproved by measurement — the real cause (S2) was
-  tet->dual's per-cell ConvexHull construction triangulating each
-  non-planar dual interface differently, so adjacent cells' shared face
-  never vertex-matched and leaked out as void on both sides; replaced with a
-  topological path (each interior tet edge's ordered centroid ring emitted
-  directly as the one shared face, guaranteeing 2-cell sharing by
-  construction) — void 7.588→2.435 (-68%). S3 found the residual void was
-  two more boundary-only bugs in the same file (cap faces over-classified
-  as boundary when they merely touched a surface point instead of lying
-  fully on one; boundary-edge seams between adjacent boundary cells had no
-  separating face at all) — fixing both closed void to **0.000 exactly**
-  (now a permanent gate) and volume to 1.077 (from 1.177, still xfail —
-  missed the <=1.05 target, follow-up scoped). Next (POLY-S4): close the
-  remaining ~7.7% boundary-cell overfill, then quality (skew).
+- **native_poly ~40%** (measured and closed 2026-07-18, S1→S4): canonical
+  smoke (`scripts/smoke_native_poly.py`) + all **4 solid invariants now
+  permanent gates** on cube.stl, matching tet and hex's status. S1 measured
+  a blind verdict=PASS hiding void 7.588 and volume 1.177x. S2's working
+  hypothesis (boundary open-wall) was disproved by measurement — the real
+  cause was tet->dual's per-cell ConvexHull triangulating each non-planar
+  interior dual interface differently, so adjacent cells' shared face never
+  vertex-matched and leaked as void on both sides; fixed with a topological
+  path (each interior tet edge's ordered centroid ring emitted directly as
+  the shared face) — void 7.588→2.435. S3 found two more boundary-only bugs
+  in the same file (cap faces over-classified as boundary; boundary-edge
+  seams between adjacent boundary cells had no separating face) — void
+  →**0.000 exactly**. S4 root-caused the residual volume overfill (1.077x)
+  with a controlled experiment: feeding dual.py's *unmodified* code a
+  well-formed Kuhn tetrahedralization gives Sigma|vol|=1.0000 exactly, so
+  the dual construction itself was never the bug — native_tet's interior
+  Steiner points make sliver tets whose non-convex dual cells the
+  pyramid-volume measure overestimates. Laplacian-smoothing only the
+  interior tet vertices (boundary fixed, so surface/void stay
+  structurally unchanged) pulled volume to 1.026 and even improved skew
+  (0.457→0.422). Next (POLY-S5): generalize past the cube (sphere/cylinder),
+  then quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to
