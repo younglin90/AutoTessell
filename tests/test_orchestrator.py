@@ -382,6 +382,58 @@ class TestPipelineFlow:
         assert strategy_arg.tier_specific_params["snappy_snap_tolerance"] == pytest.approx(1.25)
         assert strategy_arg.tier_specific_params["snappy_snap_iterations"] == 42
 
+    def test_boolean_sources_seed_bl_patch_names_without_mutating_caller(
+        self, tmp_output,
+    ):
+        orch = self._make_orchestrator()
+        caller_params = {"max_cells": 321}
+
+        with patch.object(
+            orch,
+            "_premerge_surfaces_for_union",
+            return_value=Path("/tmp/merged.stl"),
+        ):
+            result = orch.run(
+                Path("Body A.stl"),
+                tmp_output,
+                additional_input_paths=[Path("Body-B.stl")],
+                tier_hint="native_tet",
+                tier_specific_params=caller_params,
+                dry_run=True,
+            )
+
+        assert result.success is True
+        assert result.strategy is not None
+        assert result.strategy.tier_specific_params[
+            "post_layers_wall_patch_names"
+        ] == ["source_0_Body_A", "source_1_Body_B"]
+        assert caller_params == {"max_cells": 321}
+
+    def test_boolean_sources_preserve_explicit_bl_patch_names(self, tmp_output):
+        orch = self._make_orchestrator()
+        caller_params = {"post_layers_wall_patch_names": ["manual_wall"]}
+
+        with patch.object(
+            orch,
+            "_premerge_surfaces_for_union",
+            return_value=Path("/tmp/merged.stl"),
+        ):
+            result = orch.run(
+                Path("primary.stl"),
+                tmp_output,
+                additional_input_paths=[Path("secondary.stl")],
+                tier_hint="native_tet",
+                tier_specific_params=caller_params,
+                dry_run=True,
+            )
+
+        assert result.success is True
+        assert result.strategy is not None
+        assert result.strategy.tier_specific_params[
+            "post_layers_wall_patch_names"
+        ] == ["manual_wall"]
+        assert caller_params == {"post_layers_wall_patch_names": ["manual_wall"]}
+
 
 class TestRetryLoop:
     """Generator ↔ Evaluator 재시도 루프."""

@@ -33,6 +33,7 @@ from core.schemas import (
 from core.strategist.strategy_planner import StrategyPlanner
 from core.utils.bc_writer import write_boundary_conditions
 from core.utils.boundary_classifier import classify_boundaries
+from core.utils.boundary_provenance import source_surface_patch_names
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -242,6 +243,10 @@ class PipelineOrchestrator:
                     str(path) for path in boolean_input_paths
                 ]
                 tier_specific_params["boolean_operation"] = boolean_operation
+                tier_specific_params.setdefault(
+                    "post_layers_wall_patch_names",
+                    source_surface_patch_names(boolean_input_paths),
+                )
                 if boolean_operation == "union":
                     tier_specific_params["boolean_union_input_paths"] = list(
                         tier_specific_params["boolean_input_paths"]

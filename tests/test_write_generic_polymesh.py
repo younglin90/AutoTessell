@@ -128,6 +128,68 @@ def test_boundary_patch_classifier_splits_external_patches(tmp_path: Path) -> No
     assert "type            wall;" in boundary_text
 
 
+def test_boundary_patch_classifier_uses_batch_path(tmp_path: Path) -> None:
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    cell_faces = [[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]]
+
+    class BatchClassifier:
+        def __init__(self) -> None:
+            self.batch_calls = 0
+
+        def classify_many(
+            self, faces: list[list[int]], vertices: np.ndarray,
+        ) -> list[tuple[str, str]]:
+            self.batch_calls += 1
+            assert len(faces) == 4
+            assert vertices is not None
+            return [("batch_a", "wall"), *[("batch_b", "patch")] * 3]
+
+        def __call__(self, face: list[int], vertices: np.ndarray) -> None:
+            raise AssertionError("per-face callback must not run")
+
+    classifier = BatchClassifier()
+    write_generic_polymesh(
+        V, cell_faces, tmp_path, boundary_patch_classifier=classifier,
+    )
+
+    boundary = parse_foam_boundary(tmp_path / "constant" / "polyMesh" / "boundary")
+    by_name = {str(p["name"]): p for p in boundary}
+    assert classifier.batch_calls == 1
+    assert by_name["batch_a"]["nFaces"] == 1
+    assert by_name["batch_b"]["nFaces"] == 3
+
+
+def test_invalid_batch_result_falls_back_to_per_face_calls(tmp_path: Path) -> None:
+    V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    cell_faces = [[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]]
+
+    class InvalidBatchClassifier:
+        def __init__(self) -> None:
+            self.face_calls = 0
+
+        def classify_many(
+            self, faces: list[list[int]], vertices: np.ndarray,
+        ) -> list[tuple[str, str]]:
+            return [("incomplete", "wall")]
+
+        def __call__(
+            self, face: list[int], vertices: np.ndarray,
+        ) -> tuple[str, str]:
+            self.face_calls += 1
+            return "legacy_wall", "wall"
+
+    classifier = InvalidBatchClassifier()
+    write_generic_polymesh(
+        V, cell_faces, tmp_path, boundary_patch_classifier=classifier,
+    )
+
+    boundary = parse_foam_boundary(tmp_path / "constant" / "polyMesh" / "boundary")
+    assert classifier.face_calls == 4
+    assert boundary == [
+        {"name": "legacy_wall", "nFaces": 4, "startFace": 0}
+    ]
+
+
 def test_system_files_written(tmp_path: Path) -> None:
     """write_generic_polymesh 가 최소 system/ (controlDict / fvSchemes / fvSolution)
     생성."""

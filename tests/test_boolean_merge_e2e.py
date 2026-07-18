@@ -22,6 +22,7 @@ import pytest
 
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
+    parse_foam_boundary,
     parse_foam_faces,
     parse_foam_labels,
     parse_foam_points,
@@ -257,10 +258,19 @@ def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
         str(b_path),
     ]
     assert result.strategy.tier_specific_params["boolean_operation"] == "union"
+    assert result.strategy.tier_specific_params[
+        "post_layers_wall_patch_names"
+    ] == ["source_0_cube_a", "source_1_cube_b"]
 
     assert result.success is True, f"pipeline failed: {result.error}"
     poly_dir = case_dir / "constant" / "polyMesh"
     assert (poly_dir / "points").exists(), "polyMesh was not written"
+    source_patches = {
+        str(patch["name"]): patch
+        for patch in parse_foam_boundary(poly_dir / "boundary")
+    }
+    assert set(source_patches) == {"source_0_cube_a", "source_1_cube_b"}
+    assert all(int(patch["nFaces"]) > 0 for patch in source_patches.values())
 
     # --- 4 canonical invariants via the canonical NativeMeshChecker ---
     # (this is the same evaluator the orchestrator's PASS/PASS_WITH_WARNINGS

@@ -1352,6 +1352,30 @@ def generate_native_tet(
     inside_tet: np.ndarray | None = None
     ordered_boolean_paths = boolean_input_paths or boolean_union_input_paths
     boolean_operation = str(boolean_operation).strip().lower()
+    boundary_patch_classifier: Any | None = None
+    boundary_patch_classifier_attempted = False
+
+    def _get_boundary_patch_classifier() -> Any | None:
+        nonlocal boundary_patch_classifier, boundary_patch_classifier_attempted
+        if not ordered_boolean_paths or len(ordered_boolean_paths) < 2:
+            return None
+        if boundary_patch_classifier_attempted:
+            return boundary_patch_classifier
+        boundary_patch_classifier_attempted = True
+        try:
+            from core.utils.boundary_provenance import (
+                SourceSurfacePatchClassifier,
+            )
+
+            boundary_patch_classifier = SourceSurfacePatchClassifier(
+                list(ordered_boolean_paths)
+            )
+        except Exception as exc:
+            log.warning(
+                "native_tet_boundary_provenance_fallback",
+                error=str(exc)[:160],
+            )
+        return boundary_patch_classifier
 
     def _classify_output_points(points: np.ndarray) -> np.ndarray:
         if ordered_boolean_paths:
@@ -2538,7 +2562,12 @@ def generate_native_tet(
                  reason="_phase_bc_skip", n_tets=int(final_tets.shape[0]))
     else:
         try:
-            stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
+            stats = PolyMeshWriter().write(
+                final_pts,
+                final_tets,
+                case_dir,
+                boundary_patch_classifier=_get_boundary_patch_classifier(),
+            )
         except Exception as exc:
             return NativeTetResult(
                 False, time.perf_counter() - t0,
@@ -5156,7 +5185,12 @@ def generate_native_tet(
     # polyMesh 가 line 1887 의 P4-C 이전 저품질 mesh 로 남았다 (곡면 벽 왜곡).
     if _phase_bc_skip or _p4c_rewrote:
         try:
-            stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
+            stats = PolyMeshWriter().write(
+                final_pts,
+                final_tets,
+                case_dir,
+                boundary_patch_classifier=_get_boundary_patch_classifier(),
+            )
             n_cells = int(stats.get("num_cells", final_tets.shape[0]))
             n_points = int(stats.get("num_points", final_pts.shape[0]))
             log.info(

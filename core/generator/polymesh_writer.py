@@ -570,17 +570,40 @@ def write_generic_polymesh(
     )
     boundary_entries: list[dict[str, Any]]
     if boundary_patch_classifier is not None and n_bnd > 0:
-        patch_groups: dict[tuple[str, str], list[int]] = {}
-        for rel_idx, face in enumerate(sorted_bnd_faces):
+        classifications: list[Any] | None = None
+        classify_many = getattr(boundary_patch_classifier, "classify_many", None)
+        if callable(classify_many):
             try:
-                cls = boundary_patch_classifier(face, vertices_arr)
+                batch_result = list(classify_many(sorted_bnd_faces, vertices_arr))
+                if len(batch_result) != len(sorted_bnd_faces):
+                    raise ValueError(
+                        "batch classifier returned "
+                        f"{len(batch_result)} labels for "
+                        f"{len(sorted_bnd_faces)} boundary faces"
+                    )
+                classifications = batch_result
             except Exception as exc:
                 logger.debug(
-                    "polymesh_writer_patch_classifier_failed",
-                    rel_face=rel_idx,
+                    "polymesh_writer_batch_patch_classifier_failed",
                     error=str(exc)[:120],
                 )
-                cls = None
+
+        if classifications is None:
+            classifications = []
+            for rel_idx, face in enumerate(sorted_bnd_faces):
+                try:
+                    cls = boundary_patch_classifier(face, vertices_arr)
+                except Exception as exc:
+                    logger.debug(
+                        "polymesh_writer_patch_classifier_failed",
+                        rel_face=rel_idx,
+                        error=str(exc)[:120],
+                    )
+                    cls = None
+                classifications.append(cls)
+
+        patch_groups: dict[tuple[str, str], list[int]] = {}
+        for rel_idx, cls in enumerate(classifications):
             if isinstance(cls, tuple):
                 pname = str(cls[0] or patch_name)
                 ptype = str(cls[1] or patch_type)
