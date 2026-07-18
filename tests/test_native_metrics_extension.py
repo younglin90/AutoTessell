@@ -484,12 +484,16 @@ def test_native_metrics_run_falls_back_when_combined_kernel_fails(
         [0, 3, 2],
         [1, 2, 3],
     ]
-    monkeypatch.setattr(nc, "parse_foam_points", lambda _path: points)
+    monkeypatch.setattr(
+        nc, "parse_foam_points_array", lambda _path: np.asarray(points, dtype=np.float64)
+    )
     monkeypatch.setattr(nc, "parse_foam_faces", lambda _path: faces)
     monkeypatch.setattr(
         nc,
-        "parse_foam_labels",
-        lambda path: [0, 0, 0, 0] if path.name == "owner" else [],
+        "parse_foam_labels_array",
+        lambda path: np.asarray(
+            [0, 0, 0, 0] if path.name == "owner" else [], dtype=np.int64
+        ),
     )
     monkeypatch.setattr(nc, "parse_foam_boundary", lambda _path: [{"startFace": 0}])
 

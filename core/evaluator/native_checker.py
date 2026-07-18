@@ -41,8 +41,8 @@ from core.utils.logging import get_logger
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
-    parse_foam_labels,
-    parse_foam_points,
+    parse_foam_labels_array,
+    parse_foam_points_array,
 )
 
 log = get_logger(__name__)
@@ -137,19 +137,15 @@ class NativeMeshChecker:
             if not f.exists():
                 raise FileNotFoundError(f"polyMesh 파일 없음: {f}")
 
-        raw_points = parse_foam_points(points_file)
+        points = parse_foam_points_array(points_file)
         raw_faces = parse_foam_faces(faces_file)
-        owner_list = parse_foam_labels(owner_file)
-        neighbour_list = parse_foam_labels(neighbour_file)
+        owner = parse_foam_labels_array(owner_file)
+        neighbour = parse_foam_labels_array(neighbour_file)
         bnd_entries = parse_foam_boundary(boundary_file)
 
-        if not raw_points or not raw_faces or not owner_list:
+        if points.size == 0 or not raw_faces or owner.size == 0:
             log.warning("Empty polyMesh — returning degenerate CheckMeshResult")
             return self._empty_result()
-
-        points = np.array(raw_points, dtype=np.float64)  # (N, 3)
-        owner = np.array(owner_list, dtype=np.int64)       # (F,)
-        neighbour = np.array(neighbour_list, dtype=np.int64)  # (I,)
 
         # iter-0005 autoresearch (2026-05-15): polyMesh data-integrity fix.
         # cfMesh-style writers emit a `neighbour` list of length

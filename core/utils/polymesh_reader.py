@@ -89,21 +89,26 @@ def _read_foam_list(text: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def parse_foam_points(points_file: Path) -> list[list[float]]:
-    """Parse polyMesh/points and return a list of [x, y, z] coordinates."""
+def parse_foam_points_array(points_file: Path) -> np.ndarray:
+    """Parse polyMesh/points into an ``(N, 3)`` float64 array."""
     text = points_file.read_text()
     text = _strip_foam_comments(text)
     start = text.find("(")
     end = text.rfind(")")
     if start == -1 or end == -1:
-        return []
+        return np.empty((0, 3), dtype=np.float64)
     inner = text[start + 1 : end]
     # Replace parentheses with spaces for uniform splitting
     inner = inner.replace("(", " ").replace(")", " ")
     vals = np.fromstring(inner, dtype=np.float64, sep=" ")
     if vals.size == 0 or vals.size % 3 != 0:
-        return []
-    return vals.reshape(-1, 3).tolist()
+        return np.empty((0, 3), dtype=np.float64)
+    return vals.reshape(-1, 3)
+
+
+def parse_foam_points(points_file: Path) -> list[list[float]]:
+    """Parse polyMesh/points and return a list of [x, y, z] coordinates."""
+    return parse_foam_points_array(points_file).tolist()
 
 
 def parse_foam_faces(faces_file: Path) -> list[list[int]]:
@@ -158,21 +163,23 @@ def parse_foam_faces(faces_file: Path) -> list[list[int]]:
     return faces
 
 
-def parse_foam_labels(label_file: Path) -> list[int]:
-    """Parse a polyMesh label list file (owner or neighbour)."""
+def parse_foam_labels_array(label_file: Path) -> np.ndarray:
+    """Parse a polyMesh label list file into an int64 array."""
     text = label_file.read_text()
     text = _strip_foam_comments(text)
     start = text.find("(")
     end = text.rfind(")")
     if start == -1 or end == -1:
-        return []
+        return np.empty(0, dtype=np.int64)
     inner = text[start + 1 : end].strip()
     if not inner:
-        return []
-    vals = np.fromstring(inner, dtype=np.int64, sep="\n")
-    if vals.size == 0:
-        vals = np.fromstring(inner, dtype=np.int64, sep=" ")
-    return vals.tolist()
+        return np.empty(0, dtype=np.int64)
+    return np.fromstring(inner, dtype=np.int64, sep=" ")
+
+
+def parse_foam_labels(label_file: Path) -> list[int]:
+    """Parse a polyMesh label list file (owner or neighbour)."""
+    return parse_foam_labels_array(label_file).tolist()
 
 
 def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
