@@ -10,6 +10,7 @@ option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR sou
 option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
 option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
 option(BUILD_NATIVE_METRICS "Build native metric kernels for Python checker" ON)
+option(BUILD_NATIVE_POLYMESH "Build native polyMesh topology kernel" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -53,6 +54,17 @@ if(BUILD_NATIVE_METRICS)
     target_compile_options(native_metrics PRIVATE /O2 /W3)
   else()
     target_compile_options(native_metrics PRIVATE -O3)
+  endif()
+endif()
+
+# ── native polyMesh topology kernel ───────────────────────────────────────
+if(BUILD_NATIVE_POLYMESH)
+  pybind11_add_module(native_polymesh native_polymesh_bind.cpp)
+  target_compile_features(native_polymesh PRIVATE cxx_std_23)
+  if(MSVC)
+    target_compile_options(native_polymesh PRIVATE /O2 /W3)
+  else()
+    target_compile_options(native_polymesh PRIVATE -O3)
   endif()
 endif()
 

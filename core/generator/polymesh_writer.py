@@ -21,7 +21,9 @@ No external tools (OpenFOAM, meshio) are required.
 
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 from collections import defaultdict, deque
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -32,6 +34,35 @@ import numpy as np
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+_NATIVE_POLYMESH: Any | None = None
+_NATIVE_POLYMESH_IMPORT_ATTEMPTED = False
+
+
+def _load_native_polymesh() -> Any | None:
+    """Load the optional writer topology kernel."""
+    global _NATIVE_POLYMESH, _NATIVE_POLYMESH_IMPORT_ATTEMPTED
+    if _NATIVE_POLYMESH_IMPORT_ATTEMPTED:
+        return _NATIVE_POLYMESH
+    _NATIVE_POLYMESH_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    candidate_dirs.append(Path(__file__).resolve().parents[2] / "auto_tessell_core" / "build")
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_POLYMESH = importlib.import_module("native_polymesh")
+    except Exception:  # noqa: BLE001
+        _NATIVE_POLYMESH = None
+    return _NATIVE_POLYMESH
+
 
 # ---------------------------------------------------------------------------
 # PMW1 — coplanar internal-face merge
@@ -119,14 +150,15 @@ def _segment_boundary_by_features(
     # boundary 작성 시간 + CFD setup 부담. AUTO_TESSELL_PATCH_CAP env (default
     # 64) 초과 시 작은 patches 들을 'wall_misc' 단일 patch 로 병합.
     import os as _os_pwc
+
     _patch_cap = int(_os_pwc.environ.get("AUTO_TESSELL_PATCH_CAP", "64"))
     patches: list[tuple[str, list[int]]] = []
     if len(groups) > _patch_cap:
         # 큰 patch 부터 _patch_cap-1 개까지 분리, 나머지는 wall_misc 로 합병.
         groups_by_size = sorted(groups, key=lambda g: -len(g))
-        kept = groups_by_size[:_patch_cap - 1]
+        kept = groups_by_size[: _patch_cap - 1]
         merged_misc: list[int] = [
-            n_internal + li for g in groups_by_size[_patch_cap - 1:] for li in g
+            n_internal + li for g in groups_by_size[_patch_cap - 1 :] for li in g
         ]
         # restore stable ordering of kept by first abs idx.
         kept.sort(key=lambda g: n_internal + min(g))
@@ -293,6 +325,7 @@ def _merge_coplanar_faces(
         out_nbr.append(neighbour[fi])
     return out_faces, out_owner, out_nbr
 
+
 # FoamFile header template
 _FOAM_HEADER = """\
 /*--------------------------------*- C++ -*----------------------------------*\\
@@ -385,9 +418,9 @@ def write_generic_polymesh(
     *,
     patch_name: str = "defaultWall",
     patch_type: str = "wall",
-    boundary_patch_classifier: Callable[
-        [list[int], np.ndarray], str | tuple[str, str] | None
-    ] | None = None,
+    boundary_patch_classifier: (
+        Callable[[list[int], np.ndarray], str | tuple[str, str] | None] | None
+    ) = None,
 ) -> dict[str, int]:
     """Generic polyMesh writer — cell → list of face vertex lists.
 
@@ -426,105 +459,154 @@ def write_generic_polymesh(
     )
 
     vertices_arr = np.asarray(vertices, dtype=np.float64)
-    bbox_diag = float(np.linalg.norm(vertices_arr.max(axis=0) - vertices_arr.min(axis=0))) if len(vertices_arr) else 0.0
+    bbox_diag = (
+        float(np.linalg.norm(vertices_arr.max(axis=0) - vertices_arr.min(axis=0)))
+        if len(vertices_arr)
+        else 0.0
+    )
     area_eps = max((bbox_diag * 1e-12) ** 2, 1e-30)
 
-    def _clean_face_for_write(face: Sequence[int]) -> list[int] | None:
-        cleaned: list[int] = []
-        seen: set[int] = set()
-        for raw_v in face:
-            v = int(raw_v)
-            if cleaned and cleaned[-1] == v:
-                continue
-            if v in seen:
-                continue
-            cleaned.append(v)
-            seen.add(v)
-        if len(cleaned) >= 2 and cleaned[-1] == cleaned[0]:
-            cleaned.pop()
-        if len(cleaned) < 3:
-            return None
-        pts = vertices_arr[np.asarray(cleaned, dtype=np.int64)]
-        base = pts[0]
-        area = 0.0
-        for i in range(1, len(cleaned) - 1):
-            area += 0.5 * float(np.linalg.norm(np.cross(
-                pts[i] - base, pts[i + 1] - base,
-            )))
-        if area <= area_eps:
-            return None
-        return cleaned
+    native_used = False
+    native_polymesh = _load_native_polymesh()
+    if native_polymesh is not None:
+        try:
+            (
+                internal_faces,
+                internal_owner,
+                internal_nbr,
+                boundary_faces,
+                boundary_owner,
+                n_cells_out,
+                n_cells_dropped,
+                n_faces_dropped,
+                non_manifold_faces,
+            ) = native_polymesh.build_topology(vertices_arr, cell_faces, area_eps)
+        except Exception:  # noqa: BLE001
+            pass
+        else:
+            native_used = True
 
-    cleaned_cells: list[list[list[int]]] = []
-    n_cells_dropped = 0
-    n_faces_dropped = 0
-    for faces_of_cell in cell_faces:
-        out_faces: list[list[int]] = []
-        drop_cell = False
-        for f in faces_of_cell:
-            cf = _clean_face_for_write(f)
-            if cf is None:
-                drop_cell = True
-                n_faces_dropped += 1
-                break
-            out_faces.append(cf)
-        if drop_cell or len(out_faces) < 4:
-            n_cells_dropped += 1
-            continue
-        cleaned_cells.append(out_faces)
-    if n_cells_dropped or n_faces_dropped:
-        logger.info(
-            "generic_polymesh_degenerate_cells_dropped",
-            n_cells_in=len(cell_faces),
-            n_cells_out=len(cleaned_cells),
-            n_cells_dropped=int(n_cells_dropped),
-            n_faces_dropped=int(n_faces_dropped),
-        )
-    cell_faces = cleaned_cells
+    if not native_used:
+
+        def _clean_face_for_write(face: Sequence[int]) -> list[int] | None:
+            cleaned: list[int] = []
+            seen: set[int] = set()
+            for raw_v in face:
+                v = int(raw_v)
+                if cleaned and cleaned[-1] == v:
+                    continue
+                if v in seen:
+                    continue
+                cleaned.append(v)
+                seen.add(v)
+            if len(cleaned) >= 2 and cleaned[-1] == cleaned[0]:
+                cleaned.pop()
+            if len(cleaned) < 3:
+                return None
+            pts = vertices_arr[np.asarray(cleaned, dtype=np.int64)]
+            base = pts[0]
+            area = 0.0
+            for i in range(1, len(cleaned) - 1):
+                area += 0.5 * float(
+                    np.linalg.norm(
+                        np.cross(
+                            pts[i] - base,
+                            pts[i + 1] - base,
+                        )
+                    )
+                )
+            if area <= area_eps:
+                return None
+            return cleaned
+
+        cleaned_cells: list[list[list[int]]] = []
+        n_cells_dropped = 0
+        n_faces_dropped = 0
+        for faces_of_cell in cell_faces:
+            out_faces: list[list[int]] = []
+            drop_cell = False
+            for f in faces_of_cell:
+                cf = _clean_face_for_write(f)
+                if cf is None:
+                    drop_cell = True
+                    n_faces_dropped += 1
+                    break
+                out_faces.append(cf)
+            if drop_cell or len(out_faces) < 4:
+                n_cells_dropped += 1
+                continue
+            cleaned_cells.append(out_faces)
+        if n_cells_dropped or n_faces_dropped:
+            logger.info(
+                "generic_polymesh_degenerate_cells_dropped",
+                n_cells_in=len(cell_faces),
+                n_cells_out=len(cleaned_cells),
+                n_cells_dropped=int(n_cells_dropped),
+                n_faces_dropped=int(n_faces_dropped),
+            )
+        cell_faces = cleaned_cells
+        n_cells_out = len(cell_faces)
+    else:
+        n_cells_out = int(n_cells_out)
+        if n_cells_dropped or n_faces_dropped:
+            logger.info(
+                "generic_polymesh_degenerate_cells_dropped",
+                n_cells_in=len(cell_faces),
+                n_cells_out=n_cells_out,
+                n_cells_dropped=int(n_cells_dropped),
+                n_faces_dropped=int(n_faces_dropped),
+            )
+        for n_refs, key_len in non_manifold_faces:
+            logger.warning(
+                "generic_polymesh_non_manifold_face",
+                n_refs=int(n_refs),
+                key_len=int(key_len),
+            )
 
     poly_dir = case_dir / "constant" / "polyMesh"
     poly_dir.mkdir(parents=True, exist_ok=True)
     _ensure_minimal_controldict(case_dir)
     _write_minimal_fv_dicts(case_dir)
 
-    # face_map: canonical key → [(cell_id, ordered_verts), ...]
-    face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
-    for ci, faces_of_cell in enumerate(cell_faces):
-        for f in faces_of_cell:
-            verts = [int(v) for v in f]
-            key = tuple(sorted(verts))
-            face_map[key].append((ci, verts))
+    if not native_used:
+        # face_map: canonical key → [(cell_id, ordered_verts), ...]
+        face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
+        for ci, faces_of_cell in enumerate(cell_faces):
+            for f in faces_of_cell:
+                verts = [int(v) for v in f]
+                key = tuple(sorted(verts))
+                face_map[key].append((ci, verts))
 
-    internal_faces: list[list[int]] = []
-    internal_owner: list[int] = []
-    internal_nbr: list[int] = []
-    boundary_faces: list[list[int]] = []
-    boundary_owner: list[int] = []
+        internal_faces = []
+        internal_owner = []
+        internal_nbr = []
+        boundary_faces = []
+        boundary_owner = []
 
-    for key, refs in face_map.items():
-        n_refs = len(refs)
-        if n_refs == 2:
-            (ca, fa), (cb, fb) = refs
-        elif n_refs == 1:
-            ci, fv = refs[0]
-            boundary_faces.append(fv)
-            boundary_owner.append(ci)
-            continue
-        else:
-            # non-manifold: 첫 2 cell 만 internal 로 사용, 나머지 무시.
-            logger.warning(
-                "generic_polymesh_non_manifold_face",
-                n_refs=n_refs,
-                key_len=len(key),
-            )
-            (ca, fa), (cb, fb) = refs[0], refs[1]
+        for key, refs in face_map.items():
+            n_refs = len(refs)
+            if n_refs == 2:
+                (ca, fa), (cb, fb) = refs
+            elif n_refs == 1:
+                ci, fv = refs[0]
+                boundary_faces.append(fv)
+                boundary_owner.append(ci)
+                continue
+            else:
+                # non-manifold: 첫 2 cell 만 internal 로 사용, 나머지 무시.
+                logger.warning(
+                    "generic_polymesh_non_manifold_face",
+                    n_refs=n_refs,
+                    key_len=len(key),
+                )
+                (ca, fa), (cb, fb) = refs[0], refs[1]
 
-        owner_c = min(ca, cb)
-        nbr_c = max(ca, cb)
-        f_use = fa if ca == owner_c else fb
-        internal_faces.append(f_use)
-        internal_owner.append(owner_c)
-        internal_nbr.append(nbr_c)
+            owner_c = min(ca, cb)
+            nbr_c = max(ca, cb)
+            f_use = fa if ca == owner_c else fb
+            internal_faces.append(f_use)
+            internal_owner.append(owner_c)
+            internal_nbr.append(nbr_c)
 
     # Vectorized sort: np.lexsort on owner/neighbour arrays (secondary key first)
     _int_owner_arr = np.array(internal_owner, dtype=np.int64)
@@ -564,10 +646,7 @@ def write_generic_polymesh(
     # patch[i].startFace + nFaces == patch[i+1].startFace 의 contiguous 제약이
     # 있으므로, 그룹화 후 boundary 영역을 patch 별로 재정렬해야 한다.
     n_bnd = len(final_faces) - n_internal
-    _pmw2_active = (
-        not _PMW2_OFF
-        and n_bnd > 100
-    )
+    _pmw2_active = not _PMW2_OFF and n_bnd > 100
     boundary_entries: list[dict[str, Any]]
     if boundary_patch_classifier is not None and n_bnd > 0:
         classifications: list[Any] | None = None
@@ -625,12 +704,14 @@ def write_generic_polymesh(
                 new_bnd_faces.append(sorted_bnd_faces[rel])
                 new_bnd_owner.append(sorted_bnd_owner[rel])
             cursor += len(rel_indices)
-            boundary_entries.append({
-                "name": pname,
-                "type": ptype,
-                "nFaces": len(rel_indices),
-                "startFace": start,
-            })
+            boundary_entries.append(
+                {
+                    "name": pname,
+                    "type": ptype,
+                    "nFaces": len(rel_indices),
+                    "startFace": start,
+                }
+            )
         final_faces = sorted_int_faces + new_bnd_faces
         final_owner = sorted_int_owner + new_bnd_owner
         logger.info(
@@ -674,18 +755,16 @@ def write_generic_polymesh(
             ]
         else:
             boundary_entries = [
-                {"name": patch_name, "type": patch_type,
-                 "nFaces": n_bnd, "startFace": n_internal}
+                {"name": patch_name, "type": patch_type, "nFaces": n_bnd, "startFace": n_internal}
             ]
     else:
         boundary_entries = [
-            {"name": patch_name, "type": patch_type,
-             "nFaces": n_bnd, "startFace": n_internal}
+            {"name": patch_name, "type": patch_type, "nFaces": n_bnd, "startFace": n_internal}
         ]
 
     n_faces = len(final_faces)
     owner_note = (
-        f"nPoints:{int(vertices_arr.shape[0])}  nCells:{len(cell_faces)}  "
+        f"nPoints:{int(vertices_arr.shape[0])}  nCells:{n_cells_out}  "
         f"nFaces:{n_faces}  nInternalFaces:{n_internal}"
     )
 
@@ -705,7 +784,7 @@ def write_generic_polymesh(
     _write_boundary(poly_dir / "boundary", boundary_entries)
 
     return {
-        "num_cells": len(cell_faces),
+        "num_cells": n_cells_out,
         "num_points": int(vertices_arr.shape[0]),
         "num_faces": len(final_faces),
         "num_internal_faces": n_internal,
@@ -736,9 +815,9 @@ class PolyMeshWriter:
         tets: np.ndarray,
         case_dir: Path,
         *,
-        boundary_patch_classifier: Callable[
-            [list[int], np.ndarray], str | tuple[str, str] | None
-        ] | None = None,
+        boundary_patch_classifier: (
+            Callable[[list[int], np.ndarray], str | tuple[str, str] | None] | None
+        ) = None,
     ) -> dict[str, int]:
         """Write OpenFOAM polyMesh from tet mesh arrays.
 
@@ -833,7 +912,7 @@ class PolyMeshWriter:
                 + "    div(phi,U) bounded Gauss linearUpwind grad(U);\n"
                 + "    div(phi,k) bounded Gauss upwind;\n"
                 + "    div(phi,omega) bounded Gauss upwind;\n"
-                + "    \"div((nuEff*dev2(T(grad(U)))))\" Gauss linear;\n"
+                + '    "div((nuEff*dev2(T(grad(U)))))" Gauss linear;\n'
                 + "}\n"
                 + "laplacianSchemes { default Gauss linear corrected; }\n"
                 + "interpolationSchemes { default linear; }\n"
@@ -848,9 +927,12 @@ class PolyMeshWriter:
                 _header("dictionary", "system", "fvSolution")
                 + "solvers\n{\n"
                 + "    p { solver GAMG; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
-                + "    U { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
-                + "    k { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
-                + "    omega { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
+                + "    U { solver smoothSolver; smoother GaussSeidel; "
+                + "tolerance 1e-06; relTol 0.1; }\n"
+                + "    k { solver smoothSolver; smoother GaussSeidel; "
+                + "tolerance 1e-06; relTol 0.1; }\n"
+                + "    omega { solver smoothSolver; smoother GaussSeidel; "
+                + "tolerance 1e-06; relTol 0.1; }\n"
                 + "}\n\n"
                 + "SIMPLE\n{\n"
                 + "    nNonOrthogonalCorrectors 1;\n"
