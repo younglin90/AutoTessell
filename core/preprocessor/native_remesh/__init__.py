@@ -29,7 +29,35 @@ _UUU3_REPAIR_CANDIDATES = True
 _UUU5_FACE_SPLIT = True  # UUU6 (beta2107) — 활성, mesher 호출부에서 try/except 가드
 
 
+_SI_MEMO: dict[int, np.ndarray] = {}
+_SI_MEMO_MAX = 8
+
+
 def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:
+    """Content-hash memoized wrapper around :func:`_detect_self_intersections_impl`.
+
+    beta2830 — surface self-intersection is a pure function of ``(V, F)``.  The
+    rebudget loop re-invokes ``generate_native_tet`` up to 7x with byte-identical
+    ``(V, F)``, so caching the detection result eliminates redundant O(T^2) passes
+    without altering the returned array.  Returns are ``.copy()`` so that a caller
+    mutating the array in place cannot corrupt a later cache hit.  Non-ndarray or
+    otherwise abnormal input bypasses the cache and calls ``_impl`` directly.
+    """
+    try:
+        key = hash((V.shape, F.shape, V.tobytes(), F.tobytes()))
+    except (AttributeError, TypeError, ValueError):
+        return _detect_self_intersections_impl(V, F)
+    cached = _SI_MEMO.get(key)
+    if cached is not None:
+        return cached.copy()
+    result = _detect_self_intersections_impl(V, F)
+    if len(_SI_MEMO) >= _SI_MEMO_MAX:
+        _SI_MEMO.pop(next(iter(_SI_MEMO)))
+    _SI_MEMO[key] = result
+    return result.copy()
+
+
+def _detect_self_intersections_impl(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     """Triangle AABB pair 탐색 → Möller tri-tri intersect → intersecting face index pair (M,2) 반환.
 
     Parameters
