@@ -21,3 +21,17 @@ paths: ["**"]
   tunnel.
 - **`mesh_type` is a preference, not an absolute contract** — cross-family fallback is
   allowed as a last resort so that garbage input still yields *some* volume mesh.
+- **`generate_native_tet` called twice in one pytest process on a heavy mesh (10k+
+  cells) can crash the interpreter** with a non-deterministic Windows access violation
+  — a different native stack trace each run (seen in both `aabb.py` and
+  `mean_curvature.py`), the signature of native-heap corruption, not a Python logic
+  bug. It did not reproduce in a bare `python -c` script calling the function twice —
+  looks specific to pytest's process/threading setup. Root cause not found; the
+  practical fix is a module-scoped fixture so a test file only calls it once and shares
+  the result across assertions (see `tests/test_native_tet_dual_torus_limit.py`).
+- **Windows Bash-tool `python3` and WSL `python3` are different interpreters with
+  different installed packages** — `igl`/`pyacvd` (used by L2 remesh) exist in the WSL
+  venv but not the Windows one. A test that silently no-ops or takes a fallback path
+  under Windows may be exercising a completely different code path than production.
+  When a card touches `igl`/`pyacvd`/other WSL-only deps, verify via `wsl.exe -d ubuntu`
+  or note explicitly which environment was used.
