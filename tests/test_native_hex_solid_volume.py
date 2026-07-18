@@ -373,3 +373,41 @@ def test_native_hex_standard_boundary_skew(tmp_path: Path) -> None:
         f"> 3.0 gate — _relax_boundary_sliver_interior failed to restore "
         f"wall-normal thickness."
     )
+
+
+@pytest.mark.parametrize(
+    "quality_level",
+    ["standard", "fine"],
+)
+def test_native_hex_no_negative_volumes(tmp_path: Path, quality_level: str) -> None:
+    """No cell may have a negative (inverted) volume — cylinder, standard & fine.
+
+    Discovered while building CARD HEX-SKEW-INNER-RELAX: with
+    ``_relax_boundary_sliver_interior`` disabled (env
+    ``AUTO_TESSELL_HEX_SKEW_RELAX_OFF=1``), cylinder.stl fine / N=2000 produced
+    checker ``negative_volumes=8`` — a pre-existing defect no test asserted on,
+    so it went unnoticed. relax is ON by default and measured to bring
+    negative_volumes to 0; this test locks that in as a permanent gate so any
+    regression (including a silent one from someone flipping the kill-switch
+    default) is caught.
+    """
+    case = tmp_path / "case"
+    res = PipelineOrchestrator().run(
+        _CYLINDER,
+        case,
+        quality_level=quality_level,
+        mesh_type="hex_dominant",
+        tier_hint="native_hex",
+        max_iterations=1,
+        auto_retry="off",
+        strict_tier=True,
+        write_of_case=True,
+        max_cells=_TEST_CELLS,
+        tier_specific_params={"max_cells": _TEST_CELLS, "target_cells": _TEST_CELLS},
+    )
+    assert res.quality_report is not None
+    checkmesh = res.quality_report.evaluation_summary.checkmesh
+    assert checkmesh.negative_volumes == 0, (
+        f"cylinder {quality_level} negative_volumes={checkmesh.negative_volumes} "
+        f"> 0 — some cells are inverted."
+    )
