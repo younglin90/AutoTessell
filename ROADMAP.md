@@ -59,19 +59,34 @@ selective repair UI.
   near-wall insertion, 12-STL hard-geometry bench, full 4-op schedule (flip
   inversion-safety landed). SI-detection memoization landed (2026-07-18,
   zero-regression dedup of the rebudget loop's repeated calls) but did NOT
-  fix the bench's 3 TIMEOUT shapes (sphere, sphere_watertight,
-  high_genus_dual_torus) — direct instrumentation showed SI detection was
-  never the bottleneck (~1.2s/call, not the ~17.8s a log-gap estimate
-  implied). Open: profile the tet generation/CDT/quality passes themselves
-  to find what actually dominates sphere.stl's ~130s.
+  fix the bench's 3 TIMEOUT shapes — direct instrumentation (cProfile, not
+  log-gap inference) showed the real bottleneck was
+  `core/utils/aabb.py:closest_points_all_shared` (71% of profiled wall,
+  660k scalar-per-query calls to a leaf routine vectorized only over its own
+  <=8 triangles). Fixed by batching the whole active-query set through each
+  leaf in one call — cumtime 62.4s -> ~2.8s, sphere.stl bench 87.8s ->
+  38.9s (PASS, was TIMEOUT). sphere_watertight/high_genus_dual_torus not
+  yet re-measured. Same investigation also caught a **pre-existing
+  correctness bug**: `TriangleBVH.build()`'s recursive split wrote a local
+  argsort rank as if it were a global triangle id, corrupting `tri_order`
+  below the root (27/137 triangles duplicated/dropped in a repro) — this
+  backs envelope/hausdorff/cdt_recovery/signed_distance queries project-wide,
+  so it could have silently returned a wrong nearest-triangle anywhere those
+  are used. One-line fix, ~80 BVH-adjacent tests unchanged after.
 - **native_hex ~40%**: solid gates green on the cube (surface 6.000/void
-  0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed
-  (2026-07-18): per-vertex wall-fit snap (envelope-projected, accepted only
-  on strictly-decreasing surface distance + positive-volume/orientation
-  guard on every incident cell) closed cylinder standard wall_dev_max
-  0.0466→0.0032 (gate <0.02, now a permanent test, not xfail); negative
-  volumes 0. Next: extend the same guard to fine quality, then hex quality
-  (skew currently 4.64 post-snap — bounded but unoptimized).
+  0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed on
+  **standard** (2026-07-18): per-vertex wall-fit snap (envelope-projected,
+  accepted only on strictly-decreasing surface distance + positive-volume/
+  orientation guard on every incident cell) closed cylinder standard
+  wall_dev_max 0.0466→0.0032 (gate <0.02, permanent test); negative volumes
+  0. **fine still xfail**: the envelope was generalized to per-vertex local
+  sizing (fTetWild-style) on the theory that fine's finer octree cap was
+  clamping legitimate snaps — measured wrong (n_reject_envelope=0 before and
+  after); the real blocker is the no-inversion guard rejecting 67/403
+  candidate snaps, untouched by this card. Next: a guard-focused card (why
+  are that many incident-cell volume checks failing at fine granularity),
+  then hex quality (skew currently 4.64 post-snap on standard — bounded but
+  unoptimized).
 - **native_poly ~15%** (unmeasured): port the tet methodology — canonical
   smoke, solid gates, then quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
