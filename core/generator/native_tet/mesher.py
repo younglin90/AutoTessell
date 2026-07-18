@@ -75,6 +75,28 @@ def _seed_points_uniform(
 from core.utils.geometry import inside_robust as _inside_winding_number
 
 
+def _inside_boolean_union_inputs(
+    points: np.ndarray,
+    input_paths: list[str],
+) -> np.ndarray:
+    """Classify points inside any original boolean-union input surface."""
+    from core.analyzer.readers import read_stl
+    from core.utils.geometry import inside_union_winding_number
+
+    surfaces: list[tuple[np.ndarray, np.ndarray]] = []
+    for input_path in input_paths:
+        mesh = read_stl(Path(input_path))
+        surfaces.append(
+            (
+                np.asarray(mesh.vertices, dtype=np.float64),
+                np.asarray(mesh.faces, dtype=np.int64),
+            )
+        )
+    if not surfaces:
+        raise ValueError("boolean union requires at least one input surface")
+    return inside_union_winding_number(points, surfaces)
+
+
 def _surf_edges_from_faces(F: np.ndarray) -> set:
     """F (N,3) → sorted edge set. Vectorized (beta2210)."""
     if F.shape[0] == 0:
@@ -312,6 +334,10 @@ def generate_native_tet(
     # 자동 ON (HARNESS_PARAMS), 다른 tier 는 OFF. AUTO_TESSELL_STELLAR_SPLIT
     # env 가 우선 (사용자 explicit override).
     enable_stellar_split: bool = False,
+    # BOOLMERGE4: JSON-safe original STL provenance. Combined soup remains the
+    # geometry source; these paths only replace final centroid inclusion with
+    # a per-original-surface OR.
+    boolean_union_input_paths: list[str] | None = None,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -1308,9 +1334,30 @@ def generate_native_tet(
                         else:
                             log.warning("native_tet_bsp_redelaunay_failed")
 
-    # 3) tet centroid 로 inside 판정
+    # 3) tet centroid 로 inside 판정. Combined closed-surface soup cannot use
+    # ray parity for overlapping bodies: two crossings cancel to outside.
+    # Preserve the soup for seeding/surface vertices, but classify final tets
+    # against each original surface and OR the masks (fTetWild section 3.6).
     centroids = all_pts[tets].mean(axis=1)
-    inside_tet = _inside_winding_number(centroids, V, F)
+    inside_tet: np.ndarray | None = None
+    if boolean_union_input_paths:
+        try:
+            inside_tet = _inside_boolean_union_inputs(
+                centroids, list(boolean_union_input_paths)
+            )
+            log.info(
+                "native_tet_boolean_union_filter",
+                n_inputs=len(boolean_union_input_paths),
+                n_tets=int(tets.shape[0]),
+                n_inside=int(inside_tet.sum()),
+            )
+        except Exception as exc:
+            log.warning(
+                "native_tet_boolean_union_filter_fallback",
+                error=str(exc)[:160],
+            )
+    if inside_tet is None:
+        inside_tet = _inside_winding_number(centroids, V, F)
 
     # 3b) Phase A2 — boundary-aware sliver filter. V6 — surface-area revert.
     q_thresh = max(0.0, float(sliver_quality_threshold))

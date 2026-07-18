@@ -375,6 +375,8 @@ def run_native_tier(
         # 도 함께 추가했고 (tier_native_tet.py beta2295) 이젠 GUI/CLI 도달.
         "target_cells",            # fTetWild target_num_cells 동등 (beta330)
         "max_cells",               # CLI/verifier global cell budget
+        # BOOLMERGE4: original STL provenance for per-surface OR inclusion.
+        "boolean_union_input_paths",
         "bl_layers",               # post-layer budget reservation
         "post_layers_num_layers",  # post-layer budget reservation
         "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)

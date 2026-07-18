@@ -140,6 +140,8 @@ class PipelineOrchestrator:
         result = PipelineResult(success=False)
         max_iterations = max(1, int(max_iterations))
         stage = "init"
+        # Internal pipeline metadata must never mutate the caller-owned mapping.
+        tier_specific_params = dict(tier_specific_params or {})
 
         # Tier 5 엔진 선택 (v0.4 native-first):
         #   "auto"    → NativeMeshChecker 기본, OpenFOAM 은 교차 검증용
@@ -168,6 +170,16 @@ class PipelineOrchestrator:
                 log.debug("progress_callback_failed", error=str(exc))
 
         try:
+            if additional_input_paths:
+                union_tier = str(tier_hint or "auto").lower()
+                if union_tier == "auto":
+                    tier_hint = "native_tet"
+                    log.info("boolean_union_tier_coerced", tier="native_tet")
+                elif union_tier not in {"native_tet", "tier_native_tet"}:
+                    raise ValueError(
+                        "boolean union currently requires tier native_tet; "
+                        f"received {tier_hint!r}"
+                    )
             log.debug(
                 "pipeline_run_params",
                 input_path=str(input_path),
@@ -202,13 +214,17 @@ class PipelineOrchestrator:
             # 만들어 input_path 를 치환한다 — Analyze 이전에, 나머지 파이프라인
             # 은 5-홉 무변경 단일-경로 그대로 진행된다.
             if additional_input_paths:
+                union_input_paths = [input_path, *additional_input_paths]
+                tier_specific_params["boolean_union_input_paths"] = [
+                    str(path) for path in union_input_paths
+                ]
                 log.info(
                     "boolean_union_premerge_requested",
                     primary=str(input_path),
                     additional=[str(p) for p in additional_input_paths],
                 )
                 input_path = self._premerge_surfaces_for_union(
-                    [input_path, *additional_input_paths], work=output_dir,
+                    union_input_paths, work=output_dir,
                 )
                 no_repair = True
                 surface_remesh = False

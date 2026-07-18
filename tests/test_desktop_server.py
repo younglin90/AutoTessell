@@ -1282,7 +1282,55 @@ class TestMultiSurface:
         # additional_input_paths (not silently dropped / ignored).
         assert mock_orch.run.called
         _, run_kwargs = mock_orch.run.call_args
+        assert run_kwargs.get("tier_hint") == "native_tet"
         assert run_kwargs.get("additional_input_paths") == [expected_second_path]
+
+    @pytest.mark.parametrize("tier", ["native_tet", "tier_native_tet"])
+    def test_two_surface_explicit_native_tet_allowed(self, client, tier):
+        mock_orch = _make_mock_orchestrator(verdict="PASS")
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+
+        with patch(
+            "core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch,
+        ):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {
+                        "action": "start",
+                        "quality": "draft",
+                        "tier": tier,
+                        "mesh_type": "tet",
+                        "max_iterations": 1,
+                    }
+                )
+                messages = self._collect_messages(ws)
+
+        assert not [m for m in messages if m.get("type") == "error"]
+        _, run_kwargs = mock_orch.run.call_args
+        assert run_kwargs.get("tier_hint") == tier
+        assert len(run_kwargs.get("additional_input_paths", [])) == 1
+
+    def test_two_surface_incompatible_tier_rejected(self, client):
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+
+        with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+            ws.send_json(
+                {
+                    "action": "start",
+                    "quality": "draft",
+                    "tier": "wildmesh",
+                    "mesh_type": "tet",
+                    "max_iterations": 1,
+                }
+            )
+            messages = self._collect_messages(ws)
+
+        errors = [m for m in messages if m.get("type") == "error"]
+        assert errors
+        assert "native_tet" in errors[0].get("message", "")
+        assert _jobs[job_id]["status"] == "failed"
 
     def test_three_surface_still_rejected(self, client):
         """mesh_type='tet' + 3 surfaces must still be rejected with the

@@ -913,23 +913,34 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
-    # Multi-surface assembly gate (CARD BOOLMERGE3): boolean union of exactly
-    # 2 surfaces is now supported for mesh_type == "tet" (GWN-additivity
-    # pre-merge, wired through orchestrator.run(additional_input_paths=...)).
+    # Multi-surface assembly gate (CARD BOOLMERGE4): boolean union of exactly
+    # 2 surfaces is supported for mesh_type == "tet" through native_tet.
     # Everything else (3+ surfaces, or mesh_type != "tet") is still rejected
     # with the original "boolean" message — do not change that wording, it is
     # asserted verbatim by tests/test_desktop_server.py::TestMultiSurface.
     n_surfaces = len(job.get("surfaces", []))
     additional_input_paths: list[Path] | None = None
+    gate_error: str | None = None
     if n_surfaces >= 2:
         if mesh_type == "tet" and n_surfaces == 2:
-            additional_input_paths = [Path(job["surfaces"][1]["path"])]
+            normalized_tier = str(tier or "auto").lower()
+            if normalized_tier == "auto":
+                tier = "native_tet"
+            elif normalized_tier not in {"native_tet", "tier_native_tet"}:
+                gate_error = (
+                    "여러 표면의 boolean union은 현재 native_tet tier만 "
+                    f"지원합니다. 요청 tier: {tier}"
+                )
+            if gate_error is None:
+                additional_input_paths = [Path(job["surfaces"][1]["path"])]
         else:
-            msg = (
+            gate_error = (
                 "여러 표면의 boolean 병합은 곧 지원됩니다 — 현재는 표면 1개만 "
                 "메쉬를 생성할 수 있습니다. 표면 목록에서 1개만 남기고 나머지를 "
                 "삭제한 뒤 다시 시도하세요."
             )
+        if gate_error is not None:
+            msg = gate_error
             job["status"] = "failed"
             job["error"] = msg
             _touch_job(job)

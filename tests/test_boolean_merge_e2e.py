@@ -1,17 +1,14 @@
-"""CARD BOOLMERGE3 — orchestrator.run(additional_input_paths=...) e2e.
+"""CARD BOOLMERGE4 — per-original-surface OR inclusion e2e.
 
 Wires GWN (generalized winding number) additivity — proven at the unit level
 by BOOLMERGE1 (``core/utils/geometry.inside_union_winding_number``,
 ``tests/test_geometry_boolean_merge.py``) — through the user-facing
 ``PipelineOrchestrator.run()`` entry point for the first time.
 
-Two overlapping unit cubes are pre-merged (vertex-offset concat, no repair,
-no remesh) into a single STL and fed through the existing single-path
-``native_tet`` pipeline (``core/generator/native_tet/mesher.py``). Because
-``_inside_winding_number`` (threshold 0.5) treats winding number >= 1 as
-"inside", the combined soup's seeding (union bbox) and filtering (union) both
-fall out for free — no mesher/tier/harness code changes (BOOLMERGE2's
-``filter_tets_to_union`` remains unwired; that is BOOLMERGE4+ scope).
+Two overlapping unit cubes are pre-merged for bbox, seeding, and surface
+vertices. Final tet centroids are classified against each original STL and
+combined with OR. This retains overlap tets that combined-soup ray parity
+incorrectly rejected in BOOLMERGE3.
 
 Geometry: A=[0,1]^3, B=[0.5,1.5]^3 -> analytic union volume = 1.875.
 """
@@ -35,9 +32,8 @@ from core.utils.stl_writer import write_stl_binary
 # overlapping cubes) shape: swept 1500/2000/2500/3000/3500/4000/6000/12000 —
 # below ~2500 the mesher settles into a coarser regime that under-resolves
 # the union's re-entrant corner (vol ~1.51-1.57, outside the accept band);
-# at 2500 it reproducibly (4/4 runs) lands on vol=1.7574 (~6% under the
-# analytic 1.875) with a clean PASS.  3500 flips back into the coarse
-# regime and fails checkMesh — so this is not "bigger is safer" here.
+# at 2500 BOOLMERGE3 reproducibly landed on vol=1.7574, the symmetric
+# difference. BOOLMERGE4 must recover the overlap and approach union=1.875.
 _TEST_CELLS = 2500
 
 
@@ -161,12 +157,34 @@ def test_boolean_merge_requires_two_surfaces(tmp_path: Path) -> None:
         PipelineOrchestrator._premerge_surfaces_for_union([], tmp_path)
 
 
+def test_boolean_union_original_inputs_retain_overlap(tmp_path: Path) -> None:
+    """A point inside both inputs remains inside under per-surface OR."""
+    from core.generator.native_tet.mesher import _inside_boolean_union_inputs
+
+    a_path = tmp_path / "cube_a.stl"
+    b_path = tmp_path / "cube_b.stl"
+    _write_cube_stl(a_path, 0.0, 1.0)
+    _write_cube_stl(b_path, 0.5, 1.5)
+
+    points = np.array(
+        [
+            [0.75, 0.75, 0.75],  # overlap: inside A and B
+            [1.25, 1.25, 1.25],  # B only
+            [2.0, 2.0, 2.0],     # outside both
+        ],
+        dtype=np.float64,
+    )
+    mask = _inside_boolean_union_inputs(points, [str(a_path), str(b_path)])
+
+    assert mask.tolist() == [True, True, False]
+
+
 def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
     """Two overlapping unit cubes merged through additional_input_paths.
 
-    Gate criteria (CARD BOOLMERGE3):
+    Gate criteria (CARD BOOLMERGE4):
       - success + n_cells > 0.
-      - sum |cell vol| in [1.60, 2.05] (union=1.875, +/- discretization/seeding).
+      - sum |cell vol| in [1.82, 1.95] (union=1.875, rejects XOR=1.75).
       - vol_merged > vol_single_cube(~1.0) + 0.5 -> merge actually happened.
       - surface preservation: sample faces from each original cube (outside
         the other cube's extent) stay within envelope of the output boundary.
@@ -179,22 +197,34 @@ def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
     _write_cube_stl(b_path, 0.5, 1.5)
 
     case_dir = tmp_path / "case"
+    tier_params = {
+        "max_cells": _TEST_CELLS,
+        "target_cells": _TEST_CELLS,
+    }
     result = PipelineOrchestrator().run(
         a_path,
         case_dir,
         additional_input_paths=[b_path],
         mesh_type="tet",
-        tier_hint="native_tet",
+        tier_hint="auto",
         quality_level="draft",
         max_iterations=1,
         auto_retry="off",
         write_of_case=True,
         max_cells=_TEST_CELLS,
-        tier_specific_params={
-            "max_cells": _TEST_CELLS,
-            "target_cells": _TEST_CELLS,
-        },
+        tier_specific_params=tier_params,
     )
+
+    assert tier_params == {
+        "max_cells": _TEST_CELLS,
+        "target_cells": _TEST_CELLS,
+    }, "orchestrator mutated caller-owned tier_specific_params"
+    assert result.strategy is not None
+    assert result.strategy.selected_tier == "tier_native_tet"
+    assert result.strategy.tier_specific_params["boolean_union_input_paths"] == [
+        str(a_path),
+        str(b_path),
+    ]
 
     assert result.success is True, f"pipeline failed: {result.error}"
     poly_dir = case_dir / "constant" / "polyMesh"
@@ -220,10 +250,9 @@ def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
     assert n_cells > 0, "no valid tet cells produced"
 
     total_vol = float(vols.sum())
-    assert 1.60 <= total_vol <= 2.05, (
-        f"union volume {total_vol:.4f} outside [1.60, 2.05] band "
-        f"(analytic union=1.875) — combined-soup pre-merge may not be "
-        f"reaching the mesher correctly."
+    assert 1.82 <= total_vol <= 1.95, (
+        f"union volume {total_vol:.4f} outside [1.82, 1.95] band "
+        f"(analytic union=1.875; symmetric difference=1.750)"
     )
     single_cube_vol_est = 1.0
     assert total_vol > single_cube_vol_est + 0.5, (
