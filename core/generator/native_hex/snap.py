@@ -96,6 +96,42 @@ def _native_triangle_candidates(
         return None
 
 
+def _native_segment_candidates(
+    points: np.ndarray,
+    segment_a: np.ndarray,
+    segment_b: np.ndarray,
+    candidates: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    native_snap = _load_native_snap()
+    kernel = (
+        getattr(native_snap, "closest_segment_candidates", None)
+        if native_snap is not None
+        else None
+    )
+    if kernel is None:
+        return None
+    try:
+        best_points, distances, segment_indices, valid = kernel(
+            points, segment_a, segment_b, candidates
+        )
+        best_points = np.asarray(best_points, dtype=np.float64)
+        distances = np.asarray(distances, dtype=np.float64)
+        segment_indices = np.asarray(segment_indices, dtype=np.int64)
+        valid = np.asarray(valid, dtype=bool)
+        count = len(points)
+        if (
+            best_points.shape != (count, 3)
+            or distances.shape != (count,)
+            or segment_indices.shape != (count,)
+            or valid.shape != (count,)
+        ):
+            raise ValueError("native segment snap kernel returned invalid shapes")
+        return best_points, distances, segment_indices, valid
+    except Exception as exc:  # noqa: BLE001
+        log.debug("native_snap_segment_candidates_failed", error=str(exc))
+        return None
+
+
 def _closest_point_on_triangle(
     P: np.ndarray,
     A: np.ndarray,
@@ -852,25 +888,33 @@ def snap_to_feature_edges(
     # P2.5 / beta2583 — per-vert chosen seg index 추적해 weight 회수.
     best_seg_idx = np.full(n_verts, -1, dtype=np.int64)
 
-    for i in range(n_verts):
-        cand_segs = nn_idx[i]
-        cand_segs = cand_segs[cand_segs < segs.shape[0]]
-        if cand_segs.size == 0:
-            continue
-        P = work[i]
-        bd2 = np.inf
-        bp = None
-        bsi = -1
-        for si in cand_segs:
-            pt, d = _closest_point_on_segment(P, seg_A[si], seg_B[si])
-            if d < bd2:
-                bd2 = d
-                bp = pt
-                bsi = int(si)
-        if bp is not None and bd2 <= max_dist:
-            best_dist[i] = bd2
-            best_snap[i] = bp
-            best_seg_idx[i] = bsi
+    native_segments = _native_segment_candidates(work, seg_A, seg_B, nn_idx)
+    if native_segments is not None:
+        native_points, native_distances, native_indices, native_valid = native_segments
+        accepted = native_valid & (native_distances <= max_dist)
+        best_dist[accepted] = native_distances[accepted]
+        best_snap[accepted] = native_points[accepted]
+        best_seg_idx[accepted] = native_indices[accepted]
+    else:
+        for i in range(n_verts):
+            cand_segs = nn_idx[i]
+            cand_segs = cand_segs[cand_segs < segs.shape[0]]
+            if cand_segs.size == 0:
+                continue
+            P = work[i]
+            bd2 = np.inf
+            bp = None
+            bsi = -1
+            for si in cand_segs:
+                pt, d = _closest_point_on_segment(P, seg_A[si], seg_B[si])
+                if d < bd2:
+                    bd2 = d
+                    bp = pt
+                    bsi = int(si)
+            if bp is not None and bd2 <= max_dist:
+                best_dist[i] = bd2
+                best_snap[i] = bp
+                best_seg_idx[i] = bsi
 
     # Step 3 — select top_k candidates (smallest dist, dist < max_dist).
     # P2.5 / beta2583 — sharpness-weighted score: score = dist / weight.

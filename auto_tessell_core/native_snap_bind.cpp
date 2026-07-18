@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace py = pybind11;
 
@@ -179,6 +180,103 @@ py::tuple closest_triangle_candidates(
     return py::make_tuple(best_points, best_squared_distances, valid);
 }
 
+std::pair<Point3, double> closest_point_on_segment(
+    const Point3& point, const Point3& first, const Point3& second)
+{
+    const Point3 direction = subtract(second, first);
+    const double length_squared = dot(direction, direction);
+    if (length_squared < 1e-30) {
+        const Point3 delta = subtract(point, first);
+        return {first, std::sqrt(dot(delta, delta))};
+    }
+    const Point3 offset = subtract(point, first);
+    double parameter = dot(offset, direction) / length_squared;
+    if (parameter < 0.0) {
+        parameter = 0.0;
+    } else if (parameter > 1.0) {
+        parameter = 1.0;
+    }
+    const Point3 candidate = add_scaled(first, direction, parameter);
+    const Point3 delta = subtract(point, candidate);
+    return {candidate, std::sqrt(dot(delta, delta))};
+}
+
+py::tuple closest_segment_candidates(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::array_t<double, py::array::c_style | py::array::forcecast> segment_a,
+    py::array_t<double, py::array::c_style | py::array::forcecast> segment_b,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> candidates)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (segment_a.ndim() != 2 || segment_a.shape(1) != 3
+        || segment_b.ndim() != 2 || segment_b.shape(1) != 3) {
+        throw std::invalid_argument("segment arrays must have shape (M, 3)");
+    }
+    if (segment_a.shape(0) != segment_b.shape(0)) {
+        throw std::invalid_argument("segment arrays must have matching lengths");
+    }
+    if (candidates.ndim() != 2 || candidates.shape(0) != points.shape(0)) {
+        throw std::invalid_argument("candidates must have shape (N, K)");
+    }
+
+    const py::ssize_t point_count = points.shape(0);
+    const py::ssize_t segment_count = segment_a.shape(0);
+    const py::ssize_t candidate_count = candidates.shape(1);
+    py::array_t<double> best_points({point_count, py::ssize_t{3}});
+    py::array_t<double> best_distances({point_count});
+    py::array_t<long long> best_segments({point_count});
+    py::array_t<bool> valid({point_count});
+
+    const auto point_view = points.unchecked<2>();
+    const auto first_view = segment_a.unchecked<2>();
+    const auto second_view = segment_b.unchecked<2>();
+    const auto candidate_view = candidates.unchecked<2>();
+    auto output_points = best_points.mutable_unchecked<2>();
+    auto output_distances = best_distances.mutable_unchecked<1>();
+    auto output_segments = best_segments.mutable_unchecked<1>();
+    auto output_valid = valid.mutable_unchecked<1>();
+
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t point_index = 0; point_index < point_count; ++point_index) {
+            const Point3 point = load_point(point_view, point_index);
+            Point3 best_point = point;
+            double best_distance = std::numeric_limits<double>::infinity();
+            long long best_segment = -1;
+            for (py::ssize_t slot = 0; slot < candidate_count; ++slot) {
+                long long segment_index = candidate_view(point_index, slot);
+                if (segment_index >= segment_count) {
+                    continue;
+                }
+                if (segment_index < 0) {
+                    if (segment_index < -segment_count) {
+                        throw py::index_error("segment index is out of bounds");
+                    }
+                    segment_index += segment_count;
+                }
+                const auto row = static_cast<py::ssize_t>(segment_index);
+                const auto [candidate_point, distance] = closest_point_on_segment(
+                    point, load_point(first_view, row), load_point(second_view, row));
+                if (distance < best_distance) {
+                    best_distance = distance;
+                    best_point = candidate_point;
+                    best_segment = segment_index;
+                }
+            }
+            output_points(point_index, 0) = best_point[0];
+            output_points(point_index, 1) = best_point[1];
+            output_points(point_index, 2) = best_point[2];
+            output_distances(point_index) = best_distance;
+            output_segments(point_index) = best_segment;
+            output_valid(point_index) = best_segment >= 0;
+        }
+    }
+
+    return py::make_tuple(best_points, best_distances, best_segments, valid);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_snap, module)
@@ -191,5 +289,12 @@ PYBIND11_MODULE(native_snap, module)
         py::arg("triangle_a"),
         py::arg("triangle_b"),
         py::arg("triangle_c"),
+        py::arg("candidates"));
+    module.def(
+        "closest_segment_candidates",
+        &closest_segment_candidates,
+        py::arg("points"),
+        py::arg("segment_a"),
+        py::arg("segment_b"),
         py::arg("candidates"));
 }
