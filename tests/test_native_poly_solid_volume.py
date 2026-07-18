@@ -82,6 +82,7 @@ from typing import Iterator
 import numpy as np
 import pytest
 
+from core.analyzer.readers.stl import read_stl
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
     parse_foam_faces,
@@ -93,6 +94,8 @@ _CUBE = Path(__file__).resolve().parent / "benchmarks" / "cube.stl"
 _TRUE_AREA = 6.0  # unit cube
 _TRUE_VOLUME = 1.0
 _PLANES = 0.5  # |x| = |y| = |z| = 0.5
+
+_CYLINDER = Path(__file__).resolve().parent / "benchmarks" / "cylinder.stl"
 
 
 def _face_area(pts: np.ndarray, face: list[int]) -> float:
@@ -122,6 +125,86 @@ def _boundary_area_split(poly_dir: Path) -> tuple[float, float]:
         else:
             off_area += a
     return on_area, off_area
+
+
+def _input_surface_planes(stl_path: Path) -> list[tuple[np.ndarray, float]]:
+    """Unique (normal, offset) planes of every input STL triangle (deduped).
+
+    Generalizes the cube's hardcoded 6-plane envelope
+    (``_PLANES``/``_boundary_area_split``) to arbitrary curved surfaces:
+    dual boundary points (tet centroid / edge midpoint / vertex) lie exactly
+    on their originating input triangle's plane, so per-triangle planes are
+    the correct on-surface envelope for any faceted input. Ported from
+    ``core/generator/native_poly/dual.py::_surface_planes`` (dual.py:182) —
+    same dedup key, independently re-derived here from the raw STL (not from
+    the harness's internal boundary-face list) so this is a true independent
+    measurement.
+    """
+    mesh = read_stl(stl_path)
+    planes: list[tuple[np.ndarray, float]] = []
+    seen: set[tuple[int, ...]] = set()
+    for tri in mesh.faces:
+        p0, p1, p2 = mesh.vertices[tri[0]], mesh.vertices[tri[1]], mesh.vertices[tri[2]]
+        n = np.cross(p1 - p0, p2 - p0)
+        norm = float(np.linalg.norm(n))
+        if norm < 1e-12:
+            continue
+        n = n / norm
+        d = -float(np.dot(n, p0))
+        key = tuple(np.round(np.append(n, d) * 1e4).astype(np.int64).tolist())
+        key = min(key, tuple(-x for x in key))
+        if key in seen:
+            continue
+        seen.add(key)
+        planes.append((n, d))
+    return planes
+
+
+def _boundary_area_split_envelope(
+    poly_dir: Path,
+    planes: list[tuple[np.ndarray, float]],
+    tol: float = 1e-5,
+) -> tuple[float, float]:
+    """(area on any input-surface plane, area off all of them) — curved-surface
+
+    generalization of ``_boundary_area_split`` (which hardcodes the cube's 6
+    planes). A boundary face is on-surface iff EVERY vertex lies within
+    ``tol`` of the SAME input triangle plane — mirrors
+    ``dual.py::_area_split`` (dual.py:205-224), independently reproduced here.
+    """
+    pts = np.asarray(parse_foam_points(poly_dir / "points"), dtype=float)
+    faces = [list(f) for f in parse_foam_faces(poly_dir / "faces")]
+    n_internal = len(parse_foam_labels(poly_dir / "neighbour"))
+
+    on_area = off_area = 0.0
+    for face in faces[n_internal:]:
+        p = pts[np.asarray(face, dtype=int)]
+        a = _face_area(pts, face)
+        is_on = any(np.all(np.abs(p @ n + d) < tol) for n, d in planes)
+        if is_on:
+            on_area += a
+        else:
+            off_area += a
+    return on_area, off_area
+
+
+def _stl_surface_area(stl_path: Path) -> float:
+    """Total input surface area, independently measured from the raw STL."""
+    mesh = read_stl(stl_path)
+    return float(mesh.compute_face_areas().sum())
+
+
+def _stl_volume(stl_path: Path) -> float:
+    """Enclosed volume of a watertight, consistently-oriented STL.
+
+    Divergence theorem: V = (1/6) * Sigma dot(v0, cross(v1, v2)) over faces,
+    signed so a consistently outward-oriented surface integrates to the
+    correct positive volume.
+    """
+    mesh = read_stl(stl_path)
+    v = mesh.vertices[mesh.faces]
+    signed = np.einsum("ij,ij->i", v[:, 0], np.cross(v[:, 1], v[:, 2]))
+    return abs(float(signed.sum()) / 6.0)
 
 
 def _cell_volumes(poly_dir: Path) -> np.ndarray:
@@ -265,4 +348,111 @@ def test_native_poly_encloses_true_volume(poly_case: Path) -> None:
         f"cell volumes sum to {total:.3f} = {ratio:.2f}x the input's true "
         f"volume {_TRUE_VOLUME:.3f} — the cells do not tile the input "
         f"(<1 = gaps, >1 = overlap)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# CARD POLY-S5 — curved-surface (cylinder) generalization / regression lock.
+#
+# dual.py is UNCHANGED by this card (0-line diff, verified). This locks the
+# ALREADY-PASSING solid-invariant state measured on cylinder.stl (draft /
+# native_poly / strict_tier) as a permanent gate, so a future dual.py
+# refactor that silently breaks curved-surface handling is caught. sphere.stl
+# is excluded: dual generation succeeds (802 cells, skipped=0) but the
+# post-dual NativeMeshChecker + fidelity evaluation exceeds the 3-minute test
+# budget (>200s) — a budget constraint, not a correctness failure, so it is
+# not gated here. cylinder's evaluator-level FAIL (max_skewness=173.8 deg,
+# max_non_ortho=81.07 deg) is a QUALITY-axis issue, out of scope for this
+# solid-invariant series (candidate for a future POLY-Q1 card).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def poly_cyl_case(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Run the canonical native_poly pipeline ONCE on cylinder.stl (~38s).
+
+    Same canonical path as ``poly_case`` (draft / native_poly / strict_tier),
+    swapped to a curved input to verify the solid invariants generalize
+    beyond the cube's flat faces.
+    """
+    case = tmp_path_factory.mktemp("native_poly_cyl_case") / "case"
+    PipelineOrchestrator().run(
+        _CYLINDER,
+        case,
+        quality_level="draft",
+        mesh_type="poly",
+        tier_hint="native_poly",
+        max_iterations=1,
+        auto_retry="off",
+        strict_tier=True,
+        write_of_case=True,
+    )
+    poly = case / "constant" / "polyMesh"
+    assert (poly / "points").exists(), "polyMesh was not written"
+    yield poly
+
+
+def test_native_poly_cyl_covers_input_surface(poly_cyl_case: Path) -> None:
+    """Boundary area lying ON the input surface must ~equal the input's area.
+
+    Measured cylinder.stl / draft / tier_native_poly: on-plane boundary area
+    4.851 vs input 4.697 -> ratio 1.033x. PERMANENT gate.
+    """
+    planes = _input_surface_planes(_CYLINDER)
+    on_area, _ = _boundary_area_split_envelope(poly_cyl_case, planes)
+    true_area = _stl_surface_area(_CYLINDER)
+    ratio = on_area / true_area
+    assert 0.95 <= ratio <= 1.10, (
+        f"only {on_area:.3f} of the cylinder input's {true_area:.3f} surface "
+        f"area is covered by boundary faces lying on it ({ratio:.3f}x) — the "
+        f"mesh's boundary is not the input surface."
+    )
+
+
+def test_native_poly_cyl_has_no_interior_voids(poly_cyl_case: Path) -> None:
+    """No boundary area may lie off the input surface (interior void wall).
+
+    Measured cylinder.stl / draft / tier_native_poly: off-plane boundary area
+    0.000 (guard: pre_off=18.13 via ConvexHull path A, post_off=0.0 via the
+    topological path B that POLY-S3 adopted for the cube also fires here).
+    PERMANENT gate.
+    """
+    planes = _input_surface_planes(_CYLINDER)
+    on_area, off_area = _boundary_area_split_envelope(poly_cyl_case, planes)
+    assert off_area <= 0.05 * on_area, (
+        f"{off_area:.3f} of boundary area lies off the cylinder input surface "
+        f"({on_area:.3f} on-plane) — these are interior void walls."
+    )
+
+
+def test_native_poly_cyl_encloses_true_volume(poly_cyl_case: Path) -> None:
+    """Cell volumes must sum to ~the cylinder's true volume.
+
+    Measured cylinder.stl / draft / tier_native_poly: Sigma|vol| 0.8156 vs
+    input 0.7804 -> ratio 1.045x. Upper bound relaxed to 1.06 (vs. the cube's
+    1.05) because the measured margin is thin — see plan_poly5.md. PERMANENT
+    gate.
+    """
+    vols = _cell_volumes(poly_cyl_case)
+    total = float(vols.sum())
+    true_volume = _stl_volume(_CYLINDER)
+    ratio = total / true_volume
+    assert 0.95 <= ratio <= 1.06, (
+        f"cell volumes sum to {total:.3f} = {ratio:.2f}x the cylinder input's "
+        f"true volume {true_volume:.3f} — the cells do not tile the input "
+        f"(<1 = gaps, >1 = overlap)."
+    )
+
+
+def test_native_poly_cyl_has_no_degenerate_cells(poly_cyl_case: Path) -> None:
+    """No cylinder dual cell may have (near) zero volume.
+
+    Measured cylinder.stl / draft / tier_native_poly: 0 degenerate cells
+    among 73. PERMANENT gate.
+    """
+    vols = _cell_volumes(poly_cyl_case)
+    n_degenerate = int((vols < 1e-12).sum())
+    assert n_degenerate == 0, (
+        f"{n_degenerate}/{vols.size} cylinder cells have (near) zero volume "
+        f"— these are collapsed poly cells."
     )
