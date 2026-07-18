@@ -4525,8 +4525,25 @@ def generate_native_tet(
     # 저품질 mesh 로 남는다 (실린더: 8601-cell 충실 mesh → 1841-cell 왜곡 mesh).
     # 이 플래그로 "P4-C 가 mesh 를 재할당했다" 를 추적해 re-write 를 강제한다.
     _p4c_rewrote = False
+    # 2026-07-18 — dead-zone [0.15, 0.18) 봉합 (cylinder 간헐 FAIL 근본 원인).
+    # _phase_bc_skip 은 Phase-A mean_q < 0.18 에서 발동해 복구 패스 18개를
+    # "P4-C 가 구제할 것" 이라는 전제로 스킵한다 (reason=
+    # below_threshold_p4c_fallback_will_rescue).  그런데 skip 으로 가드되지
+    # 않은 KLINGNER sweep 이 mean_q 를 0.15~0.18 로 올려 grade 를 C→B 로
+    # 승격시키면, 아래 게이트(grade C/D/? = mean_q<0.15)가 P4-C 를 건너뛴다 —
+    # 스킵은 했는데 구제는 안 오는 구멍.  그 축퇴 mesh (min_q=0, skew~1e15,
+    # 곡면벽 dev 0.359) 가 `_phase_bc_skip or _p4c_rewrote` write 조건으로
+    # disk 에 그대로 쓰였다.  따라서 skip 이 발동했으면 grade 와 무관하게
+    # P4-C 를 반드시 시도한다 (전제의 의무 이행).
+    # 단, skip-강제 진입은 target_cells 가 있을 때만 — target 없이 cap
+    # (bare max_cells) 만 준 경우 P4-C 는 env 기본 elf 로 크기를 정해
+    # ~9.8k 셀로 부풀린다 (cap≠target 계약 위반, test_harness_bare_max_cells
+    # 실측).  target 이 있으면 P4-C 가 N-RESPECT elf 로 크기를 지키므로 안전.
     if (
-        grade in ("C", "D", "?")
+        (
+            grade in ("C", "D", "?")
+            or (_phase_bc_skip and target_cells is not None and int(target_cells) > 0)
+        )
         and os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
     ):
         try:

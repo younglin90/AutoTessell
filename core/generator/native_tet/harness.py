@@ -199,6 +199,17 @@ def _generate_with_cell_rebudget(
         n = int(res.n_cells)
         # best = 목표에 가장 가까운 pass (로그 비율 거리 — over/under 대칭).
         score = abs(math.log(max(n, 1) / max(ref, 1)))
+        # 2026-07-18 — 축퇴 페널티 (cylinder 간헐 FAIL 의 공모 결함).
+        # 셀-수 거리만으로 고르면 "크기만 맞는 축퇴 mesh" (min_q≈0, skew~1e15)
+        # 가 band 밖의 grade-A mesh 를 밀어내고 채택된다 (실측: 2030-cell 축퇴가
+        # 3048-cell P4-C mesh 를 이김 → 곡면벽 dev 0.359 로 테스트 FAIL).
+        # min_q 가 사실상 0 인 pass 는 큰 페널티를 더해, 유효한 대안이 하나라도
+        # 있으면 축퇴 mesh 가 best 로 뽑히지 않게 한다.  모든 pass 가 축퇴면
+        # 종전처럼 가장 가까운 것이 반환된다 (best-effort 유지).
+        _q = getattr(res, "quality", None)
+        _min_q = float(getattr(_q, "min_q", 1.0)) if _q is not None else 1.0
+        if _min_q < 1e-6:
+            score += 10.0
         if best is None or score < best[0] - 1e-9:
             if best is not None:
                 shutil.rmtree(best[2], ignore_errors=True)
