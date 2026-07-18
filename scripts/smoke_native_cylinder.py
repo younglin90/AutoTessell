@@ -27,11 +27,14 @@ sys.path.insert(0, REPO)
 import numpy as np
 
 from core.utils.logging import configure_logging
+
 configure_logging(verbose=False, json=True)
 
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
-    parse_foam_faces, parse_foam_labels, parse_foam_points,
+    parse_foam_faces,
+    parse_foam_labels,
+    parse_foam_points,
 )
 
 CYL = Path(REPO) / "tests" / "benchmarks" / "cylinder.stl"
