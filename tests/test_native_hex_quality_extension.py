@@ -136,3 +136,44 @@ def test_native_quality_failure_uses_python_fallback(
     python_report = quality.hex_quality_report(points, cells)
 
     _assert_reports_equal(failed_report, python_report)
+
+
+def test_native_generic_signed_volumes_match_python() -> None:
+    native = _native_or_skip()
+    assert hasattr(native, "generic_cell_signed_volumes")
+    points, cells = _structured_hexes(4, 3, 2)
+    rng = np.random.default_rng(13)
+    points = points + rng.normal(scale=0.015, size=points.shape)
+    cell_faces = [
+        [[int(cell[local]) for local in face] for face in quality._HEX_FACES] for cell in cells
+    ]
+
+    native_volumes = native.generic_cell_signed_volumes(points, cell_faces)
+    python_volumes: list[float] = []
+    for cell in cell_faces:
+        vertices = sorted({vertex for face in cell for vertex in face})
+        centroid = points[np.asarray(vertices, dtype=np.int64)].mean(axis=0)
+        volume = 0.0
+        for face in cell:
+            face_points = points[np.asarray(face, dtype=np.int64)]
+            for slot in range(1, len(face) - 1):
+                volume += (
+                    float(
+                        np.dot(
+                            face_points[0] - centroid,
+                            np.cross(
+                                face_points[slot] - centroid,
+                                face_points[slot + 1] - centroid,
+                            ),
+                        )
+                    )
+                    / 6.0
+                )
+        python_volumes.append(volume)
+
+    np.testing.assert_allclose(
+        native_volumes,
+        python_volumes,
+        rtol=2e-13,
+        atol=2e-13,
+    )

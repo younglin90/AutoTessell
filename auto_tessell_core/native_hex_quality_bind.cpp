@@ -2,6 +2,7 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,9 @@ namespace {
 using Label = long long;
 using Point3 = std::array<double, 3>;
 using FaceKey = std::array<Label, 4>;
+using Face = std::vector<Label>;
+using Cell = std::vector<Face>;
+using Cells = std::vector<Cell>;
 
 constexpr std::array<std::array<int, 4>, 6> hex_faces{{
     {{0, 3, 2, 1}},
@@ -298,6 +302,66 @@ py::tuple hex_quality_primitives(
         values.min_face_area);
 }
 
+py::array_t<double> generic_cell_signed_volumes(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    const Cells& cell_faces)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    py::array_t<double> volumes(
+        {static_cast<py::ssize_t>(cell_faces.size())});
+    auto output = volumes.mutable_unchecked<1>();
+    const auto point_view = points.unchecked<2>();
+    const py::ssize_t point_count = points.shape(0);
+
+    {
+        py::gil_scoped_release release;
+        for (size_t cell_index = 0; cell_index < cell_faces.size(); ++cell_index) {
+            const Cell& cell = cell_faces[cell_index];
+            std::vector<Label> vertices;
+            for (const Face& face : cell) {
+                vertices.insert(vertices.end(), face.begin(), face.end());
+            }
+            std::sort(vertices.begin(), vertices.end());
+            vertices.erase(std::unique(vertices.begin(), vertices.end()), vertices.end());
+            if (vertices.empty()) {
+                throw std::invalid_argument("cell must contain at least one vertex");
+            }
+
+            Point3 sum{0.0, 0.0, 0.0};
+            for (const Label vertex : vertices) {
+                sum = add(sum, load_point(point_view, vertex, point_count));
+            }
+            const Point3 centroid = scale(
+                sum, 1.0 / static_cast<double>(vertices.size()));
+
+            double volume = 0.0;
+            for (const Face& face : cell) {
+                if (face.empty()) {
+                    throw std::invalid_argument("face must contain at least one vertex");
+                }
+                const Point3 first = load_point(
+                    point_view, face.front(), point_count);
+                for (size_t slot = 1; slot + 1 < face.size(); ++slot) {
+                    const Point3 second = load_point(
+                        point_view, face[slot], point_count);
+                    const Point3 third = load_point(
+                        point_view, face[slot + 1], point_count);
+                    volume += dot(
+                        subtract(first, centroid),
+                        cross(
+                            subtract(second, centroid),
+                            subtract(third, centroid)))
+                        / 6.0;
+                }
+            }
+            output(static_cast<py::ssize_t>(cell_index)) = volume;
+        }
+    }
+    return volumes;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_hex_quality, module)
@@ -308,4 +372,9 @@ PYBIND11_MODULE(native_hex_quality, module)
         &hex_quality_primitives,
         py::arg("points"),
         py::arg("hexes"));
+    module.def(
+        "generic_cell_signed_volumes",
+        &generic_cell_signed_volumes,
+        py::arg("points"),
+        py::arg("cell_faces"));
 }

@@ -69,6 +69,22 @@ def _native_quality_values(
         return None
 
 
+def _native_generic_cell_volumes(
+    points: np.ndarray, cell_faces: list[list[list[int]]]
+) -> np.ndarray | None:
+    module = _load_native_hex_quality()
+    kernel = getattr(module, "generic_cell_signed_volumes", None) if module is not None else None
+    if kernel is None:
+        return None
+    try:
+        volumes = np.asarray(kernel(points, cell_faces), dtype=np.float64)
+        if volumes.shape != (len(cell_faces),):
+            raise ValueError("native generic cell volumes returned invalid shape")
+        return volumes
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # OpenFOAM hex face local indexing (mesher.py 와 동일).
 _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
     (0, 3, 2, 1),

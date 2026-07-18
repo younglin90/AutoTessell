@@ -823,7 +823,19 @@ def _relax_boundary_sliver_interior(
             if np.any(nhat):
                 cosang = min(1.0, max(0.0, abs(float(np.dot(nhat, d))) / dmag))
                 max_no = max(max_no, float(np.degrees(np.arccos(cosang))))
-        neg = sum(1 for ci in range(len(cell_faces)) if _signed_vol(ci, cur) <= 0.0)
+        from core.generator.native_hex.quality import (  # noqa: PLC0415
+            _native_generic_cell_volumes,
+        )
+
+        native_volumes = _native_generic_cell_volumes(cur, cell_faces)
+        if native_volumes is None:
+            neg = sum(
+                1
+                for ci in range(len(cell_faces))
+                if _signed_vol(ci, cur) <= 0.0
+            )
+        else:
+            neg = int(np.count_nonzero(native_volumes <= 0.0))
         return max_sk, max_no, float(neg)
 
     stats["pre_bskew"] = _scan(pts, relax=False)[0]
