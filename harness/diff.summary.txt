@@ -1,25 +1,14 @@
-card: HEX-SKEW-INNER-RELAX (beta_hex4)
-file: core/generator/native_hex/mesher.py
-functions: _relax_boundary_sliver_interior (new, ~150 lines, generic
-  cell_faces form — NOT (N,8) hexes, so it also covers the octree/adaptive
-  standard+fine production path); call sites added in generate_native_hex()
-  after the octree-path _wall_fit_snap (~L1197) and the uniform-path
-  _wall_fit_snap (~L1525), each with its own smart accept/revert guard
-  (self-computed bskew/int_skew/non_ortho/neg_vol pre vs post, eps=1e-9).
+card: POLY-S1
+file: scripts/smoke_native_poly.py (new)
+functions: _face_area, _cell_volume_orientation_free, _measure, main
 lines_added: 207
 lines_removed: 0
 
-file: tests/test_native_hex_solid_volume.py
-functions: test_native_hex_standard_boundary_skew (new)
-lines_added: 34
+file: tests/test_native_poly_solid_volume.py (new)
+functions: poly_case (module fixture), _face_area, _boundary_area_split,
+  _cell_volumes, test_native_poly_covers_input_surface (permanent),
+  test_native_poly_has_no_degenerate_cells (permanent),
+  test_native_poly_has_no_interior_voids (xfail strict),
+  test_native_poly_encloses_true_volume (xfail strict)
+lines_added: 246
 lines_removed: 0
-
-env: AUTO_TESSELL_HEX_SKEW_RELAX_OFF (kill switch, default unset = ON)
-
-deviation from plan: plan assumed a single call site (~L1352, uniform hex
-array path). Actual production standard/fine path is the OCTREE path
-(_wall_fit_snap "path=octree"), which uses the generic cell_faces list
-format, not (N,8) hexes — hex_quality_report/_count_neg_vol_hex are
-incompatible there. Rewrote _relax_boundary_sliver_interior to take generic
-cell_faces and self-compute all 4 guard metrics; added the call in BOTH
-paths.
