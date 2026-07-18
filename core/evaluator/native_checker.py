@@ -799,8 +799,8 @@ class NativeMeshChecker:
             if len(face) < 3:
                 max_warpage = max(max_warpage, 1.0)
                 continue
-            verts = points[np.asarray(face, dtype=np.int64)]
             if len(face) > 3:
+                verts = points[np.asarray(face, dtype=np.int64)]
                 fc = face_centres[facei]
                 sum_a = 0.0
                 for i in range(len(face)):

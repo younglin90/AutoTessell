@@ -16,6 +16,68 @@ def _native_metrics_or_skip():
     return module
 
 
+class _NoIndexPoints(np.ndarray):
+    def __getitem__(self, key):
+        raise AssertionError(f"points indexed on no-work face path: {key!r}")
+
+
+@pytest.mark.parametrize(
+    ("faces", "expected"),
+    [
+        ([[0, 1, 2], [1, 3, 2]], (0.0, 0.0)),
+        ([[0, 1]], (0.0, 1.0)),
+    ],
+    ids=["triangle-only", "short-invalid-face"],
+)
+def test_face_concavity_warpage_no_work_faces_do_not_index_points(
+    faces: list[list[int]], expected: tuple[float, float]
+) -> None:
+    points = np.zeros((4, 3), dtype=np.float64).view(_NoIndexPoints)
+    n_faces = len(faces)
+
+    result = NativeMeshChecker._compute_face_concavity_warpage(
+        points,
+        faces,
+        np.zeros((n_faces, 3), dtype=np.float64),
+        np.zeros(n_faces, dtype=np.float64),
+        np.zeros((n_faces, 3), dtype=np.float64),
+    )
+
+    assert result == expected
+
+
+@pytest.mark.parametrize(
+    ("points", "expected"),
+    [
+        (
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            (0.0, 0.0),
+        ),
+        (
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.35], [0.0, 1.0, 0.0]],
+            (0.0, 0.013735455038311195),
+        ),
+        (
+            [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 0.5, 0.0], [2.0, 2.0, 0.0], [0.0, 2.0, 0.0]],
+            (180.0, 0.11764705882352955),
+        ),
+    ],
+    ids=["planar-quad", "warped-quad", "concave-polygon"],
+)
+def test_face_concavity_warpage_polygon_behavior(
+    points: list[list[float]], expected: tuple[float, float]
+) -> None:
+    point_array = np.asarray(points, dtype=np.float64)
+    faces = [list(range(len(points)))]
+    face_centres = NativeMeshChecker._compute_face_centres(point_array, faces)
+    face_normals, face_areas = NativeMeshChecker._compute_face_normals_areas(point_array, faces)
+    actual = NativeMeshChecker._compute_face_concavity_warpage(
+        point_array, faces, face_normals, face_areas, face_centres
+    )
+
+    assert actual == pytest.approx(expected, abs=1e-15)
+
+
 def _python_aspect_ratios(
     points: np.ndarray,
     faces: list[list[int]],
