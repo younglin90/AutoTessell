@@ -179,6 +179,37 @@ def test_boolean_union_original_inputs_retain_overlap(tmp_path: Path) -> None:
     assert mask.tolist() == [True, True, False]
 
 
+def test_boolean_union_three_inputs_accept_each_body_and_overlaps(
+    tmp_path: Path,
+) -> None:
+    """Per-surface OR supports N inputs without combined-soup parity errors."""
+    from core.generator.native_tet.mesher import _inside_boolean_union_inputs
+
+    paths = [tmp_path / f"cube_{name}.stl" for name in ("a", "b", "c")]
+    for path, (lo, hi) in zip(
+        paths,
+        ((0.0, 1.0), (0.5, 1.5), (1.0, 2.0)),
+        strict=True,
+    ):
+        _write_cube_stl(path, lo, hi)
+
+    points = np.array(
+        [
+            [0.25, 0.25, 0.25],  # A only
+            [0.75, 1.25, 0.75],  # B only
+            [1.75, 1.75, 1.75],  # C only
+            [0.75, 0.75, 0.75],  # A/B overlap
+            [1.25, 1.25, 1.25],  # B/C overlap
+            [3.0, 3.0, 3.0],     # outside all inputs
+        ],
+        dtype=np.float64,
+    )
+
+    mask = _inside_boolean_union_inputs(points, [str(path) for path in paths])
+
+    assert mask.tolist() == [True, True, True, True, True, False]
+
+
 def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
     """Two overlapping unit cubes merged through additional_input_paths.
 

@@ -1332,27 +1332,33 @@ class TestMultiSurface:
         assert "native_tet" in errors[0].get("message", "")
         assert _jobs[job_id]["status"] == "failed"
 
-    def test_three_surface_still_rejected(self, client):
-        """mesh_type='tet' + 3 surfaces must still be rejected with the
-        original boolean-merge message — the union gate only opens at
-        exactly 2 surfaces."""
+    def test_three_surface_tet_union_allowed(self, client):
+        """All secondary paths reach native_tet in upload order."""
+        mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
         _add_surface(client, job_id, "wing.stl")
         _add_surface(client, job_id, "tail.stl")
+        expected_paths = [
+            Path(surface["path"]) for surface in _jobs[job_id]["surfaces"][1:]
+        ]
 
-        with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
-            ws.send_json(
-                {
-                    "action": "start",
-                    "quality": "draft",
-                    "tier": "auto",
-                    "mesh_type": "tet",
-                    "max_iterations": 1,
-                }
-            )
-            messages = self._collect_messages(ws)
+        with patch(
+            "core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch,
+        ):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {
+                        "action": "start",
+                        "quality": "draft",
+                        "tier": "auto",
+                        "mesh_type": "tet",
+                        "max_iterations": 1,
+                    }
+                )
+                messages = self._collect_messages(ws)
 
-        error_msgs = [m for m in messages if m.get("type") == "error"]
-        assert error_msgs, "Expected an error message for a 3-surface tet job"
-        assert "boolean" in error_msgs[0].get("message", "").lower()
-        assert _jobs[job_id]["status"] == "failed"
+        assert not [m for m in messages if m.get("type") == "error"]
+        assert [m for m in messages if m.get("type") == "result"]
+        _, run_kwargs = mock_orch.run.call_args
+        assert run_kwargs.get("tier_hint") == "native_tet"
+        assert run_kwargs.get("additional_input_paths") == expected_paths

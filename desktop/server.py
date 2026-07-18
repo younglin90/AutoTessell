@@ -208,8 +208,8 @@ def _touch_job(job: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # A job can hold several surface meshes.  Each surface's ``name`` is derived
 # from its filename and seeds the eventual polyMesh patch name (per-patch BL /
-# BC).  Boolean merging of 2+ surfaces is not implemented yet — mesh generation
-# rejects multi-surface jobs with a clear message until S2 lands.
+# BC). Native-tet generation accepts 2+ surfaces as a boolean union; other mesh
+# families remain single-surface until their own union path is implemented.
 
 
 def _patch_name_from_filename(filename: str, existing: set[str]) -> str:
@@ -913,16 +913,14 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
-    # Multi-surface assembly gate (CARD BOOLMERGE4): boolean union of exactly
-    # 2 surfaces is supported for mesh_type == "tet" through native_tet.
-    # Everything else (3+ surfaces, or mesh_type != "tet") is still rejected
-    # with the original "boolean" message — do not change that wording, it is
-    # asserted verbatim by tests/test_desktop_server.py::TestMultiSurface.
+    # Multi-surface assembly gate (CARD BOOLMERGE5a): boolean union of 2+ surfaces
+    # is supported for mesh_type == "tet" through native_tet. Other mesh families
+    # remain rejected until they gain an equivalent union implementation.
     n_surfaces = len(job.get("surfaces", []))
     additional_input_paths: list[Path] | None = None
     gate_error: str | None = None
     if n_surfaces >= 2:
-        if mesh_type == "tet" and n_surfaces == 2:
+        if mesh_type == "tet":
             normalized_tier = str(tier or "auto").lower()
             if normalized_tier == "auto":
                 tier = "native_tet"
@@ -932,7 +930,9 @@ async def _run_mesh_pipeline(
                     f"지원합니다. 요청 tier: {tier}"
                 )
             if gate_error is None:
-                additional_input_paths = [Path(job["surfaces"][1]["path"])]
+                additional_input_paths = [
+                    Path(surface["path"]) for surface in job["surfaces"][1:]
+                ]
         else:
             gate_error = (
                 "여러 표면의 boolean 병합은 곧 지원됩니다 — 현재는 표면 1개만 "
