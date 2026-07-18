@@ -274,7 +274,7 @@ def test_native_metrics_combined_cell_metrics_match_standalone_kernels(
     )
     faces = [
         [0, 1, 1],
-        [2, 3, 2],
+        [0, 3, 2],
         [0, 4, 4],
     ]
     owner = np.array([0, 1, 2], dtype=np.int64)
@@ -307,7 +307,7 @@ def test_native_metrics_combined_cell_metrics_match_standalone_kernels(
         atol=1e-15,
     )
     np.testing.assert_allclose(centres[1], points[[0, 1, 2, 3]].mean(axis=0), rtol=0.0, atol=1e-15)
-    np.testing.assert_allclose(aspect_ratios, np.array([1.0, 1.0]))
+    np.testing.assert_allclose(aspect_ratios, np.array([1.0, np.sqrt(2.0)]))
     np.testing.assert_allclose(np.asarray(topology_centres), centres, rtol=0.0, atol=1e-15)
     np.testing.assert_array_equal(np.asarray(topology_cell_ids), cell_ids)
     np.testing.assert_allclose(
