@@ -201,10 +201,8 @@ component/body" clamp discarding legitimate geometry), found at three different 
 
 ## 5. Remaining work (roadmap-ordered)
 
-- **A-1 S2 boolean merge**: BOOLMERGE3 complete; next BOOLMERGE4
-  (real file-upload e2e, replace pre-merge soup with per-surface `filter_tets_to_union`
-  for better accuracy + prep for intersection/difference), BOOLMERGE5 (N>2 surfaces,
-  intersection/difference, hex/poly wiring, per-patch BL).
+- **A-1 S2 boolean merge**: BOOLMERGE3/4/5a complete. Remaining work is
+  intersection/difference, hex/poly wiring, and per-source patch/BL provenance.
 - **CYLSKEW5**: resolve the proxy/final-metric correlation question CYLSKEW4 left open
   before considering default-ON.
 - **A real naca0012 skew fix**: needs fresh diagnosis against the current ~60.3
@@ -233,3 +231,15 @@ component/body" clamp discarding legitimate geometry), found at three different 
 - Aggregate guards (§2.2, BETA2833) matter alongside per-item relative guards — many
   small items each individually below a relative threshold can still jointly be most of
   the signal.
+
+## 7. Continuation after session resume
+
+- **BOOLMERGE3** (`30f75c41`) wired two-surface tet union into the orchestrator and
+  desktop upload path; focused guard: 30/30.
+- **BOOLMERGE4** (`8847f467`) found BOOLMERGE3's measured `1.7574` was the symmetric
+  difference (`1.750`), not an approximate union. Combined-soup ray parity cancelled
+  the overlap. Per-original-surface GWN OR restored volume to `1.891203768` versus
+  analytic `1.875`, with 2,859 positive-volume cells, zero negative volumes, and PASS.
+- **BOOLMERGE5a** (`3a012d70`) generalized the same native-tet path to any `N >= 2`
+  input surfaces. Server path ordering and three-input OR behavior are locked by 35
+  focused tests.
