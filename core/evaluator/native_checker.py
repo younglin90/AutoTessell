@@ -1325,6 +1325,20 @@ class NativeMeshChecker:
         n_int = int(len(neighbour))
         if n_int <= 1:
             return 0
+        native_metrics = _load_native_metrics()
+        kernel = (
+            getattr(native_metrics, "count_faces_not_upper_triangular", None)
+            if native_metrics is not None
+            else None
+        )
+        if kernel is not None:
+            try:
+                return int(kernel(owner, neighbour))
+            except Exception as exc:  # noqa: BLE001
+                log.debug(
+                    "native_metrics.count_faces_not_upper_triangular failed",
+                    error=str(exc),
+                )
         owner_int = np.asarray(owner[:n_int], dtype=np.int64)
         nbr_int = np.asarray(neighbour, dtype=np.int64)
         # key = owner * (max_nbr + 1) + neighbour 로 정렬 여부 체크

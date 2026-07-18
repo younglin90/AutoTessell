@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1235,6 +1236,56 @@ py::tuple compute_per_cell_aspect_ratios(
     return py::make_tuple(cell_ids, ratios);
 }
 
+long long count_faces_not_upper_triangular(
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> neighbour)
+{
+    if (owner.ndim() != 1 || neighbour.ndim() != 1) {
+        throw std::invalid_argument("owner and neighbour must be one-dimensional");
+    }
+
+    const auto own = owner.unchecked<1>();
+    const auto nbr = neighbour.unchecked<1>();
+    const auto n = nbr.shape(0);
+    if (n <= 1) {
+        return 0;
+    }
+    if (own.shape(0) < n) {
+        throw std::invalid_argument(
+            "owner must contain at least len(neighbour) entries");
+    }
+
+    py::gil_scoped_release release;
+    bool already_sorted = true;
+    for (py::ssize_t i = 1; i < n; ++i) {
+        if (own(i - 1) > own(i)
+            || (own(i - 1) == own(i) && nbr(i - 1) > nbr(i))) {
+            already_sorted = false;
+            break;
+        }
+    }
+    if (already_sorted) {
+        return 0;
+    }
+
+    std::vector<py::ssize_t> order(static_cast<size_t>(n));
+    std::iota(order.begin(), order.end(), py::ssize_t{0});
+    std::stable_sort(
+        order.begin(), order.end(),
+        [&](py::ssize_t lhs, py::ssize_t rhs) {
+            if (own(lhs) != own(rhs)) {
+                return own(lhs) < own(rhs);
+            }
+            return nbr(lhs) < nbr(rhs);
+        });
+
+    long long displaced = 0;
+    for (py::ssize_t i = 0; i < n; ++i) {
+        displaced += order[static_cast<size_t>(i)] != i;
+    }
+    return displaced;
+}
+
 py::array_t<long long> copy_index_vector(const std::vector<long long>& values)
 {
     py::array_t<long long> result(
@@ -1307,4 +1358,7 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("compute_per_cell_aspect_ratios", &compute_per_cell_aspect_ratios,
           py::arg("points"), py::arg("faces"), py::arg("owner"),
           py::arg("n_cells"));
+    m.def("count_faces_not_upper_triangular",
+          &count_faces_not_upper_triangular,
+          py::arg("owner"), py::arg("neighbour"));
 }

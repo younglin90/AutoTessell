@@ -18,6 +18,86 @@ def _native_metrics_or_skip():
     return module
 
 
+def _python_faces_not_upper_triangular(
+    owner: np.ndarray, neighbour: np.ndarray
+) -> int:
+    old_module = nc._NATIVE_METRICS
+    old_attempted = nc._NATIVE_METRICS_IMPORT_ATTEMPTED
+    try:
+        nc._NATIVE_METRICS = None
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = True
+        return NativeMeshChecker._count_faces_not_upper_triangular(owner, neighbour)
+    finally:
+        nc._NATIVE_METRICS = old_module
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = old_attempted
+
+
+@pytest.mark.parametrize(
+    ("owner", "neighbour"),
+    [
+        ([0, 0, 1, 2], [1, 3, 0, 4]),
+        ([0, 0, 0, 1], [2, 2, 2, 0]),
+        ([1, 0, 0, 1], [0, 2, 1, 0]),
+        ([], []),
+    ],
+    ids=["sorted", "equal-duplicate-keys", "unsorted-permutation", "empty"],
+)
+def test_native_face_order_count_matches_python_lexsort(
+    owner: list[int], neighbour: list[int]
+) -> None:
+    module = _native_metrics_or_skip()
+    owner_array = np.asarray(owner, dtype=np.int64)
+    neighbour_array = np.asarray(neighbour, dtype=np.int64)
+
+    expected = _python_faces_not_upper_triangular(owner_array, neighbour_array)
+    direct = module.count_faces_not_upper_triangular(owner_array, neighbour_array)
+    wrapped = NativeMeshChecker._count_faces_not_upper_triangular(
+        owner_array, neighbour_array
+    )
+
+    assert direct == expected
+    assert wrapped == expected
+
+
+def test_native_face_order_count_uses_neighbour_length() -> None:
+    module = _native_metrics_or_skip()
+    owner = np.array([0, 1, 9], dtype=np.int64)
+    neighbour = np.array([2, 0], dtype=np.int64)
+
+    assert module.count_faces_not_upper_triangular(owner, neighbour) == 0
+    assert NativeMeshChecker._count_faces_not_upper_triangular(owner, neighbour) == 0
+    assert module.count_faces_not_upper_triangular(
+        np.empty(0, dtype=np.int64), np.array([7], dtype=np.int64)
+    ) == 0
+
+
+def test_native_face_order_count_short_owner_preserves_lexsort_error() -> None:
+    _native_metrics_or_skip()
+    owner = np.array([0], dtype=np.int64)
+    neighbour = np.array([1, 2], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="same shape"):
+        NativeMeshChecker._count_faces_not_upper_triangular(owner, neighbour)
+
+
+def test_native_face_order_count_falls_back_on_binding_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = np.array([1, 0, 0, 1], dtype=np.int64)
+    neighbour = np.array([0, 2, 1, 0], dtype=np.int64)
+    expected = _python_faces_not_upper_triangular(owner, neighbour)
+
+    class FailingNativeMetrics:
+        @staticmethod
+        def count_faces_not_upper_triangular(*_args) -> None:
+            raise RuntimeError("forced binding failure")
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", FailingNativeMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+
+    assert NativeMeshChecker._count_faces_not_upper_triangular(owner, neighbour) == expected
+
+
 def _parse_native_topology(
     tmp_path: Path,
     faces: list[list[int]],
