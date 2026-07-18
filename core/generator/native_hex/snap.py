@@ -17,7 +17,14 @@ projection 해 Hausdorff 거리를 개선한다.
     - 모든 vertex 처리 → per-cell checkMesh 는 수행 안 함 (단순 vertex 이동이라
       cell topology 불변, volume 양수는 cap 으로 담보).
 """
+
 from __future__ import annotations
+
+import importlib
+import os
+import sys
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -25,9 +32,75 @@ from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+_NATIVE_SNAP: Any | None = None
+_NATIVE_SNAP_IMPORT_ATTEMPTED = False
+
+
+def _load_native_snap() -> Any | None:
+    """Load optional C++ candidate-reduction kernels."""
+    global _NATIVE_SNAP, _NATIVE_SNAP_IMPORT_ATTEMPTED
+    if _NATIVE_SNAP_IMPORT_ATTEMPTED:
+        return _NATIVE_SNAP
+    _NATIVE_SNAP_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    candidate_dirs.append(Path(__file__).resolve().parents[3] / "auto_tessell_core" / "build")
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_SNAP = importlib.import_module("native_snap")
+    except Exception:  # noqa: BLE001
+        _NATIVE_SNAP = None
+    return _NATIVE_SNAP
+
+
+def _native_triangle_candidates(
+    points: np.ndarray,
+    triangle_a: np.ndarray,
+    triangle_b: np.ndarray,
+    triangle_c: np.ndarray,
+    candidates: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    native_snap = _load_native_snap()
+    kernel = (
+        getattr(native_snap, "closest_triangle_candidates", None)
+        if native_snap is not None
+        else None
+    )
+    if kernel is None:
+        return None
+    try:
+        best_points, squared_distances, valid = kernel(
+            points, triangle_a, triangle_b, triangle_c, candidates
+        )
+        best_points = np.asarray(best_points, dtype=np.float64)
+        squared_distances = np.asarray(squared_distances, dtype=np.float64)
+        valid = np.asarray(valid, dtype=bool)
+        count = len(points)
+        if (
+            best_points.shape != (count, 3)
+            or squared_distances.shape != (count,)
+            or valid.shape != (count,)
+        ):
+            raise ValueError("native snap kernel returned invalid shapes")
+        return best_points, squared_distances, valid
+    except Exception as exc:  # noqa: BLE001
+        log.debug("native_snap_triangle_candidates_failed", error=str(exc))
+        return None
+
 
 def _closest_point_on_triangle(
-    P: np.ndarray, A: np.ndarray, B: np.ndarray, C: np.ndarray,
+    P: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
+    C: np.ndarray,
 ) -> np.ndarray:
     """단일 점 P 를 삼각형 (A, B, C) 의 가장 가까운 점으로 clamp.
 
@@ -38,12 +111,14 @@ def _closest_point_on_triangle(
     ac = C - A
     ap = P - A
 
-    d1 = float(ab @ ap); d2 = float(ac @ ap)
+    d1 = float(ab @ ap)
+    d2 = float(ac @ ap)
     if d1 <= 0.0 and d2 <= 0.0:
         return A  # vertex A region
 
     bp = P - B
-    d3 = float(ab @ bp); d4 = float(ac @ bp)
+    d3 = float(ab @ bp)
+    d4 = float(ac @ bp)
     if d3 >= 0.0 and d4 <= d3:
         return B  # vertex B region
 
@@ -53,7 +128,8 @@ def _closest_point_on_triangle(
         return A + v * ab  # edge AB region
 
     cp = P - C
-    d5 = float(ab @ cp); d6 = float(ac @ cp)
+    d5 = float(ab @ cp)
+    d6 = float(ac @ cp)
     if d6 >= 0.0 and d5 <= d6:
         return C  # vertex C region
 
@@ -68,7 +144,8 @@ def _closest_point_on_triangle(
         return B + w * (C - B)  # edge BC region
 
     denom = 1.0 / (va + vb + vc)
-    v = vb * denom; w = vc * denom
+    v = vb * denom
+    w = vc * denom
     return A + ab * v + ac * w  # interior
 
 
@@ -96,15 +173,19 @@ def _detect_surface_feature_vertices(
     src = surface_F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
     dst = surface_F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
     fi_flat = np.repeat(
-        np.arange(surface_F.shape[0], dtype=np.int64), 3,
+        np.arange(surface_F.shape[0], dtype=np.int64),
+        3,
     )
-    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    u = np.minimum(src, dst)
+    v = np.maximum(src, dst)
     order = np.lexsort((v, u))
-    u_s = u[order]; v_s = v[order]; f_s = fi_flat[order]
+    u_s = u[order]
+    v_s = v[order]
+    f_s = fi_flat[order]
     n_v = int(surface_V.shape[0])
-    n_max = max(int(u_s.max()) if u_s.size > 0 else 0,
-                int(v_s.max()) if v_s.size > 0 else 0,
-                n_v) + 1
+    n_max = (
+        max(int(u_s.max()) if u_s.size > 0 else 0, int(v_s.max()) if v_s.size > 0 else 0, n_v) + 1
+    )
     key = u_s * n_max + v_s
     # group boundaries: 새 edge group 이 시작되는 index
     diff = np.r_[True, key[1:] != key[:-1]]
@@ -198,6 +279,7 @@ def snap_hex_boundary_to_surface(
         if feature_ids.size > 0:
             try:
                 from core.utils.kdtree import NumpyKDTree as _KT  # noqa: PLC0415
+
                 feature_tree = _KT(sV[feature_ids])
             except Exception as exc:
                 log.warning("native_hex_feature_kdtree_failed", error=str(exc))
@@ -211,6 +293,7 @@ def snap_hex_boundary_to_surface(
     # coarse NN via NumpyKDTree (beta28 — scipy 의존 제거)
     try:
         from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+
         tree = NumpyKDTree(tri_centroids)
     except Exception as exc:
         log.warning("native_hex_snap_kdtree_failed", error=str(exc))
@@ -228,56 +311,76 @@ def snap_hex_boundary_to_surface(
         dists_coarse = dists_coarse[:, None]
         nn_idx = nn_idx[:, None]
 
-    for i in range(len(hex_V)):
-        # dist_upper_bound 를 넘은 query 는 idx = len(tri_centroids), dist = inf
-        cand = nn_idx[i]
-        cand = cand[cand < len(tri_centroids)]
-        if cand.size == 0:
-            stats["n_skipped_far"] += 1
-            continue
-
-        P = hex_V[i]
-        best_dist2 = np.inf
-        best_pt = None
-        for t in cand:
-            pt = _closest_point_on_triangle(P, tri_A[t], tri_B[t], tri_C[t])
-            d2 = float(((pt - P) ** 2).sum())
-            if d2 < best_dist2:
-                best_dist2 = d2
-                best_pt = pt
-
-        if best_pt is None:
-            stats["n_skipped_far"] += 1
-            continue
-
-        dist = float(best_dist2 ** 0.5)
-        if dist > cap:
-            stats["n_skipped_beyond_cap"] += 1
-            continue
-
-        # beta66: feature preservation — 현재 best_pt 가 feature vertex 근처
-        # (cap 의 70% 이내) 라면 직접 feature vertex 로 snap.
-        if feature_tree is not None:
-            fd, fidx = feature_tree.query(
-                np.asarray(best_pt).reshape(1, 3), k=1,
-            )
-            fd = float(np.asarray(fd).ravel()[0])
-            fidx_i = int(np.asarray(fidx).ravel()[0])
-            if fd <= 0.7 * cap and fidx_i < feature_ids.size:
-                # feature vertex 좌표
-                fv_coord = sV[feature_ids[fidx_i]]
-                if float(np.linalg.norm(fv_coord - P)) <= cap:
-                    hex_V[i] = fv_coord
-                    stats["n_snapped"] += 1
-                    stats["n_feature_snapped"] += 1
+    native_projection = _native_triangle_candidates(hex_V, tri_A, tri_B, tri_C, nn_idx)
+    if native_projection is not None:
+        native_best_points, native_best_distances2, native_valid = native_projection
+    if native_projection is not None and feature_tree is None:
+        distances = np.sqrt(native_best_distances2)
+        within_cap = native_valid & ~(distances > cap)
+        hex_V[within_cap] = native_best_points[within_cap]
+        stats["n_snapped"] = int(np.count_nonzero(within_cap))
+        stats["n_skipped_far"] = int(np.count_nonzero(~native_valid))
+        stats["n_skipped_beyond_cap"] = int(np.count_nonzero(native_valid & (distances > cap)))
+    else:
+        for i in range(len(hex_V)):
+            P = hex_V[i]
+            if native_projection is not None:
+                if not native_valid[i]:
+                    stats["n_skipped_far"] += 1
+                    continue
+                best_pt = native_best_points[i]
+                dist = float(native_best_distances2[i] ** 0.5)
+            else:
+                # dist_upper_bound 를 넘은 query 는 sentinel index 를 반환한다.
+                cand = nn_idx[i]
+                cand = cand[cand < len(tri_centroids)]
+                if cand.size == 0:
+                    stats["n_skipped_far"] += 1
                     continue
 
-        hex_V[i] = best_pt
-        stats["n_snapped"] += 1
+                best_dist2 = np.inf
+                best_pt = None
+                for t in cand:
+                    pt = _closest_point_on_triangle(P, tri_A[t], tri_B[t], tri_C[t])
+                    d2 = float(((pt - P) ** 2).sum())
+                    if d2 < best_dist2:
+                        best_dist2 = d2
+                        best_pt = pt
+
+                if best_pt is None:
+                    stats["n_skipped_far"] += 1
+                    continue
+                dist = float(best_dist2**0.5)
+
+            if dist > cap:
+                stats["n_skipped_beyond_cap"] += 1
+                continue
+
+            # beta66: feature preservation — 현재 best_pt 가 feature vertex 근처
+            # (cap 의 70% 이내) 라면 직접 feature vertex 로 snap.
+            if feature_tree is not None:
+                fd, fidx = feature_tree.query(
+                    np.asarray(best_pt).reshape(1, 3),
+                    k=1,
+                )
+                fd = float(np.asarray(fd).ravel()[0])
+                fidx_i = int(np.asarray(fidx).ravel()[0])
+                if fd <= 0.7 * cap and fidx_i < feature_ids.size:
+                    fv_coord = sV[feature_ids[fidx_i]]
+                    if float(np.linalg.norm(fv_coord - P)) <= cap:
+                        hex_V[i] = fv_coord
+                        stats["n_snapped"] += 1
+                        stats["n_feature_snapped"] += 1
+                        continue
+
+            hex_V[i] = best_pt
+            stats["n_snapped"] += 1
 
     log.info(
         "native_hex_snap_done",
-        **stats, cap=cap, search_r=search_r,
+        **stats,
+        cap=cap,
+        search_r=search_r,
     )
     return hex_V, stats
 
@@ -301,13 +404,11 @@ def _build_vertex_neighbors_from_triangles(
     src = surface_F[:, [0, 0, 1, 1, 2, 2]].reshape(-1).astype(np.int64)
     dst = surface_F[:, [1, 2, 0, 2, 0, 1]].reshape(-1).astype(np.int64)
     order = np.argsort(src, kind="stable")
-    src_s = src[order]; dst_s = dst[order]
+    src_s = src[order]
+    dst_s = dst[order]
     counts = np.bincount(src_s, minlength=n_vertices)
     offsets = np.concatenate(([0], np.cumsum(counts).astype(np.int64)))
-    return [
-        np.unique(dst_s[offsets[i]:offsets[i + 1]]).tolist()
-        for i in range(n_vertices)
-    ]
+    return [np.unique(dst_s[offsets[i] : offsets[i + 1]]).tolist() for i in range(n_vertices)]
 
 
 def snap_to_surface_iterative(
@@ -374,14 +475,22 @@ def snap_to_surface_iterative(
 
     # 최대 triangle 외접원 반경 (centroid ↔ vertex 최대 거리) 계산 → search_r 에 더함.
     # 이렇게 해야 centroid 가 멀어도 vertex 쪽으로 projected 되는 경우를 포착함.
-    max_tri_extent = float(
-        np.max(np.linalg.norm(
-            tri_A - tri_centroids, axis=1,
-        ))
-    ) if len(tri_centroids) > 0 else 0.0
+    max_tri_extent = (
+        float(
+            np.max(
+                np.linalg.norm(
+                    tri_A - tri_centroids,
+                    axis=1,
+                )
+            )
+        )
+        if len(tri_centroids) > 0
+        else 0.0
+    )
 
     try:
         from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+
         tree = NumpyKDTree(tri_centroids)
     except Exception as exc:
         log.warning("snap_iterative_kdtree_failed", error=str(exc))
@@ -402,11 +511,16 @@ def snap_to_surface_iterative(
 
         # 1~3. 각 vertex nearest surface point + relax 이동
         dists_coarse, nn_idx = tree.query(
-            work_pts, k=k_cand, distance_upper_bound=search_r,
+            work_pts,
+            k=k_cand,
+            distance_upper_bound=search_r,
         )
         if k_cand == 1:
             dists_coarse = dists_coarse[:, None]
             nn_idx = nn_idx[:, None]
+        native_projection = _native_triangle_candidates(work_pts, tri_A, tri_B, tri_C, nn_idx)
+        if native_projection is not None:
+            native_best_points, native_best_distances2, native_valid = native_projection
 
         # C-PERF-13 / beta2436 — coarse 거리 pre-filter (대부분 vert 가 cap+ 밖).
         # KD-tree 가 search_r = cap + max_tri_extent 로 query 했으므로,
@@ -421,21 +535,27 @@ def snap_to_surface_iterative(
             # min coarse distance pre-check — centroid 거리가 cap+max_tri_extent 미만이지만
             # 만약 모두 cap+max_tri_extent 를 초과하면 (KD-tree 결과의 안전 hint) skip.
             # 이 check 는 거리만 1 number 비교 — 매우 빠름.
-            cand_dists = dists_coarse[i][:cand.size]
+            cand_dists = dists_coarse[i][: cand.size]
             if (cand_dists > cap + max_tri_extent).all():
                 continue
 
             P = work_pts[i]
-            best_dist2 = np.inf
-            best_pt = P
-            for t in cand:
-                pt = _closest_point_on_triangle(P, tri_A[t], tri_B[t], tri_C[t])
-                d2 = float(((pt - P) ** 2).sum())
-                if d2 < best_dist2:
-                    best_dist2 = d2
-                    best_pt = pt
+            if native_projection is not None:
+                if not native_valid[i]:
+                    continue
+                best_pt = native_best_points[i]
+                best_dist2 = float(native_best_distances2[i])
+            else:
+                best_dist2 = np.inf
+                best_pt = P
+                for t in cand:
+                    pt = _closest_point_on_triangle(P, tri_A[t], tri_B[t], tri_C[t])
+                    d2 = float(((pt - P) ** 2).sum())
+                    if d2 < best_dist2:
+                        best_dist2 = d2
+                        best_pt = pt
 
-            dist = float(best_dist2 ** 0.5)
+            dist = float(best_dist2**0.5)
             if dist > cap:
                 continue
 
@@ -476,7 +596,8 @@ def snap_to_surface_iterative(
                 for _si in range(smooth_iters):
                     new_non_snap = work_pts[non_snap_idx].copy()
                     d_sm, nn_sm = nbr_tree.query(
-                        work_pts[non_snap_idx], k=k_sm,
+                        work_pts[non_snap_idx],
+                        k=k_sm,
                         distance_upper_bound=smooth_r,
                     )
                     if k_sm == 1:
@@ -489,16 +610,15 @@ def snap_to_surface_iterative(
                             continue
                         # 이웃 스냅 vertex 좌표 평균 방향으로 부드럽게
                         nbr_mean = snapped_coords[near_snapped].mean(axis=0)
-                        new_non_snap[j_ns] = (
-                            work_pts[vi] * 0.8 + nbr_mean * 0.2
-                        )
+                        new_non_snap[j_ns] = work_pts[vi] * 0.8 + nbr_mean * 0.2
                     work_pts[non_snap_idx] = new_non_snap
 
         if n_snapped_this == 0:
             # 더 이상 스냅할 vertex 없으면 조기 수렴
             log.info(
                 "snap_iterative_converged",
-                iteration=_iter, reason="n_snapped=0",
+                iteration=_iter,
+                reason="n_snapped=0",
             )
             break
 
@@ -541,7 +661,9 @@ def _extract_feature_edge_segments(
     sF = np.asarray(surface_F, dtype=np.int64)
 
     # face normals
-    v0 = sV[sF[:, 0]]; v1 = sV[sF[:, 1]]; v2 = sV[sF[:, 2]]
+    v0 = sV[sF[:, 0]]
+    v1 = sV[sF[:, 1]]
+    v2 = sV[sF[:, 2]]
     nrm = np.cross(v1 - v0, v2 - v0)
     nlen = np.linalg.norm(nrm, axis=1, keepdims=True)
     nrm = np.where(nlen > 1e-30, nrm / np.where(nlen > 1e-30, nlen, 1.0), 0.0)
@@ -553,7 +675,9 @@ def _extract_feature_edge_segments(
     edges_per_face = np.stack(
         [sF[:, [0, 1]], sF[:, [1, 2]], sF[:, [2, 0]]],
         axis=1,
-    ).reshape(-1, 2)  # (3*n_faces, 2)
+    ).reshape(
+        -1, 2
+    )  # (3*n_faces, 2)
     edges_canon = np.sort(edges_per_face, axis=1)  # canonical (min, max).
     face_ids = np.arange(n_faces, dtype=np.int64).repeat(3)  # (3*n_faces,)
     # Sort by edge for grouping.
@@ -561,11 +685,7 @@ def _extract_feature_edge_segments(
     sorted_edges = edges_canon[ord_idx]
     sorted_faces = face_ids[ord_idx]
     # Find run boundaries (where edge changes).
-    eq_prev = (
-        np.diff(sorted_edges[:, 0]) != 0
-    ) | (
-        np.diff(sorted_edges[:, 1]) != 0
-    )
+    eq_prev = (np.diff(sorted_edges[:, 0]) != 0) | (np.diff(sorted_edges[:, 1]) != 0)
     run_starts = np.concatenate(([0], np.where(eq_prev)[0] + 1))
     run_ends = np.concatenate((run_starts[1:], [len(sorted_edges)]))
     edge_map: dict[tuple[int, int], list[int]] = {}
@@ -607,9 +727,10 @@ def _extract_feature_edge_segments(
         seg_arr_view.setflags(write=False)
     except Exception:
         pass
+
     # Carry weights via attribute on segs object using a subclass.
     class _SegArrWithWeights(np.ndarray):
-        def __new__(cls, src: np.ndarray, weights: np.ndarray) -> "_SegArrWithWeights":
+        def __new__(cls, src: np.ndarray, weights: np.ndarray) -> _SegArrWithWeights:
             obj = np.asarray(src).view(cls)
             obj._seg_weight = weights  # type: ignore[attr-defined]
             return obj
@@ -623,7 +744,9 @@ def _extract_feature_edge_segments(
 
 
 def _closest_point_on_segment(
-    P: np.ndarray, A: np.ndarray, B: np.ndarray,
+    P: np.ndarray,
+    A: np.ndarray,
+    B: np.ndarray,
 ) -> tuple[np.ndarray, float]:
     """Closest point on line segment AB to point P. Returns (pt, dist)."""
     AB = B - A
@@ -666,9 +789,13 @@ def snap_to_feature_edges(
         (new_hex_pts, stats) where stats has n_snapped, n_rejected_quality, n_no_feature.
     """
     import os  # noqa: PLC0415
+
     if os.environ.get("AUTO_TESSELL_WWW7_OFF", "").strip().lower() in ("1", "true", "yes"):
         return np.asarray(hex_pts, dtype=np.float64).copy(), {
-            "n_snapped": 0, "n_rejected_quality": 0, "n_no_feature": 0, "skipped": "env_off",
+            "n_snapped": 0,
+            "n_rejected_quality": 0,
+            "n_no_feature": 0,
+            "skipped": "env_off",
         }
 
     work = np.asarray(hex_pts, dtype=np.float64).copy()
@@ -688,7 +815,8 @@ def snap_to_feature_edges(
         return work, stats
 
     # bbox_diag for default max_dist
-    bmin = work.min(axis=0); bmax = work.max(axis=0)
+    bmin = work.min(axis=0)
+    bmax = work.max(axis=0)
     bbox_diag = float(np.linalg.norm(bmax - bmin)) + 1e-30
     if max_dist is None or max_dist <= 0.0:
         max_dist = 0.01 * bbox_diag
@@ -702,6 +830,7 @@ def snap_to_feature_edges(
     k_coarse = min(4, segs.shape[0])
     try:
         from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+
         mid_tree = NumpyKDTree(seg_mids)
     except Exception as exc:
         log.warning("www7_kdtree_failed", error=str(exc))
@@ -774,10 +903,7 @@ def snap_to_feature_edges(
         sorted_c_vc = flat_c_vc[order_vc]
         counts_vc = np.bincount(sorted_v_vc, minlength=n_verts)
         offs_vc = np.concatenate(([0], np.cumsum(counts_vc).astype(np.int64)))
-        vert_cells = [
-            sorted_c_vc[offs_vc[i]:offs_vc[i + 1]].tolist()
-            for i in range(n_verts)
-        ]
+        vert_cells = [sorted_c_vc[offs_vc[i] : offs_vc[i + 1]].tolist() for i in range(n_verts)]
 
     def _hex_skewness_cells(pts: np.ndarray, cids: list[int]) -> float:
         """Approximate max skewness over a set of hex cells (centroid-based)."""
@@ -802,8 +928,12 @@ def snap_to_feature_edges(
         return max_sk
 
     _HEX_FACES_LOCAL = (
-        (0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
-        (3, 7, 6, 2), (0, 4, 7, 3), (1, 2, 6, 5),
+        (0, 3, 2, 1),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (3, 7, 6, 2),
+        (0, 4, 7, 3),
+        (1, 2, 6, 5),
     )
 
     for vi in eligible:

@@ -11,6 +11,7 @@ option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTe
 option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
 option(BUILD_NATIVE_METRICS "Build native metric kernels for Python checker" ON)
 option(BUILD_NATIVE_POLYMESH "Build native polyMesh topology kernel" ON)
+option(BUILD_NATIVE_SNAP "Build native surface snap candidate kernel" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -65,6 +66,17 @@ if(BUILD_NATIVE_POLYMESH)
     target_compile_options(native_polymesh PRIVATE /O2 /W3)
   else()
     target_compile_options(native_polymesh PRIVATE -O3)
+  endif()
+endif()
+
+# ── native surface snap candidate kernel ──────────────────────────────────
+if(BUILD_NATIVE_SNAP)
+  pybind11_add_module(native_snap native_snap_bind.cpp)
+  target_compile_features(native_snap PRIVATE cxx_std_23)
+  if(MSVC)
+    target_compile_options(native_snap PRIVATE /O2 /W3)
+  else()
+    target_compile_options(native_snap PRIVATE -O3)
   endif()
 endif()
 
