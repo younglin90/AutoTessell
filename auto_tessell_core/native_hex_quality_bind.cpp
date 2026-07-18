@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -46,6 +47,11 @@ struct QualityValues {
     std::vector<double> non_orthogonality;
     std::vector<double> skewness;
     std::vector<double> aspect;
+};
+
+struct GenericFaceReference {
+    size_t cell;
+    Face vertices;
 };
 
 Point3 subtract(const Point3& lhs, const Point3& rhs)
@@ -417,6 +423,143 @@ py::tuple generic_cell_face_signs(
     return py::make_tuple(signs, magnitude);
 }
 
+py::tuple generic_side_metrics(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    const Cells& cell_faces)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    const auto point_view = points.unchecked<2>();
+    const py::ssize_t point_count = points.shape(0);
+    double maximum_skewness = 0.0;
+    double maximum_non_orthogonality = 0.0;
+    long long negative_volumes = 0;
+
+    {
+        py::gil_scoped_release release;
+        std::vector<Point3> centroids(cell_faces.size());
+        std::map<Face, std::vector<GenericFaceReference>> owners;
+        for (size_t cell_index = 0; cell_index < cell_faces.size(); ++cell_index) {
+            const Cell& cell = cell_faces[cell_index];
+            std::vector<Label> vertices;
+            for (const Face& face : cell) {
+                vertices.insert(vertices.end(), face.begin(), face.end());
+            }
+            std::sort(vertices.begin(), vertices.end());
+            vertices.erase(std::unique(vertices.begin(), vertices.end()), vertices.end());
+            if (vertices.empty()) {
+                throw std::invalid_argument("cell must contain at least one vertex");
+            }
+            Point3 sum{0.0, 0.0, 0.0};
+            for (const Label vertex : vertices) {
+                sum = add(sum, load_point(point_view, vertex, point_count));
+            }
+            centroids[cell_index] = scale(
+                sum, 1.0 / static_cast<double>(vertices.size()));
+            for (const Face& face : cell) {
+                Face key = face;
+                std::sort(key.begin(), key.end());
+                owners[std::move(key)].push_back(
+                    GenericFaceReference{cell_index, face});
+            }
+        }
+
+        for (const auto& [key, references] : owners) {
+            static_cast<void>(key);
+            if (references.size() != 2) {
+                continue;
+            }
+            const GenericFaceReference& first_reference = references[0];
+            const GenericFaceReference& second_reference = references[1];
+            const Point3 first_centroid = centroids[first_reference.cell];
+            const Point3 second_centroid = centroids[second_reference.cell];
+            const Point3 delta = subtract(second_centroid, first_centroid);
+            const double delta_magnitude = norm(delta);
+            if (delta_magnitude < 1e-30) {
+                continue;
+            }
+
+            const Face& face = first_reference.vertices;
+            if (face.empty()) {
+                throw std::invalid_argument("face must contain at least one vertex");
+            }
+            Point3 face_centroid_sum{0.0, 0.0, 0.0};
+            Point3 newell{0.0, 0.0, 0.0};
+            for (size_t slot = 0; slot < face.size(); ++slot) {
+                const Point3 first = load_point(
+                    point_view, face[slot], point_count);
+                const Point3 second = load_point(
+                    point_view, face[(slot + 1) % face.size()], point_count);
+                face_centroid_sum = add(face_centroid_sum, first);
+                newell[0] += (first[1] - second[1]) * (first[2] + second[2]);
+                newell[1] += (first[2] - second[2]) * (first[0] + second[0]);
+                newell[2] += (first[0] - second[0]) * (first[1] + second[1]);
+            }
+            const Point3 face_centroid = scale(
+                face_centroid_sum, 1.0 / static_cast<double>(face.size()));
+            const double normal_magnitude = norm(newell);
+            const Point3 unit_normal = normal_magnitude > 1e-30
+                ? scale(newell, 1.0 / normal_magnitude)
+                : newell;
+
+            const double parameter =
+                dot(subtract(face_centroid, first_centroid), delta)
+                / (delta_magnitude * delta_magnitude);
+            const Point3 projected = add(first_centroid, scale(delta, parameter));
+            maximum_skewness = std::max(
+                maximum_skewness,
+                norm(subtract(face_centroid, projected)) / delta_magnitude);
+
+            if (unit_normal[0] != 0.0 || unit_normal[1] != 0.0
+                || unit_normal[2] != 0.0) {
+                double cosine = std::abs(dot(unit_normal, delta)) / delta_magnitude;
+                if (std::isnan(cosine)) {
+                    cosine = 0.0;
+                } else if (cosine < 0.0) {
+                    cosine = 0.0;
+                } else if (cosine > 1.0) {
+                    cosine = 1.0;
+                }
+                maximum_non_orthogonality = std::max(
+                    maximum_non_orthogonality,
+                    std::acos(cosine) * (180.0 / std::acos(-1.0)));
+            }
+        }
+
+        for (size_t cell_index = 0; cell_index < cell_faces.size(); ++cell_index) {
+            double volume = 0.0;
+            const Point3 centroid = centroids[cell_index];
+            for (const Face& face : cell_faces[cell_index]) {
+                if (face.empty()) {
+                    throw std::invalid_argument("face must contain at least one vertex");
+                }
+                const Point3 first = load_point(
+                    point_view, face.front(), point_count);
+                for (size_t slot = 1; slot + 1 < face.size(); ++slot) {
+                    const Point3 second = load_point(
+                        point_view, face[slot], point_count);
+                    const Point3 third = load_point(
+                        point_view, face[slot + 1], point_count);
+                    volume += dot(
+                        subtract(first, centroid),
+                        cross(
+                            subtract(second, centroid),
+                            subtract(third, centroid)))
+                        / 6.0;
+                }
+            }
+            if (volume <= 0.0) {
+                ++negative_volumes;
+            }
+        }
+    }
+    return py::make_tuple(
+        maximum_skewness,
+        maximum_non_orthogonality,
+        static_cast<double>(negative_volumes));
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_hex_quality, module)
@@ -435,6 +578,11 @@ PYBIND11_MODULE(native_hex_quality, module)
     module.def(
         "generic_cell_face_signs",
         &generic_cell_face_signs,
+        py::arg("points"),
+        py::arg("cell_faces"));
+    module.def(
+        "generic_side_metrics",
+        &generic_side_metrics,
         py::arg("points"),
         py::arg("cell_faces"));
 }

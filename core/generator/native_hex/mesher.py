@@ -710,6 +710,10 @@ def _relax_boundary_sliver_interior(
     """
     from collections import defaultdict  # noqa: PLC0415
 
+    from core.generator.native_hex.quality import (  # noqa: PLC0415
+        _native_generic_side_metrics,
+    )
+
     stats: dict[str, float] = dict.fromkeys(
         (
             "sliver_cells",
@@ -816,6 +820,9 @@ def _relax_boundary_sliver_interior(
         return max_bs, acc, wt, nsliv
 
     def _side_metrics(cur: np.ndarray) -> tuple[float, float, float]:
+        native_metrics = _native_generic_side_metrics(cur, cell_faces)
+        if native_metrics is not None:
+            return native_metrics
         max_sk, max_no = 0.0, 0.0
         for ci0, ci1, fv in internal_faces:
             cc0, cc1 = _cc(ci0, cur), _cc(ci1, cur)

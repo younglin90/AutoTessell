@@ -207,3 +207,36 @@ def test_native_generic_cell_face_signs_match_python() -> None:
     assert native_magnitude == pytest.approx(
         sum(abs(value) for value in python_signs), rel=2e-13, abs=2e-13
     )
+
+
+def test_native_generic_side_metrics_match_relax_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.generator.native_hex.mesher import (  # noqa: PLC0415
+        _relax_boundary_sliver_interior,
+    )
+
+    native = _native_or_skip()
+    assert hasattr(native, "generic_side_metrics")
+    points, cells = _structured_hexes(4, 3, 2)
+    rng = np.random.default_rng(23)
+    points = points + rng.normal(scale=0.02, size=points.shape)
+    cell_faces = [
+        [[int(cell[local]) for local in face] for face in quality._HEX_FACES] for cell in cells
+    ]
+
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY", native)
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED", True)
+    native_points, native_stats = _relax_boundary_sliver_interior(points, cell_faces, iters=1)
+
+    monkeypatch.setattr(quality, "_NATIVE_HEX_QUALITY", None)
+    python_points, python_stats = _relax_boundary_sliver_interior(points, cell_faces, iters=1)
+
+    np.testing.assert_allclose(native_points, python_points, atol=2e-13)
+    assert native_stats.keys() == python_stats.keys()
+    np.testing.assert_allclose(
+        list(native_stats.values()),
+        list(python_stats.values()),
+        rtol=2e-13,
+        atol=2e-13,
+    )

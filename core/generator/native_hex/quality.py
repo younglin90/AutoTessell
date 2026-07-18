@@ -102,6 +102,24 @@ def _native_generic_cell_face_signs(
         return None
 
 
+def _native_generic_side_metrics(
+    points: np.ndarray, cell_faces: list[list[list[int]]]
+) -> tuple[float, float, float] | None:
+    module = _load_native_hex_quality()
+    kernel = getattr(module, "generic_side_metrics", None) if module is not None else None
+    if kernel is None:
+        return None
+    try:
+        skewness, non_orthogonality, negative_volumes = kernel(points, cell_faces)
+        return (
+            float(skewness),
+            float(non_orthogonality),
+            float(negative_volumes),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # OpenFOAM hex face local indexing (mesher.py 와 동일).
 _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
     (0, 3, 2, 1),
