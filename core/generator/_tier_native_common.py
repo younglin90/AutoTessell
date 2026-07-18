@@ -377,6 +377,9 @@ def run_native_tier(
         "max_cells",               # CLI/verifier global cell budget
         # BOOLMERGE4: original STL provenance for per-surface OR inclusion.
         "boolean_union_input_paths",
+        # BOOLMERGE5b: ordered provenance and volume boolean operation.
+        "boolean_input_paths",
+        "boolean_operation",
         "bl_layers",               # post-layer budget reservation
         "post_layers_num_layers",  # post-layer budget reservation
         "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)

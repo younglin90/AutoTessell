@@ -337,6 +337,7 @@ kbd {
   color: var(--orange); background: rgba(224,76,10,.07);
   border: 1px solid rgba(224,76,10,.25); border-radius: var(--r-1);
 }
+.boolean-operation { margin-top: 6px; }
 
 /* ==========================================================================
    Segmented controls — drafting tabs

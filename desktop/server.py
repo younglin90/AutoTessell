@@ -737,13 +737,16 @@ async def download_file(job_id: str, filename: str) -> Response:
 # WebSocket — 메쉬 생성 + 실시간 진행상황
 # ---------------------------------------------------------------------------
 
+_BOOLEAN_OPERATIONS = frozenset({"union", "intersection", "difference"})
+
 
 @app.websocket("/ws/mesh/{job_id}")
 async def websocket_mesh(websocket: WebSocket, job_id: str) -> None:
     """메쉬 생성 WebSocket. 진행상황을 실시간 스트리밍한다.
 
     Protocol:
-        Client → Server: {"action": "start", "quality": "draft", "tier": "auto"}
+        Client → Server: {"action": "start", "quality": "draft", "tier": "auto",
+                          "boolean_operation": "union"}
         Server → Client: {"type": "progress", "stage": "analyze", "progress": 0.2, "message": "..."}
         Server → Client: {"type": "result", "success": true, "verdict": "PASS", ...}
         Server → Client: {"type": "error", "message": "..."}
@@ -767,15 +770,18 @@ async def websocket_mesh(websocket: WebSocket, job_id: str) -> None:
             tier = data.get("tier", "auto")
             mesh_type = data.get("mesh_type", "auto")
             max_iterations = data.get("max_iterations", 1)
+            boolean_operation = data.get("boolean_operation", "union")
 
             # 추가 파라미터 (params_panel / 웹 GUI에서 전달)
             extra_params = {k: v for k, v in data.items()
                           if k not in ("action", "quality", "tier",
-                                       "mesh_type", "max_iterations")}
+                                       "mesh_type", "max_iterations",
+                                       "boolean_operation")}
 
             await _run_mesh_pipeline(
                 websocket, job, quality, tier, max_iterations,
                 extra_params, mesh_type=mesh_type,
+                boolean_operation=boolean_operation,
             )
         else:
             await websocket.send_json({"type": "error", "message": f"Unknown action: {action}"})
@@ -796,6 +802,7 @@ def _build_run_kwargs(
     mesh_type: str,
     max_iterations: int,
     extra: dict[str, Any] | None,
+    boolean_operation: str = "union",
 ) -> dict[str, Any]:
     """WebSocket start payload → ``orchestrator.run()`` 키워드 인자로 변환.
 
@@ -815,6 +822,7 @@ def _build_run_kwargs(
     kwargs: dict[str, Any] = {
         "quality_level": quality,
         "mesh_type": mesh_type,
+        "boolean_operation": boolean_operation,
         "tier_hint": tier,
         "max_iterations": n_iter,
         # >1 회 명시 시에만 자동 재시도 (기본은 off — CLAUDE.md 정책).
@@ -880,6 +888,7 @@ def _build_run_kwargs(
     # --- 나머지 키 → tier_specific_params 자동 머지 ---
     _skip = {
         "action", "quality", "tier", "mesh_type", "max_iterations",
+        "boolean_operation",
         "element_size", "base_cell_size", "max_cells", "bl_layers",
         "no_repair", "force_remesh", "surface_remesh", "allow_ai_fallback",
         "dry_run", "remesh_engine", "checker_engine", "repair_engine",
@@ -905,6 +914,7 @@ async def _run_mesh_pipeline(
     max_iterations: int,
     extra_params: dict[str, Any] | None = None,
     mesh_type: str = "auto",
+    boolean_operation: str = "union",
 ) -> None:
     """메쉬 생성 파이프라인을 실행하며 진행상황을 WebSocket으로 전달한다.
 
@@ -913,20 +923,26 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
-    # Multi-surface assembly gate (CARD BOOLMERGE5a): boolean union of 2+ surfaces
-    # is supported for mesh_type == "tet" through native_tet. Other mesh families
-    # remain rejected until they gain an equivalent union implementation.
+    # Multi-surface assembly gate (CARD BOOLMERGE5b): union/intersection/difference
+    # are supported for mesh_type == "tet" through native_tet. Other mesh families
+    # remain rejected until they gain equivalent boolean implementations.
     n_surfaces = len(job.get("surfaces", []))
+    operation = str(boolean_operation or "union").strip().lower()
     additional_input_paths: list[Path] | None = None
     gate_error: str | None = None
     if n_surfaces >= 2:
-        if mesh_type == "tet":
+        if operation not in _BOOLEAN_OPERATIONS:
+            gate_error = (
+                f"지원하지 않는 boolean_operation: {boolean_operation}. "
+                "허용값: union, intersection, difference"
+            )
+        elif mesh_type == "tet":
             normalized_tier = str(tier or "auto").lower()
             if normalized_tier == "auto":
                 tier = "native_tet"
             elif normalized_tier not in {"native_tet", "tier_native_tet"}:
                 gate_error = (
-                    "여러 표면의 boolean union은 현재 native_tet tier만 "
+                    "여러 표면의 boolean 연산은 현재 native_tet tier만 "
                     f"지원합니다. 요청 tier: {tier}"
                 )
             if gate_error is None:
@@ -952,6 +968,9 @@ async def _run_mesh_pipeline(
                 pass
             await ws.send_json({"type": "error", "message": msg})
             return
+    elif operation not in _BOOLEAN_OPERATIONS:
+        # A single surface has no boolean combination; preserve legacy behavior.
+        operation = "union"
 
     from core.pipeline.orchestrator import PipelineOrchestrator
 
@@ -1014,7 +1033,14 @@ async def _run_mesh_pipeline(
         ),
     })
 
-    run_kwargs = _build_run_kwargs(quality, tier, mesh_type, max_iterations, extra_params)
+    run_kwargs = _build_run_kwargs(
+        quality,
+        tier,
+        mesh_type,
+        max_iterations,
+        extra_params,
+        boolean_operation=operation,
+    )
     if additional_input_paths:
         run_kwargs["additional_input_paths"] = additional_input_paths
     orchestrator = PipelineOrchestrator()

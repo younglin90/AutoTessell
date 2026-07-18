@@ -1,13 +1,11 @@
-"""CARD BOOLMERGE1 — core/utils/geometry.inside_union_winding_number 단위 테스트.
-
-fTetWild §3.6 방식(per-input surface 별 GWN 독립 계산 후 boolean 결합)의 union
-경로만 검증한다. intersection/difference 는 후속 카드 범위.
-"""
+"""Per-input GWN boolean mask tests."""
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from core.utils.geometry import (
+    inside_boolean_winding_number,
     inside_generalized_winding_number,
     inside_union_winding_number,
 )
@@ -98,3 +96,39 @@ def test_empty_surfaces_returns_all_false() -> None:
     assert mask.shape == (2,)
     assert mask.dtype == bool
     assert not mask.any()
+
+
+def test_overlapping_cube_point_masks_all_operations() -> None:
+    V_a, F_a = _cube_mesh(0.0, 1.0)
+    V_b, F_b = _cube_mesh(0.5, 1.5)
+    surfaces = [(V_a, F_a), (V_b, F_b)]
+    points = np.array(
+        [
+            [0.25, 0.25, 0.25],
+            [0.75, 0.75, 0.75],
+            [1.25, 1.25, 1.25],
+            [2.0, 2.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+
+    assert inside_boolean_winding_number(
+        points, surfaces, operation="union"
+    ).tolist() == [True, True, True, False]
+    assert inside_boolean_winding_number(
+        points, surfaces, operation="intersection"
+    ).tolist() == [False, True, False, False]
+    assert inside_boolean_winding_number(
+        points, surfaces, operation="difference"
+    ).tolist() == [True, False, False, False]
+    assert inside_boolean_winding_number(
+        points, list(reversed(surfaces)), operation="difference"
+    ).tolist() == [False, False, True, False]
+
+
+def test_boolean_operation_validation() -> None:
+    V, F = _unit_cube_mesh()
+    with pytest.raises(ValueError, match="unsupported boolean operation"):
+        inside_boolean_winding_number(
+            np.array([[0.5, 0.5, 0.5]]), [(V, F)], operation="xor"
+        )

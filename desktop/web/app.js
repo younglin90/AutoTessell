@@ -109,6 +109,7 @@
     if (t) $("tier").value = t;
   });
   bindSeg($("quality"), (v) => ($("quality-hint").textContent = QUALITY_HINTS[v] || ""));
+  bindSeg($("boolean-operation"));
   bindSeg($("view-mode"), (v) => switchView(v));
 
   // ===================================================================
@@ -325,6 +326,7 @@
       box.classList.add("hidden");
       box.innerHTML = "";
       if (note) note.classList.add("hidden");
+      setBooleanOperationVisible(false);
       // A job with no surfaces left cannot be meshed — keep Run disabled.
       if (state.jobId && !state.running) $("run-btn").disabled = true;
       return;
@@ -372,14 +374,28 @@
       item.appendChild(del);
       box.appendChild(item);
     }
+    const hasBooleanInputs = list.length >= 2;
+    setBooleanOperationVisible(hasBooleanInputs);
     if (note) {
-      if (list.length >= 2) {
+      if (hasBooleanInputs) {
         note.classList.remove("hidden");
-        note.textContent = "표면 2개 이상 — boolean 병합은 곧 지원됩니다. 지금은 1개만 남기면 메쉬를 생성할 수 있습니다.";
+        note.textContent = `표면 ${list.length}개 · Native Tet boolean`;
       } else {
         note.classList.add("hidden");
       }
     }
+  }
+
+  function setBooleanOperationVisible(visible) {
+    const wrap = $("boolean-operation-wrap");
+    const seg = $("boolean-operation");
+    if (!wrap || !seg) return;
+    wrap.classList.toggle("hidden", !visible);
+    if (visible) return;
+    seg.dataset.value = "union";
+    seg.querySelectorAll("button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.v === "union");
+    });
   }
 
   function makeBadge(text, cls) {
@@ -428,6 +444,7 @@
       mesh_type: $("mesh-type").dataset.value,
       quality: $("quality").dataset.value,
       tier: $("tier").value,
+      boolean_operation: $("boolean-operation").dataset.value || "union",
       max_iterations: parseInt($("max_iterations").value, 10) || 1,
     };
     if (num("max_cells") > 0) p.max_cells = parseInt($("max_cells").value, 10);

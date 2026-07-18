@@ -256,6 +256,7 @@ def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
         str(a_path),
         str(b_path),
     ]
+    assert result.strategy.tier_specific_params["boolean_operation"] == "union"
 
     assert result.success is True, f"pipeline failed: {result.error}"
     poly_dir = case_dir / "constant" / "polyMesh"
@@ -335,3 +336,101 @@ def test_boolean_merge_union_e2e(tmp_path: Path, monkeypatch) -> None:
     assert np.all(
         d_b <= eps
     ), f"cube B surface samples strayed from output boundary: {d_b} > eps={eps:.4f}"
+
+
+@pytest.mark.parametrize(
+    ("operation", "analytic_volume", "volume_band", "test_cells"),
+    [
+        ("intersection", 0.125, (0.12, 0.13), 1600),
+        ("difference", 0.875, (0.86, 0.90), _TEST_CELLS),
+    ],
+)
+def test_boolean_intersection_difference_e2e(
+    tmp_path: Path,
+    monkeypatch,
+    operation: str,
+    analytic_volume: float,
+    volume_band: tuple[float, float],
+    test_cells: int,
+) -> None:
+    """Native tet volume masks implement A∩B and upload-ordered A\\B."""
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+
+    a_path = tmp_path / "cube_a.stl"
+    b_path = tmp_path / "cube_b.stl"
+    _write_cube_stl(a_path, 0.0, 1.0)
+    _write_cube_stl(b_path, 0.5, 1.5)
+
+    case_dir = tmp_path / f"case_{operation}"
+    tier_params = {"max_cells": test_cells}
+    if operation == "difference":
+        tier_params["target_cells"] = test_cells
+    result = PipelineOrchestrator().run(
+        a_path,
+        case_dir,
+        additional_input_paths=[b_path],
+        boolean_operation=operation,
+        mesh_type="tet",
+        tier_hint="auto",
+        quality_level="draft",
+        max_iterations=1,
+        auto_retry="off",
+        write_of_case=True,
+        max_cells=test_cells,
+        tier_specific_params=tier_params,
+    )
+
+    expected_tier_params = {"max_cells": test_cells}
+    if operation == "difference":
+        expected_tier_params["target_cells"] = test_cells
+    assert tier_params == expected_tier_params, (
+        "orchestrator mutated caller-owned tier_specific_params"
+    )
+    assert result.success is True, f"pipeline failed: {result.error}"
+    assert result.strategy is not None
+    assert result.strategy.selected_tier == "tier_native_tet"
+    assert result.strategy.tier_specific_params["boolean_input_paths"] == [
+        str(a_path),
+        str(b_path),
+    ]
+    assert result.strategy.tier_specific_params["boolean_operation"] == operation
+
+    assert result.quality_report is not None
+    checkmesh = result.quality_report.evaluation_summary.checkmesh
+    assert checkmesh.negative_volumes == 0
+    verdict = result.quality_report.evaluation_summary.verdict
+    assert verdict in ("PASS", "PASS_WITH_WARNINGS"), f"verdict={verdict}"
+
+    vols = _cell_volumes(case_dir / "constant" / "polyMesh")
+    n_cells = int((vols > 0).sum())
+    assert n_cells > 0
+    total_vol = float(vols.sum())
+    lower, upper = volume_band
+    assert lower <= total_vol <= upper, (
+        f"{operation} volume {total_vol:.6f} outside [{lower}, {upper}] "
+        f"(analytic={analytic_volume}; union=1.875; XOR=1.750)"
+    )
+
+
+def test_non_union_requires_additional_input(tmp_path: Path) -> None:
+    result = PipelineOrchestrator().run(
+        tmp_path / "missing.stl",
+        tmp_path / "case",
+        boolean_operation="intersection",
+    )
+
+    assert result.success is False
+    assert result.error is not None
+    assert "requires at least two input surfaces" in result.error
+
+
+def test_boolean_operation_rejects_unsupported_value(tmp_path: Path) -> None:
+    result = PipelineOrchestrator().run(
+        tmp_path / "missing.stl",
+        tmp_path / "case",
+        boolean_operation="xor",
+    )
+
+    assert result.success is False
+    assert result.error is not None
+    assert "unsupported boolean operation" in result.error

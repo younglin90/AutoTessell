@@ -75,13 +75,14 @@ def _seed_points_uniform(
 from core.utils.geometry import inside_robust as _inside_winding_number
 
 
-def _inside_boolean_union_inputs(
+def _inside_boolean_inputs(
     points: np.ndarray,
     input_paths: list[str],
+    boolean_operation: str = "union",
 ) -> np.ndarray:
-    """Classify points inside any original boolean-union input surface."""
+    """Classify points against original surfaces using ordered boolean masks."""
     from core.analyzer.readers import read_stl
-    from core.utils.geometry import inside_union_winding_number
+    from core.utils.geometry import inside_boolean_winding_number
 
     surfaces: list[tuple[np.ndarray, np.ndarray]] = []
     for input_path in input_paths:
@@ -93,8 +94,18 @@ def _inside_boolean_union_inputs(
             )
         )
     if not surfaces:
-        raise ValueError("boolean union requires at least one input surface")
-    return inside_union_winding_number(points, surfaces)
+        raise ValueError("boolean operation requires at least one input surface")
+    return inside_boolean_winding_number(
+        points, surfaces, operation=boolean_operation
+    )
+
+
+def _inside_boolean_union_inputs(
+    points: np.ndarray,
+    input_paths: list[str],
+) -> np.ndarray:
+    """Backward-compatible union wrapper."""
+    return _inside_boolean_inputs(points, input_paths, "union")
 
 
 def _surf_edges_from_faces(F: np.ndarray) -> set:
@@ -334,10 +345,11 @@ def generate_native_tet(
     # 자동 ON (HARNESS_PARAMS), 다른 tier 는 OFF. AUTO_TESSELL_STELLAR_SPLIT
     # env 가 우선 (사용자 explicit override).
     enable_stellar_split: bool = False,
-    # BOOLMERGE4: JSON-safe original STL provenance. Combined soup remains the
-    # geometry source; these paths only replace final centroid inclusion with
-    # a per-original-surface OR.
+    # BOOLMERGE4 compatibility key; prefer boolean_input_paths for new callers.
     boolean_union_input_paths: list[str] | None = None,
+    # BOOLMERGE5b: JSON-safe ordered STL provenance and volume boolean mask.
+    boolean_input_paths: list[str] | None = None,
+    boolean_operation: str = "union",
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -1334,24 +1346,48 @@ def generate_native_tet(
                         else:
                             log.warning("native_tet_bsp_redelaunay_failed")
 
-    # 3) tet centroid 로 inside 판정. Combined closed-surface soup cannot use
-    # ray parity for overlapping bodies: two crossings cancel to outside.
-    # Preserve the soup for seeding/surface vertices, but classify final tets
-    # against each original surface and OR the masks (fTetWild section 3.6).
+    # 3) Classify final centroids against each original surface. Combined soup
+    # remains the geometry source for bbox, seeding, and surface vertices.
     centroids = all_pts[tets].mean(axis=1)
     inside_tet: np.ndarray | None = None
-    if boolean_union_input_paths:
-        try:
-            inside_tet = _inside_boolean_union_inputs(
-                centroids, list(boolean_union_input_paths)
+    ordered_boolean_paths = boolean_input_paths or boolean_union_input_paths
+    boolean_operation = str(boolean_operation).strip().lower()
+
+    def _classify_output_points(points: np.ndarray) -> np.ndarray:
+        if ordered_boolean_paths:
+            return _inside_boolean_inputs(
+                points,
+                list(ordered_boolean_paths),
+                boolean_operation,
             )
+        return _inside_winding_number(points, V, F)
+
+    if ordered_boolean_paths:
+        try:
+            inside_tet = _classify_output_points(centroids)
             log.info(
-                "native_tet_boolean_union_filter",
-                n_inputs=len(boolean_union_input_paths),
+                "native_tet_boolean_filter",
+                operation=boolean_operation,
+                n_inputs=len(ordered_boolean_paths),
                 n_tets=int(tets.shape[0]),
                 n_inside=int(inside_tet.sum()),
             )
         except Exception as exc:
+            if boolean_operation != "union":
+                message = (
+                    f"boolean {boolean_operation} classification failed: {exc}"
+                )
+                log.warning(
+                    "native_tet_boolean_filter_failed_closed",
+                    operation=boolean_operation,
+                    error=str(exc)[:160],
+                )
+                return NativeTetResult(
+                    False,
+                    time.perf_counter() - t0,
+                    message=message,
+                    n_self_intersect_pre=_pre_mesh_si_count,
+                )
             log.warning(
                 "native_tet_boolean_union_filter_fallback",
                 error=str(exc)[:160],
@@ -2528,6 +2564,10 @@ def generate_native_tet(
     try:
         if _phase_bc_skip:
             raise RuntimeError("_phase_bc_skip")
+        if ordered_boolean_paths and boolean_operation != "union":
+            raise RuntimeError(
+                "non-union boolean keeps the operation-filtered primary candidate"
+            )
         from core.generator.native_tet.cdt_check import (
             check_edge_recovery_chained, cdt_ratio as _cdt_ratio_w3,
         )
@@ -2557,11 +2597,12 @@ def generate_native_tet(
 
         # 후보 1: base + inside winding filter (+ surface-vertex tet 강제 keep).
         base_centroids = base_pts_for_fallback[base_tets_for_fallback].mean(axis=1)
-        base_inside = _inside_winding_number(base_centroids, V, F)
+        base_inside = _classify_output_points(base_centroids)
         try:
-            n_surface_in = int(V.shape[0])
-            on_surface = (base_tets_for_fallback < n_surface_in).all(axis=1)
-            base_inside = base_inside | on_surface
+            if not ordered_boolean_paths or boolean_operation == "union":
+                n_surface_in = int(V.shape[0])
+                on_surface = (base_tets_for_fallback < n_surface_in).all(axis=1)
+                base_inside = base_inside | on_surface
         except Exception:
             pass
         base_filt_tets = base_tets_for_fallback[base_inside]
@@ -2577,9 +2618,10 @@ def generate_native_tet(
                 Dv = _D_v(V)
                 v_only_tets_raw = np.asarray(Dv.simplices, dtype=np.int64)
                 v_cen = V[v_only_tets_raw].mean(axis=1)
-                v_ins = _inside_winding_number(v_cen, V, F)
-                v_on_surf = (v_only_tets_raw < V.shape[0]).all(axis=1)
-                v_keep = v_ins | v_on_surf
+                v_keep = _classify_output_points(v_cen)
+                if not ordered_boolean_paths or boolean_operation == "union":
+                    v_on_surf = (v_only_tets_raw < V.shape[0]).all(axis=1)
+                    v_keep = v_keep | v_on_surf
                 v_only_tets = v_only_tets_raw[v_keep]
                 v_only_pts = V.copy()
                 v_only_score, v_only_metrics = _score(v_only_pts, v_only_tets)
@@ -2631,15 +2673,16 @@ def generate_native_tet(
                     pass
                 aug_pts = np.vstack([V, np.asarray(ext_pts)])
                 # winding inside 한 점만 keep.
-                inside_aug = _inside_winding_number(aug_pts[V.shape[0]:], V, F)
+                inside_aug = _classify_output_points(aug_pts[V.shape[0]:])
                 aug_pts = np.vstack([V, aug_pts[V.shape[0]:][inside_aug]])
                 from scipy.spatial import Delaunay as _D_aug
                 Daug = _D_aug(aug_pts)
                 aug_tets_raw = np.asarray(Daug.simplices, dtype=np.int64)
                 aug_cen = aug_pts[aug_tets_raw].mean(axis=1)
-                aug_ins = _inside_winding_number(aug_cen, V, F)
-                aug_on_surf = (aug_tets_raw < V.shape[0]).all(axis=1)
-                aug_keep = aug_ins | aug_on_surf
+                aug_keep = _classify_output_points(aug_cen)
+                if not ordered_boolean_paths or boolean_operation == "union":
+                    aug_on_surf = (aug_tets_raw < V.shape[0]).all(axis=1)
+                    aug_keep = aug_keep | aug_on_surf
                 aug_tets = aug_tets_raw[aug_keep]
 
                 # AMIPS analytic 으로 quality smoothing (interior 만).

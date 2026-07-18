@@ -86,6 +86,7 @@ class PipelineOrchestrator:
         mesh_type: str = "auto",
         tier_hint: str = "auto",
         additional_input_paths: list[Path] | None = None,
+        boolean_operation: str = "union",
         max_iterations: int = 3,
         auto_retry: str = "off",
         dry_run: bool = False,
@@ -115,11 +116,11 @@ class PipelineOrchestrator:
             quality_level: 품질 레벨 (draft/standard/fine).
             tier_hint: Tier 힌트 (auto/snappy/netgen/...).
             additional_input_paths: (CARD BOOLMERGE3) 2번째 이상 입력 표면.
-                주어지면 ``input_path`` 와 함께 GWN(generalized winding number)
-                가법성 기반 union pre-merge(``_premerge_surfaces_for_union``)로
-                결합돼 기존 단일-경로 파이프라인에 그대로 흘러간다. None(기본값)
-                이면 기존 단일-경로 호출자(CLI/GUI)는 완전히 동일하게 동작한다
-                — 하위호환 최우선.
+                주어지면 ``input_path`` 와 source 순서를 보존한 combined soup을
+                만든다. 최종 tet은 원본 surface별 GWN mask로 분류된다.
+                None이면 기존 단일-입력 동작을 유지한다.
+            boolean_operation: ``union``, ``intersection``, or ``difference``.
+                ``difference`` preserves upload order: first minus all remaining.
             max_iterations: Generator↔Evaluator 최대 반복 횟수.
             dry_run: True이면 전략 수립까지만 수행.
             element_size: 셀 크기 override.
@@ -142,6 +143,7 @@ class PipelineOrchestrator:
         stage = "init"
         # Internal pipeline metadata must never mutate the caller-owned mapping.
         tier_specific_params = dict(tier_specific_params or {})
+        boolean_operation = str(boolean_operation or "union").strip().lower()
 
         # Tier 5 엔진 선택 (v0.4 native-first):
         #   "auto"    → NativeMeshChecker 기본, OpenFOAM 은 교차 검증용
@@ -170,15 +172,36 @@ class PipelineOrchestrator:
                 log.debug("progress_callback_failed", error=str(exc))
 
         try:
+            supported_boolean_operations = {"union", "intersection", "difference"}
+            if boolean_operation not in supported_boolean_operations:
+                raise ValueError(
+                    f"unsupported boolean operation: {boolean_operation!r}; "
+                    f"expected one of {sorted(supported_boolean_operations)}"
+                )
+            if boolean_operation != "union" and not additional_input_paths:
+                raise ValueError(
+                    f"boolean {boolean_operation} requires at least two input surfaces"
+                )
             if additional_input_paths:
-                union_tier = str(tier_hint or "auto").lower()
-                if union_tier == "auto":
+                boolean_tier = str(tier_hint or "auto").lower()
+                if boolean_tier == "auto":
                     tier_hint = "native_tet"
-                    log.info("boolean_union_tier_coerced", tier="native_tet")
-                elif union_tier not in {"native_tet", "tier_native_tet"}:
+                    log.info(
+                        "boolean_tier_coerced",
+                        operation=boolean_operation,
+                        tier="native_tet",
+                    )
+                elif boolean_tier not in {"native_tet", "tier_native_tet"}:
                     raise ValueError(
-                        "boolean union currently requires tier native_tet; "
+                        f"boolean {boolean_operation} currently requires tier native_tet; "
                         f"received {tier_hint!r}"
+                    )
+                if boolean_operation != "union":
+                    strict_tier = True
+                    log.info(
+                        "boolean_non_union_strict_tier",
+                        operation=boolean_operation,
+                        tier="native_tet",
                     )
             log.debug(
                 "pipeline_run_params",
@@ -209,26 +232,32 @@ class PipelineOrchestrator:
                 ],
             )
 
-            # ------ 0. Boolean union pre-merge (CARD BOOLMERGE3) ------
+            # ------ 0. Boolean surface pre-merge (CARD BOOLMERGE5b) ------
             # additional_input_paths 가 주어지면 GWN 가법성으로 결합 STL 을
             # 만들어 input_path 를 치환한다 — Analyze 이전에, 나머지 파이프라인
             # 은 5-홉 무변경 단일-경로 그대로 진행된다.
             if additional_input_paths:
-                union_input_paths = [input_path, *additional_input_paths]
-                tier_specific_params["boolean_union_input_paths"] = [
-                    str(path) for path in union_input_paths
+                boolean_input_paths = [input_path, *additional_input_paths]
+                tier_specific_params["boolean_input_paths"] = [
+                    str(path) for path in boolean_input_paths
                 ]
+                tier_specific_params["boolean_operation"] = boolean_operation
+                if boolean_operation == "union":
+                    tier_specific_params["boolean_union_input_paths"] = list(
+                        tier_specific_params["boolean_input_paths"]
+                    )
                 log.info(
-                    "boolean_union_premerge_requested",
+                    "boolean_premerge_requested",
+                    operation=boolean_operation,
                     primary=str(input_path),
                     additional=[str(p) for p in additional_input_paths],
                 )
                 input_path = self._premerge_surfaces_for_union(
-                    union_input_paths, work=output_dir,
+                    boolean_input_paths, work=output_dir,
                 )
                 no_repair = True
                 surface_remesh = False
-                emit_progress(2, "다중 표면 union 병합 완료")
+                emit_progress(2, f"다중 표면 {boolean_operation} 병합 완료")
 
             # ------ 1. Analyze ------
             stage = "analyze"
@@ -866,6 +895,7 @@ class PipelineOrchestrator:
                 quality_level=quality_level,
                 mesh_type="hex_dominant",
                 tier_hint=tier_hint,
+                boolean_operation=boolean_operation,
                 max_iterations=max_iterations,
                 auto_retry=auto_retry,
                 dry_run=dry_run,
@@ -1023,25 +1053,15 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _premerge_surfaces_for_union(paths: list[Path], work: Path) -> Path:
-        """다중 표면을 GWN 가법성 기반 union-mesh 로 결합할 단일 STL 을 만든다.
+        """다중 표면을 bbox/seeding용 단일 triangle soup으로 결합한다.
 
-        CARD BOOLMERGE3 — 사용자 경로(orchestrator/server) 최초 배선.
+        Historical method name is retained for callers from BOOLMERGE3. BOOLMERGE5b
+        uses this operation-neutral soup for all operations; final centroids are
+        classified against ordered original surfaces in native_tet.
 
-        수학적 근거 (GWN 가법성): 바깥 방향 폐곡면 A, B 에 대해 결합된 vertex/
-        face soup 의 winding number 는 ``wn_{A∪B}(p) = wn_A(p) + wn_B(p)`` 이다
-        (BOOLMERGE1, ``core/utils/geometry.inside_union_winding_number`` 로
-        단위 테스트됨). 겹치는 내부는 2, 단독 내부는 1, 바깥은 0 이며, 기존
-        단일-경로 파이프라인이 사용하는 ``_inside_winding_number``
-        (``core/generator/native_tet/mesher.py:1313``, threshold 0.5) 는
-        1 이상을 모두 "내부"로 판정하므로, 두 STL 을 단순히 하나의 soup 으로
-        concat 하기만 하면(정점 offset 재인덱싱) 기존 단일-(V,F) 파이프라인이
-        seeding(=union bbox)·filter(=union) 를 **mesher 무변경**으로 그대로
-        재현한다.
-
-        union 전용 헬퍼다 — intersection/difference 는 별도 provenance 가
-        필요한 ``filter_tets_to_union``(BOOLMERGE2, ``core/generator/
-        native_tet``, 격리 헬퍼) 를 참고하되 여기서는 배선하지 않는다
-        (BOOLMERGE4+ 로 이월).
+        Triangle coordinates and indices are concatenated without clipping. This
+        supplies the full boolean bbox, seeds, and candidate surface vertices while
+        ``boolean_input_paths`` preserves provenance for OR/AND/ordered subtraction.
 
         원본 삼각형은 좌표/인덱스를 그대로 보존한다(수정·리메쉬 없음) — 표면
         보존 불변식 1 을 구조적으로 지킨다. 호출자(``run()``)는 이 헬퍼가
@@ -1049,8 +1069,7 @@ class PipelineOrchestrator:
         를 강제해 리메쉬로 표면이 뭉개지는 것을 막는다.
 
         Args:
-            paths: 병합할 STL 파일 경로 목록 (2개 이상; 순서는 결과에 영향
-                없음 — GWN 합은 교환법칙).
+            paths: 입력 STL 경로 목록 (2개 이상). 순서는 difference에서 중요하다.
             work: 결합 STL 을 쓸 기준 디렉터리(``output_dir``); 실제 파일은
                 ``work / "_work" / "_merged.stl"`` 에 저장된다.
 
@@ -1084,7 +1103,7 @@ class PipelineOrchestrator:
         if not write_res.success:
             raise RuntimeError(f"failed to write merged surface: {write_res.message}")
         log.info(
-            "surfaces_premerged_for_union",
+            "surfaces_premerged_for_boolean",
             n_inputs=len(paths),
             n_vertices=int(merged_v.shape[0]),
             n_faces=int(merged_f.shape[0]),

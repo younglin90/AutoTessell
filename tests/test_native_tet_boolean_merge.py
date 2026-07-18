@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from scipy.spatial import Delaunay
 
 from core.generator.native_tet.boolean_merge import (
@@ -178,3 +179,28 @@ def test_single_surface_matches_boundary_clip() -> None:
     # sign/scale 도 sanity-check -- 둘 다 unit cube 부피(~1.0) 근방이어야 한다.
     assert 0.7 <= result.volume_after <= 1.3
     assert 0.7 <= clip_volume <= 1.3
+
+
+def test_non_union_classification_failure_is_fail_closed(
+    tmp_path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_tet.mesher as mesher
+
+    V, F = _unit_cube_mesh()
+
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("synthetic classifier failure")
+
+    monkeypatch.setattr(mesher, "_inside_boolean_inputs", _raise)
+    result = mesher.generate_native_tet(
+        V,
+        F,
+        tmp_path / "case",
+        target_edge_length=0.5,
+        boolean_input_paths=["a.stl", "b.stl"],
+        boolean_operation="intersection",
+    )
+
+    assert result.success is False
+    assert "boolean intersection classification failed" in result.message
+    assert "synthetic classifier failure" in result.message

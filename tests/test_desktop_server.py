@@ -68,7 +68,16 @@ def _add_surface(
     return resp.json()
 
 
-async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
+async def _mock_pipeline(
+    ws,
+    job,
+    quality,
+    tier,
+    max_iter,
+    extra_params=None,
+    mesh_type="auto",
+    boolean_operation="union",
+):
     """Mock _run_mesh_pipeline that sends standard WS messages."""
     await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock init"})
     await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock analyze"})
@@ -469,7 +478,16 @@ class TestWebSocketMesh:
         job_id = _upload_sphere(client)
 
         # Mock the entire _run_mesh_pipeline to avoid real evaluation
-        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
+        async def _mock_pipeline(
+            ws,
+            job,
+            quality,
+            tier,
+            max_iter,
+            extra_params=None,
+            mesh_type="auto",
+            boolean_operation="union",
+        ):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
@@ -500,7 +518,16 @@ class TestWebSocketMesh:
         job_id = _upload_sphere(client)
 
         # Mock the entire _run_mesh_pipeline to avoid real evaluation
-        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
+        async def _mock_pipeline(
+            ws,
+            job,
+            quality,
+            tier,
+            max_iter,
+            extra_params=None,
+            mesh_type="auto",
+            boolean_operation="union",
+        ):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
             await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
@@ -612,7 +639,16 @@ class TestWebSocketMesh:
     def test_websocket_all_tiers_failed(self, client):
         job_id = _upload_sphere(client)
 
-        async def _mock_fail_pipeline(ws, job, quality, tier, max_iter, extra_params=None, mesh_type="auto"):
+        async def _mock_fail_pipeline(
+            ws,
+            job,
+            quality,
+            tier,
+            max_iter,
+            extra_params=None,
+            mesh_type="auto",
+            boolean_operation="union",
+        ):
             await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
             await ws.send_json({"type": "result", "success": False, "message": "All tiers failed"})
             job["status"] = "failed"
@@ -1283,7 +1319,63 @@ class TestMultiSurface:
         assert mock_orch.run.called
         _, run_kwargs = mock_orch.run.call_args
         assert run_kwargs.get("tier_hint") == "native_tet"
+        assert run_kwargs.get("boolean_operation") == "union"
+        assert "boolean_operation" not in run_kwargs.get("tier_specific_params", {})
         assert run_kwargs.get("additional_input_paths") == [expected_second_path]
+
+    @pytest.mark.parametrize(
+        "operation", ["union", "intersection", "difference"]
+    )
+    def test_boolean_operation_reaches_orchestrator(self, client, operation):
+        mock_orch = _make_mock_orchestrator(verdict="PASS")
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+
+        with patch(
+            "core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch,
+        ):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {
+                        "action": "start",
+                        "quality": "draft",
+                        "tier": "native_tet",
+                        "mesh_type": "tet",
+                        "boolean_operation": operation,
+                    }
+                )
+                messages = self._collect_messages(ws)
+
+        assert not [m for m in messages if m.get("type") == "error"]
+        _, run_kwargs = mock_orch.run.call_args
+        assert run_kwargs.get("boolean_operation") == operation
+        assert "boolean_operation" not in run_kwargs.get("tier_specific_params", {})
+
+    def test_invalid_boolean_operation_rejected(self, client):
+        mock_orch = _make_mock_orchestrator(verdict="PASS")
+        job_id = _upload_sphere(client)
+        _add_surface(client, job_id, "wing.stl")
+
+        with patch(
+            "core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch,
+        ):
+            with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
+                ws.send_json(
+                    {
+                        "action": "start",
+                        "quality": "draft",
+                        "tier": "native_tet",
+                        "mesh_type": "tet",
+                        "boolean_operation": "xor",
+                    }
+                )
+                messages = self._collect_messages(ws)
+
+        errors = [m for m in messages if m.get("type") == "error"]
+        assert errors
+        assert "boolean_operation" in errors[0].get("message", "")
+        assert not mock_orch.run.called
+        assert _jobs[job_id]["status"] == "failed"
 
     @pytest.mark.parametrize("tier", ["native_tet", "tier_native_tet"])
     def test_two_surface_explicit_native_tet_allowed(self, client, tier):
@@ -1352,6 +1444,7 @@ class TestMultiSurface:
                         "quality": "draft",
                         "tier": "auto",
                         "mesh_type": "tet",
+                        "boolean_operation": "difference",
                         "max_iterations": 1,
                     }
                 )
@@ -1361,4 +1454,5 @@ class TestMultiSurface:
         assert [m for m in messages if m.get("type") == "result"]
         _, run_kwargs = mock_orch.run.call_args
         assert run_kwargs.get("tier_hint") == "native_tet"
+        assert run_kwargs.get("boolean_operation") == "difference"
         assert run_kwargs.get("additional_input_paths") == expected_paths
