@@ -7,6 +7,9 @@ import io
 import os
 import time
 from pathlib import Path
+from typing import Any
+
+import numpy as np
 
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.errors import format_missing_dependency_message
@@ -85,8 +88,11 @@ class Tier05NetgenGenerator:
         # 메쉬 생성 실행
         try:
             params = strategy.tier_specific_params
-            maxh = strategy.surface_mesh.target_cell_size
-            minh = strategy.surface_mesh.min_cell_size
+            # Strategist 자동 표면 크기 (N 무시). N 지정 시 아래에서 대체.
+            auto_maxh = strategy.surface_mesh.target_cell_size
+            auto_minh = strategy.surface_mesh.min_cell_size
+            maxh = auto_maxh
+            minh = auto_minh
             grading = params.get("netgen_grading", 0.3)
             curvaturesafety = params.get("netgen_curvaturesafety", 2.0)
             segmentsperedge = params.get("netgen_segmentsperedge", 1.0)
@@ -95,12 +101,32 @@ class Tier05NetgenGenerator:
 
             is_cad = preprocessed_path.suffix.lower() in _CAD_EXTENSIONS
 
+            # 사용자가 목표 셀 수 N (target_cells/max_cells) 을 지정하면 그로부터
+            # maxh 를 유도한다. Strategist 의 auto 표면 크기는 N 을 무시하므로 작은 N
+            # 요청이 100x+ 로 폭증할 수 있다 (cube N=2000 → 364,722 cells 관측).
+            n_target = self._target_cell_count(params)
+            n_driven_maxh = self._maxh_from_target_cells(
+                strategy, preprocessed_path, is_cad, n_target
+            )
+            if n_driven_maxh is not None:
+                maxh = n_driven_maxh
+                # minh 을 원래 minh/maxh 비율로 스케일 (정보/로그 일관성용;
+                # GenerateMesh 는 minh 를 직접 받지 않는다).
+                minh = (
+                    n_driven_maxh * (auto_minh / auto_maxh)
+                    if auto_maxh > 0
+                    else n_driven_maxh / 4.0
+                )
+
             logger.info(
                 "tier05_netgen_meshing",
                 is_cad=is_cad,
                 maxh=maxh,
                 minh=minh,
                 grading=grading,
+                target_cells=n_target,
+                auto_maxh=auto_maxh,
+                n_driven=n_driven_maxh is not None,
             )
 
             if is_cad:
@@ -239,6 +265,122 @@ class Tier05NetgenGenerator:
                 time_seconds=elapsed,
                 error_message=f"Tier 0.5 실행 실패: {exc}",
             )
+
+    @staticmethod
+    def _target_cell_count(params: dict[str, Any]) -> int | None:
+        """tier_specific_params 에서 목표 셀 수 (target_cells / max_cells) 추출.
+
+        환경변수 ``AUTO_TESSELL_NETGEN_TARGET_CELLS=0`` 로 비활성 가능 (기본 ON).
+        값이 없거나 0/음수/파싱 실패 시 None → 기존 Strategist 크기 유지.
+        """
+        if os.environ.get("AUTO_TESSELL_NETGEN_TARGET_CELLS", "1") == "0":
+            return None
+        raw = params.get("target_cells") or params.get("max_cells")
+        if not raw:
+            return None
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 else None
+
+    @classmethod
+    def _maxh_from_target_cells(
+        cls,
+        strategy: MeshStrategy,
+        preprocessed_path: Path,
+        is_cad: bool,
+        n_target: int | None,
+    ) -> float | None:
+        """목표 셀 수 N 으로부터 Netgen maxh (목표 엣지 길이) 를 유도한다.
+
+        ``_edge_from_target_cells`` (native tier 공용 로직) 를 재사용한다:
+        ``edge = (V / (factor·N))**(1/3)``, factor 는 Netgen 보정 (fill ~0.56x).
+        추정 불가 (CAD 입력 / STL 읽기 실패 / 퇴화 표면) 시 None → 기존 크기 유지.
+
+        Args:
+            strategy: 메시 전략 (flow_type / domain 참조).
+            preprocessed_path: 입력 STL 경로.
+            is_cad: CAD 입력 여부 (True 면 부피 추정 불가 → None).
+            n_target: 목표 셀 수. None 이면 즉시 None.
+
+        Returns:
+            유도된 maxh 또는 None.
+        """
+        if n_target is None:
+            return None
+        verts, faces = cls._meshed_region_geometry(strategy, preprocessed_path, is_cad)
+        if verts is None or faces is None:
+            return None
+        from core.generator._tier_native_common import _edge_from_target_cells
+
+        try:
+            return _edge_from_target_cells(verts, faces, TIER_NAME, n_target)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("netgen_target_cells_edge_failed", error=str(exc))
+            return None
+
+    @staticmethod
+    def _meshed_region_geometry(
+        strategy: MeshStrategy,
+        preprocessed_path: Path,
+        is_cad: bool,
+    ) -> tuple[np.ndarray[Any, Any] | None, np.ndarray[Any, Any] | None]:
+        """N→maxh 추정을 위한 '메싱 대상 영역' 의 (vertices, faces).
+
+        - external flow (+domain) → 도메인 박스 (실제 메싱 부피 = 박스 - 물체 ≈ 박스).
+        - 그 외 (internal STL) → 물체 표면.
+        - CAD 입력 또는 읽기 실패 → (None, None).
+        """
+        if is_cad:
+            return None, None
+        flow_type = getattr(strategy, "flow_type", "internal")
+        if flow_type == "external" and strategy.domain is not None:
+            d = strategy.domain
+            lo = np.asarray(d.min, dtype=float)
+            hi = np.asarray(d.max, dtype=float)
+            verts = np.array(
+                [
+                    [lo[0], lo[1], lo[2]],
+                    [hi[0], lo[1], lo[2]],
+                    [hi[0], hi[1], lo[2]],
+                    [lo[0], hi[1], lo[2]],
+                    [lo[0], lo[1], hi[2]],
+                    [hi[0], lo[1], hi[2]],
+                    [hi[0], hi[1], hi[2]],
+                    [lo[0], hi[1], hi[2]],
+                ],
+                dtype=float,
+            )
+            faces = np.array(
+                [
+                    [0, 1, 2],
+                    [0, 2, 3],  # -Z
+                    [4, 6, 5],
+                    [4, 7, 6],  # +Z
+                    [0, 4, 5],
+                    [0, 5, 1],  # -Y
+                    [1, 5, 6],
+                    [1, 6, 2],  # +X
+                    [2, 6, 7],
+                    [2, 7, 3],  # +Y
+                    [3, 7, 4],
+                    [3, 4, 0],  # -X
+                ],
+                dtype=int,
+            )
+            return verts, faces
+        try:
+            from core.analyzer.readers import read_stl
+
+            m = read_stl(preprocessed_path)
+            return (
+                np.asarray(m.vertices, dtype=float),
+                np.asarray(m.faces, dtype=int),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("netgen_target_cells_read_failed", error=str(exc))
+            return None, None
 
     @staticmethod
     def _preprocess_cad_geometry(cad_path: Path) -> Path:

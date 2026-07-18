@@ -31,6 +31,12 @@ log = get_logger(__name__)
 # protects hex/poly from the eval hang, so N→edge for them can follow later.
 _CELL_VOL_FACTOR = {
     "tier_native_tet": 1.0 / (6.0 * math.sqrt(2.0)),  # regular tet volume
+    # Netgen fills a maxh-bounded region with LARGER-than-ideal tets (maxh is a
+    # max-edge bound, so cells average bigger than a regular tet of that edge),
+    # yielding ~0.56x the ideal-tet count at the ideal-tet edge (measured on
+    # cube/cylinder over N=1k..5k).  Divide the ideal factor by that fill
+    # fraction so N→edge lands within ~[0.75, 1.2]x of the requested N.
+    "tier05_netgen": (1.0 / (6.0 * math.sqrt(2.0))) / 0.56,
 }
 
 
