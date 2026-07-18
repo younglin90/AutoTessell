@@ -681,6 +681,167 @@ def _wall_fit_snap(
     return pts, stats
 
 
+def _relax_boundary_sliver_interior(
+    pts: np.ndarray,
+    cell_faces: "list[list[list[int]]]",
+    tau: float = 0.5,
+    alpha: float = 0.5,
+    iters: int = 2,
+) -> tuple[np.ndarray, dict[str, float]]:
+    """post-``_wall_fit_snap`` boundary sliver 셀의 wall-normal 두께(|nd|) 복원.
+
+    ``cell_faces`` 는 ``_wall_fit_snap`` 과 동일한 generic polyMesh cell->face->vert
+    형식(옥트리 adaptive 경로의 hanging-node 면도 지원, uniform 경로는
+    ``_hex_array_to_cell_faces`` 로 변환해 전달) — ``hex_quality_report``/
+    ``_count_neg_vol_hex`` 는 (N,8) 전제라 옥트리 경로엔 못 쓰므로, 이 함수가 checker
+    와 동일 정의의 boundary/internal skewness·non-orthogonality·부호반전 셀 수를
+    자체 계산해 ``stats`` 로 반환한다 (호출부 smart-guard 가 최종 mesh 값으로
+    accept/revert 판정).
+
+    표면 정점(모든 boundary face 의 vertex)은 완전 동결 — wall_dev 재회귀 절대
+    금지, 최우선 가드. ``|nd| < tau*h`` 인 sliver 셀의 자유(non-boundary) 정점만
+    face-normal 반대 방향(안쪽)으로 ``alpha*(target-|nd|)`` 만큼 directed relax.
+    """
+    from collections import defaultdict  # noqa: PLC0415
+
+    stats: dict[str, float] = dict.fromkeys(
+        (
+            "sliver_cells",
+            "moved_verts",
+            "pre_bskew",
+            "post_bskew",
+            "pre_int_skew",
+            "post_int_skew",
+            "pre_no",
+            "post_no",
+            "pre_neg_vol",
+            "post_neg_vol",
+        ),
+        0.0,
+    )
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    if not cell_faces:
+        return pts, stats
+    owners: dict[tuple[int, ...], list[int]] = defaultdict(list)
+    for ci, cell in enumerate(cell_faces):
+        for face in cell:
+            owners[tuple(sorted(int(v) for v in face))].append(ci)
+    boundary_faces: list[tuple[int, list[int]]] = []
+    internal_faces: list[tuple[int, int, list[int]]] = []
+    boundary_verts: set[int] = set()
+    seen: set[tuple[int, ...]] = set()
+    for ci, cell in enumerate(cell_faces):
+        for face in cell:
+            fv = [int(v) for v in face]
+            key = tuple(sorted(fv))
+            o = owners[key]
+            if len(o) == 1:
+                boundary_faces.append((ci, fv))
+                boundary_verts.update(fv)
+            elif len(o) == 2 and key not in seen:
+                seen.add(key)
+                internal_faces.append((o[0], o[1], fv))
+    if not boundary_faces:
+        return pts, stats
+    cell_verts = [sorted({int(v) for face in cell for v in face}) for cell in cell_faces]
+
+    def _cc(ci: int, cur: np.ndarray) -> np.ndarray:
+        return cur[np.asarray(cell_verts[ci], dtype=np.int64)].mean(axis=0)
+
+    def _face_geom(fv: list[int], cur: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        p = cur[np.asarray(fv, dtype=np.int64)]
+        fc = p.mean(axis=0)
+        nvec = np.zeros(3)
+        n = len(fv)
+        for i in range(n):  # Newell's method — arbitrary (incl. non-quad) polygon
+            a, b = p[i], p[(i + 1) % n]
+            nvec[0] += (a[1] - b[1]) * (a[2] + b[2])
+            nvec[1] += (a[2] - b[2]) * (a[0] + b[0])
+            nvec[2] += (a[0] - b[0]) * (a[1] + b[1])
+        nmag = float(np.linalg.norm(nvec))
+        return fc, (nvec / nmag if nmag > 1e-30 else nvec)
+
+    def _signed_vol(ci: int, cur: np.ndarray) -> float:
+        c = _cc(ci, cur)
+        total = 0.0
+        for face in cell_faces[ci]:
+            p = cur[np.asarray(face, dtype=np.int64)]
+            for i in range(1, len(face) - 1):
+                total += float(np.dot(p[0] - c, np.cross(p[i] - c, p[i + 1] - c))) / 6.0
+        return total
+
+    areas = []
+    for _, fv in boundary_faces:
+        p = pts[np.asarray(fv, dtype=np.int64)]
+        c = p.mean(axis=0)
+        n = len(fv)
+        a = sum(
+            float(np.linalg.norm(np.cross(p[i] - c, p[(i + 1) % n] - c))) / 2.0 for i in range(n)
+        )
+        areas.append(a)
+    h_est = float(np.sqrt(np.median(np.asarray(areas)))) if areas else 0.0
+    if h_est <= 1e-12:
+        return pts, stats
+    target, thresh = 0.5 * h_est, tau * h_est
+
+    def _scan(
+        cur: np.ndarray, relax: bool
+    ) -> tuple[float, dict[int, np.ndarray], dict[int, int], int]:
+        max_bs, acc, wt, nsliv = 0.0, {}, {}, 0
+        for ci, fv in boundary_faces:
+            cc = _cc(ci, cur)
+            fc, nhat = _face_geom(fv, cur)
+            if not np.any(nhat):
+                continue
+            nd = float(np.dot(fc - cc, nhat))
+            tmiss = float(np.linalg.norm((fc - cc) - nd * nhat))
+            bs = tmiss / max(abs(nd), 1e-12)
+            max_bs = max(max_bs, bs)
+            if relax and abs(nd) < thresh:
+                free = [v for v in cell_verts[ci] if v not in boundary_verts]
+                if not free:
+                    continue
+                nsliv += 1
+                step = alpha * max(target - abs(nd), 0.0)
+                disp = -step * nhat if nd >= 0 else step * nhat
+                for v in free:
+                    acc[v] = acc.get(v, np.zeros(3)) + disp
+                    wt[v] = wt.get(v, 0) + 1
+        return max_bs, acc, wt, nsliv
+
+    def _side_metrics(cur: np.ndarray) -> tuple[float, float, float]:
+        max_sk, max_no = 0.0, 0.0
+        for ci0, ci1, fv in internal_faces:
+            cc0, cc1 = _cc(ci0, cur), _cc(ci1, cur)
+            d = cc1 - cc0
+            dmag = float(np.linalg.norm(d))
+            if dmag < 1e-30:
+                continue
+            fc, nhat = _face_geom(fv, cur)
+            t = float(np.dot(fc - cc0, d)) / (dmag**2)
+            max_sk = max(max_sk, float(np.linalg.norm(fc - (cc0 + t * d))) / dmag)
+            if np.any(nhat):
+                cosang = min(1.0, max(0.0, abs(float(np.dot(nhat, d))) / dmag))
+                max_no = max(max_no, float(np.degrees(np.arccos(cosang))))
+        neg = sum(1 for ci in range(len(cell_faces)) if _signed_vol(ci, cur) <= 0.0)
+        return max_sk, max_no, float(neg)
+
+    stats["pre_bskew"] = _scan(pts, relax=False)[0]
+    stats["pre_int_skew"], stats["pre_no"], stats["pre_neg_vol"] = _side_metrics(pts)
+    n_sliver, n_moved = 0, 0
+    for _ in range(max(1, int(iters))):
+        _, acc, wt, nsliv = _scan(pts, relax=True)
+        if not acc:
+            break
+        for v, a in acc.items():
+            pts[v] = pts[v] + a / wt[v]
+        n_sliver, n_moved = nsliv, len(acc)
+    stats["sliver_cells"], stats["moved_verts"] = float(n_sliver), float(n_moved)
+    stats["post_bskew"] = _scan(pts, relax=False)[0]
+    stats["post_int_skew"], stats["post_no"], stats["post_neg_vol"] = _side_metrics(pts)
+    return pts, stats
+
+
 def generate_native_hex(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -1047,6 +1208,32 @@ def generate_native_hex(
                             iters=3,
                         )
                         log.info("native_hex_wall_fit", path="octree", **_wf_stats)
+
+                        # HEX-SKEW-INNER-RELAX (beta_hex4) — post-wall-fit boundary
+                        # sliver (|nd| collapsed by the snap) 두께 복원. 표면 정점
+                        # frozen ⇒ wall_dev 불변. 전량 accept/revert (Klingner
+                        # smart) — 최종 mesh 실측 기준(octree hanging-node 면 포함,
+                        # generic cell_faces 경로이므로 hex_quality_report 대신 자체
+                        # 계산한 stats 사용).
+                        if not os.environ.get("AUTO_TESSELL_HEX_SKEW_RELAX_OFF"):
+                            _rlx_pts, _rlx_stats = _relax_boundary_sliver_interior(
+                                oct_pts, oct_cells
+                            )
+                            _eps = 1e-9
+                            _accept = (
+                                _rlx_stats["post_bskew"] < _rlx_stats["pre_bskew"] - _eps
+                                and _rlx_stats["post_int_skew"]
+                                <= _rlx_stats["pre_int_skew"] + _eps
+                                and _rlx_stats["post_no"] <= _rlx_stats["pre_no"] + _eps
+                                and _rlx_stats["post_neg_vol"] == 0.0
+                            )
+                            if _accept:
+                                oct_pts = _rlx_pts
+                                log.info("native_hex_skew_relax_applied", path="octree", **_rlx_stats)
+                            else:
+                                log.info(
+                                    "native_hex_skew_relax_revert", path="octree", **_rlx_stats
+                                )
                     except Exception as exc:
                         log.warning("native_hex_wall_fit_failed", error=str(exc))
 
@@ -1350,6 +1537,26 @@ def generate_native_hex(
                     iters=3,
                 )
                 log.info("native_hex_wall_fit", path="uniform", **_wf_stats)
+
+            # HEX-SKEW-INNER-RELAX (beta_hex4) — post-wall-fit boundary sliver
+            # (|nd| collapsed by the snap) 두께 복원. 표면 정점 frozen ⇒ wall_dev
+            # 불변. 전량 accept/revert (Klingner smart) — 최종 mesh 실측 기준.
+            if not os.environ.get("AUTO_TESSELL_HEX_SKEW_RELAX_OFF"):
+                _rlx_pts, _rlx_stats = _relax_boundary_sliver_interior(
+                    final_pts, _hex_array_to_cell_faces(final_hexes)
+                )
+                _eps = 1e-9
+                _accept = (
+                    _rlx_stats["post_bskew"] < _rlx_stats["pre_bskew"] - _eps
+                    and _rlx_stats["post_int_skew"] <= _rlx_stats["pre_int_skew"] + _eps
+                    and _rlx_stats["post_no"] <= _rlx_stats["pre_no"] + _eps
+                    and _rlx_stats["post_neg_vol"] == 0.0
+                )
+                if _accept:
+                    final_pts = _rlx_pts
+                    log.info("native_hex_skew_relax_applied", path="uniform", **_rlx_stats)
+                else:
+                    log.info("native_hex_skew_relax_revert", path="uniform", **_rlx_stats)
         except Exception as exc:
             log.warning("native_hex_boundary_snap_failed", error=str(exc))
 

@@ -339,3 +339,37 @@ def test_native_hex_curved_wall_fidelity(tmp_path: Path, quality_level: str) -> 
         f"the true radius {_CYL_RADIUS} (mean {mean_dev:.3f}, n={n_side}) — the "
         f"hex grid is staircasing the curved wall instead of fitting it."
     )
+
+
+def test_native_hex_standard_boundary_skew(tmp_path: Path) -> None:
+    """CARD HEX-SKEW-INNER-RELAX: boundary skewness gate on cylinder / standard.
+
+    Root cause (measured): ``_wall_fit_snap`` collapses the owner-cell
+    wall-normal thickness |nd| of side-wall boundary cells (0.03 -> 0.0088),
+    which blows up checker boundary skewness (tmiss/|nd|) to 4.64 even though
+    wall_dev stays good. ``_relax_boundary_sliver_interior`` relaxes only the
+    free (non-boundary) vertices of sliver cells inward, under a smart
+    accept/revert guard measured on the final mesh.
+    """
+    case = tmp_path / "case"
+    res = PipelineOrchestrator().run(
+        _CYLINDER,
+        case,
+        quality_level="standard",
+        mesh_type="hex_dominant",
+        tier_hint="native_hex",
+        max_iterations=1,
+        auto_retry="off",
+        strict_tier=True,
+        write_of_case=True,
+        max_cells=_TEST_CELLS,
+        tier_specific_params={"max_cells": _TEST_CELLS, "target_cells": _TEST_CELLS},
+    )
+    assert res.quality_report is not None
+    checkmesh = res.quality_report.evaluation_summary.checkmesh
+    assert checkmesh.max_boundary_skewness is not None
+    assert checkmesh.max_boundary_skewness <= 3.0, (
+        f"cylinder standard boundary skewness {checkmesh.max_boundary_skewness:.3f} "
+        f"> 3.0 gate — _relax_boundary_sliver_interior failed to restore "
+        f"wall-normal thickness."
+    )

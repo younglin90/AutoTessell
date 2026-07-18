@@ -1,27 +1,25 @@
-CARD BETA2832 — genus multi-body: keep_largest_component가 dual-torus 절반을 버리던 문제 수정
+card: HEX-SKEW-INNER-RELAX (beta_hex4)
+file: core/generator/native_hex/mesher.py
+functions: _relax_boundary_sliver_interior (new, ~150 lines, generic
+  cell_faces form — NOT (N,8) hexes, so it also covers the octree/adaptive
+  standard+fine production path); call sites added in generate_native_hex()
+  after the octree-path _wall_fit_snap (~L1197) and the uniform-path
+  _wall_fit_snap (~L1525), each with its own smart accept/revert guard
+  (self-computed bskew/int_skew/non_ortho/neg_vol pre vs post, eps=1e-9).
+lines_added: 207
+lines_removed: 0
 
-file: core/preprocessor/pipeline.py
-functions: _final_validate
-lines_added: 18
-lines_removed: 3
+file: tests/test_native_hex_solid_volume.py
+functions: test_native_hex_standard_boundary_skew (new)
+lines_added: 34
+lines_removed: 0
 
-변경: keep_largest_component(무조건 최대 컴포넌트만 보존) →
-component_filter(A_i >= 0.05*A_max인 컴포넌트 전부 보존, trimesh.util.concatenate
-+ merge_vertices로 재결합). rel_keep=0.05는 최대 컴포넌트 대비 상대 비율(절대값 아님).
-로그 필드: num_components, n_kept, n_dropped, dropped_area_frac.
+env: AUTO_TESSELL_HEX_SKEW_RELAX_OFF (kill switch, default unset = ON)
 
-실측 검증 (직접 재실행):
-- smoke_native_tet.py (cube): cells=417 surface=6.000ok vol=1.008ok verdict PASS —
-  변경 전(baseline, git stash로 확인)과 완전 동일, no-op 확인.
-- smoke_native_cylinder.py: cells=1851 skew=44.9 nonOrt=89.2 verdict=FAIL —
-  baseline과 완전 동일(git stash 비교) — 회귀 아님, 기존에 있던 skew 이슈로 unrelated.
-- pytest tests/test_native_tet_solid_volume.py: 4 passed in 22-23s (cube 4대 불변식 유지).
-- bench_native_tet_matrix.py --stl high_genus_dual_torus.stl (AUTO_TESSELL_P4C_PYTETWILD=0):
-  area_ratio=1.0095 vol_ratio=1.0098 cells=11071 degen=0 neg_vol=0 — 둘 다 >=0.9 합격 기준 통과.
-  단 max_skewness=2.21e6로 quality verdict=FAIL 지속(품질 문제는 BETA2834 범위, 이 카드는
-  커버리지만 다룸 — 계획서 카드 시퀀스와 일치).
-  time_s=208.2 — 계획서 예상(mild <=15% 증가)보다 크게 증가(원인: 2-body 전체를 실제로
-  메싱하는 비용 — dropped 절반을 이제 처리하므로 예상보다 무거움. 정량 시간 게이트는
-  합격 기준에 없었으나 참고용으로 보고).
-
-파일 1개, 21줄 변경(≤35줄 준수). 커밋 안 함.
+deviation from plan: plan assumed a single call site (~L1352, uniform hex
+array path). Actual production standard/fine path is the OCTREE path
+(_wall_fit_snap "path=octree"), which uses the generic cell_faces list
+format, not (N,8) hexes — hex_quality_report/_count_neg_vol_hex are
+incompatible there. Rewrote _relax_boundary_sliver_interior to take generic
+cell_faces and self-compute all 4 guard metrics; added the call in BOTH
+paths.
