@@ -1,10 +1,27 @@
-card: POLY-S4
-file: core/generator/native_poly/dual.py
-functions: _smooth_interior_tet_verts (new), tet_to_poly_dual (1-line call site)
-lines_added: 48
+card: THINSLIVER1
+file: core/generator/native_tet/mesher.py
+functions: native_tet_degenerate_removal (Phase1b insert + monotone guard)
+lines_added: ~76
 lines_removed: 0
 
-file: tests/test_native_poly_solid_volume.py
-functions: test_native_poly_encloses_true_volume (xfail removed -> permanent gate), module docstring
-lines_added: 20
-lines_removed: 28
+file: tests/test_native_tet_thin_sliver.py (new, plan-specified)
+lines_added: 104
+lines_removed: 0
+
+measured (naca0012, official bench_native_tet_matrix.py, P4C=0):
+  degen_cells: 17 (plan baseline) -> 11 (this run). Gate n_degen<=2 NOT met
+  (honest report, no gate loosened). area_ratio=0.99999997, vol_ratio=1.0146
+  (within [0.984,1.024]), neg_vol_cells=0, verdict still FAIL(skew) as expected.
+  pytest fixture (target_cells=2000 direct call): 22->11, n_collapse1b=1.
+  Root cause of low yield: victim vertices have valence 12-26; orientation
+  guard (per-tet pre/post sign preservation) correctly rejects most full
+  vertex-star collapses as unsafe (measured via debug instrumentation,
+  removed before final diff).
+regression: test_native_tet_solid_volume.py 4/4 PASS. cube PASS degen=0
+  (no regression). cylinder FAIL(skew 44.9, degen=0, unchanged baseline).
+  dual_torus FAIL(skew 2.2e6, degen=0, cells=11071, matches known baseline,
+  303s -- slow baseline unrelated to this diff). perforated_plate: bench
+  exceeds 550s (doc-documented baseline >400s pre-existing, unrelated to
+  this diff) -- could not complete within session; guard-protected revert
+  logic (extra_area/area_cov/abs_vol) structurally prevents corruption even
+  if untested to completion.

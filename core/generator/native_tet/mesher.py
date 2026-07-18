@@ -2029,6 +2029,7 @@ def generate_native_tet(
                 _pcr_pre = _pc_deg(V, F, final_pts, final_tets)
                 extra_area_pre = float(_pcr_pre.extra_area)
                 area_cov_pre = float(_pcr_pre.area_coverage)
+                abs_vol_pre = float(np.abs(_sv6(pre_pts, pre_tets)).sum())
 
                 work_tets = final_tets.copy().astype(np.int64)
                 n_flip32 = 0
@@ -2102,6 +2103,85 @@ def generate_native_tet(
                     else:
                         work_tets = work_tets[keep]
 
+                # --- Phase 1b: interior-incident edge-collapse (THINSLIVER1)
+                # flip 불가(owners!=3 또는 su==sv) 잔존 슬리버 제거. victim=
+                # non-surface interior 정점만, keeper=상대 끝점(위치 불변). ---
+                n_collapse1b = 0
+                n_surf_1b = int(min(V.shape[0], final_pts.shape[0]))
+                surf_set: set[int] = set(range(n_surf_1b))
+                degen_1b = np.abs(_sv6(final_pts, work_tets)) < _DEGEN_V6
+                if degen_1b.any():
+                    v2t_1b: dict[int, list[int]] = {}
+                    for ti in range(work_tets.shape[0]):
+                        for w in work_tets[ti].tolist():
+                            v2t_1b.setdefault(int(w), []).append(ti)
+                    consumed_v: set[int] = set()
+                    dead_1b: set[int] = set()
+                    for ti in np.nonzero(degen_1b)[0].tolist():
+                        if ti in dead_1b:
+                            continue
+                        # 최단 edge 우선(플랜 실측: 14/17 이 최단 edge 에
+                        # interior 끝점 보유 → 국소적(짧은) collapse 만 안전).
+                        t = work_tets[ti].tolist()
+                        cand: list[tuple[float, int, int]] = []
+                        for a, b in _EPAIRS:
+                            i, j = int(t[a]), int(t[b])
+                            elen = float(np.linalg.norm(
+                                final_pts[i] - final_pts[j]))
+                            if i not in surf_set and i not in consumed_v:
+                                cand.append((elen, i, j))
+                            if j not in surf_set and j not in consumed_v:
+                                cand.append((elen, j, i))
+                        victim = keeper = -1
+                        if cand:
+                            cand.sort(key=lambda e: e[0])
+                            _, victim, keeper = cand[0]
+                        if victim < 0:
+                            continue
+                        star = [o for o in set(v2t_1b.get(victim, []))
+                                if o not in dead_1b]
+                        if not star:
+                            continue
+                        # orientation guard: 각 생존 tet 이 collapse 전후로
+                        # 부호를 바꾸지 않고(inversion 없음) |vol6| 문턱을
+                        # 넘는지 확인 (star 내 tet 들은 write-time winding
+                        # normalize 이전이라 서로 다른 부호가 정상이므로,
+                        # star 공통부호가 아닌 tet-별 pre/post 부호를 비교).
+                        rewritten: list[tuple[int, list[int]]] = []
+                        ok = True
+                        for o in star:
+                            orig_row = work_tets[o].tolist()
+                            row = [keeper if w == victim else w
+                                   for w in orig_row]
+                            if len(set(row)) < 4:
+                                continue  # collapsed edge 를 품은 tet → 소멸
+                            vol6_pre = float(_sv6(
+                                final_pts,
+                                np.asarray([orig_row], dtype=np.int64))[0])
+                            vol6 = float(_sv6(
+                                final_pts, np.asarray([row], dtype=np.int64))[0])
+                            if abs(vol6) <= _DEGEN_V6 or (
+                                (vol6 > 0) != (vol6_pre >= 0)
+                            ):
+                                ok = False
+                                break
+                            rewritten.append((o, row))
+                        if not ok:
+                            continue
+                        kept_ids = {o for o, _ in rewritten}
+                        for o, row in rewritten:
+                            work_tets[o] = row
+                        for o in star:
+                            if o not in kept_ids:
+                                dead_1b.add(o)
+                        consumed_v.add(victim)
+                        consumed_v.add(keeper)
+                        n_collapse1b += 1
+                    if dead_1b:
+                        keep1b = np.ones(work_tets.shape[0], dtype=bool)
+                        keep1b[list(dead_1b)] = False
+                        work_tets = work_tets[keep1b]
+
                 # --- Phase 2: 입력면 평면과 공면인 flap 제거 (부피변화 0, void 0) ---
                 n_flap = 0
                 degen_b = np.abs(_sv6(final_pts, work_tets)) < _DEGEN_V6
@@ -2135,9 +2215,11 @@ def generate_native_tet(
                 _pcr_post = _pc_deg(V, F, final_pts, work_tets)
                 extra_area_post = float(_pcr_post.extra_area)
                 area_cov_post = float(_pcr_post.area_coverage)
+                abs_vol_post = float(np.abs(_sv6(final_pts, work_tets)).sum())
                 if (
                     extra_area_post > extra_area_pre + 1e-6
                     or area_cov_post < area_cov_pre - 1e-3
+                    or abs_vol_post < abs_vol_pre * 0.999
                 ):
                     final_pts, final_tets = pre_pts, pre_tets
                     log.warning(
@@ -2146,12 +2228,15 @@ def generate_native_tet(
                         extra_area_post=round(extra_area_post, 6),
                         area_cov_pre=round(area_cov_pre, 4),
                         area_cov_post=round(area_cov_post, 4),
+                        abs_vol_pre=round(abs_vol_pre, 9),
+                        abs_vol_post=round(abs_vol_post, 9),
                     )
                 else:
                     final_tets = work_tets
                     log.info(
                         "native_tet_degenerate_removal",
                         n_flip32=int(n_flip32), n_flap=int(n_flap),
+                        n_collapse1b=int(n_collapse1b),
                         n_degen_pre=int(n_degen_pre),
                         n_degen_post=int(n_degen_post),
                     )
