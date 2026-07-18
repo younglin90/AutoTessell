@@ -1,35 +1,32 @@
-CARD HEX-WALLFIT-FINE (beta1) — local-sizing wall-fit envelope
+CARD HEX-WALLFIT-BACKTRACK (beta1) — bisection backtrack replaces all-or-nothing revert
 
 file: core/generator/native_hex/mesher.py
 functions: _wall_fit_snap
 lines_added: 23
-lines_removed: 2
-- added local_scale[v] (max incident-cell face-edge length) computed once
-  right after `incident` is built.
-- global `cap` renamed `cap_floor = ratio*target_edge`; per-vertex
-  `cap_v = max(cap_floor, ratio*local_scale[vi])` replaces the envelope
-  check at the "outside envelope" continue.
-- stats dict gained `n_reject_envelope` counter.
-- strict-decrease guard / no-inversion guard untouched (per plan).
+lines_removed: 5
+- stats dict gained `n_snapped_partial` counter (init 0).
+- vol-reject `else` branch: full projection that fails `_cell_ok` is no
+  longer reverted outright. Bisects (<=12 iters) orig->p0 for the largest
+  fraction `lo` that still passes the same `_cell_ok` guard on every
+  incident cell; accepted only if `lo>0` AND the strict-decrease check
+  (`d_partial < d0 - 1e-15`, same criterion as the full-projection path)
+  holds. Otherwise reverts to `orig` and counts `n_reject_vol` as before.
+- `_cell_ok` itself untouched (guard not weakened, only a better solution
+  found within it).
 
 file: tests/test_native_hex_solid_volume.py
 functions: test_native_hex_curved_wall_fidelity
-lines_added: 19
-lines_removed: 3
-- parametrized over quality_level in {"standard", "fine"}; both assert
-  max_dev <= 0.02. Added `import pytest`.
+lines_added: 13
+lines_removed: 17
+- removed `pytest.mark.xfail(strict=True)` on the "fine" param; now a
+  plain `["standard", "fine"]` parametrize list.
+- docstring STATUS section appended with this card's measured results.
 
-RESULT (measured — see chat report for full numbers):
-- standard unaffected: wall_dev_max 0.0032 (unchanged, monotonicity held).
-- n_reject_envelope == 0 both BEFORE and AFTER this fix on the real
-  pipeline (cap was already ~0.079 >> the ~0.035 max deviation) — the
-  envelope was NOT the actual blocker, contradicting the plan's
-  target_edge estimate (~0.0045). The real blocker is n_reject_vol=67
-  (the no-inversion guard), out of this card's scope per plan.
-- fine wall_dev_max stays 0.035 — goal (<=0.02) NOT met by this change.
-- pytest tests/test_native_hex_solid_volume.py: 5 passed
-  (4 solid invariants + standard fidelity), 1 failed (fine fidelity).
-- cube fine 4-invariant (extra measurement): on_area=6.0000 off_area=0.0000
-  sum|vol|=1.0000 n_degen=0 — PASS.
-- pre-BL negative_volumes: standard=0, fine=0 — PASS (post-BL fine=16 is
-  the known out-of-scope native_bl defect, unaffected by this card).
+RESULT (measured, timeout 300 python3 -m pytest tests/test_native_hex_solid_volume.py -q):
+- 6 passed in 56.71s (all, including fine — previously xfail).
+- fine (cylinder N=2000): n_target=350 n_snapped=320 n_snapped_partial=30
+  n_reject_vol=0. wall_dev_max=0.008015 (was ~0.035, gate <=0.02) mean=0.001380.
+- standard: n_reject_vol=0 (this code path never triggers, no-op by
+  construction). wall_dev_max=0.003241 — bit-identical to pre-change.
+- negative_volumes=0 in every measured case (cube 4-invariant + cylinder
+  standard/fine) — safety invariant intact.

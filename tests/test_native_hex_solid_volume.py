@@ -277,22 +277,7 @@ def _cylinder_wall_deviation(poly_dir: Path) -> tuple[float, float, int]:
 
 @pytest.mark.parametrize(
     "quality_level",
-    [
-        "standard",
-        pytest.param(
-            "fine",
-            marks=pytest.mark.xfail(
-                reason=(
-                    "CARD HEX-WALLFIT-FINE: local-sizing envelope (below) measured "
-                    "n_reject_envelope=0 at fine — envelope was never the limiter for "
-                    "this geometry. The actual blocker is the no-inversion guard "
-                    "rejecting 67/403 candidate snaps (n_reject_vol), which this card "
-                    "explicitly did not touch. max wall deviation still ~0.035."
-                ),
-                strict=True,
-            ),
-        ),
-    ],
+    ["standard", "fine"],
 )
 def test_native_hex_curved_wall_fidelity(tmp_path: Path, quality_level: str) -> None:
     """Side-wall vertices of a meshed cylinder must sit on the true radius.
@@ -317,9 +302,18 @@ def test_native_hex_curved_wall_fidelity(tmp_path: Path, quality_level: str) -> 
     generalized to per-vertex (``ratio * max(target_edge, local_scale[v])``) and
     verified harmless (standard unchanged, cube/negative_volumes unaffected) — but
     measurement showed the hypothesis was wrong: n_reject_envelope=0 both before
-    and after, so envelope was never the actual limiter here. The real blocker is
-    the no-inversion guard (n_reject_vol=67/403), out of this card's scope. fine
-    stays xfail(strict) until a follow-up card addresses that guard.
+    and after, so envelope was never the actual limiter here. The real blocker was
+    the no-inversion guard rejecting full projections outright (n_reject_vol=39/389
+    at that time), out of that card's scope.
+
+    STATUS (CARD HEX-WALLFIT-BACKTRACK): the all-or-nothing revert on a rejected
+    full projection was replaced with a bisection backtrack (<=12 iters) to the
+    largest fraction of orig->p0 that still passes the same ``_cell_ok`` guard,
+    gated by the same strict-decrease check. Measured (cylinder N=2000, fine):
+    n_target=350, n_snapped=320, n_snapped_partial=30, n_reject_vol=0, max wall
+    deviation 0.0080 (was ~0.035), mean 0.0014, negative_volumes 0. standard is
+    unchanged (n_reject_vol=0 both before/after, this code path never triggers;
+    max_dev 0.00324). fine is now a permanent gate alongside standard.
     """
     case = tmp_path / "case"
     PipelineOrchestrator().run(

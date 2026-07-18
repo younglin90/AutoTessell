@@ -523,6 +523,7 @@ def _wall_fit_snap(
     stats = {
         "n_target": 0,
         "n_snapped": 0,
+        "n_snapped_partial": 0,
         "n_reject_vol": 0,
         "n_reject_dist": 0,
         "n_reject_envelope": 0,
@@ -654,8 +655,27 @@ def _wall_fit_snap(
                 stats["n_snapped"] += 1
                 moved += 1
             else:
-                pts[vi] = orig
-                stats["n_reject_vol"] += 1
+                # Full projection flips a face — backtrack to the largest
+                # fraction t of orig->p0 that still passes the same guard
+                # (card HEX-WALLFIT-BACKTRACK), instead of reverting outright.
+                lo, hi = 0.0, 1.0
+                for _ in range(12):
+                    mid = (lo + hi) / 2.0
+                    pts[vi] = orig + mid * (p0 - orig)
+                    if all(_cell_ok(ci) for ci in incident[vi]):
+                        lo = mid
+                    else:
+                        hi = mid
+                d_partial = (
+                    _project(orig + lo * (p0 - orig), cand)[0] ** 0.5 if lo > 0.0 else d0
+                )
+                if lo > 0.0 and d_partial < d0 - 1e-15:
+                    pts[vi] = orig + lo * (p0 - orig)
+                    stats["n_snapped_partial"] += 1
+                    moved += 1
+                else:
+                    pts[vi] = orig
+                    stats["n_reject_vol"] += 1
         if moved == 0:
             break  # cube early-exit: nothing to fit
     return pts, stats
