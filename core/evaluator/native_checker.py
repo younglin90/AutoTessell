@@ -202,9 +202,21 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         # 3. Cell centres
         # ------------------------------------------------------------------
-        cell_centres = self._compute_cell_centres_from_vertices(
-            points, raw_faces, owner, n_cells, neighbour,
-        )  # (C, 3)
+        combined_cell_metrics = self._compute_combined_cell_metrics(
+            points,
+            raw_faces,
+            owner,
+            n_cells,
+            neighbour,
+        )
+        precomputed_aspect: tuple[np.ndarray, np.ndarray] | None = None
+        if combined_cell_metrics is not None:
+            cell_centres, aspect_cell_ids, aspect_ratios = combined_cell_metrics
+            precomputed_aspect = (aspect_cell_ids, aspect_ratios)
+        else:
+            cell_centres = self._compute_cell_centres_from_vertices(
+                points, raw_faces, owner, n_cells, neighbour,
+            )  # (C, 3)
 
         # ------------------------------------------------------------------
         # 3b. Face normal orientation 교정 — owner cell 중심에서 face centre 로
@@ -284,9 +296,13 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         # 7. Aspect ratios (per cell: max edge / min edge via face vertices)
         # ------------------------------------------------------------------
-        max_aspect_ratio = self._compute_max_aspect_ratio(
-            points, raw_faces, owner, n_cells, n_internal
-        )
+        if precomputed_aspect is not None:
+            _, aspect_ratios = precomputed_aspect
+            max_aspect_ratio = float(aspect_ratios.max()) if aspect_ratios.size else 1.0
+        else:
+            max_aspect_ratio = self._compute_max_aspect_ratio(
+                points, raw_faces, owner, n_cells, n_internal
+            )
 
         # ------------------------------------------------------------------
         # 8. Min face area
@@ -585,6 +601,41 @@ class NativeMeshChecker:
             if np.any(valid):
                 centres[cell_i] = points[idx[valid]].mean(axis=0)
         return centres
+
+    @staticmethod
+    def _compute_combined_cell_metrics(
+        points: np.ndarray,
+        faces: list[list[int]],
+        owner: np.ndarray,
+        n_cells: int,
+        neighbour: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Return native cell centres and sampled aspect ratios in one pass."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is None:
+            return None
+        kernel = getattr(native_metrics, "compute_cell_centres_and_aspect_ratios", None)
+        if kernel is None:
+            return None
+
+        try:
+            centres, cell_ids, aspect_ratios = kernel(points, faces, owner, neighbour, int(n_cells))
+            centres_array = np.asarray(centres, dtype=np.float64)
+            cell_ids_array = np.asarray(cell_ids, dtype=np.int64)
+            aspect_array = np.asarray(aspect_ratios, dtype=np.float64)
+            if centres_array.shape != (n_cells, 3):
+                raise ValueError("combined native cell centres have invalid shape")
+            if cell_ids_array.ndim != 1 or aspect_array.ndim != 1:
+                raise ValueError("combined native aspect arrays must be one-dimensional")
+            if cell_ids_array.size != aspect_array.size:
+                raise ValueError("combined native aspect arrays have different lengths")
+            return centres_array, cell_ids_array, aspect_array
+        except Exception as exc:  # noqa: BLE001
+            log.debug(
+                "native_metrics.compute_cell_centres_and_aspect_ratios failed",
+                error=str(exc),
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Non-orthogonality

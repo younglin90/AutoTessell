@@ -111,6 +111,24 @@ def _native_aspect_ratios(
     )
 
 
+def _native_combined_cell_metrics(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    n_cells: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    module = _native_metrics_or_skip()
+    centres, cell_ids, aspect_ratios = module.compute_cell_centres_and_aspect_ratios(
+        points, faces, owner, neighbour, n_cells
+    )
+    return (
+        np.asarray(centres, dtype=np.float64),
+        np.asarray(cell_ids, dtype=np.int64),
+        np.asarray(aspect_ratios, dtype=np.float64),
+    )
+
+
 def test_native_metrics_face_geometry_matches_python() -> None:
     _native_metrics_or_skip()
     points = np.array(
@@ -182,6 +200,50 @@ def test_native_metrics_cell_centres_match_python_fallback() -> None:
         nc._NATIVE_METRICS_IMPORT_ATTEMPTED = old_attempted
 
     np.testing.assert_allclose(centres_cpp, centres_py, rtol=0.0, atol=1e-15)
+
+
+def test_native_metrics_combined_cell_metrics_match_standalone_kernels() -> None:
+    module = _native_metrics_or_skip()
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.0, 0.0, 2.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 1],
+        [2, 3, 2],
+        [0, 4, 4],
+    ]
+    owner = np.array([0, 1, 2], dtype=np.int64)
+    neighbour = np.array([1], dtype=np.int64)
+    n_cells = 3
+
+    centres, cell_ids, aspect_ratios = _native_combined_cell_metrics(
+        points, faces, owner, neighbour, n_cells
+    )
+    standalone_centres = np.asarray(
+        module.compute_cell_centres_from_vertices(points, faces, owner, neighbour, n_cells),
+        dtype=np.float64,
+    )
+    standalone_ids, standalone_ratios = module.compute_per_cell_aspect_ratios(
+        points, faces, owner, n_cells
+    )
+
+    np.testing.assert_allclose(centres, standalone_centres, rtol=0.0, atol=1e-15)
+    np.testing.assert_array_equal(cell_ids, np.asarray(standalone_ids, dtype=np.int64))
+    np.testing.assert_allclose(
+        aspect_ratios,
+        np.asarray(standalone_ratios, dtype=np.float64),
+        rtol=0.0,
+        atol=1e-15,
+    )
+    np.testing.assert_allclose(centres[1], points[[0, 1, 2, 3]].mean(axis=0), rtol=0.0, atol=1e-15)
+    np.testing.assert_allclose(aspect_ratios, np.array([1.0, 1.0]))
 
 
 def test_native_metrics_quality_metrics_match_python_fallback() -> None:
@@ -369,6 +431,12 @@ def test_native_metrics_aspect_ratios_preserve_sampling_rule() -> None:
     np.testing.assert_allclose(ratios_cpp, ratios_py, rtol=0.0, atol=1e-15)
     np.testing.assert_array_equal(cells_cpp, np.array([0, 49_998], dtype=np.int64))
 
+    _, combined_cells, combined_ratios = _native_combined_cell_metrics(
+        points, faces, owner, np.empty(0, dtype=np.int64), n_cells
+    )
+    np.testing.assert_array_equal(combined_cells, cells_cpp)
+    np.testing.assert_allclose(combined_ratios, ratios_cpp, rtol=0.0, atol=1e-15)
+
 
 def test_native_metrics_aspect_ratios_fall_back_on_binding_error(
     monkeypatch: pytest.MonkeyPatch,
@@ -394,3 +462,71 @@ def test_native_metrics_aspect_ratios_fall_back_on_binding_error(
 
     np.testing.assert_array_equal(cells, expected_cells)
     np.testing.assert_allclose(ratios, expected_ratios, rtol=0.0, atol=1e-15)
+
+
+def test_native_metrics_run_falls_back_when_combined_kernel_fails(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True)
+    for name in ("points", "faces", "owner", "neighbour", "boundary"):
+        (poly_dir / name).touch()
+
+    points = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+    ]
+    faces = [
+        [0, 2, 1],
+        [0, 1, 3],
+        [0, 3, 2],
+        [1, 2, 3],
+    ]
+    monkeypatch.setattr(nc, "parse_foam_points", lambda _path: points)
+    monkeypatch.setattr(nc, "parse_foam_faces", lambda _path: faces)
+    monkeypatch.setattr(
+        nc,
+        "parse_foam_labels",
+        lambda path: [0, 0, 0, 0] if path.name == "owner" else [],
+    )
+    monkeypatch.setattr(nc, "parse_foam_boundary", lambda _path: [{"startFace": 0}])
+
+    calls = {"combined": 0, "centres": 0, "aspect": 0}
+
+    class FailingCombinedMetrics:
+        @staticmethod
+        def compute_cell_centres_and_aspect_ratios(*_args) -> None:
+            calls["combined"] += 1
+            raise RuntimeError("forced combined binding failure")
+
+    original_centres = NativeMeshChecker._compute_cell_centres_from_vertices
+    original_aspect = NativeMeshChecker._compute_max_aspect_ratio
+
+    def counted_centres(*args, **kwargs):
+        calls["centres"] += 1
+        return original_centres(*args, **kwargs)
+
+    def counted_aspect(*args, **kwargs):
+        calls["aspect"] += 1
+        return original_aspect(*args, **kwargs)
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", FailingCombinedMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    monkeypatch.setattr(
+        NativeMeshChecker,
+        "_compute_cell_centres_from_vertices",
+        staticmethod(counted_centres),
+    )
+    monkeypatch.setattr(
+        NativeMeshChecker,
+        "_compute_max_aspect_ratio",
+        staticmethod(counted_aspect),
+    )
+
+    result = NativeMeshChecker().run(tmp_path)
+
+    assert result.cells == 1
+    assert result.max_aspect_ratio == pytest.approx(np.sqrt(2.0))
+    assert calls == {"combined": 1, "centres": 1, "aspect": 1}

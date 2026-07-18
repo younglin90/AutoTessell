@@ -495,6 +495,171 @@ py::array_t<double> compute_cell_centres_from_vertices(
     return centres;
 }
 
+void sort_unique(std::vector<long long>& values)
+{
+    std::sort(values.begin(), values.end());
+    values.erase(std::unique(values.begin(), values.end()), values.end());
+}
+
+py::tuple compute_cell_centres_and_aspect_ratios(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::sequence faces,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::object neighbour_obj,
+    long long n_cells)
+{
+    const auto pts = points.unchecked<2>();
+    const auto own = owner.unchecked<1>();
+    if (pts.ndim() != 2 || pts.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (n_cells < 0) {
+        throw std::invalid_argument("n_cells must be non-negative");
+    }
+
+    const auto n_faces = static_cast<py::ssize_t>(faces.size());
+    if (own.shape(0) < n_faces) {
+        throw std::invalid_argument("owner must contain one entry per face");
+    }
+    const auto n_points = static_cast<long long>(pts.shape(0));
+
+    std::vector<long long> neighbour_values;
+    if (!neighbour_obj.is_none()) {
+        py::array_t<long long, py::array::c_style | py::array::forcecast> neighbour =
+            neighbour_obj.cast<
+                py::array_t<long long, py::array::c_style | py::array::forcecast>>();
+        const auto nbr = neighbour.unchecked<1>();
+        neighbour_values.reserve(static_cast<size_t>(nbr.shape(0)));
+        for (py::ssize_t i = 0; i < nbr.shape(0); ++i) {
+            neighbour_values.push_back(nbr(i));
+        }
+    }
+    const auto n_internal = static_cast<py::ssize_t>(neighbour_values.size());
+
+    std::vector<std::vector<long long>> centre_vertices(
+        static_cast<size_t>(n_cells));
+    std::vector<std::vector<long long>> aspect_vertices(
+        static_cast<size_t>(n_cells));
+
+    // Convert each Python face once. Centre vertices include both cells on an
+    // internal face; aspect vertices preserve the owner-face-only contract.
+    for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+        const auto own_cell = own(face_i);
+        const bool add_owner = own_cell >= 0 && own_cell < n_cells;
+
+        long long nbr_cell = -1;
+        bool add_neighbour = false;
+        if (face_i < n_internal) {
+            nbr_cell = neighbour_values[static_cast<size_t>(face_i)];
+            add_neighbour = nbr_cell >= 0 && nbr_cell < n_cells;
+        }
+        if (!add_owner && !add_neighbour) {
+            continue;
+        }
+
+        py::sequence face = faces[face_i].cast<py::sequence>();
+        const auto n_vertices = static_cast<py::ssize_t>(face.size());
+        for (py::ssize_t j = 0; j < n_vertices; ++j) {
+            const auto vertex_i = as_vertex_index(face[j], n_points);
+            if (add_owner) {
+                centre_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
+                aspect_vertices[static_cast<size_t>(own_cell)].push_back(vertex_i);
+            }
+            if (add_neighbour) {
+                centre_vertices[static_cast<size_t>(nbr_cell)].push_back(vertex_i);
+            }
+        }
+    }
+
+    std::vector<Point3> centre_values(
+        static_cast<size_t>(n_cells), Point3{0.0, 0.0, 0.0});
+    std::vector<long long> out_cells;
+    std::vector<double> out_ratios;
+    {
+        py::gil_scoped_release release;
+
+        for (long long cell_i = 0; cell_i < n_cells; ++cell_i) {
+            auto& vertices = centre_vertices[static_cast<size_t>(cell_i)];
+            sort_unique(vertices);
+            if (vertices.empty()) {
+                continue;
+            }
+
+            Point3 sum{0.0, 0.0, 0.0};
+            for (const auto vertex_i : vertices) {
+                sum[0] += pts(vertex_i, 0);
+                sum[1] += pts(vertex_i, 1);
+                sum[2] += pts(vertex_i, 2);
+            }
+            const double inv = 1.0 / static_cast<double>(vertices.size());
+            centre_values[static_cast<size_t>(cell_i)] = {
+                sum[0] * inv, sum[1] * inv, sum[2] * inv};
+        }
+
+        for (auto& vertices : aspect_vertices) {
+            sort_unique(vertices);
+        }
+
+        constexpr long long sample_cap = 25'000;
+        const long long step = n_cells > sample_cap
+            ? std::max(1LL, n_cells / sample_cap)
+            : 1LL;
+        out_cells.reserve(static_cast<size_t>((n_cells + step - 1) / step));
+        out_ratios.reserve(out_cells.capacity());
+
+        for (long long cell_i = 0; cell_i < n_cells; cell_i += step) {
+            const auto& vertices = aspect_vertices[static_cast<size_t>(cell_i)];
+            if (vertices.size() < 2) {
+                continue;
+            }
+
+            double min_d2 = std::numeric_limits<double>::infinity();
+            double max_d2 = 0.0;
+            for (size_t i = 0; i + 1 < vertices.size(); ++i) {
+                const auto vi = vertices[i];
+                for (size_t j = i + 1; j < vertices.size(); ++j) {
+                    const auto vj = vertices[j];
+                    const double dx = pts(vi, 0) - pts(vj, 0);
+                    const double dy = pts(vi, 1) - pts(vj, 1);
+                    const double dz = pts(vi, 2) - pts(vj, 2);
+                    const double d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 > 1e-30) {
+                        min_d2 = std::min(min_d2, d2);
+                        max_d2 = std::max(max_d2, d2);
+                    }
+                }
+            }
+
+            if (!std::isfinite(min_d2)) {
+                continue;
+            }
+            out_cells.push_back(cell_i);
+            out_ratios.push_back(std::sqrt(max_d2 / min_d2));
+        }
+    }
+
+    py::array_t<double> centres({static_cast<py::ssize_t>(n_cells),
+                                 static_cast<py::ssize_t>(3)});
+    py::array_t<long long> cell_ids(
+        {static_cast<py::ssize_t>(out_cells.size())});
+    py::array_t<double> ratios(
+        {static_cast<py::ssize_t>(out_ratios.size())});
+    auto centres_out = centres.mutable_unchecked<2>();
+    auto ids_out = cell_ids.mutable_unchecked<1>();
+    auto ratios_out = ratios.mutable_unchecked<1>();
+    for (long long cell_i = 0; cell_i < n_cells; ++cell_i) {
+        const auto& centre = centre_values[static_cast<size_t>(cell_i)];
+        centres_out(cell_i, 0) = centre[0];
+        centres_out(cell_i, 1) = centre[1];
+        centres_out(cell_i, 2) = centre[2];
+    }
+    for (size_t i = 0; i < out_cells.size(); ++i) {
+        ids_out(static_cast<py::ssize_t>(i)) = out_cells[i];
+        ratios_out(static_cast<py::ssize_t>(i)) = out_ratios[i];
+    }
+    return py::make_tuple(centres, cell_ids, ratios);
+}
+
 py::tuple compute_non_orthogonality(
     py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
     py::array_t<double, py::array::c_style | py::array::forcecast> face_normals,
@@ -830,6 +995,10 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("points"), py::arg("faces"));
     m.def("compute_cell_centres_from_vertices",
           &compute_cell_centres_from_vertices,
+          py::arg("points"), py::arg("faces"), py::arg("owner"),
+          py::arg("neighbour"), py::arg("n_cells"));
+    m.def("compute_cell_centres_and_aspect_ratios",
+          &compute_cell_centres_and_aspect_ratios,
           py::arg("points"), py::arg("faces"), py::arg("owner"),
           py::arg("neighbour"), py::arg("n_cells"));
     m.def("compute_non_orthogonality", &compute_non_orthogonality,
