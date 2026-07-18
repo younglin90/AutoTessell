@@ -1026,6 +1026,22 @@ class NativeMeshChecker:
         if n_cells == 0:
             return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
 
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            try:
+                cell_ids, aspect_ratios = native_metrics.compute_per_cell_aspect_ratios(
+                    points, faces, owner, int(n_cells)
+                )
+                return (
+                    np.asarray(cell_ids, dtype=np.int64),
+                    np.asarray(aspect_ratios, dtype=np.float64),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug(
+                    "native_metrics.compute_per_cell_aspect_ratios failed",
+                    error=str(exc),
+                )
+
         # ── Build cell → vertex list using CSR-style vectorized scatter ──
         # Flatten all face vertex indices alongside their owner cell ids.
         # For boundary faces the owner array covers all faces; internal faces

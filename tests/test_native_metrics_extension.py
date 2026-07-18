@@ -16,6 +16,39 @@ def _native_metrics_or_skip():
     return module
 
 
+def _python_aspect_ratios(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    n_cells: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    old_module = nc._NATIVE_METRICS
+    old_attempted = nc._NATIVE_METRICS_IMPORT_ATTEMPTED
+    try:
+        nc._NATIVE_METRICS = None
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = True
+        return NativeMeshChecker._per_cell_aspect_ratios(points, faces, owner, n_cells, 0)
+    finally:
+        nc._NATIVE_METRICS = old_module
+        nc._NATIVE_METRICS_IMPORT_ATTEMPTED = old_attempted
+
+
+def _native_aspect_ratios(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    n_cells: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    module = _native_metrics_or_skip()
+    cell_ids, aspect_ratios = module.compute_per_cell_aspect_ratios(
+        points, faces, owner, n_cells
+    )
+    return (
+        np.asarray(cell_ids, dtype=np.int64),
+        np.asarray(aspect_ratios, dtype=np.float64),
+    )
+
+
 def test_native_metrics_face_geometry_matches_python() -> None:
     _native_metrics_or_skip()
     points = np.array(
@@ -221,3 +254,81 @@ def test_native_metrics_cell_volumes_match_python_fallback() -> None:
 
     np.testing.assert_allclose(volumes_cpp, volumes_py, rtol=0.0, atol=1e-15)
     assert negative_cpp == negative_py
+
+
+def test_native_metrics_aspect_ratios_match_duplicate_and_degenerate_vertices() -> None:
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2, 2, 3, 0], [0, 1, 1]]
+    owner = np.array([0, 1], dtype=np.int64)
+
+    cells_cpp, ratios_cpp = _native_aspect_ratios(points, faces, owner, 2)
+    cells_py, ratios_py = _python_aspect_ratios(points, faces, owner, 2)
+
+    np.testing.assert_array_equal(cells_cpp, cells_py)
+    np.testing.assert_allclose(ratios_cpp, ratios_py, rtol=0.0, atol=1e-15)
+    np.testing.assert_array_equal(cells_cpp, np.array([0], dtype=np.int64))
+    np.testing.assert_allclose(ratios_cpp, np.array([3.0]), rtol=0.0, atol=1e-15)
+
+
+def test_native_metrics_aspect_ratios_zero_cells() -> None:
+    points = np.empty((0, 3), dtype=np.float64)
+    owner = np.empty(0, dtype=np.int64)
+    cells, ratios = _native_aspect_ratios(points, [], owner, 0)
+    cells_py, ratios_py = _python_aspect_ratios(
+        points, [], owner, 0
+    )
+
+    np.testing.assert_array_equal(cells, cells_py)
+    np.testing.assert_array_equal(ratios, ratios_py)
+    assert cells.dtype == np.int64
+    assert ratios.dtype == np.float64
+    assert cells.size == 0
+    assert ratios.size == 0
+
+
+def test_native_metrics_aspect_ratios_preserve_sampling_rule() -> None:
+    points = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype=np.float64)
+    faces = [[0, 1], [0, 1], [0, 1], [0, 1]]
+    owner = np.array([0, 1, 49_998, 49_999], dtype=np.int64)
+    n_cells = 50_001
+
+    cells_cpp, ratios_cpp = _native_aspect_ratios(points, faces, owner, n_cells)
+    cells_py, ratios_py = _python_aspect_ratios(points, faces, owner, n_cells)
+
+    np.testing.assert_array_equal(cells_cpp, cells_py)
+    np.testing.assert_allclose(ratios_cpp, ratios_py, rtol=0.0, atol=1e-15)
+    np.testing.assert_array_equal(cells_cpp, np.array([0, 49_998], dtype=np.int64))
+
+
+def test_native_metrics_aspect_ratios_fall_back_on_binding_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    points = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [4.0, 0.0, 0.0]],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2]]
+    owner = np.array([0], dtype=np.int64)
+    expected_cells, expected_ratios = _python_aspect_ratios(points, faces, owner, 1)
+
+    class FailingNativeMetrics:
+        @staticmethod
+        def compute_per_cell_aspect_ratios(*_args) -> None:
+            raise RuntimeError("forced binding failure")
+
+    monkeypatch.setattr(nc, "_NATIVE_METRICS", FailingNativeMetrics())
+    monkeypatch.setattr(nc, "_NATIVE_METRICS_IMPORT_ATTEMPTED", True)
+    cells, ratios = NativeMeshChecker._per_cell_aspect_ratios(
+        points, faces, owner, 1, 0
+    )
+
+    np.testing.assert_array_equal(cells, expected_cells)
+    np.testing.assert_allclose(ratios, expected_ratios, rtol=0.0, atol=1e-15)

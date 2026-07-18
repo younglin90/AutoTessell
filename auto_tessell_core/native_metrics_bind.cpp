@@ -9,8 +9,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
@@ -472,6 +474,106 @@ py::tuple compute_cell_volumes(
     return py::make_tuple(volumes, 0);
 }
 
+py::tuple compute_per_cell_aspect_ratios(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    py::sequence faces,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    long long n_cells)
+{
+    const auto pts = points.unchecked<2>();
+    const auto own = owner.unchecked<1>();
+    if (pts.ndim() != 2 || pts.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (n_cells < 0) {
+        throw std::invalid_argument("n_cells must be non-negative");
+    }
+
+    const auto n_faces = static_cast<py::ssize_t>(faces.size());
+    if (own.shape(0) < n_faces) {
+        throw std::invalid_argument("owner must contain one entry per face");
+    }
+    const auto n_points = static_cast<long long>(pts.shape(0));
+    std::vector<std::vector<long long>> cell_vertices(
+        static_cast<size_t>(n_cells));
+
+    // Python objects are inspected once. Everything below this conversion can
+    // operate on native storage without holding the GIL.
+    for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+        const auto cell_i = own(face_i);
+        if (cell_i < 0 || cell_i >= n_cells) {
+            continue;
+        }
+        py::sequence face = faces[face_i].cast<py::sequence>();
+        auto& vertices = cell_vertices[static_cast<size_t>(cell_i)];
+        const auto n_vertices = static_cast<py::ssize_t>(face.size());
+        for (py::ssize_t j = 0; j < n_vertices; ++j) {
+            vertices.push_back(as_vertex_index(face[j], n_points));
+        }
+    }
+
+    std::vector<long long> out_cells;
+    std::vector<double> out_ratios;
+    {
+        py::gil_scoped_release release;
+
+        for (auto& vertices : cell_vertices) {
+            std::sort(vertices.begin(), vertices.end());
+            vertices.erase(
+                std::unique(vertices.begin(), vertices.end()), vertices.end());
+        }
+
+        constexpr long long sample_cap = 25'000;
+        const long long step = n_cells > sample_cap
+            ? std::max(1LL, n_cells / sample_cap)
+            : 1LL;
+        out_cells.reserve(static_cast<size_t>((n_cells + step - 1) / step));
+        out_ratios.reserve(out_cells.capacity());
+
+        for (long long cell_i = 0; cell_i < n_cells; cell_i += step) {
+            const auto& vertices = cell_vertices[static_cast<size_t>(cell_i)];
+            if (vertices.size() < 2) {
+                continue;
+            }
+
+            double min_d2 = std::numeric_limits<double>::infinity();
+            double max_d2 = 0.0;
+            for (size_t i = 0; i + 1 < vertices.size(); ++i) {
+                const auto vi = vertices[i];
+                for (size_t j = i + 1; j < vertices.size(); ++j) {
+                    const auto vj = vertices[j];
+                    const double dx = pts(vi, 0) - pts(vj, 0);
+                    const double dy = pts(vi, 1) - pts(vj, 1);
+                    const double dz = pts(vi, 2) - pts(vj, 2);
+                    const double d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 > 1e-30) {
+                        min_d2 = std::min(min_d2, d2);
+                        max_d2 = std::max(max_d2, d2);
+                    }
+                }
+            }
+
+            if (!std::isfinite(min_d2)) {
+                continue;
+            }
+            out_cells.push_back(cell_i);
+            out_ratios.push_back(std::sqrt(max_d2 / min_d2));
+        }
+    }
+
+    py::array_t<long long> cell_ids(
+        {static_cast<py::ssize_t>(out_cells.size())});
+    py::array_t<double> ratios(
+        {static_cast<py::ssize_t>(out_ratios.size())});
+    auto ids_out = cell_ids.mutable_unchecked<1>();
+    auto ratios_out = ratios.mutable_unchecked<1>();
+    for (size_t i = 0; i < out_cells.size(); ++i) {
+        ids_out(static_cast<py::ssize_t>(i)) = out_cells[i];
+        ratios_out(static_cast<py::ssize_t>(i)) = out_ratios[i];
+    }
+    return py::make_tuple(cell_ids, ratios);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_metrics, m)
@@ -497,4 +599,7 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("face_centres"), py::arg("face_normals"), py::arg("face_areas"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
           py::arg("n_cells"), py::arg("n_internal"));
+    m.def("compute_per_cell_aspect_ratios", &compute_per_cell_aspect_ratios,
+          py::arg("points"), py::arg("faces"), py::arg("owner"),
+          py::arg("n_cells"));
 }

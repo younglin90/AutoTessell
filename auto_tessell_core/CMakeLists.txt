@@ -48,6 +48,7 @@ target_link_libraries(cinolib_hex PRIVATE Eigen3::Eigen)
 # ── native metric kernels ────────────────────────────────────────────────────
 if(BUILD_NATIVE_METRICS)
   pybind11_add_module(native_metrics native_metrics_bind.cpp)
+  target_compile_features(native_metrics PRIVATE cxx_std_23)
   if(MSVC)
     target_compile_options(native_metrics PRIVATE /O2 /W3)
   else()
