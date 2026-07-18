@@ -342,10 +342,20 @@ def flip_faces_23(
         ]
         if any(len(set(nt)) != 4 for nt in new_tets):
             continue
-        # 모두 양의 부피 + quality — batch (3 tets).
+        # 유효성 (BETA2827) — 종전 abs(vol6) 검사는 inverted tet 을 수용했다
+        # (부호가 섞여도 통과 → 겹침 주입, Σ|vol| 1.003→1.569 실측).
+        # 올바른 술어: 2-3 flip 은 새 edge (x,y) 가 공유면 (a,b,c) 내부를
+        # 관통할 때만 유효 ⇔ 세 새 tet 의 signed vol 이 전부 같은 부호
+        # (segment-pierces-triangle). TetWild Invariant 3 (no inversion).
         _new3 = np.array(new_tets, dtype=np.int64)
         _v3 = _tet_signed_vol6_batch_arr(pts, _new3)
-        if not np.all(np.abs(_v3) >= 1e-20):
+        if not (np.all(_v3 > 1e-20) or np.all(_v3 < -1e-20)):
+            continue
+        # 타일링 항등식: 새 3 tet 의 |vol| 합 == 옛 2 tet 의 |vol| 합.
+        # (유효한 flip 은 같은 영역을 재분할하므로 정확 항등식 — 겹침/틈 둘 다
+        #  여기 걸린다. 방향 규약에 무관.)
+        _vol_old = float(np.abs(_tet_signed_vol6_batch_arr(pts, _old2)).sum())
+        if abs(float(np.abs(_v3).sum()) - _vol_old) > 1e-9 * max(_vol_old, 1e-30):
             continue
         q_new_min = float(_tet_quality_batch_arr(pts, _new3).min())
         if q_new_min <= q_old + float(min_quality_improvement):
@@ -435,10 +445,17 @@ def flip_edges_32(
         new_tets = [(u, x, y, z), (v, x, y, z)]
         if any(len(set(nt)) != 4 for nt in new_tets):
             continue
-        # batch vol6 + quality (2 tets).
+        # 유효성 (BETA2827) — 종전 abs(vol6) 는 inverted tet 수용 (겹침 주입).
+        # 올바른 술어: 3-2 flip 은 link 삼각형 (x,y,z) 의 평면이 u 와 v 를
+        # 분리할 때만 유효 ⇔ (u,xyz), (v,xyz) 의 signed vol 이 반대 부호
+        # (BETA2825 의 분리 술어와 동일). TetWild Invariant 3.
         _new2 = np.array(new_tets, dtype=np.int64)
         _v2 = _tet_signed_vol6_batch_arr(pts, _new2)
-        if not np.all(np.abs(_v2) >= 1e-20):
+        if np.any(np.abs(_v2) < 1e-20) or float(_v2[0]) * float(_v2[1]) > 0.0:
+            continue
+        # 타일링 항등식: 새 2 tet 의 |vol| 합 == 옛 3 tet 의 |vol| 합.
+        _vol_old = float(np.abs(_tet_signed_vol6_batch_arr(pts, _old_arr)).sum())
+        if abs(float(np.abs(_v2).sum()) - _vol_old) > 1e-9 * max(_vol_old, 1e-30):
             continue
         q_new_min = float(_tet_quality_batch_arr(pts, _new2).min())
         if q_new_min <= q_old + float(min_quality_improvement):
@@ -540,9 +557,21 @@ def flip_edges_44(
         new_tets = (t1, t2, t3, t4)
         if any(len(set(nt)) != 4 for nt in new_tets):
             continue
+        # 유효성 (BETA2827) — 종전 abs(vol6) 는 inverted tet 수용 (겹침 주입).
+        # 4-4 flip: 각 대각 삼각형의 평면이 u, v 를 분리해야 한다.
+        # 구성상 (t1,t3) 이 같은 삼각형 + (u|v), (t2,t4) 도 마찬가지 →
+        # 두 쌍 각각 signed vol 이 반대 부호여야 유효 (분리 술어 × 2).
         _new4 = np.array(new_tets, dtype=np.int64)
         _v4 = _tet_signed_vol6_batch_arr(pts, _new4)
-        if not np.all(np.abs(_v4) >= 1e-20):
+        if (
+            np.any(np.abs(_v4) < 1e-20)
+            or float(_v4[0]) * float(_v4[2]) > 0.0
+            or float(_v4[1]) * float(_v4[3]) > 0.0
+        ):
+            continue
+        # 타일링 항등식: 새 4 tet 의 |vol| 합 == 옛 4 tet 의 |vol| 합.
+        _vol_old = float(np.abs(_tet_signed_vol6_batch_arr(pts, _old_arr)).sum())
+        if abs(float(np.abs(_v4).sum()) - _vol_old) > 1e-9 * max(_vol_old, 1e-30):
             continue
         q_new_min = float(_tet_quality_batch_arr(pts, _new4).min())
         if q_new_min <= q_old + float(min_quality_improvement):
@@ -646,6 +675,11 @@ def flip_edges_54(
         # q_old = min quality over 5 incident tets — batch.
         _old5 = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
         q_old = float(_tet_quality_batch_arr(pts, _old5).min())
+        # 타일링 항등식 기준값 (BETA2827) — 5-4 의 비대칭 구성 (u쪽 부채꼴 3 +
+        # v쪽 삼각형 1) 은 ring 정점들이 특정 공면/공선 배치일 때만 원래 영역을
+        # 타일링한다. 그 적용 조건을 코드가 검사한 적이 없었다 — 부피 보존이
+        # 바로 그 검사다: 배치가 맞으면 |vol| 합이 일치하고, 아니면 거부된다.
+        _vol_old5 = float(np.abs(_tet_signed_vol6_batch_arr(pts, _old5)).sum())
 
         # 5-4 swap: build all 5 diagonal candidates as (5, 4, 4) array, batch quality.
         # Each diagonal d gives 4 new tets.
@@ -669,7 +703,11 @@ def flip_edges_54(
                 continue
             _cand4 = np.array(cand_tets, dtype=np.int64)  # (4, 4)
             _vc = _tet_signed_vol6_batch_arr(pts, _cand4)
-            if not np.all(np.abs(_vc) >= 1e-20):
+            # BETA2827: abs 단독 검사는 inverted/겹침 후보를 수용했다.
+            # 비축퇴 + 부피 보존 (위 _vol_old5 주석 참고).
+            if np.any(np.abs(_vc) < 1e-20):
+                continue
+            if abs(float(np.abs(_vc).sum()) - _vol_old5) > 1e-9 * max(_vol_old5, 1e-30):
                 continue
             q_cand_min = float(_tet_quality_batch_arr(pts, _cand4).min())
             if q_cand_min > best_q_new:
@@ -778,6 +816,9 @@ def flip_edges_76(
         # q_old = min quality over 7 incident tets — batch.
         _old7 = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
         q_old = float(_tet_quality_batch_arr(pts, _old7).min())
+        # 타일링 항등식 기준값 (BETA2827) — 5-4 와 같은 논리: 7-6 의 비대칭
+        # 구성은 특정 배치에서만 타일링하며, 부피 보존이 그 적용 조건 검사다.
+        _vol_old7 = float(np.abs(_tet_signed_vol6_batch_arr(pts, _old7)).sum())
 
         # 7-6 swap: build all 7 diagonal candidates as (7, 6, 4) — batch quality.
         all_cand_tets76: list[list[tuple[int, int, int, int]]] = []
@@ -804,7 +845,10 @@ def flip_edges_76(
                 continue
             _cand6 = np.array(cand_tets, dtype=np.int64)  # (6, 4)
             _vc = _tet_signed_vol6_batch_arr(pts, _cand6)
-            if not np.all(np.abs(_vc) >= 1e-20):
+            # BETA2827: abs 단독 검사는 inverted/겹침 후보를 수용했다.
+            if np.any(np.abs(_vc) < 1e-20):
+                continue
+            if abs(float(np.abs(_vc).sum()) - _vol_old7) > 1e-9 * max(_vol_old7, 1e-30):
                 continue
             q_cand_min = float(_tet_quality_batch_arr(pts, _cand6).min())
             if q_cand_min > best_q_new:
