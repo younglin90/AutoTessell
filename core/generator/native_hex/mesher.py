@@ -517,6 +517,9 @@ def _wall_fit_snap(
     """
     from collections import defaultdict  # noqa: PLC0415
 
+    from core.generator.native_hex.quality import (  # noqa: PLC0415
+        _native_generic_cell_face_signs,
+    )
     from core.generator.native_hex.snap import _closest_point_on_triangle  # noqa: PLC0415
     from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
 
@@ -582,6 +585,9 @@ def _wall_fit_snap(
     def _cell_signs(ci: int) -> tuple[np.ndarray, float]:
         """Per-face centroid-signed tet-sum + total |vol| of cell *ci*."""
         cell = cell_faces[ci]
+        native_signs = _native_generic_cell_face_signs(pts, cell)
+        if native_signs is not None:
+            return native_signs
         verts = sorted({int(v) for face in cell for v in face})
         c = pts[np.asarray(verts, dtype=np.int64)].mean(axis=0)
         sgn = np.empty(len(cell))

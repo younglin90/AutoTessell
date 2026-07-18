@@ -362,6 +362,61 @@ py::array_t<double> generic_cell_signed_volumes(
     return volumes;
 }
 
+py::tuple generic_cell_face_signs(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    const Cell& cell_faces)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    py::array_t<double> signs(
+        {static_cast<py::ssize_t>(cell_faces.size())});
+    auto output = signs.mutable_unchecked<1>();
+    const auto point_view = points.unchecked<2>();
+    const py::ssize_t point_count = points.shape(0);
+    double magnitude = 0.0;
+
+    {
+        py::gil_scoped_release release;
+        std::vector<Label> vertices;
+        for (const Face& face : cell_faces) {
+            vertices.insert(vertices.end(), face.begin(), face.end());
+        }
+        std::sort(vertices.begin(), vertices.end());
+        vertices.erase(std::unique(vertices.begin(), vertices.end()), vertices.end());
+        if (vertices.empty()) {
+            throw std::invalid_argument("cell must contain at least one vertex");
+        }
+
+        Point3 sum{0.0, 0.0, 0.0};
+        for (const Label vertex : vertices) {
+            sum = add(sum, load_point(point_view, vertex, point_count));
+        }
+        const Point3 centroid = scale(
+            sum, 1.0 / static_cast<double>(vertices.size()));
+
+        for (size_t face_index = 0; face_index < cell_faces.size(); ++face_index) {
+            const Face& face = cell_faces[face_index];
+            if (face.empty()) {
+                throw std::invalid_argument("face must contain at least one vertex");
+            }
+            const Point3 first = subtract(
+                load_point(point_view, face.front(), point_count), centroid);
+            double sign = 0.0;
+            for (size_t slot = 1; slot + 1 < face.size(); ++slot) {
+                const Point3 second = subtract(
+                    load_point(point_view, face[slot], point_count), centroid);
+                const Point3 third = subtract(
+                    load_point(point_view, face[slot + 1], point_count), centroid);
+                sign += dot(first, cross(second, third));
+            }
+            output(static_cast<py::ssize_t>(face_index)) = sign;
+            magnitude += std::abs(sign);
+        }
+    }
+    return py::make_tuple(signs, magnitude);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_hex_quality, module)
@@ -375,6 +430,11 @@ PYBIND11_MODULE(native_hex_quality, module)
     module.def(
         "generic_cell_signed_volumes",
         &generic_cell_signed_volumes,
+        py::arg("points"),
+        py::arg("cell_faces"));
+    module.def(
+        "generic_cell_face_signs",
+        &generic_cell_face_signs,
         py::arg("points"),
         py::arg("cell_faces"));
 }

@@ -177,3 +177,33 @@ def test_native_generic_signed_volumes_match_python() -> None:
         rtol=2e-13,
         atol=2e-13,
     )
+
+
+def test_native_generic_cell_face_signs_match_python() -> None:
+    native = _native_or_skip()
+    assert hasattr(native, "generic_cell_face_signs")
+    points, cells = _structured_hexes(2, 1, 1)
+    rng = np.random.default_rng(19)
+    points = points + rng.normal(scale=0.02, size=points.shape)
+    cell = [[int(cells[0, local]) for local in face] for face in quality._HEX_FACES]
+
+    native_signs, native_magnitude = native.generic_cell_face_signs(points, cell)
+    vertices = sorted({vertex for face in cell for vertex in face})
+    centroid = points[np.asarray(vertices, dtype=np.int64)].mean(axis=0)
+    python_signs: list[float] = []
+    for face in cell:
+        face_points = points[np.asarray(face, dtype=np.int64)] - centroid
+        sign = 0.0
+        for slot in range(1, len(face) - 1):
+            sign += float(
+                np.dot(
+                    face_points[0],
+                    np.cross(face_points[slot], face_points[slot + 1]),
+                )
+            )
+        python_signs.append(sign)
+
+    np.testing.assert_allclose(native_signs, python_signs, rtol=2e-13, atol=2e-13)
+    assert native_magnitude == pytest.approx(
+        sum(abs(value) for value in python_signs), rel=2e-13, abs=2e-13
+    )
