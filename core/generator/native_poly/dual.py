@@ -127,6 +127,116 @@ def _extract_boundary(
     return [k for k, tl in face_tets.items() if len(tl) == 1]
 
 
+def _tet_faces_with_edge(tv: np.ndarray, a: int, b: int) -> list[tuple[int, int, int]]:
+    """tet 정점 tv 중 edge(a,b) 를 포함하는 2개 face(정렬된 triple)."""
+    out: list[tuple[int, int, int]] = []
+    for face in _TET_FACES:
+        tri = (int(tv[face[0]]), int(tv[face[1]]), int(tv[face[2]]))
+        if a in tri and b in tri:
+            out.append(tuple(sorted(tri)))
+    return out
+
+
+def _ordered_tet_ring(
+    e: tuple[int, int],
+    edge_tets: dict[tuple[int, int], list[int]],
+    face_tets: dict[tuple[int, int, int], list[int]],
+    T: np.ndarray,
+) -> tuple[list[int], bool]:
+    """edge e 를 공유하는 tet 들을 공유 face 로 walk 하여 정렬된 ring 반환.
+
+    내부 edge(주변 face 가 모두 2-tet 공유) -> 닫힌 ring, closed=True.
+    경계 edge(끝 face 가 1-tet, boundary face) -> open fan, closed=False.
+    """
+    a, b = e
+    tets = edge_tets.get(e, [])
+    if not tets:
+        return [], False
+    tet_faces = {ti: _tet_faces_with_edge(T[ti], a, b) for ti in tets}
+    start, start_face = tets[0], tet_faces[tets[0]][0]
+    for ti in tets:
+        for f in tet_faces[ti]:
+            if len(face_tets[f]) == 1:
+                start, start_face = ti, f
+                break
+        else:
+            continue
+        break
+    ring = [start]
+    visited = {start}
+    cur, cur_face = start, start_face
+    while True:
+        f0, f1 = tet_faces[cur]
+        other = f1 if f0 == cur_face else f0
+        nbrs = face_tets[other]
+        if len(nbrs) < 2:
+            return ring, False
+        nxt = nbrs[1] if nbrs[0] == cur else nbrs[0]
+        if nxt in visited:
+            return ring, True
+        ring.append(nxt)
+        visited.add(nxt)
+        cur, cur_face = nxt, other
+
+
+def _surface_planes(
+    V: np.ndarray, boundary_faces: list[tuple[int, int, int]],
+) -> list[tuple[np.ndarray, float]]:
+    """원본 입력 surface triangle 들의 고유 평면(normal, offset) 목록."""
+    planes: list[tuple[np.ndarray, float]] = []
+    seen: set[tuple[int, ...]] = set()
+    for tri in boundary_faces:
+        p0, p1, p2 = V[tri[0]], V[tri[1]], V[tri[2]]
+        n = np.cross(p1 - p0, p2 - p0)
+        norm = float(np.linalg.norm(n))
+        if norm < 1e-12:
+            continue
+        n = n / norm
+        d = -float(np.dot(n, p0))
+        key = tuple(np.round(np.append(n, d) * 1e4).astype(np.int64).tolist())
+        key = min(key, tuple(-x for x in key))
+        if key in seen:
+            continue
+        seen.add(key)
+        planes.append((n, d))
+    return planes
+
+
+def _area_split(
+    points: np.ndarray,
+    faces: list[list[int]],
+    planes: list[tuple[np.ndarray, float]],
+    tol: float = 1e-6,
+) -> tuple[float, float]:
+    """boundary face 들을 (원본 surface 평면 위 area, 그 외 area) 로 분리."""
+    on = off = 0.0
+    for f in faces:
+        p = points[np.asarray(f, dtype=int)]
+        acc = np.zeros(3)
+        for i in range(1, len(f) - 1):
+            acc = acc + np.cross(p[i] - p[0], p[i + 1] - p[0]) / 2.0
+        area = float(np.linalg.norm(acc))
+        is_on = any(np.all(np.abs(p @ n + d) < tol) for n, d in planes)
+        if is_on:
+            on += area
+        else:
+            off += area
+    return on, off
+
+
+def _order_and_concat(
+    i_faces: list[list[int]], i_own: list[int], i_nbr: list[int],
+    b_faces: list[list[int]], b_own: list[int],
+) -> tuple[list[list[int]], list[int], list[int], int]:
+    """internal(owner,nbr 정렬) + boundary(owner 정렬) face 를 하나로 합친다."""
+    oi = sorted(range(len(i_faces)), key=lambda k: (i_own[k], i_nbr[k]))
+    ob = sorted(range(len(b_faces)), key=lambda k: b_own[k])
+    faces = [i_faces[k] for k in oi] + [b_faces[k] for k in ob]
+    owner = [i_own[k] for k in oi] + [b_own[k] for k in ob]
+    nbr = [i_nbr[k] for k in oi]
+    return faces, owner, nbr, len(b_faces)
+
+
 # ---------------------------------------------------------------------------
 # Dual cell 생성
 # ---------------------------------------------------------------------------
@@ -241,11 +351,12 @@ def tet_to_poly_dual(
         n_boundary_verts=int(is_boundary_vert.sum()),
     )
 
-    # 2) 각 input vertex 마다 dual cell 생성 (ConvexHull)
-    # 누적 점/셀 face 데이터
+    # 2) 각 input vertex 마다 dual cell 점 집합 + boundary cap 후보(ConvexHull) 생성
     all_points: list[np.ndarray] = []   # unique dual points (나중에 stack)
     cell_face_lists: list[list[list[int]]] = []  # cell_i → [face_vertices, ...]
+    cell_face_is_cap: list[list[bool]] = []       # cell_i → face 가 surface cap 인지
     cell_centroid_list: list[np.ndarray] = []   # cell_i → 3D centroid
+    cell_index_of_vert: dict[int, int] = {}     # input vertex → cell index
     # 점 dedup 을 위해 global dict (3D 좌표 → global idx)
     point_id_of: dict[tuple[int, int, int], int] = {}
     point_tol = 1e-9
@@ -260,8 +371,14 @@ def tet_to_poly_dual(
         all_points.append(p)
         return idx
 
+    # tet centroid 는 인접 vertex 들이 공유하는 dual point 이므로 미리 고정 등록.
+    tet_point_id = np.array(
+        [_add_point(tet_centroids[ti]) for ti in range(n_tets)], dtype=np.int64,
+    )
+
     n_skipped = 0
     for v_in in range(n_verts):
+        n_tet_pts = len(vert_tets.get(v_in, []))
         pts = _dual_cell_verts(
             v_in, V, T, tet_centroids, vert_tets,
             is_boundary_vert, boundary_faces_of_vert, boundary_edges_of_vert,
@@ -289,6 +406,7 @@ def tet_to_poly_dual(
         # 각 group 에서 polygon vertex (ordered) 추출
         local_cell_centroid = pts.mean(axis=0)
         cell_face_verts: list[list[int]] = []
+        cell_face_caps: list[bool] = []
         for _, simp_ids in group_of.items():
             # union 의 vertex 집합
             verts_local: set[int] = set()
@@ -326,11 +444,14 @@ def tet_to_poly_dual(
             # global id 매핑
             global_ids = [_add_point(pts[lv]) for lv in ordered_verts_local]
             cell_face_verts.append(global_ids)
+            cell_face_caps.append(any(lv >= n_tet_pts for lv in ordered_verts_local))
 
         if not cell_face_verts:
             n_skipped += 1
             continue
+        cell_index_of_vert[v_in] = len(cell_face_lists)
         cell_face_lists.append(cell_face_verts)
+        cell_face_is_cap.append(cell_face_caps)
         cell_centroid_list.append(local_cell_centroid)
 
     if not cell_face_lists:
@@ -347,19 +468,6 @@ def tet_to_poly_dual(
         skipped=n_skipped,
     )
 
-    # 3) face dedup + internal/boundary 분류 + winding 보정
-    face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
-    for ci, face_list in enumerate(cell_face_lists):
-        for f in face_list:
-            key = tuple(sorted(f))
-            face_map[key].append((ci, list(f)))
-
-    internal_faces: list[list[int]] = []
-    internal_owner: list[int] = []
-    internal_nbr: list[int] = []
-    boundary_faces_out: list[list[int]] = []
-    boundary_owner: list[int] = []
-
     def _flip_if_inward(face: list[int], cell_centroid: np.ndarray) -> list[int]:
         """face normal 이 cell centroid 바깥 방향이면 유지, 안쪽이면 reverse."""
         pts3 = dual_points[face]
@@ -370,38 +478,84 @@ def tet_to_poly_dual(
             return list(reversed(face))
         return face
 
-    for key, refs in face_map.items():
+    # 3a) path A (기존): ConvexHull face 정확 정점집합 dedup
+    face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
+    for ci, face_list in enumerate(cell_face_lists):
+        for f in face_list:
+            face_map[tuple(sorted(f))].append((ci, list(f)))
+
+    a_i_faces: list[list[int]] = []
+    a_i_own: list[int] = []
+    a_i_nbr: list[int] = []
+    a_b_faces: list[list[int]] = []
+    a_b_own: list[int] = []
+    for refs in face_map.values():
         if len(refs) == 2:
             (ca, fa), (cb, fb) = refs
-            own = min(ca, cb); nbr = max(ca, cb)
+            own, nbr = min(ca, cb), max(ca, cb)
             f_use = fa if ca == own else fb
-            f_oriented = _flip_if_inward(f_use, cell_centroid_list[own])
-            internal_faces.append(f_oriented)
-            internal_owner.append(own)
-            internal_nbr.append(nbr)
+            a_i_faces.append(_flip_if_inward(f_use, cell_centroid_list[own]))
+            a_i_own.append(own)
+            a_i_nbr.append(nbr)
         elif len(refs) == 1:
             (ci, fv) = refs[0]
-            f_oriented = _flip_if_inward(fv, cell_centroid_list[ci])
-            boundary_faces_out.append(f_oriented)
-            boundary_owner.append(ci)
+            a_b_faces.append(_flip_if_inward(fv, cell_centroid_list[ci]))
+            a_b_own.append(ci)
 
-    # 4) 정렬: internal 은 (owner, nbr), boundary 는 owner 기준
-    int_order = sorted(
-        range(len(internal_faces)),
-        key=lambda i: (internal_owner[i], internal_nbr[i]),
+    # 3b) path B (신규): tet edge 주위 위상적 centroid ring → internal face,
+    # boundary cap 은 path A 의 hull 결과 중 surface 점을 포함한 face 만 재사용.
+    b_i_faces: list[list[int]] = []
+    b_i_own: list[int] = []
+    b_i_nbr: list[int] = []
+    for e in edge_tets:
+        if e in boundary_edges_set:
+            continue
+        u, w = e
+        if u not in cell_index_of_vert or w not in cell_index_of_vert:
+            continue
+        ring, closed = _ordered_tet_ring(e, edge_tets, face_tets, T)
+        if not closed or len(ring) < 3:
+            continue
+        own = cell_index_of_vert[u]
+        face = [int(tet_point_id[ti]) for ti in ring]
+        b_i_faces.append(_flip_if_inward(face, cell_centroid_list[own]))
+        b_i_own.append(own)
+        b_i_nbr.append(cell_index_of_vert[w])
+
+    b_b_faces: list[list[int]] = []
+    b_b_own: list[int] = []
+    for v_in, ci in cell_index_of_vert.items():
+        if not is_boundary_vert[v_in]:
+            continue
+        for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
+            if is_cap:
+                b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
+                b_b_own.append(ci)
+
+    # 3c) 단조 가드: on/off-plane boundary area split 으로 path 선택.
+    # path B 가 void 를 늘리거나 surface coverage 를 깨면 path A 로 복귀한다.
+    surface_planes = _surface_planes(V, boundary_faces)
+    pre_on, pre_off = _area_split(dual_points, a_b_faces, surface_planes)
+    post_on, post_off = _area_split(dual_points, b_b_faces, surface_planes)
+    use_topo = (
+        len(b_i_faces) > 0
+        and post_off <= pre_off
+        and pre_on * 0.95 <= post_on <= pre_on * 1.05
     )
-    bnd_order = sorted(range(len(boundary_faces_out)), key=lambda i: boundary_owner[i])
-
-    final_faces: list[list[int]] = []
-    final_owner: list[int] = []
-    final_nbr: list[int] = []
-    for i in int_order:
-        final_faces.append(internal_faces[i])
-        final_owner.append(internal_owner[i])
-        final_nbr.append(internal_nbr[i])
-    for i in bnd_order:
-        final_faces.append(boundary_faces_out[i])
-        final_owner.append(boundary_owner[i])
+    log.info(
+        "native_poly_dual_guard",
+        pre_on=pre_on, pre_off=pre_off, post_on=post_on, post_off=post_off,
+        use_topo=use_topo,
+    )
+    if use_topo:
+        final_faces, final_owner, final_nbr, n_boundary = _order_and_concat(
+            b_i_faces, b_i_own, b_i_nbr, b_b_faces, b_b_own,
+        )
+    else:
+        final_faces, final_owner, final_nbr, n_boundary = _order_and_concat(
+            a_i_faces, a_i_own, a_i_nbr, a_b_faces, a_b_own,
+        )
+    n_internal = len(final_faces) - n_boundary
 
     # 5) polyMesh 쓰기
     poly_dir = case_dir / "constant" / "polyMesh"
@@ -427,8 +581,8 @@ def tet_to_poly_dual(
         [{
             "name": "defaultWall",
             "type": "wall",
-            "nFaces": len(boundary_faces_out),
-            "startFace": len(internal_faces),
+            "nFaces": n_boundary,
+            "startFace": n_internal,
         }],
     )
 

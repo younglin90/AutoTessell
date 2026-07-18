@@ -30,20 +30,26 @@ outside the input. So each property is gated independently:
   3. volume — cell volumes must sum to 1.000, none degenerate.
   4. no degenerate cells.
 
-MEASURED (beta2822, CARD POLY-S1, cube.stl / draft / tier_native_poly,
-cells=15, faces/cell=13.8, time~=45s, skew=2.14, non_ortho=11.9deg,
-negative_volumes=0, verdict=PASS_WITH_WARNINGS — the existing checker/verdict
-is BLIND to void and volume defects, exactly like the tet suite's
-total-area trap):
+MEASURED (beta2823, CARD POLY-S2, cube.stl / draft / tier_native_poly,
+cells=15, time~=45s, skew=2.05, negative_volumes=0, verdict=PASS_WITH_WARNINGS
+— the existing checker/verdict is BLIND to void and volume defects, exactly
+like the tet suite's total-area trap):
 
   1. surface coverage:  6.000 (1.00x)  -> PASS  -> permanent gate.
-  2. void (off-plane):  7.588 (>>0.30 allowed) -> FAIL -> xfail(strict).
-     Root cause: tet->dual boundary cells leave an OPEN WALL where the
-     original tet's exterior face was dropped instead of capped with the
-     input surface — the dual harness never closes the boundary cell against
-     the input triangulation, so a large off-plane area appears alongside a
-     perfect 6.000 on-plane area. This is a "total area trap": if the two
-     numbers were summed (13.588) the defect would be invisible.
+  2. void (off-plane):  2.435 (>0.30 allowed) -> FAIL -> xfail(strict).
+     Root cause (measured, supersedes the POLY-S1 "open-wall" hypothesis,
+     which measurement disproved): the interior dual interface per tet EDGE
+     is generally non-planar, so per-cell ConvexHull triangulated/merged it
+     differently on each side of the edge -> mismatched vertex-set keys ->
+     the interface leaked as a one-sided boundary face on both cells. POLY-S2
+     replaced the per-cell ConvexHull interior faces with a topological
+     edge-ring construction (dual point = tet centroid, one face per interior
+     tet edge, ordered by face-adjacency walk) which guarantees exactly
+     2-cell sharing and cut void 7.588 -> 2.435 (-68%) while keeping the
+     boundary-vertex surface cap logic untouched (6.000 unaffected). A
+     monotonic guard inside ``tet_to_poly_dual`` compares on/off-plane area
+     of the new topological path against the old ConvexHull path and only
+     adopts the new path when it does not regress either metric.
   3. volume Sigma|vol|: 1.177 (1.18x, >1.05 allowed) -> FAIL -> xfail(strict).
      Root cause: the same open boundary cells are unbounded on their missing
      face, so their centroid-apex pyramid decomposition bulges outside the
@@ -228,9 +234,10 @@ def test_native_poly_has_no_degenerate_cells(poly_case: Path) -> None:
 
 @pytest.mark.xfail(
     reason=(
-        "measured 7.588 off-plane boundary area (dual open-wall boundary cells "
-        "leave a face uncapped against the input surface) — see module docstring, "
-        "root cause and fix belong to CARD POLY-S2."
+        "measured 2.435 off-plane boundary area (down from 7.588 pre-POLY-S2) "
+        "— the topological edge-ring dual (POLY-S2) removed the interior "
+        "ConvexHull mismatch but does not yet fully close the boundary-cap "
+        "geometry — see module docstring; the residual is scoped to CARD POLY-S3."
     ),
     strict=True,
 )
@@ -238,10 +245,11 @@ def test_native_poly_has_no_interior_voids(poly_case: Path) -> None:
     """No boundary area may lie off the input surface (that would be a void wall).
 
     A watertight input has exactly one boundary: itself. Measured cube.stl /
-    draft / tier_native_poly: off-plane boundary area 7.588 — the tet->dual
-    boundary cells are left with an open wall where the original exterior tet
-    face was dropped instead of being capped against the input surface.
-    XFAIL(strict) — the exact defect CARD POLY-S2 is scoped to fix.
+    draft / tier_native_poly (post-POLY-S2): off-plane boundary area 2.435
+    (was 7.588 pre-POLY-S2) — the topological edge-ring dual construction cut
+    the leaked interior interface area by 68%, but a residual off-plane area
+    remains around the boundary-cap/interior seam. XFAIL(strict) — the
+    residual defect is scoped to CARD POLY-S3.
     """
     _, off_area = _boundary_area_split(poly_case)
     assert off_area <= 0.05 * _TRUE_AREA, (

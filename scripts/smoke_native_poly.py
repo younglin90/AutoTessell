@@ -26,13 +26,17 @@ does not apply. Cell volume is computed the same orientation-free way as the
 hex smoke: decompose into centroid-apex pyramids over each face, fan-
 triangulate each face, sum |tet vol|.
 
-MEASURED (beta2822, CARD POLY-S1): surface 6.000 (1.00x) OK, void 7.588 BAD
-(dual open-wall boundary cells), volume 1.177 (1.18x) BAD (cube-exceeding
-bulge), degen 0 OK. Only (1) and (4) are exit-code-gated here — void/volume
-are recorded, printed, but treated as OPEN quality targets (like the tet
-smoke treats skew), matching the xfail(strict) gates in
-tests/test_native_poly_solid_volume.py. A future card (POLY-S2/S3) promotes
-them to permanent gates once the dual open-boundary/bulge defects are fixed.
+MEASURED (beta2823, CARD POLY-S2): surface 6.000 (1.00x) OK, void 2.435 BAD
+(down from 7.588 pre-POLY-S2 — the interior dual interface was non-planar
+per tet edge, so per-cell ConvexHull triangulated each side differently and
+the mismatched interface leaked as one-sided boundary; POLY-S2 replaced it
+with a topological edge-ring dual face per interior tet edge, which
+guarantees exact 2-cell sharing), volume 1.119 (1.12x) BAD (residual
+cube-exceeding bulge), degen 0 OK. Only (1) and (4) are exit-code-gated here
+— void/volume are recorded, printed, but treated as OPEN quality targets
+(like the tet smoke treats skew), matching the xfail(strict) gates in
+tests/test_native_poly_solid_volume.py. A future card (POLY-S3) promotes
+them to permanent gates once the residual boundary-cap/bulge defect is fixed.
 
 Prints one line + exits non-zero if the solid SUBSET (surface, degen)
 regresses. If native_poly writes no polyMesh (or crashes), prints

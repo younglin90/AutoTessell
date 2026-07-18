@@ -1,22 +1,22 @@
-card: FSL3 (guarded 2-3 flip)
+card: POLY-S2
+file: core/generator/native_poly/dual.py
+functions: tet_to_poly_dual, _tet_faces_with_edge (new), _ordered_tet_ring (new),
+           _surface_planes (new), _area_split (new), _order_and_concat (new)
+lines_added: ~230
+lines_removed: ~95
 
-file: core/generator/native_tet/validate.py
-functions: apply_flat_sliver_23_flips
-lines_added: ~140
-lines_removed: 0
+file: tests/test_native_poly_solid_volume.py (docstring/xfail-reason only, no assert change)
+functions: module docstring, test_native_poly_has_no_interior_voids
+lines_added: 18
+lines_removed: 15
 
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (pre-write FSL3 hook, post-BETA2826 locked-smooth)
-lines_added: 28
-lines_removed: 0
+file: scripts/smoke_native_poly.py (docstring only)
+functions: module docstring
+lines_added: 9
+lines_removed: 7
 
-file: tests/test_native_tet_flat_sliver_detect.py
-functions: test_fsl3_synthetic_bipyramid_flips, test_fsl3_concave_union_not_flipped,
-           test_fsl3_guard_violation_reverts
-lines_added: ~75
-lines_removed: 0
-
-result: N=600 real repro -> n_eligible=9, n_flipped=0, n_reverted=9 (all 9 blocked by
-guard (a) min_q non-decrease). Acceptance bar n_flipped>=7 NOT met (honest measurement,
-gates not weakened). All other invariants hold trivially since mesh is unchanged
-when n_flipped=0 (accept-check itself is skipped).
+result: pytest tests/test_native_poly_solid_volume.py -q -> 2 passed, 2 xfailed
+(55s). smoke_native_poly.py -> exit 0, "surface 6.000ok void 2.435BAD
+vol 1.119BAD degen 0ok" (47s). tests/test_native_hex_solid_volume.py -> 9
+passed (99s, no regression). Guard log: pre_off=7.588 post_off=2.435
+pre_on=post_on=6.000 use_topo=True (topological path adopted).
