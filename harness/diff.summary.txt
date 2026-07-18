@@ -1,23 +1,23 @@
-card: SHARPRIDGE1
-file: core/preprocessor/remesh.py
-functions: apply_laplacian_smoothing
-lines_added: 21
-lines_removed: 0
+card: CYLSKEW2
+file: core/generator/native_tet/offset_ring.py
+functions: offset_ring_seed_points
+lines_added: 9
+lines_removed: 3
 
-measured (WSL /usr/bin/python3 3.12, igl+pyacvd present; Windows .venv lacks
-  igl/pyacvd -- must run via WSL to reproduce):
-  sharp_ridge: guard fired once: pre_area=6.16 post_area=0.00011 hd_rel=0.014
-    -> revert to pyACVD 384-face surface. hausdorff_rel 13962 -> 0.04226
-    (target <0.05, PASS). n_cells=2276>0. bench time 19.7s (plan gate <=15s,
-    MISSED -- native_tet itself takes ~16s on this shape, guard overhead
-    negligible).
-  cube (N=500): PASS, cells=417>=400, area 6.000 ok (ratio 1.00).
-  cylinder: verdict=FAIL (pre-existing, unrelated), skew=44.9 (matches known
-    baseline ~45), hausdorff_rel=0.0, no L2/guard invoked (watertight->L1 gate
-    passes, laplacian never reached).
-  perforated_plate: L1 gate passes (watertight) -> L2/laplacian never invoked
-    (confirmed: no laplacian_* log line). native_tet itself did not finish
-    within 90s nor 170s (stuck after VVV12 pass, pre-existing perf issue,
-    NOT caused by this diff). Could not measure area_ratio/neg_vol.
-  dual_torus: completed in 140s, area_ratio=1.0095>=0.95, vol_ratio=1.0098
-    >=0.95, no laplacian log (watertight, L2 skipped) -- no regression.
+change: absolute dedup guard (d<1e-6) -> relative (d<rel_dedup*target_edge_length,
+  rel_dedup=1e-3); added surf_floor near-tangent reject (d_v<surf_floor*depth,
+  surf_floor=0.25) before accept; signature gained rel_dedup/surf_floor default
+  params (call sites unchanged -> defaults apply); info dict gained dedup_thr,
+  surf_floor fields.
+
+measured (WSL python3, timeout 90):
+  test_native_tet_solid_volume.py -q: 4 passed.
+  ON  (AUTO_TESSELL_TET_OFFSET_RING=1): cells=2296 skew=40.8 wall_dev_max=0.000
+    -- identical to CYLSKEW1 baseline (2296/40.8), confirms new guards are a
+    true no-op on cylinder.stl (n_offset=66, 0 dropped).
+  OFF (default): skew=44.9 wall_dev_max=0.000 (matches plan exactly). cells=1851
+    (ran 3x, deterministic) vs plan doc's stated 1847 -- OFF path never calls
+    offset_ring_seed_points (env-flag gated import in mesher.py:867-869), so
+    this 4-cell gap is pre-existing baseline drift unrelated to this diff, not
+    a regression caused by CYLSKEW2.
+  default still OFF (env var unset -> no-op, confirmed via mesher.py gate).

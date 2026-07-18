@@ -16,6 +16,7 @@ from core.utils.geometry import inside_generalized_winding_number
 def offset_ring_seed_points(
     V: np.ndarray, F: np.ndarray, target_edge_length: float,
     depth_frac: float = 0.5,
+    rel_dedup: float = 1e-3, surf_floor: float = 0.25,
 ) -> tuple[np.ndarray, dict[str, float]]:
     """표면정점마다 내향 offset 후보를 만들어 winding/min-dist 가드로 필터."""
     V = np.asarray(V, dtype=np.float64)
@@ -57,6 +58,7 @@ def offset_ring_seed_points(
     n_hat[valid] = accum[valid] / norms[valid, None]
 
     depth = float(depth_frac) * float(target_edge_length)
+    dedup_thr = float(rel_dedup) * float(target_edge_length)
     cand = V - depth * n_hat  # outward n_hat 을 빼면 내향 offset.
     cand = cand[valid]
     n_cand = int(cand.shape[0])
@@ -68,9 +70,11 @@ def offset_ring_seed_points(
     min_dist = float("inf")
     for p in cand:
         d_v = float(np.linalg.norm(V - p, axis=1).min()) if V.shape[0] else np.inf
+        if d_v < float(surf_floor) * depth:
+            continue
         d_a = float(np.linalg.norm(np.asarray(accepted) - p, axis=1).min()) if accepted else np.inf
         d = min(d_v, d_a)
-        if d < 1e-6:
+        if d < dedup_thr:
             continue
         accepted.append(p)
         min_dist = min(min_dist, d)
@@ -80,5 +84,7 @@ def offset_ring_seed_points(
         "n_cand": n_cand,
         "n_inserted": int(P.shape[0]),
         "min_dist": round(min_dist, 8) if P.shape[0] else 0.0,
+        "dedup_thr": dedup_thr,
+        "surf_floor": float(surf_floor),
     }
     return P, info
