@@ -812,6 +812,12 @@ class Preprocessor:
                 kept = [c for c, a in zip(components, areas) if a >= rel_keep * a_max]
                 total_area = sum(areas)
                 kept_area = sum(float(c.area) for c in kept)
+                # Aggregate guard: filtering may not discard a significant share
+                # of the TOTAL surface — many small identical bodies (each < 5%
+                # of A_max) can jointly be most of the input.
+                if total_area > 0 and (total_area - kept_area) > 0.05 * total_area:
+                    kept = list(components)
+                    kept_area = total_area
                 log.info(
                     "component_filter",
                     num_components=len(components),

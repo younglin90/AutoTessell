@@ -253,22 +253,74 @@ class SurfaceRepairer:
         import numpy as np
 
         try:
-            meshfix = pymeshfix.MeshFix(
-                np.array(mesh.vertices, dtype=np.float64),
-                np.array(mesh.faces, dtype=np.int64),
-            )
-            meshfix.repair()
-            repaired = trimesh.Trimesh(
-                vertices=meshfix.points,
-                faces=meshfix.faces,
-                process=False,
-            )
-            actions.append("pymeshfix.repair(non_manifold+holes+self_intersections)")
-            log.info(
-                "pymeshfix_repaired",
-                input_faces=len(mesh.faces),
-                output_faces=len(repaired.faces),
-            )
+            in_area = float(mesh.area)
+            comps = mesh.split(only_watertight=False)
+            if len(comps) <= 1:
+                meshfix = pymeshfix.MeshFix(
+                    np.array(mesh.vertices, dtype=np.float64),
+                    np.array(mesh.faces, dtype=np.int64),
+                )
+                meshfix.repair()
+                repaired = trimesh.Trimesh(
+                    vertices=meshfix.points,
+                    faces=meshfix.faces,
+                    process=False,
+                )
+                actions.append("pymeshfix.repair(non_manifold+holes+self_intersections)")
+                log.info(
+                    "pymeshfix_repaired",
+                    input_faces=len(mesh.faces),
+                    output_faces=len(repaired.faces),
+                )
+            else:
+                areas = [float(c.area) for c in comps]
+                a_max = max(areas)
+                total_area = sum(areas)
+                rel_keep = 0.05
+                kept = [c for c, a in zip(comps, areas) if a >= rel_keep * a_max]
+                # Aggregate guard: per-component filtering may not discard a
+                # significant share of the TOTAL surface — many small identical
+                # bodies (each < 5% of A_max) can jointly be most of the input.
+                kept_area = sum(float(c.area) for c in kept)
+                if total_area > 0 and (total_area - kept_area) > 0.05 * total_area:
+                    kept = list(comps)
+                repaired_comps = []
+                for comp in kept:
+                    try:
+                        cfix = pymeshfix.MeshFix(
+                            np.array(comp.vertices, dtype=np.float64),
+                            np.array(comp.faces, dtype=np.int64),
+                        )
+                        cfix.repair()
+                        repaired_comps.append(
+                            trimesh.Trimesh(
+                                vertices=cfix.points,
+                                faces=cfix.faces,
+                                process=False,
+                            )
+                        )
+                    except Exception:
+                        repaired_comps.append(comp)
+                repaired = trimesh.util.concatenate(repaired_comps)
+                repaired.merge_vertices()
+                actions.append("pymeshfix.repair(per_component)")
+                log.info(
+                    "pymeshfix_component_repair",
+                    n_comps=len(comps),
+                    n_kept=len(kept),
+                    in_faces=len(mesh.faces),
+                    out_faces=len(repaired.faces),
+                )
+
+            out_area = float(repaired.area)
+            if out_area < 0.5 * in_area:
+                log.warning(
+                    "pymeshfix_area_guard_revert",
+                    in_area=in_area,
+                    out_area=out_area,
+                )
+                return mesh, actions
+
             # trimesh 추가 정리
             repaired, trimesh_actions = self._apply_trimesh_cleanup(repaired)
             actions.extend(trimesh_actions)
