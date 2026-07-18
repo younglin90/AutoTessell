@@ -802,15 +802,30 @@ class Preprocessor:
                 pass
             mesh.fix_normals()
 
-        # 연결 컴포넌트가 여럿이면 최대 컴포넌트만 보존
+        # 연결 컴포넌트가 여럿이면 상대 가드(A_max의 5%) 기준으로 유효 body를 모두 보존
         try:
             components = mesh.split(only_watertight=False)
             if len(components) > 1:
+                areas = [float(c.area) for c in components]
+                a_max = max(areas)
+                rel_keep = 0.05
+                kept = [c for c, a in zip(components, areas) if a >= rel_keep * a_max]
+                total_area = sum(areas)
+                kept_area = sum(float(c.area) for c in kept)
                 log.info(
-                    "keep_largest_component",
+                    "component_filter",
                     num_components=len(components),
+                    n_kept=len(kept),
+                    n_dropped=len(components) - len(kept),
+                    dropped_area_frac=(
+                        (total_area - kept_area) / total_area if total_area > 0 else 0.0
+                    ),
                 )
-                mesh = max(components, key=lambda m: len(m.faces))
+                if len(kept) == 1:
+                    mesh = kept[0]
+                elif len(kept) > 1:
+                    mesh = trimesh.util.concatenate(kept)
+                    mesh.merge_vertices()
         except Exception:
             pass
 

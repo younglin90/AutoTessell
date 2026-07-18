@@ -1,32 +1,27 @@
-CARD HEX-WALLFIT-BACKTRACK (beta1) — bisection backtrack replaces all-or-nothing revert
+CARD BETA2832 — genus multi-body: keep_largest_component가 dual-torus 절반을 버리던 문제 수정
 
-file: core/generator/native_hex/mesher.py
-functions: _wall_fit_snap
-lines_added: 23
-lines_removed: 5
-- stats dict gained `n_snapped_partial` counter (init 0).
-- vol-reject `else` branch: full projection that fails `_cell_ok` is no
-  longer reverted outright. Bisects (<=12 iters) orig->p0 for the largest
-  fraction `lo` that still passes the same `_cell_ok` guard on every
-  incident cell; accepted only if `lo>0` AND the strict-decrease check
-  (`d_partial < d0 - 1e-15`, same criterion as the full-projection path)
-  holds. Otherwise reverts to `orig` and counts `n_reject_vol` as before.
-- `_cell_ok` itself untouched (guard not weakened, only a better solution
-  found within it).
+file: core/preprocessor/pipeline.py
+functions: _final_validate
+lines_added: 18
+lines_removed: 3
 
-file: tests/test_native_hex_solid_volume.py
-functions: test_native_hex_curved_wall_fidelity
-lines_added: 13
-lines_removed: 17
-- removed `pytest.mark.xfail(strict=True)` on the "fine" param; now a
-  plain `["standard", "fine"]` parametrize list.
-- docstring STATUS section appended with this card's measured results.
+변경: keep_largest_component(무조건 최대 컴포넌트만 보존) →
+component_filter(A_i >= 0.05*A_max인 컴포넌트 전부 보존, trimesh.util.concatenate
++ merge_vertices로 재결합). rel_keep=0.05는 최대 컴포넌트 대비 상대 비율(절대값 아님).
+로그 필드: num_components, n_kept, n_dropped, dropped_area_frac.
 
-RESULT (measured, timeout 300 python3 -m pytest tests/test_native_hex_solid_volume.py -q):
-- 6 passed in 56.71s (all, including fine — previously xfail).
-- fine (cylinder N=2000): n_target=350 n_snapped=320 n_snapped_partial=30
-  n_reject_vol=0. wall_dev_max=0.008015 (was ~0.035, gate <=0.02) mean=0.001380.
-- standard: n_reject_vol=0 (this code path never triggers, no-op by
-  construction). wall_dev_max=0.003241 — bit-identical to pre-change.
-- negative_volumes=0 in every measured case (cube 4-invariant + cylinder
-  standard/fine) — safety invariant intact.
+실측 검증 (직접 재실행):
+- smoke_native_tet.py (cube): cells=417 surface=6.000ok vol=1.008ok verdict PASS —
+  변경 전(baseline, git stash로 확인)과 완전 동일, no-op 확인.
+- smoke_native_cylinder.py: cells=1851 skew=44.9 nonOrt=89.2 verdict=FAIL —
+  baseline과 완전 동일(git stash 비교) — 회귀 아님, 기존에 있던 skew 이슈로 unrelated.
+- pytest tests/test_native_tet_solid_volume.py: 4 passed in 22-23s (cube 4대 불변식 유지).
+- bench_native_tet_matrix.py --stl high_genus_dual_torus.stl (AUTO_TESSELL_P4C_PYTETWILD=0):
+  area_ratio=1.0095 vol_ratio=1.0098 cells=11071 degen=0 neg_vol=0 — 둘 다 >=0.9 합격 기준 통과.
+  단 max_skewness=2.21e6로 quality verdict=FAIL 지속(품질 문제는 BETA2834 범위, 이 카드는
+  커버리지만 다룸 — 계획서 카드 시퀀스와 일치).
+  time_s=208.2 — 계획서 예상(mild <=15% 증가)보다 크게 증가(원인: 2-body 전체를 실제로
+  메싱하는 비용 — dropped 절반을 이제 처리하므로 예상보다 무거움. 정량 시간 게이트는
+  합격 기준에 없었으나 참고용으로 보고).
+
+파일 1개, 21줄 변경(≤35줄 준수). 커밋 안 함.
