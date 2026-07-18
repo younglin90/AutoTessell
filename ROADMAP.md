@@ -78,20 +78,22 @@ selective repair UI.
   backs envelope/hausdorff/cdt_recovery/signed_distance queries project-wide,
   so it could have silently returned a wrong nearest-triangle anywhere those
   are used. One-line fix, ~80 BVH-adjacent tests unchanged after.
-- **native_hex ~40%**: solid gates green on the cube (surface 6.000/void
+- **native_hex ~45%**: solid gates green on the cube (surface 6.000/void
   0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed on
-  **standard** (2026-07-18): per-vertex wall-fit snap (envelope-projected,
-  accepted only on strictly-decreasing surface distance + positive-volume/
-  orientation guard on every incident cell) closed cylinder standard
-  wall_dev_max 0.0466→0.0032 (gate <0.02, permanent test); negative volumes
-  0. **fine still xfail**: the envelope was generalized to per-vertex local
-  sizing (fTetWild-style) on the theory that fine's finer octree cap was
-  clamping legitimate snaps — measured wrong (n_reject_envelope=0 before and
-  after); the real blocker is the no-inversion guard rejecting 67/403
-  candidate snaps, untouched by this card. Next: a guard-focused card (why
-  are that many incident-cell volume checks failing at fine granularity),
-  then hex quality (skew currently 4.64 post-snap on standard — bounded but
-  unoptimized).
+  both quality levels (2026-07-18, 3-card sequence, all permanent gates now):
+  (1) per-vertex wall-fit snap (envelope-projected, accepted only on
+  strictly-decreasing surface distance + positive-volume/orientation guard
+  on every incident cell) closed cylinder standard wall_dev_max
+  0.0466→0.0032; (2) envelope generalized to per-vertex local sizing
+  (fTetWild-style) — measured harmless but not the fine blocker
+  (n_reject_envelope=0 before/after); (3) root cause was the guard's
+  all-or-nothing structure: full projection got reverted entirely on any
+  face flip even though 39/39 rejected vertices had a safe partial move
+  (binary-search fraction t*, min 0.706). Backtracking to the largest t*
+  that still passes the *same* unmodified guard (no relaxation) took fine
+  wall_dev_max 0.0353→0.008 (gate <0.02); negative_volumes=0 throughout.
+  Next: hex quality (skew 4.64 on standard post-snap — bounded but
+  unoptimized), then extend the solid-preservation methodology to poly.
 - **native_poly ~15%** (unmeasured): port the tet methodology — canonical
   smoke, solid gates, then quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
