@@ -98,6 +98,83 @@ def _cell_volumes_signed(poly_dir: Path) -> np.ndarray:
     return vols
 
 
+def _boundary_skew_max(poly_dir: Path) -> float:
+    """CARD THINSLIVER2 -- pure-python boundary-skew probe (no C-ext).
+
+    Reparses the on-disk polyMesh and reproduces the evaluator's boundary
+    skewness formula (harness/plan_thinsliver2.md): for each boundary face,
+    skew = |tangential(fc - cc)| / |normal(fc - cc)| where fc is the face
+    centroid, cc is the owner cell centroid, projected along the face
+    normal.
+    """
+    pts = np.asarray(parse_foam_points(poly_dir / "points"), dtype=float)
+    faces = [list(f) for f in parse_foam_faces(poly_dir / "faces")]
+    owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+    nb = np.asarray(parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64)
+    n_internal = len(nb)
+    n_cells = int(max(owner.max(), nb.max() if nb.size else 0)) + 1
+
+    verts: list[set[int]] = [set() for _ in range(n_cells)]
+    for fi, face in enumerate(faces):
+        o = int(owner[fi])
+        verts[o].update(int(v) for v in face)
+        if fi < n_internal:
+            verts[int(nb[fi])].update(int(v) for v in face)
+    cc = np.zeros((n_cells, 3))
+    for ci, s in enumerate(verts):
+        if len(s) == 4:
+            cc[ci] = pts[np.asarray(sorted(s), dtype=int)].mean(axis=0)
+
+    max_skew = 0.0
+    for fi in range(n_internal, len(faces)):
+        face = faces[fi]
+        if len(face) != 3:
+            continue
+        fv = pts[np.asarray(face, dtype=int)]
+        fc = fv.mean(axis=0)
+        n = np.cross(fv[1] - fv[0], fv[2] - fv[0])
+        n_mag = float(np.linalg.norm(n))
+        if n_mag < 1e-30:
+            continue
+        nd = float(np.dot(fc - cc[int(owner[fi])], n / n_mag))
+        if abs(nd) < 1e-30:
+            continue
+        proj = cc[int(owner[fi])] + nd * (n / n_mag)
+        skew = float(np.linalg.norm(fc - proj)) / abs(nd)
+        max_skew = max(max_skew, skew)
+    return max_skew
+
+
+def test_naca_boundary_skew_bounded(naca_mesh) -> None:
+    """Regression lock for naca0012's boundary skew.
+
+    THINSLIVER2 (tangential-recenter apex relax on boundary-sliver driver
+    cells) was implemented and safety-verified (zero-inversion line-search,
+    surf_moved==0, monotone accept/revert) but an isolated before/after
+    measurement (git-stash A/B on just this file, then independently
+    reconfirmed by re-running generate_native_tet against HEAD directly)
+    showed it moves 946 interior vertices yet the reported max boundary
+    skew is bit-for-bit identical with and without it (~60.3). The plan's
+    baseline (82.44) had already been measured before FSL3/FSL4/CYLSKEW1-3
+    landed and stacked enough other changes to the shared mesher pipeline
+    that naca's boundary skew was already down to ~60.3 by the time this
+    card actually ran -- the mechanism was correct but its target had moved
+    out from under it. Not committing the ineffective 123-line mesher.py
+    addition; this test instead locks in the improvement those other cards
+    already earned, with margin so normal numeric drift doesn't flake it.
+    A real skew reduction still needs a fresh diagnosis against the current
+    baseline (THINSLIVER2 follow-up), not the stale 82.44 driver-cell
+    analysis.
+    """
+    _result, case_dir, _vertices, _faces = naca_mesh
+    poly = case_dir / "constant" / "polyMesh"
+    bnd_skew = _boundary_skew_max(poly)
+    assert bnd_skew <= 70.0, (
+        f"naca0012 boundary skew {bnd_skew:.2f} exceeds regression-lock gate "
+        "70.0 (measured ~60.3)."
+    )
+
+
 def test_naca_degenerate_slivers_bounded(naca_mesh) -> None:
     """Regression lock for Phase1b's real win: degen must stay <= 15.
 
