@@ -165,6 +165,54 @@ def _skew_proxy(pts: np.ndarray, tets: np.ndarray) -> float:
     return max(internal_max, boundary_max)
 
 
+def _nonortho_proxy(pts: np.ndarray, tets: np.ndarray) -> float:
+    """Evaluator-faithful max non-orthogonality proxy (CYLSKEW4/beta2831).
+
+    Angle (deg) between the internal-face owner/neighbour centroid line and
+    the face normal, maximised over all internal faces. 0 = perfectly
+    orthogonal, up to 90 = worst. Reuses the `_skew_proxy` face-map build.
+    """
+    T = int(tets.shape[0])
+    if T == 0:
+        return 0.0
+    faces = np.concatenate([
+        tets[:, [0, 1, 2]], tets[:, [0, 1, 3]],
+        tets[:, [0, 2, 3]], tets[:, [1, 2, 3]],
+    ], axis=0)
+    owners = np.tile(np.arange(T, dtype=np.int64), 4)
+    sfaces = np.sort(faces, axis=1)
+    uniq, inv, counts = np.unique(
+        sfaces, axis=0, return_inverse=True, return_counts=True
+    )
+    inv = np.asarray(inv).ravel()
+    cc = pts[tets].mean(axis=1)
+    own_sorted = owners[np.argsort(inv, kind="stable")]
+    starts = np.zeros(counts.shape[0], dtype=np.int64)
+    starts[1:] = np.cumsum(counts)[:-1]
+
+    int_mask = counts == 2
+    if not bool(int_mask.any()):
+        return 0.0
+    st = starts[int_mask]
+    p_own = cc[own_sorted[st]]
+    p_nbr = cc[own_sorted[st + 1]]
+    fv = pts[uniq[int_mask]]                      # (I, 3, 3)
+    n = np.cross(fv[:, 1] - fv[:, 0], fv[:, 2] - fv[:, 0])
+    n_mag = np.linalg.norm(n, axis=1)
+    d = p_nbr - p_own
+    d_mag = np.linalg.norm(d, axis=1)
+    valid = (n_mag > 1e-30) & (d_mag > 1e-30)
+    if not bool(valid.any()):
+        return 0.0
+    cos_a = np.clip(
+        np.abs(np.einsum("ij,ij->i", n[valid], d[valid]))
+        / (n_mag[valid] * d_mag[valid]),
+        -1.0, 1.0,
+    )
+    angle_deg = np.degrees(np.arccos(cos_a))
+    return float(np.nanmax(angle_deg)) if angle_deg.size else 0.0
+
+
 def generate_native_tet(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -863,13 +911,50 @@ def generate_native_tet(
     # CYLSKEW1 (beta2822) — near-wall offset-ring Delaunay seeds (default OFF,
     # AUTO_TESSELL_TET_OFFSET_RING=1). Seeding-only; envelope/clip/surface-lock
     # 하류 로직은 건드리지 않는다 — Delaunay 시드가 늘 뿐이다.
+    # CYLSKEW4 (beta2831) — env=1 경로: off/on 두 seed set 에 값싼 raw Delaunay
+    # (표면회복/최적화 前) 후 _skew_proxy/_nonortho_proxy 를 select_offset_ring_variant
+    # 에 공급해 채택 여부를 게이트한다. env 미설정(기본)은 완전 무변경 — 회귀 0.
     _offset_ring_pts = np.zeros((0, 3), dtype=np.float64)
     if os.environ.get("AUTO_TESSELL_TET_OFFSET_RING") == "1":
-        from core.generator.native_tet.offset_ring import offset_ring_seed_points
-        _offset_ring_pts, _or_info = offset_ring_seed_points(V, F, float(target_edge_length))
+        from core.generator.native_tet.offset_ring import (
+            offset_ring_seed_points, select_offset_ring_variant,
+        )
+        _cand_pts, _or_info = offset_ring_seed_points(V, F, float(target_edge_length))
+        log.info("native_tet_offset_ring", **_or_info)
+        if _cand_pts.shape[0]:
+            off_metrics: dict[str, float] = {}
+            on_metrics: dict[str, float] = {}
+            try:
+                from scipy.spatial import Delaunay as _RawDelaunay
+                off_tri = _RawDelaunay(all_pts)
+                on_pts = np.vstack([all_pts, _cand_pts])
+                on_tri = _RawDelaunay(on_pts)
+                off_metrics = {
+                    "skew": _skew_proxy(all_pts, off_tri.simplices),
+                    "nonortho": _nonortho_proxy(all_pts, off_tri.simplices),
+                }
+                on_metrics = {
+                    "skew": _skew_proxy(on_pts, on_tri.simplices),
+                    "nonortho": _nonortho_proxy(on_pts, on_tri.simplices),
+                }
+            except Exception as _proxy_exc:
+                log.debug(
+                    "native_tet_offset_ring_proxy_failed",
+                    reason=str(_proxy_exc)[:120],
+                )
+            _offset_ring_pts, _sel_info = select_offset_ring_variant(
+                _cand_pts, off_metrics, on_metrics,
+            )
+            log.info(
+                "native_tet_offset_ring_select",
+                decision=_sel_info.get("decision"),
+                off_skew=off_metrics.get("skew"),
+                on_skew=on_metrics.get("skew"),
+                off_nonortho=off_metrics.get("nonortho"),
+                on_nonortho=on_metrics.get("nonortho"),
+            )
         if _offset_ring_pts.shape[0]:
             all_pts = np.vstack([all_pts, _offset_ring_pts])
-        log.info("native_tet_offset_ring", **_or_info)
 
     log.info("native_tet_seed", n_points=all_pts.shape[0], n_grid_inside=grid.shape[0])
 

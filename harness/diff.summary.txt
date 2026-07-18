@@ -1,12 +1,13 @@
-card: CYLSKEW3
-file: core/generator/native_tet/offset_ring.py
-functions: select_offset_ring_variant
-lines_added: 34
-lines_removed: 0
+card: CYLSKEW4
 
-file: tests/test_native_tet_offset_ring_select.py (new)
-functions: test_cylinder_keep, test_sphere_n500_revert, test_sphere_n1000_keep, test_missing_metric_reverts
-lines_added: 40
-lines_removed: 0
+file: core/generator/native_tet/mesher.py
+functions: _nonortho_proxy (new, ~46 lines, reuses _skew_proxy face-map),
+  generate_native_tet seeding hook rewrite (line ~866, env=1 branch adds
+  raw-Delaunay off/on best-of-two proxy + select_offset_ring_variant gate
+  + native_tet_offset_ring_select log)
+lines_added: 88
+lines_removed: 3
 
-mesher.py: 0 lines changed (caller 미연결, confirmed via git diff --stat + status)
+note: env-unset path structurally unchanged (only comment lines added
+above the guard; `_offset_ring_pts` init and vstack logic identical).
+Verification not run here per role boundary (unit_tester's job).
