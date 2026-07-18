@@ -94,12 +94,19 @@ selective repair UI.
   wall_dev_max 0.0353→0.008 (gate <0.02); negative_volumes=0 throughout.
   Next: hex quality (skew 4.64 on standard post-snap — bounded but
   unoptimized), then extend the solid-preservation methodology to poly.
-- **native_poly ~20%** (first measured 2026-07-18, POLY-S1): canonical smoke
-  (`scripts/smoke_native_poly.py`) + solid gates landed. cube draft N=500:
-  surface 6.000 and degen 0 PASS (permanent gates); **void 7.588** (more
-  phantom interior wall than actual surface — the old verdict=PASS was blind
-  to it) and **vol 1.177** are xfail(strict). Next (POLY-S2): the tet->dual
-  construction's open-wall defect behind both failures.
+- **native_poly ~25%** (measured 2026-07-18, S1+S2): canonical smoke
+  (`scripts/smoke_native_poly.py`) + solid gates landed (S1); surface 6.000
+  and degen 0 are permanent gates. S1's working hypothesis (boundary
+  open-wall) was disproved by measurement and fixed properly in S2: the real
+  cause was tet->dual's per-cell ConvexHull construction triangulating each
+  non-planar dual interface differently, so adjacent cells' shared face
+  never vertex-matched and leaked out as void on both sides (0/48 void faces
+  even near-duplicated — tolerant matching couldn't have fixed this either).
+  Replaced with a topological path: each interior tet edge's ordered
+  centroid ring is emitted directly as the one shared face, guaranteeing
+  2-cell sharing by construction. void 7.588->2.435 (still xfail, -68%),
+  volume 1.177->1.119 (unchanged scope, carried to S3). Next (POLY-S3):
+  boundary open-fan cap precision (void->~0, volume->1.0), then S4 quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to
