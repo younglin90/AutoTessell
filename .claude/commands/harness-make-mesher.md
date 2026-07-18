@@ -99,9 +99,12 @@ $ARGUMENTS
 - **`except Exception → log.debug` 가 버그를 오래 숨긴 전례가 많다.** 패스가 0ms 거나
   아무 일도 안 하는 것처럼 보이면 verbose 로깅부터 켜라.
 
-## 알려진 결함 — 쫓지 말 것
+## 알려진 결함 — 쫓지 말 것 (단, 카드 귀인 판정 시 참고)
 
 - `test_native_tet_phase_a_improves_cube_boundary` — **플래키** (단독 실행 실패, 묶으면 통과)
+- `test_cylinder_wall_fidelity` — **스위트 문맥에서 간헐 실패** (~2/3, dev 0.359 = P4C 구제
+  미발동/미반영; 단독 3/3 통과). BETA2826 smooth 블록 유무 A/B 각 3회에서 **동일 실패율**
+  확인 → 특정 카드 탓 아님. 근본 원인(메셔 비결정성 의심) 미규명 — **조사 후보**.
 - `test_generator.py::TestTierGracefulFail::{test_tier_wildmesh_quality_params_draft,
   test_tier_wildmesh_section_topology_detects_hole}` — pristine HEAD 에서도 실패
 
