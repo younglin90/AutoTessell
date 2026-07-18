@@ -1,113 +1,128 @@
-# AutoTessell Product Roadmap
+# AutoTessell Roadmap
 
-Derived from the product spec set 2026-07-18. Three pillars — surface input,
-volume meshing, export — plus cross-cutting invariants. Status is **measured**
-against the current codebase, not aspirational; percentages cite the evidence.
+Two products, one platform:
 
-## Governing invariant (spec: "최중요사항")
+- **Track A — Meshing** (this repo's shipped core): surface input → native
+  volume engines (tet/hex/poly) → export. Spec set 2026-07-18.
+- **Track B — CFD Surrogate / Digital-Twin platform** (new, spec + architecture
+  review 2026-07-18): CFD *results* in → data contract → strategy registry of
+  operator-learning models → fair evaluation → (eventually) operational twin.
+  Full contract: `docs/TWIN_PLATFORM_SPEC.md` — the authority for Track B;
+  this file only sequences it.
 
-> The pre-meshing surface must not be altered by volume meshing and must be
-> preserved exactly in the final mesh. **This outranks every other goal.**
+Meshing is upstream of solving (OpenFOAM), which is upstream of the twin
+platform. They share real subsystems (below), but their maturity is very
+different: Track A is mid-flight with measured gates; Track B starts at its
+own Stage 0 (data contract) by explicit design — *"데이터 계약과 평가 프로토콜을
+먼저 고정하고 모델을 순차적으로 추가한다."*
 
-Status: this is now enforced for native_tet and measured by permanent gates —
-surface coverage exactly equals the input area (6.000/6.000 on the cube),
-zero off-surface boundary area, side-wall deviation 0.000 on the curved
-cylinder (`tests/test_native_tet_solid_volume.py`,
-`scripts/smoke_native_cylinder.py`). Every future engine change must keep
-these gates green; the same gates must be generalized to hex/poly (open).
+## Governing invariants
 
----
-
-## Pillar 1 — Surface input                                  **~45%**
-
-| Item | Status | Evidence / gap |
-|---|---|---|
-| Load STL/OBJ/PLY/OFF/3MF/STEP/IGES/BREP | **Done** | native readers + CAD tessellation (`core/analyzer/`) |
-| Integrity check (manifold, watertight, self-intersection) | **Done (global)** | `geometry_analyzer` topology report |
-| Problem *localization* + user notification | **Partial** | analyzer reports counts, not regions; GUI shows summary only |
-| Auto-repair (L1 repair / L2 remesh / L3 reconstruct) | **Done (pipeline)** | `core/preprocessor/`; runs as a pipeline stage |
-| Per-problem *selective* repair (user chooses per finding) | **Missing** | repair is all-or-nothing today |
-| Multiple surface inputs | **Missing** | `desktop/server.py` upload is single-file |
-| Boolean merge of multiple surfaces (user-chosen operator) | **Missing** | no mesh-arrangement/CSG anywhere in `core/` |
-
-Next steps (order):
-1. **S1 Multi-file upload + assembly list** (server + GUI; each part gets a
-   patch name — also the foundation for per-face BL toggles in Pillar 2).
-2. **S2 Boolean merge** — reference: fTetWild's volumetric mesh-arrangement
-   (papers/02, §filtering: per-input winding numbers evaluate arbitrary
-   Boolean expressions). This is the native-first route: insert all surfaces,
-   keep tets by Boolean of winding numbers — no fragile surface-surface CSG.
-3. **S3 Problem localization UI** — per-defect list (open edges, non-manifold
-   edges, self-intersections) with viewer highlighting and per-item
-   "auto-fix?" choice driving the existing L1/L2 machinery.
-
-## Pillar 2 — Volume meshing                                 **~55%**
-
-Engines: native_tet (baseline: WildMesh/fTetWild), native_hex (baseline:
-cfMesh/snappyHexMesh), native_poly. Mesh type is an explicit user choice
-(Auto removed 2026-07-18); default engine is Native Tet.
-
-### 2a. native_tet                                           **~65%**
-| Item | Status | Evidence |
-|---|---|---|
-| Solid correctness (surface/void/tiling/degenerate) | **Done (cube)** | 4 permanent gates, all green, P4C=0 |
-| Quality: cube draft standalone | **Done** | skew 1.81 (threshold 8.0), verdict PASS, P4C=0 |
-| Quality: curved (cylinder) standalone | **In progress** | fidelity done (dev 0.000); skew 4.16e3 → BETA2828 card in build |
-| N-targeting | **Done** | 99x overshoot → ±3% for N≥2000 |
-| Full 4-op improvement schedule (split/collapse/swap/smooth) | **Open** | flip inversion-safety landed (ed56fd31); schedule not wired |
-| Hard-geometry bench (12 STL matrix) | **Open** | untested standalone |
-
-### 2b. native_hex                                           **~15% (unmeasured)**
-Exists (`core/generator/native_hex/mesher.py`) but has had no correctness
-campaign. Next: port the tet methodology — canonical smoke script, solid
-invariant gates (surface area identity, void=0, volume tiling), then quality.
-
-### 2c. native_poly                                          **~15% (unmeasured)**
-Same approach; known issue: poly BL hybrid pass produces 1280 negative-volume
-prisms (pre-existing, documented in test_bl_numerical_quality).
-
-### 2d. Common engine features
-| Item | Status | Gap |
-|---|---|---|
-| Target cell count N | **tet done, netgen done** | hex/poly unwired |
-| Boundary layers (count + growth ratio) | **Done (native_bl)** | growth ratio in GUI (2026-07-17) |
-| BL only on user-enabled faces | **Partial** | `ignore_patch_names` exists in BLConfig; no GUI face/patch toggles (depends on S1 patch naming) |
-| BL element type per engine (prism/hex/poly) | **Partial** | prism done; tet_bl_subdivide conformal (fixed); hex/poly BL via cfMesh dicts only |
-| Quality (skew / non-ortho / aspect ratio) | **In progress** | KPI panel shows all three (2026-07-17); engine-side: tet cube at reference-class |
-| MPI parallelism | **Missing** | no mpi4py anywhere |
-| Multithreading | **Partial** | chunked-Delaunay helper exists (`native_tet/parallel.py`); smoothing/insertion single-threaded |
-
-Next steps (order):
-1. **V1 Finish tet curved quality** (BETA2828 in build) → cylinder PASS.
-2. **V2 Tet hard-geometry campaign** — 12-STL bench standalone, fix walls
-   found, then wire the full 4-op schedule (now unblocked).
-3. **V3 Hex correctness campaign** (gates first, quality second) — this is
-   where the cfMesh/snappy baseline porting begins in earnest.
-4. **V4 Per-patch BL toggles** (after S1) + poly BL negative-prism fix.
-5. **V5 Parallel**: multithread the improvement passes (graph-coloring vertex
-   smoothing per fTetWild §3.5), then MPI domain decomposition — last, since
-   correctness gates must be able to catch parallel-induced nondeterminism
-   (lesson: the [0.15,0.18) dead-zone hunt).
-
-## Pillar 3 — Export                                          **~90%**
-polyMesh ZIP + VTU/VTK/Fluent/CGNS/SU2/Nastran/Tecplot/STL/OBJ/PLY are live in
-the web GUI. Remaining: per-format regression fixtures and patch-name
-round-trip fidelity once S1 lands multi-part naming.
+1. **(Track A, spec "최중요사항")** The pre-meshing surface must not be altered
+   by volume meshing and must be preserved exactly in the final mesh. Enforced
+   today for native_tet by permanent gates (surface-area identity, zero
+   off-surface boundary, cylinder wall dev 0.000). Outranks every other goal.
+2. **(Track B, spec §16)** The platform's core asset is the **data contract,
+   transformation lineage, compatibility judgement, and fair evaluation** —
+   not any particular network. No model lands before Stage 0 is fixed.
+3. **(Both)** GUI never runs heavy compute in-process. Track A already runs
+   meshing in a server/worker; Track B formalizes this as job-spec'd worker
+   processes (CPU/MPI/GPU) — one job model for both tracks.
 
 ---
+
+## Track A — Meshing                                          **~60%**
+
+### A-1 Surface input                                         ~45%
+Done: STL/OBJ/PLY/OFF/3MF/STEP/IGES/BREP readers; global integrity checks;
+L1/L2/L3 auto-repair pipeline.
+Missing: multi-file upload, Boolean merge, per-defect localization +
+selective repair UI.
+- **S1 Multi-file upload + assembly/patch naming** — also feeds Track B's
+  BoundaryPatch entities and per-patch BL.
+- **S2 Boolean merge** via fTetWild-style per-input winding numbers (volume
+  judgement, not surface CSG — preserves invariant 1; same mechanism the twin
+  spec cites for mesh arrangement).
+- **S3 Defect localization + per-item auto-fix choice** (spec §8 editor flow:
+  patch import → seed → region growing → normal threshold → lasso → validate).
+  The §8 validator list (duplicate faces, unassigned faces, periodic pairs,
+  normals, units) applies verbatim.
+
+### A-2 Volume engines                                        ~60%
+- **native_tet ~70%**: solid gates green (cube P4C=0, PASS, skew 1.81);
+  cylinder fidelity 0.000 and skew 4160→44.9 (2026-07-18) — remaining:
+  cylinder ≤8.0 (cap-sliver card), 12-STL hard-geometry bench, full 4-op
+  schedule (flip inversion-safety landed).
+- **native_hex ~15% / native_poly ~15%** (unmeasured): port the tet
+  methodology — canonical smoke, solid gates, then quality. Baselines:
+  cfMesh/snappyHexMesh (hex).
+- Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
+  done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
+  Parallelism deliberately LAST (invariant: correctness gates must be able to
+  catch parallel nondeterminism first — the dead-zone lesson).
+
+### A-3 Export                                                ~90%
+10 formats live. Remaining: per-format fixtures; patch-name round-trip after
+S1. Note: Track B ingests VTK/CGNS — CGNS *export* from the mesher becomes a
+bridge deliverable (mesh + patch/BC semantics feed the twin's canonical store).
+
+## Track B — Surrogate/Twin platform                          **~0% (spec fixed)**
+
+Stages and exit criteria are authoritative in `docs/TWIN_PLATFORM_SPEC.md` §15;
+integration tiers in §10/§16. Summary sequencing:
+
+- **B0 Data contract** — canonical schema, field/BC ontology, unit/coordinate
+  rules, topology/geometry hashes, DatasetSignature, plugin capability
+  contract, license inventory. *Shared with Track A*: patch/BC ontology (S1),
+  geometry/topology hashing (the mesher already computes surface hashes for
+  fidelity gates — reuse).
+- **B1 Load + Viewer MVP** — VTK/CGNS readers, patch import, region-growing
+  selection, BC editor, wall distance/masks, raw+canonical stores. *Shared*:
+  the boundary editor is the same component A-1/S3 needs; build once.
+- **B2 Preprocessing + baselines** — versioned DAG, group splits before
+  normalization, remap-error floor, Zarr cache, POD/PCA + PyDMD + OpInf +
+  FNO/TFNO, MLflow, truth/pred/error viewer.
+- **B3 Unstructured + varying geometry** — Transolver, GINO, MGN transient,
+  query outputs, ensemble/OOD display.
+- **B4 Large 3D + HPC** — DDP/FSDP, MPI preprocessing, halo/patch, DoMINO,
+  AB-UPT, scheduler backends, checkpoint/resume.
+- **B5 Research track** — Transolver-3, PGD-NO behind reproduction gates.
+- **B6 Operational twin** — sensor streams, assimilation, drift detection,
+  two-way interface.
+
+MVP data combos (spec §16): same-geometry structured (ROM+FNO) →
+varying-geometry unstructured steady (Transolver+GINO) → fixed-topology
+unstructured transient (MGN). Hardest last: varying geometry + transient +
+changing topology.
+
+## Shared subsystems (build once, serve both)
+
+| Subsystem | Track A use | Track B use |
+|---|---|---|
+| Patch/BC ontology + boundary editor | per-patch BL, BC export | BoundaryPatch/BCInstance entities (B0/B1) |
+| Geometry/topology/coordinate hashes | mesh identity, fidelity gates | DatasetSignature geometry_relation (B0) |
+| Job manager + worker process split | long meshing jobs, cancel/resume | MPI/GPU training jobs (B4) — same job spec |
+| Viewer (VTK/WebGL) sync'd compare | mesh QC (KPI, colormaps) | truth/pred/error modes (B2, spec §11) |
+| CGNS I/O | mesh+BC export (A-3 bridge) | canonical store (B0-B1) |
 
 ## Sequencing (near-term)
 
 ```
-now      V1 cylinder quality (in build)
-next     S1 multi-file+patches ──┬── V2 tet hard-geometry bench
-                                 └── V4 per-patch BL (needs S1)
-then     S2 boolean merge (winding-number route)
-         V3 hex campaign
-later    S3 selective-repair UI, V5 MPI/threads, export fixtures
+now      A: cylinder ≤8.0 (cap-sliver card) · hex smoke+gates 캠페인 시작
+next     S1 multi-file+patch naming  ←— unblocks A per-patch BL AND seeds B0
+         A: 12-STL tet hard-geometry bench
+then     B0 data contract (schema/ontology/hashes/DatasetSignature) — design
+         doc first, validator second;  S2 boolean merge (winding-number)
+later    B1 viewer+readers (shared boundary editor) · V3 hex quality ·
+         B2 baselines (ROM before any neural operator — 누수 검출 기준선)
+last     parallel/MPI (A V5, B B4) · B5/B6
 ```
 
-Method notes that got us here (keep): measure before planning (guessing was
-refuted 4+ times), one canonical measurement script per geometry, primary-
-source diffs against vendored fTetWild, relative (before/after) guards never
-absolute ones, and the surface-preservation gates as the non-negotiable floor.
+## Method (keep)
+
+Measure before planning (guessing refuted 4+ times) · one canonical
+measurement script per geometry · primary-source diffs against vendored
+references · relative before/after guards, never absolute · surface
+preservation and (for B) train-only fitting + group splits as non-negotiable
+floors · new models enter through the strategy registry with declared
+capabilities, disabled (not warned) when incompatible.
