@@ -57,13 +57,21 @@ selective repair UI.
   re-smooth — R-c7 in attempts_catalog); the only route is **near-wall interior
   point insertion** (Garimella offset ring), a multi-card effort. Remaining:
   near-wall insertion, 12-STL hard-geometry bench, full 4-op schedule (flip
-  inversion-safety landed).
-- **native_hex ~30%**: solid gates green on the cube (surface 6.000/void
-  0.000/vol 1.000/degen 0, skew 3.6e-16) — but the cube is a Cartesian grid's
-  trivial best case. Real defect measured and gated (xfail): curved-wall
-  **staircase** on the cylinder (wall dev 0.047, skew ~0). Next: standard/fine
-  boundary-snap must fit the wall while keeping skew bounded and the four solid
-  invariants intact.
+  inversion-safety landed). SI-detection memoization landed (2026-07-18,
+  zero-regression dedup of the rebudget loop's repeated calls) but did NOT
+  fix the bench's 3 TIMEOUT shapes (sphere, sphere_watertight,
+  high_genus_dual_torus) — direct instrumentation showed SI detection was
+  never the bottleneck (~1.2s/call, not the ~17.8s a log-gap estimate
+  implied). Open: profile the tet generation/CDT/quality passes themselves
+  to find what actually dominates sphere.stl's ~130s.
+- **native_hex ~40%**: solid gates green on the cube (surface 6.000/void
+  0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed
+  (2026-07-18): per-vertex wall-fit snap (envelope-projected, accepted only
+  on strictly-decreasing surface distance + positive-volume/orientation
+  guard on every incident cell) closed cylinder standard wall_dev_max
+  0.0466→0.0032 (gate <0.02, now a permanent test, not xfail); negative
+  volumes 0. Next: extend the same guard to fine quality, then hex quality
+  (skew currently 4.64 post-snap — bounded but unoptimized).
 - **native_poly ~15%** (unmeasured): port the tet methodology — canonical
   smoke, solid gates, then quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
