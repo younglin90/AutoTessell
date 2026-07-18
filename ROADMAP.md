@@ -31,7 +31,7 @@ own Stage 0 (data contract) by explicit design — *"데이터 계약과 평가 
 
 ---
 
-## Track A — Meshing                                          **~60%**
+## Track A — Meshing                                          **~65%**
 
 ### A-1 Surface input                                         ~45%
 Done: STL/OBJ/PLY/OFF/3MF/STEP/IGES/BREP readers; global integrity checks;
@@ -48,39 +48,50 @@ selective repair UI.
   The §8 validator list (duplicate faces, unassigned faces, periodic pairs,
   normals, units) applies verbatim.
 
-### A-2 Volume engines                                        ~60%
-- **native_tet ~70%**: solid gates green (cube P4C=0, PASS, skew 1.81);
-  cylinder fidelity 0.000 and skew 4160→44.9 (2026-07-18). The residual 44.9 is
-  **structural**, not a tuning gap: cylinder.stl has only two side-wall z-rings
-  (z=±0.5), so any wall-conforming tet is a full-height flat cap with tiny
-  normal_dist. Three fixes were measured and refuted (flip, boundary-edge split,
-  re-smooth — R-c7 in attempts_catalog); the only route is **near-wall interior
-  point insertion** (Garimella offset ring), a multi-card effort. Remaining:
-  near-wall insertion, 12-STL hard-geometry bench, full 4-op schedule (flip
-  inversion-safety landed). SI-detection memoization landed (2026-07-18,
-  zero-regression dedup of the rebudget loop's repeated calls) but did NOT
-  fix the bench's 3 TIMEOUT shapes — direct instrumentation (cProfile, not
-  log-gap inference) showed the real bottleneck was
-  `core/utils/aabb.py:closest_points_all_shared` (71% of profiled wall,
-  660k scalar-per-query calls to a leaf routine vectorized only over its own
-  <=8 triangles). Fixed by batching the whole active-query set through each
-  leaf in one call — cumtime 62.4s -> ~2.8s. All 3 former TIMEOUT bench rows
-  re-measured (2026-07-18): `sphere.stl` 143.5s->29s **PASS**,
-  `sphere_watertight.stl` same **PASS**. `high_genus_dual_torus.stl`
-  >120s->55s but **FAIL** — the timeout was masking a real solid-invariant
-  defect (area-ratio 0.562, vol-ratio 0.472: mesh covers/fills only ~half the
-  input on this genus-2 topology), joining the perforated_plate/sharp_ridge
-  coverage-collapse cluster as the next thing to root-cause. Same speed
-  investigation also caught a **pre-existing
-  correctness bug**: `TriangleBVH.build()`'s recursive split wrote a local
-  argsort rank as if it were a global triangle id, corrupting `tri_order`
-  below the root (27/137 triangles duplicated/dropped in a repro) — this
-  backs envelope/hausdorff/cdt_recovery/signed_distance queries project-wide,
-  so it could have silently returned a wrong nearest-triangle anywhere those
-  are used. One-line fix, ~80 BVH-adjacent tests unchanged after.
+### A-2 Volume engines                                        ~65%
+- **native_tet ~75%**: solid gates green (cube P4C=0, PASS, skew 1.81);
+  cylinder fidelity 0.000, skew 4160→44.9→**40.8** (2026-07-18, see below).
+  **Coverage-collapse cluster closed (3/3)**: `high_genus_dual_torus.stl`
+  (BETA2832 — `_final_validate`'s unconditional keep-largest-component was
+  discarding a whole disjoint torus body; replaced with a relative guard,
+  area/vol-ratio 0.56/0.47→1.01/1.01), `many_small_features_perforated_plate.stl`
+  (BETA2833 — the same destructive clamp lived one layer upstream in L1
+  pymeshfix's `remove_smallest_components`; fixed with per-component repair +
+  an aggregate guard so many-small-bodies inputs can't be filtered away
+  piecemeal even when no single body trips the 5%-of-max threshold),
+  `sharp_features_micro_ridge.stl` (SHARPRIDGE1 — L2's cotan Laplacian
+  smoothing has no free-boundary pin and was collapsing a thin open ridge
+  to a point; added the same monotone area/Hausdorff revert-guard pattern).
+  All three verified via the same canonical bench script, all three fixes
+  are pure relative guards that no-op on healthy single-body input.
+  **Sphere-class TIMEOUT cluster closed**: `core/utils/aabb.py`'s BVH leaf
+  routine was called once per query point (660k scalar calls, 71% of
+  profiled wall) instead of batched; vectorizing it dropped cumtime
+  62.4s→2.8s and took `sphere.stl`/`sphere_watertight.stl` from 143s
+  TIMEOUT to 29s PASS. The same investigation caught a **pre-existing
+  correctness bug** in `TriangleBVH.build()` (a local argsort rank written
+  as if it were a global triangle id, corrupting `tri_order` below the
+  root — backs every envelope/hausdorff/cdt_recovery/signed_distance query
+  project-wide) — fixed, ~80 BVH-adjacent tests unchanged.
+  **Flat-all-surface-sliver sequence closed (FSL1→FSL4)** on dual_torus's
+  residual quality FAIL: detector (read-only) → guarded 2-3 flip
+  (infrastructure proven safe, but 0/9 eligible slivers were actually the
+  FAIL driver — correctly a no-op) → known-limit gates (61 unflippable
+  wedges are structurally coplanar-flat, cure needs the same
+  near-wall-insertion class of fix as cylinder skew, out of scope; volume
+  tiling locked at 0.99 so it can never silently regress, cure target
+  pinned as xfail(strict) so a future fix trips a loud alarm instead of
+  going unnoticed). **CYLSKEW1** landed the first card of that
+  near-wall-insertion sequence (Garimella offset-ring seeding, default OFF,
+  seeding-stage-only hook, proven not to leak onto the boundary) — as an
+  unplanned bonus, even this unrefined seeding measured skew 44.9→40.8
+  before any of the filtering/guarding follow-up cards.
+  Remaining: CYLSKEW2-4 (wall-adjacent filtering, monotone accept/revert,
+  default-on), 12-STL hard-geometry bench sweep beyond the shapes above,
+  full 4-op schedule.
 - **native_hex ~45%**: solid gates green on the cube (surface 6.000/void
   0.000/vol 1.000/degen 0, skew 3.6e-16). Curved-wall **staircase** fixed on
-  both quality levels (2026-07-18, 3-card sequence, all permanent gates now):
+  both quality levels (3-card sequence, all permanent gates now):
   (1) per-vertex wall-fit snap (envelope-projected, accepted only on
   strictly-decreasing surface distance + positive-volume/orientation guard
   on every incident cell) closed cylinder standard wall_dev_max
@@ -92,21 +103,30 @@ selective repair UI.
   (binary-search fraction t*, min 0.706). Backtracking to the largest t*
   that still passes the *same* unmodified guard (no relaxation) took fine
   wall_dev_max 0.0353→0.008 (gate <0.02); negative_volumes=0 throughout.
-  Next: hex quality (skew 4.64 on standard post-snap — bounded but
-  unoptimized), then extend the solid-preservation methodology to poly.
-- **native_poly ~25%** (measured 2026-07-18, S1+S2): canonical smoke
+  Follow-up: post-snap boundary skew (4.64) was decomposed to its root
+  (wall-fit snap collapses the boundary cell's wall-normal thickness |nd|);
+  freezing surface vertices and relaxing only the free interior vertices of
+  flagged sliver cells restored it to 2.84 (new permanent gate ≤3.0) with a
+  bonus fix — fine's pre-existing (undetected) negative_volumes=8 dropped to
+  0 too, now permanently gated on both quality levels. Next: further skew
+  reduction, then extend the solid-preservation methodology to poly.
+- **native_poly ~30%** (measured 2026-07-18, S1→S3): canonical smoke
   (`scripts/smoke_native_poly.py`) + solid gates landed (S1); surface 6.000
   and degen 0 are permanent gates. S1's working hypothesis (boundary
-  open-wall) was disproved by measurement and fixed properly in S2: the real
-  cause was tet->dual's per-cell ConvexHull construction triangulating each
+  open-wall) was disproved by measurement — the real cause (S2) was
+  tet->dual's per-cell ConvexHull construction triangulating each
   non-planar dual interface differently, so adjacent cells' shared face
-  never vertex-matched and leaked out as void on both sides (0/48 void faces
-  even near-duplicated — tolerant matching couldn't have fixed this either).
-  Replaced with a topological path: each interior tet edge's ordered
-  centroid ring is emitted directly as the one shared face, guaranteeing
-  2-cell sharing by construction. void 7.588->2.435 (still xfail, -68%),
-  volume 1.177->1.119 (unchanged scope, carried to S3). Next (POLY-S3):
-  boundary open-fan cap precision (void->~0, volume->1.0), then S4 quality.
+  never vertex-matched and leaked out as void on both sides; replaced with a
+  topological path (each interior tet edge's ordered centroid ring emitted
+  directly as the one shared face, guaranteeing 2-cell sharing by
+  construction) — void 7.588→2.435 (-68%). S3 found the residual void was
+  two more boundary-only bugs in the same file (cap faces over-classified
+  as boundary when they merely touched a surface point instead of lying
+  fully on one; boundary-edge seams between adjacent boundary cells had no
+  separating face at all) — fixing both closed void to **0.000 exactly**
+  (now a permanent gate) and volume to 1.077 (from 1.177, still xfail —
+  missed the <=1.05 target, follow-up scoped). Next (POLY-S4): close the
+  remaining ~7.7% boundary-cell overfill, then quality (skew).
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to
@@ -159,12 +179,13 @@ changing topology.
 ## Sequencing (near-term)
 
 ```
-now      A: cylinder ≤8.0 (cap-sliver card) · hex smoke+gates 캠페인 시작
+now      A: CYLSKEW2-4 (near-wall insertion, wall-filter + monotone guard)
+         · POLY-S4 (boundary-cell overfill) · hex skew reduction
 next     S1 multi-file+patch naming  ←— unblocks A per-patch BL AND seeds B0
-         A: 12-STL tet hard-geometry bench
+         A: 12-STL hard-geometry bench sweep beyond the closed cluster
 then     B0 data contract (schema/ontology/hashes/DatasetSignature) — design
          doc first, validator second;  S2 boolean merge (winding-number)
-later    B1 viewer+readers (shared boundary editor) · V3 hex quality ·
+later    B1 viewer+readers (shared boundary editor) ·
          B2 baselines (ROM before any neural operator — 누수 검출 기준선)
 last     parallel/MPI (A V5, B B4) · B5/B6
 ```
