@@ -88,3 +88,40 @@ def offset_ring_seed_points(
         "surf_floor": float(surf_floor),
     }
     return P, info
+
+
+def select_offset_ring_variant(
+    seeds: np.ndarray,
+    off_metrics: dict[str, float],
+    on_metrics: dict[str, float],
+    skew_tol: float = 0.0,
+    nonortho_tol: float = 2.0,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """CYLSKEW3 — offset-ring seed 채택을 monotone dominance 로 결정하는 순수 helper.
+
+    두 metric dict(`{"skew":.., "nonortho":..}`)를 비교해 seeds 를 그대로 채택할지
+    빈 배열로 revert 할지 결정한다. **caller 미연결(스켈레톤) — default OFF 불변.**
+    """
+
+    def _get(m: dict[str, float] | None, key: str) -> float:
+        if m is None:
+            return float("nan")
+        v = m.get(key)
+        if v is None:
+            return float("nan")
+        return float(v)
+
+    off_skew, off_nonortho = _get(off_metrics, "skew"), _get(off_metrics, "nonortho")
+    on_skew, on_nonortho = _get(on_metrics, "skew"), _get(on_metrics, "nonortho")
+
+    vals = (off_skew, off_nonortho, on_skew, on_nonortho)
+    if any(np.isnan(vals)):
+        keep = False
+    else:
+        keep = (on_skew <= off_skew + skew_tol) and (
+            on_nonortho <= off_nonortho + nonortho_tol
+        )
+
+    if keep:
+        return np.asarray(seeds, dtype=np.float64), {"decision": "keep"}
+    return np.zeros((0, 3), dtype=np.float64), {"decision": "revert"}
