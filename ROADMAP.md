@@ -50,12 +50,22 @@ selective repair UI.
 
 ### A-2 Volume engines                                        ~60%
 - **native_tet ~70%**: solid gates green (cube P4C=0, PASS, skew 1.81);
-  cylinder fidelity 0.000 and skew 4160→44.9 (2026-07-18) — remaining:
-  cylinder ≤8.0 (cap-sliver card), 12-STL hard-geometry bench, full 4-op
-  schedule (flip inversion-safety landed).
-- **native_hex ~15% / native_poly ~15%** (unmeasured): port the tet
-  methodology — canonical smoke, solid gates, then quality. Baselines:
-  cfMesh/snappyHexMesh (hex).
+  cylinder fidelity 0.000 and skew 4160→44.9 (2026-07-18). The residual 44.9 is
+  **structural**, not a tuning gap: cylinder.stl has only two side-wall z-rings
+  (z=±0.5), so any wall-conforming tet is a full-height flat cap with tiny
+  normal_dist. Three fixes were measured and refuted (flip, boundary-edge split,
+  re-smooth — R-c7 in attempts_catalog); the only route is **near-wall interior
+  point insertion** (Garimella offset ring), a multi-card effort. Remaining:
+  near-wall insertion, 12-STL hard-geometry bench, full 4-op schedule (flip
+  inversion-safety landed).
+- **native_hex ~30%**: solid gates green on the cube (surface 6.000/void
+  0.000/vol 1.000/degen 0, skew 3.6e-16) — but the cube is a Cartesian grid's
+  trivial best case. Real defect measured and gated (xfail): curved-wall
+  **staircase** on the cylinder (wall dev 0.047, skew ~0). Next: standard/fine
+  boundary-snap must fit the wall while keeping skew bounded and the four solid
+  invariants intact.
+- **native_poly ~15%** (unmeasured): port the tet methodology — canonical
+  smoke, solid gates, then quality.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to
