@@ -1,17 +1,22 @@
-card: BETA2828 — BETA2826 smooth evaluator-faithful skew non-worsening guard
+CARD BETA_HEX_WALLFIT — per-vertex guarded wall-fit snap (staircase 제거)
 
-file: core/generator/native_tet/mesher.py
-functions:
-  _skew_proxy  (new module-level helper, before generate_native_tet)
-  generate_native_tet  (BETA2826 pre-write locked-smooth accept block)
-lines_added: 85
-lines_removed: 4
-detail: _skew_proxy(pts,tets): single tet 4-face-map build (sorted-face key).
-        internal(count==2) skew = native_checker.py 698-721,
-        boundary(count==1) skew = 762-779; vectorized, orient-free,
-        returns max(internal_max, boundary_max); empty/1e-30 guards.
-        BETA2826 accept: _sk_pre/_sk_post = _skew_proxy(_pre_pts/_new_pts,
-        final_tets); added `and _sk_post <= _sk_pre*(1+1e-6)` to _accept
-        (revert->final_pts=_pre_pts on worsening).
-        Existing _no_inv/vol_ratio/surf_moved guards unchanged; no flip.
-        sk_pre/sk_post emitted in log.info + revert log.warning.
+Files: core/generator/native_hex/mesher.py (+201, helper _wall_fit_snap + 2 call-sites)
+       tests/test_native_hex_solid_volume.py (±26, xfail 제거 + draft→standard + STATUS)
+
+What: _wall_fit_snap(pts, cell_faces, V, F, edge, tol, ratio, iters) projects boundary
+  side-wall verts to the closest input triangle inside |p-v|<=ratio*edge; accept ONLY if
+  (a) surface dist strictly decreases AND (b) each incident cell keeps every face's
+  centroid-signed orientation and |vol|>eps; else revert THAT vertex only (local, not
+  global). worst-dev-first, 3 iters, cube early-exit. Generic cell-faces -> works on
+  octree oct_cells AND uniform hex. Legacy global skew-revert kept. env HEX_WALLFIT_OFF.
+
+CONFLICT w/ card (report): card said "L1057 snap_boundary 블록"; empirically standard
+  uses the adaptive OCTREE branch (returns L969, polyhedral oct_cells) and never reaches
+  L1057. Generalized helper + called it in the octree branch so the standard path (the
+  measurable target) is actually fitted. L1057 uniform call kept too.
+
+Measured (standard, cylinder.stl, N=2000):
+  wall_dev_max 0.0466 -> 0.0032 (<0.02 gate); mean 0.0173 -> 0.0015; n_side 624
+  void 0.0000; bnd_area 1.163x -> 0.996x input; negative_volumes 0; mesh_ok True;
+  skew 0.37 -> 4.64 (finite, no inversion). cube: n_target=0 (early-exit), smoke PASS.
+  pytest tests/test_native_hex_solid_volume.py -q -> 5 passed.

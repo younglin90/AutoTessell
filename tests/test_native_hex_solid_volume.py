@@ -51,7 +51,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from core.pipeline.orchestrator import PipelineOrchestrator
 from core.utils.polymesh_reader import (
@@ -275,31 +274,28 @@ def _cylinder_wall_deviation(poly_dir: Path) -> tuple[float, float, int]:
     return float(dev.max()), float(dev.mean()), int(dev.size)
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Cartesian hex staircases a curved wall: on cylinder.stl (true r=0.5), "
-        "draft native_hex leaves axis-aligned boxes (snap_boundary=False), so "
-        "side-wall vertices deviate up to 0.047 (~one cell edge). Quality is "
-        "perfect (skew ~0) but geometry is a staircase. Closing this needs the "
-        "standard/fine boundary-snap path (mesher.py snap_boundary) to project "
-        "the wall onto the input while keeping skew bounded — the next hex card."
-    ),
-    strict=True,
-)
 def test_native_hex_curved_wall_fidelity(tmp_path: Path) -> None:
     """Side-wall vertices of a meshed cylinder must sit on the true radius.
 
     This is why the cube is not enough: the cube is axis-aligned, so a Cartesian
     hex grid meshes it with zero error and every solid gate passes trivially. The
     cylinder is the first input that actually exercises how the engine handles a
-    surface the grid does not align with. Measured draft / N=2000: max wall
-    deviation 0.047, mean 0.021, skew ~0 — a staircase, not a fit.
+    surface the grid does not align with.
+
+    STATUS (BETA_HEX_WALLFIT, standard / N=2000): the per-vertex guarded wall-fit
+    (mesher.py ``_wall_fit_snap``) projects side-wall vertices onto the input
+    triangles inside a ``ratio * edge`` envelope, accepting a move only when the
+    surface distance strictly decreases AND every incident cell stays
+    non-inverted / non-collapsed. Measured max wall deviation 0.003 (was 0.047 as
+    a raw staircase), mean 0.0015, negative_volumes 0, mesh_ok True — a fit, not a
+    staircase. Was xfail (draft leaves axis-aligned boxes); now a permanent gate
+    on the standard snap path.
     """
     case = tmp_path / "case"
     PipelineOrchestrator().run(
         _CYLINDER,
         case,
-        quality_level="draft",
+        quality_level="standard",
         mesh_type="hex_dominant",
         tier_hint="native_hex",
         max_iterations=1,

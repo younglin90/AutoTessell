@@ -476,6 +476,166 @@ def _reduce_nonortho_post(
     return pts
 
 
+# BETA_HEX_WALLFIT (beta1) — per-vertex guarded wall-fit snap (staircase 제거).
+# env AUTO_TESSELL_HEX_WALLFIT_OFF=1 to disable.
+_WF_HEX_FACES = np.array(_HEX_FACES, dtype=np.int64)  # (6, 4) local-vertex face table
+
+
+def _hex_array_to_cell_faces(hexes: np.ndarray) -> list[list[list[int]]]:
+    """Convert an (N, 8) hex-connectivity array to the list-of-faces form."""
+    faces_all = hexes[:, _WF_HEX_FACES]  # (N, 6, 4)
+    return [[[int(v) for v in face] for face in cell] for cell in faces_all]
+
+
+def _wall_fit_snap(
+    pts: np.ndarray,
+    cell_faces: list[list[list[int]]],
+    V: np.ndarray,
+    F: np.ndarray,
+    target_edge: float,
+    *,
+    tol: float,
+    ratio: float,
+    iters: int,
+) -> tuple[np.ndarray, dict[str, int]]:
+    """Project boundary verts onto the input surface with a per-vertex guard.
+
+    Motif: snappyHexMesh snap-step + fTetWild envelope. Each boundary vertex is
+    projected to the closest point on the nearest input triangle and the move is
+    accepted only when BOTH hold: (a) the vertex's surface distance strictly
+    decreases (kills the blunt-cap non-monotonicity, card §이론), and (b) every
+    incident cell keeps every face's centroid-signed orientation and a
+    non-collapsed volume (no local tangle/inversion). Any violation reverts THAT
+    vertex only (local, not the legacy global skew-revert).
+
+    ``cell_faces`` is the generic polyMesh cell → face → vertex-id form so this
+    works both for the octree/adaptive path (``oct_cells``) and the uniform-grid
+    hex array (converted via :func:`_hex_array_to_cell_faces`).  The vertex only
+    ever moves ONTO an input triangle inside the envelope
+    ``|p - v| <= ratio * target_edge`` — surface coverage can only improve and
+    off-surface void can never be created (solid invariants preserved).
+    """
+    from collections import defaultdict  # noqa: PLC0415
+
+    from core.generator.native_hex.snap import _closest_point_on_triangle  # noqa: PLC0415
+    from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+
+    stats = {"n_target": 0, "n_snapped": 0, "n_reject_vol": 0, "n_reject_dist": 0}
+    sF = np.asarray(F, dtype=np.int64)
+    sV = np.asarray(V, dtype=np.float64)
+    if len(cell_faces) == 0 or sF.shape[0] == 0:
+        return np.asarray(pts, dtype=np.float64).copy(), stats
+
+    pts = np.asarray(pts, dtype=np.float64).copy()
+
+    # boundary faces appear in exactly one cell; their verts are the surface.
+    face_cells: dict[tuple[int, ...], list[int]] = defaultdict(list)
+    for ci, cell in enumerate(cell_faces):
+        for face in cell:
+            face_cells[tuple(sorted(int(v) for v in face))].append(ci)
+    boundary_verts: set[int] = set()
+    for key, owners in face_cells.items():
+        if len(owners) == 1:
+            boundary_verts.update(key)
+    if not boundary_verts:
+        return pts, stats
+
+    # vertex -> incident cell set (boundary verts only).
+    incident: dict[int, set[int]] = {v: set() for v in boundary_verts}
+    for ci, cell in enumerate(cell_faces):
+        for v in {int(x) for face in cell for x in face} & boundary_verts:
+            incident[v].add(ci)
+
+    tri_A = sV[sF[:, 0]]
+    tri_B = sV[sF[:, 1]]
+    tri_C = sV[sF[:, 2]]
+    tri_cen = (tri_A + tri_B + tri_C) / 3.0
+    tree = NumpyKDTree(tri_cen)
+    k = min(8, tri_cen.shape[0])
+    cap = float(ratio * target_edge)
+    eps = max(1e-15, 1e-6 * target_edge**3)
+
+    def _cell_signs(ci: int) -> tuple[np.ndarray, float]:
+        """Per-face centroid-signed tet-sum + total |vol| of cell *ci*."""
+        cell = cell_faces[ci]
+        verts = sorted({int(v) for face in cell for v in face})
+        c = pts[np.asarray(verts, dtype=np.int64)].mean(axis=0)
+        sgn = np.empty(len(cell))
+        mag = 0.0
+        for fi, face in enumerate(cell):
+            p = pts[np.asarray([int(v) for v in face], dtype=np.int64)] - c
+            s = 0.0
+            for i in range(1, len(face) - 1):
+                s += float(np.dot(p[0], np.cross(p[i], p[i + 1])))
+            sgn[fi] = s
+            mag += abs(s)
+        return sgn, mag
+
+    # Reference face signs per incident cell — local no-inversion guard.
+    ref: dict[int, np.ndarray] = {}
+    for cells in incident.values():
+        for ci in cells:
+            if ci not in ref:
+                ref[ci] = np.sign(_cell_signs(ci)[0])
+
+    def _cell_ok(ci: int) -> bool:
+        sgn, mag = _cell_signs(ci)
+        if mag <= eps:
+            return False
+        r = ref[ci]
+        # every face that had a definite orientation keeps it (no flip).
+        return bool(np.all(np.sign(sgn)[r != 0.0] == r[r != 0.0]))
+
+    def _project(P: np.ndarray, cand: np.ndarray) -> tuple[float, np.ndarray]:
+        best_d2 = float("inf")
+        best_pt = P
+        for t in cand.tolist():
+            q = _closest_point_on_triangle(P, tri_A[t], tri_B[t], tri_C[t])
+            d2 = float(((q - P) ** 2).sum())
+            if d2 < best_d2:
+                best_d2 = d2
+                best_pt = q
+        return best_d2, best_pt
+
+    boundary = np.array(sorted(boundary_verts), dtype=np.int64)
+    for _ in range(int(iters)):
+        _, nn = tree.query(pts[boundary], k=k)
+        nn = np.atleast_2d(np.asarray(nn))
+        entries: list[tuple[float, np.ndarray, np.ndarray, int]] = []
+        for bi, vi in enumerate(boundary.tolist()):
+            cand = nn[bi]
+            cand = cand[cand < tri_cen.shape[0]]
+            if cand.size == 0:
+                continue
+            d2_0, p0 = _project(pts[vi], cand)
+            entries.append((d2_0, p0, cand, vi))
+        entries.sort(key=lambda e: -e[0])  # worst deviation first
+        moved = 0
+        for d2_0, p0, cand, vi in entries:
+            d0 = d2_0**0.5
+            if d0 <= tol:
+                continue
+            stats["n_target"] += 1
+            if float(np.linalg.norm(p0 - pts[vi])) > cap:
+                continue  # outside envelope
+            orig = pts[vi].copy()
+            pts[vi] = p0
+            d1 = _project(pts[vi], cand)[0] ** 0.5  # ~0 (p0 is on a triangle)
+            if not (d1 < d0 - 1e-15):
+                pts[vi] = orig
+                stats["n_reject_dist"] += 1
+                continue
+            if all(_cell_ok(ci) for ci in incident[vi]):
+                stats["n_snapped"] += 1
+                moved += 1
+            else:
+                pts[vi] = orig
+                stats["n_reject_vol"] += 1
+        if moved == 0:
+            break  # cube early-exit: nothing to fit
+    return pts, stats
+
+
 def generate_native_hex(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -822,6 +982,29 @@ def generate_native_hex(
                     except Exception as exc:
                         log.warning("native_hex_iterative_snap_failed", error=str(exc))
 
+                # BETA_HEX_WALLFIT (beta1) — per-vertex guarded wall-fit on the
+                # adaptive/octree mesh (the standard/fine path). Runs after the
+                # iterative snap, projects side-wall verts onto the input surface
+                # with a per-vertex strict-decrease + no-inversion guard. Cube
+                # early-exits (verts already on planes). env
+                # AUTO_TESSELL_HEX_WALLFIT_OFF=1 disables.
+                if snap_boundary and not os.environ.get("AUTO_TESSELL_HEX_WALLFIT_OFF"):
+                    try:
+                        _h_wf = h_pre / float(1 << max(0, int(n_levels)))
+                        oct_pts, _wf_stats = _wall_fit_snap(
+                            np.asarray(oct_pts, dtype=np.float64),
+                            oct_cells,
+                            V,
+                            F,
+                            _h_wf,
+                            tol=0.1 * _h_wf,
+                            ratio=1.0,
+                            iters=3,
+                        )
+                        log.info("native_hex_wall_fit", path="octree", **_wf_stats)
+                    except Exception as exc:
+                        log.warning("native_hex_wall_fit_failed", error=str(exc))
+
                 from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
                 from core.generator.tier_layers_post import (  # noqa: PLC0415
                     _ensure_minimal_controldict,
@@ -1104,6 +1287,24 @@ def generate_native_hex(
                     final_pts = prev_pts_snap
             except Exception:
                 pass
+
+            # BETA_HEX_WALLFIT (beta1) — per-vertex guarded wall-fit AFTER the
+            # legacy snap. The legacy global skew-revert above stays for the
+            # legacy snap; this pass has its own local per-vertex guard (strict
+            # surface-distance decrease AND incident signed-vol > eps), so a bad
+            # corner reverts alone instead of discarding the whole snap.
+            if not os.environ.get("AUTO_TESSELL_HEX_WALLFIT_OFF"):
+                final_pts, _wf_stats = _wall_fit_snap(
+                    final_pts,
+                    _hex_array_to_cell_faces(final_hexes),
+                    V,
+                    F,
+                    h,
+                    tol=0.1 * h,
+                    ratio=1.0,
+                    iters=3,
+                )
+                log.info("native_hex_wall_fit", path="uniform", **_wf_stats)
         except Exception as exc:
             log.warning("native_hex_boundary_snap_failed", error=str(exc))
 
