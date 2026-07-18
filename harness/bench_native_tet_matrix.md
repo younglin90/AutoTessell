@@ -22,7 +22,7 @@ Protocol per shape: draft / tier_hint=native_tet / N=2000 / P4C disabled / 120s 
 | extreme_aspect_ratio_needle.stl | Y/1 | 126 | 1.000 | 1.001 | 0 | 0 | 0 | 559.20 | 90.0 | FAIL | 4s |
 | high_genus_dual_torus.stl | Y/1 | 11071 | 1.010 | 1.010 | 0 | 0 | 0 | 2.2e6 | 90.0 | FAIL | 210s |
 | multi_scale_sphere_with_micro_spikes.stl | Y/9 | 2296 | 0.996 | 1.006 | 0 | 0 | 0 | 1.50 | 74.1 | PASS | 16s |
-| many_small_features_perforated_plate.stl | Y/65 | 1962 | 0.011 | 0.003 | 0 | 0 | 0 | 36.41 | 89.8 | FAIL | 5s |
+| many_small_features_perforated_plate.stl | Y/65 | 14072 | (full input) | — | 61 | many | 0 | — | — | FAIL (quality) | >400s |
 | sharp_features_micro_ridge.stl | N/1 | 1727 | 0.345 | 1.006 | 0 | 0 | 0 | 125.38 | 90.0 | FAIL | 18s |
 
 ## Notes
@@ -43,6 +43,17 @@ Protocol per shape: draft / tier_hint=native_tet / N=2000 / P4C disabled / 120s 
   slivers on the doubled input) — a separate axis, next card. Its 210s also
   exceeds the matrix's 120s per-shape subprocess wall (direct --stl runs
   bypass it); the constant is a bench-harness detail, noted not fixed.
+- **Update 2026-07-18 (BETA2833 + aggregate guard):** the perforated plate's
+  0.011 coverage was L1 repair, not _final_validate — pymeshfix's default
+  remove_smallest_components collapsed 65 bodies to 1 before the component
+  filter ever ran. Per-component repair + an aggregate guard (filtering may
+  never drop >5% of TOTAL surface; the 64 features are each 3.3% of A_max
+  but jointly 68% of the input) now put the full surface into meshing. The
+  row's FAIL is now honest: 65 thin bodies mesh at grade D (61 degenerate,
+  thousands flipped mid-pipeline, N-target 600->14072 overshoot) and >400s —
+  this shape moved from the coverage cluster to the thin-feature quality
+  cluster (very_thin_disk, needle) plus multi-body N-budgeting as open work.
+  The previous "PASS" at 5s meshed 32% of the input and was a false pass.
 - **nonOrtho ≈ 88–90 is endemic** (boundary tets), present even on PASS shapes
   (cube 88.2). It is not the FAIL discriminator here — **skewness** is.
 - **`very_thin_disk` skew 2.4e28** is an effectively-degenerate sliver reported with
