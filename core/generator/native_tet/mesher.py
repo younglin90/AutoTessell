@@ -860,6 +860,17 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_steiner_skipped", reason=str(exc))
 
+    # CYLSKEW1 (beta2822) — near-wall offset-ring Delaunay seeds (default OFF,
+    # AUTO_TESSELL_TET_OFFSET_RING=1). Seeding-only; envelope/clip/surface-lock
+    # 하류 로직은 건드리지 않는다 — Delaunay 시드가 늘 뿐이다.
+    _offset_ring_pts = np.zeros((0, 3), dtype=np.float64)
+    if os.environ.get("AUTO_TESSELL_TET_OFFSET_RING") == "1":
+        from core.generator.native_tet.offset_ring import offset_ring_seed_points
+        _offset_ring_pts, _or_info = offset_ring_seed_points(V, F, float(target_edge_length))
+        if _offset_ring_pts.shape[0]:
+            all_pts = np.vstack([all_pts, _offset_ring_pts])
+        log.info("native_tet_offset_ring", **_or_info)
+
     log.info("native_tet_seed", n_points=all_pts.shape[0], n_grid_inside=grid.shape[0])
 
     # 2) Delaunay (Phase A3: missing triangle 감지 후 시드 추가 재시도).
@@ -4986,6 +4997,27 @@ def generate_native_tet(
             ratio=round(n_cells / max(1, V.shape[0]), 4),
             message="cells/V_surf ratio < 1/32 — catastrophic collapse",
         )
+
+    # CYLSKEW1 (beta2822) — offset-ring 삽입점이 최종 boundary 로 새지 않는지
+    # 진단 (read-only, 하류 로직 변경 없음). default OFF 경로에서는 no-op.
+    if _offset_ring_pts.shape[0]:
+        try:
+            from core.generator.native_tet.plane_coverage import _tet_boundary_faces as _tbf_or
+            _bnd_ids_or = np.unique(_tbf_or(final_tets).ravel())
+            _bnd_pts_or = final_pts[_bnd_ids_or] if _bnd_ids_or.size else np.zeros((0, 3))
+            _n_became_boundary = 0
+            for _p_or in _offset_ring_pts:
+                if _bnd_pts_or.shape[0] and float(
+                    np.linalg.norm(_bnd_pts_or - _p_or, axis=1).min()
+                ) < 1e-9:
+                    _n_became_boundary += 1
+            log.info(
+                "native_tet_offset_ring_diag",
+                n_offset=int(_offset_ring_pts.shape[0]),
+                n_became_boundary=_n_became_boundary,
+            )
+        except Exception as _or_diag_exc:
+            log.debug("native_tet_offset_ring_diag_skipped", reason=str(_or_diag_exc)[:120])
 
     return NativeTetResult(
         success=True, elapsed=elapsed,

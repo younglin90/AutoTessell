@@ -1,22 +1,8 @@
-card: POLY-S2
-file: core/generator/native_poly/dual.py
-functions: tet_to_poly_dual, _tet_faces_with_edge (new), _ordered_tet_ring (new),
-           _surface_planes (new), _area_split (new), _order_and_concat (new)
-lines_added: ~230
-lines_removed: ~95
-
-file: tests/test_native_poly_solid_volume.py (docstring/xfail-reason only, no assert change)
-functions: module docstring, test_native_poly_has_no_interior_voids
-lines_added: 18
-lines_removed: 15
-
-file: scripts/smoke_native_poly.py (docstring only)
-functions: module docstring
-lines_added: 9
-lines_removed: 7
-
-result: pytest tests/test_native_poly_solid_volume.py -q -> 2 passed, 2 xfailed
-(55s). smoke_native_poly.py -> exit 0, "surface 6.000ok void 2.435BAD
-vol 1.119BAD degen 0ok" (47s). tests/test_native_hex_solid_volume.py -> 9
-passed (99s, no regression). Guard log: pre_off=7.588 post_off=2.435
-pre_on=post_on=6.000 use_topo=True (topological path adopted).
+card: FSL4
+file: tests/test_native_tet_dual_torus_limit.py (new)
+functions: _run_dual_torus, _cell_volumes, _input_volume,
+  test_dual_torus_volume_tiling_locked (gate A, PASS lock),
+  test_dual_torus_boundary_skew_cure_target (gate B, xfail strict)
+lines_added: 172
+lines_removed: 0
+core/ untouched.
