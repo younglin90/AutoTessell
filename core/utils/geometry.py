@@ -9,6 +9,10 @@
         triangle 별 solid angle 합 / 4π. self-intersecting / non-manifold 입력
         에서도 robust. ray-casting 보다 ~3× 느리나 hard mesh 에서 정확도 ↑.
 
+    inside_union_winding_number(query, surfaces) — CARD BOOLMERGE1.
+        fTetWild §3.6 방식 — 여러 surface 에 대해 GWN 을 독립 계산 후 OR 결합
+        (union). intersection/difference 는 후속 카드.
+
 v0.4.0-beta9 기준 추출. 이후 triangle areas, normals 등 공통 계산이 추가될 예정.
 """
 from __future__ import annotations
@@ -152,6 +156,48 @@ def inside_generalized_winding_number(
         w = omega.sum(axis=1) / (4.0 * np.pi)                     # (B,)
         inside[qi:qi + B] = np.abs(w) > threshold
     return inside
+
+
+def inside_union_winding_number(
+    query: np.ndarray,
+    surfaces: list[tuple[np.ndarray, np.ndarray]],
+    *,
+    threshold: float = 0.5,
+) -> np.ndarray:
+    """CARD BOOLMERGE1 — per-input GWN union 판정 (fTetWild §3.6).
+
+    fTetWild §3.6(``papers/md/02_hu_2020_ftetwild.md:487-491``)은 각 입력
+    surface 의 provenance 를 추적, per-surface generalized winding number 를
+    **독립적으로** 계산한 뒤 boolean 결합으로 tet 채택 여부를 정한다 —
+    surface-level 교차/클리핑을 전혀 하지 않는 volume-level 판정이다.
+
+    이 함수는 그 핵심 판정을 격리한다: 각 ``(V_i, F_i)`` 에 대해
+    ``inside_generalized_winding_number`` 를 서로 참조 없이 독립 호출하고
+    (어느 입력 표면도 다른 표면의 삼각형을 보지 않는다 — surface CSG 가 아님),
+    결과를 OR 로 결합한다:
+    ``mask = OR_i inside_generalized_winding_number(query, V_i, F_i, threshold)``.
+
+    이 함수는 **union 만** 구현한다 — intersection/difference 는 후속 카드
+    (CARD BOOLMERGE2 이후) 범위다.
+
+    Args:
+        query: (N, 3) 판정할 점들.
+        surfaces: ``(V_i, F_i)`` 쌍의 리스트. 각 V_i 는 (Nv_i, 3), F_i 는
+            (Nf_i, 3) 0-based triangle index.
+        threshold: 0.5 default — 개별 surface 판정에 그대로 전달.
+
+    Returns:
+        (N,) bool array — True = 하나 이상의 입력 surface 내부(union).
+        ``surfaces`` 가 빈 리스트면 전부 False (기존 empty-mesh 관례와 일치).
+    """
+    Q = np.asarray(query, dtype=np.float64)
+    N = Q.shape[0]
+    mask = np.zeros(N, dtype=bool)
+    if not surfaces:
+        return mask
+    for V, F in surfaces:
+        mask |= inside_generalized_winding_number(Q, V, F, threshold=threshold)
+    return mask
 
 
 def surface_is_closed(F: np.ndarray) -> bool:

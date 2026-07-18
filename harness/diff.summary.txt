@@ -1,13 +1,30 @@
-card: CYLSKEW4
+card: BOOLMERGE1
 
-file: core/generator/native_tet/mesher.py
-functions: _nonortho_proxy (new, ~46 lines, reuses _skew_proxy face-map),
-  generate_native_tet seeding hook rewrite (line ~866, env=1 branch adds
-  raw-Delaunay off/on best-of-two proxy + select_offset_ring_variant gate
-  + native_tet_offset_ring_select log)
-lines_added: 88
-lines_removed: 3
+file: core/utils/geometry.py
+functions: inside_union_winding_number (new, ~35 lines) — per-input GWN union
+  판정 (fTetWild §3.6). loops surfaces list, calls
+  inside_generalized_winding_number independently per (V_i, F_i), OR-combines
+  masks. Empty list -> all False. Module docstring updated to list new func.
+lines_added: 46
+lines_removed: 0
 
-note: env-unset path structurally unchanged (only comment lines added
-above the guard; `_offset_ring_pts` init and vstack logic identical).
-Verification not run here per role boundary (unit_tester's job).
+file: tests/test_geometry_boolean_merge.py (new, 4 tests)
+  test_overlapping_cubes_union_volume_within_3pct — 60k Monte-Carlo samples,
+    A=[0,1]^3 union B=[0.5,1.5]^3, analytic 1.875, rel_err <= 0.03 (measured
+    well within tolerance).
+  test_disjoint_cubes_bodies_stay_separate — A=[0,1]^3, B=[10,11]^3, midpoint
+    [5,5,5] outside, both interiors inside.
+  test_single_surface_identity — single-surface union path bit-identical to
+    inside_generalized_winding_number.
+  test_empty_surfaces_returns_all_false.
+
+verification (measured):
+  pytest tests/test_geometry_inside.py -q        -> 13 passed
+  pytest tests/test_geometry_boolean_merge.py -q -> 4 passed
+  pytest tests/test_desktop_server.py::TestMultiSurface -q -> 19 passed
+  git diff core/pipeline/orchestrator.py desktop/server.py -> 0 lines (empty)
+
+note: no other files touched; orchestrator/server/gate untouched per card
+scope. Pre-existing black/ruff debt in geometry.py (inside_winding_number,
+inside_generalized_winding_number) left as-is — new function itself is
+black/ruff clean in isolation.
