@@ -48,7 +48,7 @@ applied centrally after review.
 | P0 | J. Vorsatz, C. Roessl, L. Kobbelt, H.-P. Seidel (2001), **Feature Sensitive Remeshing** | `10.1111/1467-8659.00532` | [Author-hosted PDF](https://www.graphics.rwth-aachen.de/media/papers/resample1.pdf) — OPEN | Particle relaxation plus a hierarchical curvature field that attracts vertices to features without a fixed threshold. Important comparison for soft feature weights versus AutoTessell's hard semantic constraints. **INCLUDE**. |
 | P0 | V. Surazhsky, C. Gotsman (2003), **Explicit Surface Remeshing** | `10.2312/SGP/SGP03/020-030` | [Eurographics record and PDF](https://diglib.eg.org/items/8f1dac05-aca1-4973-87e8-27a340397957) — OPEN | Local geometry/connectivity edits, area-based smoothing, dynamic local parameterization, and connectivity regularization. A direct predecessor of the Botsch/Dunyach loop. **INCLUDE**. |
 | P0 | V. Surazhsky, P. Alliez, C. Gotsman (2003), **Isotropic Remeshing of Surfaces: A Local Parameterization Approach** | No DOI located; INRIA RR-4967 / IMR 2003 | [INRIA report copy](https://citeseerx.ist.psu.edu/document?doi=b8961083b1387f4bd4262d5034d00b395bea12df&repid=rep1&type=pdf) — OPEN | Arbitrary-genus local adaptation with patchwise parameterization and local CVT relaxation. Bridges local operators and global sampling. **INCLUDE**. |
-| P0 | J. Vorsatz, C. Roessl, H.-P. Seidel (2003), **Dynamic Remeshing and Applications** | `10.1145/781606.781633` | [Publisher DOI](https://doi.org/10.1145/781606.781633) — ABSTRACT_ONLY; a later [open dissertation](https://diglib.eg.org/items/449faedf-d063-45cf-b98a-281c3acd635e) is not the same publication | Dynamic meshes, local topological operators, density-controlled particle placement, and feature skeletons. **INCLUDE**; obtain the paper rather than substituting the dissertation when recording a full read. |
+| P0 | J. Vorsatz, C. Roessl, H.-P. Seidel (2003), **Dynamic Remeshing and Applications** | `10.1145/781606.781633` | [Publisher DOI](https://doi.org/10.1145/781606.781633) — FULL_READ | Dynamic meshes, local topological operators, density-controlled particle placement, and feature skeletons. **INCLUDE**; compared against the available dissertation only for metadata context. |
 | P0 | M. Botsch, L. Kobbelt (2004), **A Remeshing Approach to Multiresolution Modeling** | `10.2312/SGP/SGP04/189-196` | [Eurographics record and PDF](https://diglib.eg.org/items/eb9aa09f-d8f7-464a-bc41-4b5ea7b8136d) — OPEN | Canonical split/collapse/flip, tangential smoothing, and projection loop; the immediate implementation baseline. **INCLUDE**. |
 | P0 | M. Dunyach, D. Vanderhaeghe, L. Barthe, M. Botsch (2013), **Adaptive Remeshing for Real-Time Mesh Deformation** | `10.2312/conf/EG2013/short/029-032` | [Eurographics record and PDF](https://diglib.eg.org/items/bd0987f0-b1d0-45cc-bde4-2a99ebf51946) — OPEN | Curvature-adaptive target lengths added to the local-operation loop with real-time constraints. Direct basis for `TRI-SIZING1`. **INCLUDE**. |
 | P0 | K. Hu, D.-M. Yan, D. Bommes, P. Alliez, B. Benes (2016/2017), **Error-Bounded and Feature Preserving Surface Remeshing with Minimal Angle Improvement** | `10.1109/TVCG.2016.2632720` | [arXiv manuscript](https://arxiv.org/abs/1611.02147) — OPEN | Seed paper: ordered local operations, worst-angle queue, topology/fold-over checks, and sampled two-sided error gate. **INCLUDE**. |
@@ -61,11 +61,11 @@ applied centrally after review.
 
 | Priority | Candidate | DOI | Legal full text / access | Relevance and screening decision |
 | --- | --- | --- | --- | --- |
-| P0 | H. Borouchaki, P. J. Frey (2005), **Simplification of Surface Mesh Using Hausdorff Envelope** | `10.1016/j.cma.2004.11.016` | [Publisher record](https://www.sciencedirect.com/science/article/abs/pii/S0045782505000708) — ABSTRACT_ONLY | Explicit tolerance envelope and local cone constraints combined with collapse, flip, and relocation. Direct predecessor for a conservative geometry gate. **INCLUDE; inaccessible DOI candidate**. |
-| P0 | M. Mandad, D. Cohen-Steiner, P. Alliez (2015), **Isotopic Approximation within a Tolerance Volume** | `10.1145/2766950` | [Publisher DOI](https://doi.org/10.1145/2766950) — ABSTRACT_ONLY | Stronger tolerance-volume, intersection-free, and topology-preserving contract than sampled Hausdorff checks. Essential for deciding whether an exact finalization gate is feasible. **INCLUDE; inaccessible DOI candidate**. |
+| P0 | H. Borouchaki, P. J. Frey (2005), **Simplification of Surface Mesh Using Hausdorff Envelope** | `10.1016/j.cma.2004.11.016` | [User PDF](native_tri/borouchaki2005_envelope.md) — FULL_READ | Explicit tolerance envelope and local cone constraints combined with collapse, flip, and relocation. Direct predecessor for a conservative geometry gate. **INCLUDE**. |
+| P0 | M. Mandad, D. Cohen-Steiner, P. Alliez (2015), **Isotopic Approximation within a Tolerance Volume** | `10.1145/2766950` | [User PDF](native_tri/mandad2015_tolerance.md) — FULL_READ | Stronger tolerance-volume, intersection-free, and topology-preserving contract than sampled Hausdorff checks. Essential for deciding whether an exact finalization gate is feasible. **INCLUDE**. |
 | P1 | D. Cohen-Steiner, P. Alliez, M. Desbrun (2004), **Variational Shape Approximation** | `10.1145/1015706.1015817` | [Open INRIA technical report](https://citeseerx.ist.psu.edu/document?doi=6aabbe52a9ffa3bc669e06907b17c524ae761b60&repid=rep1&type=pdf) — OPEN | Discrete proxy-based clustering and normal-deviation error metric; relevant as a global approximation/anisotropy baseline, not as the first native-tri operator loop. **INCLUDE**. |
 | P1 | P. Alliez, M. Meyer, M. Desbrun (2002), **Interactive Geometry Remeshing** | `10.1145/566654.566588` | [Author PDF](https://pages.saclay.inria.fr/mathieu.desbrun/pubs/AMD02.pdf) — OPEN | Parameter-space control maps, sampling, Delaunay triangulation, and optimization. Important global-resampling predecessor but requires charting. **INCLUDE**. |
-| P2 | E. Diamanti et al. (2020), **Error-Bounded Compatible Remeshing** | `10.1145/3386569.3392434` | [Publisher record](https://doi.org/10.1145/3386569.3392434) — ABSTRACT_ONLY | Later error-bounded work for mutually compatible meshes. Valuable if AutoTessell later needs correspondence across surfaces; not required for a single-surface native engine. **CONTEXT; inaccessible DOI candidate**. |
+| P2 | E. Diamanti et al. (2020), **Error-Bounded Compatible Remeshing** | `10.1145/3386569.3392434` | [User PDF](native_tri/yang2020_compatible.md) — FULL_READ | Later error-bounded work for mutually compatible meshes. Valuable if AutoTessell later needs correspondence across surfaces; not required for a single-surface native engine. **CONTEXT**. |
 
 ## C. CVT, restricted Voronoi, and discrete Voronoi routes
 
@@ -94,7 +94,7 @@ applied centrally after review.
 | P0 | P. Alliez, D. Cohen-Steiner, O. Devillers, B. Levy, M. Desbrun (2003), **Anisotropic Polygonal Remeshing** | `10.1145/882262.882296` | [Author PDF](https://www.geometry.caltech.edu/pubs/ACDLD03.pdf) — OPEN | Curvature-tensor field and principal-direction sampling. It produces mixed polygons and therefore also crosses into quad-dominant work, but its metric construction is directly relevant. **INCLUDE**. |
 | P0 | Z. Zhong, X. Guo, W. Wang, B. Levy, F. Sun, Y. Liu, W. Mao (2013), **Particle-Based Anisotropic Surface Meshing** | `10.1145/2461912.2461946` | [Author-manuscript mirror](https://citeseerx.ist.psu.edu/document?doi=3fe25837e7bbc626f5b29d6adc0f217f58db4018&repid=rep1&type=pdf) — OPEN | Riemannian metric mapped to a higher-dimensional isotropic embedding, particle energy optimization, and restricted anisotropic Voronoi dual. High-priority anisotropic reference. **INCLUDE**. |
 | P1 | R. Narain, A. Samii, J. F. O'Brien (2012), **Adaptive Anisotropic Remeshing for Cloth Simulation** | `10.1145/2366145.2366171` | [UC repository](https://escholarship.org/uc/item/5s1775xd) — OPEN | Dynamic split/collapse/flip/relocation under curvature, velocity-gradient, and compression metrics. Valuable operator scheduling and anisotropic metric evidence, but cloth-specific validity/collision assumptions limit direct transfer. **CONTEXT**. |
-| P2 | Z. Zhong, L. Shuai, M. Jin, X. Guo (2014), **Anisotropic Surface Meshing with Conformal Embedding** | `10.1016/j.gmod.2014.03.011` | [Publisher record](https://www.sciencedirect.com/science/article/abs/pii/S1524070314000186) — ABSTRACT_ONLY | Parameterization-based anisotropic alternative using conformal embedding and weighted CVT. **INCLUDE; inaccessible DOI candidate**. |
+| P2 | Z. Zhong, L. Shuai, M. Jin, X. Guo (2014), **Anisotropic Surface Meshing with Conformal Embedding** | `10.1016/j.gmod.2014.03.011` | [User PDF](native_tri/zhong2014_conformal_anisotropic.md) — FULL_READ | Parameterization-based anisotropic alternative using conformal embedding and weighted CVT. **INCLUDE**. |
 
 ## F. Repair and input preconditions
 
@@ -107,7 +107,7 @@ applied centrally after review.
 
 | Priority | Candidate | DOI | Legal full text / access | Relevance and screening decision |
 | --- | --- | --- | --- | --- |
-| P1 | C. R. S. N. Almeida, P. C. G. Mayrink, R. C. Mesquita, D. A. Lowther (2011), **A Parallel Remeshing Method** | `10.1109/TMAG.2010.2090944` | [Publisher DOI](https://doi.org/10.1109/TMAG.2010.2090944) — ABSTRACT_ONLY | Domain partitioning with section interiors processed before interfaces. Relevant historical parallel baseline, but the four-page scope and weak reported shape guarantee make it secondary to guarded serial correctness. **CONTEXT; inaccessible DOI candidate**. |
+| P1 | C. R. S. N. Almeida, P. C. G. Mayrink, R. C. Mesquita, D. A. Lowther (2011), **A Parallel Remeshing Method** | `10.1109/TMAG.2010.2090944` | [User PDF](native_tri/nunes2011_parallel.md) — FULL_READ | Domain partitioning with section interiors processed before interfaces. Relevant historical parallel baseline, but the four-page scope and weak reported shape guarantee make it secondary to guarded serial correctness. **CONTEXT**. |
 | P0 | A. H. Mahmoud, S. D. Porumbescu, J. D. Owens (2025), **Dynamic Mesh Processing on the GPU** | `10.1145/3731162` | [UC repository and PDF](https://escholarship.org/uc/item/82k732k4) — OPEN | Patch-local shared-memory topology, speculative conflict handling, rollback, and a general cavity operator demonstrated on isotropic remeshing. The most direct later systems evidence for parallelizing guarded local edits after serial semantics stabilize. **INCLUDE**. |
 
 ## H. Deliberate exclusions and boundary cases
@@ -121,15 +121,7 @@ applied centrally after review.
 
 ## Inaccessible DOI queue from this batch
 
-The following primary papers passed relevance screening but had no legal open
-full text located in this pass:
-
-1. Borouchaki and Frey (2005) — `10.1016/j.cma.2004.11.016`.
-2. Mandad, Cohen-Steiner, and Alliez (2015) — `10.1145/2766950`.
-3. Vorsatz, Roessl, and Seidel (2003) — `10.1145/781606.781633`.
-4. Zhong, Shuai, Jin, and Guo (2014) — `10.1016/j.gmod.2014.03.011`.
-5. Almeida et al. (2011) — `10.1109/TMAG.2010.2090944`.
-6. Diamanti et al. (2020) — `10.1145/3386569.3392434` (context only).
+No entries remain in this batch's inaccessible queue after user handoff.
 
 ## Recommended full-read order
 
