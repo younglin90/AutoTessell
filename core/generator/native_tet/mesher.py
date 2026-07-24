@@ -3801,7 +3801,12 @@ def generate_native_tet(
         if os.environ.get("AUTO_TESSELL_CVT3D_OFF", "0") != "1":
             try:
                 from core.generator.native_tet.cvt3d import lloyd_cvt_3d
-                _n_surface_cvt = int(min(V.shape[0], final_pts.shape[0]))
+                from core.generator.native_tet.plane_coverage import _tet_boundary_faces
+
+                _boundary_lock_ids_cvt = np.unique(
+                    _tet_boundary_faces(final_tets),
+                ).astype(np.intp)
+                _n_surface_cvt = 0
                 _cvt3d_iter = int(os.environ.get("AUTO_TESSELL_CVT3D_ITER", "3"))
                 _cvt3d_relax = float(os.environ.get("AUTO_TESSELL_CVT3D_RELAX", "0.5"))
                 _new_pts_cvt, _cvt_res = lloyd_cvt_3d(
@@ -3809,6 +3814,7 @@ def generate_native_tet(
                     n_surface=_n_surface_cvt,
                     n_iter=_cvt3d_iter,
                     relax=_cvt3d_relax,
+                    locked_ids=_boundary_lock_ids_cvt,
                 )
                 if _cvt_res.accepted:
                     final_pts = _new_pts_cvt
@@ -3842,6 +3848,7 @@ def generate_native_tet(
                             n_surface=_n_surface_cvt,
                             n_iter=6,
                             relax=0.7,
+                            locked_ids=_boundary_lock_ids_cvt,
                             monotone_worst_drop_max=0.020,
                         )
                         if _cvt2_res.accepted:

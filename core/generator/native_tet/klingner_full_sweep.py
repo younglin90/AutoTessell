@@ -107,11 +107,36 @@ def klingner_full_sweep(
             flip_edges_32, flip_edges_44,
         )
         from core.generator.native_tet.amips import smooth_amips_multistage
+        from core.generator.native_tet.plane_coverage import _tet_boundary_faces
     except Exception as exc:
         return pts, tets, FullSweepResult(
             elapsed_s=time.perf_counter() - t0,
             reason=f"import_failed: {exc!s:.50}",
         )
+
+    def _boundary_signature(
+        points: NDArray[np.float64], cells: NDArray[np.int64],
+    ) -> tuple[set[tuple[int, int, int]], float]:
+        faces = _tet_boundary_faces(cells)
+        keys = {tuple(sorted(face)) for face in faces.tolist()}
+        if not keys:
+            return keys, 0.0
+        tri = np.asarray(points, dtype=np.float64)[faces]
+        area = 0.5 * np.linalg.norm(
+            np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1
+        ).sum()
+        return keys, float(area)
+
+    def _boundary_preserved(
+        before_points: NDArray[np.float64],
+        before_cells: NDArray[np.int64],
+        candidate_points: NDArray[np.float64],
+        candidate_cells: NDArray[np.int64],
+    ) -> bool:
+        before_keys, before_area = _boundary_signature(before_points, before_cells)
+        candidate_keys, candidate_area = _boundary_signature(candidate_points, candidate_cells)
+        area_tol = 1e-10 * max(abs(before_area), 1e-30)
+        return before_keys == candidate_keys and abs(candidate_area - before_area) <= area_tol
 
     for c in range(int(n_cycles)):
         cycles_used = c + 1
@@ -128,7 +153,10 @@ def klingner_full_sweep(
             )
             if n_c > 0 and new_tets_c.shape[0] > 50:
                 _q = _qs(new_pts_c, new_tets_c)
-                if float(_q.mean_q) >= last_mean * 0.99:
+                if (
+                    float(_q.mean_q) >= last_mean * 0.99
+                    and _boundary_preserved(cur_pts, cur_tets, new_pts_c, new_tets_c)
+                ):
                     cur_pts = new_pts_c
                     cur_tets = new_tets_c
                     n_collapse_total += int(n_c)
@@ -141,7 +169,10 @@ def klingner_full_sweep(
             )
             if n_s > 0 and new_tets_s.shape[0] > 50:
                 _q = _qs(new_pts_s, new_tets_s)
-                if float(_q.mean_q) >= last_mean * 0.99:
+                if (
+                    float(_q.mean_q) >= last_mean * 0.99
+                    and _boundary_preserved(cur_pts, cur_tets, new_pts_s, new_tets_s)
+                ):
                     cur_pts = new_pts_s
                     cur_tets = new_tets_s
                     n_split_total += int(n_s)
@@ -154,7 +185,10 @@ def klingner_full_sweep(
                 )
                 if n32 > 0 and t32.shape[0] > 50:
                     _q = _qs(cur_pts, t32)
-                    if float(_q.mean_q) >= last_mean * 0.99:
+                    if (
+                        float(_q.mean_q) >= last_mean * 0.99
+                        and _boundary_preserved(cur_pts, cur_tets, cur_pts, t32)
+                    ):
                         cur_tets = t32
                         n_flip32_total += int(n32)
                 t44, n44 = flip_edges_44(
@@ -163,7 +197,10 @@ def klingner_full_sweep(
                 )
                 if n44 > 0 and t44.shape[0] > 50:
                     _q = _qs(cur_pts, t44)
-                    if float(_q.mean_q) >= last_mean * 0.99:
+                    if (
+                        float(_q.mean_q) >= last_mean * 0.99
+                        and _boundary_preserved(cur_pts, cur_tets, cur_pts, t44)
+                    ):
                         cur_tets = t44
                         n_flip44_total += int(n44)
 
@@ -180,6 +217,7 @@ def klingner_full_sweep(
                 if (
                     float(_q.mean_q) >= last_mean * 0.99
                     and _drop <= float(monotone_min_drop)
+                    and _boundary_preserved(cur_pts, cur_tets, new_pts_a, cur_tets)
                 ):
                     cur_pts = new_pts_a
                     n_smooth_iters_total += 1
