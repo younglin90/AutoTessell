@@ -155,6 +155,9 @@ selective repair UI.
 - **native_poly Phase 0 FV census (2026-07-24):** report-only face planarity,
   normal spread, Juretić ψ, h, Circle Ratio, sphericity, and Uniformity Factor
   metrics are now emitted by `NativeMeshChecker`; no quality gate was changed.
+- **native_hex Phase 0 census (2026-07-24):** report-only cell-type/volume
+  fractions, ScoreCHE, hex-cluster, and β-margin diagnostics are emitted from
+  written topology; pairing remains absent and no all-hex claim is made.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to

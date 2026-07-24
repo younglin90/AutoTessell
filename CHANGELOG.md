@@ -6,6 +6,12 @@
   Ratio, sphericity, and Uniformity Factor metrics. Existing mesh gates are
   unchanged; cube analytic fixtures and cylinder solid gates pass.
 
+## [Unreleased] - 2026-07-24 — native_hex Phase 0 cell census.
+
+- Added report-only hex/prism/tet/other census, count/volume fractions, ScoreCHE,
+  hex-cluster statistics, and β-margin diagnostics. Pairing and all-hex gates
+  remain unchanged and unclaimed.
+
 ## [1.2.0-gui-qa-9] - 2026-05-13 — Option A pipeline output → temp dir, Export to user path.
 
 - `self._output_dir` now `tempfile.mkdtemp(prefix="autotessell_<stem>_")`, fresh per Run; tracked in `self._pipeline_temp_dirs`, cleaned via `atexit.register` + eagerly purged between Runs.

@@ -151,6 +151,34 @@ class NativeHexResult:
     # C-QUAL-11 / beta2407 — mesh_integrity_suspect (NativeTetResult / NativePolyResult parity).
     # n_cells < 50 (절대 floor) 또는 V_surf >= 100 + n_cells < V_surf/32 시 True.
     mesh_integrity_suspect: bool = False
+    cell_census: dict[str, int] | None = None
+    hex_count: int | None = None
+    prism_count: int | None = None
+    tet_count: int | None = None
+    other_count: int | None = None
+    poly_count: int | None = None
+    hex_count_fraction: float | None = None
+    prism_count_fraction: float | None = None
+    tet_count_fraction: float | None = None
+    other_count_fraction: float | None = None
+    hex_volume_fraction: float | None = None
+    prism_volume_fraction: float | None = None
+    tet_volume_fraction: float | None = None
+    other_volume_fraction: float | None = None
+    poly_volume_fraction: float | None = None
+    cell_count_fractions: dict[str, float] | None = None
+    cell_volume_fractions: dict[str, float] | None = None
+    cell_volumes: dict[str, float] | None = None
+    total_volume: float | None = None
+    score_che: float | None = None
+    n_hex_clusters: int | None = None
+    largest_cluster_frac: float | None = None
+    untangle_beta: float | None = None
+    untangle_min_corner_jacobian: float | None = None
+    untangle_local_mean_volume: float | None = None
+    untangle_beta_margin: float | None = None
+    untangle_beta_margin_ratio: float | None = None
+    untangle_beta_pass: bool | None = None
 
 
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).
@@ -199,6 +227,46 @@ def _write_polymesh_hex(
         cell_faces.append(faces)
 
     return write_generic_polymesh(vertices, cell_faces, case_dir)
+
+
+def _native_hex_phase0_metrics(
+    case_dir: Path,
+    fallback_points: np.ndarray,
+    fallback_cell_faces: list[list[list[int]]],
+    *,
+    path: str,
+    n_written: int,
+) -> dict[str, object]:
+    """Compute report-only Phase 0 metrics from the written topology."""
+    from core.generator.native_hex.metrics import (
+        compute_native_hex_metrics,
+        metrics_log_fields,
+        read_written_polymesh_cells,
+    )
+
+    written = read_written_polymesh_cells(case_dir)
+    if written is None or len(written[1]) != int(n_written):
+        points = fallback_points
+        cell_faces = fallback_cell_faces
+        log.warning(
+            "native_hex_phase0_written_topology_unavailable",
+            path=path,
+            n_written=int(n_written),
+            n_metric_cells=len(cell_faces),
+        )
+    else:
+        points, cell_faces = written
+
+    metrics = compute_native_hex_metrics(points, cell_faces)
+    fields = metrics_log_fields(metrics)
+    log.info(
+        "native_hex_phase0_metrics",
+        path=path,
+        n_written=int(n_written),
+        census_cells=int(sum(metrics.cell_census.values())),
+        **fields,
+    )
+    return fields
 
 
 def _estimate_bl_final_cells_from_cell_faces(
@@ -1306,6 +1374,13 @@ def generate_native_hex(
                 _write_minimal_fv_dicts(case_dir)
                 stats = write_generic_polymesh(oct_pts, oct_cells, case_dir)
                 n_t = int(stats["num_cells"])
+                _phase0_fields = _native_hex_phase0_metrics(
+                    case_dir,
+                    np.asarray(oct_pts, dtype=np.float64),
+                    oct_cells,
+                    path="octree",
+                    n_written=n_t,
+                )
                 fill = n_t / max(
                     1,
                     oct_stats["n_coarse"]
@@ -1338,6 +1413,7 @@ def generate_native_hex(
                     ),
                     # beta2341 — octree path 도 SI populate (uniform path 와 일관).
                     n_self_intersect_pre=_pre_mesh_si_count,
+                    **_phase0_fields,
                 )
             log.warning("native_hex_octree_empty_fallback", msg="no cells produced, falling back")
         except Exception as exc:
@@ -1768,6 +1844,13 @@ def generate_native_hex(
         )
 
     _n_kept = int(stats["num_cells"])
+    _phase0_fields = _native_hex_phase0_metrics(
+        case_dir,
+        np.asarray(final_pts, dtype=np.float64),
+        _hex_array_to_cell_faces(final_hexes),
+        path="uniform",
+        n_written=_n_kept,
+    )
     _fill = _n_kept / max(1, n_grid_total)
     if _fill < 0.3:
         log.info(
@@ -1888,6 +1971,7 @@ def generate_native_hex(
         n_val_degen=int(locals().get("_val2_degen", 0) or 0),
         fill_ratio=round(_fill, 4),
         elapsed=round(time.perf_counter() - t0, 3),
+        **_phase0_fields,
     )
 
     # C-PERF-3 / beta2388 — wall-clock budget 진단.
@@ -1943,4 +2027,5 @@ def generate_native_hex(
         # beta2338 — pre-mesh SI count.
         n_self_intersect_pre=_pre_mesh_si_count,
         mesh_integrity_suspect=_hex_suspect,
+        **_phase0_fields,
     )
