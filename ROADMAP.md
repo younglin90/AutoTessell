@@ -152,6 +152,9 @@ selective repair UI.
   structurally unchanged) pulled volume to 1.026 and even improved skew
   (0.457→0.422). Next (POLY-S5): generalize past the cube (sphere/cylinder),
   then quality.
+- **native_poly Phase 0 FV census (2026-07-24):** report-only face planarity,
+  normal spread, Juretić ψ, h, Circle Ratio, sphericity, and Uniformity Factor
+  metrics are now emitted by `NativeMeshChecker`; no quality gate was changed.
 - Common: N-targeting (tet+netgen done; hex/poly open), BL growth-ratio GUI
   done, per-patch BL toggles blocked on S1, MPI absent, threading partial.
   Parallelism deliberately LAST (invariant: correctness gates must be able to

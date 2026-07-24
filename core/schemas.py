@@ -367,6 +367,35 @@ class CheckMeshResult(BaseModel):
     max_adjacent_volume_ratio: float | None = None
     max_face_warpage: float | None = None
     max_cell_size_growth_ratio: float | None = None
+    # Native-poly Phase 0 calibration metrics.  These are report-only and do
+    # not participate in evaluator gate decisions.
+    max_face_planar_deviation: float | None = None
+    mean_face_planar_deviation: float | None = None
+    p95_face_planar_deviation: float | None = None
+    max_face_normal_spread_deg: float | None = None
+    mean_face_normal_spread_deg: float | None = None
+    p95_face_normal_spread_deg: float | None = None
+    max_juretic_psi: float | None = None
+    mean_juretic_psi: float | None = None
+    p95_juretic_psi: float | None = None
+    skewness_formula_audit: str | None = None
+    juretic_psi_definition: str | None = None
+    min_cell_h: float | None = None
+    mean_cell_h: float | None = None
+    p95_cell_h: float | None = None
+    max_cell_h: float | None = None
+    min_circle_ratio: float | None = None
+    mean_circle_ratio: float | None = None
+    p95_circle_ratio: float | None = None
+    max_circle_ratio: float | None = None
+    min_sphericity: float | None = None
+    mean_sphericity: float | None = None
+    p95_sphericity: float | None = None
+    max_sphericity: float | None = None
+    min_uniformity_factor: float | None = None
+    mean_uniformity_factor: float | None = None
+    p95_uniformity_factor: float | None = None
+    max_uniformity_factor: float | None = None
 
 
 class CellVolumeStats(BaseModel):

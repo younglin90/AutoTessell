@@ -36,6 +36,7 @@ from typing import Any
 
 import numpy as np
 
+from core.evaluator.poly_quality_metrics import compute_poly_phase0_metrics
 from core.schemas import CheckMeshResult
 from core.utils.logging import get_logger
 from core.utils.polymesh_reader import (
@@ -396,6 +397,26 @@ class NativeMeshChecker:
         min_determinant = self._estimate_min_determinant(cell_volumes)
 
         # ------------------------------------------------------------------
+        # 10b. Phase 0 report-only FV/poly metrics
+        # ------------------------------------------------------------------
+        # These measurements intentionally do not feed any gate.  Materialize
+        # topology faces only here, after the existing checker calculations,
+        # so the report path remains compatible with the optional native
+        # topology kernel and existing quality fields.
+        phase0_metrics = compute_poly_phase0_metrics(
+            points,
+            materialize_faces(),
+            owner,
+            neighbour,
+            n_internal,
+            cell_centres,
+            face_centres,
+            face_normals,
+            face_areas,
+            cell_volumes,
+        )
+
+        # ------------------------------------------------------------------
         # 11. failed_checks / mesh_ok heuristic
         # ------------------------------------------------------------------
         # NativeMeshChecker는 OpenFOAM checkMesh의 "Failed N mesh checks"를
@@ -455,6 +476,37 @@ class NativeMeshChecker:
             # double-counts the same check and over-penalizes anisotropic BL
             # prism stacks where volume is intentionally dominated by thickness.
             max_cell_size_growth_ratio=None,
+            max_face_planar_deviation=phase0_metrics.max_face_planar_deviation,
+            mean_face_planar_deviation=phase0_metrics.mean_face_planar_deviation,
+            p95_face_planar_deviation=phase0_metrics.p95_face_planar_deviation,
+            max_face_normal_spread_deg=phase0_metrics.max_face_normal_spread_deg,
+            mean_face_normal_spread_deg=phase0_metrics.mean_face_normal_spread_deg,
+            p95_face_normal_spread_deg=phase0_metrics.p95_face_normal_spread_deg,
+            max_juretic_psi=phase0_metrics.max_juretic_psi,
+            mean_juretic_psi=phase0_metrics.mean_juretic_psi,
+            p95_juretic_psi=phase0_metrics.p95_juretic_psi,
+            skewness_formula_audit=(
+                "current gate: max(internal line-projection ratio, "
+                "boundary tangential miss/normal distance); internal line-projection "
+                "ratio is Juretic psi, boundary ratio is not"
+            ),
+            juretic_psi_definition="psi = |m|/|d|, m = face centre - line/face intersection",
+            min_cell_h=phase0_metrics.min_cell_h,
+            mean_cell_h=phase0_metrics.mean_cell_h,
+            p95_cell_h=phase0_metrics.p95_cell_h,
+            max_cell_h=phase0_metrics.max_cell_h,
+            min_circle_ratio=phase0_metrics.min_circle_ratio,
+            mean_circle_ratio=phase0_metrics.mean_circle_ratio,
+            p95_circle_ratio=phase0_metrics.p95_circle_ratio,
+            max_circle_ratio=phase0_metrics.max_circle_ratio,
+            min_sphericity=phase0_metrics.min_sphericity,
+            mean_sphericity=phase0_metrics.mean_sphericity,
+            p95_sphericity=phase0_metrics.p95_sphericity,
+            max_sphericity=phase0_metrics.max_sphericity,
+            min_uniformity_factor=phase0_metrics.min_uniformity_factor,
+            mean_uniformity_factor=phase0_metrics.mean_uniformity_factor,
+            p95_uniformity_factor=phase0_metrics.p95_uniformity_factor,
+            max_uniformity_factor=phase0_metrics.max_uniformity_factor,
         )
 
         # ------------------------------------------------------------------
