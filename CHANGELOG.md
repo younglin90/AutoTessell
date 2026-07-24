@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] - 2026-07-24 — native_poly directional AR gate.
+
+- Added a fail-closed high-aspect-ratio relaxation: principal-axis alignment,
+  neighbor stretch-direction consistency, and surface tangent/normal alignment
+  must all meet conservative thresholds before the scalar AR soft-fail is
+  waived. Missing or weak diagnostics retain the existing AR gate; topology,
+  solid-invariant, and other quality gates are unchanged.
+- Producer/schema wiring for the four directional diagnostics remains pending;
+  the report path is ready for injected checker evidence.
+
 ## [Unreleased] - 2026-07-24 — native_poly Phase 0 FV metrics.
 
 - Added report-only face planarity/normal-spread, Juretić ψ audit, h, Circle
