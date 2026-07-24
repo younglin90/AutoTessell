@@ -77,6 +77,13 @@ def _invalidate_edge_incident_cache() -> None:
 # ---------------------------------------------------------------------------
 _FACE_INCIDENT_CACHE: Optional[tuple[int, int, dict[tuple[int, int, int], list[int]]]] = None
 
+
+def _boundary_keys(tets: np.ndarray) -> set[tuple[int, int, int]]:
+    """Return the canonical orientation-free boundary face keys."""
+    from core.generator.native_tet.near_wall import boundary_face_keys
+
+    return boundary_face_keys(np.asarray(tets, dtype=np.int64))
+
 _FACES4 = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
 
 
@@ -512,6 +519,7 @@ def split_sliver_longest_edge(
     pts_list = list(pts)
     tets_list = list(tets)
     n_split = 0
+    boundary_before = _boundary_keys(tets)
 
     # PERF3: build/reuse edge→incident-tet map (shared with VVV13 via module cache).
     edge_map = compute_edge_incident_tets_cached(tets)
@@ -559,6 +567,13 @@ def split_sliver_longest_edge(
         q_new = float(_tet_quality_batch(pts_arr_new, _new_arr).min())
 
         if q_new >= q_old + min_quality_improvement:
+            candidate_tets = list(tets_list)
+            for idx, ti in enumerate(sorted(incident, reverse=True)):
+                candidate_tets[ti] = new_tets[2 * (len(incident) - 1 - idx)]
+            candidate_tets.extend(new_tets[2 * idx + 1] for idx in range(len(incident)))
+            if _boundary_keys(np.asarray(candidate_tets, dtype=tets.dtype)) != boundary_before:
+                pts_list.pop()
+                continue
             # Accept: replace incident tets (reverse order to preserve indices).
             for idx, ti in enumerate(sorted(incident, reverse=True)):
                 tets_list[ti] = new_tets[2 * (len(incident) - 1 - idx)]
@@ -853,6 +868,7 @@ def split_anisotropic_tet_edges(
     pts_list = list(pts)
     tets_list = list(tets)
     n_split = 0
+    boundary_before = _boundary_keys(tets)
 
     # PERF3: build/reuse edge→incident-tet map (shared with VVV12 via module cache).
     edge_map = compute_edge_incident_tets_cached(tets)
@@ -898,6 +914,14 @@ def split_anisotropic_tet_edges(
         q_new = float(_tet_quality_batch(pts_arr_new, _new_arr).min())
 
         if q_new >= q_old + min_quality_improvement:
+            # Boundary validation is performed before accepting this split.
+            candidate_tets = list(tets_list)
+            for idx, ti in enumerate(sorted(incident, reverse=True)):
+                candidate_tets[ti] = new_tets[2 * (len(incident) - 1 - idx)]
+            candidate_tets.extend(new_tets[2 * idx + 1] for idx in range(len(incident)))
+            if _boundary_keys(np.asarray(candidate_tets, dtype=tets.dtype)) != boundary_before:
+                pts_list.pop()
+                continue
             # Accept.
             for idx, ti in enumerate(sorted(incident, reverse=True)):
                 tets_list[ti] = new_tets[2 * (len(incident) - 1 - idx)]

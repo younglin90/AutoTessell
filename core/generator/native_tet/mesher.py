@@ -4936,7 +4936,7 @@ def generate_native_tet(
                 base_edge=_h_target_m, aniso_factor=2.0,
             )
             _ns_m = int(min(V.shape[0], final_pts.shape[0]))
-            _lock_m = np.arange(_ns_m, dtype=np.int64)
+            _lock_m = np.unique(_tet_boundary_faces(final_tets)).astype(np.int64)
             _new_pts_m, _new_tets_m, _mt_res = metric_tensor_sweep(
                 final_pts, final_tets,
                 n_cycles=2,
@@ -4980,8 +4980,7 @@ def generate_native_tet(
             _q_pre_self = _qs_self(final_pts, final_tets)
             _mq_pre_self = float(_q_pre_self.mean_q)
             if final_tets.shape[0] > 100:
-                _lock_ids_self = np.arange(int(min(V.shape[0], final_pts.shape[0])),
-                                            dtype=np.int64)
+                _lock_ids_self = np.unique(_tet_boundary_faces(final_tets)).astype(np.int64)
                 _, _new_pts_self = _ams(
                     final_pts, final_tets,
                     locked_vertex_ids=_lock_ids_self,
