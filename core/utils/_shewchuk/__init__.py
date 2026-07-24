@@ -46,7 +46,7 @@ def _try_compile() -> bool:
     try:
         result = subprocess.run(
             [
-                "cc", "-O2", "-fPIC", "-shared",
+                "cc", "-O2", "-ffp-contract=off", "-fPIC", "-shared",
                 str(_WRAPPER_C),
                 "-o", str(_SO_PATH),
                 "-lm",
