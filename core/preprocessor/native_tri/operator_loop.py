@@ -15,6 +15,8 @@ from typing import cast
 
 import numpy as np
 
+from .bijective_shell import BijectiveShell, ShellCheckpointReport
+
 
 class OperatorKind(StrEnum):
     """Local operators used by the native-tri operator loop."""
@@ -183,6 +185,7 @@ class OperatorTransaction:
         self.vertex_target_lengths: np.ndarray | None = None
         if curvature_epsilon is not None:
             self._refresh_curvature_sizing()
+        self.shell_checkpoint_reports: list[ShellCheckpointReport] = []
 
     def attempt(
         self,
@@ -602,14 +605,33 @@ class OperatorTransaction:
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
+        shell: BijectiveShell | None = None,
     ) -> tuple[tuple[GuardReport, ...], ...]:
-        """Run at most ``max_rounds`` and stop after a fully rejected round."""
+        """Run at most ``max_rounds`` and stop after a fully rejected round.
+
+        ``shell`` wires in the Phase-3 per-round bijective-shell checkpoint
+        (Jiang 2020, ``bijective_shell.py``): a coarser, batched safety net
+        layered *on top of* the existing per-op link-condition/fold-over/
+        exact-orientation guards inside ``run_one_round`` -- it never
+        replaces them. Per
+        ``docs/references/literature/native_tri/shell_efficiency_check_2026-07-25.md``,
+        a per-edit shell query is too expensive for the hot loop, so this is
+        checked once per completed round instead. When the round's
+        resulting surface is not fully contained in the static shell, the
+        whole round is rolled back to its pre-round state and the loop
+        stops; that round's per-op ``GuardReport`` history is still
+        returned unchanged (for diagnostics -- it records what was
+        attempted, even though it was ultimately reverted). Every
+        checkpoint outcome is also appended to
+        ``self.shell_checkpoint_reports``.
+        """
         if isinstance(max_rounds, bool) or int(max_rounds) != max_rounds:
             raise ValueError("max_rounds must be an integer")
         if max_rounds < 0:
             raise ValueError("max_rounds must be non-negative")
         rounds: list[tuple[GuardReport, ...]] = []
-        for _ in range(max_rounds):
+        for round_index in range(max_rounds):
+            pre_round_state = self.state.copy()
             reports = self.run_one_round(
                 target_edge_length,
                 relocation_lambda=relocation_lambda,
@@ -618,6 +640,24 @@ class OperatorTransaction:
                 surface_vertices=surface_vertices,
             )
             rounds.append(reports)
+
+            if shell is not None:
+                containment = shell.check_round_containment(
+                    self.state.vertices,
+                    self.state.faces,
+                )
+                self.shell_checkpoint_reports.append(
+                    ShellCheckpointReport(
+                        containment.accepted,
+                        round_index,
+                        containment.reason,
+                        containment.failed_face_index,
+                    ),
+                )
+                if not containment.accepted:
+                    self.state = pre_round_state
+                    break
+
             if not any(report.accepted for report in reports):
                 break
         return tuple(rounds)
