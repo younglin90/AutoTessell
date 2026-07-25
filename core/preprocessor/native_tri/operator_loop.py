@@ -8,18 +8,21 @@ and exact-orientation guards.  Rejected proposals leave the state unchanged.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 
 import numpy as np
 
 
 class OperatorKind(StrEnum):
-    """Local operators reserved for the native-tri MVP."""
+    """Local operators used by the native-tri operator loop."""
 
     SPLIT = "split"
     COLLAPSE = "collapse"
     FLIP = "flip"
+    SMOOTH = "smooth"
 
 
 @dataclass(frozen=True)
@@ -40,17 +43,20 @@ class GuardReport:
     accepted: bool
     operator: OperatorKind
     reason: str
+    vertex_index: int | None = None
 
 
 FaceCorrespondence = tuple[tuple[int, int], ...]
+SurfaceProjection = Callable[[np.ndarray], np.ndarray]
 
 
 class OperatorTransaction:
     """Transactional boundary for the native-tri local operators.
 
     ``target_edge_length`` is the reference length ``L`` in the
-    Botsch/Dunyach hysteresis rule.  The one-round driver deliberately stops
-    after split, collapse, and flip; it does not relocate or smooth vertices.
+    Botsch/Dunyach hysteresis rule.  The one-round driver applies split,
+    collapse, flip, and guarded tangential relocation; no sizing or anisotropic
+    metric is introduced here.
     """
 
     def __init__(
@@ -58,12 +64,23 @@ class OperatorTransaction:
         vertices: np.ndarray,
         faces: np.ndarray,
         target_edge_length: float | None = None,
+        *,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
     ) -> None:
         self.state = MeshState(
             np.asarray(vertices, dtype=np.float64).copy(),
             np.asarray(faces, dtype=np.int64).copy(),
         )
         self.target_edge_length = target_edge_length
+        self.surface_points = (
+            None if surface_points is None else np.asarray(surface_points, dtype=np.float64).copy()
+        )
+        self.surface_projection = surface_projection
+        self.surface_vertices = (
+            None if surface_vertices is None else tuple(int(index) for index in surface_vertices)
+        )
 
     def attempt(
         self,
@@ -262,11 +279,136 @@ class OperatorTransaction:
             self.state = before
         return report
 
+    def smooth_vertex(
+        self,
+        vertex_index: int,
+        *,
+        relocation_lambda: float = 0.5,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
+    ) -> GuardReport:
+        """Tangentially relocate one vertex with transactional rejection.
+
+        The target is an area-weighted centroid of the vertex's one-ring
+        neighbours.  Only the displacement tangent to the area-weighted
+        vertex normal is applied.  Projection is then applied when the vertex
+        is a declared surface vertex; the full mesh is checked before commit.
+        """
+        before = self.state.copy()
+        try:
+            index = int(vertex_index)
+            if index < 0 or index >= len(before.vertices):
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "malformed_vertex",
+                    index,
+                )
+            factor = self._relocation_factor(relocation_lambda)
+            centroid_and_normal = self._area_weighted_neighbor_centroid(before, index)
+            if centroid_and_normal is None:
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "smooth_degenerate_vertex",
+                    index,
+                )
+            centroid, normal = centroid_and_normal
+            normal_length = float(np.linalg.norm(normal))
+            if not np.isfinite(normal_length) or normal_length <= np.finfo(float).tiny:
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "smooth_degenerate_vertex",
+                    index,
+                )
+
+            point = before.vertices[index]
+            normal_unit = normal / normal_length
+            displacement = centroid - point
+            tangent = displacement - np.dot(displacement, normal_unit) * normal_unit
+            proposed = point + factor * tangent
+            if not np.isfinite(proposed).all():
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "malformed_vertex",
+                    index,
+                )
+            if float(np.linalg.norm(proposed - point)) <= np.finfo(float).eps:
+                return GuardReport(False, OperatorKind.SMOOTH, "smooth_no_change", index)
+
+            points = self.surface_points if surface_points is None else surface_points
+            projection = (
+                self.surface_projection if surface_projection is None else surface_projection
+            )
+            surface_set = self._surface_vertex_set(surface_vertices)
+            if surface_set is None or index in surface_set:
+                proposed = self._project_surface_point(proposed, points, projection)
+            if not np.isfinite(proposed).all():
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "surface_projection_failed",
+                    index,
+                )
+            if float(np.linalg.norm(proposed - point)) <= np.finfo(float).eps:
+                return GuardReport(False, OperatorKind.SMOOTH, "smooth_no_change", index)
+        except (TypeError, ValueError, IndexError, FloatingPointError):
+            self.state = before
+            return GuardReport(False, OperatorKind.SMOOTH, "malformed_vertex", vertex_index)
+
+        vertices = before.vertices.copy()
+        vertices[index] = proposed
+        correspondence = tuple((face_index, face_index) for face_index in range(len(before.faces)))
+        report = self.attempt(
+            OperatorKind.SMOOTH,
+            (vertices, before.faces.copy()),
+            face_correspondence=correspondence,
+        )
+        return GuardReport(report.accepted, report.operator, report.reason, index)
+
+    def smooth_vertices(
+        self,
+        vertex_indices: Iterable[int] | None = None,
+        *,
+        relocation_lambda: float = 0.5,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
+    ) -> tuple[GuardReport, ...]:
+        """Relocate selected vertices one at a time and return per-vertex reports."""
+        indices = (
+            tuple(range(len(self.state.vertices)))
+            if vertex_indices is None
+            else tuple(int(index) for index in vertex_indices)
+        )
+        projected_vertices = (
+            None if surface_vertices is None else tuple(int(index) for index in surface_vertices)
+        )
+        return tuple(
+            self.smooth_vertex(
+                index,
+                relocation_lambda=relocation_lambda,
+                surface_points=surface_points,
+                surface_projection=surface_projection,
+                surface_vertices=projected_vertices,
+            )
+            for index in indices
+        )
+
     def run_one_round(
         self,
         target_edge_length: float | None = None,
+        *,
+        smooth: bool = True,
+        relocation_lambda: float = 0.5,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
     ) -> tuple[GuardReport, ...]:
-        """Run one split → collapse → flip pass without vertex smoothing.
+        """Run one split → collapse → flip → smooth pass.
 
         Split candidates are taken from the pass entry state.  Collapse and
         flip candidates are refreshed after each accepted edit because collapse
@@ -309,14 +451,144 @@ class OperatorTransaction:
             reports.append(report)
             processed.add(edge)
 
+        if smooth:
+            reports.extend(
+                self.smooth_vertices(
+                    relocation_lambda=relocation_lambda,
+                    surface_points=surface_points,
+                    surface_projection=surface_projection,
+                    surface_vertices=surface_vertices,
+                ),
+            )
+
         return tuple(reports)
 
     def remesh_one_round(
         self,
         target_edge_length: float | None = None,
+        *,
+        smooth: bool = True,
+        relocation_lambda: float = 0.5,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
     ) -> tuple[GuardReport, ...]:
-        """Compatibility name for the split/collapse/flip one-round pass."""
-        return self.run_one_round(target_edge_length)
+        """Compatibility name for the split/collapse/flip/smooth pass."""
+        return self.run_one_round(
+            target_edge_length,
+            smooth=smooth,
+            relocation_lambda=relocation_lambda,
+            surface_points=surface_points,
+            surface_projection=surface_projection,
+            surface_vertices=surface_vertices,
+        )
+
+    def run_rounds(
+        self,
+        max_rounds: int,
+        target_edge_length: float | None = None,
+        *,
+        relocation_lambda: float = 0.5,
+        surface_points: np.ndarray | None = None,
+        surface_projection: SurfaceProjection | None = None,
+        surface_vertices: Iterable[int] | None = None,
+    ) -> tuple[tuple[GuardReport, ...], ...]:
+        """Run at most ``max_rounds`` and stop after a fully rejected round."""
+        if isinstance(max_rounds, bool) or int(max_rounds) != max_rounds:
+            raise ValueError("max_rounds must be an integer")
+        if max_rounds < 0:
+            raise ValueError("max_rounds must be non-negative")
+        rounds: list[tuple[GuardReport, ...]] = []
+        for _ in range(max_rounds):
+            reports = self.run_one_round(
+                target_edge_length,
+                relocation_lambda=relocation_lambda,
+                surface_points=surface_points,
+                surface_projection=surface_projection,
+                surface_vertices=surface_vertices,
+            )
+            rounds.append(reports)
+            if not any(report.accepted for report in reports):
+                break
+        return tuple(rounds)
+
+    @staticmethod
+    def _relocation_factor(value: float) -> float:
+        factor = float(value)
+        if not np.isfinite(factor) or factor < 0.0:
+            raise ValueError("relocation_lambda must be finite and non-negative")
+        return factor
+
+    def _surface_vertex_set(
+        self,
+        override: Iterable[int] | None,
+    ) -> set[int] | None:
+        indices = self.surface_vertices if override is None else tuple(override)
+        if indices is None:
+            return None
+        return {int(index) for index in indices}
+
+    @staticmethod
+    def _project_surface_point(
+        point: np.ndarray,
+        surface_points: np.ndarray | None,
+        surface_projection: SurfaceProjection | None,
+    ) -> np.ndarray:
+        if surface_projection is not None:
+            projected = cast(
+                np.ndarray,
+                np.asarray(surface_projection(point.copy()), dtype=np.float64).reshape(-1),
+            )
+            if projected.shape != (3,):
+                raise ValueError("surface_projection must return a 3-vector")
+            return cast(np.ndarray, np.array(projected, dtype=np.float64, copy=True))
+        if surface_points is None:
+            return point.copy()
+
+        points = np.asarray(surface_points, dtype=np.float64)
+        if points.ndim != 2 or points.shape[1] != 3 or points.shape[0] == 0:
+            raise ValueError("surface_points must have shape (n, 3)")
+        if not np.isfinite(points).all():
+            raise ValueError("surface_points must be finite")
+        distances = np.linalg.norm(points - point, axis=1)
+        return cast(
+            np.ndarray,
+            np.array(points[int(np.argmin(distances))], dtype=np.float64, copy=True),
+        )
+
+    @classmethod
+    def _area_weighted_neighbor_centroid(
+        cls,
+        mesh: MeshState,
+        vertex_index: int,
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """Return the area-weighted one-ring centroid and vertex normal."""
+        weighted_centroid: np.ndarray = np.zeros(3, dtype=np.float64)
+        weighted_normal: np.ndarray = np.zeros(3, dtype=np.float64)
+        total_area = 0.0
+        for face in mesh.faces.tolist():
+            if vertex_index not in face:
+                continue
+            neighbours = [int(vertex) for vertex in face if int(vertex) != vertex_index]
+            if len(neighbours) != 2:
+                continue
+            tri = mesh.vertices[np.asarray(face, dtype=np.int64)]
+            cross = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+            twice_area = float(np.linalg.norm(cross))
+            if not np.isfinite(twice_area) or twice_area <= np.finfo(float).tiny:
+                continue
+            area = 0.5 * twice_area
+            neighbour_centroid = (mesh.vertices[neighbours[0]] + mesh.vertices[neighbours[1]]) * 0.5
+            weighted_centroid += area * neighbour_centroid
+            weighted_normal += area * cross / twice_area
+            total_area += area
+
+        if total_area <= 0.0 or not np.isfinite(total_area):
+            return None
+        centroid = weighted_centroid / total_area
+        if not np.isfinite(centroid).all() or not np.isfinite(weighted_normal).all():
+            return None
+        return centroid, weighted_normal
 
     def _target_length(self, override: float | None) -> float:
         target = self.target_edge_length if override is None else override

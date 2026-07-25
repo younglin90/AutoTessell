@@ -194,7 +194,7 @@ def test_flip_commits_when_local_quality_improves() -> None:
     }
 
 
-def test_one_round_keeps_cube_manifold_and_watertight_without_smoothing() -> None:
+def test_one_round_keeps_cube_manifold_and_watertight_with_smoothing() -> None:
     cube_path = Path(__file__).parent / "benchmarks" / "cube.stl"
     mesh = read_stl(cube_path)
     vertices = np.asarray(mesh.vertices, dtype=float)
@@ -208,6 +208,104 @@ def test_one_round_keeps_cube_manifold_and_watertight_without_smoothing() -> Non
     assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
     assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
     assert all(isinstance(report.operator, OperatorKind) for report in reports)
-    order = {OperatorKind.SPLIT: 0, OperatorKind.COLLAPSE: 1, OperatorKind.FLIP: 2}
+    order = {
+        OperatorKind.SPLIT: 0,
+        OperatorKind.COLLAPSE: 1,
+        OperatorKind.FLIP: 2,
+        OperatorKind.SMOOTH: 3,
+    }
     accepted = [order[report.operator] for report in reports if report.accepted]
     assert accepted == sorted(accepted)
+
+
+def test_area_weighted_relocation_is_tangential() -> None:
+    vertices = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]],
+    )
+    faces = _tet_surface()[1]
+    before = MeshState(vertices.copy(), faces.copy())
+    tx = OperatorTransaction(vertices, faces)
+    centroid_and_normal = tx._area_weighted_neighbor_centroid(before, 0)
+    assert centroid_and_normal is not None
+    _, normal = centroid_and_normal
+
+    report = tx.smooth_vertex(0, relocation_lambda=0.25)
+    assert report.accepted
+    assert report.operator is OperatorKind.SMOOTH
+    assert report.vertex_index == 0
+    displacement = tx.state.vertices[0] - before.vertices[0]
+    assert abs(float(np.dot(displacement, normal))) <= 1e-12
+
+
+def test_surface_projection_is_applied_to_declared_surface_vertex() -> None:
+    vertices = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]],
+    )
+    faces = _tet_surface()[1]
+
+    def project_to_unit_sphere(point: np.ndarray) -> np.ndarray:
+        return point / np.linalg.norm(point)
+
+    tx = OperatorTransaction(
+        vertices,
+        faces,
+        surface_projection=project_to_unit_sphere,
+        surface_vertices=[0],
+    )
+    report = tx.smooth_vertex(0, relocation_lambda=0.25)
+    assert report.accepted
+    assert np.isclose(np.linalg.norm(tx.state.vertices[0]), 1.0)
+    np.testing.assert_array_equal(tx.state.vertices[1:], vertices[1:])
+
+
+def test_smoothing_foldover_rejects_only_the_bad_vertex() -> None:
+    vertices = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]],
+    )
+    faces = _tet_surface()[1]
+
+    def project_across_faces(point: np.ndarray) -> np.ndarray:
+        del point
+        return np.array([100.0, 100.0, 100.0])
+
+    tx = OperatorTransaction(
+        vertices,
+        faces,
+        surface_projection=project_across_faces,
+        surface_vertices=[0],
+    )
+    before = tx.state.copy()
+
+    reports = tx.smooth_vertices(
+        [0, 1],
+        relocation_lambda=0.25,
+        surface_vertices=[0],
+    )
+    report = reports[0]
+    assert not report.accepted
+    assert report.operator is OperatorKind.SMOOTH
+    assert report.vertex_index == 0
+    assert report.reason == "foldover_guard_failed"
+    assert reports[1].accepted
+    assert reports[1].vertex_index == 1
+    np.testing.assert_array_equal(tx.state.vertices[0], before.vertices[0])
+    np.testing.assert_array_equal(tx.state.faces, before.faces)
+    assert not np.array_equal(tx.state.vertices[1], before.vertices[1])
+
+
+def test_cube_bounded_multi_rounds_remain_manifold_and_watertight() -> None:
+    cube_path = Path(__file__).parent / "benchmarks" / "cube.stl"
+    mesh = read_stl(cube_path)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces, target_edge_length=1.0)
+
+    round_reports = tx.run_rounds(max_rounds=4)
+    assert 1 <= len(round_reports) <= 4
+    assert all(isinstance(reports, tuple) for reports in round_reports)
+
+    incidence = _edge_incidence(tx.state.faces)
+    assert all(len(directions) == 2 for directions in incidence.values())
+    assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
+    assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
+    assert tx.run_rounds(max_rounds=0) == ()
