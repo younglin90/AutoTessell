@@ -3169,6 +3169,12 @@ def generate_native_tet(
         if _phase_bc_skip:
             raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.bsp_insert import bsp_insert_triangles_batch as _bsp_batch
+        from core.generator.native_tet.boundary_invariant import (
+            check_boundary_invariant as _check_bsp_boundary,
+        )
+        from core.generator.native_tet.insertion import (
+            find_missing_triangles as _find_missing_triangles,
+        )
         # final_tets 의 모든 canonical face set.
         if final_tets.size > 0 and F.size > 0:
             tf = np.stack(
@@ -3195,21 +3201,58 @@ def generate_native_tet(
                 np.asarray(missing, dtype=np.int64),
                 max_inserts=800,
             )
-            n_recovered = int(bsp_r.n_missing_before - bsp_r.n_missing_after)
-            if (
+            # The batch helper is a proposal stage: it may remove crossed
+            # tets while returning only the proposed points.  Its
+            # n_missing_after is intentionally unset (-1) until the caller
+            # rebuilds/rechecks the tet complex.  Never accept that partial
+            # complex as a mesh.
+            bsp_boundary = _check_bsp_boundary(
+                final_pts,
+                final_tets,
+                new_pts_b,
+                new_tets_b,
+                "pre_bsp->bsp_batch_candidate",
+                log_only=True,
+            )
+            n_missing_after = int(_find_missing_triangles(F, new_tets_b).size)
+            n_recovered = int(bsp_r.n_missing_before - n_missing_after)
+            prefix_stable = np.array_equal(new_pts_b[:n_v_pre_b], final_pts)
+            candidate_shape_valid = new_tets_b.shape[0] >= n_t_pre_b
+            candidate_accepted = bool(
                 new_tets_b.shape[0] > 50
                 and n_recovered > 0
-            ):
+                and prefix_stable
+                and candidate_shape_valid
+                and bsp_boundary.area_equal
+            )
+            if candidate_accepted:
                 final_pts = new_pts_b
                 final_tets = new_tets_b
+                bsp_r.n_missing_after = n_missing_after
                 log.info(
                     "native_tet_bsp_insert",
                     missing_before=int(bsp_r.n_missing_before),
-                    missing_after=int(bsp_r.n_missing_after),
+                    missing_after=n_missing_after,
                     n_recovered=int(n_recovered),
                     n_inserted_points=int(bsp_r.n_inserted_points),
                     v_before=n_v_pre_b, v_after=int(new_pts_b.shape[0]),
                     t_before=n_t_pre_b, t_after=int(new_tets_b.shape[0]),
+                )
+            else:
+                log.warning(
+                    "native_tet_bsp_insert_rejected",
+                    missing_before=int(bsp_r.n_missing_before),
+                    missing_after=n_missing_after,
+                    n_recovered=int(n_recovered),
+                    n_inserted_points=int(bsp_r.n_inserted_points),
+                    v_before=n_v_pre_b,
+                    v_after=int(new_pts_b.shape[0]),
+                    t_before=n_t_pre_b,
+                    t_after=int(new_tets_b.shape[0]),
+                    boundary_keys_equal=bool(bsp_boundary.keys_equal),
+                    boundary_area_equal=bool(bsp_boundary.area_equal),
+                    prefix_stable=prefix_stable,
+                    candidate_shape_valid=candidate_shape_valid,
                 )
     except Exception as exc:
         log.debug("native_tet_bsp_insert_skipped", reason=str(exc))
