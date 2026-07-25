@@ -2653,6 +2653,38 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_fsl3_flip_skipped", reason=str(exc))
 
+    # FSL Wave 1 (TET-LAZY-1 + TET-SHAPE-3(a)) -- Dassi 2018 lazy compound
+    # flips (depth 1/2) then Ni 2017 / Shewchuk exhaustive multi-face
+    # removal on FSL1's remaining core-unflippable coplanar wedges.
+    # Default OFF (diagnostic-first card); fully transactional, so enabling
+    # it never partially applies a fix -- see fsl_wave1.py docstring.
+    if os.environ.get("AUTO_TESSELL_FSL_WAVE1", "0") == "1" and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.fsl_wave1 import run_wave1_diagnostic
+
+            final_tets, _fw1_report = run_wave1_diagnostic(final_pts, final_tets, n_surface)
+            log.info(
+                "native_tet_fsl_wave1",
+                n_wedges=_fw1_report["n_wedges"],
+                n_combinatorially_unlocked=_fw1_report["n_combinatorially_unlocked"],
+                n_structurally_blocked=_fw1_report["n_structurally_blocked"],
+                n_collateral_resolved=_fw1_report["n_collateral_resolved"],
+                by_method=_fw1_report["by_method"],
+            )
+        except Exception as exc:
+            log.debug("native_tet_fsl_wave1_skipped", reason=str(exc))
+
+    # Diagnostic-only dump for offline Wave-1 measurement scripts (never
+    # runs in production; opt-in path + no default value so a stray/typo'd
+    # env var can't silently write files).
+    _fsl_dump_path = os.environ.get("AUTO_TESSELL_FSL_WAVE1_DUMP")
+    if _fsl_dump_path:
+        try:
+            np.savez(_fsl_dump_path, pts=final_pts, tets=final_tets, n_surface=n_surface)
+            log.debug("native_tet_fsl_wave1_dump_written", path=_fsl_dump_path)
+        except Exception as exc:
+            log.debug("native_tet_fsl_wave1_dump_failed", reason=str(exc))
+
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기.
