@@ -43,16 +43,23 @@ def test_invalid_candidate_rolls_back_without_mutating_state() -> None:
     np.testing.assert_array_equal(tx.state.faces, before.faces)
 
 
-def test_reserved_collapse_and_flip_are_rejected_without_mutation() -> None:
+def test_collapse_and_flip_safe_rejections_leave_state_unchanged() -> None:
     vertices, faces = _tet_surface()
-    tx = OperatorTransaction(vertices, faces)
-    before = tx.state.copy()
-    for operator in (OperatorKind.COLLAPSE, OperatorKind.FLIP):
-        report = tx.attempt(operator, (vertices, faces))
-        assert not report.accepted
-        assert report.reason == "operator_not_implemented"
-        np.testing.assert_array_equal(tx.state.vertices, before.vertices)
-        np.testing.assert_array_equal(tx.state.faces, before.faces)
+    collapse_tx = OperatorTransaction(vertices, faces, target_edge_length=2.0)
+    before = collapse_tx.state.copy()
+    report = collapse_tx.collapse_edge((0, 1))
+    assert not report.accepted
+    assert report.reason == "link_condition_failed"
+    np.testing.assert_array_equal(collapse_tx.state.vertices, before.vertices)
+    np.testing.assert_array_equal(collapse_tx.state.faces, before.faces)
+
+    flip_tx = OperatorTransaction(vertices, faces)
+    before = flip_tx.state.copy()
+    report = flip_tx.flip_edge((0, 1))
+    assert not report.accepted
+    assert report.reason == "flip_not_improved"
+    np.testing.assert_array_equal(flip_tx.state.vertices, before.vertices)
+    np.testing.assert_array_equal(flip_tx.state.faces, before.faces)
 
 
 def test_split_uses_botsch_dunyach_upper_hysteresis_bound() -> None:
@@ -65,6 +72,20 @@ def test_split_uses_botsch_dunyach_upper_hysteresis_bound() -> None:
     report = tx.split_edge((0, 1))
     assert not report.accepted
     assert report.reason == "split_threshold_not_exceeded"
+    np.testing.assert_array_equal(tx.state.vertices, before.vertices)
+    np.testing.assert_array_equal(tx.state.faces, before.faces)
+
+
+def test_collapse_uses_strict_lower_hysteresis_bound() -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces, target_edge_length=1.25)
+    before = tx.state.copy()
+
+    assert not tx.should_collapse_edge((0, 1))  # 1 == 4L/5: strict inequality.
+    report = tx.collapse_edge((0, 1))
+    assert not report.accepted
+    assert report.reason == "collapse_threshold_not_exceeded"
     np.testing.assert_array_equal(tx.state.vertices, before.vertices)
     np.testing.assert_array_equal(tx.state.faces, before.faces)
 
@@ -101,3 +122,92 @@ def test_cube_split_commits_and_foldover_rejection_rolls_back() -> None:
     assert report.reason == "foldover_guard_failed"
     np.testing.assert_array_equal(rejected.state.vertices, before.vertices)
     np.testing.assert_array_equal(rejected.state.faces, before.faces)
+
+
+def _edge_incidence(faces: np.ndarray) -> dict[tuple[int, int], list[int]]:
+    incidence: dict[tuple[int, int], list[int]] = {}
+    for face in faces.tolist():
+        for u, v in zip(face, face[1:] + face[:1]):
+            edge = (min(int(u), int(v)), max(int(u), int(v)))
+            direction = 1 if (int(u), int(v)) == edge else -1
+            incidence.setdefault(edge, []).append(direction)
+    return incidence
+
+
+def test_collapse_commits_only_for_a_valid_short_cube_edge() -> None:
+    cube_path = Path(__file__).parent / "benchmarks" / "cube.stl"
+    mesh = read_stl(cube_path)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    edge = min(
+        {
+            tuple(sorted((int(face[i]), int(face[(i + 1) % 3]))))
+            for face in faces.tolist()
+            for i in range(3)
+        },
+        key=lambda item: np.linalg.norm(vertices[item[0]] - vertices[item[1]]),
+    )
+
+    tx = OperatorTransaction(vertices, faces, target_edge_length=2.0)
+    assert tx.should_collapse_edge(edge)
+    report = tx.collapse_edge(edge)
+    assert report.accepted
+    assert len(tx.state.vertices) == len(vertices) - 1
+    assert len(tx.state.faces) == len(faces) - 2
+    incidence = _edge_incidence(tx.state.faces)
+    assert all(len(faces_for_edge) == 2 for faces_for_edge in incidence.values())
+
+
+def test_flip_rejects_boundary_and_non_improving_candidates() -> None:
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0], [2.0, 1.0, 0.0]],
+    )
+    faces = np.array([[0, 1, 2], [1, 3, 2]], dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces)
+    before = tx.state.copy()
+    report = tx.flip_edge((0, 1))
+    assert not report.accepted
+    assert report.reason == "link_condition_failed"
+    np.testing.assert_array_equal(tx.state.vertices, before.vertices)
+    np.testing.assert_array_equal(tx.state.faces, before.faces)
+
+    report = tx.flip_edge((1, 2))
+    assert not report.accepted
+    assert report.reason == "flip_not_improved"
+    np.testing.assert_array_equal(tx.state.vertices, before.vertices)
+    np.testing.assert_array_equal(tx.state.faces, before.faces)
+
+
+def test_flip_commits_when_local_quality_improves() -> None:
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+    )
+    faces = np.array([[0, 1, 2], [1, 3, 2]], dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces)
+    assert tx.should_flip_edge((1, 2))
+    report = tx.flip_edge((1, 2))
+    assert report.accepted
+    assert len(tx.state.faces) == len(faces)
+    assert {tuple(sorted(face)) for face in tx.state.faces.tolist()} == {
+        (0, 1, 3),
+        (0, 2, 3),
+    }
+
+
+def test_one_round_keeps_cube_manifold_and_watertight_without_smoothing() -> None:
+    cube_path = Path(__file__).parent / "benchmarks" / "cube.stl"
+    mesh = read_stl(cube_path)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces, target_edge_length=1.0)
+    reports = tx.run_one_round()
+
+    incidence = _edge_incidence(tx.state.faces)
+    assert incidence
+    assert all(len(directions) == 2 for directions in incidence.values())
+    assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
+    assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
+    assert all(isinstance(report.operator, OperatorKind) for report in reports)
+    order = {OperatorKind.SPLIT: 0, OperatorKind.COLLAPSE: 1, OperatorKind.FLIP: 2}
+    accepted = [order[report.operator] for report in reports if report.accepted]
+    assert accepted == sorted(accepted)

@@ -1,9 +1,9 @@
-"""Transactional native-tri edge-split operator.
+"""Transactional native-tri local operators.
 
-The MVP deliberately implements only edge split.  Long edges are selected with
-the Botsch/Dunyach upper hysteresis bound ``|e| > 4L/3``.  A proposed split is
-committed only after the edge link, mesh link, and exact orientation guards
-pass; every rejected proposal leaves the transaction state unchanged.
+The operator loop follows the Botsch/Dunyach hysteresis bounds: split edges
+longer than ``4L/3`` and collapse edges shorter than ``4L/5``.  Split,
+collapse, and flip proposals all share the same transactional link, fold-over,
+and exact-orientation guards.  Rejected proposals leave the state unchanged.
 """
 
 from __future__ import annotations
@@ -46,12 +46,11 @@ FaceCorrespondence = tuple[tuple[int, int], ...]
 
 
 class OperatorTransaction:
-    """Transactional boundary for the native-tri split operator.
+    """Transactional boundary for the native-tri local operators.
 
     ``target_edge_length`` is the reference length ``L`` in the
-    Botsch/Dunyach hysteresis rule.  Collapse and flip remain reserved enum
-    values, but are intentionally rejected because this MVP implements split
-    only.
+    Botsch/Dunyach hysteresis rule.  The one-round driver deliberately stops
+    after split, collapse, and flip; it does not relocate or smooth vertices.
     """
 
     def __init__(
@@ -73,7 +72,7 @@ class OperatorTransaction:
         *,
         face_correspondence: FaceCorrespondence | None = None,
     ) -> GuardReport:
-        """Validate and conditionally commit a proposed split candidate.
+        """Validate and conditionally commit a proposed local-operator candidate.
 
         ``face_correspondence`` contains ``(old_face, new_face)`` pairs for
         faces whose orientation must be preserved.  The split builder supplies
@@ -81,8 +80,6 @@ class OperatorTransaction:
         unchanged face keys are matched automatically.
         """
         before = self.state.copy()
-        if operator is not OperatorKind.SPLIT:
-            return GuardReport(False, operator, "operator_not_implemented")
         if candidate is None:
             return GuardReport(False, operator, "mvp_noop_operator")
 
@@ -97,14 +94,15 @@ class OperatorTransaction:
                 return GuardReport(False, operator, "foldover_guard_failed")
             if not self._exact_orientation_guard(after):
                 return GuardReport(False, operator, "exact_orientation_failed")
+            if operator is OperatorKind.FLIP and not self._flip_improves(
+                before,
+                after,
+                face_correspondence,
+            ):
+                return GuardReport(False, operator, "flip_not_improved")
         except (TypeError, ValueError, IndexError, FloatingPointError, RuntimeError):
             self.state = before
-            reason = (
-                "exact_orientation_failed"
-                if operator is OperatorKind.SPLIT
-                else "malformed_candidate"
-            )
-            return GuardReport(False, operator, reason)
+            return GuardReport(False, operator, "exact_orientation_failed")
 
         self.state = MeshState(after.vertices.copy(), after.faces.copy())
         return GuardReport(True, operator, "committed")
@@ -159,6 +157,167 @@ class OperatorTransaction:
             self.state = before
         return report
 
+    def should_collapse_edge(
+        self,
+        edge: tuple[int, int],
+        target_edge_length: float | None = None,
+    ) -> bool:
+        """Return whether ``edge`` is below the strict collapse bound."""
+        target = self._target_length(target_edge_length)
+        a, b = self._edge_vertices(edge)
+        length = float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
+        return bool(np.isfinite(length) and length < (4.0 / 5.0) * target)
+
+    def collapse_edge(
+        self,
+        edge: tuple[int, int],
+        target_edge_length: float | None = None,
+    ) -> GuardReport:
+        """Collapse one eligible edge to its midpoint transactionally."""
+        before = self.state.copy()
+        try:
+            target = self._target_length(target_edge_length)
+            a, b = self._edge_vertices(edge)
+            a, b = min(a, b), max(a, b)
+            edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
+            if not np.isfinite(edge_length):
+                return GuardReport(False, OperatorKind.COLLAPSE, "malformed_edge")
+            if edge_length >= (4.0 / 5.0) * target:
+                return GuardReport(
+                    False,
+                    OperatorKind.COLLAPSE,
+                    "collapse_threshold_not_exceeded",
+                )
+
+            incident = self._collapse_edge_link_condition(before, a, b)
+            if incident is None:
+                return GuardReport(False, OperatorKind.COLLAPSE, "link_condition_failed")
+            vertices, faces, correspondence = self._build_collapse_candidate(
+                before,
+                a,
+                b,
+                incident,
+            )
+        except (TypeError, ValueError, IndexError, FloatingPointError):
+            self.state = before
+            return GuardReport(False, OperatorKind.COLLAPSE, "malformed_edge")
+
+        report = self.attempt(
+            OperatorKind.COLLAPSE,
+            (vertices, faces),
+            face_correspondence=correspondence,
+        )
+        if not report.accepted:
+            self.state = before
+        return report
+
+    def should_flip_edge(self, edge: tuple[int, int]) -> bool:
+        """Return whether flipping ``edge`` is a guarded quality move."""
+        a, b = self._edge_vertices(edge)
+        incident = self._edge_link_condition(self.state, a, b)
+        if incident is None or len(incident) != 2:
+            return False
+        try:
+            vertices, faces, correspondence = self._build_flip_candidate(
+                self.state,
+                a,
+                b,
+                incident,
+            )
+        except (TypeError, ValueError, IndexError, FloatingPointError):
+            return False
+        return self._flip_improves(
+            self.state,
+            MeshState(vertices, faces),
+            correspondence,
+        )
+
+    def flip_edge(self, edge: tuple[int, int]) -> GuardReport:
+        """Flip one internal edge when valence or local triangle quality improves."""
+        before = self.state.copy()
+        try:
+            a, b = self._edge_vertices(edge)
+            incident = self._edge_link_condition(before, a, b)
+            if incident is None or len(incident) != 2:
+                return GuardReport(False, OperatorKind.FLIP, "link_condition_failed")
+            vertices, faces, correspondence = self._build_flip_candidate(
+                before,
+                a,
+                b,
+                incident,
+            )
+            after = MeshState(vertices, faces)
+            if not self._flip_improves(before, after, correspondence):
+                return GuardReport(False, OperatorKind.FLIP, "flip_not_improved")
+        except (TypeError, ValueError, IndexError, FloatingPointError):
+            self.state = before
+            return GuardReport(False, OperatorKind.FLIP, "malformed_edge")
+
+        report = self.attempt(
+            OperatorKind.FLIP,
+            (vertices, faces),
+            face_correspondence=correspondence,
+        )
+        if not report.accepted:
+            self.state = before
+        return report
+
+    def run_one_round(
+        self,
+        target_edge_length: float | None = None,
+    ) -> tuple[GuardReport, ...]:
+        """Run one split → collapse → flip pass without vertex smoothing.
+
+        Split candidates are taken from the pass entry state.  Collapse and
+        flip candidates are refreshed after each accepted edit because collapse
+        compacts vertex indices and every local edit changes its neighbourhood.
+        Each edge is processed at most once per phase, while later candidates
+        may still be attempted after a rejection.
+        """
+        target = self._target_length(target_edge_length)
+        reports: list[GuardReport] = []
+
+        for edge in self._unique_edges():
+            if self.should_split_edge(edge, target):
+                reports.append(self.split_edge(edge, target))
+
+        processed: set[tuple[int, int]] = set()
+        while True:
+            candidates = [
+                edge
+                for edge in self._unique_edges()
+                if edge not in processed and self.should_collapse_edge(edge, target)
+            ]
+            if not candidates:
+                break
+            edge = min(candidates, key=self._edge_length)
+            report = self.collapse_edge(edge, target)
+            reports.append(report)
+            processed.add(edge)
+
+        processed.clear()
+        while True:
+            candidates = [
+                edge
+                for edge in self._unique_edges()
+                if edge not in processed and self.should_flip_edge(edge)
+            ]
+            if not candidates:
+                break
+            edge = min(candidates, key=self._edge_length)
+            report = self.flip_edge(edge)
+            reports.append(report)
+            processed.add(edge)
+
+        return tuple(reports)
+
+    def remesh_one_round(
+        self,
+        target_edge_length: float | None = None,
+    ) -> tuple[GuardReport, ...]:
+        """Compatibility name for the split/collapse/flip one-round pass."""
+        return self.run_one_round(target_edge_length)
+
     def _target_length(self, override: float | None) -> float:
         target = self.target_edge_length if override is None else override
         if target is None or not np.isfinite(target) or target <= 0.0:
@@ -178,6 +337,18 @@ class OperatorTransaction:
         ):
             raise ValueError("edge vertex index is invalid")
         return a, b
+
+    def _edge_length(self, edge: tuple[int, int]) -> float:
+        a, b = edge
+        return float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
+
+    def _unique_edges(self) -> tuple[tuple[int, int], ...]:
+        """Return the current mesh edges in deterministic lexical order."""
+        edges: set[tuple[int, int]] = set()
+        for face in self.state.faces.tolist():
+            for u, v in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
+                edges.add((min(int(u), int(v)), max(int(u), int(v))))
+        return tuple(sorted(edges))
 
     @classmethod
     def _edge_link_condition(
@@ -199,6 +370,31 @@ class OperatorTransaction:
             face = mesh.faces[index].tolist()
             opposite.append(next(vertex for vertex in face if vertex not in (a, b)))
         if len(set(opposite)) != len(opposite):
+            return None
+        return incident
+
+    @classmethod
+    def _collapse_edge_link_condition(
+        cls,
+        mesh: MeshState,
+        a: int,
+        b: int,
+    ) -> list[int] | None:
+        """Return incident faces only when the edge satisfies the collapse link."""
+        incident = cls._edge_link_condition(mesh, a, b)
+        if incident is None:
+            return None
+
+        neighbours_a = cls._vertex_neighbours(mesh.faces, a)
+        neighbours_b = cls._vertex_neighbours(mesh.faces, b)
+        common = neighbours_a.intersection(neighbours_b)
+        opposite = {
+            vertex
+            for index in incident
+            for vertex in mesh.faces[index].tolist()
+            if vertex not in (a, b)
+        }
+        if common != opposite:
             return None
         return incident
 
@@ -236,6 +432,150 @@ class OperatorTransaction:
                 raise ValueError("incident face does not contain the split edge")
 
         return vertices, np.asarray(faces_out, dtype=np.int64), tuple(correspondence)
+
+    @staticmethod
+    def _build_collapse_candidate(
+        mesh: MeshState,
+        a: int,
+        b: int,
+        incident: list[int],
+    ) -> tuple[np.ndarray, np.ndarray, FaceCorrespondence]:
+        """Build a midpoint collapse and retain old/new face correspondence."""
+        vertices = mesh.vertices.copy()
+        vertices[a] = (vertices[a] + vertices[b]) * 0.5
+
+        remap: np.ndarray = np.arange(len(vertices), dtype=np.int64)
+        remap[b] = a
+        remap[b + 1 :] -= 1
+        vertices = np.delete(vertices, b, axis=0)
+
+        faces_out: list[list[int]] = []
+        correspondence: list[tuple[int, int]] = []
+        for old_index, face_array in enumerate(mesh.faces.tolist()):
+            mapped = [int(remap[int(vertex)]) for vertex in face_array]
+            if len(set(mapped)) != 3:
+                continue
+            new_index = len(faces_out)
+            faces_out.append(mapped)
+            correspondence.append((old_index, new_index))
+
+        return vertices, np.asarray(faces_out, dtype=np.int64), tuple(correspondence)
+
+    @staticmethod
+    def _build_flip_candidate(
+        mesh: MeshState,
+        a: int,
+        b: int,
+        incident: list[int],
+    ) -> tuple[np.ndarray, np.ndarray, FaceCorrespondence]:
+        """Build the alternate diagonal while preserving each face orientation."""
+        if len(incident) != 2:
+            raise ValueError("flip requires two incident faces")
+        first_index, second_index = incident
+        first = tuple(int(vertex) for vertex in mesh.faces[first_index])
+        second = tuple(int(vertex) for vertex in mesh.faces[second_index])
+
+        first_direction: tuple[int, int, int] | None = None
+        for offset in range(3):
+            x, y, z = first[offset], first[(offset + 1) % 3], first[(offset + 2) % 3]
+            if {x, y} == {a, b}:
+                first_direction = (x, y, z)
+                break
+        if first_direction is None:
+            raise ValueError("first incident face does not contain the edge")
+        x, y, c = first_direction
+
+        second_direction: tuple[int, int, int] | None = None
+        for offset in range(3):
+            p, q, r = second[offset], second[(offset + 1) % 3], second[(offset + 2) % 3]
+            if p == y and q == x:
+                second_direction = (p, q, r)
+                break
+        if second_direction is None:
+            raise ValueError("incident faces do not have opposite edge orientation")
+        _, _, d = second_direction
+        if c == d or c in (x, y) or d in (x, y):
+            raise ValueError("flip would repeat a vertex")
+
+        faces_out = mesh.faces.copy()
+        faces_out[first_index] = np.asarray([c, x, d], dtype=np.int64)
+        faces_out[second_index] = np.asarray([c, d, y], dtype=np.int64)
+        correspondence = ((first_index, first_index), (second_index, second_index))
+        return mesh.vertices.copy(), faces_out, correspondence
+
+    @staticmethod
+    def _vertex_neighbours(faces: np.ndarray, vertex: int) -> set[int]:
+        neighbours: set[int] = set()
+        for face in faces.tolist():
+            if vertex not in face:
+                continue
+            neighbours.update(int(other) for other in face if int(other) != vertex)
+        return neighbours
+
+    @classmethod
+    def _vertex_valence_deviation(cls, mesh: MeshState) -> int:
+        """Return deviation from valence six (interior) or four (boundary)."""
+        edge_faces: dict[tuple[int, int], int] = {}
+        for face in mesh.faces.tolist():
+            for u, v in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
+                key = (min(int(u), int(v)), max(int(u), int(v)))
+                edge_faces[key] = edge_faces.get(key, 0) + 1
+
+        boundary = [False] * len(mesh.vertices)
+        for (u, v), count in edge_faces.items():
+            if count == 1:
+                boundary[u] = True
+                boundary[v] = True
+
+        deviation = 0
+        for vertex in range(len(mesh.vertices)):
+            valence = len(cls._vertex_neighbours(mesh.faces, vertex))
+            if valence == 0:
+                continue
+            target = 4 if boundary[vertex] else 6
+            deviation += abs(valence - target)
+        return deviation
+
+    @staticmethod
+    def _triangle_quality(vertices: np.ndarray, face: np.ndarray) -> float:
+        tri = vertices[np.asarray(face, dtype=np.int64)]
+        edge01 = tri[1] - tri[0]
+        edge12 = tri[2] - tri[1]
+        edge20 = tri[0] - tri[2]
+        denominator = float(
+            np.dot(edge01, edge01) + np.dot(edge12, edge12) + np.dot(edge20, edge20),
+        )
+        area_twice = float(np.linalg.norm(np.cross(edge01, -edge20)))
+        if denominator <= 0.0 or not np.isfinite(denominator) or not np.isfinite(area_twice):
+            return 0.0
+        return float((2.0 * np.sqrt(3.0) * area_twice) / denominator)
+
+    @classmethod
+    def _flip_improves(
+        cls,
+        before: MeshState,
+        after: MeshState,
+        face_correspondence: FaceCorrespondence | None,
+    ) -> bool:
+        """Require a strict valence or local minimum-quality improvement."""
+        if face_correspondence:
+            old_quality = min(
+                cls._triangle_quality(before.vertices, before.faces[old_index])
+                for old_index, _ in face_correspondence
+            )
+            new_quality = min(
+                cls._triangle_quality(after.vertices, after.faces[new_index])
+                for _, new_index in face_correspondence
+            )
+        else:
+            old_quality = min(cls._triangle_quality(before.vertices, face) for face in before.faces)
+            new_quality = min(cls._triangle_quality(after.vertices, face) for face in after.faces)
+
+        quality_improved = new_quality > old_quality + 1e-12
+        valence_improved = cls._vertex_valence_deviation(after) < cls._vertex_valence_deviation(
+            before,
+        )
+        return bool(quality_improved or valence_improved)
 
     @staticmethod
     def _link_condition(mesh: MeshState) -> bool:
