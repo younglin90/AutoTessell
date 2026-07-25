@@ -9,11 +9,13 @@
 기존 core/generator/native_poly/voronoi.py 의 scipy Voronoi 기반 경로는 legacy
 fallback 으로 유지 (dual 경로가 우선).
 """
+
 from __future__ import annotations
 
 import shutil
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -97,6 +99,7 @@ def run_native_poly_harness(
     max_tet_cells: int = 30000,
     smooth_iters: int = 0,
     smooth_relax: float = 0.3,
+    boundary_face_classifier: Callable[[tuple[int, int, int], np.ndarray], object] | None = None,
 ) -> PolyHarnessResult:
     """Generator (native_tet → dual) ↔ Evaluator 반복으로 poly mesh 생성.
 
@@ -118,7 +121,8 @@ def run_native_poly_harness(
         if target_edge_length < floor:
             log.info(
                 "native_poly_harness_target_edge_clamp",
-                requested=target_edge_length, clamped_to=floor,
+                requested=target_edge_length,
+                clamped_to=floor,
                 reason="tet cell explosion 방지",
             )
             target_edge_length = floor
@@ -132,20 +136,24 @@ def run_native_poly_harness(
     for it in range(1, int(max_iter) + 1):
         log.info(
             "native_poly_harness_iter",
-            iteration=it, seed_density=current_seed,
+            iteration=it,
+            seed_density=current_seed,
         )
         # 1) Generator: native_tet
         tmp_tet = Path(tempfile.mkdtemp(prefix=f"nph_tet_{it}_"))
         try:
             tet_res: NativeTetResult = generate_native_tet(
-                vertices, faces, tmp_tet,
+                vertices,
+                faces,
+                tmp_tet,
                 target_edge_length=target_edge_length,
                 seed_density=current_seed,
             )
             if not tet_res.success or tet_res.tets is None:
                 log.warning(
                     "native_poly_harness_tet_fail",
-                    iteration=it, message=tet_res.message,
+                    iteration=it,
+                    message=tet_res.message,
                 )
                 current_seed = int(current_seed * 1.5)
                 continue
@@ -155,7 +163,8 @@ def run_native_poly_harness(
             if n_tet_cells > max_tet_cells:
                 log.warning(
                     "native_poly_harness_tet_too_large",
-                    n_cells=n_tet_cells, cap=max_tet_cells,
+                    n_cells=n_tet_cells,
+                    cap=max_tet_cells,
                     iteration=it,
                 )
                 # target_edge_length 를 늘려 tet mesh 를 더 성기게 + seed 도 감소
@@ -169,12 +178,16 @@ def run_native_poly_harness(
             # 2) tet → dual
             tmp_dual = Path(tempfile.mkdtemp(prefix=f"nph_dual_{it}_"))
             dual_res = tet_to_poly_dual(
-                tet_res.tet_points, tet_res.tets, tmp_dual,
+                tet_res.tet_points,
+                tet_res.tets,
+                tmp_dual,
+                boundary_face_classifier=boundary_face_classifier,
             )
             if not dual_res.success:
                 log.warning(
                     "native_poly_harness_dual_fail",
-                    iteration=it, message=dual_res.message,
+                    iteration=it,
+                    message=dual_res.message,
                 )
                 current_seed = int(current_seed * 1.5)
                 shutil.rmtree(tmp_dual, ignore_errors=True)
@@ -184,8 +197,11 @@ def run_native_poly_harness(
             if smooth_iters > 0:
                 try:
                     from core.generator.native_poly.smooth import smooth_poly_mesh  # noqa: PLC0415
+
                     s_res = smooth_poly_mesh(
-                        tmp_dual, n_iter=smooth_iters, relax=smooth_relax,
+                        tmp_dual,
+                        n_iter=smooth_iters,
+                        relax=smooth_relax,
                     )
                     log.info(
                         "native_poly_harness_smooth",
@@ -201,7 +217,9 @@ def run_native_poly_harness(
             last_metrics = metrics
             log.info(
                 "native_poly_harness_eval",
-                iteration=it, passed=passed, **metrics,
+                iteration=it,
+                passed=passed,
+                **metrics,
             )
 
             # 최고 후보 추적 — negative_volumes 가 더 적거나, 같으면 cells 가 더 많은 쪽.
@@ -210,8 +228,7 @@ def run_native_poly_harness(
             best_neg = int(best_metrics.get("negative_volumes", 10**9))
             best_cells = int(best_metrics.get("cells", 0))
             is_better = best_result is None or (
-                cur_neg < best_neg
-                or (cur_neg == best_neg and cur_cells > best_cells)
+                cur_neg < best_neg or (cur_neg == best_neg and cur_cells > best_cells)
             )
             if is_better:
                 best_result = dual_res
@@ -230,7 +247,8 @@ def run_native_poly_harness(
                     success=True,
                     elapsed=time.perf_counter() - t0,
                     iterations=it,
-                    n_cells=metrics["cells"], n_points=metrics["points"],
+                    n_cells=metrics["cells"],
+                    n_points=metrics["points"],
                     open_cells=0,
                     negative_volumes=metrics["negative_volumes"],
                     max_non_ortho=metrics["max_non_orthogonality"],

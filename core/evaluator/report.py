@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping, Sequence
+from numbers import Real
 from typing import Any
 
 from rich.console import Console
@@ -64,6 +67,48 @@ _QUALITY_THRESHOLDS: dict[str, dict[str, Any]] = {
     },
 }
 
+# A large aspect ratio is not intrinsically a defect in a boundary-layer cell:
+# the long axis is intentional when it follows the local stretch field and the
+# wall tangent plane, while the short axis follows the wall normal.  These
+# scores are optional because older checkers do not produce them.  Missing
+# scores deliberately retain the scalar aspect-ratio gate.
+_AR_ALIGNMENT_SCORE_NAMES: dict[str, tuple[str, ...]] = {
+    "principal_axis_alignment": (
+        "principal_axis_alignment",
+        "principal_axis_alignment_score",
+    ),
+    "neighbor_stretch_consistency": (
+        "neighbor_stretch_consistency",
+        "neighbor_stretch_direction_consistency",
+        "neighbor_stretch_alignment",
+    ),
+    "surface_tangent_alignment": (
+        "surface_tangent_alignment",
+        "surface_tangent_alignment_score",
+    ),
+    "surface_normal_alignment": (
+        "surface_normal_alignment",
+        "surface_normal_alignment_score",
+    ),
+}
+
+_AR_ALIGNMENT_CONTAINER_NAMES: tuple[str, ...] = (
+    "aspect_ratio_alignment",
+    "aspect_ratio_evidence",
+    "ar_alignment",
+    "anisotropic_quality",
+)
+
+# Scores are absolute cosine similarities in [0, 1].  Use conservative
+# per-population minima below so one well-aligned cell cannot hide a bad cell
+# behind a mesh-wide mean.
+_AR_ALIGNMENT_MINIMUMS: dict[str, float] = {
+    "principal_axis_alignment": 0.95,
+    "neighbor_stretch_consistency": 0.90,
+    "surface_tangent_alignment": 0.90,
+    "surface_normal_alignment": 0.90,
+}
+
 
 def get_thresholds(quality_level: str) -> dict[str, Any]:
     """quality_level에 맞는 임계값 딕셔너리를 반환한다.
@@ -71,6 +116,130 @@ def get_thresholds(quality_level: str) -> dict[str, Any]:
     알 수 없는 quality_level이면 "standard"로 폴백한다.
     """
     return _QUALITY_THRESHOLDS.get(quality_level, _QUALITY_THRESHOLDS["standard"])
+
+
+def _read_optional_value(source: Any, names: tuple[str, ...]) -> Any | None:
+    """Read an optional metric from mappings, models, or lightweight test objects."""
+    if source is None:
+        return None
+
+    if isinstance(source, Mapping):
+        for name in names:
+            if name in source and source[name] is not None:
+                return source[name]
+
+    # Pydantic models keep ignored/extra fields in ``model_extra`` when an
+    # application opts into that mode.  Reading it here also keeps this gate
+    # compatible with checker adapters that attach diagnostics without changing
+    # the core schema.
+    for extra_name in ("model_extra", "__pydantic_extra__"):
+        extra = getattr(source, extra_name, None)
+        if isinstance(extra, Mapping):
+            for name in names:
+                if name in extra and extra[name] is not None:
+                    return extra[name]
+
+    for name in names:
+        value = getattr(source, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _conservative_score(value: Any) -> float | None:
+    """Reduce a scalar or per-cell score to its finite worst-case value.
+
+    Alignment diagnostics may be emitted as one mesh-level score or as a
+    sequence for the high-AR cells.  The minimum is intentional: an average
+    would let a small population of isotropic/deformed cells pass.
+    """
+    if isinstance(value, Real):
+        score = float(value)
+        return score if math.isfinite(score) else None
+
+    # numpy arrays and similar array-likes expose ``tolist`` without making
+    # numpy a dependency of this lightweight report module.
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        return _conservative_score(tolist())
+
+    if isinstance(value, Mapping):
+        # Prefer an explicitly conservative summary when supplied.  Otherwise
+        # reduce all numeric entries, which is useful for small synthetic
+        # diagnostics and keeps the behavior fail-closed.
+        for name in ("minimum", "min", "p05", "p10", "worst"):
+            if name in value:
+                return _conservative_score(value[name])
+        scores = [_conservative_score(item) for item in value.values()]
+        finite_scores = [item for item in scores if item is not None]
+        return min(finite_scores) if finite_scores else None
+
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        scores = [_conservative_score(item) for item in value]
+        finite_scores = [item for item in scores if item is not None]
+        return min(finite_scores) if finite_scores else None
+
+    return None
+
+
+def _aspect_ratio_alignment_scores(
+    checkmesh: Any,
+    metrics: Any,
+) -> dict[str, float] | None:
+    """Collect the four optional alignment scores from checker diagnostics."""
+    sources: list[Any] = [checkmesh, metrics]
+    native_bl = getattr(metrics, "native_bl_phase2", None)
+    if native_bl is not None:
+        sources.insert(0, native_bl)
+
+    # Accept a named evidence object first, then direct fields.  The latter is
+    # useful for native checker adapters and keeps synthetic gate tests small.
+    expanded_sources: list[Any] = []
+    for source in sources:
+        expanded_sources.append(source)
+        container = _read_optional_value(source, _AR_ALIGNMENT_CONTAINER_NAMES)
+        if container is not None:
+            expanded_sources.insert(0, container)
+
+    scores: dict[str, float] = {}
+    for score_name, field_names in _AR_ALIGNMENT_SCORE_NAMES.items():
+        raw = None
+        for source in expanded_sources:
+            raw = _read_optional_value(source, field_names)
+            if raw is not None:
+                break
+        score = _conservative_score(raw)
+        if score is None or not 0.0 <= score <= 1.0:
+            return None
+        scores[score_name] = score
+    return scores
+
+
+def _aligned_anisotropic_aspect_ratio_is_acceptable(
+    max_aspect_ratio: float,
+    soft_aspect_threshold: float,
+    checkmesh: Any,
+    metrics: Any,
+) -> bool:
+    """Return whether high AR is supported by conservative directional evidence.
+
+    The long principal axis must align with the local stretch direction, agree
+    with neighboring high-AR cells, and lie in the surface tangent plane.  The
+    short axis must also align with the surface normal.  All four conditions
+    are required; no alignment data means the legacy scalar gate remains in
+    force.
+    """
+    if not math.isfinite(max_aspect_ratio) or max_aspect_ratio <= soft_aspect_threshold:
+        return False
+
+    scores = _aspect_ratio_alignment_scores(checkmesh, metrics)
+    if scores is None:
+        return False
+
+    for name, minimum in _AR_ALIGNMENT_MINIMUMS.items():
+        if scores[name] < minimum:
+            return False
+    return True
 
 
 # Quality-level-independent hard fail checks (non-orthogonality / skewness
@@ -620,7 +789,13 @@ class EvaluationReporter:
 
         # QualityLevel-aware: Max aspect ratio
         soft_aspect = thresholds["soft_aspect_ratio"]
-        if checkmesh.max_aspect_ratio > soft_aspect:
+        aligned_anisotropic_ar = _aligned_anisotropic_aspect_ratio_is_acceptable(
+            checkmesh.max_aspect_ratio,
+            soft_aspect,
+            checkmesh,
+            metrics,
+        )
+        if checkmesh.max_aspect_ratio > soft_aspect and not aligned_anisotropic_ar:
             fails.append(
                 FailCriterion(
                     criterion="max_aspect_ratio",
@@ -628,6 +803,16 @@ class EvaluationReporter:
                     threshold=soft_aspect,
                     location_hint="",
                 )
+            )
+        elif aligned_anisotropic_ar:
+            log.info(
+                "aligned_anisotropic_aspect_ratio_accepted",
+                max_aspect_ratio=checkmesh.max_aspect_ratio,
+                threshold=soft_aspect,
+                basis=(
+                    "principal-axis alignment, neighbor stretch consistency, "
+                    "surface tangent/normal alignment"
+                ),
             )
 
         # QualityLevel-aware: Cell volume ratio

@@ -155,6 +155,13 @@ selective repair UI.
 - **native_poly Phase 0 FV census (2026-07-24):** report-only face planarity,
   normal spread, Juretić ψ, h, Circle Ratio, sphericity, and Uniformity Factor
   metrics are now emitted by `NativeMeshChecker`; no quality gate was changed.
+- **native_poly directional AR gate (2026-07-24):** high aspect-ratio cells are
+  accepted by the evaluator only when conservative evidence confirms principal-
+  axis alignment, neighbor stretch-direction consistency, and surface
+  tangent/normal alignment. Missing or weak evidence keeps the legacy scalar
+  AR gate active, so isotropic poor cells remain rejected. Producer/schema
+  wiring for these four diagnostics remains the next step before real BL cases
+  can use the relaxation.
 - **native_hex Phase 0 census (2026-07-24):** report-only cell-type/volume
   fractions, ScoreCHE, hex-cluster, and β-margin diagnostics are emitted from
   written topology; pairing remains absent and no all-hex claim is made.
