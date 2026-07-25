@@ -32,3 +32,48 @@ Implement in evidence order:
 Primary metrics: quad fraction, singularity count/type, minimum scaled
 Jacobian, angle/area distortion, maximum bidirectional distance, feature
 coverage, manifold/watertight status, determinism, peak memory, and runtime.
+
+## 2026-07-26 QUAD-ROSY1 result (measured, diagnostic only, zero mesh edits)
+
+**Note on "the code audit" above**: `quad_dominant.py` and its test are
+uncommitted (`git ls-files` does not track either) and, as found while
+committing this card, the test itself no longer imports cleanly against
+the current `native_remesh/__init__.py` (`ImportError: cannot import name
+'QuadDominantConfig'`) -- the "deterministic, quality-gated triangle-pair
+merger" this section describes is currently broken/unverified, not a
+working fallback. Not fixed here (out of this card's scope); flagged so
+the next quad card doesn't assume it as a working baseline.
+
+Delivered `core/preprocessor/native_remesh/rosy_diagnostic.py` (870
+lines) + `tests/test_native_quad_rosy_diagnostic.py` (22 tests, all
+passing) -- a faithful, diagnostic-only port of Jakob 2015's 4-RoSy
+orientation field (extrinsic/intrinsic smoothness energy, nonlinear
+Gauss-Seidel relaxation) with singularity detection gated by a falsifiable
+correctness check: Poincare-Hopf (`index_sum == 4 * chi`).
+
+| Shape | V | F | chi | index_sum (ext / int) | singularities | energy (start -> end) | curvature dev |
+| --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| cube | 8 | 12 | 2 | 8 / 8 (exact) | 8, all +1/4 | 5.79 -> 3.78 | n/a (umbilic) |
+| cylinder (genus 1) | 256 | 512 | 0 | 0 / 0 | 18 ext / 16 int | 189.27 -> 48.34 | 2.67 deg vs 22.74 deg random baseline |
+| bracket (genus 3) | 204 | 416 | -4 | -16=4*chi (12 reconciled) / -16=4*chi | 36 ext / 54 int | 158.30 -> 45.27 | 16.26 deg vs 23.51 deg baseline |
+
+Cube reproduces the textbook answer exactly (8 corners, index +1/4,
+sum = chi). Cylinder shows near-perfect curvature-line alignment
+(2.67 deg). Bracket exposes the actual problem: single-resolution
+relaxation is stalled (bit-identical energy at 20 and 60 sweeps) and the
+extrinsic/intrinsic connections disagree materially on sharp geometry (18
+vs 4 ambiguous +-1/2 faces on the same field) -- roughly one singularity
+per 8-12 faces, far denser than a usable quad layout.
+
+**Bug found+fixed**: an initial sign convention on the index loop sum
+passed Poincare-Hopf on cube/cylinder (both sign-symmetric by their own
+chi) but failed on the bracket -- caught by the identity, not by
+inspection.
+
+**Verdict: do not proceed straight to `QUAD-POSY1`.** A 4-PoSy
+integer-offset ledger built on this field's ambiguous ±1/2 singularities
+would reproduce Huang 2018's own ~20% watertightness-failure mode.
+Recommended next: `QUAD-MULTIRES1` (coarse-to-fine relaxation, the
+paper's own answer to local minima) before `QUAD-POSY1`; `QUAD-SINGULARITY1`
+(explicit ledger) is a smaller acceptable substitute since this
+diagnostic already produces most of its contents.
