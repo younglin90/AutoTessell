@@ -160,6 +160,114 @@ Acceptance: boundary skew strictly decreases; census re-run post-repair; all gat
 green. Evidence: `ledoux2010_sheet_operations.md`, `knupp2001_untangling.md`,
 sweep section 2.
 
+### 2026-07-24 wave 0 result (measured, no code change)
+
+Cylinder fine, 1781 hex, pre-BL: boundary skew max `3.208651` (p50 `0.825`,
+p90 `2.237`, p95 `2.860`, p99 `3.192`); 85/676 side faces at skew ≥ 2.0,
+spread across **14 disconnected connected components** — not a single
+coherent sheet. Decision per the tree above: scattered → extraction is the
+wrong tool; **wave 1 (ECR/HexOpt surface-constrained optimization) is the
+recommended path, not HEX-SHEET-1.**
+
+Correction to ROADMAP.md's "boundary skew 2.84 (permanent gate ≤3.0)": that
+number is `standard` quality only (confirmed by exact reproduction:
+`2.840553147`), not a general fine-quality gate. Fine quality's boundary skew
+was never separately measured or gated before this audit — ROADMAP's fine-row
+only tracked internal skew and negative-volume-count. `3.208651` is a new
+measurement, not a regression. Fine now needs its own boundary-skew gate once
+wave 1 lands a fix; until then this is an open (not broken) number.
+
+### 2026-07-24 wave 1 result (measured, no code change) — ECR/HexOpt hypothesis refuted for direct porting
+
+- `HEX-ECR-1` (cone-feasibility census on the 85 bad-skew side faces):
+  0/85 have an infeasible cone contact, only 5/85 are near-tight. ECR's
+  mechanism (edge-cone containment repair) targets cone violations that our
+  bad faces mostly do not have — **most of these faces are not cone-infeasible,
+  just angularly poor within otherwise-valid geometry**. Direct ECR porting
+  would have little to fix here.
+- `HEX-ECR-4` (MSJ-vs-OpenFOAM-skew correlation, cylinder fine): overall
+  Spearman ρ = -0.8809, boundary-only ρ = -0.7972 (both strong, expected
+  sign). **But boundary worst-tail overlap = 0%** — the faces MSJ would flag
+  as worst and the faces our skew gate flags as worst are two different sets.
+  Optimizing MSJ (what ECR/HexOpt actually drive) would not reliably improve
+  our specific worst-skew cells.
+- **Verdict: do not port ECR/HexOpt as-is.** Both diagnostics point away from
+  a clean match between the literature mechanism and our failure mode.
+  Porting on top of this evidence would be exactly the "unexercised complexity"
+  pattern this plan forbids (THINSLIVER2 precedent). Blocking issue: only one
+  shape (cylinder) has been benchmarked — before discarding the ECR/HexOpt
+  route entirely, wave 1 needs ≥3 hard-hex shapes with the same ECR-1/ECR-4
+  diagnostics run to confirm the mismatch isn't cylinder-specific. Wave 2
+  (HEX-SHEET-1 surgical extraction) is not automatically promoted either —
+  the wave-0 scattered-not-coherent finding still argues against it. Next
+  step is more diagnostic coverage, not a mechanism choice yet.
+
+### 2026-07-24 wave 1 extended result (4 shapes, no code change) — conclusion finalized
+
+Extended ECR-1/ECR-4 to cylinder, sphere, bracket, gear. Cone-feasibility and
+the OpenFOAM-worst-face-vs-cone-infeasible overlap vary sharply by shape:
+sphere and bracket show high overlap (24/24, 19/19), cylinder and gear show
+zero (0/8, 0/0). Correlation is shape-dependent too — Spearman ranges
+-0.886 (cylinder) to -0.476 (gear); pooled worst-5% Jaccard overlap is only
+13.1% (per-shape: 23.6/32.4/10.4/5.0%).
+
+**Conclusion, now evidence-backed across 4 shapes, not just cylinder: ECR/MSJ
+signals are useful diagnostics but are not a portable cross-shape gate or
+solver objective. Direct ECR/HexOpt porting stays off the table.** The
+mismatch is not cylinder-specific — it is a real property of MSJ-style
+objectives vs our OpenFOAM skew metric across diverse hex geometry. Wave 1
+(surface-constrained optimization) is closed as "diagnosed, not adopted."
+Next candidate for the post-snap quality lane needs a different mechanism
+than ECR/HexOpt's MSJ objective, or a shape-specific dispatch (since sphere/
+bracket DO show high overlap — an MSJ-based approach might still work for
+that subset even though it fails for cylinder/gear). Revisit wave 2
+(HEX-SHEET-1) given wave 1's mechanism is now closed, not merely paused.
+
+### 2026-07-25 shape-adaptive dispatch ruled out — literature gap identified
+
+Tested whether transition-cell density or feature-edge density predicts
+ECR/cone-infeasible overlap (the sphere/bracket-vs-cylinder/gear split).
+Neither does: gear has the highest transition-cell proxy (65.5%) and
+feature-edge ratio (37.9%) of all four shapes, yet its ECR overlap is 0% —
+the same as cylinder (9.0% transition, 33.3% feature, also 0% overlap) and
+opposite of sphere (49.4%/0%/high-overlap) and bracket (47.3%/33.7%/
+high-overlap). No curvature- or feature-density-based predictor survives
+this data; a shape-adaptive ECR dispatch is not evidence-backed and is
+dropped.
+
+**Wave 1 (ECR/HexOpt) and wave 2 (HEX-SHEET-1, weakened by wave 0's
+scattered-not-coherent finding) are both closed for the post-snap quality
+lane as currently scoped.** Bad-face topology data (isolated singletons for
+cylinder/sphere/gear; 7 components across 6 patches for bracket) suggests the
+damage is tied to octree transition-sheet geometry and feature/curve/corner
+provenance, not generic hex shape optimization. **New literature is needed**,
+targeted specifically at: (a) quality repair for octree adaptive-transition
+sheets (as opposed to generic hex untangling), (b) feature/curve/corner
+provenance-aware post-snap correction. This is a snowball task, not an
+implementation task — do not resume Phase 1 implementation until this gap
+is read.
+
+### 2026-07-25 gap search complete, two full-reads in progress
+
+`gap_search_transition_sheet_provenance_2026-07-25.md` screened 19 papers;
+P0: Elsheikh 2014 (octree transition preconditioning), Chen 2026 (CJA,
+hanging-node transition quality control — distinct from the already-read
+Chen 2026/EwC QHED paper), and a since-confirmed duplicate (the "HexOpt 2026"
+DOI resolves to the already-FULL_READ `tong_hexopt.md` arXiv preprint — no
+re-read needed). Saturated (2 consecutive rounds, no new mechanism). Elsheikh
+2014 full-read verdict: it is a **pre-pass** (generation-stage refinement-field
+conditioning), not a post-snap repair — a competing mechanism to
+Zhang2013/Pitzalis2021/Livesu2022 in the octree-template lane (Phase 2), not
+a Phase 1 post-snap fix. Chen 2026 (CJA) full-read verdict: directly
+demonstrates ungated hanging-node subdivision collapsing orthogonality
+0.088→7.93e-13 on a pure-hex case, and a quality-gate-with-isotropic-fallback
+(τw=0.6, τs=0.75, τa=15) recovering ~4x the floor — the gate *pattern* is
+portable even though the underlying mechanism is edge-bisection refinement of
+an existing mesh, not octree-from-scratch generation. `HEX-TRANS-2`
+(diagnostic: cross-tabulate our bad-face population against hanging-node
+adjacency to confirm the damage actually concentrates there) is the cheapest
+next step before investing in a quality-gate implementation.
+
 ### Phase 2 — Octree-template lane (transition contract, HEX-OCT-2)
 
 Cards: **HEX-OCT-2 decision** [M] — reads done; the notes recommend Option A in a
@@ -308,3 +416,163 @@ suites on cube/cylinder (surface 6.000 / void 0.000 / vol 1.000, wall_dev_max
 against its phase's opening measurement and is reverted whole on any permanent-gate
 failure; orientation-sensitivity and failure-honesty gates from
 `batch2_core_papers.md` apply to every new mechanism.
+
+## 7. Phase 1 revised: HEX-MATCH primary mechanism (2026-07-25 synthesis)
+
+Continues directly from "2026-07-25 gap search complete" above: the round-2 gap
+search (`gap_search_transition_repair_round2_2026-07-25.md`) closed the literature
+gap Phase 1 stalled on, and 5 full-reads (`staten2010_mesh_matching.md`,
+`daines2018_octree_transition_repair.md`, `ledoux2013_cad_topology_correction.md`,
+`chen2016_quality_sheet_choice.md`, `zhao2023_bc_hexmatching.md`) plus the two
+round-1 P0 reads (Elsheikh 2014, Chen 2026 CJA) converge on a single design,
+recorded in full in `evidence_matrix.md`'s "2026-07-25 round 2 synthesis" section.
+This section adds the resulting card sequence; it does not modify or supersede any
+section above.
+
+### 7.1 Converged design
+
+**Staten 2010's depth-bounded local mesh-matching architecture** (pillow / sheet
+extraction / column collapse, same operator catalog already scoped topologically in
+`ledoux2010_sheet_operations.md`) **gated by our own OpenFOAM skew metric, never a
+borrowed proxy** (not scaled/MSJ Jacobian, not Chen 2016's topological `ΔV`). Three
+independent findings this campaign all point the same way: `HEX-ECR-4`'s own
+MSJ-vs-skew worst-tail Jaccard overlap of only 5.0-32.4% across 4 shapes; Chen
+2016's own data showing `ΔV`-guided selection still degrading min scaled Jacobian to
+0.18-0.37 and losing to the pure-heuristic original in a head-to-head case; and
+Staten 2010's own unmitigated 0.9914→0.4691 drop with no floor check anywhere in
+Algorithm 1. No literature-borrowed proxy metric is trustworthy for our specific
+failure mode — the fix is the same guarded-transaction pattern (simulate, measure
+with our own metric, reject-and-rollback if it doesn't strictly improve) already
+validated 6+ times this session in native_tet/native_poly.
+
+Scope split, not to be conflated:
+
+- **Cylinder/sphere/gear (isolated singleton bad faces)** — Staten's demonstrated
+  scale fits directly; this is the primary target (`HEX-MATCH-1/2`).
+- **Bracket (7-connected-component/6-patch damage)** — NOT validated by any of the
+  5 round-2 papers or the 2 round-1 papers. Ledoux 2013 excludes multi-component
+  as future work; Staten 2010 restricts to single-surface interfaces; Zhao
+  2023/2024's multi-component demo is sequential pairwise inter-part gluing, not
+  our intra-mesh multi-cluster case. Must be its own separate, flagged-uncertain
+  experiment (`HEX-MATCH-3`), never assumed to work via the same mechanism.
+- **Daines 2018, Zhao 2023/2024, Ledoux 2013** are secondary technique donors, not
+  primary mechanisms: Daines' iteration-bounded (cap 3) labeling-loop concept and
+  its collateral-neighbor-damage measurement discipline (`HEX-DAINES-1/2`); Zhao's
+  SLIM/Gao-2017 stitching energy for cleaning up any inversions a local repair
+  introduces (`HEX-ZHAO-2`) and its base-complex depth-bounding as a generic
+  repair-scope bound (`HEX-ZHAO-1`); Ledoux's dihedral-angle/chord-count rule as a
+  secondary input alongside (never a replacement for) our skew measurement, for
+  choosing WHERE pillowing helps sharp-feature preservation (`HEX-LEDOUX13-1/2/3`).
+
+### 7.2 Card sequence (measurement-first)
+
+Per this plan's own measurement-first protocol (Section 6): no mechanism lands on
+an unmeasured baseline, and diagnostic-only cards precede any mesh-editing code.
+
+1. **`HEX-MATCH-1` diagnostic mode** [S] — port Staten's chord-matching/
+   sheet-selection logic (dual column/sheet membership identification for a
+   flagged bad hex) in **report-only mode**: for every flagged bad face on
+   cylinder/sphere/gear, report which sheet/column would be targeted and which
+   operation (pillow-insert vs. column-collapse) would be attempted, with zero
+   mesh mutation. Pass = a complete per-bad-face report exists and is
+   inspectable before any editing code is written; this is the same
+   report-before-mutate discipline already used for Phase 0's census cards.
+2. **`HEX-MATCH-2`** [M] — implement the actual pillow/column-collapse operation
+   behind a hard quality gate: trial the operation, measure our own OpenFOAM
+   skew/non-orthogonality delta on the affected neighborhood only, commit only
+   if it does not regress below the existing gate, else increase depth (capped)
+   or abandon and report — replacing Staten's un-verified "smooth and hope"
+   ending with an explicit reject-and-rollback transaction. Depends on 1's
+   report matching what 2 actually executes (falsification check: if the
+   diagnostic-mode targets and the real-op targets diverge, the port has a bug,
+   not a design gap).
+3. **`HEX-MATCH-3`** [research spike, not an implementation card] — bracket
+   multi-component experiment, run only after 1-2 are measured on
+   cylinder/sphere/gear: apply HEX-MATCH-1/2 independently to each of the
+   bracket's 7 connected bad components; if any two components' selected
+   sheets/columns overlap, document the conflict and stop — do not proceed to
+   a bracket implementation without either a serialization order or reading
+   Zhao 2023/2024's base-complex approach first. Explicit non-claim: passing
+   cylinder/sphere/gear does not predict bracket's outcome.
+
+Secondary donor cards (`HEX-DAINES-1/2`, `HEX-LEDOUX13-1/2/3`, `HEX-SHEETCHOICE-1/2/3`,
+`HEX-ZHAO-1/2`) attach to this sequence as noted per-card in `evidence_matrix.md`'s
+round-2 candidate-cards table; none is a prerequisite for `HEX-MATCH-1/2` to land.
+
+### 2026-07-26 HEX-MATCH-1 result (measured, diagnostic only, zero mesh edits)
+
+Delivered `core/generator/native_hex/match_diagnostic.py` (log-only, mirrors
+`native_tet/boundary_invariant.py`'s `log_only=True` precedent) +
+`tests/test_native_hex_match_diagnostic.py` (7 unit tests, all branches) +
+`scripts/diag_hex_match_candidates.py` (fine-quality, pre-BL runner — BL
+re-triangulates the wall into prism caps that hide the boundary quads this
+card targets, so the census must run before the BL pass).
+
+Flagging uses the project's own canonical boundary-skewness formula, ported
+verbatim from `NativeMeshChecker._compute_boundary_skewness`
+(`core/evaluator/native_checker.py`), not MSJ or `ΔV`, per this section's own
+gating rule. Targeting is a purely combinatorial dual-column trace (two hex
+faces are "opposite" iff they share no vertex), decided by Staten's two named
+risk conditions only: self-intersection (doublet risk -> forces depth-1
+pillow) and thru-boundary spanning (-> forces pillow, an extension of
+Staten's node-associativity caveat from sheets to columns).
+
+Census (fine quality, pre-BL, max_cells=8000, skew >= 2.0, max_depth=2):
+
+| Shape | cells | boundary faces | flagged | pillow | collapse | none (footprint conflict) | none (non-hex owner) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| cylinder | 6320 | 2232 | 368 | 0 | 312 | 56 | 0 |
+| sphere | 4224 | 1896 | 888 | 54 | 289 | 545 | 0 |
+| gear | 4914 | 3848 | 111 | 30 | 48 | 33 | 0 |
+
+All collapse candidates used the full depth-2 bound; no self-intersecting
+columns occurred in any of the three runs. At this cell budget all three
+shapes measured 100% hex fraction (`score_che=1.0`), so the "non-hex owner"
+rejection branch never fired — the octree-transition-polyhedron damage
+pattern the literature discusses was not reproduced here; every "none"
+verdict was a footprint conflict (two flagged faces claiming overlapping
+depth-2 neighborhoods), heaviest on sphere (61% of its flagged faces).
+
+**Caveat:** the wave-0/wave-1 numbers cited in Section 7's synthesis (85/676
+for cylinder, Jaccard 5-32%) have no committed measurement script behind
+them and could not be reproduced from this card's own protocol — the
+`HEX-MATCH-1` numbers above are an independent fresh census, not a
+reproduction of those earlier figures. Both measurements agree only in
+kind (a large, well-targetable class of flagged bad faces exists), not in
+exact counts.
+
+**Verdict: proceed to `HEX-MATCH-2`.** 649/1367 flagged faces (~47%) across
+the three shapes get a well-bounded collapse candidate, and pillow covers
+most of the remainder cleanly; only footprint conflicts block the rest, and
+`HEX-MATCH-2`'s own sequential-processing/rollback transaction (rather than
+this diagnostic's all-at-once claim order) should reduce that count. No
+evidence found against the mechanism's applicability to this damage pattern.
+
+### 7.3 Invariant table addition
+
+| Card | Moves boundary vertices? | Changes cell count? | Determinism risk |
+| --- | --- | --- | --- |
+| HEX-MATCH-1 (diagnostic) | No (report-only) | No | None (traversal order fixed) |
+| HEX-MATCH-2 | **No** — boundary vertices are never repositioned; only new interior/pillowed layers are inserted or an interior column is collapsed, matching Ledoux 2013's own boundary-compatibility finding (pillowing adds structure without moving geometry already classified on S/C/V) | Yes (one sheet/column edited per accepted repair) | Medium (depth-cap and rollback order must be pinned) |
+| HEX-MATCH-3 (bracket spike) | No (inherits HEX-MATCH-2's contract) | Yes, if executed | High (unvalidated for multi-component; may not converge or may conflict across components) |
+
+### 7.4 Explicit rejections
+
+- **Chen 2016's `ΔV`/EEVS as a primary (or even fallback) repair-pass metric.**
+  It is not geometric (pure edge-valence/hex-count bookkeeping), has no
+  established correlation with either MSJ or our OpenFOAM skew, and the
+  source paper's own experiments show substantial scaled-Jacobian degradation
+  despite `ΔV`-guided selection being active throughout, including one
+  head-to-head loss to the unguided original algorithm. `HEX-SHEETCHOICE-2`
+  is the standing diagnostic that could overturn this — until it runs and
+  shows otherwise, `ΔV` stays rejected.
+- **Daines 2018's mixed-element mechanism ported wholesale.** Its `J_ENS`
+  metric and surface-pattern-collision repair are defined over an 8-split
+  mixed tet/pyramid/wedge/hex octree family that does not exist in our
+  pure-hex/hex-dominant engine. Only the loop-structure and
+  measurement-discipline patterns transfer (`HEX-DAINES-1/2`); the metric and
+  the mixed-element repair target do not.
+- **Assuming the bracket works without its own validation.** No round-2 or
+  round-1 paper demonstrates a many-cluster-at-once intra-mesh repair. Bracket
+  work is gated entirely behind `HEX-MATCH-3`'s own measured spike, not
+  inferred from cylinder/sphere/gear success.
