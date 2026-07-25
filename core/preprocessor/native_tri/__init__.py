@@ -10,6 +10,7 @@ from .operator_loop import (
     MeshState,
     OperatorKind,
     OperatorTransaction,
+    estimate_curvature_sizing,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "MeshState",
     "OperatorKind",
     "OperatorTransaction",
+    "estimate_curvature_sizing",
 ]

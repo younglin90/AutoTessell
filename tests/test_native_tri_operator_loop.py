@@ -7,7 +7,12 @@ from pathlib import Path
 import numpy as np
 
 from core.analyzer.readers import read_stl
-from core.preprocessor.native_tri import MeshState, OperatorKind, OperatorTransaction
+from core.preprocessor.native_tri import (
+    MeshState,
+    OperatorKind,
+    OperatorTransaction,
+    estimate_curvature_sizing,
+)
 
 
 def _tet_surface() -> tuple[np.ndarray, np.ndarray]:
@@ -309,3 +314,35 @@ def test_cube_bounded_multi_rounds_remain_manifold_and_watertight() -> None:
     assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
     assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
     assert tx.run_rounds(max_rounds=0) == ()
+
+
+def test_frey_sizing_flat_fallback_matches_reference_scale() -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+
+    lengths = estimate_curvature_sizing(vertices, faces, epsilon=0.01)
+
+    # An open planar patch has no turning curvature; the guarded fallback is
+    # the upper reference scale (twice the median positive edge).
+    positive_edges = np.array([2.0, np.sqrt(8.0), 2.0])
+    np.testing.assert_allclose(lengths, 2.0 * np.median(positive_edges))
+
+
+def test_frey_sizing_sphere_is_finite_and_curvature_adaptive() -> None:
+    sphere_path = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    mesh = read_stl(sphere_path)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+
+    lengths = estimate_curvature_sizing(vertices, faces, epsilon=0.01)
+    tx = OperatorTransaction(vertices, faces, curvature_epsilon=0.01)
+
+    assert lengths.shape == (len(vertices),)
+    assert np.isfinite(lengths).all()
+    assert (lengths > 0.0).all()
+    assert tx.vertex_target_lengths is not None
+    np.testing.assert_allclose(
+        tx.vertex_target_lengths,
+        estimate_curvature_sizing(vertices, faces, 0.01),
+    )
+    assert float(np.ptp(lengths)) < 0.5 * float(np.median(lengths))

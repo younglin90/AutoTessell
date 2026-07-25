@@ -50,13 +50,110 @@ FaceCorrespondence = tuple[tuple[int, int], ...]
 SurfaceProjection = Callable[[np.ndarray], np.ndarray]
 
 
+def estimate_curvature_sizing(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    epsilon: float,
+    *,
+    min_length: float | None = None,
+    max_length: float | None = None,
+) -> np.ndarray:
+    """Estimate scalar Dunyach target lengths from discrete edge curvature.
+
+    The edge turning angle is accumulated at each vertex and normalized by
+    its incident triangle area.  This is deliberately a scalar curvature
+    lane: the anisotropic metric tensor is a later phase.  Flat vertices use
+    the mesh median edge length as a stable upper-scale fallback.
+    """
+    points = np.asarray(vertices, dtype=np.float64)
+    triangles = np.asarray(faces, dtype=np.int64)
+    eps = float(epsilon)
+    if points.ndim != 2 or points.shape[1] != 3 or not np.isfinite(points).all():
+        raise ValueError("vertices must be a finite (n, 3) array")
+    if triangles.ndim != 2 or triangles.shape[1] != 3:
+        raise ValueError("faces must have shape (m, 3)")
+    if triangles.size and (
+        triangles.min() < 0 or triangles.max() >= len(points)
+    ):
+        raise ValueError("faces contain an invalid vertex index")
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError("epsilon must be finite and positive")
+
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    face_normals = np.zeros((len(triangles), 3), dtype=np.float64)
+    face_areas = np.zeros(len(triangles), dtype=np.float64)
+    for face_index, face in enumerate(triangles.tolist()):
+        a, b, c = (int(vertex) for vertex in face)
+        cross = np.cross(points[b] - points[a], points[c] - points[a])
+        twice_area = float(np.linalg.norm(cross))
+        if twice_area > np.finfo(float).tiny and np.isfinite(twice_area):
+            face_normals[face_index] = cross / twice_area
+            face_areas[face_index] = 0.5 * twice_area
+        for u, v in ((a, b), (b, c), (c, a)):
+            edge = (min(u, v), max(u, v))
+            edge_faces.setdefault(edge, []).append(face_index)
+
+    edge_lengths = np.asarray(
+        [np.linalg.norm(points[b] - points[a]) for a, b in edge_faces],
+        dtype=np.float64,
+    )
+    positive_edges = edge_lengths[np.isfinite(edge_lengths) & (edge_lengths > 0.0)]
+    if positive_edges.size == 0:
+        raise ValueError("mesh has no positive-length edge")
+    reference = float(np.median(positive_edges))
+    upper = reference * 2.0 if max_length is None else float(max_length)
+    lower = reference * 0.25 if min_length is None else float(min_length)
+    if not np.isfinite(lower) or not np.isfinite(upper) or 0.0 < lower > upper:
+        raise ValueError("min_length/max_length must be finite and ordered")
+    if lower <= 0.0 or upper <= 0.0:
+        raise ValueError("min_length/max_length must be positive")
+    upper = max(lower, upper)
+
+    curvature = np.zeros(len(points), dtype=np.float64)
+    vertex_area = np.zeros(len(points), dtype=np.float64)
+    for edge, incident_faces in edge_faces.items():
+        a, b = edge
+        length = float(np.linalg.norm(points[b] - points[a]))
+        if not np.isfinite(length) or length <= 0.0:
+            continue
+        turning = 0.0
+        if len(incident_faces) >= 2:
+            for left in range(len(incident_faces)):
+                for right in range(left + 1, len(incident_faces)):
+                    dot = float(
+                        np.dot(
+                            face_normals[incident_faces[left]],
+                            face_normals[incident_faces[right]],
+                        )
+                    )
+                    turning = max(turning, float(np.arccos(np.clip(dot, -1.0, 1.0))))
+        contribution = length * turning
+        curvature[a] += contribution
+        curvature[b] += contribution
+    for face_index, face in enumerate(triangles.tolist()):
+        share = face_areas[face_index] / 3.0
+        for vertex in face:
+            vertex_area[int(vertex)] += share
+    valid_area = vertex_area > np.finfo(float).tiny
+    curvature[valid_area] /= 2.0 * vertex_area[valid_area]
+
+    lengths = np.full(len(points), upper, dtype=np.float64)
+    positive_curvature = valid_area & np.isfinite(curvature) & (curvature > 1e-14)
+    radicand = np.zeros(len(points), dtype=np.float64)
+    radicand[positive_curvature] = (
+        6.0 * eps / curvature[positive_curvature] - 3.0 * eps * eps
+    )
+    valid_formula = positive_curvature & (radicand > 0.0) & np.isfinite(radicand)
+    lengths[valid_formula] = np.sqrt(radicand[valid_formula])
+    return np.clip(lengths, lower, upper)
+
+
 class OperatorTransaction:
     """Transactional boundary for the native-tri local operators.
 
     ``target_edge_length`` is the reference length ``L`` in the
-    Botsch/Dunyach hysteresis rule.  The one-round driver applies split,
-    collapse, flip, and guarded tangential relocation; no sizing or anisotropic
-    metric is introduced here.
+    Botsch/Dunyach hysteresis rule.  ``curvature_epsilon`` enables the scalar
+    Frey/Dunyach sizing lane; anisotropic metric tensors remain out of scope.
     """
 
     def __init__(
@@ -68,6 +165,7 @@ class OperatorTransaction:
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
+        curvature_epsilon: float | None = None,
     ) -> None:
         self.state = MeshState(
             np.asarray(vertices, dtype=np.float64).copy(),
@@ -81,6 +179,10 @@ class OperatorTransaction:
         self.surface_vertices = (
             None if surface_vertices is None else tuple(int(index) for index in surface_vertices)
         )
+        self.curvature_epsilon = curvature_epsilon
+        self.vertex_target_lengths: np.ndarray | None = None
+        if curvature_epsilon is not None:
+            self._refresh_curvature_sizing()
 
     def attempt(
         self,
@@ -130,7 +232,7 @@ class OperatorTransaction:
         target_edge_length: float | None = None,
     ) -> bool:
         """Return whether ``edge`` exceeds the upper split hysteresis bound."""
-        target = self._target_length(target_edge_length)
+        target = self._edge_target_length(edge, target_edge_length)
         a, b = self._edge_vertices(edge)
         length = float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
         return bool(length > (4.0 / 3.0) * target)
@@ -143,7 +245,7 @@ class OperatorTransaction:
         """Split one eligible edge at its midpoint and commit transactionally."""
         before = self.state.copy()
         try:
-            target = self._target_length(target_edge_length)
+            target = self._edge_target_length(edge, target_edge_length)
             a, b = self._edge_vertices(edge)
             edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
             if not np.isfinite(edge_length):
@@ -172,6 +274,8 @@ class OperatorTransaction:
         )
         if not report.accepted:
             self.state = before
+        elif self.curvature_epsilon is not None:
+            self._refresh_curvature_sizing()
         return report
 
     def should_collapse_edge(
@@ -180,7 +284,7 @@ class OperatorTransaction:
         target_edge_length: float | None = None,
     ) -> bool:
         """Return whether ``edge`` is below the strict collapse bound."""
-        target = self._target_length(target_edge_length)
+        target = self._edge_target_length(edge, target_edge_length)
         a, b = self._edge_vertices(edge)
         length = float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
         return bool(np.isfinite(length) and length < (4.0 / 5.0) * target)
@@ -193,7 +297,7 @@ class OperatorTransaction:
         """Collapse one eligible edge to its midpoint transactionally."""
         before = self.state.copy()
         try:
-            target = self._target_length(target_edge_length)
+            target = self._edge_target_length(edge, target_edge_length)
             a, b = self._edge_vertices(edge)
             a, b = min(a, b), max(a, b)
             edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
@@ -226,6 +330,8 @@ class OperatorTransaction:
         )
         if not report.accepted:
             self.state = before
+        elif self.curvature_epsilon is not None:
+            self._refresh_curvature_sizing()
         return report
 
     def should_flip_edge(self, edge: tuple[int, int]) -> bool:
@@ -416,7 +522,11 @@ class OperatorTransaction:
         Each edge is processed at most once per phase, while later candidates
         may still be attempted after a rejection.
         """
-        target = self._target_length(target_edge_length)
+        target = (
+            None
+            if target_edge_length is None and self.vertex_target_lengths is not None
+            else self._target_length(target_edge_length)
+        )
         reports: list[GuardReport] = []
 
         for edge in self._unique_edges():
@@ -595,6 +705,27 @@ class OperatorTransaction:
         if target is None or not np.isfinite(target) or target <= 0.0:
             raise ValueError("target_edge_length must be finite and positive")
         return float(target)
+
+    def _edge_target_length(
+        self,
+        edge: tuple[int, int],
+        override: float | None,
+    ) -> float:
+        if override is not None:
+            return self._target_length(override)
+        if self.vertex_target_lengths is not None:
+            a, b = self._edge_vertices(edge)
+            return float((self.vertex_target_lengths[a] + self.vertex_target_lengths[b]) * 0.5)
+        return self._target_length(None)
+
+    def _refresh_curvature_sizing(self) -> None:
+        if self.curvature_epsilon is None:
+            return
+        self.vertex_target_lengths = estimate_curvature_sizing(
+            self.state.vertices,
+            self.state.faces,
+            self.curvature_epsilon,
+        )
 
     def _edge_vertices(self, edge: tuple[int, int]) -> tuple[int, int]:
         if len(edge) != 2:
