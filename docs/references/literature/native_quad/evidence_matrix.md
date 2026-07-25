@@ -77,3 +77,94 @@ Recommended next: `QUAD-MULTIRES1` (coarse-to-fine relaxation, the
 paper's own answer to local minima) before `QUAD-POSY1`; `QUAD-SINGULARITY1`
 (explicit ledger) is a smaller acceptable substitute since this
 diagnostic already produces most of its contents.
+
+## 2026-07-26 QUAD-MULTIRES1 result (measured, diagnostic only, zero mesh edits)
+
+Extended `core/preprocessor/native_remesh/rosy_diagnostic.py` (870 → 1339
+lines) with Jakob 2015 §4's coarse-to-fine scheme and added
+`tests/test_native_quad_multires.py` (31 tests). Single-resolution is
+untouched and still the default (`multires=False`), so all 22 QUAD-ROSY1
+tests pass unchanged.
+
+New public surface: `build_coarsening_hierarchy` (deterministic greedy
+vertex matching scored by `dot(n_i,n_j) * min(a_i,a_j)/max(a_i,a_j)`),
+`prolongate_orientations`, `allocate_sweeps`,
+`optimize_orientations_multires`, `run_rosy_diagnostic(..., multires=True)`.
+Scope reduction: single-pass maximal matching, so clusters are size 1 or 2
+and contraction is at best 2× per level — the paper's aggregation is a
+scored multi-pass process. Prolongation and relaxation are the paper's.
+
+Comparison at a **matched total sweep budget** (multires gets `n_sweeps`
+across *all* levels, not per level — deliberately harsh, since a coarse
+sweep is far cheaper than a fine one):
+
+| Shape | V | hierarchy | budget | E single → multires | singularities (ext) | ±1/2 faces ext/int | Poincaré-Hopf |
+| --- | ---: | --- | ---: | --- | --- | --- | --- |
+| flat grid 5×5 | 25 | 25→13 | 30 | 8.2e-7 → **5.6e-12** | 0 → 0 | 0/0 | n/a (open) |
+| octahedron | 6 | 6→4→2 | 30 | — → **0.0 exact** | 8 (+1/4 each) | 0/0 | exact, all 5 seeds |
+| cube | 8 | none (V<16) | 20 | 3.778 → 3.778 (identical) | 8 → 8 | 0/0 | exact |
+| cylinder (g1) | 256 | 256→128→72→44→29→21→16 | 20 | 48.34 → **45.99** | 18 → 18 | 0/0 | exact |
+| cylinder (g1) | 256 | same | 60 | 48.34 → **44.83** | 18 → **16** | 0/0 | exact |
+| bracket (g3) | 204 | 204→103→54→30→17→11 | 20 | 45.27 → **44.11** | 36 → 38 | **18/4 (unchanged)** | reconcilable |
+| bracket (g3) | 204 | same | 60 | 45.27 → **44.17** | 36 → 38 | **18/4 (unchanged)** | reconcilable |
+
+**Poincaré-Hopf held in every multires run** (exact on cube / octahedron /
+cylinder, reconcilable on the bracket) — the prolongation does not corrupt
+the field. The tetrahedron's known coarse-index aliasing is unchanged, as
+expected: it is a mesh sampling limit, not an optimization one.
+
+**Answer to the card's falsifiable question — split verdict.**
+
+1. *Does multires reduce the singularity count?* **On the cylinder, yes**
+   (18 → 16 at budget 60, and the extrinsic/intrinsic readouts then agree
+   exactly at 16/16). **On the bracket, no** — 36 → 38 at seed 0, and 38 at
+   every seed. Multires is not finding a topologically simpler field there.
+2. *Does multires narrow the extrinsic/intrinsic 18-vs-4 disagreement?*
+   **No — not at all.** The split is exactly 18/4 under every seed in both
+   modes. This is the card's most useful result and it is a **negative**
+   one: the disagreement is a geometric property of the bracket's sharp
+   edges (the two discrete connections genuinely differ where the normal
+   turns ~90° across an edge), **not** an artifact of the solver stalling.
+   Better optimization will never close it, so `QUAD-POSY1` must be
+   designed to tolerate it rather than wait for it to go away.
+3. *What multires does buy:* **reproducibility.** Across seeds 0–4 on the
+   bracket at budget 20, single-resolution energy spans 43.72–45.89
+   (spread 2.17, singularity count 36–41); multires spans 44.105–44.109
+   (spread 0.0037, always 38) — a ~580× variance reduction. It reliably
+   finds the *same* minimum rather than a *better* one. That is the
+   property a downstream integer solver actually needs, and it is why the
+   matched-budget energy claim is stated with a 2% tolerance, not as a
+   strict inequality: multires wins 4 of 5 bracket seeds and *loses* at
+   seed 1 (44.11 vs 43.72, ratio 1.0088). It wins 5/5 on the cylinder.
+   Multires is also ~2× faster in wall time at equal sweep count.
+
+**Bug/defect found (in the pre-existing single-resolution solver, not
+fixed here).** The QUAD-ROSY1 note "bit-identical energy at 20 vs 60
+sweeps" is not a stall — it is a **period-2 limit cycle**, parity-locked:
+
+```
+cylinder, single-resolution, seed 0
+  odd  budgets 19 / 21 / 29 / 31  ->  47.8557 / 47.8542 / 47.8537 / 47.8537
+  even budgets 20 / 22 / 30       ->  48.3425 / 48.3419 / 48.3418
+```
+
+13 of 30 sweeps *increase* the energy. Cause: the Gauss-Seidel update in
+`optimize_orientations` starts with `weight_sum = 0`, so a vertex's new
+value is a pure average of its neighbours with no self-term — an undamped
+Laplacian smoother, which oscillates on near-bipartite adjacency. Every
+QUAD-ROSY1 measurement was taken at an even sweep count and therefore
+always sampled the worse phase. Left in place because this card must not
+change the existing function's behaviour. Note the multires margins above
+survive the correction: 45.99 (multires, 20 sweeps) still beats 47.85, the
+*better* phase of the single-resolution cycle.
+
+**Verdict: `QUAD-POSY1` is unblocked, with one caveat and one prerequisite.**
+The ±1/2 ambiguity is now proven to be geometric rather than fixable by
+optimization, so waiting for a cleaner field is not a plan. `QUAD-POSY1`
+should be built on the multires field (deterministic, seed-insensitive)
+and must carry the ±1/2 faces explicitly — which is exactly
+`QUAD-SINGULARITY1`'s ledger. Recommended order: `QUAD-SINGULARITY1`
+(small; the diagnostic already produces most of its contents) → `QUAD-POSY1`.
+An optional cheap win first: add a damped/self-weighted Gauss-Seidel
+variant to kill the period-2 cycle, as a new function alongside the
+existing one.

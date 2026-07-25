@@ -53,13 +53,12 @@ What is ported faithfully
 
 Documented scope reductions versus the full paper
 -------------------------------------------------
-1. **No multiresolution hierarchy.**  The paper runs ~6 Gauss-Seidel sweeps
-   per level of a deterministic vertex-aggregation hierarchy, coarse to fine;
-   this runs plain single-resolution sweeps on the input mesh.  Consequence:
-   more local minima and (per the paper's own limitation section) more
-   singularities than a hierarchical solve would give.  Measured here so the
-   gap is a number rather than a guess -- ``QUAD-MULTIRES1`` is the card that
-   closes it.
+1. **Multiresolution is opt-in, and its coarsening heuristic is simpler than
+   the paper's.**  ``QUAD-MULTIRES1`` added ``optimize_orientations_multires``
+   and ``run_rosy_diagnostic(..., multires=True)``; the default stays
+   single-resolution so the QUAD-ROSY1 numbers remain reproducible.  See
+   ``build_coarsening_hierarchy`` for exactly which part of the paper's
+   aggregation is reproduced and which part is reduced.
 2. **No graph coloring / no parallelism.**  Sweeps are sequential in vertex
    index order.  That makes the result deterministic for a fixed seed (a
    property the parallel version does *not* have), which is what a diagnostic
@@ -223,6 +222,43 @@ class CurvatureAlignment:
 
 
 @dataclass(frozen=True)
+class MultiresLevelStat:
+    """Convergence telemetry for one level of the coarsening hierarchy.
+
+    ``energy_before``/``energy_after`` are measured on **that level's own**
+    edge set, so they are not comparable across levels (a coarse level has
+    fewer, longer edges).  What is comparable within a level is the drop, and
+    what is comparable to the single-resolution run is level 0's numbers,
+    because level 0 *is* the input mesh.
+    """
+
+    level: int  # 0 = finest (the input mesh)
+    n_vertices: int
+    n_edges: int
+    n_sweeps: int
+    energy_before: float
+    energy_after: float
+
+
+@dataclass(frozen=True)
+class MultiresStats:
+    """QUAD-MULTIRES1 hierarchy summary attached to a diagnostic report."""
+
+    n_levels: int
+    total_sweeps: int
+    min_vertices: int
+    levels: tuple[MultiresLevelStat, ...] = field(default_factory=tuple)
+
+    @property
+    def vertex_counts(self) -> tuple[int, ...]:
+        return tuple(lv.n_vertices for lv in self.levels)
+
+    @property
+    def sweeps_per_level(self) -> tuple[int, ...]:
+        return tuple(lv.n_sweeps for lv in self.levels)
+
+
+@dataclass(frozen=True)
 class RosyDiagnosticReport:
     """Per-shape QUAD-ROSY1 measurement.  Log-only; no mesh was touched."""
 
@@ -242,6 +278,7 @@ class RosyDiagnosticReport:
     extrinsic: SingularityCensus | None = None
     intrinsic: SingularityCensus | None = None
     curvature: CurvatureAlignment | None = None
+    multires: MultiresStats | None = None
     elapsed_s: float = 0.0
 
     @property
@@ -364,6 +401,32 @@ def vertex_normals(
         N[bad] = np.array([0.0, 0.0, 1.0])
         norms[bad] = 1.0
     return N / norms[:, None]
+
+
+def vertex_areas(
+    vertices: NDArray[np.float64], faces: NDArray[np.int64]
+) -> NDArray[np.float64]:
+    """Barycentric vertex areas (one third of each incident triangle).
+
+    Used only as the aggregation weight of the QUAD-MULTIRES1 hierarchy, which
+    is why the cheap barycentric lumping is enough here: the paper weights
+    aggregation by relative area to avoid merging a large patch into a tiny
+    one, and that comparison is insensitive to the barycentric-vs-Voronoi
+    choice.  The relaxation itself still uses uniform edge weights (scope
+    reduction 3 in the module docstring).
+    """
+    V = np.asarray(vertices, dtype=np.float64)
+    F = np.asarray(faces, dtype=np.int64)
+    areas = np.zeros(V.shape[0], dtype=np.float64)
+    if F.size == 0:
+        return areas
+    tri = V[F]
+    fa = 0.5 * np.linalg.norm(
+        np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1
+    )
+    for k in range(3):
+        np.add.at(areas, F[:, k], fa / 3.0)
+    return areas
 
 
 # --------------------------------------------------------------------------
@@ -632,6 +695,386 @@ def compute_orientation_singularities(
 
 
 # --------------------------------------------------------------------------
+# QUAD-MULTIRES1: coarse-to-fine relaxation (Jakob 2015 section 4)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, eq=False)
+class HierarchyLevel:
+    """One level of the vertex-aggregation hierarchy.
+
+    A level is a *graph*, not a mesh: coarsening destroys the triangulation,
+    and the 4-RoSy relaxation never needed faces anyway (it only reads
+    normals, 1-ring adjacency and the edge set).  Faces reappear only at level
+    0, where they are the input mesh's own -- which is why singularities are
+    still read out exclusively on the input mesh.
+
+    ``parent`` maps this level's vertices to the next *coarser* level's; it is
+    ``None`` on the coarsest level.
+    """
+
+    positions: NDArray[np.float64]
+    normals: NDArray[np.float64]
+    areas: NDArray[np.float64]
+    adjacency: list[NDArray[np.int64]]
+    edges: NDArray[np.int64]
+    parent: NDArray[np.int64] | None = None
+
+    @property
+    def n_vertices(self) -> int:
+        return int(self.positions.shape[0])
+
+    @property
+    def n_edges(self) -> int:
+        return int(self.edges.shape[0])
+
+
+def _greedy_vertex_matching(
+    adjacency: list[NDArray[np.int64]],
+    normals: NDArray[np.float64],
+    areas: NDArray[np.float64],
+) -> tuple[NDArray[np.int64], list[tuple[int, ...]]]:
+    """Deterministic greedy 1-to-1 vertex matching.
+
+    Visits vertices in ascending index order; each unmatched vertex claims its
+    best still-unmatched neighbour under the paper's aggregation score
+    ``dot(n_i, n_j) * min(a_i, a_j) / max(a_i, a_j)`` -- normal agreement
+    discourages folding two sides of a crease into one coarse vertex, and the
+    area ratio discourages swallowing a large patch into a small one.  Ties go
+    to the lower neighbour index (``adjacency`` is sorted ascending and the
+    comparison is strict), so the result depends on nothing but the input
+    arrays: no RNG, no ``seed``.
+
+    Scope reduction: the paper's aggregation is a scored *multi-pass* process
+    that can build clusters larger than a pair and is tuned to keep the
+    hierarchy's branching factor near two.  This is a single pass of plain
+    maximal matching, so clusters are exactly size 1 or 2.  Consequence: the
+    contraction ratio is at best 2x per level and is worse than the paper's on
+    graphs where greedy matching leaves many vertices unmatched.  That costs
+    levels, not correctness -- the prolongation and the relaxation are the
+    paper's.
+    """
+    n = len(adjacency)
+    parent = np.full(n, -1, dtype=np.int64)
+    clusters: list[tuple[int, ...]] = []
+    for i in range(n):
+        if parent[i] >= 0:
+            continue
+        best_j = -1
+        best_score = -np.inf
+        a_i = float(areas[i])
+        for raw in adjacency[i]:
+            j = int(raw)
+            if j == i or parent[j] >= 0:
+                continue
+            a_j = float(areas[j])
+            hi = max(a_i, a_j)
+            ratio = (min(a_i, a_j) / hi) if hi > _EPS else 1.0
+            score = float(np.dot(normals[i], normals[j])) * ratio
+            if score > best_score:
+                best_score, best_j = score, j
+        cid = len(clusters)
+        if best_j >= 0:
+            clusters.append((i, best_j))
+            parent[i] = cid
+            parent[best_j] = cid
+        else:
+            clusters.append((i,))
+            parent[i] = cid
+    return parent, clusters
+
+
+def _coarsen_level(level: HierarchyLevel) -> tuple[HierarchyLevel, NDArray[np.int64]] | None:
+    """Aggregate ``level`` into the next coarser graph.
+
+    Returns ``None`` when the matching found no pair at all, i.e. when the
+    coarse graph would not be strictly smaller -- that is the hierarchy's
+    termination condition, and it is what makes "strictly decreasing vertex
+    count per level" a structural property rather than a hope.
+    """
+    parent, clusters = _greedy_vertex_matching(level.adjacency, level.normals, level.areas)
+    n_coarse = len(clusters)
+    if n_coarse >= level.n_vertices:
+        return None
+
+    positions = np.zeros((n_coarse, 3), dtype=np.float64)
+    normals = np.zeros((n_coarse, 3), dtype=np.float64)
+    areas = np.zeros(n_coarse, dtype=np.float64)
+    for cid, members in enumerate(clusters):
+        w = np.array([max(float(level.areas[m]), 0.0) for m in members])
+        if w.sum() <= _EPS:
+            w = np.ones(len(members))
+        w = w / w.sum()
+        positions[cid] = (w[:, None] * level.positions[list(members)]).sum(axis=0)
+        nrm_acc = (w[:, None] * level.normals[list(members)]).sum(axis=0)
+        length = float(np.linalg.norm(nrm_acc))
+        # a cluster spanning a ~180 degree fold averages to zero; fall back to
+        # the first member's normal rather than inventing a direction.
+        normals[cid] = nrm_acc / length if length > 1e-9 else level.normals[members[0]]
+        areas[cid] = float(level.areas[list(members)].sum())
+
+    coarse_edge_set: set[tuple[int, int]] = set()
+    for e in level.edges:
+        pu, pv = int(parent[int(e[0])]), int(parent[int(e[1])])
+        if pu == pv:
+            continue
+        coarse_edge_set.add((pu, pv) if pu < pv else (pv, pu))
+    edges = np.array(sorted(coarse_edge_set), dtype=np.int64).reshape(-1, 2)
+
+    adj_sets: list[set[int]] = [set() for _ in range(n_coarse)]
+    for u, v in coarse_edge_set:
+        adj_sets[u].add(v)
+        adj_sets[v].add(u)
+    adjacency = [np.array(sorted(s), dtype=np.int64) for s in adj_sets]
+
+    coarse = HierarchyLevel(
+        positions=positions,
+        normals=normals,
+        areas=areas,
+        adjacency=adjacency,
+        edges=edges,
+        parent=None,
+    )
+    return coarse, parent
+
+
+def build_coarsening_hierarchy(
+    positions: NDArray[np.float64],
+    normals: NDArray[np.float64],
+    areas: NDArray[np.float64],
+    adjacency: list[NDArray[np.int64]],
+    edges: NDArray[np.int64],
+    *,
+    max_levels: int = 8,
+    min_vertices: int = 16,
+) -> list[HierarchyLevel]:
+    """Build the coarse-to-fine hierarchy.  ``levels[0]`` is the input mesh.
+
+    Coarsening stops at ``max_levels``, at ``min_vertices``, or as soon as a
+    level cannot be made strictly smaller (see ``_coarsen_level``).  The result
+    therefore always has strictly decreasing ``n_vertices``, and it is a pure
+    function of the inputs -- no RNG anywhere in the hierarchy, so two runs on
+    the same mesh produce byte-identical levels.
+
+    Read-only with respect to the caller: level 0 *aliases* the arrays passed
+    in (no defensive copy, since nothing here writes to them), and every
+    coarser level allocates its own storage.  The relaxation that consumes
+    these levels copies before writing, so the caller's mesh arrays are never
+    touched -- the diagnostic-only guarantee holds end to end.
+    """
+    base = HierarchyLevel(
+        positions=np.asarray(positions, dtype=np.float64),
+        normals=np.asarray(normals, dtype=np.float64),
+        areas=np.asarray(areas, dtype=np.float64),
+        adjacency=adjacency,
+        edges=np.asarray(edges, dtype=np.int64).reshape(-1, 2),
+        parent=None,
+    )
+    levels: list[HierarchyLevel] = [base]
+    while len(levels) < max(1, max_levels):
+        current = levels[-1]
+        if current.n_vertices <= max(2, min_vertices) or current.n_edges == 0:
+            break
+        made = _coarsen_level(current)
+        if made is None:
+            break
+        coarse, parent = made
+        # replace the finer level with a copy that knows its parent map.
+        levels[-1] = HierarchyLevel(
+            positions=current.positions,
+            normals=current.normals,
+            areas=current.areas,
+            adjacency=current.adjacency,
+            edges=current.edges,
+            parent=parent,
+        )
+        levels.append(coarse)
+    return levels
+
+
+def prolongate_orientations(
+    coarse_orientations: NDArray[np.float64],
+    coarse_normals: NDArray[np.float64],
+    fine_normals: NDArray[np.float64],
+    parent: NDArray[np.int64],
+    reference: NDArray[np.float64] | None = None,
+) -> NDArray[np.float64]:
+    """Push a coarse level's field down to the finer level it was built from.
+
+    Each fine vertex takes its cluster representative's orientation and
+    re-expresses it in its **own** tangent plane, using exactly the projection
+    the Gauss-Seidel update already applies to every accumulated neighbour
+    (``acc -= n_i * (n_i . acc)`` then renormalize), so a prolongated field is
+    admissible input to ``optimize_orientations`` by construction: tangent and
+    unit-norm at every vertex.
+
+    When ``reference`` is supplied the coarse representative is first rotated
+    inside its 4-RoSy class to the branch nearest the reference, via the same
+    ``_best_match_extrinsic_4`` used by the relaxation.  That is cosmetic --
+    the whole class maps to the same energy -- but it keeps the prolongated
+    field visually continuous with whatever was already at the fine level,
+    which matters when reading a field out for debugging.
+
+    Degenerate case: if the representative is (anti)parallel to the fine
+    normal the plane projection collapses, so we fall back to parallel
+    transport (``_rotate_into_plane``), and only if *that* is also undefined do
+    we keep the reference value.  Silently emitting a non-unit or non-tangent
+    vector would break the next sweep's frame assumption.
+    """
+    Qc = np.asarray(coarse_orientations, dtype=np.float64)
+    Nc = np.asarray(coarse_normals, dtype=np.float64)
+    Nf = np.asarray(fine_normals, dtype=np.float64)
+    P = np.asarray(parent, dtype=np.int64)
+    out = (
+        np.array(reference, dtype=np.float64, copy=True)
+        if reference is not None
+        else np.zeros_like(Nf)
+    )
+    for i in range(Nf.shape[0]):
+        p = int(P[i])
+        n_i = Nf[i]
+        rep = Qc[p]
+        if reference is not None:
+            _, rep = _best_match_extrinsic_4(out[i], n_i, Qc[p], Nc[p])
+        v = rep - n_i * float(np.dot(n_i, rep))
+        nrm = float(np.linalg.norm(v))
+        if nrm <= 1e-9:
+            v = _rotate_into_plane(rep, Nc[p], n_i)
+            v = v - n_i * float(np.dot(n_i, v))
+            nrm = float(np.linalg.norm(v))
+            if nrm <= 1e-9:
+                continue  # keeps out[i] (the reference) if there was one
+        out[i] = v / nrm
+    if reference is None:
+        # no reference to keep: any residual zero row would be an invalid
+        # frame, so seed it from a deterministic tangent instead.
+        bad = np.linalg.norm(out, axis=1) < 0.5
+        if bad.any():
+            out[bad] = initial_orientation_field(Nf[bad], seed=0)
+    return out
+
+
+def allocate_sweeps(n_levels: int, n_sweeps: int) -> list[int]:
+    """Split a total sweep budget across levels; index 0 is the finest.
+
+    The point of the split is *budget parity* with the single-resolution run:
+    the multires solve is allowed exactly ``n_sweeps`` Gauss-Seidel sweeps in
+    total, not ``n_sweeps`` per level.  That is deliberately harsh on multires
+    (a coarse sweep costs far less wall time than a fine one, so equal sweep
+    counts hand single-resolution the larger compute budget) but it is the
+    only comparison that isolates the *hierarchy* from extra iteration.
+
+    Remainder sweeps go to the finest levels, where they act on the edge set
+    the reported energy is measured over.
+    """
+    if n_levels <= 0:
+        return []
+    base = max(0, n_sweeps) // n_levels
+    rem = max(0, n_sweeps) - base * n_levels
+    alloc = [base] * n_levels
+    for k in range(rem):
+        alloc[k] += 1
+    return alloc
+
+
+def optimize_orientations_multires(
+    normals: NDArray[np.float64],
+    adjacency: list[NDArray[np.int64]],
+    orientations: NDArray[np.float64],
+    edges: NDArray[np.int64],
+    *,
+    positions: NDArray[np.float64],
+    areas: NDArray[np.float64],
+    n_sweeps: int = 20,
+    seed: int = 0,
+    max_levels: int = 8,
+    min_vertices: int = 16,
+) -> tuple[NDArray[np.float64], list[float], list[MultiresLevelStat]]:
+    """Coarse-to-fine 4-RoSy relaxation -- the paper's answer to local minima.
+
+    Drop-in alternative to ``optimize_orientations`` (same four positional
+    arguments, same return of a *new* field array); the single-resolution
+    function is untouched and remains the default everywhere.
+
+    The cascade is the paper's: seed and relax at the coarsest level, then for
+    each finer level prolongate the coarse solution down and run a few more
+    sweeps, up to the input resolution.  It is a plain up-sweep, not a
+    V-cycle: the paper does not descend again either.
+
+    ``trace`` is the fine-level energy history: ``trace[0]`` is the incoming
+    ``orientations`` energy (so it is directly comparable with the
+    single-resolution trace's first entry), ``trace[1]`` is the energy right
+    after the field lands at level 0 from the hierarchy, and the rest is one
+    entry per level-0 sweep.  When the mesh admits no coarsening the hierarchy
+    is one level and this degenerates exactly to ``optimize_orientations``.
+    """
+    levels = build_coarsening_hierarchy(
+        positions,
+        normals,
+        areas,
+        adjacency,
+        edges,
+        max_levels=min(max_levels, max(1, n_sweeps)),
+        min_vertices=min_vertices,
+    )
+    alloc = allocate_sweeps(len(levels), n_sweeps)
+    stats: list[MultiresLevelStat] = []
+
+    if len(levels) == 1:
+        Q, trace = optimize_orientations(
+            normals, adjacency, orientations, edges, n_sweeps=n_sweeps
+        )
+        stats.append(
+            MultiresLevelStat(
+                level=0,
+                n_vertices=levels[0].n_vertices,
+                n_edges=levels[0].n_edges,
+                n_sweeps=n_sweeps,
+                energy_before=trace[0],
+                energy_after=trace[-1],
+            )
+        )
+        return Q, trace, stats
+
+    # Seed at the coarsest level.  The paper seeds randomly there rather than
+    # restricting a fine random field, so the same is done here; ``seed`` still
+    # makes it reproducible.
+    top = levels[-1]
+    Q = initial_orientation_field(top.normals, seed=seed)
+    Q, tr = optimize_orientations(
+        top.normals, top.adjacency, Q, top.edges, n_sweeps=alloc[-1]
+    )
+    stats.append(
+        MultiresLevelStat(
+            len(levels) - 1, top.n_vertices, top.n_edges, alloc[-1], tr[0], tr[-1]
+        )
+    )
+
+    fine_trace: list[float] = []
+    for k in range(len(levels) - 2, -1, -1):
+        fine, coarse = levels[k], levels[k + 1]
+        assert fine.parent is not None
+        ref = (
+            np.asarray(orientations, dtype=np.float64)
+            if k == 0
+            else initial_orientation_field(fine.normals, seed=seed)
+        )
+        Q = prolongate_orientations(Q, coarse.normals, fine.normals, fine.parent, ref)
+        Q, tr = optimize_orientations(
+            fine.normals, fine.adjacency, Q, fine.edges, n_sweeps=alloc[k]
+        )
+        stats.append(
+            MultiresLevelStat(k, fine.n_vertices, fine.n_edges, alloc[k], tr[0], tr[-1])
+        )
+        if k == 0:
+            fine_trace = tr
+
+    stats.sort(key=lambda s: s.level)
+    trace = [orientation_energy(orientations, normals, edges), *fine_trace]
+    return Q, trace, stats
+
+
+# --------------------------------------------------------------------------
 # Alliez 2003 curvature alignment (secondary measurement)
 # --------------------------------------------------------------------------
 
@@ -771,12 +1214,21 @@ def run_rosy_diagnostic(
     weld: bool = True,
     with_curvature: bool = True,
     anisotropy_threshold: float = _ANISOTROPY_THRESHOLD_DEFAULT,
+    multires: bool = False,
+    max_levels: int = 8,
+    min_hierarchy_vertices: int = 16,
 ) -> RosyDiagnosticReport:
     """Build and measure a 4-RoSy field on ``(V, F)``.  Nothing is mutated.
 
     ``weld`` deduplicates coincident vertices into a local copy first, because
     raw STL has no vertex adjacency at all (see ``weld_vertices``).  The
     caller's arrays are never written to.
+
+    ``multires`` switches the relaxation to ``optimize_orientations_multires``
+    under the *same* ``n_sweeps`` total budget.  It defaults to ``False`` so
+    every QUAD-ROSY1 number stays reproducible; everything downstream of the
+    relaxation (singularity readout, Poincare-Hopf, curvature alignment) is
+    identical either way, which is what makes the two modes comparable.
     """
     t0 = time.perf_counter()
     V = np.asarray(vertices, dtype=np.float64)
@@ -793,7 +1245,28 @@ def run_rosy_diagnostic(
     normals = vertex_normals(V, F)
     Q0 = initial_orientation_field(normals, seed=seed)
     adjacency = _vertex_adjacency(F, n_v)
-    Q, trace = optimize_orientations(normals, adjacency, Q0, edges, n_sweeps=n_sweeps)
+    multires_stats: MultiresStats | None = None
+    if multires:
+        Q, trace, level_stats = optimize_orientations_multires(
+            normals,
+            adjacency,
+            Q0,
+            edges,
+            positions=V,
+            areas=vertex_areas(V, F),
+            n_sweeps=n_sweeps,
+            seed=seed,
+            max_levels=max_levels,
+            min_vertices=min_hierarchy_vertices,
+        )
+        multires_stats = MultiresStats(
+            n_levels=len(level_stats),
+            total_sweeps=sum(s.n_sweeps for s in level_stats),
+            min_vertices=min_hierarchy_vertices,
+            levels=tuple(level_stats),
+        )
+    else:
+        Q, trace = optimize_orientations(normals, adjacency, Q0, edges, n_sweeps=n_sweeps)
 
     closed = n_boundary == 0
     censuses = {
@@ -834,10 +1307,16 @@ def run_rosy_diagnostic(
         extrinsic=censuses["extrinsic"],
         intrinsic=censuses["intrinsic"],
         curvature=curvature,
+        multires=multires_stats,
         elapsed_s=time.perf_counter() - t0,
     )
     log.info(
         "quad_rosy_diagnostic",
+        multires=multires,
+        hierarchy_vertex_counts=(
+            multires_stats.vertex_counts if multires_stats else None
+        ),
+        hierarchy_sweeps=(multires_stats.sweeps_per_level if multires_stats else None),
         shape=report.shape_name,
         n_vertices=report.n_vertices,
         n_faces=report.n_faces,
