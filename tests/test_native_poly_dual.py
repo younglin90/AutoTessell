@@ -11,6 +11,7 @@ import pytest
 
 from core.analyzer.readers import read_stl
 from core.evaluator.native_checker import NativeMeshChecker
+from core.generator.native_poly import dual as dual_module
 from core.generator.native_poly import (
     run_native_poly_harness,
     tet_to_poly_dual,
@@ -106,6 +107,82 @@ def test_tet_to_poly_dual_preserves_classified_multi_patch_caps(
         boundary[idx]["startFace"] + boundary[idx]["nFaces"] == boundary[idx + 1]["startFace"]
         for idx in range(len(boundary) - 1)
     )
+
+
+def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
+    tmp_case_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """POLY-DUAL-POINT1/POLY-STAR-VALID1 — measure convex and non-manifold cases."""
+    convex_v = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.3, 0.3, 1.0],
+            [0.3, 0.3, -1.0],
+        ],
+        dtype=np.float64,
+    )
+    convex_t = np.array([[0, 1, 2, 3], [0, 2, 1, 4]], dtype=np.int64)
+
+    def wall_classifier(_triangle: tuple[int, int, int], _vertices: np.ndarray) -> str:
+        return "wall"
+
+    convex = tet_to_poly_dual(
+        convex_v,
+        convex_t,
+        tmp_case_dir / "convex",
+        boundary_face_classifier=wall_classifier,
+    )
+    assert convex.success, convex.message
+    assert convex.invalid_star_cells == 0
+    assert convex.invalid_star_subtets == 0
+
+    nonmanifold_v = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.5, 0.0, 1.0],
+            [0.5, -1.0, 0.0],
+            [0.5, 2.0, 2.0],
+            [0.5, 3.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    nonmanifold_t = np.array(
+        [[0, 1, 2, 3], [0, 1, 3, 4], [0, 1, 5, 6]],
+        dtype=np.int64,
+    )
+
+    monkeypatch.setattr(
+        dual_module,
+        "_compute_tet_dual_points",
+        lambda vertices, tets: vertices[tets].mean(axis=1),
+    )
+    before = tet_to_poly_dual(
+        nonmanifold_v,
+        nonmanifold_t,
+        tmp_case_dir / "nonmanifold_before",
+        boundary_face_classifier=wall_classifier,
+    )
+    monkeypatch.undo()
+    after = tet_to_poly_dual(
+        nonmanifold_v,
+        nonmanifold_t,
+        tmp_case_dir / "nonmanifold_after",
+        boundary_face_classifier=wall_classifier,
+    )
+    assert before.success, before.message
+    assert after.success, after.message
+    assert (before.invalid_star_cells, before.invalid_star_subtets) == (2, 18)
+    assert (after.invalid_star_cells, after.invalid_star_subtets) == (2, 18)
+    assert "candidate rejected" in after.message
+    assert "star_invalid_cells=6" in after.message
+    assert "star_invalid_subtets=40" in after.message
+    assert before.star_examples
+    assert after.star_examples
 
 
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:

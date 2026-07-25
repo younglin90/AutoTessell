@@ -45,6 +45,9 @@ class PolyDualResult:
     n_points: int = 0
     n_faces: int = 0
     message: str = ""
+    invalid_star_cells: int = 0
+    invalid_star_subtets: int = 0
+    star_examples: tuple[dict[str, Any], ...] = ()
 
 
 def _normalise_entity_label(label: Any) -> tuple[str, str]:
@@ -143,6 +146,95 @@ def _ordered_boundary_labels(
     return [labels[idx] for idx in order]
 
 
+def _star_validity(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    n_cells: int,
+    *,
+    tolerance: float = 1e-12,
+    max_examples: int = 8,
+) -> tuple[int, int, tuple[dict[str, Any], ...]]:
+    """Check Garimella's signed face-edge-region subtet decomposition.
+
+    A face is oriented outward from its owner.  The neighbour sees the same
+    face in reverse.  For an outward face, ``-det(edge, face_center, region_center)``
+    must be positive for every face edge.  The region center is the arithmetic
+    mean of the dual vertices present in the cell's faces.
+    """
+    if not points.size or not faces or not owner:
+        return 0, 0, ()
+
+    cell_faces: list[list[tuple[list[int], int]]] = [[] for _ in range(n_cells)]
+    n_internal = len(neighbour)
+    for face_id, face in enumerate(faces):
+        owner_id = int(owner[face_id])
+        if 0 <= owner_id < n_cells:
+            cell_faces[owner_id].append((list(face), face_id))
+        if face_id < n_internal:
+            neighbour_id = int(neighbour[face_id])
+            if 0 <= neighbour_id < n_cells:
+                cell_faces[neighbour_id].append((list(reversed(face)), face_id))
+
+    scale = max(
+        float(np.linalg.norm(points.max(axis=0) - points.min(axis=0))) ** 3,
+        1e-30,
+    )
+    invalid_cells = 0
+    invalid_subtets = 0
+    examples: list[dict[str, Any]] = []
+    for cell_id, cell_face_refs in enumerate(cell_faces):
+        cell_vertex_ids = sorted({vertex for face, _ in cell_face_refs for vertex in face})
+        if len(cell_vertex_ids) < 4:
+            invalid_cells += 1
+            invalid_subtets += 1
+            if len(examples) < max_examples:
+                examples.append(
+                    {
+                        "cell": cell_id,
+                        "face": None,
+                        "edge": None,
+                        "normalized_signed_volume6": 0.0,
+                        "reason": "fewer_than_four_dual_vertices",
+                    }
+                )
+            continue
+
+        region_center = points[np.asarray(cell_vertex_ids)].mean(axis=0)
+        cell_bad = False
+        for face, face_id in cell_face_refs:
+            face_center = points[np.asarray(face)].mean(axis=0)
+            for edge_index, (a, b) in enumerate(zip(face, face[1:] + face[:1])):
+                signed_volume6 = float(
+                    np.dot(
+                        points[b] - points[a],
+                        np.cross(
+                            face_center - points[a],
+                            region_center - points[a],
+                        ),
+                    )
+                )
+                normalized = -signed_volume6 / scale
+                if normalized <= tolerance:
+                    cell_bad = True
+                    invalid_subtets += 1
+                    if len(examples) < max_examples:
+                        examples.append(
+                            {
+                                "cell": cell_id,
+                                "face": face_id,
+                                "edge": (int(a), int(b)),
+                                "edge_index": edge_index,
+                                "signed_volume6": signed_volume6,
+                                "normalized_signed_volume6": normalized,
+                            }
+                        )
+        if cell_bad:
+            invalid_cells += 1
+    return invalid_cells, invalid_subtets, tuple(examples)
+
+
 # ---------------------------------------------------------------------------
 # Tet topology helpers
 # ---------------------------------------------------------------------------
@@ -167,8 +259,46 @@ _TET_EDGES: tuple[tuple[int, int], ...] = (
 )
 
 
-def _compute_tet_centroids(V: np.ndarray, T: np.ndarray) -> np.ndarray:
-    return V[T].mean(axis=1)
+def _compute_tet_dual_points(V: np.ndarray, T: np.ndarray) -> np.ndarray:
+    """Place Garimella dual points inside each primal tetrahedron.
+
+    A well-centered tetrahedron uses its circumcenter.  Otherwise the point is
+    placed on the centroid-to-circumcenter segment at the closest parameter
+    that remains inside the tetrahedron.  The centroid is the robust fallback
+    for singular or non-finite circumcenter systems.
+    """
+    dual_points = np.empty((T.shape[0], 3), dtype=np.float64)
+    for ti, tet in enumerate(T):
+        p = V[tet]
+        centroid = p.mean(axis=0)
+        try:
+            matrix = 2.0 * np.stack([p[i] - p[0] for i in (1, 2, 3)])
+            rhs = np.asarray(
+                [np.dot(p[i], p[i]) - np.dot(p[0], p[0]) for i in (1, 2, 3)],
+                dtype=np.float64,
+            )
+            circumcenter = np.linalg.solve(matrix, rhs)
+            edge_matrix = np.column_stack([p[i] - p[0] for i in (1, 2, 3)])
+            bary_tail = np.linalg.solve(edge_matrix, circumcenter - p[0])
+            bary = np.asarray([1.0 - bary_tail.sum(), *bary_tail], dtype=np.float64)
+        except np.linalg.LinAlgError:
+            dual_points[ti] = centroid
+            continue
+
+        if not np.isfinite(circumcenter).all() or not np.isfinite(bary).all():
+            dual_points[ti] = centroid
+            continue
+
+        alpha = 1.0
+        for bary_c in bary:
+            if bary_c < 0.0:
+                alpha = min(alpha, 0.25 / (0.25 - float(bary_c)))
+        if alpha < 1.0:
+            # Stay strictly inside after clipping to a boundary face.  This
+            # avoids manufacturing a zero signed subtet from the dual point.
+            alpha = max(0.0, alpha * (1.0 - 1e-12))
+        dual_points[ti] = centroid + alpha * (circumcenter - centroid)
+    return dual_points
 
 
 def _build_tet_topology(
@@ -364,7 +494,7 @@ def _dual_cell_verts(
     v_in: int,
     V: np.ndarray,
     T: np.ndarray,
-    tet_centroids: np.ndarray,
+    tet_dual_points: np.ndarray,
     vert_tets: dict[int, list[int]],
     is_boundary_vert: np.ndarray,
     boundary_faces_of_vert: dict[int, list[tuple[int, int, int]]],
@@ -372,12 +502,12 @@ def _dual_cell_verts(
 ) -> np.ndarray:
     """input vertex v_in 의 dual cell 을 이루는 3D vertex 집합 반환.
 
-    - internal v: tet centroid 만
-    - boundary v: tet centroid + boundary face centroid + boundary edge midpoint
+    - internal v: tet dual point 만
+    - boundary v: tet dual point + boundary face centroid + boundary edge midpoint
                   + v 자체 (surface 에 남는다)
     """
     tets = vert_tets.get(v_in, [])
-    pts = list(tet_centroids[tets])
+    pts = list(tet_dual_points[tets])
     if is_boundary_vert[v_in]:
         # boundary face centroids (v_in 포함)
         for tri in boundary_faces_of_vert.get(v_in, []):
@@ -451,6 +581,7 @@ def tet_to_poly_dual(
     boundary_face_labels: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None = None,
     boundary_face_entities: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None = None,
     boundary_face_classifier: Callable[[tuple[int, int, int], np.ndarray], Any] | None = None,
+    _dual_point_mode: str = "garimella",
 ) -> PolyDualResult:
     """tet mesh (V, T) 를 polyhedral dual 로 변환 후 OpenFOAM polyMesh 로 저장.
 
@@ -474,6 +605,7 @@ def tet_to_poly_dual(
 
     V = np.asarray(V, dtype=np.float64)
     T = np.asarray(T, dtype=np.int64)
+    original_V = V.copy()
     n_verts = int(V.shape[0])
     n_tets = int(T.shape[0])
     if n_verts == 0 or n_tets == 0:
@@ -534,7 +666,18 @@ def tet_to_poly_dual(
 
     V = _smooth_interior_tet_verts(V, T, is_boundary_vert, edge_tets)
 
-    tet_centroids = _compute_tet_centroids(V, T)
+    if _dual_point_mode == "centroid":
+        tet_dual_points = V[T].mean(axis=1)
+    elif _dual_point_mode == "garimella":
+        tet_dual_points = (
+            _compute_tet_dual_points(V, T) if classification_active else V[T].mean(axis=1)
+        )
+    else:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message=f"unknown dual point mode: {_dual_point_mode}",
+        )
 
     log.info(
         "native_poly_dual_topology",
@@ -565,9 +708,9 @@ def tet_to_poly_dual(
         all_points.append(p)
         return idx
 
-    # tet centroid 는 인접 vertex 들이 공유하는 dual point 이므로 미리 고정 등록.
+    # tet dual point 는 인접 vertex 들이 공유하므로 미리 고정 등록.
     tet_point_id = np.array(
-        [_add_point(tet_centroids[ti]) for ti in range(n_tets)],
+        [_add_point(tet_dual_points[ti]) for ti in range(n_tets)],
         dtype=np.int64,
     )
     # boundary face centroid / boundary edge midpoint 도 안정적인 dual point id 로
@@ -591,7 +734,7 @@ def tet_to_poly_dual(
             v_in,
             V,
             T,
-            tet_centroids,
+            tet_dual_points,
             vert_tets,
             is_boundary_vert,
             boundary_faces_of_vert,
@@ -909,6 +1052,39 @@ def tet_to_poly_dual(
         final_faces = final_faces[:n_internal] + grouped_b_faces
         final_owner = final_owner[:n_internal] + grouped_b_owner
 
+    invalid_star_cells, invalid_star_subtets, star_examples = _star_validity(
+        dual_points,
+        final_faces,
+        final_owner,
+        final_nbr,
+        len(cell_face_lists),
+    )
+    if invalid_star_cells:
+        log.warning(
+            "native_poly_dual_star_invalid",
+            invalid_cells=invalid_star_cells,
+            invalid_subtets=invalid_star_subtets,
+            examples=star_examples,
+        )
+        if _dual_point_mode == "garimella":
+            fallback = tet_to_poly_dual(
+                original_V,
+                T,
+                case_dir,
+                min_cell_verts=min_cell_verts,
+                boundary_face_labels=boundary_face_labels,
+                boundary_face_entities=boundary_face_entities,
+                boundary_face_classifier=boundary_face_classifier,
+                _dual_point_mode="centroid",
+            )
+            if fallback.success:
+                fallback.message = (
+                    f"{fallback.message}; garimella point candidate rejected: "
+                    f"star_invalid_cells={invalid_star_cells}, "
+                    f"star_invalid_subtets={invalid_star_subtets}"
+                )
+                return fallback
+
     # 5) polyMesh 쓰기
     poly_dir = case_dir / "constant" / "polyMesh"
     poly_dir.mkdir(parents=True, exist_ok=True)
@@ -961,6 +1137,11 @@ def tet_to_poly_dual(
         message=(
             f"tet→poly dual OK — cells={len(cell_face_lists)}, "
             f"points={dual_points.shape[0]}, faces={len(final_faces)}, "
-            f"skipped_cells={n_skipped}"
+            f"skipped_cells={n_skipped}, "
+            f"star_invalid_cells={invalid_star_cells}, "
+            f"star_invalid_subtets={invalid_star_subtets}"
         ),
+        invalid_star_cells=invalid_star_cells,
+        invalid_star_subtets=invalid_star_subtets,
+        star_examples=star_examples,
     )
