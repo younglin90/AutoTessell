@@ -1216,6 +1216,21 @@ def generate_native_tet(
 
                 outer_iter = max(1, int(cdt_recovery_outer_iter))
                 target_ratio = float(cdt_recovery_target_ratio)
+                # C-PERF / dual_torus plateau-exit — profiling on the
+                # high-genus dual_torus benchmark showed run_cdt_recovery
+                # settling into inserted=0 / reverted=N repeats every outer
+                # round once the (b) insertion-cycle sub-loop has hit a
+                # structural wall (coplanar/unrecoverable wedges — see
+                # tests/test_native_tet_dual_torus_limit.py). The existing
+                # ratio-delta plateau check (below) doesn't catch this
+                # because the (a) flip / (a2) cavity-retri pre-steps keep
+                # nudging ratio up a little each round even while the
+                # expensive (b) loop contributes nothing — so track
+                # consecutive zero-insertion outer rounds independently and
+                # bail out once the point-insertion mechanism itself has
+                # plateaued, instead of burning the full outer_iter budget.
+                _CDT_OUTER_PLATEAU_N = 3
+                _cdt_consec_zero_insert = 0
                 for outer_i in range(outer_iter):
                     cur_check = check_edge_recovery(F, tets)
                     cur_ratio = _cdt_ratio_fn(cur_check)
@@ -1244,6 +1259,17 @@ def generate_native_tet(
                             inserted=cdt_info.n_inserted_points,
                             reverted=cdt_info.reverted,
                         )
+                        if cdt_info.n_inserted_points == 0:
+                            _cdt_consec_zero_insert += 1
+                        else:
+                            _cdt_consec_zero_insert = 0
+                        if _cdt_consec_zero_insert >= _CDT_OUTER_PLATEAU_N:
+                            log.info(
+                                "native_tet_cdt_recovery_zero_insert_plateau_exit",
+                                outer=outer_i,
+                                consecutive_zero_insert=_cdt_consec_zero_insert,
+                            )
+                            break  # (b) 삽입 메커니즘이 N 회 연속 무의미 — 조기 종료.
                         if cdt_info.ratio_after - cdt_info.ratio_before < 1e-3:
                             break   # 더 이상 개선 안 됨.
                     else:

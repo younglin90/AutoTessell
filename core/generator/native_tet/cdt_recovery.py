@@ -140,8 +140,31 @@ def run_cdt_recovery(
         pass
 
     # (b) insertion-기반 cycle 반복.
+    #
+    # PERF (dual_torus plateau) — profiling showed this loop dominating
+    # run_cdt_recovery's cost (bowyer_watson_insert against a large cavity
+    # is ~13-15s/cycle here) while producing inserted=0 for every cycle on
+    # structurally-unrecoverable geometry (coplanar flat-on-surface wedges,
+    # see tests/test_native_tet_dual_torus_limit.py). Two fixes:
+    #   1) Plateau exit — once a cycle reverts (net-zero insertion), `tets`
+    #      is restored to exactly the state it was in before that cycle, so
+    #      the missing-edge set cannot have changed either. Cache that
+    #      check_edge_recovery result across reverted cycles instead of
+    #      recomputing the full edge/cavity search from scratch every time;
+    #      only invalidate the cache when a cycle actually keeps its insert.
+    #   2) After N consecutive zero-progress (reverted) cycles, stop
+    #      retrying rather than burning the rest of max_cycles — a fixed
+    #      candidate mechanism repeating on an unchanged mesh is very
+    #      unlikely to suddenly start succeeding.
+    _PLATEAU_N = 3
+    _consec_zero = 0
+    _cached_check: object | None = None
     for cycle in range(1, int(max_cycles) + 1):
-        r_cur = check_edge_recovery(F_surf, tets)
+        if _cached_check is not None:
+            r_cur = _cached_check
+        else:
+            r_cur = check_edge_recovery(F_surf, tets)
+            _cached_check = r_cur
         if r_cur.n_missing == 0:
             break
         prop = propose_recursive_midpoint(
@@ -159,21 +182,31 @@ def run_cdt_recovery(
             protected_edges=protected,
         )
         if new_tets.shape[0] == 0:
+            # tets 불변 — 캐시된 r_cur 는 다음 cycle 에도 여전히 유효.
             reverted += 1
+            _consec_zero += 1
+            if _consec_zero >= _PLATEAU_N:
+                break
             continue
 
         r_after = check_edge_recovery(F_surf, new_tets)
         if r_after.n_missing >= r_cur.n_missing:
-            # 악화: revert.
+            # 악화: revert. tets 가 revert 전 상태로 그대로 복원되므로
+            # 캐시된 r_cur 는 계속 유효 (무효화 불필요).
             pts = pts_before
             tets = tets_before
             reverted += 1
+            _consec_zero += 1
+            if _consec_zero >= _PLATEAU_N:
+                break
             continue
 
         pts = new_pts
         tets = new_tets
         n_inserted_total += int(prop.new_points.shape[0])
         cycles_done = cycle
+        _consec_zero = 0
+        _cached_check = None  # tets 실제 변경 — 캐시 무효화, 다음 cycle 재계산.
 
     # R99 — 최종 surface vertex 재-projection.
     if snap_final and V_surf.shape[0] > 0:
