@@ -1,4 +1,5 @@
 """native_poly dual 변환 + harness 회귀 테스트."""
+
 from __future__ import annotations
 
 import shutil
@@ -15,6 +16,12 @@ from core.generator.native_poly import (
     tet_to_poly_dual,
 )
 from core.generator.native_tet import generate_native_tet
+from core.utils.polymesh_reader import (
+    parse_foam_boundary,
+    parse_foam_faces,
+    parse_foam_labels,
+    parse_foam_points,
+)
 
 _REPO = Path(__file__).resolve().parents[1]
 SPHERE_STL = _REPO / "tests" / "benchmarks" / "sphere.stl"
@@ -29,13 +36,88 @@ def tmp_case_dir():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_tet_to_poly_dual_preserves_classified_multi_patch_caps(
+    tmp_case_dir: Path,
+) -> None:
+    """POLY-DUAL-CLASSIFY1 — source face entities survive the dual write.
+
+    The two-tet bipyramid fixture is intentionally minimal: before
+    classification all dual boundary caps are emitted as one ``defaultWall``
+    patch. The
+    classified path creates the same dual points, refines caps by primal
+    boundary triangle, and keeps both source entities as separate patches.
+    """
+    V = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.3, 0.3, 1.0],
+            [0.3, 0.3, -1.0],
+        ],
+        dtype=np.float64,
+    )
+    T = np.array([[0, 1, 2, 3], [0, 2, 1, 4]], dtype=np.int64)
+    source_entities = {
+        (0, 1, 3): {"patch": "source_high", "type": "wall", "entity": "face"},
+        (1, 2, 3): {"patch": "source_high", "type": "wall", "entity": "face"},
+        (0, 2, 3): {"patch": "source_high", "type": "wall", "entity": "face"},
+        (0, 1, 4): {"patch": "source_low", "type": "patch", "entity": "face"},
+        (1, 2, 4): {"patch": "source_low", "type": "patch", "entity": "face"},
+        (0, 2, 4): {"patch": "source_low", "type": "patch", "entity": "face"},
+    }
+
+    unclassified = tet_to_poly_dual(V, T, tmp_case_dir / "unclassified")
+    assert unclassified.success, unclassified.message
+    unclassified_boundary = parse_foam_boundary(
+        tmp_case_dir / "unclassified" / "constant" / "polyMesh" / "boundary"
+    )
+    assert [entry["name"] for entry in unclassified_boundary] == ["defaultWall"]
+
+    classified_case = tmp_case_dir / "classified"
+    classified = tet_to_poly_dual(
+        V,
+        T,
+        classified_case,
+        boundary_face_entities=source_entities,
+    )
+    assert classified.success, classified.message
+
+    poly_dir = classified_case / "constant" / "polyMesh"
+    boundary = parse_foam_boundary(poly_dir / "boundary")
+    faces = parse_foam_faces(poly_dir / "faces")
+    neighbours = parse_foam_labels(poly_dir / "neighbour")
+    points = np.asarray(parse_foam_points(poly_dir / "points"), dtype=np.float64)
+    baseline_points = np.asarray(
+        parse_foam_points(tmp_case_dir / "unclassified" / "constant" / "polyMesh" / "points"),
+        dtype=np.float64,
+    )
+
+    assert np.array_equal(points, baseline_points)
+    assert {entry["name"] for entry in boundary} == {"source_low", "source_high"}
+    boundary_text = (poly_dir / "boundary").read_text()
+    assert "type            patch;" in boundary_text
+    assert "type            wall;" in boundary_text
+    checker = NativeMeshChecker().run(classified_case)
+    assert checker.mesh_ok
+    assert checker.negative_volumes == 0
+    assert sum(int(entry["nFaces"]) for entry in boundary) == len(faces) - len(neighbours)
+    assert all(
+        boundary[idx]["startFace"] + boundary[idx]["nFaces"] == boundary[idx + 1]["startFace"]
+        for idx in range(len(boundary) - 1)
+    )
+
+
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
         pytest.skip()
     m = read_stl(SPHERE_STL)
     base = tmp_case_dir / "base_tet"
     tet_res = generate_native_tet(
-        m.vertices, m.faces, base, seed_density=8,
+        m.vertices,
+        m.faces,
+        base,
+        seed_density=8,
     )
     assert tet_res.success
     assert tet_res.tets is not None
@@ -43,7 +125,9 @@ def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:
 
     out = tmp_case_dir / "dual"
     res = tet_to_poly_dual(
-        tet_res.tet_points, tet_res.tets, out,
+        tet_res.tet_points,
+        tet_res.tets,
+        out,
     )
     assert res.success, res.message
     assert res.n_cells > 0
@@ -60,7 +144,10 @@ def test_tet_to_poly_dual_polymesh_valid(tmp_case_dir: Path) -> None:
     m = read_stl(SPHERE_STL)
     base = tmp_case_dir / "base_tet"
     tet_res = generate_native_tet(
-        m.vertices, m.faces, base, seed_density=10,
+        m.vertices,
+        m.faces,
+        base,
+        seed_density=10,
     )
     assert tet_res.success and tet_res.tets is not None
 
@@ -69,9 +156,7 @@ def test_tet_to_poly_dual_polymesh_valid(tmp_case_dir: Path) -> None:
     assert res.success
 
     chk = NativeMeshChecker().run(out)
-    assert chk.negative_volumes == 0, (
-        f"negative_volumes = {chk.negative_volumes}"
-    )
+    assert chk.negative_volumes == 0, f"negative_volumes = {chk.negative_volumes}"
 
 
 def test_native_poly_harness_passes_on_sphere(tmp_case_dir: Path) -> None:
@@ -80,8 +165,11 @@ def test_native_poly_harness_passes_on_sphere(tmp_case_dir: Path) -> None:
         pytest.skip()
     m = read_stl(SPHERE_STL)
     res = run_native_poly_harness(
-        m.vertices, m.faces, tmp_case_dir,
-        seed_density=10, max_iter=3,
+        m.vertices,
+        m.faces,
+        tmp_case_dir,
+        seed_density=10,
+        max_iter=3,
     )
     assert res.success, res.message
     assert res.iterations >= 1
@@ -101,13 +189,19 @@ def test_tet_to_poly_dual_writes_polymesh_structure(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
         pytest.skip()
     from core.utils.polymesh_reader import (
-        parse_foam_boundary, parse_foam_faces,
-        parse_foam_labels, parse_foam_points,
+        parse_foam_boundary,
+        parse_foam_faces,
+        parse_foam_labels,
+        parse_foam_points,
     )
+
     m = read_stl(SPHERE_STL)
     base = tmp_case_dir / "base_tet"
     tet_res = generate_native_tet(
-        m.vertices, m.faces, base, seed_density=8,
+        m.vertices,
+        m.faces,
+        base,
+        seed_density=8,
     )
     assert tet_res.success and tet_res.tets is not None
     out = tmp_case_dir / "dual"

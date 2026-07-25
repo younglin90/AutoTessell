@@ -20,10 +20,12 @@ OpenFOAM ``polyDualMesh`` 와 동일한 개념:
     - boundary vertex 주위 dual cell 은 "vertex + 인접 tet centroid + 인접
       boundary face centroid + 인접 boundary edge midpoint" 의 ConvexHull 로 생성.
 """
+
 from __future__ import annotations
 
 import time
 from collections import defaultdict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,6 +47,102 @@ class PolyDualResult:
     message: str = ""
 
 
+def _normalise_entity_label(label: Any) -> tuple[str, str]:
+    """Convert a primal boundary-entity label to an OpenFOAM patch label.
+
+    Garimella's construction classifies primal boundary faces before the dual
+    subcomplex is assembled.  The polyMesh writer has two semantic fields for
+    that classification (patch name and patch type), so accept the compact
+    string/tuple forms as well as a mapping for callers that also carry an
+    application-specific ``entity`` field.
+    """
+    if isinstance(label, Mapping):
+        name = label.get("patch") or label.get("name") or label.get("label")
+        patch_type = label.get("type") or "wall"
+    elif isinstance(label, (tuple, list)):
+        name = label[0] if label else None
+        patch_type = label[1] if len(label) > 1 else "wall"
+    else:
+        name = label
+        patch_type = "wall"
+    return str(name or "defaultWall"), str(patch_type or "wall")
+
+
+def _boundary_entity_labels(
+    boundary_faces: Sequence[tuple[int, int, int]],
+    vertices: np.ndarray,
+    labels: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None,
+    classifier: Callable[[tuple[int, int, int], np.ndarray], Any] | None,
+) -> dict[tuple[int, int, int], tuple[str, str]]:
+    """Resolve source labels for canonical primal boundary triangles."""
+    if labels is not None and classifier is not None:
+        raise ValueError("boundary_face_labels and boundary_face_classifier are mutually exclusive")
+
+    if classifier is not None:
+        return {tri: _normalise_entity_label(classifier(tri, vertices)) for tri in boundary_faces}
+
+    if labels is None:
+        return {}
+
+    if isinstance(labels, Mapping):
+        canonical_labels = {
+            tuple(sorted(map(int, key))): value
+            for key, value in labels.items()
+            if isinstance(key, (tuple, list)) and len(key) == 3
+        }
+        resolved: dict[tuple[int, int, int], tuple[str, str]] = {}
+        for tri in boundary_faces:
+            raw = canonical_labels.get(tuple(sorted(tri)))
+            resolved[tri] = _normalise_entity_label(raw)
+        return resolved
+
+    if len(labels) != len(boundary_faces):
+        raise ValueError(
+            "boundary_face_labels sequence must align with the extracted "
+            f"boundary faces ({len(boundary_faces)} expected, {len(labels)} received)"
+        )
+    return {tri: _normalise_entity_label(raw) for tri, raw in zip(boundary_faces, labels)}
+
+
+def _group_classified_boundary_faces(
+    faces: list[list[int]],
+    owners: list[int],
+    labels: list[tuple[str, str]],
+    n_internal: int,
+) -> tuple[list[list[int]], list[int], list[dict[str, Any]]]:
+    """Make classified boundary faces contiguous and emit boundary entries."""
+    groups: dict[tuple[str, str], list[int]] = {}
+    for rel_idx, label in enumerate(labels):
+        groups.setdefault(label, []).append(rel_idx)
+
+    grouped_faces: list[list[int]] = []
+    grouped_owners: list[int] = []
+    entries: list[dict[str, Any]] = []
+    cursor = n_internal
+    for (name, patch_type), rel_indices in groups.items():
+        start = cursor
+        grouped_faces.extend(faces[rel_idx] for rel_idx in rel_indices)
+        grouped_owners.extend(owners[rel_idx] for rel_idx in rel_indices)
+        cursor += len(rel_indices)
+        entries.append(
+            {
+                "name": name,
+                "type": patch_type,
+                "nFaces": len(rel_indices),
+                "startFace": start,
+            }
+        )
+    return grouped_faces, grouped_owners, entries
+
+
+def _ordered_boundary_labels(
+    labels: list[tuple[str, str]], owners: list[int]
+) -> list[tuple[str, str]]:
+    """Apply the same stable owner ordering used by ``_order_and_concat``."""
+    order = sorted(range(len(labels)), key=lambda idx: owners[idx])
+    return [labels[idx] for idx in order]
+
+
 # ---------------------------------------------------------------------------
 # Tet topology helpers
 # ---------------------------------------------------------------------------
@@ -60,7 +158,12 @@ _TET_FACES: tuple[tuple[int, int, int], ...] = (
 
 # tet 의 6 edges (정점 pair, sorted)
 _TET_EDGES: tuple[tuple[int, int], ...] = (
-    (0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3),
+    (0, 1),
+    (0, 2),
+    (0, 3),
+    (1, 2),
+    (1, 3),
+    (2, 3),
 )
 
 
@@ -69,10 +172,11 @@ def _compute_tet_centroids(V: np.ndarray, T: np.ndarray) -> np.ndarray:
 
 
 def _build_tet_topology(
-    T: np.ndarray, n_verts: int,
+    T: np.ndarray,
+    n_verts: int,
 ) -> tuple[
-    dict[int, list[int]],               # vertex → list of tet indices
-    dict[tuple[int, int], list[int]],   # edge (sorted) → list of tet indices
+    dict[int, list[int]],  # vertex → list of tet indices
+    dict[tuple[int, int], list[int]],  # edge (sorted) → list of tet indices
     dict[tuple[int, int, int], list[int]],  # face (sorted triple) → list of tet indices
 ]:
     """tet 배열에서 vertex/edge/face 기반 topology map 생성 (vectorized)."""
@@ -85,8 +189,8 @@ def _build_tet_topology(
 
     # --- vertex → tet (4 verts per tet) ---
     # T shape: (n_tets, 4); repeat ti for each of the 4 verts
-    vert_col = T.reshape(-1)                      # (n_tets*4,)
-    ti_col = np.repeat(ti_arr, 4)                 # (n_tets*4,)
+    vert_col = T.reshape(-1)  # (n_tets*4,)
+    ti_col = np.repeat(ti_arr, 4)  # (n_tets*4,)
     for v, ti in zip(vert_col.tolist(), ti_col.tolist()):
         vert_tets[v].append(ti)
 
@@ -94,8 +198,8 @@ def _build_tet_topology(
     _EA = np.array([a for a, _ in _TET_EDGES], dtype=np.int64)  # (6,)
     _EB = np.array([b for _, b in _TET_EDGES], dtype=np.int64)  # (6,)
     # for each tet gather the two endpoint global indices
-    ea = T[:, _EA]   # (n_tets, 6)
-    eb = T[:, _EB]   # (n_tets, 6)
+    ea = T[:, _EA]  # (n_tets, 6)
+    eb = T[:, _EB]  # (n_tets, 6)
     emin = np.minimum(ea, eb)  # (n_tets, 6)
     emax = np.maximum(ea, eb)  # (n_tets, 6)
     ti_e = np.repeat(ti_arr, 6)  # (n_tets*6,)
@@ -106,11 +210,11 @@ def _build_tet_topology(
     _FA = np.array([tri[0] for tri in _TET_FACES], dtype=np.int64)  # (4,)
     _FB = np.array([tri[1] for tri in _TET_FACES], dtype=np.int64)  # (4,)
     _FC = np.array([tri[2] for tri in _TET_FACES], dtype=np.int64)  # (4,)
-    fa = T[:, _FA]   # (n_tets, 4)
-    fb = T[:, _FB]   # (n_tets, 4)
-    fc = T[:, _FC]   # (n_tets, 4)
+    fa = T[:, _FA]  # (n_tets, 4)
+    fb = T[:, _FB]  # (n_tets, 4)
+    fc = T[:, _FC]  # (n_tets, 4)
     # stack and sort each row of 3 to get canonical key
-    face_verts = np.stack([fa, fb, fc], axis=2)   # (n_tets, 4, 3)
+    face_verts = np.stack([fa, fb, fc], axis=2)  # (n_tets, 4, 3)
     face_verts_sorted = np.sort(face_verts, axis=2)  # (n_tets, 4, 3)
     ti_f = np.repeat(ti_arr, 4)  # (n_tets*4,)
     fv = face_verts_sorted.reshape(-1, 3)  # (n_tets*4, 3)
@@ -180,7 +284,8 @@ def _ordered_tet_ring(
 
 
 def _surface_planes(
-    V: np.ndarray, boundary_faces: list[tuple[int, int, int]],
+    V: np.ndarray,
+    boundary_faces: list[tuple[int, int, int]],
 ) -> list[tuple[np.ndarray, float]]:
     """원본 입력 surface triangle 들의 고유 평면(normal, offset) 목록."""
     planes: list[tuple[np.ndarray, float]] = []
@@ -225,8 +330,11 @@ def _area_split(
 
 
 def _order_and_concat(
-    i_faces: list[list[int]], i_own: list[int], i_nbr: list[int],
-    b_faces: list[list[int]], b_own: list[int],
+    i_faces: list[list[int]],
+    i_own: list[int],
+    i_nbr: list[int],
+    b_faces: list[list[int]],
+    b_own: list[int],
 ) -> tuple[list[list[int]], list[int], list[int], int]:
     """internal(owner,nbr 정렬) + boundary(owner 정렬) face 를 하나로 합친다."""
     oi = sorted(range(len(i_faces)), key=lambda k: (i_own[k], i_nbr[k]))
@@ -254,7 +362,8 @@ def _unique_row_ids(pts: np.ndarray, tol: float = 1e-9) -> np.ndarray:
 
 def _dual_cell_verts(
     v_in: int,
-    V: np.ndarray, T: np.ndarray,
+    V: np.ndarray,
+    T: np.ndarray,
     tet_centroids: np.ndarray,
     vert_tets: dict[int, list[int]],
     is_boundary_vert: np.ndarray,
@@ -274,7 +383,7 @@ def _dual_cell_verts(
         for tri in boundary_faces_of_vert.get(v_in, []):
             pts.append(V[list(tri)].mean(axis=0))
         # boundary edge midpoints (v_in 포함)
-        for (a, b) in boundary_edges_of_vert.get(v_in, []):
+        for a, b in boundary_edges_of_vert.get(v_in, []):
             pts.append(0.5 * (V[a] + V[b]))
         # vertex 자신
         pts.append(V[v_in])
@@ -295,6 +404,7 @@ def _smooth_interior_tet_verts(
     ``<= 1e-4*orig_vol`` 이면 그 vertex 이동만 revert. 전역적으로
     min_tet_vol <= 0 이 남으면 전체 V 를 원본으로 revert.
     """
+
     def _tet_vols(Vc: np.ndarray, idx: np.ndarray) -> np.ndarray:
         tv = T[idx]
         p0, p1, p2, p3 = Vc[tv[:, 0]], Vc[tv[:, 1]], Vc[tv[:, 2]], Vc[tv[:, 3]]
@@ -338,6 +448,9 @@ def tet_to_poly_dual(
     case_dir: Path,
     *,
     min_cell_verts: int = 4,
+    boundary_face_labels: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None = None,
+    boundary_face_entities: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None = None,
+    boundary_face_classifier: Callable[[tuple[int, int, int], np.ndarray], Any] | None = None,
 ) -> PolyDualResult:
     """tet mesh (V, T) 를 polyhedral dual 로 변환 후 OpenFOAM polyMesh 로 저장.
 
@@ -347,6 +460,12 @@ def tet_to_poly_dual(
         case_dir: 출력 OpenFOAM case 디렉터리.
         min_cell_verts: dual cell 을 생성하기 위한 최소 vertex 수. 4 이상이어야
             ConvexHull 이 3D polyhedron 을 만들 수 있다.
+        boundary_face_labels: optional source patch/entity labels keyed by canonical
+            primal boundary triangle or supplied in extracted-boundary order.
+        boundary_face_entities: alias for ``boundary_face_labels`` for callers that
+            name the Garimella classification explicitly.
+        boundary_face_classifier: optional callback receiving ``(triangle, V)`` and
+            returning a patch name, ``(name, type)`` pair, or mapping.
 
     Returns:
         PolyDualResult.
@@ -368,6 +487,31 @@ def tet_to_poly_dual(
     # 1) topology
     vert_tets, edge_tets, face_tets = _build_tet_topology(T, n_verts)
     boundary_faces = _extract_boundary(face_tets)
+    if boundary_face_labels is not None and boundary_face_entities is not None:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message="boundary_face_labels and boundary_face_entities are mutually exclusive",
+        )
+    supplied_entity_labels = (
+        boundary_face_labels if boundary_face_labels is not None else boundary_face_entities
+    )
+    try:
+        source_entity_labels = _boundary_entity_labels(
+            boundary_faces,
+            V,
+            supplied_entity_labels,
+            boundary_face_classifier,
+        )
+    except (TypeError, ValueError) as exc:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message=f"boundary entity classification failed: {exc}",
+        )
+    classification_active = bool(
+        supplied_entity_labels is not None or boundary_face_classifier is not None
+    )
 
     # boundary vertex / edge 집합
     is_boundary_vert = np.zeros(n_verts, dtype=bool)
@@ -384,7 +528,7 @@ def tet_to_poly_dual(
         e20 = (min(tri[2], tri[0]), max(tri[2], tri[0]))
         for e in (e01, e12, e20):
             boundary_edges_set.add(e)
-    for (a, b) in boundary_edges_set:
+    for a, b in boundary_edges_set:
         boundary_edges_of_vert[a].append((a, b))
         boundary_edges_of_vert[b].append((a, b))
 
@@ -394,17 +538,19 @@ def tet_to_poly_dual(
 
     log.info(
         "native_poly_dual_topology",
-        n_verts=n_verts, n_tets=n_tets,
+        n_verts=n_verts,
+        n_tets=n_tets,
         n_boundary_faces=len(boundary_faces),
         n_boundary_verts=int(is_boundary_vert.sum()),
     )
 
     # 2) 각 input vertex 마다 dual cell 점 집합 + boundary cap 후보(ConvexHull) 생성
-    all_points: list[np.ndarray] = []   # unique dual points (나중에 stack)
+    all_points: list[np.ndarray] = []  # unique dual points (나중에 stack)
     cell_face_lists: list[list[list[int]]] = []  # cell_i → [face_vertices, ...]
-    cell_face_is_cap: list[list[bool]] = []       # cell_i → face 가 surface cap 인지
-    cell_centroid_list: list[np.ndarray] = []   # cell_i → 3D centroid
-    cell_index_of_vert: dict[int, int] = {}     # input vertex → cell index
+    cell_face_is_cap: list[list[bool]] = []  # cell_i → face 가 surface cap 인지
+    cell_face_labels: list[list[tuple[str, str] | None]] = []
+    cell_centroid_list: list[np.ndarray] = []  # cell_i → 3D centroid
+    cell_index_of_vert: dict[int, int] = {}  # input vertex → cell index
     # 점 dedup 을 위해 global dict (3D 좌표 → global idx)
     point_id_of: dict[tuple[int, int, int], int] = {}
     point_tol = 1e-9
@@ -421,7 +567,8 @@ def tet_to_poly_dual(
 
     # tet centroid 는 인접 vertex 들이 공유하는 dual point 이므로 미리 고정 등록.
     tet_point_id = np.array(
-        [_add_point(tet_centroids[ti]) for ti in range(n_tets)], dtype=np.int64,
+        [_add_point(tet_centroids[ti]) for ti in range(n_tets)],
+        dtype=np.int64,
     )
     # boundary face centroid / boundary edge midpoint 도 안정적인 dual point id 로
     # 미리 등록한다 (POLY-S3: on-plane cap + boundary-edge separating face 가 공유).
@@ -431,13 +578,24 @@ def tet_to_poly_dual(
     bedge_pid: dict[tuple[int, int], int] = {
         e: _add_point(0.5 * (V[e[0]] + V[e[1]])) for e in boundary_edges_set
     }
+    boundary_vertex_pid: dict[int, int] = {}
+    if classification_active:
+        boundary_vertex_pid = {
+            v: _add_point(V[v]) for v in np.flatnonzero(is_boundary_vert).tolist()
+        }
 
     n_skipped = 0
     for v_in in range(n_verts):
         n_tet_pts = len(vert_tets.get(v_in, []))
         pts = _dual_cell_verts(
-            v_in, V, T, tet_centroids, vert_tets,
-            is_boundary_vert, boundary_faces_of_vert, boundary_edges_of_vert,
+            v_in,
+            V,
+            T,
+            tet_centroids,
+            vert_tets,
+            is_boundary_vert,
+            boundary_faces_of_vert,
+            boundary_edges_of_vert,
         )
         if pts.shape[0] < min_cell_verts:
             n_skipped += 1
@@ -463,6 +621,11 @@ def tet_to_poly_dual(
         local_cell_centroid = pts.mean(axis=0)
         cell_face_verts: list[list[int]] = []
         cell_face_caps: list[bool] = []
+        cell_face_entity_labels: list[tuple[str, str] | None] = []
+        local_face_triangles = {
+            n_tet_pts + local_idx: tri
+            for local_idx, tri in enumerate(boundary_faces_of_vert.get(v_in, []))
+        }
         for _, simp_ids in group_of.items():
             # union 의 vertex 집합
             verts_local: set[int] = set()
@@ -500,7 +663,19 @@ def tet_to_poly_dual(
             # global id 매핑
             global_ids = [_add_point(pts[lv]) for lv in ordered_verts_local]
             cell_face_verts.append(global_ids)
-            cell_face_caps.append(any(lv >= n_tet_pts for lv in ordered_verts_local))
+            is_cap = any(lv >= n_tet_pts for lv in ordered_verts_local)
+            cell_face_caps.append(is_cap)
+            cap_triangles = {
+                local_face_triangles[lv] for lv in ordered_verts_local if lv in local_face_triangles
+            }
+            cap_labels = {
+                source_entity_labels[tri] for tri in cap_triangles if tri in source_entity_labels
+            }
+            # A hull cap may span multiple coplanar source faces.  The
+            # classified path below splits those caps per source triangle; the
+            # single fallback label here keeps the old ConvexHull path usable
+            # if its monotonic guard rejects the classified topology.
+            cell_face_entity_labels.append(next(iter(cap_labels)) if len(cap_labels) == 1 else None)
 
         if not cell_face_verts:
             n_skipped += 1
@@ -508,11 +683,13 @@ def tet_to_poly_dual(
         cell_index_of_vert[v_in] = len(cell_face_lists)
         cell_face_lists.append(cell_face_verts)
         cell_face_is_cap.append(cell_face_caps)
+        cell_face_labels.append(cell_face_entity_labels)
         cell_centroid_list.append(local_cell_centroid)
 
     if not cell_face_lists:
         return PolyDualResult(
-            False, time.perf_counter() - t0,
+            False,
+            time.perf_counter() - t0,
             message="dual cell 0 — 입력 mesh 가 너무 작거나 degenerate",
         )
 
@@ -520,7 +697,8 @@ def tet_to_poly_dual(
 
     log.info(
         "native_poly_dual_cells",
-        n_cells=len(cell_face_lists), n_points=dual_points.shape[0],
+        n_cells=len(cell_face_lists),
+        n_points=dual_points.shape[0],
         skipped=n_skipped,
     )
 
@@ -545,6 +723,7 @@ def tet_to_poly_dual(
     a_i_nbr: list[int] = []
     a_b_faces: list[list[int]] = []
     a_b_own: list[int] = []
+    a_b_labels: list[tuple[str, str]] = []
     for refs in face_map.values():
         if len(refs) == 2:
             (ca, fa), (cb, fb) = refs
@@ -554,9 +733,12 @@ def tet_to_poly_dual(
             a_i_own.append(own)
             a_i_nbr.append(nbr)
         elif len(refs) == 1:
-            (ci, fv) = refs[0]
+            ci, fv = refs[0]
             a_b_faces.append(_flip_if_inward(fv, cell_centroid_list[ci]))
             a_b_own.append(ci)
+            if classification_active:
+                face_idx = cell_face_lists[ci].index(fv)
+                a_b_labels.append(cell_face_labels[ci][face_idx] or ("defaultWall", "wall"))
 
     # 3b) path B (신규): tet edge 주위 위상적 centroid ring → internal face,
     # boundary cap 은 path A 의 hull 결과 중 surface 점을 포함한 face 만 재사용.
@@ -628,65 +810,145 @@ def tet_to_poly_dual(
 
     b_b_faces: list[list[int]] = []
     b_b_own: list[int] = []
-    for v_in, ci in cell_index_of_vert.items():
-        if not is_boundary_vert[v_in]:
-            continue
-        for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
-            if is_cap and _is_on_plane(list(f)):
-                b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
-                b_b_own.append(ci)
+    b_b_labels: list[tuple[str, str]] = []
+    if classification_active:
+        # Garimella-style entity classification: one boundary cap per
+        # classified primal boundary face and incident primal vertex.  The
+        # four points are already part of the unmodified dual point set, so
+        # this only refines the surface subcomplex and never moves geometry.
+        for v_in, ci in cell_index_of_vert.items():
+            if not is_boundary_vert[v_in]:
+                continue
+            for tri in boundary_faces_of_vert.get(v_in, []):
+                others = [int(v) for v in tri if int(v) != v_in]
+                if len(others) != 2:
+                    continue
+                edge_a = (min(v_in, others[0]), max(v_in, others[0]))
+                edge_b = (min(v_in, others[1]), max(v_in, others[1]))
+                raw_face = [
+                    boundary_vertex_pid[v_in],
+                    bedge_pid[edge_a],
+                    bface_pid[tri],
+                    bedge_pid[edge_b],
+                ]
+                face: list[int] = []
+                for pid in raw_face:
+                    if not face or face[-1] != pid:
+                        face.append(pid)
+                if len(face) >= 3:
+                    b_b_faces.append(_flip_if_inward(face, cell_centroid_list[ci]))
+                    b_b_own.append(ci)
+                    b_b_labels.append(source_entity_labels[tri])
+    else:
+        for v_in, ci in cell_index_of_vert.items():
+            if not is_boundary_vert[v_in]:
+                continue
+            for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
+                if is_cap and _is_on_plane(list(f)):
+                    b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
+                    b_b_own.append(ci)
 
     # 3d) 단조 가드: on/off-plane boundary area split 으로 path 선택.
     # path B 가 void 를 늘리거나 surface coverage 를 깨면 path A 로 복귀한다.
     pre_on, pre_off = _area_split(dual_points, a_b_faces, surface_planes)
     post_on, post_off = _area_split(dual_points, b_b_faces, surface_planes)
     use_topo = (
-        len(b_i_faces) > 0
-        and post_off <= pre_off
-        and pre_on * 0.95 <= post_on <= pre_on * 1.05
+        len(b_i_faces) > 0 and post_off <= pre_off and pre_on * 0.95 <= post_on <= pre_on * 1.05
     )
+    if classification_active:
+        # The classified cap subcomplex is the source-surface partition. Its
+        # area is authoritative even when the legacy hull-cap area differs by
+        # more than the old monotonic guard's diagnostic 5% window.
+        use_topo = len(b_i_faces) > 0 and len(b_b_faces) > 0 and post_off <= pre_off + 1e-12
     log.info(
         "native_poly_dual_guard",
-        pre_on=pre_on, pre_off=pre_off, post_on=post_on, post_off=post_off,
+        pre_on=pre_on,
+        pre_off=pre_off,
+        post_on=post_on,
+        post_off=post_off,
+        classified=classification_active,
         use_topo=use_topo,
     )
     if use_topo:
         final_faces, final_owner, final_nbr, n_boundary = _order_and_concat(
-            b_i_faces, b_i_own, b_i_nbr, b_b_faces, b_b_own,
+            b_i_faces,
+            b_i_own,
+            b_i_nbr,
+            b_b_faces,
+            b_b_own,
         )
+        final_boundary_labels = _ordered_boundary_labels(b_b_labels, b_b_own)
     else:
         final_faces, final_owner, final_nbr, n_boundary = _order_and_concat(
-            a_i_faces, a_i_own, a_i_nbr, a_b_faces, a_b_own,
+            a_i_faces,
+            a_i_own,
+            a_i_nbr,
+            a_b_faces,
+            a_b_own,
         )
+        final_boundary_labels = _ordered_boundary_labels(a_b_labels, a_b_own)
     n_internal = len(final_faces) - n_boundary
+
+    boundary_entries: list[dict[str, Any]] | None = None
+    if classification_active:
+        if len(final_boundary_labels) != n_boundary:
+            return PolyDualResult(
+                False,
+                time.perf_counter() - t0,
+                message=(
+                    "classified dual boundary label count mismatch: "
+                    f"{len(final_boundary_labels)} != {n_boundary}"
+                ),
+            )
+        grouped_b_faces, grouped_b_owner, boundary_entries = _group_classified_boundary_faces(
+            final_faces[n_internal:],
+            final_owner[n_internal:],
+            final_boundary_labels,
+            n_internal,
+        )
+        final_faces = final_faces[:n_internal] + grouped_b_faces
+        final_owner = final_owner[:n_internal] + grouped_b_owner
 
     # 5) polyMesh 쓰기
     poly_dir = case_dir / "constant" / "polyMesh"
     poly_dir.mkdir(parents=True, exist_ok=True)
     from core.generator.tier_layers_post import (  # noqa: PLC0415
-        _ensure_minimal_controldict, _write_minimal_fv_dicts,
+        _ensure_minimal_controldict,
+        _write_minimal_fv_dicts,
     )
+
     _ensure_minimal_controldict(case_dir)
     _write_minimal_fv_dicts(case_dir)
     from core.layers.native_bl import (  # noqa: PLC0415
-        _write_boundary, _write_faces, _write_labels, _write_points,
+        _write_boundary,
+        _write_faces,
+        _write_labels,
+        _write_points,
     )
+
     _write_points(poly_dir / "points", dual_points)
     _write_faces(poly_dir / "faces", final_faces)
     _write_labels(
-        poly_dir / "owner", np.array(final_owner, dtype=np.int64), "owner",
+        poly_dir / "owner",
+        np.array(final_owner, dtype=np.int64),
+        "owner",
     )
     _write_labels(
-        poly_dir / "neighbour", np.array(final_nbr, dtype=np.int64), "neighbour",
+        poly_dir / "neighbour",
+        np.array(final_nbr, dtype=np.int64),
+        "neighbour",
     )
     _write_boundary(
         poly_dir / "boundary",
-        [{
-            "name": "defaultWall",
-            "type": "wall",
-            "nFaces": n_boundary,
-            "startFace": n_internal,
-        }],
+        boundary_entries
+        or [
+            {
+                "name": "defaultWall",
+                "type": "wall",
+                "nFaces": n_boundary,
+                "startFace": n_internal,
+            }
+        ],
     )
 
     elapsed = time.perf_counter() - t0
