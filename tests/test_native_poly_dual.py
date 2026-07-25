@@ -176,13 +176,21 @@ def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
     )
     assert before.success, before.message
     assert after.success, after.message
-    assert (before.invalid_star_cells, before.invalid_star_subtets) == (2, 18)
-    assert (after.invalid_star_cells, after.invalid_star_subtets) == (2, 18)
+    # GAP fix (non-manifold-fan dual cell): the primal vertices shared by the
+    # disconnected edge-(0,1) fans (tet [0,1,2,3]/[0,1,3,4] vs. the separate
+    # tet [0,1,5,6]) now split into one dual cell per fan component instead
+    # of being forced into a single, topologically incoherent cell -- both
+    # dual-point placements resolve to zero invalid star cells.
+    assert (before.invalid_star_cells, before.invalid_star_subtets) == (0, 0)
+    assert (after.invalid_star_cells, after.invalid_star_subtets) == (0, 0)
+    assert not before.star_examples
+    assert not after.star_examples
+    # The Garimella circumcenter-biased dual point placement still produces
+    # its own (unrelated) invalid candidate for this fixture; the existing
+    # centroid fallback absorbs it and the final result is fully valid.
     assert "candidate rejected" in after.message
     assert "star_invalid_cells=6" in after.message
-    assert "star_invalid_subtets=40" in after.message
-    assert before.star_examples
-    assert after.star_examples
+    assert "star_invalid_subtets=30" in after.message
 
 
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:

@@ -413,6 +413,65 @@ def _ordered_tet_ring(
         cur, cur_face = nxt, other
 
 
+def _vertex_fan_components(
+    v_in: int,
+    tets: Sequence[int],
+    T: np.ndarray,
+) -> list[list[int]]:
+    """Partition the tets incident to primal vertex ``v_in`` into face-connected
+    "fan" components.
+
+    Two tets that both touch ``v_in`` are adjacent iff they share one of the
+    three tet faces incident to ``v_in`` (the face opposite ``v_in`` does not
+    count -- it never touches ``v_in``).  For an ordinary manifold vertex this
+    always yields a single component (one closed or open fan).  A
+    non-manifold vertex -- e.g. two tets meeting only along an edge through
+    ``v_in``, never sharing a face -- yields >1 component.
+
+    Forcing such a vertex into a single dual cell silently drops whichever
+    tets the ring-walk in ``_ordered_tet_ring``/``_dual_cell_verts`` never
+    reaches (GAP: non-manifold-fan dual cell).  The caller must instead build
+    one dual cell per returned component.
+    """
+    if not tets:
+        return []
+    face_owners: dict[tuple[int, int, int], list[int]] = defaultdict(list)
+    for ti in tets:
+        tv = T[ti]
+        for face in _TET_FACES:
+            tri = tuple(sorted((int(tv[face[0]]), int(tv[face[1]]), int(tv[face[2]]))))
+            if v_in in tri:
+                face_owners[tri].append(ti)
+
+    adjacency: dict[int, set[int]] = defaultdict(set)
+    for owners in face_owners.values():
+        for i in range(len(owners)):
+            for j in range(i + 1, len(owners)):
+                a, b = owners[i], owners[j]
+                if a == b:
+                    continue
+                adjacency[a].add(b)
+                adjacency[b].add(a)
+
+    visited: set[int] = set()
+    components: list[list[int]] = []
+    for ti in tets:
+        if ti in visited:
+            continue
+        stack = [ti]
+        visited.add(ti)
+        comp: list[int] = []
+        while stack:
+            cur = stack.pop()
+            comp.append(cur)
+            for nb in adjacency.get(cur, ()):
+                if nb not in visited:
+                    visited.add(nb)
+                    stack.append(nb)
+        components.append(sorted(comp))
+    return components
+
+
 def _surface_planes(
     V: np.ndarray,
     boundary_faces: list[tuple[int, int, int]],
@@ -493,27 +552,30 @@ def _unique_row_ids(pts: np.ndarray, tol: float = 1e-9) -> np.ndarray:
 def _dual_cell_verts(
     v_in: int,
     V: np.ndarray,
-    T: np.ndarray,
+    tet_ids: Sequence[int],
     tet_dual_points: np.ndarray,
-    vert_tets: dict[int, list[int]],
-    is_boundary_vert: np.ndarray,
-    boundary_faces_of_vert: dict[int, list[tuple[int, int, int]]],
-    boundary_edges_of_vert: dict[int, list[tuple[int, int]]],
+    is_boundary_component: bool,
+    boundary_tris: Sequence[tuple[int, int, int]],
+    boundary_edges: Sequence[tuple[int, int]],
 ) -> np.ndarray:
-    """input vertex v_in 의 dual cell 을 이루는 3D vertex 집합 반환.
+    """input vertex v_in 의 (단일 fan 컴포넌트) dual cell 을 이루는 3D vertex 집합.
 
-    - internal v: tet dual point 만
-    - boundary v: tet dual point + boundary face centroid + boundary edge midpoint
-                  + v 자체 (surface 에 남는다)
+    ``tet_ids``/``boundary_tris``/``boundary_edges`` 는 이미 하나의
+    ``_vertex_fan_components`` 컴포넌트로 국한된 목록이어야 한다 -- 이래야
+    non-manifold vertex (여러 개의 서로 분리된 fan) 를 하나의 dual cell 로
+    뭉개지 않고, 컴포넌트마다 별도의 cell 을 만들 수 있다.
+
+    - internal component: tet dual point 만
+    - boundary component: tet dual point + boundary face centroid +
+      boundary edge midpoint + v 자체 (surface 에 남는다)
     """
-    tets = vert_tets.get(v_in, [])
-    pts = list(tet_dual_points[tets])
-    if is_boundary_vert[v_in]:
-        # boundary face centroids (v_in 포함)
-        for tri in boundary_faces_of_vert.get(v_in, []):
+    pts = list(tet_dual_points[np.asarray(tet_ids, dtype=np.int64)]) if len(tet_ids) else []
+    if is_boundary_component:
+        # boundary face centroids (v_in 포함, 이 컴포넌트 소속만)
+        for tri in boundary_tris:
             pts.append(V[list(tri)].mean(axis=0))
-        # boundary edge midpoints (v_in 포함)
-        for a, b in boundary_edges_of_vert.get(v_in, []):
+        # boundary edge midpoints (v_in 포함, 이 컴포넌트 소속만)
+        for a, b in boundary_edges:
             pts.append(0.5 * (V[a] + V[b]))
         # vertex 자신
         pts.append(V[v_in])
@@ -693,7 +755,14 @@ def tet_to_poly_dual(
     cell_face_is_cap: list[list[bool]] = []  # cell_i → face 가 surface cap 인지
     cell_face_labels: list[list[tuple[str, str] | None]] = []
     cell_centroid_list: list[np.ndarray] = []  # cell_i → 3D centroid
-    cell_index_of_vert: dict[int, int] = {}  # input vertex → cell index
+    # (input vertex, incident tet id) → cell index.  A non-manifold vertex
+    # (>=2 disconnected fan components, see ``_vertex_fan_components``) maps
+    # to *multiple* cell indices -- one per component -- so any tet incident
+    # to that vertex resolves to the cell of its own component only.
+    cell_of_tet_vert: dict[tuple[int, int], int] = {}
+    boundary_face_tet: dict[tuple[int, int, int], int] = {
+        tri: face_tets[tri][0] for tri in boundary_faces
+    }
     # 점 dedup 을 위해 global dict (3D 좌표 → global idx)
     point_id_of: dict[tuple[int, int, int], int] = {}
     point_tol = 1e-9
@@ -728,106 +797,146 @@ def tet_to_poly_dual(
         }
 
     n_skipped = 0
+    n_nonmanifold_vertices = 0
+    n_fan_split_cells = 0
     for v_in in range(n_verts):
-        n_tet_pts = len(vert_tets.get(v_in, []))
-        pts = _dual_cell_verts(
-            v_in,
-            V,
-            T,
-            tet_dual_points,
-            vert_tets,
-            is_boundary_vert,
-            boundary_faces_of_vert,
-            boundary_edges_of_vert,
-        )
-        if pts.shape[0] < min_cell_verts:
-            n_skipped += 1
-            continue
-        # ConvexHull 로 polyhedron 생성
-        try:
-            hull = ConvexHull(pts, qhull_options="QJ")
-        except Exception:
-            n_skipped += 1
-            continue
-        # hull.simplices 는 triangle 분할. 평면 coplanar triangle 을 병합해 polygon 생성.
-        # hull.equations = (n_simplex, 4) [a, b, c, d] (a·x+b·y+c·z+d=0)
-        simplices = hull.simplices
-        eqs = hull.equations
-        # 같은 face-plane 의 simplex 는 같은 group. 평면 방정식을 정규화해 dedup.
-        # rounding 으로 grouping
-        eq_key = np.round(eqs * 1e6).astype(np.int64)
-        # group by eq_key
-        group_of: dict[tuple[int, ...], list[int]] = defaultdict(list)
-        for si, k in enumerate(map(tuple, eq_key.tolist())):
-            group_of[k].append(si)
-        # 각 group 에서 polygon vertex (ordered) 추출
-        local_cell_centroid = pts.mean(axis=0)
-        cell_face_verts: list[list[int]] = []
-        cell_face_caps: list[bool] = []
-        cell_face_entity_labels: list[tuple[str, str] | None] = []
-        local_face_triangles = {
-            n_tet_pts + local_idx: tri
-            for local_idx, tri in enumerate(boundary_faces_of_vert.get(v_in, []))
-        }
-        for _, simp_ids in group_of.items():
-            # union 의 vertex 집합
-            verts_local: set[int] = set()
-            for si in simp_ids:
-                verts_local.update(int(x) for x in simplices[si])
-            verts_list = sorted(verts_local)
-            if len(verts_list) < 3:
-                continue
-            # 평면 위 CCW sort (cell centroid 밖 방향 normal)
-            poly_pts = pts[verts_list]
-            c = poly_pts.mean(axis=0)
-            n_plane = np.array([eqs[simp_ids[0], 0], eqs[simp_ids[0], 1], eqs[simp_ids[0], 2]])
-            # ConvexHull 은 normal 을 바깥 방향으로 내보냄 (d < 0 for inside). centroid
-            # 에서 c 로 가는 방향이 n_plane 과 같은 부호여야 cell 바깥.
-            # e1 = c 에서 첫 vertex 로
-            e1 = poly_pts[0] - c
-            e1 -= n_plane * float(np.dot(e1, n_plane))
-            if float(np.linalg.norm(e1)) < 1e-30:
-                # degenerate — 다른 vertex 로 재시도
-                for k in range(1, len(poly_pts)):
-                    e1 = poly_pts[k] - c
-                    e1 -= n_plane * float(np.dot(e1, n_plane))
-                    if float(np.linalg.norm(e1)) >= 1e-30:
-                        break
-            n_len = float(np.linalg.norm(e1))
-            if n_len < 1e-30:
-                continue
-            e1 = e1 / n_len
-            e2 = np.cross(n_plane, e1)
-            rel = poly_pts - c
-            proj = np.stack([rel @ e1, rel @ e2], axis=1)
-            angles = np.arctan2(proj[:, 1], proj[:, 0])
-            order = np.argsort(angles)
-            ordered_verts_local = [verts_list[int(k)] for k in order]
-            # global id 매핑
-            global_ids = [_add_point(pts[lv]) for lv in ordered_verts_local]
-            cell_face_verts.append(global_ids)
-            is_cap = any(lv >= n_tet_pts for lv in ordered_verts_local)
-            cell_face_caps.append(is_cap)
-            cap_triangles = {
-                local_face_triangles[lv] for lv in ordered_verts_local if lv in local_face_triangles
-            }
-            cap_labels = {
-                source_entity_labels[tri] for tri in cap_triangles if tri in source_entity_labels
-            }
-            # A hull cap may span multiple coplanar source faces.  The
-            # classified path below splits those caps per source triangle; the
-            # single fallback label here keeps the old ConvexHull path usable
-            # if its monotonic guard rejects the classified topology.
-            cell_face_entity_labels.append(next(iter(cap_labels)) if len(cap_labels) == 1 else None)
+        tets_here = vert_tets.get(v_in, [])
+        components = _vertex_fan_components(v_in, tets_here, T)
+        if len(components) > 1:
+            n_nonmanifold_vertices += 1
+            log.info(
+                "native_poly_dual_nonmanifold_fan_split",
+                vertex=v_in,
+                n_components=len(components),
+                component_sizes=[len(c) for c in components],
+            )
 
-        if not cell_face_verts:
-            n_skipped += 1
-            continue
-        cell_index_of_vert[v_in] = len(cell_face_lists)
-        cell_face_lists.append(cell_face_verts)
-        cell_face_is_cap.append(cell_face_caps)
-        cell_face_labels.append(cell_face_entity_labels)
-        cell_centroid_list.append(local_cell_centroid)
+        for comp in components:
+            comp_tet_set = set(comp)
+            n_tet_pts = len(comp)
+            comp_boundary_tris = [
+                tri
+                for tri in boundary_faces_of_vert.get(v_in, [])
+                if boundary_face_tet[tri] in comp_tet_set
+            ]
+            comp_boundary_edges: list[tuple[int, int]] = []
+            seen_edges: set[tuple[int, int]] = set()
+            for tri in comp_boundary_tris:
+                for other in tri:
+                    if other == v_in:
+                        continue
+                    edge = (min(v_in, other), max(v_in, other))
+                    if edge not in seen_edges:
+                        seen_edges.add(edge)
+                        comp_boundary_edges.append(edge)
+            is_boundary_component = bool(comp_boundary_tris)
+
+            pts = _dual_cell_verts(
+                v_in,
+                V,
+                comp,
+                tet_dual_points,
+                is_boundary_component,
+                comp_boundary_tris,
+                comp_boundary_edges,
+            )
+            if pts.shape[0] < min_cell_verts:
+                n_skipped += 1
+                continue
+            # ConvexHull 로 polyhedron 생성
+            try:
+                hull = ConvexHull(pts, qhull_options="QJ")
+            except Exception:
+                n_skipped += 1
+                continue
+            # hull.simplices 는 triangle 분할. 평면 coplanar triangle 을 병합해 polygon 생성.
+            # hull.equations = (n_simplex, 4) [a, b, c, d] (a·x+b·y+c·z+d=0)
+            simplices = hull.simplices
+            eqs = hull.equations
+            # 같은 face-plane 의 simplex 는 같은 group. 평면 방정식을 정규화해 dedup.
+            # rounding 으로 grouping
+            eq_key = np.round(eqs * 1e6).astype(np.int64)
+            # group by eq_key
+            group_of: dict[tuple[int, ...], list[int]] = defaultdict(list)
+            for si, k in enumerate(map(tuple, eq_key.tolist())):
+                group_of[k].append(si)
+            # 각 group 에서 polygon vertex (ordered) 추출
+            local_cell_centroid = pts.mean(axis=0)
+            cell_face_verts: list[list[int]] = []
+            cell_face_caps: list[bool] = []
+            cell_face_entity_labels: list[tuple[str, str] | None] = []
+            local_face_triangles = {
+                n_tet_pts + local_idx: tri for local_idx, tri in enumerate(comp_boundary_tris)
+            }
+            for _, simp_ids in group_of.items():
+                # union 의 vertex 집합
+                verts_local: set[int] = set()
+                for si in simp_ids:
+                    verts_local.update(int(x) for x in simplices[si])
+                verts_list = sorted(verts_local)
+                if len(verts_list) < 3:
+                    continue
+                # 평면 위 CCW sort (cell centroid 밖 방향 normal)
+                poly_pts = pts[verts_list]
+                c = poly_pts.mean(axis=0)
+                n_plane = np.array(
+                    [eqs[simp_ids[0], 0], eqs[simp_ids[0], 1], eqs[simp_ids[0], 2]]
+                )
+                # ConvexHull 은 normal 을 바깥 방향으로 내보냄 (d < 0 for inside). centroid
+                # 에서 c 로 가는 방향이 n_plane 과 같은 부호여야 cell 바깥.
+                # e1 = c 에서 첫 vertex 로
+                e1 = poly_pts[0] - c
+                e1 -= n_plane * float(np.dot(e1, n_plane))
+                if float(np.linalg.norm(e1)) < 1e-30:
+                    # degenerate — 다른 vertex 로 재시도
+                    for k in range(1, len(poly_pts)):
+                        e1 = poly_pts[k] - c
+                        e1 -= n_plane * float(np.dot(e1, n_plane))
+                        if float(np.linalg.norm(e1)) >= 1e-30:
+                            break
+                n_len = float(np.linalg.norm(e1))
+                if n_len < 1e-30:
+                    continue
+                e1 = e1 / n_len
+                e2 = np.cross(n_plane, e1)
+                rel = poly_pts - c
+                proj = np.stack([rel @ e1, rel @ e2], axis=1)
+                angles = np.arctan2(proj[:, 1], proj[:, 0])
+                order = np.argsort(angles)
+                ordered_verts_local = [verts_list[int(k)] for k in order]
+                # global id 매핑
+                global_ids = [_add_point(pts[lv]) for lv in ordered_verts_local]
+                cell_face_verts.append(global_ids)
+                is_cap = any(lv >= n_tet_pts for lv in ordered_verts_local)
+                cell_face_caps.append(is_cap)
+                cap_triangles = {
+                    local_face_triangles[lv]
+                    for lv in ordered_verts_local
+                    if lv in local_face_triangles
+                }
+                cap_labels = {
+                    source_entity_labels[tri] for tri in cap_triangles if tri in source_entity_labels
+                }
+                # A hull cap may span multiple coplanar source faces.  The
+                # classified path below splits those caps per source triangle; the
+                # single fallback label here keeps the old ConvexHull path usable
+                # if its monotonic guard rejects the classified topology.
+                cell_face_entity_labels.append(
+                    next(iter(cap_labels)) if len(cap_labels) == 1 else None
+                )
+
+            if not cell_face_verts:
+                n_skipped += 1
+                continue
+            new_ci = len(cell_face_lists)
+            for ti in comp:
+                cell_of_tet_vert[(v_in, ti)] = new_ci
+            if len(components) > 1:
+                n_fan_split_cells += 1
+            cell_face_lists.append(cell_face_verts)
+            cell_face_is_cap.append(cell_face_caps)
+            cell_face_labels.append(cell_face_entity_labels)
+            cell_centroid_list.append(local_cell_centroid)
 
     if not cell_face_lists:
         return PolyDualResult(
@@ -843,6 +952,8 @@ def tet_to_poly_dual(
         n_cells=len(cell_face_lists),
         n_points=dual_points.shape[0],
         skipped=n_skipped,
+        nonmanifold_vertices=n_nonmanifold_vertices,
+        fan_split_cells=n_fan_split_cells,
     )
 
     def _flip_if_inward(face: list[int], cell_centroid: np.ndarray) -> list[int]:
@@ -892,16 +1003,20 @@ def tet_to_poly_dual(
         if e in boundary_edges_set:
             continue
         u, w = e
-        if u not in cell_index_of_vert or w not in cell_index_of_vert:
-            continue
         ring, closed = _ordered_tet_ring(e, edge_tets, face_tets, T)
         if not closed or len(ring) < 3:
             continue
-        own = cell_index_of_vert[u]
+        # A closed ring is by construction one face-connected fan, so every
+        # tet in it maps to the same (u, w) cell component -- resolve via
+        # ring[0] rather than a stale single cell-per-vertex lookup.
+        own = cell_of_tet_vert.get((u, ring[0]))
+        nbr = cell_of_tet_vert.get((w, ring[0]))
+        if own is None or nbr is None:
+            continue
         face = [int(tet_point_id[ti]) for ti in ring]
         b_i_faces.append(_flip_if_inward(face, cell_centroid_list[own]))
         b_i_own.append(own)
-        b_i_nbr.append(cell_index_of_vert[w])
+        b_i_nbr.append(nbr)
 
     # 3b') boundary-edge separating face: 인접 boundary cell 이 surface edge 를
     # 가로질러 공유해야 할 내부면 (line-511 이 skip 하던 boundary edge 를 보완).
@@ -914,14 +1029,31 @@ def tet_to_poly_dual(
             edge_to_btris[e].append(tri)
     for e in boundary_edges_set:
         u, w = e
-        if u not in cell_index_of_vert or w not in cell_index_of_vert:
-            continue
         btris = edge_to_btris.get(e, [])
         if len(btris) != 2:
+            # A non-manifold edge shared by >2 boundary triangles (e.g. the
+            # spine of several disconnected fans meeting only along this
+            # edge) has no single 2D interface to separate -- the fan split
+            # above already gives each component its own closed cell, so no
+            # face is needed (or well-defined) here.
             continue
         t_a, t_b = btris
         ring, _closed = _ordered_tet_ring(e, edge_tets, face_tets, T)
         if not ring:
+            continue
+        # Connected-component guard: the ring must actually reach both
+        # boundary triangles' owning tets, i.e. t_a/t_b are face-connected
+        # through this edge.  If the local tets around ``e`` are themselves
+        # split into disconnected fans, the walk stops short of one end --
+        # building a face from a partial ring would silently fabricate a
+        # face that does not correspond to any real topological interface.
+        owner_ti_a = boundary_face_tet[t_a]
+        owner_ti_b = boundary_face_tet[t_b]
+        if owner_ti_a not in ring or owner_ti_b not in ring:
+            continue
+        own = cell_of_tet_vert.get((u, ring[0]))
+        nbr = cell_of_tet_vert.get((w, ring[0]))
+        if own is None or nbr is None:
             continue
         raw = (
             [bface_pid[t_a]]
@@ -936,10 +1068,9 @@ def tet_to_poly_dual(
             be_face.pop()
         if len(be_face) < 3:
             continue
-        own = cell_index_of_vert[u]
         b_i_faces.append(_flip_if_inward(be_face, cell_centroid_list[own]))
         b_i_own.append(own)
-        b_i_nbr.append(cell_index_of_vert[w])
+        b_i_nbr.append(nbr)
 
     # 3c) on-plane cap 필터: is_cap 은 surface 점을 하나라도 포함하면 true 이므로
     # 내부를 향한 hull face 까지 새어들어온다. 진짜 cap 은 "모든 정점이 한 입력
@@ -959,10 +1090,18 @@ def tet_to_poly_dual(
         # classified primal boundary face and incident primal vertex.  The
         # four points are already part of the unmodified dual point set, so
         # this only refines the surface subcomplex and never moves geometry.
-        for v_in, ci in cell_index_of_vert.items():
-            if not is_boundary_vert[v_in]:
-                continue
-            for tri in boundary_faces_of_vert.get(v_in, []):
+        #
+        # Iterate boundary faces directly (rather than per-vertex) so each
+        # cap resolves to the cell of the specific fan component that owns
+        # the triangle's tet -- a non-manifold vertex has >1 cell and the
+        # wrong choice here is exactly what corrupted the flip reference in
+        # the pre-fix code (GAP: non-manifold-fan dual cell).
+        for tri in boundary_faces:
+            owning_tet = boundary_face_tet[tri]
+            for v_in in (int(v) for v in tri):
+                ci = cell_of_tet_vert.get((v_in, owning_tet))
+                if ci is None:
+                    continue
                 others = [int(v) for v in tri if int(v) != v_in]
                 if len(others) != 2:
                     continue
@@ -983,9 +1122,7 @@ def tet_to_poly_dual(
                     b_b_own.append(ci)
                     b_b_labels.append(source_entity_labels[tri])
     else:
-        for v_in, ci in cell_index_of_vert.items():
-            if not is_boundary_vert[v_in]:
-                continue
+        for ci in range(len(cell_face_lists)):
             for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
                 if is_cap and _is_on_plane(list(f)):
                     b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
