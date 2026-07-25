@@ -5,6 +5,13 @@ provides transactional safety checks; it does not yet implement remeshing
 quality moves.
 """
 
+from .bijective_shell import (
+    BijectiveShell,
+    RoundContainmentReport,
+    ShellBuildResult,
+    ShellCheckpointReport,
+    build_linear_bijective_shell,
+)
 from .operator_loop import (
     GuardReport,
     MeshState,
@@ -14,9 +21,14 @@ from .operator_loop import (
 )
 
 __all__ = [
+    "BijectiveShell",
     "GuardReport",
     "MeshState",
     "OperatorKind",
     "OperatorTransaction",
+    "RoundContainmentReport",
+    "ShellBuildResult",
+    "ShellCheckpointReport",
+    "build_linear_bijective_shell",
     "estimate_curvature_sizing",
 ]
