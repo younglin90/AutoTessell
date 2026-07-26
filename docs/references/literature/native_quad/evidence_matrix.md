@@ -215,3 +215,51 @@ zero-on-the-regular-connection semantics, exact face vertices/centroids,
 Repeated bracket runs compare equal as frozen dataclasses and as protocol-5
 pickle bytes. The diagnostic remains unconnected to mesh generation and has no
 environment flag.
+
+## 2026-07-26 QUAD-POSY1 result (measured, report-only; candidate policy KILL)
+
+Added `core/preprocessor/native_remesh/posy_diagnostic.py` and
+`tests/test_native_quad_posy_diagnostic.py`. The diagnostic reuses the
+unchanged deterministic multiresolution 4-RoSy field and the
+`QUAD-SINGULARITY1` ledger, then records an auditable per-face integer-offset
+candidate: raw integer offsets, the three quarter-turn rotations into the
+face frame, rotated offsets, the regularity residual (their integer sum), and
+the signed 2-D orientation determinant of the first two rotated offsets.
+There is no min-cost flow, SAT, inversion cleanup, continuous solve, or
+extraction in this card.
+
+The local sizing reduction is explicit and deterministic: each triangle uses
+the mean of its three edge lengths. Each edge is quantized in the projected
+4-RoSy representative at its tail and rotated to a common face frame. A
+non-zero residual is counted as a position singularity; a negative determinant
+is counted separately as an inversion candidate. These are diagnostics, not
+repair instructions.
+
+Measured with `n_sweeps=20`, seed `0`, on the real cube/cylinder/bracket
+assets:
+
+| Shape | faces | candidates | position singularities | regularity failures | inversions | unresolved |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| cube, multires | 12 | 16 | 12 | 12 | 3 | 4 |
+| cylinder, multires | 512 | 528 | 427 | 427 | 14 | 16 |
+| bracket, multires | 416 | 484 | 331 | 331 | 8 | 54 |
+| cube, single | 12 | 16 | 12 | 12 | 3 | 4 |
+| cylinder, single | 512 | 528 | 401 | 401 | 13 | 16 |
+| bracket, single | 416 | 486 | 336 | 336 | 9 | 56 |
+
+The A/B result falsifies a safe policy: multiresolution does not consistently
+lower the integer regularity-failure count (cylinder `427` vs `401` single,
+bracket `331` vs `336` single), and the unresolved branch contract remains
+material. The hard bracket continues to expose the explicit `(-2, 2)` branch
+for every half-index entry; no candidate is resolved to `+2` or `+1/2`.
+
+**Verdict: KILL candidate application.** The ledger is useful as an audit
+surface, but these data do not support default-on integer balancing or any
+mesh mutation. `AUTO_TESSELL_QUAD_POSY1=1` is provided only as a default-OFF
+future report-hook switch; no production caller was added. Existing quad
+extraction/generation/fallback behavior is unchanged. Synthetic contract
+tests cover regular offsets, rotations, zero residual, determinant, half-index
+branch preservation, connection disagreement, no mutation, and default-OFF
+behavior. The exact `native_quad_literature_integrated_development_plan_2026-07-23.md`
+file requested for the initial full read was absent from this worktree and its
+Git history; the result is recorded in the current continuation plan instead.
