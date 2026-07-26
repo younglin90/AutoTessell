@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — HEX-SHEET-2 shrink-set diagnostic.
+
+- Added a deterministic report-only census for the proposed layer-wide wall
+  pillow shrink set on fine pre-BL cylinder, sphere, and gear meshes.
+- Measured every interface as a closed all-quad manifold, but falsified the
+  required one-boundary/one-interface-face wall-cell incidence contract on all
+  three shapes; 380/756/363 interface vertices also lie on the physical
+  boundary.
+- Rejected topology implementation before mutation. No
+  `AUTO_TESSELL_HEX_SHEET2` path was added and mesh output is unchanged.
+
 ## [Unreleased] - 2026-07-26 — TRI-SHELL-PROVENANCE1 report lane.
 
 - Added Jiang-2020 linear-shell FP coordinates `(prism, alpha, beta, h)`,

@@ -115,3 +115,24 @@ Batch 2 (2026-07-23) cleared the previous queue: Ito 2009, Sokolov 2016, HexEx, 
 - Pellerin et al. 2018, tet-combination enumeration. DOI: `10.1016/j.cad.2018.05.004`.
 - Cherchi et al. 2019, Selective Padding + Mitchell/Tautges 1995, Pillowing doublets (pair for the boundary-repair lane).
 - Qian, Zhang 2010, sharp-feature pillowing. DOI: `10.1007/978-3-642-15414-0_15` (paywalled — sole remaining download-queue entry, P2).
+
+## 2026-07-26 HEX-SHEET-2 layer-wide shrink-set falsification
+
+The report-only census (`core/generator/native_hex/sheet_diagnostic.py`,
+`scripts/diag_hex_sheet2.py`) measured the proposed `S = all physical-boundary
+quad owner cells` and its `S`/core interface `Q` on the actual fine pre-BL
+native_hex cylinder, sphere, and gear meshes at `max_cells=8000`.
+
+| Shape | `S` / nonhex | `Q` quad / nonquad | edge incidence | components / open / nonmanifold | boundary / interface faces per `S` cell | `Q` vertices also on physical boundary |
+| --- | --- | --- | --- | --- | --- | ---: |
+| cylinder | 1640 / 0 | 1816 / 0 | `{2:3632}` | 1 / 0 / 0 | `{1:1096,2:496,3:48}` / `{0:112,1:1240,2:288}` | 380 |
+| sphere | 968 / 0 | 1560 / 0 | `{2:3120}` | 1 / 0 / 0 | `{1:360,2:288,3:320}` / `{1:528,2:288,3:152}` | 756 |
+| gear | 2594 / 0 | 2152 / 0 | `{2:4304}` | 1 / 0 / 0 | `{1:1733,2:570,3:208,4:64,5:19}` / `{0:858,1:1352,2:352,3:32}` | 363 |
+
+Measured conclusion: the Ledoux manifold-quad precondition passes, but the
+AutoTessell wall-cell incidence contract (one physical-boundary face and one
+interface face per shrink cell) fails on every shape, and `Q` is not
+vertex-disjoint from the physical boundary. The proposed point/cell growth was
+`+1818/+1816`, `+1562/+1560`, and `+2144/+2152`, respectively, but was not
+executed. The all-wall-owner layer-wide pillow is therefore rejected before
+topology implementation; no production flag or mesh-editing path was added.
