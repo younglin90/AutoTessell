@@ -26,9 +26,12 @@ which is exactly what happened during this card's verification (see the
 The index is read out twice, once per discrete connection (extrinsic and
 intrinsic), because on sharp-featured input the two readouts of the *same*
 field disagree substantially, and which one you trust changes whether the
-field looks usable.  See ``SingularityCensus``.  The readout also has a
-sampling limit that shows up on very coarse input -- see the resolution
-caveat on ``compute_orientation_singularities``.
+field looks usable.  See ``SingularityCensus``.  ``QUAD-SINGULARITY1`` adds a
+deterministic union ledger over those two unchanged censuses.  In particular,
+the centered residue ``2`` is exposed as the admissible pair ``(-2, 2)`` and
+never silently assigned a sign.  The readout also has a sampling limit that
+shows up on very coarse input -- see the resolution caveat on
+``compute_orientation_singularities``.
 
 What is ported faithfully
 -------------------------
@@ -202,6 +205,131 @@ class SingularityCensus:
         return 0 <= gap // 4 <= self.n_half_index
 
 
+def _admissible_singularity_indices(index: int) -> tuple[int, ...]:
+    """Expand a centered 4-RoSy residue without choosing an ambiguous sign.
+
+    ``compute_orientation_singularities`` stores the residue ``2`` for both
+    ``+1/2`` and ``-1/2`` because they are congruent modulo four quarter
+    turns.  A downstream position-field solver must therefore branch or
+    reject that face; treating ``2`` as positive would be an arbitrary and
+    topology-changing choice.  Zero is included for the connection under
+    which a union face is not singular.
+    """
+    return (-2, 2) if index == 2 else (index,)
+
+
+@dataclass(frozen=True)
+class SingularityLedgerEntry:
+    """One face in the extrinsic/intrinsic singularity-set union.
+
+    ``extrinsic_index`` and ``intrinsic_index`` are both explicit; zero means
+    that the face is regular under that connection.  Consumers must inspect
+    ``unresolved`` before using an index.  A resolved entry is the narrow
+    contract where both connections report the same non-ambiguous index.
+    """
+
+    face: int
+    face_vertex_ids: tuple[int, int, int]
+    centroid: tuple[float, float, float]
+    extrinsic_index: int
+    intrinsic_index: int
+
+    @property
+    def extrinsic_admissible_indices(self) -> tuple[int, ...]:
+        return _admissible_singularity_indices(self.extrinsic_index)
+
+    @property
+    def intrinsic_admissible_indices(self) -> tuple[int, ...]:
+        return _admissible_singularity_indices(self.intrinsic_index)
+
+    @property
+    def category(self) -> str:
+        if self.extrinsic_index != 0 and self.intrinsic_index != 0:
+            return "shared"
+        if self.extrinsic_index != 0:
+            return "extrinsic-only"
+        return "intrinsic-only"
+
+    @property
+    def ambiguous(self) -> bool:
+        return self.extrinsic_index == 2 or self.intrinsic_index == 2
+
+    @property
+    def connection_agreement(self) -> bool:
+        """Whether both connections report the same singular index.
+
+        Exclusive faces are tracked by ``category`` and are neither agreement
+        nor shared-index disagreement.  This keeps those orthogonal census
+        categories from being double-counted.
+        """
+        return self.category == "shared" and self.extrinsic_index == self.intrinsic_index
+
+    @property
+    def connection_disagreement(self) -> bool:
+        return self.category == "shared" and self.extrinsic_index != self.intrinsic_index
+
+    @property
+    def unresolved(self) -> bool:
+        """True unless there is one connection-independent signed index.
+
+        This is the downstream QUAD-POSY1 guard: exclusive faces, conflicting
+        shared faces, and every ``+-1/2`` face require an explicit resolution
+        policy.  No caller may infer a preferred connection or choose ``+2``.
+        """
+        return self.category != "shared" or self.connection_disagreement or self.ambiguous
+
+
+@dataclass(frozen=True)
+class SingularityLedger:
+    """Deterministic, report-only union of both singularity censuses.
+
+    Entries are sorted by face ID and contain only immutable Python scalars
+    and tuples, so dataclass equality and serialized bytes are reproducible.
+    The original censuses are retained verbatim to make Poincare-Hopf
+    consistency mechanically checkable rather than copied into new counters.
+    """
+
+    extrinsic: SingularityCensus
+    intrinsic: SingularityCensus
+    entries: tuple[SingularityLedgerEntry, ...] = field(default_factory=tuple)
+
+    @property
+    def union_count(self) -> int:
+        return len(self.entries)
+
+    @property
+    def shared_count(self) -> int:
+        return sum(e.category == "shared" for e in self.entries)
+
+    @property
+    def extrinsic_only_count(self) -> int:
+        return sum(e.category == "extrinsic-only" for e in self.entries)
+
+    @property
+    def intrinsic_only_count(self) -> int:
+        return sum(e.category == "intrinsic-only" for e in self.entries)
+
+    @property
+    def disagreement_count(self) -> int:
+        return sum(e.connection_disagreement for e in self.entries)
+
+    @property
+    def ambiguous_count(self) -> int:
+        return sum(e.ambiguous for e in self.entries)
+
+    @property
+    def unresolved_count(self) -> int:
+        return sum(e.unresolved for e in self.entries)
+
+    @property
+    def poincare_hopf_consistent(self) -> bool:
+        """Whether ledger indices exactly reproduce both source censuses."""
+        return (
+            sum(e.extrinsic_index for e in self.entries) == self.extrinsic.index_sum
+            and sum(e.intrinsic_index for e in self.entries) == self.intrinsic.index_sum
+        )
+
+
 @dataclass(frozen=True)
 class CurvatureAlignment:
     """Alliez-2003-style check: does the field follow principal directions?
@@ -280,6 +408,7 @@ class RosyDiagnosticReport:
     curvature: CurvatureAlignment | None = None
     multires: MultiresStats | None = None
     elapsed_s: float = 0.0
+    ledger: SingularityLedger | None = None
 
     @property
     def closed(self) -> bool:
@@ -692,6 +821,62 @@ def compute_orientation_singularities(
                 )
             )
     return out
+
+
+def build_singularity_ledger(
+    vertices: NDArray[np.float64],
+    faces: NDArray[np.int64],
+    extrinsic: SingularityCensus,
+    intrinsic: SingularityCensus,
+) -> SingularityLedger:
+    """Build the QUAD-SINGULARITY1 face ledger without changing either census.
+
+    The union is ordered by integer face ID, independent of census order.
+    Every entry stores the input face's vertex IDs and recomputed centroid so
+    the contract is self-contained.  A face absent from one census receives
+    index zero under that connection; ambiguous residue two remains
+    admissible as both ``-2`` and ``+2`` via the entry properties.
+    """
+    V = np.asarray(vertices, dtype=np.float64)
+    F = np.asarray(faces, dtype=np.int64)
+
+    def by_face(census: SingularityCensus) -> dict[int, int]:
+        indexed: dict[int, int] = {}
+        for singularity in census.singularities:
+            face = singularity.face
+            if face < 0 or face >= F.shape[0]:
+                raise ValueError(f"singularity face {face} is outside [0, {F.shape[0]})")
+            if face in indexed:
+                raise ValueError(f"duplicate singularity face {face} in {census.connection}")
+            indexed[face] = singularity.index
+        return indexed
+
+    ext = by_face(extrinsic)
+    intr = by_face(intrinsic)
+    entries: list[SingularityLedgerEntry] = []
+    for face in sorted(ext.keys() | intr.keys()):
+        vertex_ids = tuple(int(v) for v in F[face])
+        if len(vertex_ids) != 3:
+            raise ValueError("singularity ledger requires triangular faces")
+        centroid = V[F[face]].mean(axis=0)
+        entries.append(
+            SingularityLedgerEntry(
+                face=face,
+                face_vertex_ids=(vertex_ids[0], vertex_ids[1], vertex_ids[2]),
+                centroid=(
+                    float(centroid[0]),
+                    float(centroid[1]),
+                    float(centroid[2]),
+                ),
+                extrinsic_index=ext.get(face, 0),
+                intrinsic_index=intr.get(face, 0),
+            )
+        )
+    return SingularityLedger(
+        extrinsic=extrinsic,
+        intrinsic=intrinsic,
+        entries=tuple(entries),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1282,6 +1467,12 @@ def run_rosy_diagnostic(
         )
         for name in ("extrinsic", "intrinsic")
     }
+    ledger = build_singularity_ledger(
+        V,
+        F,
+        censuses["extrinsic"],
+        censuses["intrinsic"],
+    )
     curvature = (
         measure_curvature_alignment(
             V, F, Q, normals, Q0, anisotropy_threshold=anisotropy_threshold
@@ -1308,6 +1499,7 @@ def run_rosy_diagnostic(
         intrinsic=censuses["intrinsic"],
         curvature=curvature,
         multires=multires_stats,
+        ledger=ledger,
         elapsed_s=time.perf_counter() - t0,
     )
     log.info(
@@ -1338,6 +1530,14 @@ def run_rosy_diagnostic(
         intrinsic_index_sum=censuses["intrinsic"].index_sum,
         intrinsic_n_half_index=censuses["intrinsic"].n_half_index,
         intrinsic_poincare_hopf_ok=censuses["intrinsic"].poincare_hopf_ok,
+        ledger_union_count=ledger.union_count,
+        ledger_shared_count=ledger.shared_count,
+        ledger_extrinsic_only_count=ledger.extrinsic_only_count,
+        ledger_intrinsic_only_count=ledger.intrinsic_only_count,
+        ledger_disagreement_count=ledger.disagreement_count,
+        ledger_ambiguous_count=ledger.ambiguous_count,
+        ledger_unresolved_count=ledger.unresolved_count,
+        ledger_poincare_hopf_consistent=ledger.poincare_hopf_consistent,
         curvature_mean_dev_deg=(
             round(curvature.mean_deviation_deg, 3) if curvature else None
         ),
