@@ -2674,6 +2674,39 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_fsl_wave1_skipped", reason=str(exc))
 
+    # TET-FLOW-2 (Leng et al. 2013, Eqs. 3.13-3.16) -- penalized active-set
+    # interior smoothing, the Phase 2 opening card. Interior vertices only:
+    # boundary vertices stay bitwise identical, every vertex move is line-
+    # searched (0.618 backtracking) under the exact Shewchuk orient3d
+    # inversion guard, and the pass reverts whole on any guard failure, so
+    # enabling it can never partially apply an edit -- see flow2.py docstring.
+    # Default OFF pending broader shape coverage (FSL Wave 1 precedent).
+    if os.environ.get("AUTO_TESSELL_TET_FLOW2", "0") == "1" and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.flow2 import run_flow2_pass
+
+            _f2_sweeps = int(os.environ.get("AUTO_TESSELL_TET_FLOW2_SWEEPS", "3"))
+            _f2_pts, _f2_rep = run_flow2_pass(
+                final_pts, final_tets, n_surface, n_sweeps=_f2_sweeps,
+            )
+            if _f2_rep["accepted"]:
+                final_pts = _f2_pts
+            log.info(
+                "native_tet_flow2",
+                accepted=_f2_rep["accepted"],
+                reason=_f2_rep["reject_reason"],
+                n_moved=_f2_rep["n_moved"],
+                min_q_before=round(_f2_rep["min_q_canon_before"], 9),
+                min_q_after=round(_f2_rep["min_q_canon_after"], 9),
+                mean_q_before=round(_f2_rep["mean_q_canon_before"], 6),
+                mean_q_after=round(_f2_rep["mean_q_canon_after"], 6),
+                n_sliver_before=_f2_rep["n_sliver_before"],
+                n_sliver_after=_f2_rep["n_sliver_after"],
+                boundary_preserved=_f2_rep["boundary_preserved"],
+            )
+        except Exception as exc:
+            log.debug("native_tet_flow2_skipped", reason=str(exc))
+
     # Diagnostic-only dump for offline Wave-1 measurement scripts (never
     # runs in production; opt-in path + no default value so a stray/typo'd
     # env var can't silently write files).
