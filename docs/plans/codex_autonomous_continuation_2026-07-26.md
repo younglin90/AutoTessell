@@ -311,6 +311,35 @@ gotchas (lessons-learned.md especially — read it before touching anything).
   as a "working conservative fallback" is stale. Fix or formally deprecate
   it before any card depends on it as a fallback path.
 
+**2026-07-26 QUAD-POSY1 result (measured, report-only; candidate policy KILL).**
+
+- Added `core/preprocessor/native_remesh/posy_diagnostic.py` and
+  `tests/test_native_quad_posy_diagnostic.py`. The immutable ledger records
+  per-face integer offsets, quarter-turn rotations, regularity residuals,
+  orientation determinants, position-singularity counts, and explicit branch
+  options. It consumes the existing multiresolution 4-RoSy/singularity ledger
+  without changing that field or any mesh path.
+- Multiresolution A/B (`20` total sweeps, seed `0`) on the real assets:
+
+  | Shape | faces | candidates | position singularities | inversions | unresolved |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | cube | 12 | 16 | 12 | 3 | 4 |
+  | cylinder | 512 | 528 | 427 | 14 | 16 |
+  | bracket | 416 | 484 | 331 | 8 | 54 |
+
+- Single-resolution A/B was also measured: cube `12/3/4`, cylinder
+  `401/13/16`, and bracket `336/9/56` for position singularities/inversions/
+  unresolved entries. Multiresolution does not consistently reduce integer
+  regularity failures and leaves the known bracket half-index branches
+  unresolved.
+- **KILL:** these candidates do not support a safe integer-offset policy or
+  any default-on mesh mutation. The card remains report-only; no extraction,
+  generation, fallback, or production caller was wired. The optional helper
+  recognizes `AUTO_TESSELL_QUAD_POSY1=1` but is default OFF and has no effect
+  unless a future report hook calls it. The exact requested integrated native
+  quad plan filename was absent from this worktree and Git history at start;
+  this result is recorded here and in the quad evidence matrix/changelog.
+
 ### How to run a round
 
 Pick an order (recommended: surface engines first since they gate volume

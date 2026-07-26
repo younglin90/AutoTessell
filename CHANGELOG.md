@@ -49,6 +49,21 @@
 - Added synthetic contract tests plus multires cube/cylinder/bracket
   measurements, including the hard bracket's unchanged 18-vs-4 ambiguity.
 
+## [Unreleased] - 2026-07-26 — QUAD-POSY1 integer-offset ledger (KILL).
+
+- Added a deterministic, report-only multiresolution integer-offset ledger
+  with explicit raw/rotated offsets, quarter-turn rotations, regularity
+  residuals, orientation determinants, position-singularity counts, and
+  unresolved branch handling.
+- Preserved every `(-2, 2)` ±1/2 ambiguity and connection disagreement as
+  unresolved; no code silently chooses `+1/2` or mutates a mesh.
+- Real-asset A/B falsified a safe application policy: multires position
+  singularities were cube `12/12`, cylinder `427/512`, and bracket `331/416`,
+  with `4`, `16`, and `54` unresolved entries respectively. Candidate use is
+  killed; the card remains diagnostic-only. `AUTO_TESSELL_QUAD_POSY1=1` is
+  available only for future default-OFF report wiring.
+- No quad extraction, generation, fallback, or existing output path changed.
+
 ## [Unreleased] - 2026-07-24 — native_poly directional AR gate.
 
 - Added a fail-closed high-aspect-ratio relaxation: principal-axis alignment,
