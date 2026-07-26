@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — POLY-ROUTE-ATTRIB1 diagnostic.
+
+- Added a report-only fixed-primal route-attribution harness and CLI covering
+  direct `tet_to_poly_dual` versus `tier_native_poly` with
+  `auto_escalate=False`.
+- Recorded route selection, primal/mesh identities, cell/face/boundary/patch
+  census, volume, negative-volume count, Phase-0 quality metrics, repeat
+  identity, and legacy drop-helper invocation without changing production
+  writer/drop behavior or defaults.
+- On shared cube/cylinder primals, direct and tier harness outputs are
+  byte-identical and drop is never invoked. The historical cylinder
+  15.5%/negative versus 0.154%/zero discrepancy is characterized as an
+  upstream primal/measurement-protocol mismatch; optimization is blocked from
+  using those absolute values as a paired baseline. Sphere is bounded at 30 s
+  and reports timeout without a route conclusion.
+
 ## [Unreleased] - 2026-07-26 — TET-MM-1 diagnostic KILL.
 
 - Evaluated frozen-boundary Huang/Dassi MMPDE smoothing alone on fixed naca

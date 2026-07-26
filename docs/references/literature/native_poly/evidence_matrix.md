@@ -229,3 +229,32 @@ preserves the raw cells and uses strict writer failure rather than silently
 disabling legacy deletion into writer-invalid output. OFF remains byte-identical
 on all three fixtures. Fixed-primal polydual and budget+BL hex-base paths are
 flag no-ops.
+
+## 2026-07-26 `POLY-ROUTE-ATTRIB1` measured evidence
+
+Diagnostic module: `core/generator/native_poly/route_attribution.py`.
+Entry point: `scripts/diagnose_native_poly_routes.py`. The module constructs a
+deterministic star-shaped tet primal from each tracked STL once, records the
+primal digest, then runs direct `tet_to_poly_dual` and the
+`tier_native_poly` harness on that same `(V,T)` with `auto_escalate=False`.
+The tier's imported tet provider is replaced only inside the diagnostic
+scope. No production route, writer default, or drop behavior is changed.
+
+| fixture | primal digest / size | route result | mesh identity | census (cells, faces, boundary, patches) | volume / negative | area deviation | quality (max NO, max skew, mean ψ) | repeat / drop |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| cube | `8088739d…` / 9 pts, 12 tets | direct = tier harness | `e995f90d…` both | 9, 56, 30, 1 | 1.000000 / 0 | ~0.000% | 19.91°, 0.355, 0.219 | identical / 0 calls |
+| cylinder | `0c862037…` / 67 pts, 128 tets | direct = tier harness | `f496e6b8…` both | 67, 484, 226, 1 | 0.796718 / 0 | 3.328% | 77.70°, 63.634, 0.353 | identical / 0 calls |
+| sphere | bounded fixture | timeout at 30 s | no selection | no census | no conclusion | no conclusion | no conclusion | bounded |
+
+Both completed fixtures selected the tier path
+`tier_native_poly:harness/tet_to_poly_dual`; selected and disk identities
+matched, direct/tier identities matched, and two repeats per route were
+byte-identical. The drop wrapper saw no invocation and dropped no cells. The
+historical cylinder 15.5%/negative direct result was replayed separately on a
+2,419-tet primal (593 dual cells, 15.2049% and 4 negative in the current
+`facegeom_experiment` run), whereas the S5 ledger's tier result is a different
+1,781-cell generation with 0.154% and zero negative. The shared-primal test
+therefore attributes the discrepancy to upstream primal/measurement protocol,
+not a tier-only drop or writer improvement. Keep both historical numbers as
+non-comparable ledger context; no optimization card may use them as a paired
+baseline. Sphere timeout is an explicit bound, not a quality result.
