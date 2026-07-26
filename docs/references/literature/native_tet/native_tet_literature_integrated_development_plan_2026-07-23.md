@@ -638,3 +638,44 @@ at collection -- it imports `quality.tet_gsm_score` (`TET-SHAPE-1`) and
 `validate.classify_flat_sliver_wdel2` (`TET-WDEL-2`), neither of which exists
 in `core/`. Those two Phase 0 cards have tests but no implementation.
 
+
+## 10. 2026-07-26 -- `TET-MM-1` diagnostic KILL (no production code retained)
+
+`TET-MM-1` was implemented transiently and evaluated alone on the same fixed,
+offline meshes used by section 9.2. It used the Huang functional with
+`theta=1/3`, `p=3/2`, a regular reference tet of volume `1/#T_h`, Dassi Eq. (5)
+analytic element velocities assembled simultaneously by Eq. (6), and frozen
+topological/surface-boundary vertices. Each forward-Euler candidate used
+adaptive backtracking and was accepted only on strict Huang-energy decrease
+and byte-identical exact Shewchuk `orient3d` signs; float volume was a
+pre-reject only. The pass was whole-stage transactional and deterministic.
+
+The deliberate scope reduction was smoothing-only: no RBF reconstruction or
+boundary sliding, no lazy flips/contract/split/1-to-4 insertion, no anisotropic
+metric, and no FLOW2 stacking. A transient 10-test suite passed analytic
+velocity vs central finite differences, strict monotone energy/backtracking,
+exact orientation, frozen boundary, input/connectivity/count identity, forced
+whole-pass rollback, and deterministic replay.
+
+Default offline A/B (`8` steps, step fraction `0.05`):
+
+| Mesh | dihedral sigma (deg) | p10 canonical Q | mean Q | Q < 0.01 | worst dihedral axis (deg) | elapsed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| naca0012 (3,968 tets) | 49.8757425641 -> 49.8694148005 | 0.00282716828546 -> 0.00282901034042 | 0.114134158101 -> 0.114139899338 | 1,233 -> 1,230 | 109.409377256 -> 108.927329223 | 0.438 s |
+| 02_medium_cylinder (3,439 tets) | 53.1846875244 -> 53.1425416062 | 0.000806259842474 -> 0.000806259841863 | 0.0542198110543 -> 0.0542350375272 | 1,349 -> 1,348 | 109.436098944 -> 109.386629583 | 0.355 s |
+
+`worst dihedral axis` is
+`max(theta_regular - theta_min, theta_max - theta_regular)`; lower is better.
+Both cases passed strict per-step energy decrease, exact orientation,
+byte-identical boundary/input/connectivity/count, deterministic replay, and the
+combined mechanism runtime gate (`0.792 s <= 59.1 s`). Naca passed all five
+quality gates. Cylinder failed the required strict p10 increase by
+`-6.11e-13`, so the simultaneous two-mesh stop rule failed.
+
+A bounded 32-cell parameter sweep (`1,2,4,8,16` steps as applicable; step
+fractions `0.005` through `1.0`) found no GO cell. Cylinder p10 decreased in
+every cell; the least-negative delta was `-9.29e-15` (1 step, fraction 0.005).
+The strict gate was not relaxed as numerical noise. Decision: **KILL**. The
+transient `mmpde.py`, MM1 tests, and benchmark script were deleted; no mesher
+flag, end-to-end wiring, or permanent production gate was added. Continue
+Phase 2 with `TET-SHAPE-2` or the next independently measured card.

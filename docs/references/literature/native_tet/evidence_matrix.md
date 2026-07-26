@@ -105,3 +105,36 @@ Native Tet should become two native engines sharing predicates, adjacency, and
 quality metrics: a protected **CDT engine** for valid PLC input and an
 epsilon-tolerant **Wild engine** for triangle soups. The present mixed pipeline
 contains useful pieces but cannot inherit either literature guarantee as a whole.
+
+## TET-MM-1 falsification evidence (2026-07-26)
+
+Decision: **KILL; no production implementation retained.** The fixed offline
+inputs were `/tmp/flow2/naca.npz` (SHA-256
+`11b0edb1abbbeb1aa725895289e2ca0cbb7f86ed65174068bf6d728d01842c7f`,
+902 points / 3,968 tets / 320 surface-prefix vertices) and
+`/tmp/flow2/cyl.npz` (SHA-256
+`79cd4d87e66dcc176db61aca962ff000a7e66a4da224918ac2e5fce00b79887f`,
+764 points / 3,439 tets / 256 surface-prefix vertices). FLOW2 was not invoked
+or stacked.
+
+The transient implementation reproduced Huang/Dassi `theta=1/3`, `p=3/2`,
+reference volume `1/#T_h`, analytic Eq. (5) velocities, and Eq. (6)
+simultaneous assembly. Adaptive Euler candidates required strict energy
+decrease and exact Shewchuk orientation-sign identity; all boundary vertices
+were hard-frozen, float volume was pre-reject-only, and every whole pass was
+transactional. Ten transient tests passed, including analytic velocity vs
+central finite differences and forced rollback.
+
+| Mesh | sigma deg | p10 Q | mean Q | Q<0.01 | worst-axis deg | energy | runtime |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| naca | 49.8757425641 -> 49.8694148005 | 0.00282716828546 -> 0.00282901034042 | 0.114134158101 -> 0.114139899338 | 1,233 -> 1,230 | 109.409377256 -> 108.927329223 | 1.444518818e9 -> 2.886145637e7 | 0.438 s |
+| cylinder | 53.1846875244 -> 53.1425416062 | 0.000806259842474 -> 0.000806259841863 | 0.0542198110543 -> 0.0542350375272 | 1,349 -> 1,348 | 109.436098944 -> 109.386629583 | 7.965874710e10 -> 1.056072997e8 | 0.355 s |
+
+Invariant gates all passed on both meshes: every accepted energy step was
+strictly decreasing; exact orientation, boundary bytes/face set/area,
+input/connectivity/count, and deterministic replay were preserved. Combined
+mechanism runtime was `0.792 s`, below the `59.1 s` budget. The decisive gate
+was cylinder p10: it decreased by `6.11e-13` instead of strictly increasing.
+A 32-cell step-count/step-fraction sweep found no GO cell; cylinder p10 was
+negative in every cell (best delta `-9.29e-15`). Per the diagnostic-first stop
+rule, the mechanism was removed instead of integrated or tuned behind a flag.

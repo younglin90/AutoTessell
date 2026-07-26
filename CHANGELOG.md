@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — TET-MM-1 diagnostic KILL.
+
+- Evaluated frozen-boundary Huang/Dassi MMPDE smoothing alone on fixed naca
+  and cylinder meshes with analytic Eq. (5) velocities, strict energy
+  decrease, exact-orientation acceptance, transactional rollback, and
+  deterministic replay.
+- Naca passed all distribution gates, but cylinder canonical p10 quality
+  decreased in every cell of a bounded 32-configuration step sweep (best
+  delta `-9.29e-15`); runtime and all invariants passed.
+- Killed the mechanism under the diagnostic-first stop rule. No MMPDE source,
+  tests, benchmark script, mesher flag, or production behavior remains; only
+  the measured falsification is recorded in the plan and evidence matrix.
+
 ## [Unreleased] - 2026-07-26 — TRI-SHELL-PROVENANCE1 report lane.
 
 - Added Jiang-2020 linear-shell FP coordinates `(prism, alpha, beta, h)`,
