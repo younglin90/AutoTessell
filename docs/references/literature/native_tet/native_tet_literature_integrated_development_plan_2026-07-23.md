@@ -679,3 +679,23 @@ The strict gate was not relaxed as numerical noise. Decision: **KILL**. The
 transient `mmpde.py`, MM1 tests, and benchmark script were deleted; no mesher
 flag, end-to-end wiring, or permanent production gate was added. Continue
 Phase 2 with `TET-SHAPE-2` or the next independently measured card.
+
+## 11. 2026-07-26 -- `TET-SHAPE-2` accepted default-OFF
+
+The GSM-blended interior pass was measured alone on fixed naca, cylinder, and
+sphere primals. It imports only the interior part of Ni et al. (2017): the
+inverse-height GSM term is blended with AMIPS, while all surface vertices are
+bitwise frozen. No topology operation or surface relocation is included.
+Signed-volume pre-rejection, exact Shewchuk orientation checks, transactional
+rollback, and deterministic replay remain mandatory.
+
+At GSM weight `0.35` and three sweeps, naca/cylinder/sphere all met the
+distribution-axis acceptance criteria: dihedral sigma decreased, p10 and mean
+quality did not decrease, the `Q < 0.01` count did not increase, and the worst
+dihedral axis did not regress. Combined A/B wall time was `22.5 s <= 59.1 s`
+and repeated metrics were bit-identical. Focused native-tet verification was
+`7 passed, 2 xfailed`; the dual-torus strict-xfail gate remained unchanged.
+
+The implementation is retained behind `AUTO_TESSELL_TET_SHAPE2=1` and remains
+default OFF. Broader shape coverage and downstream surface-snap interaction
+remain follow-up evidence before any default change.

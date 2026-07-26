@@ -106,6 +106,28 @@ quality metrics: a protected **CDT engine** for valid PLC input and an
 epsilon-tolerant **Wild engine** for triangle soups. The present mixed pipeline
 contains useful pieces but cannot inherit either literature guarantee as a whole.
 
+## TET-SHAPE-2 measured result (2026-07-26)
+
+Status: **accepted as default-OFF, opt-in implementation**. The pass uses the
+Ni et al. (2017) inverse-height GSM term blended with AMIPS for interior
+vertices only. Boundary vertices are hard-pinned; no topology changes are
+performed. Each candidate keeps signed-volume and exact Shewchuk orientation
+guards and rolls back transactionally on any invariant failure.
+
+Fixed-primal A/B used GSM weight `0.35` and three sweeps. Results are shown as
+before -> after:
+
+| Mesh | dihedral sigma | p10 Q | mean Q | Q < 0.01 | min dihedral |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| naca | 38.0361 -> 37.7855 | 0.0090373 -> 0.0090719 | 0.147488 -> 0.147886 | 286 -> 283 | non-regression |
+| cylinder | 37.5345 -> 36.9345 | 0.0156791 -> 0.0176092 | 0.124164 -> 0.127693 | 0 -> 0 | improved |
+| sphere | 23.9885 -> 23.5983 | 0.110698 -> 0.112298 | 0.252632 -> 0.254319 | 5 -> 0 | improved |
+
+Combined A/B wall time was approximately `22.5 s`, below the `59.1 s`
+budget. Repeated metrics were bit-identical. Focused verification passed
+`7 passed, 2 xfailed`; the dual-torus strict-xfail status was preserved. The
+production flag remains OFF pending broader shape coverage.
+
 ## TET-MM-1 falsification evidence (2026-07-26)
 
 Decision: **KILL; no production implementation retained.** The fixed offline

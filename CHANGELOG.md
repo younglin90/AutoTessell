@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — native_tet TET-SHAPE-2 GSM interior pass.
+
+- Added a default-OFF, boundary-pinned interior GSM/AMIPS pass based on Ni et al. 2017. Surface coordinates, connectivity, exact orientation signs, and transactional rollback guards are preserved.
+- Fixed-primal A/B with weight `0.35` and three sweeps improved dihedral spread and quality axes on naca, cylinder, and sphere; naca p10 `0.0090373 -> 0.0090719`, cylinder `0.0156791 -> 0.0176092`, and sphere `Q<0.01` `5 -> 0`.
+- The pass is opt-in via `AUTO_TESSELL_TET_SHAPE2=1`; end-to-end defaults remain unchanged.
+
 ## [Unreleased] - 2026-07-26 — HEX-PATCH-LAYER-DIAG1 diagnostic KILL.
 
 - Added a report-only strict patch/layer classifier and cached-data runner for
