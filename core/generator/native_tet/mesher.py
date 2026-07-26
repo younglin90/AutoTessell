@@ -2707,6 +2707,48 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_flow2_skipped", reason=str(exc))
 
+    # TET-SHAPE-2 (Ni et al. 2017) -- boundary-pinned interior GSM/AMIPS
+    # smoothing.  The flag is deliberately default OFF until a caller opts
+    # into the measured Phase-2 pass; the helper itself keeps all boundary,
+    # exact-orientation, and strict quality-axis transactions.
+    if (
+        os.environ.get("AUTO_TESSELL_TET_SHAPE2", "0") == "1"
+        and final_tets.shape[0] > 100
+    ):
+        try:
+            from core.generator.native_tet.shape2 import run_shape2_pass
+
+            _s2_weight = float(
+                os.environ.get("AUTO_TESSELL_TET_SHAPE2_WEIGHT", "0.35")
+            )
+            _s2_sweeps = int(
+                os.environ.get("AUTO_TESSELL_TET_SHAPE2_SWEEPS", "3")
+            )
+            _s2_pts, _s2_rep = run_shape2_pass(
+                final_pts,
+                final_tets,
+                n_surface_vertices=n_surface,
+                n_sweeps=_s2_sweeps,
+                gsm_weight=_s2_weight,
+            )
+            if _s2_rep.accepted:
+                final_pts = _s2_pts
+            log.info(
+                "native_tet_shape2",
+                accepted=_s2_rep.accepted,
+                reason=_s2_rep.reject_reason,
+                n_moved=_s2_rep.n_moved,
+                sigma_before=round(_s2_rep.sigma_dihedral_before, 8),
+                sigma_after=round(_s2_rep.sigma_dihedral_after, 8),
+                p10_before=round(_s2_rep.p10_q_before, 9),
+                p10_after=round(_s2_rep.p10_q_after, 9),
+                mean_before=round(_s2_rep.mean_q_before, 8),
+                mean_after=round(_s2_rep.mean_q_after, 8),
+                boundary_preserved=_s2_rep.boundary_preserved,
+            )
+        except Exception as exc:
+            log.debug("native_tet_shape2_skipped", reason=str(exc))
+
     # Diagnostic-only dump for offline Wave-1 measurement scripts (never
     # runs in production; opt-in path + no default value so a stray/typo'd
     # env var can't silently write files).
