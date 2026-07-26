@@ -136,3 +136,32 @@ vertex-disjoint from the physical boundary. The proposed point/cell growth was
 `+1818/+1816`, `+1562/+1560`, and `+2144/+2152`, respectively, but was not
 executed. The all-wall-owner layer-wide pillow is therefore rejected before
 topology implementation; no production flag or mesh-editing path was added.
+
+## 2026-07-26 HEX-PATCH-LAYER-DIAG1 strict subset census
+
+| Card | Input / mode | Strict contract | Measured result | Decision |
+|---|---|---|---|---|
+| HEX-PATCH-LAYER-DIAG1 | actual cached fine pre-BL cylinder/sphere/gear, `max_cells=8000` | exactly one physical-boundary face per S cell; exactly one two-owner quad Q per S cell; same patch/provenance; Q vertices disjoint from physical-boundary vertices; per-subset Q closed and manifold | cylinder 544/544 eligible S/Q in 6 components, sphere 24/24 in 6, gear 888/888 in 22; strict Q open edges 272/48/656; non-manifold edges 0/0/0; physical-boundary Q vertices 0/0/0 | **KILL** — zero valid subsets and zero approved pillow operations |
+
+The `.npz` cache has no boundary-file patch metadata. For this measurement,
+patch identity is reconstructed by the same deterministic feature-dihedral
+grouping used by the writer, while the current native_hex single-source
+provenance is explicitly `defaultWall`. This keeps the test honest about what
+is measured: a writer-equivalent patch label plus known source provenance, not
+invented multi-source labels.
+
+The strict edge-incidence result is evaluated separately for each exact
+patch/provenance component. A raw union of Q faces can make adjacent openings
+appear paired across a patch boundary; accepting that union would violate the
+same-patch requirement. Component summaries are: cylinder `wall_0` = four
+32/32 components, `wall_2` and `wall_4` = one 208/208 component each; sphere
+`wall_0` = six 4/4 components; gear = two 420/420, four 4/4, and sixteen 2/2
+components. All are open and none is non-manifold.
+
+The predicted operation is report-only `pillow` per candidate component
+(hypothetical point/cell growth `+686/+544`, `+54/+24`, `+1228/+888`), with
+approved operation count `0/0/0`. Two repeated analyses of each cache blob
+returned identical reports and did not mutate the arrays. No wall_dev/skew
+gate was changed, no production flag or topology edit was added, and the card
+does not propose a follow-up implementation card because no valid subset
+exists.
