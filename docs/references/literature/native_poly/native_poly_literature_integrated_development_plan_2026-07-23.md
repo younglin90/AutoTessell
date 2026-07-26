@@ -137,6 +137,45 @@ audit [S] — verify the current AR gate cannot reject aligned BL stretching
 Acceptance: zero mesh diffs anywhere; every metric lands in the evaluator
 report with fixture-verified analytic values. Rollback: n/a (read-only).
 
+### 2026-07-24 Phase 1 audit (measured, no code change)
+
+- `POLY-DUAL-CLASSIFY1` confirmed necessary: `dual.py` currently classifies
+  input vertices into exactly two buckets, boundary and interior (cube run:
+  2131 dual cells, 956 boundary vertices, 1175 interior, 0 skipped) — no
+  patch/material/entity-level classification and no provenance-preservation
+  stage exist. This is the `dual.py:862` gap the plan already named; the
+  audit found no additional surprise.
+- `POLY-FVERR-RANDPERT1` is blocked, not merely unscheduled: the repo has no
+  scalar Laplacian/advection MMS solver to reproduce Katz's random-perturbation
+  protocol, so a solution-error convergence order cannot be measured today.
+  Do not claim second-order behavior for native_poly without one — this card
+  needs a minimal MMS solver as a prerequisite, or must stay closed.
+- AR-gate design direction (from the AR-gate audit, current thresholds
+  draft/standard/fine = 1000/200/100, code at
+  `core/evaluator/report.py:29` / verdict at `report.py:622`): combine
+  principal-axis alignment, neighbor-stretch-direction consistency, and
+  surface tangent/normal alignment into an alignment score; only relax the
+  AR ceiling when a cell's stretch axis is consistent with its neighbors and
+  with the local surface frame (isotropic-garbage AR stays rejected; BL-aligned
+  AR up to ~1e6 per Katz becomes admissible). Not implemented — design only,
+  pending approval.
+
+### 2026-07-25 non-manifold fan reclassified as POLY-CONCAVE-SPLIT1 (structural)
+
+`POLY-DUAL-POINT1`/`POLY-STAR-VALID1` landed (Garimella classified point
+placement + star-shaped signed-subtet validity, transactional centroid
+fallback on any invalid candidate — commit `2c0e042e`). On the non-manifold
+fan fixture, both plain centroid AND the Garimella candidate leave the same
+2/18 invalid cells (`cell=2`, dual edge `(4,0)`, normalized signed volume
+`-5.2618e-05`): point placement cannot fix this. Root cause confirmed
+topological, not geometric — the non-manifold edge `(0,1)` is shared by tet
+`[0,1,2]`, but the ring-traversal that builds each dual cell only walks
+`[0,1]` and leaves the third tet as a disconnected fan that never merges
+into one coherent dual cell. This is exactly `POLY-CONCAVE-SPLIT1`'s scope
+(Garimella concave-boundary split + a connected-component guard so a
+disconnected fan becomes multiple valid dual cells instead of one invalid
+one) — filed as the next Phase 2 card, not forced into Phase 1.
+
 Decision tree:
 - If `POLY-FVERR-FACEPAIR1` shows our duals are NOT face-paired → the Juretić
   accuracy claim for polydual is downgraded and Phase 2 gains a face-pairing
@@ -327,7 +366,36 @@ baseline:
   (tier_native_poly hex-base routing audit).
 - Phase 2 opens by counting cells failing the h/star/planarity gates per
   fixture — the repair lane's target population — before any operator lands.
-- Phase 3 opens with `POLY-AGGLOM-FACEGEOM1` in diagnostic mode: measure FV
+### 2026-07-25 POLY-AGGLOM-CFD1 result (measured)
+
+Vertex-star agglomeration (Pan 2022, deterministic tie-break) vs polydual on
+identical tet primals (cube 1604 tets, cylinder 2483 tets), MAGNET's
+connected-component guard applied (8-17/100-150 blocks needed splitting —
+confirmed load-bearing, not decorative). Interfaces deliberately left as raw
+tet-triangle facet unions (no merging) to measure the DG-vs-FV gap directly,
+per the plan's own prediction, not to paper over it.
+
+| metric | cube dual | cube agglom | cyl dual | cyl agglom |
+| --- | ---: | ---: | ---: | ---: |
+| n_cells | 402 | 110 (-72.6%) | 608 | 166 (-72.7%) |
+| negative_volumes | 1 | 0 | 3 | 0 |
+| max_non_orthogonality | 47.10° | **86.72°** | 56.66° | **80.74°** |
+| mean_juretic_psi | 0.080 | **0.353** | 0.074 | **0.336** |
+| surface_area_dev | 2.03% | 0.001% | 16.64% | 0.014% |
+
+Agglomeration wins on cell count, negative volumes, and planarity (trivial —
+every facet is already flat). It **loses decisively on non-orthogonality and
+ψ** — exactly the DG-vs-FV gap `pan2022_agglomeration_dg.md` predicted: raw
+facet unions put cell centroids far off any single face's flux-line
+intersection. **Verdict: KILL for raw vertex-star agglomeration as a dual
+replacement in its current facet-union form.** This does not end the leg
+outright — the decision tree requires a real `POLY-AGGLOM-FACEGEOM1`
+interface-flattening attempt before final kill — but the naive-construction
+path is now closed by measurement, not assumption. Module:
+`core/generator/native_poly/agglomeration_experiment.py` (commit `ab2adfc9`),
+standalone, not wired into production.
+
+Phase 3 opens with `POLY-AGGLOM-FACEGEOM1` in diagnostic mode: measure FV
   metrics on merged interfaces before any generator competes.
 - Phase 4 opens by measuring the current Voronoi path's boundary fidelity and
   dual-orthogonality against the audit findings, establishing the "before"
