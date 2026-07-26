@@ -369,10 +369,10 @@ or production singularity-pinch construction; area-weighted normals rather
 than the most-normal QP; centroid payload census rather than whole-face
 coverage; no feature-curve constraint. Projection coordinates are FP, while
 tet membership continues to use Shewchuk `orient3d`. The existing brute-force
-AABB candidate scan was intentionally not optimized. The next card is
-`TRI-SHELL-CANDIDATE1`: add and benchmark a deterministic spatial candidate
-index without changing attribution semantics; the full 24-tet/I2/bevel/pinch
-constructor remains a later DOMAIN follow-up.
+AABB candidate scan was intentionally not optimized. `TRI-SHELL-CANDIDATE1`
+was measured on 2026-07-26, found bit-exact but slower on cube/cylinder/sphere,
+and killed; see `TRI-SHELL-CANDIDATE1-KILL.md`. The full
+24-tet/I2/bevel/pinch constructor remains a later DOMAIN follow-up.
 
 Verification: hand-computable prism forward/inverse/middle projection; frozen
 patch-payload pullback; forced ambiguous, pinched, unmapped, non-finite, and

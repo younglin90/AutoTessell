@@ -117,5 +117,7 @@ I1/I2, confirming that this result is not a general construction guarantee.
 Evidence scope: this does **not** close Jiang's 24-tet/all-order I1, full I2,
 beveling, singularity construction, feature alignment, or whole-face coverage
 contracts. Candidate discovery remains the unchanged brute-force AABB scan.
-Next card: `TRI-SHELL-CANDIDATE1`, a deterministic spatial-index benchmark;
-full DOMAIN completion remains separate.
+`TRI-SHELL-CANDIDATE1` was measured on cube/cylinder/sphere and killed because
+the deterministic index was slower on all three despite bit-exact candidate,
+attribution, and repeat equivalence; see `TRI-SHELL-CANDIDATE1-KILL.md`.
+Full DOMAIN completion remains separate.
