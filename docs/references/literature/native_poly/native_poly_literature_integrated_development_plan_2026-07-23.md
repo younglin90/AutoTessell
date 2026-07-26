@@ -408,3 +408,98 @@ skew 2.17, non-ortho 16.66, 0.154% surface-area deviation), plus a 2-patch
 fixture added in Phase 1 for `POLY-DUAL-CLASSIFY1`. Every card stores
 before/after evidence against the phase's opening measurement, uses relative
 (never absolute) guards, and is reverted whole on any permanent-gate failure.
+
+## 7. 2026-07-26 `POLY-AGGLOM-FACEGEOM1` result (measured) — Phase 3 closed
+
+Module: `core/generator/native_poly/facegeom_experiment.py` (report-only,
+standalone; imported by nothing in the production path). Tests:
+`tests/test_native_poly_facegeom.py`.
+
+### Why this ran after `POLY-AGGLOM-CFD1`
+
+`POLY-AGGLOM-CFD1` was run out of the order this section specifies. Phase 3's
+decision tree names `POLY-AGGLOM-FACEGEOM1` as the card that "gates the whole
+phase", and section 6 says "Phase 3 opens with `POLY-AGGLOM-FACEGEOM1` in
+diagnostic mode". CFD1's KILL verdict was therefore not yet the plan's own
+gate firing — and it was confounded on the axis it decided:
+`agglomeration_experiment.py` exports every block-block interface as raw
+unmerged tet triangles, so non-orthogonality (an internal-face-only metric)
+was evaluated per tiny facet, while `polydual` emits one polygon per
+owner-neighbour pair and is scored on its area-weighted mean normal. CFD1's
+own output shows the artifact: the agglomerate scored a near-perfect
+`max_face_planar_deviation` of 0.013 and `max_face_normal_spread_deg` of 1.4
+— not because its cells are well shaped, but because every face was a
+triangle. FACEGEOM1 removes that confound.
+
+### Measured (four variants, ONE shared tet primal per fixture)
+
+| | cube (1,504 tets / 108 blocks) | cylinder (2,547 tets / 178 blocks) |
+| --- | --- | --- |
+| polydual — non-ortho / psi | 58.69 / 0.0806 (373 cells) | 51.99 / 0.0732 (619 cells) |
+| facet_union — non-ortho / psi | 84.87 / 0.3350 (108) | 85.16 / 0.3349 (178) |
+| merged_all — non-ortho / psi | 76.01 / 0.1797 (108) | 78.02 / 0.1726 (178) |
+| merged_gated — non-ortho / psi | 84.87 / 0.3150 (108) | 85.16 / 0.3143 (178) |
+
+Interface merging is real and works: 52-54% fewer internal faces, 442/442 and
+709/715 components merged, zero negative volumes, boundary faces bit-identical
+(`surface_area_dev` unchanged to 1e-4), total domain volume conserved.
+
+### Verdict: the gap is structural, not representational
+
+1. **Merging closes only part of the gap.** Non-ortho improves 8.9 deg (cube)
+   and 7.1 deg (cylinder) and `psi` roughly halves — but the merged
+   agglomerate still sits 17-26 deg worse on non-ortho and ~2.3x worse on
+   `psi` than polydual on the *same* primal.
+2. **The interfaces are genuinely folded, not flat-sampled-jaggedly.** Area
+   ratio `|sum S n| / sum|S|` bottoms out at 0.44 (cube) / 0.56 (cylinder):
+   the jagged patch carries up to 2.3x the scalar area of the polygon
+   spanning it. Worst constituent facet deviates 101.8 deg from its own
+   merged normal — some facets point nearly *opposite* the interface. Merging
+   does not create flat geometry; it relocates the badness from many bad
+   small faces into one bad large face (`max_face_planar_deviation`
+   0.011 -> 0.693, worse than polydual's 0.497).
+3. **The card's own prescribed gate yields zero improvement.** FACEGEOM1
+   specifies that geometry above threshold is "rejected or split, never
+   exported". Applying that gate (`merged_gated`) rejects exactly the
+   interfaces whose merging helped most (130/442 and 227/715 on planarity),
+   and non-orthogonality falls straight back to the facet-union value —
+   84.87 and 85.16, identical to no merging at all.
+
+Phase 3 decision tree, applied as written: "if merged interfaces cannot meet
+the same FV thresholds dual cells meet on identical fixtures, the leg drops to
+reference-only *without* running the remaining cards." They cannot.
+**`POLY-AGGLOM-GRAPH1`, `-PAIR1`, `-VSTAR1`, `-RTREE1`, `-SHAPE1`,
+`-LOOKAHEAD1` are not to be implemented.** The agglomeration leg is
+reference-only. This kill is now properly ordered: it is the designated gate
+firing on its own metric, not CFD1 run early.
+
+Scope note: no actual CFD solve has ever been run. `POLY-AGGLOM-CFD1` [L] as
+specified (preregistered CFD benchmark) remains unexecuted and is now moot.
+
+### Collateral finding: the measured primal is neither native nor deterministic
+
+`generate_native_tet(cube.stl, seed_density=10, target_cells=200)` returned
+1,567 / 1,633 / 1,194 tets on three consecutive identical runs. With
+`AUTO_TESSELL_P4C_PYTETWILD=0` it returns 21 tets, deterministically, twice.
+
+Two consequences, both wider than this card:
+- Section 3's per-card acceptance requirement of "byte-identical repeat runs"
+  is **currently unsatisfiable** for any poly card measured end-to-end from an
+  STL, and section 4's determinism-risk column ("None"/"Low" for every poly
+  card) is measuring only the poly stage.
+- Every poly measurement recorded so far, CFD1's and this card's, consumed a
+  primal produced by the **external pytetwild fallback**, not the native tet
+  engine. Cross-experiment comparisons of absolute numbers are invalid; only
+  within-run comparisons on a shared primal (as used here) are sound.
+
+### Next
+
+Phase 3 is closed, so the queue returns to Phase 1's open cards
+(`POLY-NO-DROP-HOLES1` [M], `POLY-FVERR-RANDPERT1` [L]) and Phase 2. Before
+either, note that polydual measured 1 negative volume on both fixtures and
+15.5% cylinder surface-area deviation via the direct `tet_to_poly_dual` route
+— against the S5 gate's recorded 0 negative volumes and 0.154%. That is a
+route-attribution question (S5 runs through `tier_native_poly`, this did not)
+and section 3 already requires every card to state which route produced its
+mesh; it should be resolved before a repair-lane card optimizes against the
+wrong baseline.
