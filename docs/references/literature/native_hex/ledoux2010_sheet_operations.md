@@ -102,3 +102,33 @@ Context: native_hex octree engine, per-vertex wall-fit snap + partial backtracki
 ## Decision
 
 Use this paper as the **topological contract** for a sheet-ops repair lane: it proves extraction/pillowing/chord-collapse preserve all-hex conformity and gives their exact preconditions, but it supplies zero geometric guidance. Pair it with Merkley 2007 before implementing quality-driven insertion. Do not cite it as evidence that pillowing improves (or harms) wall skew — that claim must come from our own HEX-SHEET-1/2 experiments.
+
+## HEX-PATCH-LAYER-DIAG1 follow-up measurement (2026-07-26)
+
+The first patch-aware follow-up to the rejected all-wall-owner shrink set was
+run in report-only mode on the actual fine pre-BL native_hex cylinder, sphere,
+and gear caches. Candidate S cells were required to be clean hexes with
+exactly one physical-boundary face and exactly one Q face against the original
+wall-owner complement. Candidates were then partitioned by the writer's
+deterministic feature-patch label plus the current single-source `defaultWall`
+provenance. Q vertices on the physical boundary were rejected, and each
+same-label connected component was required to have quad faces with edge
+incidence exactly two.
+
+The strict census retained 544/544 S/Q on cylinder, 24/24 on sphere, and
+888/888 on gear. It found 6, 6, and 22 same-patch components respectively.
+Their strict Q edge histograms were `{1:272,2:952}`, `{1:48,2:24}`, and
+`{1:656,2:1448}`: open-edge counts were 272, 48, and 656; non-manifold counts
+were zero on all three. Q vertices on the physical boundary were zero after
+the cell filter. Therefore the Ledoux manifold-quad precondition still fails
+for every individually labelled subset, even though a raw cross-patch union
+can hide some openings by pairing edges from different labels.
+
+**Decision:** `HEX-PATCH-LAYER-DIAG1` is KILLED. The predicted pillow operation
+was recorded only (hypothetical point/cell growth `+686/+544`, `+54/+24`, and
+`+1228/+888`); zero operations were approved or executed. This measurement
+does not weaken Ledoux's theorem: it falsifies the availability of a valid
+per-patch Q set in these cached meshes under the theorem's manifold
+precondition. No production pillowing or sheet extraction is justified, no
+next operation card is proposed, and the existing wall_dev/skew gates remain
+unchanged.

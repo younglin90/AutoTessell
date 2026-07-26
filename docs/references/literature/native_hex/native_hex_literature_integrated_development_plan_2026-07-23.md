@@ -754,3 +754,51 @@ mutation was added. Consequently the predicted growth above was not executed
 and there is no before/after quality claim. This falsifies the all-wall-owner
 shrink set as currently defined; a future card needs a different, explicitly
 separated patch/layer selection before layer-wide pillowing can be reconsidered.
+
+### 2026-07-26 HEX-PATCH-LAYER-DIAG1 result (strict patch/layer classification, KILL)
+
+Added `core/generator/native_hex/patch_layer_diagnostic.py`,
+`scripts/diag_hex_patch_layer1.py`, and
+`tests/test_native_hex_patch_layer_diagnostic.py`. The runner reads the actual
+fine pre-BL cache blobs used by HEX-MATCH-1/2 and HEX-SHEET-2
+(`cylinder_8000.npz`, `sphere_8000.npz`, and `gear_8000.npz`; `max_cells=8000`).
+It does not regenerate a mesh and does not call a topology constructor.
+
+The cache format contains points and cell faces but not the OpenFOAM boundary
+file. The diagnostic therefore reconstructs the writer's deterministic
+feature-patch grouping from the cached physical boundary faces and attaches
+the current native_hex single-source `defaultWall` provenance. This is a
+reporting label reconstruction, not a new production provenance path.
+
+For each shape, the initial wall population is restricted to clean hex cells
+with exactly one physical-boundary face. `Q` is then measured against the
+complement of that initial population. A cell is retained only when it has
+exactly one Q face, that Q is a quad with exactly two owners, its vertices are
+disjoint from all physical-boundary vertices, and its boundary-face
+patch/provenance label is retained. The retained Q faces are split into
+same-label shared-edge components. A component is operation-eligible only if
+its Q set is closed (`edge incidence == 2` everywhere), has no open or
+non-manifold edge, and remains one-to-one with its S cells.
+
+| Shape | cells | physical boundary | S exact1 / nonhex | Q interface / nonquad | eligible S / Q | components | strict component edge incidence | open / nonmanifold | Q vertices on physical boundary | predicted / approved pillow ops | hypothetical points / cells | decision |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| cylinder | 6320 | 2232 | 1096 / 0 | 2024 / 0 | 544 / 544 | 6 | `{1:272,2:952}` | 272 / 0 | 0 | 6 / 0 | +686 / +544 | KILL |
+| sphere | 4224 | 1896 | 360 / 0 | 1128 / 0 | 24 / 24 | 6 | `{1:48,2:24}` | 48 / 0 | 0 | 6 / 0 | +54 / +24 | KILL |
+| gear | 4914 | 3848 | 1733 / 0 | 2901 / 0 | 888 / 888 | 22 | `{1:656,2:1448}` | 656 / 0 | 0 | 22 / 0 | +1228 / +888 | KILL |
+
+The component populations are deterministic: cylinder has four `wall_0`
+components of 32 S/32 Q and one 208/208 component on each of `wall_2` and
+`wall_4`; sphere has six `wall_0` components of 4 S/4 Q; gear has one 420/420
+component on each of `wall_0` and `wall_1`, four 4/4 components on `wall_32`,
+and sixteen 2/2 components on the remaining labels. Every component has
+open Q edges; none has a non-manifold edge. The apparent raw union can hide
+some of those openings when adjacent labels share an edge, which is why the
+gate is evaluated per same-patch/provenance component.
+
+The two repeated measurements per cached shape were identical at the report
+level, and the input points/cells remained unchanged. Thus the strict
+classification finds candidate counts but no valid subset and no approved
+operation on any shape. This is an honest `KILL`: no next implementation card
+is proposed, no topology mutation or production pillowing/sheet-extraction
+path was added, and the existing wall_dev and skew gates are unchanged. There
+is no before/after quality claim and no predicted growth was executed.

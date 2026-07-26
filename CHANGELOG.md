@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — HEX-PATCH-LAYER-DIAG1 diagnostic KILL.
+
+- Added a report-only strict patch/layer classifier and cached-data runner for
+  fine pre-BL cylinder, sphere, and gear meshes. It requires one physical
+  boundary face, one two-owner Q quad, same patch/provenance, and Q vertices
+  disjoint from physical-boundary vertices; it reports same-label components,
+  edge incidence, open/non-manifold status, and hypothetical pillow growth.
+- Repeated measurements were deterministic: eligible S/Q were 544/544,
+  24/24, and 888/888, but every same-patch component had open Q edges (272,
+  48, and 656 strict open edges respectively); non-manifold counts were zero.
+- Killed the card before any topology mutation: zero valid subsets and zero
+  approved pillow operations. Wall_dev/skew gates and production behavior are
+  unchanged; no production pillowing or sheet-extraction path was added.
+
 ## [Unreleased] - 2026-07-26 — TET-MM-1 diagnostic KILL.
 
 - Evaluated frozen-boundary Huang/Dassi MMPDE smoothing alone on fixed naca
