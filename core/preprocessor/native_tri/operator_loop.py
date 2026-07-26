@@ -8,7 +8,7 @@ and exact-orientation guards.  Rejected proposals leave the state unchanged.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import cast
@@ -16,6 +16,98 @@ from typing import cast
 import numpy as np
 
 from .bijective_shell import BijectiveShell, ShellCheckpointReport
+
+#: One triangle is three ``float64`` points, i.e. 9 * 8 bytes of coordinates.
+_TRIANGLE_KEY_BYTES = 72
+
+#: Memo of triangles already certified by ``_triangle_orientation_ok``.
+#:
+#: ``_triangle_orientation_ok`` is a *pure, deterministic* function of the
+#: three ``float64`` corner coordinates alone (it derives its own probe point
+#: from them), so memoizing it on the exact IEEE-754 bit pattern of those
+#: coordinates cannot change any answer -- it only avoids re-running the
+#: Shewchuk exact predicate on a triangle whose corners are bit-identical to
+#: one already proven non-degenerate.  Only *passing* triangles are recorded,
+#: so a rejected triangle is always re-evaluated.  This is what makes the
+#: fold-over / exact-orientation guards cost O(edited faces) rather than
+#: O(all faces) per local operation, without narrowing what either guard
+#: checks: every face of every candidate is still consulted, it just answers
+#: from the memo when the face is bit-identical to a previously certified one.
+_ORIENTATION_MEMO: set[bytes] = set()
+
+#: Bound on ``_ORIENTATION_MEMO`` so a long remeshing run cannot grow it
+#: without limit; clearing it only costs recomputation, never correctness.
+_ORIENTATION_MEMO_LIMIT = 1 << 20
+
+
+def _triangle_keys(triangles: np.ndarray) -> list[bytes]:
+    """Return one exact byte key per ``(n, 3, 3)`` triangle coordinate block."""
+    count = len(triangles)
+    if count == 0:
+        return []
+    flat = np.ascontiguousarray(triangles, dtype=np.float64).reshape(count, 9)
+    buffer = flat.tobytes()
+    return [
+        buffer[index * _TRIANGLE_KEY_BYTES : (index + 1) * _TRIANGLE_KEY_BYTES]
+        for index in range(count)
+    ]
+
+
+def _encode_rows(rows: np.ndarray) -> np.ndarray | None:
+    """Pack small non-negative integer rows into one ``int64`` key per row.
+
+    This is a positional numeral encoding over the observed index range, so
+    ascending key order is exactly lexicographic row order -- which is what
+    lets it stand in for ``np.unique(..., axis=0)`` (whose void-dtype sort is
+    an order of magnitude slower) without changing either the unique set or
+    its ordering.  Returns ``None`` when the range would overflow ``int64``,
+    in which case callers fall back to ``np.unique(..., axis=0)``.
+    """
+    if rows.size == 0:
+        return np.empty(0, dtype=np.int64)
+    values = rows.astype(np.int64, copy=False)
+    lowest = int(values.min())
+    span = int(values.max()) - lowest + 1
+    capacity = 1 << 62
+    total = 1
+    for _ in range(rows.shape[1]):
+        total *= span
+        if total > capacity:
+            return None
+    keys = np.zeros(len(values), dtype=np.int64)
+    for column in range(rows.shape[1]):
+        keys = keys * span + (values[:, column] - lowest)
+    return keys
+
+
+def _unique_rows_with_counts(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return lexicographically sorted unique rows and their occurrence counts."""
+    keys = _encode_rows(rows)
+    if keys is None:
+        unique, counts = np.unique(rows, axis=0, return_counts=True)
+        return unique, counts
+    _, first, counts = np.unique(keys, return_index=True, return_counts=True)
+    return rows[first], counts
+
+
+def _unique_edges_with_counts(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return sorted unique undirected edges and their face-corner counts."""
+    if faces.size == 0:
+        return np.empty((0, 2), dtype=np.int64), np.empty(0, dtype=np.int64)
+    corners = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
+    undirected = np.stack(
+        (
+            np.minimum(corners[:, 0], corners[:, 1]),
+            np.maximum(corners[:, 0], corners[:, 1]),
+        ),
+        axis=1,
+    )
+    return _unique_rows_with_counts(undirected)
+
+
+def _sorted_unique_edges(faces: np.ndarray) -> np.ndarray:
+    """Return the lexicographically sorted unique undirected edges of ``faces``."""
+    return _unique_edges_with_counts(faces)[0]
 
 
 class OperatorKind(StrEnum):
@@ -158,6 +250,13 @@ class OperatorTransaction:
     Frey/Dunyach sizing lane; anisotropic metric tensors remain out of scope.
     """
 
+    _state: MeshState
+    _cache_unique_edges: tuple[tuple[int, int], ...] | None
+    _cache_vertex_faces: list[list[int]] | None
+    _cache_link_condition: bool | None
+    _cache_valence_deviation: int | None
+    _cache_identity_correspondence: FaceCorrespondence | None
+
     def __init__(
         self,
         vertices: np.ndarray,
@@ -169,10 +268,11 @@ class OperatorTransaction:
         surface_vertices: Iterable[int] | None = None,
         curvature_epsilon: float | None = None,
     ) -> None:
-        self.state = MeshState(
+        self._state = MeshState(
             np.asarray(vertices, dtype=np.float64).copy(),
             np.asarray(faces, dtype=np.int64).copy(),
         )
+        self._invalidate_state_cache()
         self.target_edge_length = target_edge_length
         self.surface_points = (
             None if surface_points is None else np.asarray(surface_points, dtype=np.float64).copy()
@@ -186,6 +286,155 @@ class OperatorTransaction:
         if curvature_epsilon is not None:
             self._refresh_curvature_sizing()
         self.shell_checkpoint_reports: list[ShellCheckpointReport] = []
+
+    # ------------------------------------------------------------------
+    # Per-state derived caches.
+    #
+    # Every entry below is a *pure function of ``self.state``* and is
+    # discarded the moment ``self.state`` is rebound.  Nothing here changes
+    # what any guard checks; it only stops the hot loop from recomputing the
+    # same whole-mesh derived structure once per candidate edge/vertex.  The
+    # transaction only ever rebinds ``self.state`` to a whole new frozen
+    # ``MeshState`` (commit or roll-back), never mutates one in place, so
+    # rebinding is the complete invalidation trigger.
+    # ------------------------------------------------------------------
+
+    @property
+    def state(self) -> MeshState:
+        """Current committed mesh state."""
+        return self._state
+
+    @state.setter
+    def state(self, value: MeshState) -> None:
+        # The vertex -> incident-face map is a pure function of ``faces``
+        # alone, so a state change that only moves vertices (every accepted
+        # smoothing move, and every roll-back to a bit-equal copy) may carry
+        # it over instead of rebuilding it in ``O(faces)`` per edit.
+        previous = getattr(self, "_state", None)
+        carried = (
+            self._cache_vertex_faces
+            if previous is not None
+            and previous.faces.shape == value.faces.shape
+            and len(previous.vertices) == len(value.vertices)
+            and np.array_equal(previous.faces, value.faces)
+            else None
+        )
+        self._state = value
+        self._invalidate_state_cache()
+        self._cache_vertex_faces = carried
+
+    def _invalidate_state_cache(self) -> None:
+        self._cache_unique_edges = None
+        self._cache_vertex_faces = None
+        self._cache_link_condition = None
+        self._cache_valence_deviation = None
+        self._cache_identity_correspondence = None
+
+    def _state_link_condition(self) -> bool:
+        """``_link_condition(self.state)``, evaluated at most once per state."""
+        if self._cache_link_condition is None:
+            self._cache_link_condition = self._link_condition(self._state)
+        return self._cache_link_condition
+
+    def _state_vertex_faces(self) -> list[list[int]]:
+        """Vertex -> ascending incident-face indices for the current state."""
+        cached = self._cache_vertex_faces
+        if cached is not None:
+            return cached
+        incidence: list[list[int]] = [[] for _ in range(len(self._state.vertices))]
+        limit = len(incidence)
+        for face_index, face in enumerate(self._state.faces.tolist()):
+            for vertex in face:
+                index = int(vertex)
+                if 0 <= index < limit:
+                    bucket = incidence[index]
+                    if not bucket or bucket[-1] != face_index:
+                        bucket.append(face_index)
+        self._cache_vertex_faces = incidence
+        return incidence
+
+    def _state_incident_faces(self, a: int, b: int) -> list[int]:
+        """Ascending face indices containing both ``a`` and ``b``.
+
+        Identical to ``[i for i, f in enumerate(faces) if a in f and b in f]``
+        (the incidence list is built in face order, so the intersection stays
+        ascending), but scoped to the two vertices instead of the face array.
+        """
+        incidence = self._state_vertex_faces()
+        if not 0 <= a < len(incidence) or not 0 <= b < len(incidence):
+            return []
+        other = set(incidence[b])
+        return [index for index in incidence[a] if index in other]
+
+    def _state_vertex_neighbours(self, vertex: int) -> set[int]:
+        """One-ring neighbours of ``vertex``, read off the cached incidence."""
+        neighbours: set[int] = set()
+        faces = self._state.faces
+        for face_index in self._state_vertex_faces()[vertex]:
+            neighbours.update(
+                int(other) for other in faces[face_index].tolist() if int(other) != vertex
+            )
+        return neighbours
+
+    def _state_valence_deviation(self) -> int:
+        """``_vertex_valence_deviation(self.state)``, cached per state.
+
+        Every ``_flip_improves`` call in a flip scan compares against the
+        *same* pre-edit state, so this is computed once per state instead of
+        once per candidate edge.
+        """
+        if self._cache_valence_deviation is None:
+            self._cache_valence_deviation = self._vertex_valence_deviation(self._state)
+        return self._cache_valence_deviation
+
+    def _state_identity_correspondence(self) -> FaceCorrespondence:
+        """Identity ``(i, i)`` face correspondence for the current state."""
+        cached = self._cache_identity_correspondence
+        if cached is None:
+            cached = tuple(
+                (face_index, face_index) for face_index in range(len(self._state.faces))
+            )
+            self._cache_identity_correspondence = cached
+        return cached
+
+    def _state_edge_link_condition(self, a: int, b: int) -> list[int] | None:
+        """Return incident faces only for a manifold edge eligible to edit.
+
+        The whole-mesh ``_link_condition`` term is a property of the state,
+        not of the edge, so it is evaluated once per state rather than once
+        per candidate edge; the edge-local terms (one or two incident faces,
+        distinct opposite vertices) are unchanged.
+        """
+        if not self._state_link_condition():
+            return None
+        incident = self._state_incident_faces(a, b)
+        if not 1 <= len(incident) <= 2:
+            return None
+        opposite = []
+        for index in incident:
+            face = self._state.faces[index].tolist()
+            opposite.append(next(vertex for vertex in face if vertex not in (a, b)))
+        if len(set(opposite)) != len(opposite):
+            return None
+        return incident
+
+    def _state_collapse_edge_link_condition(self, a: int, b: int) -> list[int] | None:
+        """Return incident faces only when the edge satisfies the collapse link."""
+        incident = self._state_edge_link_condition(a, b)
+        if incident is None:
+            return None
+        common = self._state_vertex_neighbours(a).intersection(
+            self._state_vertex_neighbours(b),
+        )
+        opposite = {
+            vertex
+            for index in incident
+            for vertex in self._state.faces[index].tolist()
+            if vertex not in (a, b)
+        }
+        if common != opposite:
+            return None
+        return incident
 
     def attempt(
         self,
@@ -212,14 +461,29 @@ class OperatorTransaction:
             )
             if not self._link_condition(after):
                 return GuardReport(False, operator, "link_condition_failed")
-            if not self._foldover_guard(before, after, face_correspondence):
+            after_triangles = after.vertices[after.faces]
+            after_keys = _triangle_keys(after_triangles)
+            if not self._foldover_guard(
+                before,
+                after,
+                face_correspondence,
+                after_triangles=after_triangles,
+                after_keys=after_keys,
+            ):
                 return GuardReport(False, operator, "foldover_guard_failed")
-            if not self._exact_orientation_guard(after):
+            if not self._exact_orientation_guard(
+                after,
+                triangles=after_triangles,
+                triangle_keys=after_keys,
+            ):
                 return GuardReport(False, operator, "exact_orientation_failed")
             if operator is OperatorKind.FLIP and not self._flip_improves(
                 before,
                 after,
                 face_correspondence,
+                # ``before`` is a bit-exact copy of ``self.state``, so the
+                # cached pre-edit valence deviation is the same number.
+                before_deviation=self._state_valence_deviation(),
             ):
                 return GuardReport(False, operator, "flip_not_improved")
         except (TypeError, ValueError, IndexError, FloatingPointError, RuntimeError):
@@ -256,7 +520,7 @@ class OperatorTransaction:
             if edge_length <= (4.0 / 3.0) * target:
                 return GuardReport(False, OperatorKind.SPLIT, "split_threshold_not_exceeded")
 
-            incident = self._edge_link_condition(before, a, b)
+            incident = self._state_edge_link_condition(a, b)
             if incident is None:
                 return GuardReport(False, OperatorKind.SPLIT, "link_condition_failed")
 
@@ -313,7 +577,7 @@ class OperatorTransaction:
                     "collapse_threshold_not_exceeded",
                 )
 
-            incident = self._collapse_edge_link_condition(before, a, b)
+            incident = self._state_collapse_edge_link_condition(a, b)
             if incident is None:
                 return GuardReport(False, OperatorKind.COLLAPSE, "link_condition_failed")
             vertices, faces, correspondence = self._build_collapse_candidate(
@@ -340,7 +604,7 @@ class OperatorTransaction:
     def should_flip_edge(self, edge: tuple[int, int]) -> bool:
         """Return whether flipping ``edge`` is a guarded quality move."""
         a, b = self._edge_vertices(edge)
-        incident = self._edge_link_condition(self.state, a, b)
+        incident = self._state_edge_link_condition(a, b)
         if incident is None or len(incident) != 2:
             return False
         try:
@@ -356,6 +620,7 @@ class OperatorTransaction:
             self.state,
             MeshState(vertices, faces),
             correspondence,
+            before_deviation=self._state_valence_deviation(),
         )
 
     def flip_edge(self, edge: tuple[int, int]) -> GuardReport:
@@ -363,7 +628,7 @@ class OperatorTransaction:
         before = self.state.copy()
         try:
             a, b = self._edge_vertices(edge)
-            incident = self._edge_link_condition(before, a, b)
+            incident = self._state_edge_link_condition(a, b)
             if incident is None or len(incident) != 2:
                 return GuardReport(False, OperatorKind.FLIP, "link_condition_failed")
             vertices, faces, correspondence = self._build_flip_candidate(
@@ -373,7 +638,12 @@ class OperatorTransaction:
                 incident,
             )
             after = MeshState(vertices, faces)
-            if not self._flip_improves(before, after, correspondence):
+            if not self._flip_improves(
+                before,
+                after,
+                correspondence,
+                before_deviation=self._state_valence_deviation(),
+            ):
                 return GuardReport(False, OperatorKind.FLIP, "flip_not_improved")
         except (TypeError, ValueError, IndexError, FloatingPointError):
             self.state = before
@@ -415,7 +685,11 @@ class OperatorTransaction:
                     index,
                 )
             factor = self._relocation_factor(relocation_lambda)
-            centroid_and_normal = self._area_weighted_neighbor_centroid(before, index)
+            centroid_and_normal = self._area_weighted_neighbor_centroid(
+                before,
+                index,
+                incident_faces=self._state_vertex_faces()[index],
+            )
             if centroid_and_normal is None:
                 return GuardReport(
                     False,
@@ -470,7 +744,7 @@ class OperatorTransaction:
 
         vertices = before.vertices.copy()
         vertices[index] = proposed
-        correspondence = tuple((face_index, face_index) for face_index in range(len(before.faces)))
+        correspondence = self._state_identity_correspondence()
         report = self.attempt(
             OperatorKind.SMOOTH,
             (vertices, before.faces.copy()),
@@ -711,12 +985,26 @@ class OperatorTransaction:
         cls,
         mesh: MeshState,
         vertex_index: int,
+        *,
+        incident_faces: Sequence[int] | None = None,
     ) -> tuple[np.ndarray, np.ndarray] | None:
-        """Return the area-weighted one-ring centroid and vertex normal."""
+        """Return the area-weighted one-ring centroid and vertex normal.
+
+        ``incident_faces`` optionally restricts the scan to the faces already
+        known to contain ``vertex_index``.  This is a pure iteration-scope
+        reduction: the full-mesh loop below skips every face that does not
+        contain the vertex anyway (``if vertex_index not in face: continue``),
+        so supplying the exact incidence yields a bit-identical accumulation.
+        """
         weighted_centroid: np.ndarray = np.zeros(3, dtype=np.float64)
         weighted_normal: np.ndarray = np.zeros(3, dtype=np.float64)
         total_area = 0.0
-        for face in mesh.faces.tolist():
+        candidate_faces = (
+            mesh.faces.tolist()
+            if incident_faces is None
+            else [mesh.faces[face_index].tolist() for face_index in incident_faces]
+        )
+        for face in candidate_faces:
             if vertex_index not in face:
                 continue
             neighbours = [int(vertex) for vertex in face if int(vertex) != vertex_index]
@@ -786,60 +1074,18 @@ class OperatorTransaction:
         return float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
 
     def _unique_edges(self) -> tuple[tuple[int, int], ...]:
-        """Return the current mesh edges in deterministic lexical order."""
-        edges: set[tuple[int, int]] = set()
-        for face in self.state.faces.tolist():
-            for u, v in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
-                edges.add((min(int(u), int(v)), max(int(u), int(v))))
-        return tuple(sorted(edges))
+        """Return the current mesh edges in deterministic lexical order.
 
-    @classmethod
-    def _edge_link_condition(
-        cls,
-        mesh: MeshState,
-        a: int,
-        b: int,
-    ) -> list[int] | None:
-        """Return incident faces only for a manifold edge eligible to split."""
-        if not cls._link_condition(mesh):
-            return None
-        incident = [
-            index for index, face in enumerate(mesh.faces.tolist()) if a in face and b in face
-        ]
-        if not 1 <= len(incident) <= 2:
-            return None
-        opposite = []
-        for index in incident:
-            face = mesh.faces[index].tolist()
-            opposite.append(next(vertex for vertex in face if vertex not in (a, b)))
-        if len(set(opposite)) != len(opposite):
-            return None
-        return incident
-
-    @classmethod
-    def _collapse_edge_link_condition(
-        cls,
-        mesh: MeshState,
-        a: int,
-        b: int,
-    ) -> list[int] | None:
-        """Return incident faces only when the edge satisfies the collapse link."""
-        incident = cls._edge_link_condition(mesh, a, b)
-        if incident is None:
-            return None
-
-        neighbours_a = cls._vertex_neighbours(mesh.faces, a)
-        neighbours_b = cls._vertex_neighbours(mesh.faces, b)
-        common = neighbours_a.intersection(neighbours_b)
-        opposite = {
-            vertex
-            for index in incident
-            for vertex in mesh.faces[index].tolist()
-            if vertex not in (a, b)
-        }
-        if common != opposite:
-            return None
-        return incident
+        Cached per state: the collapse and flip phases ask for this once per
+        loop iteration, and it only changes when ``self.state`` is rebound.
+        """
+        cached = self._cache_unique_edges
+        if cached is not None:
+            return cached
+        edges = _sorted_unique_edges(self.state.faces)
+        result = tuple((int(a), int(b)) for a, b in edges.tolist())
+        self._cache_unique_edges = result
+        return result
 
     @staticmethod
     def _build_split_candidate(
@@ -946,38 +1192,39 @@ class OperatorTransaction:
         correspondence = ((first_index, first_index), (second_index, second_index))
         return mesh.vertices.copy(), faces_out, correspondence
 
-    @staticmethod
-    def _vertex_neighbours(faces: np.ndarray, vertex: int) -> set[int]:
-        neighbours: set[int] = set()
-        for face in faces.tolist():
-            if vertex not in face:
-                continue
-            neighbours.update(int(other) for other in face if int(other) != vertex)
-        return neighbours
-
     @classmethod
     def _vertex_valence_deviation(cls, mesh: MeshState) -> int:
-        """Return deviation from valence six (interior) or four (boundary)."""
-        edge_faces: dict[tuple[int, int], int] = {}
-        for face in mesh.faces.tolist():
-            for u, v in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
-                key = (min(int(u), int(v)), max(int(u), int(v)))
-                edge_faces[key] = edge_faces.get(key, 0) + 1
+        """Return deviation from valence six (interior) or four (boundary).
 
-        boundary = [False] * len(mesh.vertices)
-        for (u, v), count in edge_faces.items():
-            if count == 1:
-                boundary[u] = True
-                boundary[v] = True
+        Vectorized restatement of the original per-vertex one-ring rescan,
+        which was ``O(vertices * faces)``.  It computes the identical number:
+        a vertex's valence is the count of *distinct* edges incident to it
+        (self-edges of a degenerate face excluded, exactly as the neighbour
+        set excluded the vertex itself), boundary vertices are the endpoints
+        of any edge with a single face corner, and isolated vertices (valence
+        zero) contribute nothing.
+        """
+        count = len(mesh.vertices)
+        if count == 0 or mesh.faces.size == 0:
+            return 0
+        unique, counts = _unique_edges_with_counts(mesh.faces)
 
-        deviation = 0
-        for vertex in range(len(mesh.vertices)):
-            valence = len(cls._vertex_neighbours(mesh.faces, vertex))
-            if valence == 0:
-                continue
-            target = 4 if boundary[vertex] else 6
-            deviation += abs(valence - target)
-        return deviation
+        boundary = np.zeros(count, dtype=bool)
+        boundary_edges = unique[counts == 1]
+        if boundary_edges.size:
+            endpoints = boundary_edges.ravel()
+            boundary[endpoints[(endpoints >= 0) & (endpoints < count)]] = True
+
+        proper = unique[unique[:, 0] != unique[:, 1]].ravel()
+        valence = np.bincount(
+            proper[(proper >= 0) & (proper < count)],
+            minlength=count,
+        )[:count]
+
+        target = np.where(boundary, 4, 6)
+        deviation = np.abs(valence.astype(np.int64) - target)
+        deviation[valence == 0] = 0
+        return int(deviation.sum())
 
     @staticmethod
     def _triangle_quality(vertices: np.ndarray, face: np.ndarray) -> float:
@@ -999,8 +1246,18 @@ class OperatorTransaction:
         before: MeshState,
         after: MeshState,
         face_correspondence: FaceCorrespondence | None,
+        *,
+        before_deviation: int | None = None,
     ) -> bool:
-        """Require a strict valence or local minimum-quality improvement."""
+        """Require a strict valence or local minimum-quality improvement.
+
+        ``before_deviation`` optionally supplies an already-computed
+        ``_vertex_valence_deviation(before)``; every caller inside a flip scan
+        compares against the same unchanged pre-edit state, so recomputing it
+        per candidate edge was pure waste.  The disjunction is unchanged --
+        the valence term is simply not evaluated when the quality term has
+        already decided the answer.
+        """
         if face_correspondence:
             old_quality = min(
                 cls._triangle_quality(before.vertices, before.faces[old_index])
@@ -1014,11 +1271,14 @@ class OperatorTransaction:
             old_quality = min(cls._triangle_quality(before.vertices, face) for face in before.faces)
             new_quality = min(cls._triangle_quality(after.vertices, face) for face in after.faces)
 
-        quality_improved = new_quality > old_quality + 1e-12
-        valence_improved = cls._vertex_valence_deviation(after) < cls._vertex_valence_deviation(
-            before,
+        if new_quality > old_quality + 1e-12:
+            return True
+        reference = (
+            cls._vertex_valence_deviation(before)
+            if before_deviation is None
+            else int(before_deviation)
         )
-        return bool(quality_improved or valence_improved)
+        return bool(cls._vertex_valence_deviation(after) < reference)
 
     @staticmethod
     def _link_condition(mesh: MeshState) -> bool:
@@ -1038,16 +1298,20 @@ class OperatorTransaction:
             return False
         if np.any(faces[:, 2] == faces[:, 0]):
             return False
-        face_keys = {tuple(sorted(map(int, row))) for row in faces}
-        if len(face_keys) != len(faces):
+        # Vectorized restatement of the original Python scans: duplicate faces
+        # are detected as repeated sorted index triples, and a non-manifold
+        # edge as an undirected edge used by more than two face corners.
+        sorted_faces = np.sort(faces, axis=1)
+        face_keys = _encode_rows(sorted_faces)
+        distinct = (
+            len(np.unique(sorted_faces, axis=0))
+            if face_keys is None
+            else len(np.unique(face_keys))
+        )
+        if distinct != len(faces):
             return False
-
-        edge_count: dict[tuple[int, int], int] = {}
-        for a, b, c in faces.tolist():
-            for u, v in ((a, b), (b, c), (c, a)):
-                key = (u, v) if u < v else (v, u)
-                edge_count[key] = edge_count.get(key, 0) + 1
-        return all(count <= 2 for count in edge_count.values())
+        _, edge_counts = _unique_edges_with_counts(faces)
+        return bool(edge_counts.size == 0 or edge_counts.max() <= 2)
 
     @classmethod
     def _foldover_guard(
@@ -1055,9 +1319,12 @@ class OperatorTransaction:
         before: MeshState,
         after: MeshState,
         face_correspondence: FaceCorrespondence | None = None,
+        *,
+        after_triangles: np.ndarray | None = None,
+        after_keys: list[bytes] | None = None,
     ) -> bool:
         """Reject zero-area or orientation-reversed triangles with exact signs."""
-        triangles = after.vertices[after.faces]
+        triangles = after.vertices[after.faces] if after_triangles is None else after_triangles
         if not np.isfinite(triangles).all():
             return False
         twice_area = np.linalg.norm(
@@ -1068,13 +1335,25 @@ class OperatorTransaction:
             return False
 
         pairs = face_correspondence or cls._common_face_correspondence(before, after)
+        pairs = cls._foldover_pairs_needing_exact_test(before, triangles, pairs, after_keys)
         for old_index, new_index in pairs:
             if old_index < 0 or old_index >= len(before.faces):
                 return False
             if new_index < 0 or new_index >= len(after.faces):
                 return False
             old_tri = before.vertices[before.faces[old_index]]
-            new_tri = after.vertices[after.faces[new_index]]
+            new_tri = triangles[new_index]
+            new_key = new_tri.tobytes() if after_keys is None else after_keys[new_index]
+            if old_tri.tobytes() == new_key:
+                # The pair's two triangles are bit-identical, so the probe
+                # built from ``old_tri`` is the same point and ``old_sign``
+                # and ``new_sign`` are the same call: the pair test collapses
+                # exactly to "this triangle is non-degenerate", which is the
+                # memoized single-triangle predicate below.  Nothing is
+                # skipped -- the same question is answered from a memo.
+                if not cls._triangle_orientation_certified(new_tri, new_key):
+                    return False
+                continue
             normal = np.cross(old_tri[1] - old_tri[0], old_tri[2] - old_tri[0])
             normal_length = float(np.linalg.norm(normal))
             if not np.isfinite(normal_length) or normal_length <= np.finfo(float).tiny:
@@ -1086,6 +1365,57 @@ class OperatorTransaction:
             if old_sign == 0 or new_sign == 0 or old_sign != new_sign:
                 return False
         return True
+
+    @staticmethod
+    def _foldover_pairs_needing_exact_test(
+        before: MeshState,
+        after_triangles: np.ndarray,
+        pairs: FaceCorrespondence,
+        after_keys: list[bytes] | None,
+    ) -> FaceCorrespondence:
+        """Drop the correspondence pairs that are provably already satisfied.
+
+        A pair whose old and new triangles are bit-identical reduces exactly
+        to "this triangle is non-degenerate" (see the identical-triangle
+        branch in ``_foldover_guard``), and a triangle in
+        ``_ORIENTATION_MEMO`` has already answered that question.  When *all*
+        such pairs are certified in one batched ``set.issuperset`` call they
+        can be dropped from the ordered loop without changing its verdict.
+        If any of them is not certified the full original pair list is
+        returned instead, so the loop's short-circuit order -- and therefore
+        which guard reports the failure -- is preserved exactly.
+
+        This is what keeps a single-vertex smoothing move ``O(one-ring)``
+        instead of ``O(faces)``: its correspondence is the identity over
+        every face, but only the moved vertex's ring actually changed.
+        """
+        count = len(pairs)
+        if after_keys is None or count == 0:
+            return pairs
+        old_faces = before.faces
+        new_count = len(after_triangles)
+        indices = np.asarray(pairs, dtype=np.int64)
+        old_index, new_index = indices[:, 0], indices[:, 1]
+        if old_index.min() < 0 or old_index.max() >= len(old_faces):
+            return pairs
+        if new_index.min() < 0 or new_index.max() >= new_count:
+            return pairs
+        try:
+            old_triangles = before.vertices[old_faces[old_index]]
+        except IndexError:
+            return pairs
+        new_triangles = after_triangles[new_index]
+        if old_triangles.shape != new_triangles.shape:
+            return pairs
+
+        identical = ~np.any(old_triangles != new_triangles, axis=(1, 2))
+        if not identical.any():
+            return pairs
+        certified_rows = new_index[identical].tolist()
+        if not _ORIENTATION_MEMO.issuperset(map(after_keys.__getitem__, certified_rows)):
+            return pairs
+        remaining = np.flatnonzero(~identical)
+        return tuple(pairs[position] for position in remaining.tolist())
 
     @staticmethod
     def _common_face_correspondence(
@@ -1103,19 +1433,57 @@ class OperatorTransaction:
         return tuple(pairs)
 
     @classmethod
-    def _exact_orientation_guard(cls, mesh: MeshState) -> bool:
-        """Require every triangle to have a non-zero Shewchuk exact sign."""
-        for face in mesh.faces.tolist():
-            tri = mesh.vertices[np.asarray(face, dtype=np.int64)]
-            normal = np.cross(tri[1] - tri[0], tri[2] - tri[0])
-            normal_length = float(np.linalg.norm(normal))
-            if not np.isfinite(normal_length) or normal_length <= np.finfo(float).tiny:
+    def _exact_orientation_guard(
+        cls,
+        mesh: MeshState,
+        *,
+        triangles: np.ndarray | None = None,
+        triangle_keys: list[bytes] | None = None,
+    ) -> bool:
+        """Require every triangle to have a non-zero Shewchuk exact sign.
+
+        Every face is still consulted.  Faces whose three corner coordinates
+        are bit-identical to a triangle already certified answer from
+        ``_ORIENTATION_MEMO`` instead of re-running the exact predicate --
+        which is what turns a one-vertex smoothing move from ``O(faces)``
+        exact predicate calls into ``O(one-ring)``.
+        """
+        blocks = mesh.vertices[mesh.faces] if triangles is None else triangles
+        keys = _triangle_keys(blocks) if triangle_keys is None else triangle_keys
+        for index, key in enumerate(keys):
+            if key in _ORIENTATION_MEMO:
+                continue
+            if not cls._triangle_orientation_ok(blocks[index]):
                 return False
-            scale = max(float(np.max(np.linalg.norm(tri - tri[0], axis=1))), 1.0)
-            probe = tri.mean(axis=0) + normal / normal_length * scale
-            if cls._exact_orient3d(tri[0], tri[1], tri[2], probe) == 0:
-                return False
+            cls._memoize_orientation(key)
         return True
+
+    @staticmethod
+    def _memoize_orientation(key: bytes) -> None:
+        if len(_ORIENTATION_MEMO) >= _ORIENTATION_MEMO_LIMIT:
+            _ORIENTATION_MEMO.clear()
+        _ORIENTATION_MEMO.add(key)
+
+    @classmethod
+    def _triangle_orientation_certified(cls, tri: np.ndarray, key: bytes) -> bool:
+        """Memoized ``_triangle_orientation_ok`` keyed on exact coordinates."""
+        if key in _ORIENTATION_MEMO:
+            return True
+        if not cls._triangle_orientation_ok(tri):
+            return False
+        cls._memoize_orientation(key)
+        return True
+
+    @classmethod
+    def _triangle_orientation_ok(cls, tri: np.ndarray) -> bool:
+        """Return whether one triangle has a non-zero Shewchuk exact sign."""
+        normal = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+        normal_length = float(np.linalg.norm(normal))
+        if not np.isfinite(normal_length) or normal_length <= np.finfo(float).tiny:
+            return False
+        scale = max(float(np.max(np.linalg.norm(tri - tri[0], axis=1))), 1.0)
+        probe = tri.mean(axis=0) + normal / normal_length * scale
+        return cls._exact_orient3d(tri[0], tri[1], tri[2], probe) != 0
 
     @staticmethod
     def _exact_orient3d(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> int:

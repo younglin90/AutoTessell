@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.analyzer.readers import read_stl
 from core.preprocessor.native_tri import (
@@ -13,6 +15,7 @@ from core.preprocessor.native_tri import (
     OperatorTransaction,
     estimate_curvature_sizing,
 )
+from core.preprocessor.native_tri import operator_loop as operator_loop_module
 
 
 def _tet_surface() -> tuple[np.ndarray, np.ndarray]:
@@ -314,6 +317,91 @@ def test_cube_bounded_multi_rounds_remain_manifold_and_watertight() -> None:
     assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
     assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
     assert tx.run_rounds(max_rounds=0) == ()
+
+
+@pytest.mark.slow
+def test_sphere_multi_round_stays_linear_in_exact_predicate_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``run_rounds`` on the 1280-face sphere fixture must finish in bounded work.
+
+    Regression guard for the operator-loop scoping fix.  Before it, every
+    single-vertex smoothing move re-validated the *whole* mesh -- the
+    fold-over and exact-orientation guards each walked all faces calling the
+    Shewchuk predicate, and each flip candidate rebuilt a whole-mesh valence
+    table -- so one round was empirically ~O(faces^3): 0.015 s / 0.159 s /
+    8.9 s / 541 s at 20 / 80 / 320 / 1280 faces.  Four rounds on this fixture
+    could not complete.
+
+    The primary assertion counts exact ``orient3d`` calls rather than seconds,
+    because that count is deterministic and machine-independent.  Measured on
+    the pre-fix implementation at 320 faces: 115200 calls for one round
+    (360 per face, i.e. growing *with* the face count).  After the fix the
+    same round costs 2474 calls (7.7 per face, flat), and four rounds on the
+    1280-face fixture cost 47336 (37 per face).  The 200-per-face budget below
+    therefore leaves ~5x headroom over the fixed behaviour while still being
+    far under anything the old whole-mesh rescan could produce.
+    """
+    sphere_path = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    mesh = read_stl(sphere_path)
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+
+    lengths = np.array(
+        [
+            np.linalg.norm(vertices[edge[0]] - vertices[edge[1]])
+            for edge in {
+                tuple(sorted((int(face[i]), int(face[(i + 1) % 3]))))
+                for face in faces.tolist()
+                for i in range(3)
+            }
+        ],
+    )
+    target = float(np.median(lengths))
+    # The Botsch/Dunyach hysteresis band straddles this fixture's entire edge
+    # range, so no edge is split- or collapse-eligible: the round reduces to
+    # the pure flip + smooth pass that previously failed to complete.
+    assert float(lengths.max()) <= (4.0 / 3.0) * target
+    assert float(lengths.min()) >= (4.0 / 5.0) * target
+
+    calls = [0]
+    original_orient3d = OperatorTransaction._exact_orient3d
+
+    def counting_orient3d(
+        a: np.ndarray,
+        b: np.ndarray,
+        c: np.ndarray,
+        d: np.ndarray,
+    ) -> int:
+        calls[0] += 1
+        return int(original_orient3d(a, b, c, d))
+
+    monkeypatch.setattr(
+        OperatorTransaction,
+        "_exact_orient3d",
+        staticmethod(counting_orient3d),
+    )
+    # Start from a cold memo so the budget is an honest upper bound rather
+    # than a by-product of whatever ran earlier in the session.
+    monkeypatch.setattr(operator_loop_module, "_ORIENTATION_MEMO", set())
+
+    tx = OperatorTransaction(vertices, faces, target_edge_length=target)
+    started = time.perf_counter()
+    round_reports = tx.run_rounds(max_rounds=4)
+    elapsed = time.perf_counter() - started
+
+    assert calls[0] < 200 * len(faces)
+    # Secondary, deliberately loose wall-clock guard (measured ~9 s).
+    assert elapsed < 120.0
+
+    assert len(round_reports) == 4
+    assert any(report.accepted for reports in round_reports for report in reports)
+    # An inert target must not change the face count.
+    assert len(tx.state.faces) == len(faces)
+    incidence = _edge_incidence(tx.state.faces)
+    assert all(len(directions) == 2 for directions in incidence.values())
+    assert all(sorted(directions) == [-1, 1] for directions in incidence.values())
+    assert len(tx.state.vertices) - len(incidence) + len(tx.state.faces) == 2
 
 
 def test_frey_sizing_flat_fallback_matches_reference_scale() -> None:
