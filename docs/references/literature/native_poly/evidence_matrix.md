@@ -201,3 +201,31 @@ All card names verified against their source notes.
 | --- | --- | --- |
 | `POLY-CVT-LLOYD1` | Du 1999 | Frozen-boundary interior Lloyd pass with monotone-energy assert and rollback gate |
 | `POLY-CVT-DENSITY1` | Du 1999 | Density-graded interior seed sampling `rho = h^-alpha`, sweep alpha in {3..6} |
+
+## 2026-07-26 `POLY-NO-DROP-HOLES1` measured evidence
+
+Direct SciPy Voronoi was isolated with `auto_escalate=False`, seed 8, Lloyd 0,
+no budgeted hex route. Legacy `quality.py` deletion removed 17/19 cube cells,
+12/12 cylinder cells (the empty candidate lost selection), and 24/36 sphere
+cells. Cube boundary components changed 1 -> 2 and sphere 1 -> 8; absolute
+domain-volume sums fell 99.85% and 89.28%. Cube cell 6 specifically exposed
+the former internal face `(19,20,22,49,50,62,70)` owned on the other side by
+cell 16. This directly confirms the Sorgente-derived warning that cell deletion
+can manufacture a boundary/hole.
+
+The raw writer census found an independent silent-loss defect: cube wrote
+18/19 cells and cylinder 8/12; sphere wrote 36/36. Strict writer mode now
+rejects any cell/face loss or non-manifold extra face reference before files
+are created. Python and optional C++ topology paths share the returned census
+and have parity tests for both rejection classes.
+
+Bounded interior-node trials were hard-gated by identical topology/patches,
+bit-identical boundary positions, owner-neighbour incidence, non-increasing
+negative/zero volume counts, domain-volume relative error `<=1e-10`, then
+quality non-regression. Cube and cylinder did not reduce the bad population;
+sphere reduced 24 -> 16 but violated domain volume. **Measured verdict: KILL
+the relocation mechanism; diagnostic trial only, unconditional rollback.** ON
+preserves the raw cells and uses strict writer failure rather than silently
+disabling legacy deletion into writer-invalid output. OFF remains byte-identical
+on all three fixtures. Fixed-primal polydual and budget+BL hex-base paths are
+flag no-ops.

@@ -350,11 +350,13 @@ def _write_polymesh_poly(
     vertices: np.ndarray,
     cells: list[list[list[int]]],  # cell 별 face (vertex index list)
     case_dir: Path,
+    *,
+    strict: bool = False,
 ) -> dict[str, int]:
     """각 cell 을 face list 로 정의한 polyMesh — generic writer 위임."""
     from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
 
-    return write_generic_polymesh(vertices, cells, case_dir)
+    return write_generic_polymesh(vertices, cells, case_dir, strict=strict)
 
 
 _TTT3_POLY_BL_EXTRUDE_ENABLE = True  # TTT4: BL prism extrude 활성.
@@ -2334,10 +2336,17 @@ def _generate_native_poly_voronoi_inner(
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).
+    _no_drop_holes1_active = False
+    _no_drop_snapshot_pts: np.ndarray | None = None
+    _no_drop_snapshot_cells: list[list[list[int]]] | None = None
     try:
         from core.generator.native_poly.quality import (
-            smooth_poly_in_memory, poly_quality_report,
-            drop_degenerate_poly_cells, collapse_short_face_edges,
+            collapse_short_face_edges,
+            conservative_no_drop_repair,
+            drop_degenerate_poly_cells,
+            no_drop_holes1_enabled,
+            poly_quality_report,
+            smooth_poly_in_memory,
         )
 
         # DD1 — face edge collapse 는 helper 로만 export, default 비활성.
@@ -2345,70 +2354,104 @@ def _generate_native_poly_voronoi_inner(
         # 강등 발생. 사용자 수동 호출용으로 남겨둠.
         _ = collapse_short_face_edges  # noqa: F841
 
-        # AA2 (beta1700) — best-of-three 후보 점수 비교 채택.
-        # 후보 1: raw (변화 없음).
-        # 후보 2: drop only.
-        # 후보 3: drop + smooth (이전 단계).
-        def _poly_score(p_arr, c_list) -> tuple[float, dict]:
-            if not c_list:
-                return -1.0, {"n": 0}
-            qr = poly_quality_report(p_arr, c_list)
-            # n_cells 가중 + (90 - no) + (5 - skew). 모두 0~1 스케일링.
-            cell_score = min(1.0, qr.n_cells / 50.0)
-            no_score = max(0.0, (90.0 - qr.max_non_orthogonality_deg) / 90.0)
-            sk_score = max(0.0, (5.0 - min(qr.max_skewness, 5.0)) / 5.0)
-            score = 0.3 * cell_score + 0.35 * no_score + 0.35 * sk_score
-            return score, {
-                "n": qr.n_cells,
-                "no": round(qr.max_non_orthogonality_deg, 1),
-                "sk": round(qr.max_skewness, 3),
-            }
+        _no_drop_holes1_active = no_drop_holes1_enabled()
+        if _no_drop_holes1_active:
+            import copy as _copy_no_drop  # noqa: PLC0415
 
-        cand_raw_pts = final_vertices.copy()
-        cand_raw_cells = [list(c) for c in final_cells]
-        raw_score, raw_info = _poly_score(cand_raw_pts, cand_raw_cells)
+            _no_drop_snapshot_pts = final_vertices.copy()
+            _no_drop_snapshot_cells = _copy_no_drop.deepcopy(final_cells)
+            repair = conservative_no_drop_repair(
+                _no_drop_snapshot_pts,
+                _no_drop_snapshot_cells,
+            )
+            # The required cube/cylinder/sphere sweep falsified the bounded
+            # relocation candidate.  Keep it diagnostic-only and always roll
+            # back; no production geometry mutation survives this card.
+            final_vertices = _no_drop_snapshot_pts.copy()
+            final_cells = _copy_no_drop.deepcopy(_no_drop_snapshot_cells)
+            log.info(
+                "native_poly_no_drop_holes1",
+                accepted=repair.accepted,
+                committed=False,
+                reason=repair.reason,
+                n_cells=len(final_cells),
+                n_bad_before=repair.n_bad_before,
+                n_bad_after=repair.n_bad_after,
+            )
+        else:
+            # AA2 (beta1700) — best-of-three 후보 점수 비교 채택.
+            # 후보 1: raw (변화 없음).
+            # 후보 2: drop only.
+            # 후보 3: drop + smooth (이전 단계).
+            def _poly_score(p_arr, c_list) -> tuple[float, dict]:
+                if not c_list:
+                    return -1.0, {"n": 0}
+                qr = poly_quality_report(p_arr, c_list)
+                # n_cells 가중 + (90 - no) + (5 - skew). 모두 0~1 스케일링.
+                cell_score = min(1.0, qr.n_cells / 50.0)
+                no_score = max(0.0, (90.0 - qr.max_non_orthogonality_deg) / 90.0)
+                sk_score = max(0.0, (5.0 - min(qr.max_skewness, 5.0)) / 5.0)
+                score = 0.3 * cell_score + 0.35 * no_score + 0.35 * sk_score
+                return score, {
+                    "n": qr.n_cells,
+                    "no": round(qr.max_non_orthogonality_deg, 1),
+                    "sk": round(qr.max_skewness, 3),
+                }
 
-        # 후보 2: drop only.
-        cand_drop_cells, n_drop = drop_degenerate_poly_cells(
-            final_vertices, final_cells,
-            max_skewness=8.0, max_non_ortho_deg=78.0,
-        )
-        drop_score, drop_info = _poly_score(final_vertices, cand_drop_cells)
+            cand_raw_pts = final_vertices.copy()
+            cand_raw_cells = [list(c) for c in final_cells]
+            raw_score, raw_info = _poly_score(cand_raw_pts, cand_raw_cells)
 
-        # 후보 3: drop + smooth.
-        smoothed_pts = final_vertices.copy()
-        if cand_drop_cells:
-            best_pts = smoothed_pts
-            best_skew = poly_quality_report(smoothed_pts, cand_drop_cells).max_skewness
-            cur_pts = smoothed_pts.copy()
-            for _it_block in range(4):
-                cur_pts = smooth_poly_in_memory(
-                    cur_pts, cand_drop_cells, n_iter=2, relax=0.35,
-                )
-                cur_skew = poly_quality_report(cur_pts, cand_drop_cells).max_skewness
-                if cur_skew < best_skew:
-                    best_skew = cur_skew
-                    best_pts = cur_pts.copy()
-                else:
-                    break
-            smoothed_pts = best_pts
-        smoothed_score, sm_info = _poly_score(smoothed_pts, cand_drop_cells)
+            # 후보 2: drop only.
+            cand_drop_cells, n_drop = drop_degenerate_poly_cells(
+                final_vertices, final_cells,
+                max_skewness=8.0, max_non_ortho_deg=78.0,
+            )
+            drop_score, drop_info = _poly_score(final_vertices, cand_drop_cells)
 
-        log.info(
-            "native_poly_best_of_three",
-            raw=round(raw_score, 3), raw_info=raw_info,
-            drop=round(drop_score, 3), drop_info=drop_info,
-            smooth=round(smoothed_score, 3), sm_info=sm_info,
-            n_drop=n_drop,
-        )
+            # 후보 3: drop + smooth.
+            smoothed_pts = final_vertices.copy()
+            if cand_drop_cells:
+                best_pts = smoothed_pts
+                best_skew = poly_quality_report(
+                    smoothed_pts, cand_drop_cells,
+                ).max_skewness
+                cur_pts = smoothed_pts.copy()
+                for _it_block in range(4):
+                    cur_pts = smooth_poly_in_memory(
+                        cur_pts, cand_drop_cells, n_iter=2, relax=0.35,
+                    )
+                    cur_skew = poly_quality_report(
+                        cur_pts, cand_drop_cells,
+                    ).max_skewness
+                    if cur_skew < best_skew:
+                        best_skew = cur_skew
+                        best_pts = cur_pts.copy()
+                    else:
+                        break
+                smoothed_pts = best_pts
+            smoothed_score, sm_info = _poly_score(smoothed_pts, cand_drop_cells)
 
-        if smoothed_score >= drop_score and smoothed_score >= raw_score:
-            final_vertices = smoothed_pts
-            final_cells = cand_drop_cells
-        elif drop_score >= raw_score:
-            final_cells = cand_drop_cells
-        # else: raw keep.
+            log.info(
+                "native_poly_best_of_three",
+                raw=round(raw_score, 3), raw_info=raw_info,
+                drop=round(drop_score, 3), drop_info=drop_info,
+                smooth=round(smoothed_score, 3), sm_info=sm_info,
+                n_drop=n_drop,
+            )
+
+            if smoothed_score >= drop_score and smoothed_score >= raw_score:
+                final_vertices = smoothed_pts
+                final_cells = cand_drop_cells
+            elif drop_score >= raw_score:
+                final_cells = cand_drop_cells
+            # else: raw keep.
     except Exception as exc:
+        if _no_drop_holes1_active and _no_drop_snapshot_pts is not None:
+            import copy as _copy_no_drop_rollback  # noqa: PLC0415
+
+            final_vertices = _no_drop_snapshot_pts.copy()
+            final_cells = _copy_no_drop_rollback.deepcopy(_no_drop_snapshot_cells)
         log.debug("native_poly_smooth_skipped", reason=str(exc))
 
     # POL_VAL3 — track after PPP9b/smooth (best-of-three drop+smooth pass).
@@ -2436,7 +2479,12 @@ def _generate_native_poly_voronoi_inner(
     )
 
     try:
-        stats = _write_polymesh_poly(final_vertices, final_cells, case_dir)
+        stats = _write_polymesh_poly(
+            final_vertices,
+            final_cells,
+            case_dir,
+            strict=_no_drop_holes1_active,
+        )
     except Exception as exc:
         return NativePolyResult(
             False, time.perf_counter() - t0,

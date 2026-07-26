@@ -1901,3 +1901,18 @@ BL 완성.
 - Draft: TetWild (pytetwild) — ~1 second
 - Standard: Netgen / cfMesh — ~minutes
 - Fine: snappyHexMesh + BL / MMG — ~30 minutes+
+
+## [Unreleased] - 2026-07-26 — native_poly no-drop contract
+
+- Measured direct SciPy Voronoi cell deletion on cube/cylinder/sphere and
+  confirmed manufactured boundary faces/components plus 89-100% domain-volume
+  loss in the deletion candidates.
+- Added opt-in `AUTO_TESSELL_POLY_NO_DROP_HOLES1=1` (default OFF): bounded
+  interior-node trials are checked against topology, patch, incidence,
+  boundary-bit, volume, and quality contracts, then always rolled back because
+  the required real-fixture sweep falsified the candidate.
+- Added strict polyMesh writer mode that rejects cell/face loss and
+  non-manifold extra references before writing. Python and optional C++
+  topology kernels share census-based parity; no C++ source change was needed.
+- Preserved legacy OFF output byte-for-byte on cube/cylinder/sphere; fixed
+  polydual primal and budget+BL hex-base paths remain flag no-ops.

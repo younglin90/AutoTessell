@@ -503,3 +503,64 @@ route-attribution question (S5 runs through `tier_native_poly`, this did not)
 and section 3 already requires every card to state which route produced its
 mesh; it should be resolved before a repair-lane card optimizes against the
 wrong baseline.
+
+## 8. 2026-07-26 `POLY-NO-DROP-HOLES1` result — deletion falsified, repair KILL
+
+The measurement isolated the actual production target: direct SciPy Voronoi
+with `auto_escalate=False`, `seed_density=8`, `n_lloyd=0`, no budgeted hex
+route, and no requested BL. The canonical S5 polydual harness does not call
+`quality.py`; a fixed two-tet primal confirmed the new flag is a byte-identical
+no-op there. `n_lloyd=0` was required because the pre-existing cube Lloyd path
+fails before quality with a pinned-mask length mismatch (101 versus 85).
+
+| fixture | legacy quality drop | raw writer census | drop writer census | boundary faces / components, raw -> drop | domain volume, raw -> drop |
+| --- | ---: | --- | --- | --- | --- |
+| cube | 17; 19 -> 2 cells | **invalid**, 19 -> 18 | valid, 2 -> 2 | 168 / 1 -> 14 / 2 | 0.231887415918 -> 0.000343631852 (-99.85%) |
+| cylinder | 12; 12 -> 0 candidate (not selected) | **invalid**, 12 -> 8 | valid empty mesh | 158 / 1 -> 0 / 0 | 0.162931950019 -> 0 (-100%) |
+| sphere | 24; 36 -> 12 cells | valid, 36 -> 36 | valid, 12 -> 12 | 998 / 1 -> 194 / 8 | 1.952654007133 -> 0.209369167300 (-89.28%) |
+
+The violation is concrete, not inferred. On cube, dropping cell 6 changes the
+former internal face with canonical key `(19,20,22,49,50,62,70)`, shared with
+cell 16, into a new external face. Dropping cell 13 similarly exposes
+`(77,78,79)` from cell 18. Sphere manufactured 25 new boundary keys and lost
+829 original boundary keys; its patch census/digest changed with them.
+
+### Candidate result and binding decision
+
+`AUTO_TESSELL_POLY_NO_DROP_HOLES1=1` (default OFF) snapshots points and a deep
+copy of connectivity, constructs only bounded interior-node Laplacian trials,
+and checks, in order: identical cell count; canonical boundary keys and
+components; explicit patch identity; face incidence 1/2 with ordered owner /
+neighbour; bit-identical boundary vertices; non-increasing negative/zero
+volumes; relative domain-volume change at most `1e-10`; then non-regression of
+max/mean non-orthogonality and skewness.
+
+No required real fixture produced an admissible candidate. Cube remained
+17/17 bad cells; cylinder remained 12/12; sphere improved the legacy predicate
+population 24 -> 16 but failed the exact domain-volume gate. Per the card's
+pre-registered falsification rule, **the relocation mechanism is KILL for
+production**: every trial is diagnostic-only and always rolls back to the deep
+snapshot. ON then uses strict writer mode. Cube and cylinder now fail
+explicitly before any polyMesh file is written because their raw meshes would
+otherwise lose 1 and 4 cells in the writer; sphere writes all 36 raw cells.
+There is no silent replacement of an invalid writer result with a holey mesh.
+
+OFF remains the legacy path. Repeat direct runs for cube/cylinder/sphere were
+byte-identical to the pre-mutation saved cases (8/8 files each). The writer's
+default remains permissive; strict mode alone rejects cell/face loss and
+non-manifold extra references before writing. Python and the optional C++
+topology kernel use the same returned census and produced identical strict
+rejections, so no C++ source expansion was needed.
+
+Verification used per-file limits after an aggregate pytest run left child
+processes active beyond its shell timeout. The bounded contract/writer/metric
+set reported 92 passed, 38 skipped, and only the declared pre-existing
+`test_poly_smooth` failure (`fine.smooth_iters`: expected 5, configured 7).
+`test_native_poly.py` passed 12/12 in 28.85 s and
+`test_native_poly_harness_edge.py` passed 7/7 in 12.75 s. The optional C++
+writer build passed 16/16 combined parity/card tests. The remaining historical
+sphere-primal dual test exceeded a 45 s per-file limit after its first two
+fixed/synthetic tests passed, and the module-scoped solid-volume file exceeded
+45 s before completing a test; both are OFF/default primal-generation paths,
+not the new direct-SciPy ON path. The three ON real smokes complete in seconds,
+and repeated ON sphere output is byte-identical.

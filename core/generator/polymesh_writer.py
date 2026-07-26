@@ -421,6 +421,7 @@ def write_generic_polymesh(
     boundary_patch_classifier: (
         Callable[[list[int], np.ndarray], str | tuple[str, str] | None] | None
     ) = None,
+    strict: bool = False,
 ) -> dict[str, int]:
     """Generic polyMesh writer — cell → list of face vertex lists.
 
@@ -431,6 +432,7 @@ def write_generic_polymesh(
             **각 face 는 소유 cell 외향 (CCW from outside) 으로 기록되어야 한다.**
         case_dir: 결과 case 디렉터리 — ``constant/polyMesh/`` 하위에 쓰기.
         patch_name / patch_type: 단일 boundary patch 설정 (기본 defaultWall/wall).
+        strict: reject any cell/face loss or non-manifold face before writing.
 
     Returns:
         ``{num_cells, num_points, num_faces, num_internal_faces}``.
@@ -443,8 +445,9 @@ def write_generic_polymesh(
         4. internal sort by (owner, neighbour); boundary sort by owner.
         5. points/faces/owner/neighbour/boundary 파일 + 최소 system/ 쓰기.
 
-    Non-manifold (3+ cells 공유) face 는 첫 2 cell 을 internal 로 선택하고 나머지는
-    무시한다 (경고 로그 포함).
+    Non-manifold (3+ cells 공유) face 는 기본 모드에서 첫 2 cell 을 internal 로
+    선택하고 나머지는 무시한다 (경고 로그 포함). ``strict=True`` 는 이를 쓰기
+    전에 거부한다.
     """
     # Lazy imports — 순환 import 회피
     from core.generator.tier_layers_post import (  # noqa: PLC0415
@@ -459,6 +462,7 @@ def write_generic_polymesh(
     )
 
     vertices_arr = np.asarray(vertices, dtype=np.float64)
+    n_cells_in = len(cell_faces)
     bbox_diag = (
         float(np.linalg.norm(vertices_arr.max(axis=0) - vertices_arr.min(axis=0)))
         if len(vertices_arr)
@@ -467,6 +471,7 @@ def write_generic_polymesh(
     area_eps = max((bbox_diag * 1e-12) ** 2, 1e-30)
 
     native_used = False
+    non_manifold_faces: list[tuple[int, int]] = []
     native_polymesh = _load_native_polymesh()
     if native_polymesh is not None:
         try:
@@ -563,10 +568,18 @@ def write_generic_polymesh(
                 key_len=int(key_len),
             )
 
-    poly_dir = case_dir / "constant" / "polyMesh"
-    poly_dir.mkdir(parents=True, exist_ok=True)
-    _ensure_minimal_controldict(case_dir)
-    _write_minimal_fv_dicts(case_dir)
+    if strict and (n_cells_dropped or n_faces_dropped):
+        raise ValueError(
+            "strict polyMesh contract rejected silent topology loss: "
+            f"cells_in={n_cells_in}, "
+            f"cells_out={n_cells_out}, cells_dropped={int(n_cells_dropped)}, "
+            f"faces_dropped={int(n_faces_dropped)}"
+        )
+    if strict and native_used and non_manifold_faces:
+        raise ValueError(
+            "strict polyMesh contract rejected non-manifold face references: "
+            f"count={len(non_manifold_faces)}"
+        )
 
     if not native_used:
         # face_map: canonical key → [(cell_id, ordered_verts), ...]
@@ -594,6 +607,7 @@ def write_generic_polymesh(
                 continue
             else:
                 # non-manifold: 첫 2 cell 만 internal 로 사용, 나머지 무시.
+                non_manifold_faces.append((n_refs, len(key)))
                 logger.warning(
                     "generic_polymesh_non_manifold_face",
                     n_refs=n_refs,
@@ -607,6 +621,17 @@ def write_generic_polymesh(
             internal_faces.append(f_use)
             internal_owner.append(owner_c)
             internal_nbr.append(nbr_c)
+
+    if strict and non_manifold_faces:
+        raise ValueError(
+            "strict polyMesh contract rejected non-manifold face references: "
+            f"count={len(non_manifold_faces)}"
+        )
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_minimal_controldict(case_dir)
+    _write_minimal_fv_dicts(case_dir)
 
     # Vectorized sort: np.lexsort on owner/neighbour arrays (secondary key first)
     _int_owner_arr = np.array(internal_owner, dtype=np.int64)

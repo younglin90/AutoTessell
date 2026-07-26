@@ -176,6 +176,42 @@ def test_native_repeated_and_degenerate_faces_match_python(
     assert result[4].dtype == np.dtype(np.int64)
 
 
+def test_native_strict_rejection_matches_python_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    native = _native_or_skip()
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    good = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]]
+    bad = [[0, 1, 2], [0, 4, 1], [1, 4, 2], [2, 4, 0]]
+    messages: list[str] = []
+
+    for module, case_name in ((native, "native"), (None, "python")):
+        monkeypatch.setattr(writer, "_NATIVE_POLYMESH", module)
+        monkeypatch.setattr(writer, "_NATIVE_POLYMESH_IMPORT_ATTEMPTED", True)
+        case_dir = tmp_path / case_name
+        with pytest.raises(ValueError, match="strict polyMesh contract") as exc_info:
+            writer.write_generic_polymesh(
+                vertices,
+                [good, bad],
+                case_dir,
+                strict=True,
+            )
+        messages.append(str(exc_info.value))
+        assert not case_dir.exists()
+
+    assert messages[0] == messages[1]
+
+
 def test_native_non_manifold_first_two_matches_python(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -207,6 +243,22 @@ def test_native_non_manifold_first_two_matches_python(
     assert result[1].tolist() == [0]
     assert result[2].tolist() == [1]
     assert result[8] == [(3, 3)]
+
+    strict_messages: list[str] = []
+    for module, case_name in ((native, "strict_native"), (None, "strict_python")):
+        monkeypatch.setattr(writer, "_NATIVE_POLYMESH", module)
+        monkeypatch.setattr(writer, "_NATIVE_POLYMESH_IMPORT_ATTEMPTED", True)
+        case_dir = tmp_path / case_name
+        with pytest.raises(ValueError, match="non-manifold face references") as exc_info:
+            writer.write_generic_polymesh(
+                vertices,
+                cells,
+                case_dir,
+                strict=True,
+            )
+        strict_messages.append(str(exc_info.value))
+        assert not case_dir.exists()
+    assert strict_messages[0] == strict_messages[1]
 
 
 def test_native_nan_face_area_matches_python(
