@@ -168,3 +168,50 @@ and must carry the ±1/2 faces explicitly — which is exactly
 An optional cheap win first: add a damped/self-weighted Gauss-Seidel
 variant to kill the period-2 cycle, as a new function alongside the
 existing one.
+
+## 2026-07-26 QUAD-SINGULARITY1 result (measured, report-only, zero field/mesh edits)
+
+Added a frozen, deterministic face ledger over the unchanged extrinsic and
+intrinsic `SingularityCensus` objects. The union is sorted by face ID. Every
+entry carries the triangle's vertex IDs and centroid, both connection indices,
+connection category/agreement, and an `unresolved` guard. A regular readout is
+explicit index `0`; centered residue `2` is exposed as admissible indices
+`(-2, 2)` (fractional indices `-1/2` and `+1/2`) under that connection. A
+consumer may use an entry directly only when both connections report the same
+non-ambiguous signed index; exclusive, disagreeing, and half-index entries are
+unresolved. This is the explicit data contract for `QUAD-POSY1`: it must branch,
+reject, or apply a separately specified resolution policy and must never choose
+the positive half-index implicitly.
+
+Measured with `multires=True`, 20 total sweeps, seed 0:
+
+| Shape | singularities ext/int | ±1/2 ext/int | union | shared | ext-only | int-only | shared disagreement | ambiguous union | unresolved | source Poincaré-Hopf |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| cube | 8 / 8 (all +1/4) | 0 / 0 | 10 | 6 | 2 | 2 | 0 | 0 | 4 | exact / exact |
+| cylinder (g1) | 18 / 18 | 0 / 0 | 26 | 10 | 8 | 8 | 0 | 0 | 16 | exact / exact |
+| bracket (g3) | 38 / 56 | **18 / 4** | 69 | 25 | 13 | 31 | 6 | 18 | 54 | reconcilable / reconcilable |
+
+The cube's two connections each retain the textbook eight `+1/4` indices;
+their triangle representatives differ on four exclusive faces, which the
+ledger now exposes instead of conflating with shared-index disagreement. The
+bracket preserves the measured extrinsic/intrinsic 18-vs-4 half-index split;
+the four intrinsic ambiguous faces are contained in the 18-face ambiguous
+union.
+
+The ledger reproduces the original census sums exactly: cube `8 / 8`, cylinder
+`0 / 0`, and bracket `32 / -8` in quarter-turn units. The bracket values remain
+reconcilable to `4 * chi = -16` by the source censuses' existing ambiguity rule.
+Pre-card baseline and post-card field values were bit-identical:
+
+| Shape | extrinsic energy start (before → after card) | extrinsic energy final (before → after card) | census count ext/int (before → after card) |
+| --- | --- | --- | --- |
+| cube | 5.79185018809548 → 5.79185018809548 | 3.7781425115852247 → 3.7781425115852247 | 8/8 → 8/8 |
+| cylinder | 189.27339617265298 → 189.27339617265298 | 45.99098451009072 → 45.99098451009072 | 18/18 → 18/18 |
+| bracket | 158.29616581517368 → 158.29616581517368 | 44.10917070232732 → 44.10917070232732 | 38/56 → 38/56 |
+
+Synthetic disjoint triangles pin union ordering, all three categories,
+zero-on-the-regular-connection semantics, exact face vertices/centroids,
+`(-2, 2)` admissibility, shared disagreement, and unresolved classification.
+Repeated bracket runs compare equal as frozen dataclasses and as protocol-5
+pickle bytes. The diagnostic remains unconnected to mesh generation and has no
+environment flag.

@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — QUAD-SINGULARITY1 explicit face ledger.
+
+- Added a deterministic, report-only union ledger for extrinsic/intrinsic
+  4-RoSy singularity faces, including face vertices/centroids, both indices,
+  connection categories, agreement, ambiguity, and unresolved status.
+- Preserved `index=2` as admissible `(-2, 2)` quarter-turn indices so the
+  future QUAD-POSY1 path cannot silently choose a `+1/2` sign. Existing field,
+  census, Poincaré-Hopf, and mesh-generation behavior is unchanged.
+- Added synthetic contract tests plus multires cube/cylinder/bracket
+  measurements, including the hard bracket's unchanged 18-vs-4 ambiguity.
+
 ## [Unreleased] - 2026-07-24 — native_poly directional AR gate.
 
 - Added a fail-closed high-aspect-ratio relaxation: principal-axis alignment,
