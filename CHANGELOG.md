@@ -1,6 +1,5 @@
 # Changelog
 
-<<<<<<< /tmp/tmp.keknse2nMZ/ours/CHANGELOG.md
 ## [Unreleased] - 2026-07-26 — HEX-PATCH-LAYER-DIAG1 diagnostic KILL.
 
 - Added a report-only strict patch/layer classifier and cached-data runner for
@@ -14,7 +13,6 @@
 - Killed the card before any topology mutation: zero valid subsets and zero
   approved pillow operations. Wall_dev/skew gates and production behavior are
   unchanged; no production pillowing or sheet-extraction path was added.
-=======
 ## [Unreleased] - 2026-07-26 — POLY-ROUTE-ATTRIB1 diagnostic.
 
 - Added a report-only fixed-primal route-attribution harness and CLI covering
@@ -30,7 +28,6 @@
   upstream primal/measurement-protocol mismatch; optimization is blocked from
   using those absolute values as a paired baseline. Sphere is bounded at 30 s
   and reports timeout without a route conclusion.
->>>>>>> /tmp/tmp.keknse2nMZ/theirs/CHANGELOG.md
 
 ## [Unreleased] - 2026-07-26 — TET-MM-1 diagnostic KILL.
 
@@ -117,6 +114,93 @@
 - Added report-only hex/prism/tet/other census, count/volume fractions, ScoreCHE,
   hex-cluster statistics, and β-margin diagnostics. Pairing and all-hex gates
   remain unchanged and unclaimed.
+
+## [Unreleased] - 2026-07-24 — native_tet Phase 0i CVT/Klingner split commit.
+
+- Committed `8a226df8` with only the CVT3D current-boundary lock fix and the
+  Klingner boundary face-set/area preservation guard. Dual-torus CVT probes
+  confirmed zero boundary movement.
+- Naca's stale-caller-lock explanation is superseded: the corrected lock set
+  still permits the bulk-vectorized collapse path to change boundary faces
+  `712 -> 974`, so the open root-cause card is
+  `TET-COLLAPSE-BULK-ROOTCAUSE-1`.
+- Opened `TET-BSP-INSERT-ROOTCAUSE-1` for the dual-torus BSP insertion and
+  recovery sequence. The collapse-lock WIP remains uncommitted, and Phase 1
+  remains blocked pending both root-cause cards; the 61 wedge limitation stays
+  strict-xfail.
+
+## [Unreleased] - 2026-07-24 — native_tet Phase 0b rescue isolation measured.
+
+- Executed the requested stash-protected Cells A–D on `eb846f43` and the full
+  restored WIP. Cell B matched clean Cell A because the base commit has no
+  rescue env-gate code; the exported flags were inert.
+- Cell C reproduced `naca0012` skew `1436.7757` / area-ratio `4.298046` /
+  vol-ratio `0.835571` / degen `2` and the dual-torus 120 s timeout. Cell D
+  matched Cell C with rescue flags restored ON, so the result is not rescue-only
+  closure. No Phase 1 mechanism or checker change was implemented.
+- Phase 0c traced full-WIP naca to `route=tet_harness`; named extrusion/rescue
+  builders returned `None`. qopt was active but disabling only its quality guard
+  did not change the naca failure. A 300 s dual probe measured clean `119.9 s`
+  versus WIP `231.3 s`, so the WIP performance regression is separate.
+- Phase 0d measured `dirty_retry_case=false` for naca and `true` for dual.
+  Forcing naca `max_iter=2` left its failure unchanged; dual emitted the
+  expected `2 -> 1` cap; a narrower no-code-change harness-only override also
+  timed out at 360 s.
+  The cap is therefore falsified as the common cause. No implementation or
+  policy change was made.
+- Phase 0e confirmed the optional `native_tet_predicates` extension loads, but
+  naca and dual benches called neither staged predicate batch function. Direct
+  uncertain-input parity showed 22 orient and 13,920 insphere mismatches;
+  disabling the loader left both benchmark metrics unchanged. No predicate
+  fix or policy change was made.
+- Phase 0f logging-only pipeline snapshots isolated the naca boundary failure:
+  `collapse_short_edges` is the first observed violation (`area-ratio
+  1.000000 -> 1.233728`), RR1 flips raise it to `1.447229`, and
+  `klingner_full_sweep` amplifies it to `4.298935`. Dual's selected attempt has
+  its large jump in the post-boundary-BSP sequence (`1.013413 -> 1.605246`)
+  after BSP insertion and accepted CVT3D; another attempt also showed a
+  Klingner jump. No generation logic, policy, or Phase 1 card was changed.
+- Phase 0g confirmed stale/incomplete lock mapping: naca `mesher.py:6740`
+  receives 320 stale surface IDs while 358 current boundary vertices exist;
+  38 are unlocked, and only 4 IDs retain same-index coordinate identity.
+  No direct boundary victim occurred among 266 collapses. Dual BSP is the
+  primary jump, while CVT3D moved all 320 boundary vertices outside its
+  `n_surface=2047` range. Klingner has quality-only monotonicity and no
+  boundary guard. Repair locations were recorded as proposals only; no code
+  or policy change was made.
+
+## [Unreleased] - 2026-07-24 — native_tet Phase-0 준비 카드 read-only 구현.
+
+- `core/generator/native_tet/quality.py`
+  - `tet_gsm_score` 추가: 면적 4개 + 볼륨 기반 per-tet GSM-like read-only 점수.
+- `core/generator/native_tet/validate.py`
+  - `classify_flat_sliver_wdel2` 추가: TET-WDEL-2 read-only `PUMPABLE/LOCKED` 분류기.
+  - `flat_allsurf_sliver_candidates` `return_indices` 옵션 추가.
+- `core/generator/native_tet/mesher.py`
+  - FSL3 경로에 `TET-WDEL-2` 진단 실행 + `TET-SHAPE-1` GSM 사전/사후 통계 계산, `debug_info` 저장.
+- `tests/test_native_tet_bcc_cert_harness.py`
+  - `TET-BCC-CERT-HARNESS` 용 샘플 템플릿 minimum-dihedral floor 테스트 추가.
+- `tests/test_native_tet_shape_gate.py`
+  - GSM 점수 및 WDEL-2 read-only 분류기를 점검하는 단위 테스트 추가.
+- `core/generator/native_tet/mesher.py`
+  - `TET-LAZY-1` + `TET-SHAPE-3(a)` Phase-1 Wave-1 진단 훅 추가 (`AUTO_TESSELL_TET_PHASE1_WAVE1`),
+    기본 OFF (`AUTO_TESSELL_TET_LAZY1_APPLY`, `AUTO_TESSELL_TET_SHAPE3A_APPLY`).
+  - `debug_info`에 `phase1_tet_lazy1`, `phase1_tet_shape3a` 추가.
+- `core/generator/native_tet/mesher.py`
+  - `TET-WDEL-1` Phase-1 Wave-2 진단 훅 추가 (`AUTO_TESSELL_TET_PHASE1_WAVE2`).
+    기본 OFF이며, `AUTO_TESSELL_TET_WDEL1_APPLY=1`일 때만 내부 weighted 연결 변경을 허용.
+    `phase1_tet_wdel1`를 `debug_info`에 추가.
+- `docs/references/literature/native_tet/native_tet_literature_integrated_development_plan_2026-07-23.md`
+  - Phase-1 Wave-2 수행 기록을 checkpoint/카드 상태로 반영.
+- `docs/references/literature/native_tet/evidence_matrix.md`
+  - `TET-WDEL-1` 상태를 “측정 훅 구현 완료”로 업데이트.
+- `core/generator/native_tet/stellar.py`
+  - `_multi_face_removal_apply`의 스텁/데드코드를 복구하고, star-size=2 후보에 대한
+    보수적 3-face 제거 시뮬레이션·적용 경로를 복원.
+- `docs/references/literature/native_tet/native_tet_literature_integrated_development_plan_2026-07-23.md`
+  - Phase-1 Wave-1 실행 계획 항목(측정 훅 추가, apply 기본 OFF) 업데이트.
+- `docs/references/literature/native_tet/evidence_matrix.md`
+  - `TET-LAZY-1`, `TET-SHAPE-3` 카드 상태에 Phase-1 측정 훅 반영.
 
 ## [1.2.0-gui-qa-9] - 2026-05-13 — Option A pipeline output → temp dir, Export to user path.
 
