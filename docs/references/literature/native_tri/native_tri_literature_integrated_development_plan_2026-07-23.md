@@ -328,3 +328,55 @@ measurement, uses relative (never absolute) guards, and is reverted whole on
 any hard-gate failure. A corpus case that cannot satisfy the gates exits via
 the explicit-rejection path with the original preserved — itself a tested
 feature from Phase 1 onward.
+
+## 7. TRI-SHELL-PROVENANCE1 measured result (2026-07-26)
+
+Status: **implemented as default-OFF, report-only diagnostics on the existing
+linear-shell MVP; no complete-bijection claim.** Set
+`AUTO_TESSELL_TRI_SHELL_PROVENANCE1=1` to append one immutable provenance
+census per completed operator-loop round. The census never participates in a
+`GuardReport`, acceptance, stopping, shell-checkpoint rollback, or mesh
+mutation; disabling the flag is the complete rollback.
+
+The implementation evaluates Jiang 2020's floating-point
+`P(p) = (prism/triangle id, alpha, beta, normalized h)` by mapping each of the
+existing canonical physical tetrahedra affinely to its reference-prism tet.
+The inverse uses the same reference decomposition, and the middle projection
+sets `h=0`. Source face index, original face vertices, and discrete patch ID
+are carried by frozen tuple-backed records. The deterministic report samples
+target-face centroids in face order and records mapped, ambiguous, unmapped,
+pinched, and non-finite outcomes; ambiguous/pinched/invalid queries receive no
+payload.
+
+Measured on WSL2 Ubuntu, Python 3.12, face-centroid queries (one timed run;
+the deterministic-repeat check reran the census but is excluded from the
+reported time):
+
+| Fixture | V / F | Shell local-scale fraction | Coverage | Ambiguous / unmapped | Max / p95 FP round-trip | Build / report runtime |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cube.stl` | 8 / 12 | 0.5 | 12/12 (100%) | 0 / 0 | 1.110e-16 / 1.110e-16 | 0.006744 s / 0.017120 s |
+| `cylinder.stl` | 66 / 128 | 0.2 | 128/128 (100%) | 0 / 0 | 1.388e-16 / 1.039e-16 | 0.020977 s / 0.111792 s |
+| `sphere.stl` | 642 / 1280 | 0.5 | 1280/1280 (100%) | 0 / 0 | 2.483e-16 / 1.272e-16 | 0.364499 s / 1.256523 s |
+
+All three repeated reports were value-identical. The cylinder did not build
+at the DOMAIN1 default `local_scale_fraction=0.5` (`I1_or_I2_failed`) and was
+measured at 0.2; this parameter sensitivity is evidence against claiming a
+general shell constructor.
+
+Scope reductions remain binding: one canonical 6-tet decomposition rather
+than the 24-tet/all-order I1 certificate; no complete I2, topological bevel,
+or production singularity-pinch construction; area-weighted normals rather
+than the most-normal QP; centroid payload census rather than whole-face
+coverage; no feature-curve constraint. Projection coordinates are FP, while
+tet membership continues to use Shewchuk `orient3d`. The existing brute-force
+AABB candidate scan was intentionally not optimized. The next card is
+`TRI-SHELL-CANDIDATE1`: add and benchmark a deterministic spatial candidate
+index without changing attribution semantics; the full 24-tet/I2/bevel/pinch
+constructor remains a later DOMAIN follow-up.
+
+Verification: hand-computable prism forward/inverse/middle projection; frozen
+patch-payload pullback; forced ambiguous, pinched, unmapped, non-finite, and
+report-exception paths; OFF baseline versus ON repeats with byte-identical
+mesh state and identical `GuardReport`/checkpoint histories; all native-tri
+and required Shewchuk predicate regressions (65 passed); `py_compile`, ruff,
+and diff hygiene passed.

@@ -8,6 +8,7 @@ and exact-orientation guards.  Rejected proposals leave the state unchanged.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -15,7 +16,18 @@ from typing import cast
 
 import numpy as np
 
-from .bijective_shell import BijectiveShell, ShellCheckpointReport
+from .bijective_shell import (
+    BijectiveShell,
+    ShellCheckpointReport,
+    ShellProvenanceReport,
+)
+
+_SHELL_PROVENANCE_ENV = "AUTO_TESSELL_TRI_SHELL_PROVENANCE1"
+
+
+def shell_provenance_reporting_enabled() -> bool:
+    """Return whether the default-OFF provenance census is enabled."""
+    return os.environ.get(_SHELL_PROVENANCE_ENV) == "1"
 
 #: One triangle is three ``float64`` points, i.e. 9 * 8 bytes of coordinates.
 _TRIANGLE_KEY_BYTES = 72
@@ -286,6 +298,8 @@ class OperatorTransaction:
         if curvature_epsilon is not None:
             self._refresh_curvature_sizing()
         self.shell_checkpoint_reports: list[ShellCheckpointReport] = []
+        self.shell_provenance_reports: list[ShellProvenanceReport] = []
+        self.shell_provenance_report_failures: list[str] = []
 
     # ------------------------------------------------------------------
     # Per-state derived caches.
@@ -914,6 +928,24 @@ class OperatorTransaction:
                 surface_vertices=surface_vertices,
             )
             rounds.append(reports)
+
+            # TRI-SHELL-PROVENANCE1 is diagnostic-only.  It reads the
+            # completed round state and appends an immutable census; neither
+            # its status nor its round-trip error participates in acceptance,
+            # rollback, stopping, or any GuardReport.
+            if shell is not None and shell_provenance_reporting_enabled():
+                try:
+                    provenance_report = shell.census_face_centroids(
+                        self.state.vertices,
+                        self.state.faces,
+                    )
+                except Exception as error:  # noqa: BLE001
+                    # Diagnostics must remain fail-open with respect to the
+                    # operator loop.  The exception class is retained as a
+                    # deterministic, report-only failure reason.
+                    self.shell_provenance_report_failures.append(type(error).__name__)
+                else:
+                    self.shell_provenance_reports.append(provenance_report)
 
             if shell is not None:
                 containment = shell.check_round_containment(

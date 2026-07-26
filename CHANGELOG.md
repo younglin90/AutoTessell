@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] - 2026-07-26 — TRI-SHELL-PROVENANCE1 report lane.
+
+- Added Jiang-2020 linear-shell FP coordinates `(prism, alpha, beta, h)`,
+  inverse/middle projection, immutable source-face/patch payloads, and a
+  deterministic face-centroid census.
+- Added explicit mapped/ambiguous/unmapped/pinched/non-finite accounting with
+  no arbitrary payload assignment and max/p95 round-trip error reporting.
+- Wired the census behind `AUTO_TESSELL_TRI_SHELL_PROVENANCE1=1` (default OFF).
+  ON remains report-only and fail-open: mesh bytes, `GuardReport`, acceptance,
+  and existing shell rollback are unchanged.
+- Scope remains the DOMAIN1 canonical 6-tet linear-shell MVP, not Jiang's full
+  24-tet/I2/bevel/pinch bijection contract. Candidate indexing is deferred to
+  `TRI-SHELL-CANDIDATE1`.
+
 ## [Unreleased] - 2026-07-26 — QUAD-SINGULARITY1 explicit face ledger.
 
 - Added a deterministic, report-only union ledger for extrinsic/intrinsic

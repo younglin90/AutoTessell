@@ -65,6 +65,15 @@ already flags exactly these two risks for a first implementation):
      verification corpus scale; an accelerated spatial index is a scaling
      follow-up, not a correctness gap, if a future corpus case is too slow.
 
+``TRI-SHELL-PROVENANCE1`` adds the floating-point map ``P(p) = (prism id,
+alpha, beta, normalized h)`` and its inverse on exactly that linear-shell MVP.
+It is wired to ``operator_loop.py`` only when
+``AUTO_TESSELL_TRI_SHELL_PROVENANCE1=1`` and then records a deterministic
+face-centroid census without changing acceptance. Shared-prism, pinched,
+unmapped, and non-finite queries remain unassigned. This is a payload-transfer
+diagnostic, not a claim that the reduced shell satisfies Jiang's complete
+bijection contract.
+
 Attene-style indirect predicates remain off-limits (LGPL vendoring decision
 still pending user approval); every check here uses only the already
 vendored, ``-ffp-contract=off``-compiled Shewchuk ``orient3d``
@@ -73,9 +82,29 @@ vendored, ``-ffp-contract=off``-compiled Shewchuk ``orient3d``
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 import numpy as np
+
+# Each physical tet in ``_prism_tets`` is paired with the corresponding tet
+# in the canonical triangular prism.  Coordinates are ``(alpha, beta, h)``:
+# ``(1-alpha-beta, alpha, beta)`` are barycentric weights on the ordered
+# middle triangle and ``h`` is normalized to -1/0/+1 on bottom/middle/top.
+_REFERENCE_PRISM_TETS = np.asarray(
+    (
+        ((0.0, 0.0, -1.0), (1.0, 0.0, -1.0), (0.0, 1.0, -1.0), (0.0, 1.0, 0.0)),
+        ((1.0, 0.0, -1.0), (0.0, 0.0, -1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ((0.0, 0.0, -1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 1.0, 1.0)),
+        ((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 1.0, 1.0)),
+        ((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (0.0, 1.0, 1.0)),
+    ),
+    dtype=np.float64,
+)
+
+_PROJECTION_TOLERANCE = 1e-10
 
 
 def _orient3d(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> int:
@@ -121,10 +150,78 @@ class ShellBuildResult:
     degradation itself must be reported by the caller).
     """
 
-    shell: "BijectiveShell | None"
+    shell: BijectiveShell | None
     success: bool
     reason: str
     failed_face_indices: tuple[int, ...] = ()
+
+
+class ShellProjectionStatus(StrEnum):
+    """Exhaustive report-only outcomes for one shell projection query."""
+
+    MAPPED = "mapped"
+    UNMAPPED = "unmapped"
+    AMBIGUOUS = "ambiguous"
+    PINCHED = "pinched"
+    NON_FINITE = "non_finite"
+
+
+@dataclass(frozen=True)
+class ShellCoordinate:
+    """Jiang-2020 linear-shell coordinate ``P(p) = (pid, alpha, beta, h)``.
+
+    ``alpha`` and ``beta`` address vertices 1 and 2 of the prism face sorted
+    by global vertex id; vertex 0 has weight ``1 - alpha - beta``. ``h`` is
+    normalized to ``[-1, 1]`` with the middle surface at zero.
+    """
+
+    prism_index: int
+    alpha: float
+    beta: float
+    h: float
+
+
+@dataclass(frozen=True)
+class SourceFacePayload:
+    """Immutable source-face identity and discrete CFD patch payload."""
+
+    source_face_index: int
+    source_vertex_indices: tuple[int, int, int]
+    patch_id: int | str | None = None
+
+
+@dataclass(frozen=True)
+class PointProvenance:
+    """Immutable result of one FP projection and inverse round trip."""
+
+    status: ShellProjectionStatus
+    coordinate: ShellCoordinate | None
+    source_payload: SourceFacePayload | None
+    middle_point: tuple[float, float, float] | None
+    reconstructed_point: tuple[float, float, float] | None
+    round_trip_error: float | None
+    candidate_prism_indices: tuple[int, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class ShellProvenanceReport:
+    """Deterministic census over an ordered sequence of query points."""
+
+    total: int
+    mapped: int
+    unmapped: int
+    ambiguous: int
+    pinched: int
+    non_finite: int
+    max_round_trip_error: float | None
+    p95_round_trip_error: float | None
+    projections: tuple[PointProvenance, ...]
+
+    @property
+    def coverage(self) -> float:
+        """Mapped fraction; zero for an empty census."""
+        return 0.0 if self.total == 0 else self.mapped / self.total
 
 
 @dataclass(frozen=True)
@@ -145,6 +242,7 @@ class BijectiveShell:
     prism_tets: tuple[np.ndarray, ...]
     prism_aabb_min: np.ndarray
     prism_aabb_max: np.ndarray
+    source_face_payloads: tuple[SourceFacePayload, ...] = ()
 
     def contains_point(self, point: np.ndarray, *, aabb_tolerance: float = 1e-9) -> bool:
         """Return whether ``point`` lies inside any prism of the shell."""
@@ -198,6 +296,237 @@ class BijectiveShell:
                 )
         return RoundContainmentReport(True, "shell_containment_ok", None)
 
+    def project_point(
+        self,
+        point: np.ndarray,
+        *,
+        aabb_tolerance: float = 1e-9,
+    ) -> PointProvenance:
+        """Evaluate Jiang's linear-shell ``P`` in floating point.
+
+        Candidate prisms are traversed in ascending source-face order.  A
+        point lying in more than one prism is reported as ambiguous instead
+        of selecting a payload by traversal order.  This MVP evaluates the
+        existing canonical 6-tet decomposition only; it does not add the
+        paper's 24-tet/I2/bevel/pinch certificate and therefore makes no
+        complete-bijection claim.
+        """
+        p = np.asarray(point, dtype=np.float64).reshape(-1)
+        if p.shape != (3,) or not np.isfinite(p).all():
+            return _unmapped_projection(ShellProjectionStatus.NON_FINITE, "non_finite_point")
+
+        candidate_mask = np.all(
+            (p >= self.prism_aabb_min - aabb_tolerance)
+            & (p <= self.prism_aabb_max + aabb_tolerance),
+            axis=1,
+        )
+        candidate_indices = tuple(int(index) for index in np.nonzero(candidate_mask)[0])
+        pinched = tuple(
+            prism_index
+            for prism_index in candidate_indices
+            if self._point_is_at_pinched_pillar(p, prism_index, aabb_tolerance)
+        )
+        if pinched:
+            return _unmapped_projection(
+                ShellProjectionStatus.PINCHED,
+                "pinched_pillar_excluded",
+                pinched,
+            )
+
+        mapped: list[ShellCoordinate] = []
+        inconsistent_prisms: list[int] = []
+        for prism_index in candidate_indices:
+            local_coordinates: list[np.ndarray] = []
+            for tet_index, tet in enumerate(self.prism_tets[prism_index]):
+                if not _point_in_tet(p, tet):
+                    continue
+                weights = _tet_barycentric_weights(p, tet)
+                if weights is None:
+                    continue
+                reference = weights @ _REFERENCE_PRISM_TETS[tet_index]
+                if np.isfinite(reference).all():
+                    local_coordinates.append(_snap_reference_coordinate(reference))
+            if not local_coordinates:
+                continue
+            first = local_coordinates[0]
+            if any(
+                not np.allclose(first, other, rtol=0.0, atol=_PROJECTION_TOLERANCE)
+                for other in local_coordinates[1:]
+            ):
+                inconsistent_prisms.append(prism_index)
+                continue
+            mapped.append(
+                ShellCoordinate(
+                    prism_index,
+                    float(first[0]),
+                    float(first[1]),
+                    float(first[2]),
+                ),
+            )
+
+        mapped_prisms = tuple(coordinate.prism_index for coordinate in mapped)
+        ambiguous_prisms = tuple(sorted((*mapped_prisms, *inconsistent_prisms)))
+        if inconsistent_prisms or len(mapped) > 1:
+            return _unmapped_projection(
+                ShellProjectionStatus.AMBIGUOUS,
+                "multiple_or_inconsistent_prism_coordinates",
+                ambiguous_prisms,
+            )
+        if not mapped:
+            return _unmapped_projection(
+                ShellProjectionStatus.UNMAPPED,
+                "point_outside_linear_shell",
+                candidate_indices,
+            )
+
+        coordinate = mapped[0]
+        reconstructed = self.inverse_project(coordinate)
+        middle = self.inverse_project(
+            ShellCoordinate(
+                coordinate.prism_index,
+                coordinate.alpha,
+                coordinate.beta,
+                0.0,
+            ),
+        )
+        if reconstructed is None or middle is None:
+            return _unmapped_projection(
+                ShellProjectionStatus.AMBIGUOUS,
+                "inverse_projection_ambiguous",
+                (coordinate.prism_index,),
+            )
+        reconstructed_array = np.asarray(reconstructed, dtype=np.float64)
+        error = float(np.linalg.norm(reconstructed_array - p))
+        payload = self._payload_for_prism(coordinate.prism_index)
+        return PointProvenance(
+            ShellProjectionStatus.MAPPED,
+            coordinate,
+            payload,
+            middle,
+            reconstructed,
+            error,
+            (coordinate.prism_index,),
+            "mapped",
+        )
+
+    def inverse_project(
+        self,
+        coordinate: ShellCoordinate,
+    ) -> tuple[float, float, float] | None:
+        """Evaluate ``P^-1`` in the same canonical 6-tet linear shell.
+
+        ``None`` is returned for an invalid, pinched, unmapped, or ambiguous
+        reference coordinate.  No tet or prism is selected by a tie-break.
+        """
+        prism_index = int(coordinate.prism_index)
+        reference = np.asarray(
+            (coordinate.alpha, coordinate.beta, coordinate.h),
+            dtype=np.float64,
+        )
+        if (
+            prism_index < 0
+            or prism_index >= len(self.prism_tets)
+            or not np.isfinite(reference).all()
+            or reference[0] < -_PROJECTION_TOLERANCE
+            or reference[1] < -_PROJECTION_TOLERANCE
+            or reference[0] + reference[1] > 1.0 + _PROJECTION_TOLERANCE
+            or abs(reference[2]) > 1.0 + _PROJECTION_TOLERANCE
+        ):
+            return None
+
+        physical_points: list[np.ndarray] = []
+        for tet_index, reference_tet in enumerate(_REFERENCE_PRISM_TETS):
+            weights = _tet_barycentric_weights(reference, reference_tet)
+            if weights is None or np.any(weights < -_PROJECTION_TOLERANCE):
+                continue
+            if np.any(weights > 1.0 + _PROJECTION_TOLERANCE):
+                continue
+            physical = weights @ self.prism_tets[prism_index][tet_index]
+            if np.isfinite(physical).all():
+                physical_points.append(physical)
+        if not physical_points:
+            return None
+        first = physical_points[0]
+        if any(
+            not np.allclose(first, other, rtol=0.0, atol=_PROJECTION_TOLERANCE)
+            for other in physical_points[1:]
+        ):
+            return None
+        return float(first[0]), float(first[1]), float(first[2])
+
+    def census_points(self, points: np.ndarray) -> ShellProvenanceReport:
+        """Project ordered points and return an immutable deterministic census."""
+        values = np.asarray(points, dtype=np.float64)
+        if values.ndim != 2 or values.shape[1] != 3:
+            raise ValueError("points must have shape (n, 3)")
+        projections = tuple(self.project_point(point) for point in values)
+        counts = {
+            status: sum(projection.status is status for projection in projections)
+            for status in ShellProjectionStatus
+        }
+        errors = np.asarray(
+            [
+                projection.round_trip_error
+                for projection in projections
+                if projection.round_trip_error is not None
+            ],
+            dtype=np.float64,
+        )
+        maximum = None if errors.size == 0 else float(errors.max())
+        p95 = None if errors.size == 0 else float(np.percentile(errors, 95.0))
+        return ShellProvenanceReport(
+            len(projections),
+            counts[ShellProjectionStatus.MAPPED],
+            counts[ShellProjectionStatus.UNMAPPED],
+            counts[ShellProjectionStatus.AMBIGUOUS],
+            counts[ShellProjectionStatus.PINCHED],
+            counts[ShellProjectionStatus.NON_FINITE],
+            maximum,
+            p95,
+            projections,
+        )
+
+    def census_face_centroids(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+    ) -> ShellProvenanceReport:
+        """Pull source-face/patch payloads back to target-face centroids."""
+        verts = np.asarray(vertices, dtype=np.float64)
+        tris = np.asarray(faces, dtype=np.int64)
+        if verts.ndim != 2 or verts.shape[1] != 3:
+            raise ValueError("vertices must have shape (n, 3)")
+        if tris.ndim != 2 or tris.shape[1] != 3:
+            raise ValueError("faces must have shape (m, 3)")
+        if tris.size and (tris.min() < 0 or tris.max() >= len(verts)):
+            raise ValueError("faces contain an invalid vertex index")
+        return self.census_points(verts[tris].mean(axis=1))
+
+    def _payload_for_prism(self, prism_index: int) -> SourceFacePayload:
+        if self.source_face_payloads:
+            return self.source_face_payloads[prism_index]
+        face = self.faces[prism_index]
+        return SourceFacePayload(
+            prism_index,
+            (int(face[0]), int(face[1]), int(face[2])),
+            None,
+        )
+
+    def _point_is_at_pinched_pillar(
+        self,
+        point: np.ndarray,
+        prism_index: int,
+        tolerance: float,
+    ) -> bool:
+        face = self.faces[prism_index]
+        for vertex in face.tolist():
+            index = int(vertex)
+            if self.thickness[index] > np.finfo(float).tiny:
+                continue
+            if float(np.linalg.norm(point - self.mid_vertices[index])) <= tolerance:
+                return True
+        return False
+
 
 def build_linear_bijective_shell(
     vertices: np.ndarray,
@@ -207,6 +536,7 @@ def build_linear_bijective_shell(
     local_scale_fraction: float = 0.5,
     max_shrink_iterations: int = 6,
     shrink_factor: float = 0.8,
+    source_patch_ids: Sequence[int | str | None] | None = None,
 ) -> ShellBuildResult:
     """Build the static linear bijective shell once, from the original surface.
 
@@ -236,6 +566,10 @@ def build_linear_bijective_shell(
         return ShellBuildResult(None, False, "invalid_faces")
     if tris.min() < 0 or tris.max() >= len(verts):
         return ShellBuildResult(None, False, "face_index_out_of_range")
+    try:
+        payloads = _source_face_payloads(tris, source_patch_ids)
+    except (TypeError, ValueError):
+        return ShellBuildResult(None, False, "invalid_source_patch_payload")
 
     normals = _area_weighted_vertex_normals(verts, tris)
     norms = np.linalg.norm(normals, axis=1)
@@ -315,8 +649,71 @@ def build_linear_bijective_shell(
         prism_tets=tuple(prism_tets),
         prism_aabb_min=aabb_min,
         prism_aabb_max=aabb_max,
+        source_face_payloads=payloads,
     )
     return ShellBuildResult(shell, True, "constructed")
+
+
+def _source_face_payloads(
+    faces: np.ndarray,
+    patch_ids: Sequence[int | str | None] | None,
+) -> tuple[SourceFacePayload, ...]:
+    if patch_ids is None:
+        values: tuple[int | str | None, ...] = (None,) * len(faces)
+    else:
+        if len(patch_ids) != len(faces):
+            raise ValueError("source_patch_ids must match the source face count")
+        normalized: list[int | str | None] = []
+        for value in patch_ids:
+            scalar = value.item() if isinstance(value, np.generic) else value
+            if scalar is not None and not isinstance(scalar, (int, str)):
+                raise TypeError("patch ids must be immutable int/str scalars")
+            normalized.append(scalar)
+        values = tuple(normalized)
+    return tuple(
+        SourceFacePayload(
+            face_index,
+            (int(face[0]), int(face[1]), int(face[2])),
+            values[face_index],
+        )
+        for face_index, face in enumerate(faces.tolist())
+    )
+
+
+def _unmapped_projection(
+    status: ShellProjectionStatus,
+    reason: str,
+    candidate_prism_indices: tuple[int, ...] = (),
+) -> PointProvenance:
+    return PointProvenance(
+        status,
+        None,
+        None,
+        None,
+        None,
+        None,
+        candidate_prism_indices,
+        reason,
+    )
+
+
+def _tet_barycentric_weights(point: np.ndarray, tet: np.ndarray) -> np.ndarray | None:
+    matrix = np.column_stack((tet[1] - tet[0], tet[2] - tet[0], tet[3] - tet[0]))
+    try:
+        tail = np.linalg.solve(matrix, point - tet[0])
+    except np.linalg.LinAlgError:
+        return None
+    weights = np.asarray((1.0 - float(tail.sum()), *tail.tolist()), dtype=np.float64)
+    return weights if np.isfinite(weights).all() else None
+
+
+def _snap_reference_coordinate(reference: np.ndarray) -> np.ndarray:
+    result = np.asarray(reference, dtype=np.float64).copy()
+    for index in range(3):
+        for boundary in (-1.0, 0.0, 1.0):
+            if abs(float(result[index] - boundary)) <= _PROJECTION_TOLERANCE:
+                result[index] = boundary
+    return result
 
 
 def _point_in_tet(point: np.ndarray, tet: np.ndarray) -> bool:

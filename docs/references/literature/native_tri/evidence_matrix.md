@@ -93,3 +93,29 @@ papers produced 35 primary candidates across local operators, error envelopes,
 CVT/RVD, Poisson-disk sampling, anisotropy, repair, and parallel execution.
 The screened inventory is in `native_tri/citation_snowball_batch1.md`; six
 abstract-only papers and their DOIs are in `inaccessible_papers.md`.
+
+## TRI-SHELL-PROVENANCE1 implementation evidence (2026-07-26)
+
+The Jiang-2020 provenance datum is now implemented on the current DOMAIN1
+linear-shell MVP as a default-OFF report lane
+(`AUTO_TESSELL_TRI_SHELL_PROVENANCE1=1`). Canonical-tet affine coordinates
+provide `(source prism/face, alpha, beta, normalized h)`, an FP inverse and
+`h=0` middle projection, frozen source-face/patch payload records, and a
+deterministic face-centroid census. Ambiguous, pinched, unmapped, and
+non-finite cases are counted and deliberately receive no payload. The lane is
+fail-open/report-only: OFF and ON produce byte-identical mesh state and
+identical guard/checkpoint histories, including a forced reporting exception.
+
+Measured coverage was 12/12 cube faces, 128/128 cylinder faces, and 1280/1280
+sphere faces, with zero ambiguous/unmapped samples. Max FP round-trip errors
+were respectively `1.110e-16`, `1.388e-16`, and `2.483e-16`; p95 errors were
+`1.110e-16`, `1.039e-16`, and `1.272e-16`. Report runtimes were 0.017120 s,
+0.111792 s, and 1.256523 s (build: 0.006744 s, 0.020977 s, 0.364499 s). The
+cylinder required `local_scale_fraction=0.2`; the default 0.5 shell failed
+I1/I2, confirming that this result is not a general construction guarantee.
+
+Evidence scope: this does **not** close Jiang's 24-tet/all-order I1, full I2,
+beveling, singularity construction, feature alignment, or whole-face coverage
+contracts. Candidate discovery remains the unchanged brute-force AABB scan.
+Next card: `TRI-SHELL-CANDIDATE1`, a deterministic spatial-index benchmark;
+full DOMAIN completion remains separate.
