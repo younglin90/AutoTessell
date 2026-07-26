@@ -7,9 +7,14 @@ quality moves.
 
 from .bijective_shell import (
     BijectiveShell,
+    PointProvenance,
     RoundContainmentReport,
     ShellBuildResult,
     ShellCheckpointReport,
+    ShellCoordinate,
+    ShellProjectionStatus,
+    ShellProvenanceReport,
+    SourceFacePayload,
     build_linear_bijective_shell,
 )
 from .operator_loop import (
@@ -18,6 +23,7 @@ from .operator_loop import (
     OperatorKind,
     OperatorTransaction,
     estimate_curvature_sizing,
+    shell_provenance_reporting_enabled,
 )
 
 __all__ = [
@@ -26,9 +32,15 @@ __all__ = [
     "MeshState",
     "OperatorKind",
     "OperatorTransaction",
+    "PointProvenance",
     "RoundContainmentReport",
     "ShellBuildResult",
     "ShellCheckpointReport",
+    "ShellCoordinate",
+    "ShellProjectionStatus",
+    "ShellProvenanceReport",
+    "SourceFacePayload",
     "build_linear_bijective_shell",
     "estimate_curvature_sizing",
+    "shell_provenance_reporting_enabled",
 ]
