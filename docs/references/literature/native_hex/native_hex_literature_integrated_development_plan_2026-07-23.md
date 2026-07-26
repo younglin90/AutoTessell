@@ -710,3 +710,47 @@ of mechanism: `match_repair`'s gate, transaction and measurement all carry over.
   round-1 paper demonstrates a many-cluster-at-once intra-mesh repair. Bracket
   work is gated entirely behind `HEX-MATCH-3`'s own measured spike, not
   inferred from cylinder/sphere/gear success.
+
+### 2026-07-26 HEX-SHEET-2 layer-wide shrink-set diagnostic (falsified, no topology edits)
+
+Added `core/generator/native_hex/sheet_diagnostic.py`,
+`scripts/diag_hex_sheet2.py`, and
+`tests/test_native_hex_sheet_diagnostic.py` as a report-only precondition
+census. On the same actual meshes as HEX-MATCH-2 (fine, pre-BL,
+`max_cells=8000`), the proposed shrink set `S` is every owner of a physical
+boundary quad and `Q` is every face with one owner in `S` and one in the core.
+The wall-cell contract is measured, not inferred: every cell in `S` must be a
+clean hex with exactly one physical-boundary face and exactly one `Q` face.
+
+| Shape | cells / points | `n_shrink` / nonhex | `Q` quad / nonquad | `Q` edge incidence | components / open / nonmanifold | `Q` vertices on physical boundary | predicted points / cells |
+| --- | --- | --- | --- | --- | --- | ---: | --- |
+| cylinder | 6320 / 9261 | 1640 / 0 | 1816 / 0 | `{2: 3632}` | 1 / 0 / 0 | 380 | 9261 -> 11079 / 6320 -> 8136 |
+| sphere | 4224 / 9261 | 968 / 0 | 1560 / 0 | `{2: 3120}` | 1 / 0 / 0 | 756 | 9261 -> 10823 / 4224 -> 5784 |
+| gear | 4914 / 11767 | 2594 / 0 | 2152 / 0 | `{2: 4304}` | 1 / 0 / 0 | 363 | 11767 -> 13911 / 4914 -> 7066 |
+
+Per-shrink-cell incidence distributions (histogram syntax is
+`face-count: cell-count`):
+
+| Shape | physical-boundary faces per `S` cell | `Q` faces per `S` cell |
+| --- | --- | --- |
+| cylinder | `{1:1096, 2:496, 3:48}` | `{0:112, 1:1240, 2:288}` |
+| sphere | `{1:360, 2:288, 3:320}` | `{1:528, 2:288, 3:152}` |
+| gear | `{1:1733, 2:570, 3:208, 4:64, 5:19}` | `{0:858, 1:1352, 2:352, 3:32}` |
+
+**Measured verdict: reject this shrink set before implementation.** `Q` passes
+the narrow Ledoux topological check on all three shapes: it is a nonempty,
+single-component, all-quad closed manifold and every `Q` edge has incidence
+exactly two. The stronger wall-layer contract fails on all three shapes.
+Boundary edge/corner cells have multiple physical-boundary faces, 112 cylinder
+and 858 gear shrink cells have no `Q` face, and many cells have two or three
+`Q` faces. In addition, 380/756/363 `Q` vertices respectively are also physical
+boundary vertices. Globally duplicating and moving those vertices on the
+shrink side would therefore violate the required bit-identical physical
+boundary, while leaving them fixed would violate the proposed
+"move duplicated internal interface vertices only" placement model.
+
+No `AUTO_TESSELL_HEX_SHEET2` production path, topology constructor, or mesh
+mutation was added. Consequently the predicted growth above was not executed
+and there is no before/after quality claim. This falsifies the all-wall-owner
+shrink set as currently defined; a future card needs a different, explicitly
+separated patch/layer selection before layer-wide pillowing can be reconsidered.
