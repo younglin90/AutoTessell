@@ -73,16 +73,44 @@ def test_regular_strip_has_no_flagged_faces() -> None:
     assert report.candidates == ()
 
 
-def test_deep_clean_column_selects_collapse() -> None:
-    """4-cell strip, depth-2 trace never reaches a boundary -> collapse."""
+def test_deep_clean_column_seeded_at_boundary_falls_back_to_pillow() -> None:
+    """4-cell strip: a clean depth-2 column is still NOT a collapse candidate.
+
+    HEX-MATCH-2 regression test. This case used to be classified ``collapse``
+    with footprint ``(0, 1, 2)``. It is a mis-target: the column is seeded at a
+    *boundary* quad, so that quad is the chord's own first quad and every
+    face-collapse pairing on it merges surface nodes (Ledoux 2010), which
+    modifies preserved geometry. HEX-MATCH-2's executor measured this and
+    rejected 100% of the branch's candidates on exactly this ground, so the
+    diagnostic now falls through to the boundary-preserving depth-1 pillow.
+    """
     points, cells = _strip_grid(4)
     left_face = _face_key(cells[0][4])  # cell 0's left (x=0) face — a real boundary face.
     flagged = [BoundaryFaceSkew(face_key=left_face, owner_cell=0, skewness=3.0, area=1.0)]
     candidates = classify_repair_candidates(points, cells, flagged, max_depth=2)
     assert len(candidates) == 1
     cand = candidates[0]
+    assert cand.candidate_type == "pillow"
+    assert cand.footprint_cells == (0,)
+    assert cand.depth_used == 1
+    assert "seeded at a boundary quad" in cand.reason
+
+
+def test_interior_seeded_clean_column_still_selects_collapse() -> None:
+    """The collapse branch survives for a column seeded at an *interior* face.
+
+    Complements the test above: the boundary-admissibility precondition is a
+    precondition, not a deletion of the operation. No current caller seeds from
+    an interior face, but the branch must stay reachable for one that does.
+    """
+    points, cells = _strip_grid(4)
+    interior_face = _face_key(cells[1][4])  # cell 1's left face — shared with cell 0.
+    flagged = [BoundaryFaceSkew(face_key=interior_face, owner_cell=1, skewness=3.0, area=1.0)]
+    candidates = classify_repair_candidates(points, cells, flagged, max_depth=2)
+    assert len(candidates) == 1
+    cand = candidates[0]
     assert cand.candidate_type == "collapse"
-    assert cand.footprint_cells == (0, 1, 2)
+    assert cand.footprint_cells == (1, 2, 3)
     assert cand.depth_used == 2
 
 
@@ -96,7 +124,6 @@ def test_short_thru_column_falls_back_to_pillow() -> None:
     cand = candidates[0]
     assert cand.candidate_type == "pillow"
     assert cand.footprint_cells == (0,)
-    assert "boundary patch" in cand.reason
 
 
 def test_footprint_conflict_yields_no_candidate() -> None:

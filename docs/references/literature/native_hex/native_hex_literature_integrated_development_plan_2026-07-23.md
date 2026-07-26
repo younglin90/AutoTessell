@@ -548,6 +548,140 @@ most of the remainder cleanly; only footprint conflicts block the rest, and
 this diagnostic's all-at-once claim order) should reduce that count. No
 evidence found against the mechanism's applicability to this damage pattern.
 
+### 2026-07-26 HEX-MATCH-2 result (measured, real gated mesh edits)
+
+Delivered `core/generator/native_hex/match_repair.py` (pillow construction,
+chord-collapse boundary guard, local/global quality measurement, sequential
+transactional driver) + `tests/test_native_hex_match_repair.py` (24 unit tests)
++ `scripts/diag_hex_match_repair.py` (same three shapes, same settings as
+HEX-MATCH-1: fine, pre-BL, `max_cells=8000`, skew >= 2.0, depth <= 2, mesh
+cached so the analysis is re-runnable). Wired into `mesher.py`'s octree path
+behind `AUTO_TESSELL_HEX_MATCH2=1`, **default OFF**, per the FSL Wave 1 /
+TET-FLOW-2 precedent.
+
+**Falsification check: PASS on all three shapes, both gate policies.** The
+diagnostic re-run on a pristine copy of each input produced target sets
+identical to what HEX-MATCH-2 attempted in round 0 — 344 / 960 / 68 targets,
+matching on (face, operation, footprint). HEX-MATCH-2 calls
+`match_diagnostic`'s own functions rather than re-deriving targeting, so this
+is structural; what the check actually proves is that the executor never
+mutates the caller's arrays before the diagnostic view is taken.
+
+**Two `match_diagnostic` bugs found and fixed** (the card's own
+"diagnostic-and-executor must agree" trigger fired immediately — HEX-MATCH-2
+could not reproduce the skewness of the faces HEX-MATCH-1 told it to repair):
+
+1. **Face normal was neither area-weighted nor evaluated on the face's cyclic
+   order.** `compute_boundary_face_skew` iterated the face-owner map, whose keys
+   are *sorted* vertex tuples, and `_quad_skewness` built the normal from only
+   the first fan triangle. `NativeMeshChecker._compute_face_normals_areas` uses
+   the full area-weighted fan sum on the stored cyclic order. On a planar quad
+   the two agree; on a *warped* quad — precisely what wall-snapping produces and
+   precisely this card's target population — they diverge, and a sorted-order
+   traversal of a quad is generally the bow-tie diagonal rather than its
+   boundary. Measured on a warped grid face: 2.594 reported where the checker's
+   own formula gives 1.502, a 73% overstatement. After the fix,
+   `match_repair.mesh_quality` reproduces `NativeMeshChecker`'s headline numbers
+   exactly (cylinder max skew 9.4861 vs. checker 9.48613, max non-orthogonality
+   26.855 vs. checker 26.8549).
+2. **Cell centre was the vertex mean, not the face-centre mean.** Fidelity fix
+   only: for a topological hex the two are provably identical (every vertex lies
+   on exactly 3 of the 6 faces), so it moves no number here. It matters for
+   cells of unequal vertex face-degree — octree transition polyhedra, prisms —
+   where a module claiming to be a verbatim port must not quietly diverge.
+3. **Collapse branch was a mis-target** — see below; fixed by adding a
+   boundary-admissibility precondition.
+
+Census, before vs. after those fixes (identical meshes; the `@HEAD` column
+reproduces the 2026-07-26 HEX-MATCH-1 numbers above exactly, which validates
+the comparison):
+
+| Shape | @HEAD flagged | @HEAD pillow / collapse / none | fixed flagged | fixed pillow / collapse / none |
+| --- | ---: | ---: | ---: | ---: |
+| cylinder | 368 | 0 / 312 / 56 | 344 | 288 / 0 / 56 |
+| sphere | 888 | 54 / 289 / 545 | 960 | 368 / 0 / 592 |
+| gear | 111 | 30 / 48 / 33 | 68 | 36 / 0 / 32 |
+
+**Finding 1 — column collapse is not executable under this card's own boundary
+invariant, at all.** A chord collapse merges the two opposite node pairs of
+*every quad the chord passes through* (`ledoux2010_sheet_operations.md`, "Chord
+collapse"). HEX-MATCH-1 seeds every column at a flagged **boundary** quad, so
+that quad is the chord's own first quad and all four of its nodes are surface
+nodes; both of the operation's two available pairings therefore merge boundary
+nodes, which deletes or drags a surface node either way. Raising the depth bound
+cannot help — the offending quad is the seed. This is not specific to our seeds:
+in a hex mesh whose dual chords are not cycles, every chord terminates at a
+boundary quad at both ends, so *no* chord collapse preserves a boundary; Ledoux
+2010 states the same restriction topologically ("atomic ops are not allowed to
+modify a mesh boundary"; a boundary-crossing sheet operation needs a temporary
+ghost layer, which this card does not build). Measured, not argued: the executor
+evaluated the guard on 100% of the branch's 649 candidates across the three
+shapes and rejected 100% of them on exactly this ground, and a unit test sweeps
+every boundary face of a 4^3 grid. The 649/1367 (~47%) "well-bounded collapse
+candidate" figure in the HEX-MATCH-1 verdict above should be read as **0
+executable collapse candidates**; those faces now fall through to the
+boundary-preserving depth-1 pillow, which is what raised pillow from 84 to 692
+across the three shapes.
+
+**Finding 2 — pillow insertion works exactly as designed and the quality gate
+rejects it anyway, ~99% of the time.** The construction is sound: 1 hex becomes
+7, volumes partition the original exactly, the result is conforming and all-hex,
+every original face is re-emitted verbatim so neighbours are bit-identical, no
+boundary vertex moves, and the flagged face's skewness goes to ~0 (measured mean
+2.755 -> 0.000 on the four gear faces that committed). The cost is
+non-orthogonality: the single-cell "onion" pillow inflates all six faces, so its
+rung faces radiate from the inner hex, and on snapped graded octree cells those
+land at 70 deg where the cell's own faces were at 29 deg.
+
+Outcomes under both defensible readings of "does not regress below the existing
+gate" (the policy is an explicit `gate_policy` parameter, not a silent choice):
+
+| Shape | policy | committed | rejected by gate | no candidate | cells | global max b-skew | global mean b-skew |
+| --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| cylinder | neighbourhood | 0 | 288 | 56 | 6320 -> 6320 | 9.4861 -> 9.4861 | 1.1244 -> 1.1244 |
+| sphere | neighbourhood | 0 | 368 | 592 | 4224 -> 4224 | 8.7786 -> 8.7786 | 2.2023 -> 2.2023 |
+| gear | neighbourhood | 0 | 36 | 32 | 4914 -> 4914 | 2.7748 -> 2.7748 | 0.3688 -> 0.3688 |
+| cylinder | mesh | 0 | 288 | 56 | 6320 -> 6320 | 9.4861 -> 9.4861 | 1.1244 -> 1.1244 |
+| sphere | mesh | 0 | 368 | 592 | 4224 -> 4224 | 8.7786 -> 8.7786 | 2.2023 -> 2.2023 |
+| gear | mesh | 4 | 64 | 64 | 4914 -> 4938 | 2.7748 -> 2.7336 | 0.3688 -> 0.3674 |
+
+`neighbourhood` (the default) caps a repair at the grade-A thresholds or at
+whatever that neighbourhood already had. `mesh` additionally lets a repair spend
+headroom that exists *elsewhere* in the mesh; it is what admits the four gear
+repairs, and their local non-orthogonality goes 29 -> 70 deg while the mesh's
+reported maximum is unchanged at 75.487 because a 75 deg face already existed
+somewhere else. Global mean non-orthogonality still rises 7.661 -> 7.837 and
+global max internal skewness 0.3040 -> 0.5785, so even the four accepted repairs
+are a real trade rather than a free win. Rejection causes are spread across all
+four gate arms (cylinder: 134 internal-skew ceiling, 116 non-orthogonality
+ceiling, 28 boundary-skew regression, 10 degenerate), i.e. this is not one
+tunable threshold standing in the way.
+
+**Finding 3 — the predicted footprint-conflict reduction did not materialise,
+and the reason is structural rather than tunable.** Section 7.2's verdict
+expected HEX-MATCH-2's sequential processing to shrink the "none" count. It did
+not: 56 -> 56 (cylinder), 545 -> 592 (sphere), 33 -> 32 (gear). Two reasons, both
+measured. First, with ~0 commits the sequential mechanism never runs — the
+executor's own conflict deferral (`rejected_conflict`) fired zero times on every
+shape. Second, and more fundamental: once collapse is ruled out, every footprint
+is the single owner cell, so a "none" verdict now means *two flagged faces on the
+same cell*. A single-cell pillow can be normal-aligned to only one of its six
+faces, so those faces are genuinely mutually exclusive under this operation, at
+any depth.
+
+**Verdict: the mechanism is implemented, verified and honest, but it does not
+currently pay for itself on cylinder/sphere/gear.** Nothing here is a coding
+defect to chase — the operation does what the literature says and the gate does
+what the card asked. The diagnosis is that a *single-cell* pillow is the wrong
+shrink set: inflating all six faces of one cell is what generates the bad rung
+faces. Pillowing the whole wall-adjacent layer (shrink set = every boundary
+cell, interface = the manifold quad set separating them from the interior) gives
+each wall cell exactly **one** inflated face, no rung radiation, and is the
+construction Ledoux 2010 and Mitchell & Tautges 1995 actually describe — it is
+already scoped in this plan as `HEX-SHEET-2` / the per-patch BL primitive. That
+is the recommended next step on this lane, and it is a change of shrink set, not
+of mechanism: `match_repair`'s gate, transaction and measurement all carry over.
+
 ### 7.3 Invariant table addition
 
 | Card | Moves boundary vertices? | Changes cell count? | Determinism risk |

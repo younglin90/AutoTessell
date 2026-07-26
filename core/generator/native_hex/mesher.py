@@ -1364,6 +1364,35 @@ def generate_native_hex(
                     except Exception as exc:
                         log.warning("native_hex_wall_fit_failed", error=str(exc))
 
+                # HEX-MATCH-2 (2026-07-26) — Staten-2010/Ledoux-2010 local pillow
+                # insertion on boundary quads our own OpenFOAM skew formula flags,
+                # behind a hard quality gate with per-candidate reject-and-rollback
+                # and a whole-pass grade rollback (see match_repair.py). Inserts
+                # interior cells only; no boundary vertex is ever repositioned.
+                # Default OFF — env AUTO_TESSELL_HEX_MATCH2=1 enables — matching
+                # the not-yet-broadly-verified mesh-editing precedent the tet track
+                # set for FSL Wave 1 / TET-FLOW-2. Wired here, on the octree path's
+                # generic cell-face output, because that is the path the fine
+                # quality level takes and is pre-BL by construction (the BL pass
+                # re-triangulates the wall and would hide these quads).
+                if os.environ.get("AUTO_TESSELL_HEX_MATCH2", "").strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                ):
+                    try:
+                        from core.generator.native_hex.match_repair import (  # noqa: PLC0415
+                            run_match_repair,
+                        )
+
+                        _m2_pts, _m2_cells, _m2_report = run_match_repair(
+                            "octree", np.asarray(oct_pts, dtype=np.float64), oct_cells
+                        )
+                        if _m2_report.n_committed > 0 and not _m2_report.pass_rolled_back:
+                            oct_pts, oct_cells = _m2_pts, _m2_cells
+                    except Exception as exc:
+                        log.warning("native_hex_match2_failed", error=str(exc))
+
                 from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
                 from core.generator.tier_layers_post import (  # noqa: PLC0415
                     _ensure_minimal_controldict,

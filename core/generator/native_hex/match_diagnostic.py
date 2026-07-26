@@ -31,7 +31,7 @@ from typing import Literal
 
 import numpy as np
 
-from core.generator.native_hex.metrics import CellFaces, _face_owners
+from core.generator.native_hex.metrics import CellFaces, _face_key, _face_owners
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -87,6 +87,42 @@ class MatchDiagnosticReport:
         return sum(1 for c in self.candidates if c.candidate_type == "none")
 
 
+def face_centroid_normal_area(
+    points: np.ndarray, face: Sequence[int]
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Face centre, unit normal and area — the checker's own definitions.
+
+    Ported from ``NativeMeshChecker._compute_face_centres`` /
+    ``_compute_face_normals_areas`` (``core/evaluator/native_checker.py``):
+    the centre is the mean of the face's vertices and the normal is the
+    **area-weighted** fan sum ``sum_i (v_i - v_0) x (v_{i+1} - v_0)``,
+    normalised, evaluated on the face's **stored cyclic vertex order**.
+
+    HEX-MATCH-2 bug fix (2026-07-26) — the original HEX-MATCH-1 implementation
+    used only the *first* fan triangle (``cross(v1 - v0, v2 - v0)``) and, worse,
+    evaluated it on the face's **sorted** vertex key rather than its cyclic
+    order, because ``compute_boundary_face_skew`` iterated the face-owner map
+    (whose keys are sorted tuples) instead of the cells' own face lists. On a
+    planar quad the two agree, so the error is invisible on an unsnapped octree;
+    on a *warped* quad — which is exactly what wall-snapping produces, and
+    exactly the population this card targets — they disagree badly, and a
+    sorted-order traversal of a quad is in general the bow-tie diagonal, not the
+    boundary. Measured on a warped grid face: sorted/first-triangle reported
+    skew 2.594 where the checker's own formula gives 1.502, a 73% overstatement.
+    HEX-MATCH-2 could not reproduce the skew of the very faces HEX-MATCH-1 told
+    it to repair until this was corrected.
+    """
+    verts = points[np.asarray(face, dtype=np.int64)]
+    cen: np.ndarray = verts.mean(axis=0)
+    if verts.shape[0] < 3:
+        return cen, np.zeros(3, dtype=np.float64), 0.0
+    area_vec = np.cross(verts[1:-1] - verts[0], verts[2:] - verts[0]).sum(axis=0)
+    mag = float(np.linalg.norm(area_vec))
+    if mag <= 0.0:
+        return cen, np.zeros(3, dtype=np.float64), 0.0
+    return cen, area_vec / mag, 0.5 * mag
+
+
 def _quad_skewness(
     points: np.ndarray, owner_centroid: np.ndarray, face: Sequence[int]
 ) -> tuple[float, float]:
@@ -105,31 +141,42 @@ def _quad_skewness(
 
     i.e. how far the face centroid deviates, tangentially, from the straight
     line leaving the owner cell centroid along the face normal.
+
+    *face* must be in the cyclic order the mesh stores — see
+    :func:`face_centroid_normal_area`.
     """
-    verts = points[np.asarray(face, dtype=np.int64)]
-    if verts.shape[0] < 3:
+    cen, n_unit, area = face_centroid_normal_area(points, face)
+    if not np.any(n_unit):
         return 0.0, 0.0
-    a, b, c = verts[0], verts[1], verts[2]
-    cen = verts.mean(axis=0)
-    normal = np.cross(b - a, c - a)
-    norm = float(np.linalg.norm(normal))
-    if norm < 1e-30:
-        return 0.0, 0.0
-    n_unit = normal / norm
-    area = 0.0
-    for i in range(1, len(face) - 1):
-        area += 0.5 * float(np.linalg.norm(np.cross(verts[i] - verts[0], verts[i + 1] - verts[0])))
-    to_face = cen - owner_centroid
-    normal_dist = float(np.dot(to_face, n_unit))
+    normal_dist = float(np.dot(cen - owner_centroid, n_unit))
     proj = owner_centroid + normal_dist * n_unit
     denom = max(abs(normal_dist), 1e-30)
-    skew = float(np.linalg.norm(cen - proj)) / denom
-    return skew, area
+    return float(np.linalg.norm(cen - proj)) / denom, area
 
 
 def _cell_centroid(points: np.ndarray, cell: Sequence[Sequence[int]]) -> np.ndarray:
-    verts = sorted({int(v) for face in cell for v in face})
-    centroid: np.ndarray = points[np.asarray(verts, dtype=np.int64)].mean(axis=0)
+    """Cell centre as the mean of its face centres.
+
+    HEX-MATCH-2 fidelity fix (2026-07-26) — this was the mean of the cell's
+    *vertices*, which is not what the project's checker uses.
+    ``NativeMeshChecker._compute_cell_centres`` documents and computes "cell
+    centres as the mean of belonging face centres", and the skew formula this
+    module claims to port verbatim is evaluated against *that* centre.
+
+    Honest scope note: for a **topological hex** the two are provably identical
+    and this change moves no number. Every vertex of a hex lies on exactly 3 of
+    its 6 faces, so ``mean_faces(mean_verts(f)) = (1/6)(1/4)(3) * sum_v v =
+    (1/8) * sum_v v``, the vertex mean. The change matters only for cells whose
+    vertices have unequal face degree — octree transition polyhedra, prisms,
+    pyramids — which is exactly where a diagnostic that claims to be a verbatim
+    port must not quietly diverge. None of this card's measured census delta is
+    attributable to it; that delta comes entirely from the face-normal fix in
+    :func:`face_centroid_normal_area`.
+    """
+    if not cell:
+        return np.zeros(3, dtype=np.float64)
+    centres = [points[np.asarray(face, dtype=np.int64)].mean(axis=0) for face in cell]
+    centroid: np.ndarray = np.mean(np.asarray(centres, dtype=np.float64), axis=0)
     return centroid
 
 
@@ -151,15 +198,23 @@ def compute_boundary_face_skew(points: np.ndarray, cell_faces: CellFaces) -> lis
     owners = _face_owners(cells)
     centroids = [_cell_centroid(pts, cell) for cell in cells]
 
+    # Iterate the cells' own face lists, not the owner map: the owner map is
+    # keyed by *sorted* vertex tuples and the skew formula needs the face's
+    # cyclic order to get the checker's area-weighted normal right (see
+    # ``face_centroid_normal_area``). Results are still emitted in sorted-key
+    # order so the traversal stays deterministic.
     results: list[BoundaryFaceSkew] = []
-    for face_key, owner_list in sorted(owners.items()):
-        if len(owner_list) != 1 or len(face_key) != 4:
-            continue
-        owner = owner_list[0]
-        skew, area = _quad_skewness(pts, centroids[owner], face_key)
-        results.append(
-            BoundaryFaceSkew(face_key=face_key, owner_cell=owner, skewness=skew, area=area)
-        )
+    for owner, cell in enumerate(cells):
+        for face in cell:
+            key = _face_key(face)
+            owner_list = owners.get(key, [])
+            if len(owner_list) != 1 or owner_list[0] != owner or len(key) != 4:
+                continue
+            skew, area = _quad_skewness(pts, centroids[owner], face)
+            results.append(
+                BoundaryFaceSkew(face_key=key, owner_cell=owner, skewness=skew, area=area)
+            )
+    results.sort(key=lambda f: f.face_key)
     return results
 
 
@@ -275,6 +330,44 @@ def _trace_column(
     return chain, False, stop_reason
 
 
+def _collapse_is_boundary_admissible(
+    owners: dict[tuple[int, ...], list[int]], seed_face_key: tuple[int, ...]
+) -> bool:
+    """Whether a chord collapse seeded at *seed_face_key* can preserve the surface.
+
+    **HEX-MATCH-2 bug fix (2026-07-26).** The original HEX-MATCH-1 collapse
+    branch checked only Staten 2010's two named *topological* risk conditions
+    (self-intersection and thru-boundary spanning) and never checked whether the
+    operation it selected is compatible with this project's surface-preservation
+    invariant. It is not, and the omission made ~47% of the census a mis-target:
+
+    A chord collapse merges the two opposite node pairs of **every quad the
+    chord passes through** (``ledoux2010_sheet_operations.md``, "Chord
+    collapse"). This card seeds its columns *at a flagged boundary face*, so
+    that boundary quad is itself the chord's first quad and all four of its
+    nodes are surface nodes. Both of the operation's two available pairings
+    therefore merge boundary nodes, which either deletes a surface node or drags
+    it onto its partner — modifying preserved geometry under either reading.
+    That contradicts Section 7.3's own invariant for HEX-MATCH-2 ("boundary
+    vertices are never repositioned") and Ledoux 2010's own restriction that
+    atomic sheet operations may not modify a mesh boundary (a boundary-crossing
+    sheet operation needs a temporary ghost layer, which this card does not
+    build). Note this is not a depth or footprint problem — raising the depth
+    bound cannot help, because the offending quad is the seed itself.
+
+    Measured, not argued: HEX-MATCH-2's executor evaluated the guard on every
+    candidate this branch produced across cylinder/sphere/gear and rejected
+    100% of them on exactly this ground (see
+    ``core/generator/native_hex/match_repair.chord_collapse_boundary_conflict``
+    and the card report). Collapse therefore stays admissible only for a column
+    seeded at an *interior* face — which this card's flow never produces, but a
+    future card seeding from the interior could — and every boundary-seeded
+    flagged face falls through to the depth-1 pillow instead, which is both
+    executable and boundary-preserving.
+    """
+    return len(owners.get(seed_face_key, [])) != 1
+
+
 def classify_repair_candidates(
     points: np.ndarray,
     cell_faces: CellFaces,
@@ -382,7 +475,13 @@ def classify_repair_candidates(
                 )
             continue
 
-        if len(chain) >= 2 and stop_reason == "max_depth" and claimed.isdisjoint(chain):
+        collapse_admissible = _collapse_is_boundary_admissible(owners, flagged.face_key)
+        if (
+            collapse_admissible
+            and len(chain) >= 2
+            and stop_reason == "max_depth"
+            and claimed.isdisjoint(chain)
+        ):
             claimed.update(chain)
             results.append(
                 MatchCandidate(
@@ -405,7 +504,14 @@ def classify_repair_candidates(
         footprint = (owner,)
         if claimed.isdisjoint(footprint):
             claimed.update(footprint)
-            if stop_reason == "boundary":
+            if not collapse_admissible:
+                reason = (
+                    f"clean depth-{len(chain) - 1} interior column, but the chord is seeded at a "
+                    "boundary quad so every face-collapse pairing would merge surface nodes "
+                    "(Ledoux 2010 chord collapse; see _collapse_is_boundary_admissible) — "
+                    "fell back to depth-1 pillow insertion, which preserves the surface"
+                )
+            elif stop_reason == "boundary":
                 reason = (
                     f"column reaches another boundary patch after {len(chain) - 1} "
                     "interior cell(s) — thru-column risks merging two distinct boundary "
