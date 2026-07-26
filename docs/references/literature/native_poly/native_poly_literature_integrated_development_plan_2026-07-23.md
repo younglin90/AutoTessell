@@ -552,6 +552,57 @@ non-manifold extra references before writing. Python and the optional C++
 topology kernel use the same returned census and produced identical strict
 rejections, so no C++ source expansion was needed.
 
+## 2026-07-26 `POLY-ROUTE-ATTRIB1` measured evidence
+
+The route-attribution diagnostic is report-only in
+`core/generator/native_poly/route_attribution.py`, with the bounded entry point
+`scripts/diagnose_native_poly_routes.py`. Each tracked STL is converted once
+to a deterministic star-shaped tet primal, identified by a SHA-256 digest.
+That exact `(V, T)` pair is supplied to both direct `tet_to_poly_dual` and the
+`tier_native_poly` harness with `auto_escalate=False`; the tier's imported
+native-tet provider is replaced only inside the diagnostic process. The legacy
+`quality.drop_degenerate_poly_cells` helper is wrapped for call accounting but
+is not changed.
+
+| fixture | fixed primal | route | selected/disk mesh identity | cells / faces / boundary / patches | volume | negative | surface-area deviation | quality (max non-ortho / max skew / mean ψ) |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| cube | 9 points / 12 tets, `8088739d…` | direct and tier harness | identical `e995f90d…` | 9 / 56 / 30 / 1 | 1.000000 | 0 | ~0.000% | 19.91° / 0.355 / 0.219 |
+| cylinder | 67 points / 128 tets, `0c862037…` | direct and tier harness | identical `f496e6b8…` | 67 / 484 / 226 / 1 | 0.796718 | 0 | 3.328% | 77.70° / 63.634 / 0.353 |
+
+For both completed fixtures, `auto_escalate=False`, the tier selected
+`tier_native_poly:harness/tet_to_poly_dual`, the direct and tier disk hashes
+were byte-identical, and two repeats per route had identical disk hashes.
+Drop invocation was `false` with zero calls and zero dropped cells on every
+completed route. The checker also recorded the report-only Phase-0 metrics;
+the cylinder's max face planarity deviation was `0.58185`, max normal spread
+`90.0°`, min `h` `0.14260`, and min uniformity factor `0.73713`.
+
+The sphere fixture is deliberately bounded at 30 s per fixture. It timed out
+before completing the first comparison, so it contributes no route conclusion;
+the slow sphere is not allowed to obscure cube/cylinder attribution.
+
+### Cylinder discrepancy characterization before optimization
+
+The historical direct measurement was independently replayed through
+`core/generator/native_poly/facegeom_experiment.py`: its cylinder primal had
+2,419 tets and its direct polydual had 593 cells, 15.2049% surface-area
+deviation, and 4 negative-volume cells (the earlier ledger rounded this to
+15.5%/negative). The checked-in S5 production ledger reports a different
+`tier_native_poly` run at 1,781 cells, 0.154% deviation, and zero negative
+volumes. Those are not the same primal or the same census: the direct replay
+log shows the native-tet P4C pytetwild fallback, while the S5 tier route has a
+different upstream generation/selection context.
+
+`POLY-ROUTE-ATTRIB1` removes that confound. On one shared primal the tier
+wrapper reaches the same dual writer, never calls the cell-drop helper, and
+produces the same mesh bytes and quality values as direct dualization. The
+15.5%/negative versus 0.154%/zero pair is therefore characterized as an
+upstream primal/protocol attribution discrepancy, not evidence that a tier
+route repair or drop step improves the direct route. **No optimization card may
+use those two absolute baselines until it compares the same fixed primal,
+same area calculation, same negative-volume metric, and recorded route
+metadata.**
+
 Verification used per-file limits after an aggregate pytest run left child
 processes active beyond its shell timeout. The bounded contract/writer/metric
 set reported 92 passed, 38 skipped, and only the declared pre-existing
