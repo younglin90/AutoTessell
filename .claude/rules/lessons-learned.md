@@ -35,3 +35,10 @@ paths: ["**"]
   under Windows may be exercising a completely different code path than production.
   When a card touches `igl`/`pyacvd`/other WSL-only deps, verify via `wsl.exe -d ubuntu`
   or note explicitly which environment was used.
+- **Native-engine cards use the permanent L0→L1→L2→L3 verification ladder.**
+  Start with a hand-checkable mechanism fixture, then canonical geometry, then
+  only the card's target hard geometry, and finish with the full regression
+  corpus. Do not use hard-12 as the first acceptance test. A truthful,
+  deterministic rejection of an unsupported hard case is not a regression.
+  Exact rules and status labels live in
+  `.claude/rules/verification-ladder.md`.
