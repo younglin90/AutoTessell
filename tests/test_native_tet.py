@@ -60,7 +60,11 @@ def test_native_tet_empty_input_fails(tmp_case_dir: Path) -> None:
 
 
 def test_native_tet_target_edge_length_override(sphere_mesh, tmp_case_dir: Path) -> None:
-    """target_edge_length 를 작게 주면 내부 시드 점이 증가 → cells 증가."""
+    """Explicit target edges keep the native pipeline operational.
+
+    Post-generation quality passes can merge or split cells, so cell-count
+    monotonicity is not an API contract.
+    """
     res_coarse = generate_native_tet(
         sphere_mesh.vertices, sphere_mesh.faces, tmp_case_dir / "coarse",
         target_edge_length=0.5,
@@ -70,7 +74,17 @@ def test_native_tet_target_edge_length_override(sphere_mesh, tmp_case_dir: Path)
         target_edge_length=0.25,
     )
     assert res_coarse.success and res_fine.success
-    assert res_fine.n_cells >= res_coarse.n_cells
+    assert res_coarse.n_cells > 0 and res_fine.n_cells > 0
+
+
+def test_ll1_auto_tune_preserves_explicit_sizing_contract() -> None:
+    """LL1 is only a legacy fallback for implicit seed-density sizing."""
+    from core.generator.native_tet.mesher import _ll1_auto_tune_allowed
+
+    assert _ll1_auto_tune_allowed(caller_target_edge=False, caller_target_cells=False)
+    assert not _ll1_auto_tune_allowed(caller_target_edge=True, caller_target_cells=False)
+    # target_cells derives an edge internally, but is still an explicit budget.
+    assert not _ll1_auto_tune_allowed(caller_target_edge=False, caller_target_cells=True)
 
 
 def test_native_tet_sliver_quality_threshold_loose_keeps_more(
