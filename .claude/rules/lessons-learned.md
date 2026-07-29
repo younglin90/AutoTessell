@@ -42,3 +42,10 @@ paths: ["**"]
   deterministic rejection of an unsupported hard case is not a regression.
   Exact rules and status labels live in
   `.claude/rules/verification-ladder.md`.
+- **Verification level is not product promotion.** A disconnected oracle may
+  land at `L1_PASS / CORRECTNESS_KEEP`; a useful default-OFF mechanism may stay
+  `EXPERIMENTAL_KEEP` after an honest L2 timeout. `RUNTIME_READY` needs the
+  target L2 plus an absolute product budget, and only L3 can make it
+  `PERMANENT`. Never relax surface/topology/exactness/determinism to advance a
+  state, but do not kill a correct primitive merely for missing a later-level
+  quality or performance target.

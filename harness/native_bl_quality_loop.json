@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "planner": {"model": "gpt-5.6-sol", "command": null},
+  "improver": {"model": "gpt-5.6-terra", "command": null},
+  "engines": {
+    "tet": {
+      "workspace": "",
+      "scope": ["core/generator/native_tet", "core/layers/native_bl.py", "tests/test_native_tet_near_wall.py", "tests/test_native_tet_solid_volume.py"],
+      "tests": ["python3 -m pytest tests/test_native_tet_near_wall.py tests/test_native_tet_solid_volume.py tests/test_native_bl_anti_invert.py -q"]
+    },
+    "hex": {
+      "workspace": "",
+      "scope": ["core/generator/native_hex", "core/layers/native_bl.py", "tests/test_native_hex_solid_volume.py", "tests/test_native_hex_quality_extension.py"],
+      "tests": ["python3 -m pytest tests/test_native_hex.py tests/test_native_hex_snap.py tests/test_native_hex_octree.py tests/test_native_hex_solid_volume.py -q"]
+    },
+    "poly": {
+      "workspace": "",
+      "scope": ["core/generator/native_poly", "core/layers/native_bl.py", "tests/test_native_poly.py", "tests/test_native_poly_solid_volume.py"],
+      "tests": ["python3 -m pytest tests/test_native_poly.py tests/test_native_poly_dual.py tests/test_native_poly_harness_edge.py tests/test_native_poly_solid_volume.py -q"]
+    }
+  },
+  "quality_gate": {
+    "max_non_orthogonality": 70.0,
+    "max_skewness": 4.0,
+    "max_aspect_ratio": 200.0,
+    "negative_volumes": 0,
+    "severe_non_orthogonal_faces": 0,
+    "non_manifold_faces": 0
+  }
+}

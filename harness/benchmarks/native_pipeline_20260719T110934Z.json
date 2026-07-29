@@ -1,0 +1,22 @@
+{
+  "commit": "da9a183f69f9d36d641f8d23ccc32a1258ac4f55",
+  "records": [
+    {
+      "case": "poly",
+      "cells": 2197,
+      "elapsed_seconds": 4.425999,
+      "error": null,
+      "max_non_orthogonality": 0.0,
+      "max_skewness": 3.6082248264235336e-16,
+      "mesh_type": "poly",
+      "negative_volumes": 0,
+      "points": 2744,
+      "requested_cells": 2000,
+      "success": true,
+      "tier": "tier_native_poly",
+      "tier_hint": "native_poly",
+      "verdict": "PASS"
+    }
+  ],
+  "timestamp_utc": "20260719T110934Z"
+}

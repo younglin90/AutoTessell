@@ -107,3 +107,14 @@ b_aYczSLScZNH/tsconfig.tsbuildinfo
 # CFD paper search — large PDFs & converted text (keep summaries only)
 papers/pdf/
 papers/md/
+
+# Local agent/session artifacts and reproducible benchmark outputs
+/.agents/
+/.omc/
+/CMakeFiles/
+/tmp/
+/harness/runs/
+/autoresearch-results/
+tests/bench_quality_matrix_*.jsonl
+tests/stl/bench_*_eval_result.json
+tests/stl/bench_*_eval_summary.tsv

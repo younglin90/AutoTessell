@@ -495,6 +495,17 @@ def flip_edges_44(
     if tets.size == 0:
         return tets, 0
 
+    # Phase-0m safety lane: the historical batch implementation below used
+    # sorted(set(ring)), which loses the owner-tet adjacency cycle.  Delegate
+    # to the sequential, candidate-guarded implementation; the legacy body is
+    # retained below for forensic comparison and is unreachable.
+    return _flip_edges_44_boundary_safe(
+        pts, tets,
+        min_quality_improvement=min_quality_improvement,
+        max_flips=max_flips,
+        protected_edges=protected_edges,
+    )
+
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
     T_np0 = np.asarray(tets_list, dtype=np.int64)
@@ -587,6 +598,156 @@ def flip_edges_44(
         alive = np.concatenate([alive, np.ones(len(new_tets_buf), dtype=bool)])
     out = np.asarray(tets_list, dtype=np.int64)[alive]
     return out, n_flip
+
+
+def _flip_edges_44_boundary_safe(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_quality_improvement: float,
+    max_flips: int,
+    protected_edges: set[tuple[int, int]] | None,
+) -> tuple[np.ndarray, int]:
+    """Sequential 4-4 flips with cycle and boundary-preservation guards."""
+    working = np.asarray(tets, dtype=np.int64).copy()
+    tets_list = working.tolist()
+    alive = np.ones(working.shape[0], dtype=bool)
+    n_flip = 0
+
+    def _cycle_for_edge(
+        owners: list[int], current: np.ndarray, u: int, v: int,
+    ) -> list[int] | None:
+        adjacency: dict[int, set[int]] = {}
+        for owner in owners:
+            opposite = [
+                int(vertex) for vertex in current[owner]
+                if int(vertex) not in (u, v)
+            ]
+            if len(opposite) != 2 or opposite[0] == opposite[1]:
+                return None
+            a, b = opposite
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+        if len(adjacency) != 4 or any(len(neighbors) != 2 for neighbors in adjacency.values()):
+            return None
+        start = min(adjacency)
+        cycle = [start, min(adjacency[start])]
+        while len(cycle) < 4:
+            previous, current_vertex = cycle[-2], cycle[-1]
+            next_vertices = adjacency[current_vertex] - {previous}
+            if len(next_vertices) != 1:
+                return None
+            cycle.append(next_vertices.pop())
+        if cycle[0] not in adjacency[cycle[-1]] or len(set(cycle)) != 4:
+            return None
+        return cycle
+
+    def _faces(tet_array: np.ndarray) -> np.ndarray:
+        return np.sort(
+            np.stack(
+                [tet_array[:, [0, 1, 2]], tet_array[:, [0, 1, 3]],
+                 tet_array[:, [0, 2, 3]], tet_array[:, [1, 2, 3]]],
+                axis=1,
+            ).reshape(-1, 3),
+            axis=1,
+        )
+
+    face_map = _face_map_vectorized(working)
+    edge_map = _edge_to_tets_map(working)
+    boundary_edges = _boundary_edges_from_fmap(face_map)
+    for (u, v), owners in sorted(edge_map.items()):
+            if n_flip >= max_flips:
+                break
+            if len(owners) != 4:
+                continue
+            if not all(alive[owner] for owner in owners):
+                continue
+            edge_key = (u, v) if u < v else (v, u)
+            if edge_key in boundary_edges or (
+                protected_edges and edge_key in protected_edges
+            ):
+                continue
+            ring = _cycle_for_edge(owners, working, u, v)
+            if ring is None:
+                continue
+
+            d02 = float(np.linalg.norm(pts[ring[0]] - pts[ring[2]]))
+            d13 = float(np.linalg.norm(pts[ring[1]] - pts[ring[3]]))
+            if d02 <= d13:
+                new_tets = np.asarray(
+                    [
+                        (u, ring[0], ring[1], ring[2]),
+                        (u, ring[0], ring[2], ring[3]),
+                        (v, ring[0], ring[1], ring[2]),
+                        (v, ring[0], ring[2], ring[3]),
+                    ], dtype=np.int64,
+                )
+            else:
+                new_tets = np.asarray(
+                    [
+                        (u, ring[1], ring[0], ring[3]),
+                        (u, ring[1], ring[3], ring[2]),
+                        (v, ring[1], ring[0], ring[3]),
+                        (v, ring[1], ring[3], ring[2]),
+                    ], dtype=np.int64,
+                )
+            if any(len(set(row.tolist())) != 4 for row in new_tets):
+                continue
+
+            old_tets = np.asarray(
+                [tets_list[owner] for owner in owners], dtype=np.int64,
+            )
+            old_vol = _tet_signed_vol6_batch_arr(pts, old_tets)
+            new_vol = _tet_signed_vol6_batch_arr(pts, new_tets)
+            if (
+                np.any(np.abs(new_vol) < 1e-20)
+                or float(new_vol[0]) * float(new_vol[2]) > 0.0
+                or float(new_vol[1]) * float(new_vol[3]) > 0.0
+            ):
+                continue
+            old_volume = float(np.abs(old_vol).sum())
+            if abs(float(np.abs(new_vol).sum()) - old_volume) > 1e-9 * max(old_volume, 1e-30):
+                continue
+            q_old = float(_tet_quality_batch_arr(pts, old_tets).min())
+            q_new = float(_tet_quality_batch_arr(pts, new_tets).min())
+            if q_new <= q_old + float(min_quality_improvement):
+                continue
+
+            old_faces = _faces(old_tets)
+            new_faces = _faces(new_tets)
+            affected = {tuple(row) for row in np.vstack((old_faces, new_faces))}
+            old_counts: dict[tuple[int, int, int], int] = {}
+            new_counts: dict[tuple[int, int, int], int] = {}
+            for row in old_faces:
+                key = tuple(int(x) for x in row)
+                old_counts[key] = old_counts.get(key, 0) + 1
+            for row in new_faces:
+                key = tuple(int(x) for x in row)
+                new_counts[key] = new_counts.get(key, 0) + 1
+            for key in affected:
+                before = len(face_map.get(key, []))
+                after = before - old_counts.get(key, 0) + new_counts.get(key, 0)
+                if (before == 1) != (after == 1) or after > 2:
+                    break
+            else:
+                for owner in owners:
+                    alive[owner] = False
+                first_new = len(tets_list)
+                tets_list.extend(new_tets.tolist())
+                alive = np.concatenate(
+                    (alive, np.ones(new_tets.shape[0], dtype=bool)),
+                )
+                for key in old_counts:
+                    face_map[key] = [
+                        owner for owner in face_map.get(key, [])
+                        if owner not in owners
+                    ]
+                for offset, row in enumerate(new_faces):
+                    key = tuple(int(x) for x in row)
+                    face_map.setdefault(key, []).append(first_new + offset)
+                boundary_edges = _boundary_edges_from_fmap(face_map)
+                n_flip += 1
+    return np.asarray(tets_list, dtype=np.int64)[alive], n_flip
 
 
 def flip_edges_54(

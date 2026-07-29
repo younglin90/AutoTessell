@@ -382,6 +382,66 @@ def flat_allsurf_sliver_candidates(
     }
 
 
+def classify_flat_sliver_wdel2(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    n_surface_vertices: int,
+    *,
+    q_flat: float = 0.01,
+    pumpable_ratio_floor: float = 0.05,
+) -> dict:
+    """Classify flat tets with a bounded WDEL-2 forbidden-interval heuristic.
+
+    The exact Cheng--Dey interval theorem assumes a Delaunay-like star and
+    weight/radius data that native_tet does not expose.  This diagnostic keeps
+    that limitation explicit: it uses the normalized GSM/shape-quality ratio
+    ``Q / q_flat`` as a conservative available-interval proxy.  A candidate
+    above ``pumpable_ratio_floor`` is reported as PUMPABLE; the remainder is
+    LOCKED.  It never edits coordinates or connectivity.
+    """
+    points = np.asarray(pts, dtype=np.float64)
+    cells = np.asarray(tets, dtype=np.int64)
+    if cells.size == 0:
+        return {
+            "status": "empty",
+            "n_candidates": 0,
+            "n_pumpable": 0,
+            "n_locked": 0,
+            "pumpable_indices": [],
+            "locked_indices": [],
+            "method": "gsm_ratio_forbidden_interval_proxy",
+        }
+    from core.generator.native_tet.quality import tet_shape_quality
+
+    q = tet_shape_quality(points, cells)
+    candidates = np.flatnonzero(q < float(q_flat))
+    ratios = np.divide(
+        q[candidates], max(float(q_flat), 1e-30),
+        out=np.zeros(candidates.shape[0], dtype=np.float64),
+    )
+    pumpable_mask = ratios >= float(pumpable_ratio_floor)
+    pumpable = candidates[pumpable_mask].astype(np.int64).tolist()
+    locked = candidates[~pumpable_mask].astype(np.int64).tolist()
+    all_surface = np.all(cells[candidates] < int(n_surface_vertices), axis=1)
+    return {
+        "status": "ok",
+        "method": "gsm_ratio_forbidden_interval_proxy",
+        "assumptions": {
+            "delaunay_star_available": False,
+            "exact_weight_interval": False,
+            "all_surface_candidates": int(all_surface.sum()),
+        },
+        "q_flat": float(q_flat),
+        "pumpable_ratio_floor": float(pumpable_ratio_floor),
+        "n_candidates": int(candidates.size),
+        "n_pumpable": len(pumpable),
+        "n_locked": len(locked),
+        "pumpable_indices": pumpable,
+        "locked_indices": locked,
+        "ratios": [float(v) for v in ratios.tolist()],
+    }
+
+
 def apply_flat_sliver_23_flips(
     pts: np.ndarray,
     tets: np.ndarray,

@@ -4,8 +4,10 @@
 
 - Hua Tong, Yongjie Jessica Zhang, *Fast and Robust Hexahedral Mesh Optimization via
   Augmented Lagrangian, L-BFGS, and Line Search*, arXiv:2410.11656v3 [cs.CG],
-  23 Dec 2024 (SIAM copyright 2025; journal version reported in CAD 196:104073, 2026 —
-  DOI unverified).
+  23 Dec 2024 (SIAM copyright 2025; journal version in CAD 196:104073, 2026 —
+  DOI confirmed 2026-07-25 via native_hex transition-sheet snowball:
+  `10.1016/j.cad.2026.104073`. No re-read needed; content already covered
+  from the arXiv preprint above).
 - Local PDF: `papers/pdf/37_tong_hexopt_arxiv.pdf`,
   SHA-256 `1bc0f38e0d500fa8f01e3c6f74ec2f63c0a2fa23dfc81cdb79cc6b881819f54e`.
 - Code + meshes: <https://github.com/CMU-CBML/HexOpt> (CMU CBML group).

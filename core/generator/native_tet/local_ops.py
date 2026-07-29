@@ -279,6 +279,22 @@ def _collapse_vectorized_single_pass(
     greedy 하되 vectorized candidate enumeration: non-conflicting edge 만
     선택 (한 vertex 가 두 collapse 에 victim/keeper 로 동시 참여 금지).
     """
+    # Phase-0k safety lane.  The historical bulk application below can delete
+    # an unrelated sign-flipped tet after moving a keeper, exposing an internal
+    # face as a new boundary face.  Use candidate-level simulation until the
+    # bulk path has an equivalent proof; the old body remains below for
+    # forensic comparison and is unreachable.
+    return _collapse_candidate_boundary_safe(
+        pts, tets,
+        thresh=thresh,
+        locked_set=locked_set,
+        max_collapses=max_collapses,
+        metric=metric,
+        protected_edges=protected_edges,
+        allow_surface_keeper=allow_surface_keeper,
+        envelope=envelope,
+    )
+
     pair_idx = np.array(
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )
@@ -401,6 +417,175 @@ def _collapse_vectorized_single_pass(
 
     tets_out = tets_new[keep_mask]
     return pts_new, tets_out, int(len(keeper_of))
+
+
+def _collapse_candidate_boundary_safe(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    thresh: float,
+    locked_set: set[int],
+    max_collapses: int,
+    metric: np.ndarray | None,
+    protected_edges: set[tuple[int, int]] | None,
+    allow_surface_keeper: bool,
+    envelope: object | None,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Apply short-edge collapses one candidate at a time with full guards."""
+    points = np.asarray(pts, dtype=np.float64).copy()
+    current = np.asarray(tets, dtype=np.int64).copy()
+    if current.size == 0:
+        return points, current, 0
+
+    pair_idx = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+    )
+    if metric is not None and metric.shape[0] == points.shape[0]:
+        edge_lengths = _edge_lengths_with_metric(points, current, metric)
+    else:
+        tet_points = points[current]
+        edge_lengths = np.linalg.norm(
+            tet_points[:, pair_idx[:, 1]] - tet_points[:, pair_idx[:, 0]],
+            axis=2,
+        )
+    shortest = edge_lengths.argmin(axis=1)
+    min_lengths = edge_lengths[np.arange(current.shape[0]), shortest]
+    candidates = np.argsort(min_lengths)
+    candidates = candidates[min_lengths[candidates] < float(thresh)][:max_collapses]
+
+    active = np.ones(current.shape[0], dtype=bool)
+    used: set[int] = set()
+
+    def _boundary_keys(active_tets: np.ndarray) -> set[tuple[int, int, int]]:
+        from core.generator.native_tet.near_wall import boundary_face_keys
+        return boundary_face_keys(active_tets)
+
+    def _boundary_area(
+        points_now: np.ndarray,
+        keys: set[tuple[int, int, int]],
+    ) -> float:
+        if not keys:
+            return 0.0
+        faces = np.asarray(sorted(keys), dtype=np.int64)
+        tri = points_now[faces]
+        return float(
+            0.5 * np.linalg.norm(
+                np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]),
+                axis=1,
+            ).sum()
+        )
+
+    accepted = 0
+    for tet_index in candidates.tolist():
+        if accepted >= max_collapses or not active[tet_index]:
+            continue
+        i0, i1 = pair_idx[int(shortest[tet_index])]
+        u = int(current[tet_index, i0])
+        v = int(current[tet_index, i1])
+        if u in used or v in used:
+            continue
+        key = (u, v) if u < v else (v, u)
+        if protected_edges and key in protected_edges:
+            continue
+        u_locked = u in locked_set
+        v_locked = v in locked_set
+        if u_locked and v_locked:
+            continue
+        if (u_locked or v_locked) and not allow_surface_keeper:
+            continue
+        if u_locked:
+            keeper, victim = u, v
+        elif v_locked:
+            keeper, victim = v, u
+        else:
+            keeper, victim = (u, v) if u < v else (v, u)
+
+        incident_keeper = (current == keeper).any(axis=1)
+        incident_victim = (current == victim).any(axis=1)
+        incident = active & (incident_keeper | incident_victim)
+        edge_tets = active & (current == u).any(axis=1) & (current == v).any(axis=1)
+        if not incident.any() or not edge_tets.any():
+            continue
+
+        trial_points = points.copy()
+        if keeper not in locked_set and victim not in locked_set:
+            midpoint = 0.5 * (points[keeper] + points[victim])
+            if envelope is not None:
+                try:
+                    if not bool(envelope.is_inside(midpoint[None, :])[0]):
+                        continue
+                except Exception:
+                    pass
+            trial_points[keeper] = midpoint
+
+        trial_tets = current.copy()
+        trial_tets[incident] = np.where(
+            trial_tets[incident] == victim, keeper, trial_tets[incident],
+        )
+        non_edge_incident = incident & ~edge_tets
+        if non_edge_incident.any():
+            affected = trial_tets[non_edge_incident]
+            sorted_affected = np.sort(affected, axis=1)
+            duplicate = np.any(
+                sorted_affected[:, 1:] == sorted_affected[:, :-1], axis=1,
+            )
+            old_affected = current[non_edge_incident]
+            old_vol = np.einsum(
+                "ij,ij->i",
+                points[old_affected[:, 1]] - points[old_affected[:, 0]],
+                np.cross(
+                    points[old_affected[:, 2]] - points[old_affected[:, 0]],
+                    points[old_affected[:, 3]] - points[old_affected[:, 0]],
+                ),
+            )
+            new_vol = np.einsum(
+                "ij,ij->i",
+                trial_points[affected[:, 1]] - trial_points[affected[:, 0]],
+                np.cross(
+                    trial_points[affected[:, 2]] - trial_points[affected[:, 0]],
+                    trial_points[affected[:, 3]] - trial_points[affected[:, 0]],
+                ),
+            )
+            geometry_changed = (
+                duplicate.any()
+                or np.any(np.abs(new_vol) < 1e-20)
+                or np.any((old_vol * new_vol) < 0.0)
+            )
+            if geometry_changed and not (
+                allow_surface_keeper and keeper in locked_set
+            ):
+                continue
+
+        before_tets = current[active]
+        after_active = active.copy()
+        after_active[edge_tets] = False
+        after_tets = trial_tets[after_active]
+        before_keys = _boundary_keys(before_tets)
+        after_keys = _boundary_keys(after_tets)
+        before_area = _boundary_area(points, before_keys)
+        after_area = _boundary_area(trial_points, after_keys)
+        area_tol = 1e-10 * max(abs(before_area), 1e-30)
+        # ``allow_surface_keeper`` is an explicit fTetWild-style opt-in lane:
+        # it permits a surface keeper to absorb an interior victim and may
+        # intentionally change the conformal surface topology.  The default
+        # native lane remains strict on both keys and area.
+        boundary_changed = (
+            before_keys != after_keys
+            or abs(after_area - before_area) > area_tol
+        )
+        if boundary_changed and not (
+            allow_surface_keeper and keeper in locked_set
+        ):
+            continue
+
+        points = trial_points
+        current = trial_tets
+        active = after_active
+        used.add(keeper)
+        used.add(victim)
+        accepted += 1
+
+    return points, current[active], accepted
 
 
 def collapse_short_edges(

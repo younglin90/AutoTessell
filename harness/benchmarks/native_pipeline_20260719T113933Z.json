@@ -1,0 +1,22 @@
+{
+  "commit": "da9a183f69f9d36d641f8d23ccc32a1258ac4f55",
+  "records": [
+    {
+      "case": "tet",
+      "cells": 2136,
+      "elapsed_seconds": 0.586171,
+      "error": null,
+      "max_non_orthogonality": 69.5537673379776,
+      "max_skewness": 2.9069746917350923,
+      "mesh_type": "tet",
+      "negative_volumes": 0,
+      "points": 525,
+      "requested_cells": 2000,
+      "success": true,
+      "tier": "tier_native_tet",
+      "tier_hint": "native_tet",
+      "verdict": "PASS"
+    }
+  ],
+  "timestamp_utc": "20260719T113933Z"
+}

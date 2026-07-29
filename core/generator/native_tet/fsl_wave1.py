@@ -197,6 +197,9 @@ def general_edge_removal(
     *,
     min_quality_improvement: float = 1e-4,
     exhaustive: bool = True,
+    _precomputed_edge_owners: dict[tuple[int, int], list[int]] | None = None,
+    _precomputed_face_owners: dict[tuple[int, int, int], list[int]] | None = None,
+    _precomputed_boundary_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray | None, dict[str, Any]]:
     """Remove interior edge (a, b) by re-triangulating its tet ring.
 
@@ -234,7 +237,7 @@ def general_edge_removal(
         return None, {"reason": "empty_mesh"}
 
     key = (a, b) if a < b else (b, a)
-    e2t = _edge_to_tets_map(tets)
+    e2t = _precomputed_edge_owners or _edge_to_tets_map(tets)
     owners = e2t.get(key)
     if not owners or len(owners) < 3:
         return None, {"reason": "ring_too_small", "n": 0 if not owners else len(owners)}
@@ -242,8 +245,12 @@ def general_edge_removal(
     if n > _MAX_RING_SIZE:
         return None, {"reason": "ring_too_large", "n": n}
 
-    fmap = _face_map_vectorized(tets)
-    boundary_edges = _boundary_edges_from_fmap(fmap)
+    fmap = _precomputed_face_owners or _face_map_vectorized(tets)
+    boundary_edges = (
+        _precomputed_boundary_edges
+        if _precomputed_boundary_edges is not None
+        else _boundary_edges_from_fmap(fmap)
+    )
     if key in boundary_edges:
         return None, {"reason": "boundary_edge", "n": n}
 

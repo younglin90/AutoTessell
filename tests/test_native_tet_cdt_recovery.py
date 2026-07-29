@@ -51,3 +51,32 @@ def test_cdt_recovery_result_fields() -> None:
     assert 0.0 <= info.ratio_before <= 1.0
     assert 0.0 <= info.ratio_after <= 1.0
     assert info.reverted >= 0
+    assert "initial_check" in info.stage_seconds
+    assert all(value >= 0.0 for value in info.stage_seconds.values())
+
+
+def test_targeted_flip_index_preserves_legacy_result(monkeypatch) -> None:
+    from core.generator.native_tet.edge_flip_recovery import (
+        recover_edges_via_flip,
+    )
+
+    points = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.2, 0.2, -0.2],
+    ])
+    tets = np.array([[0, 1, 2, 3], [0, 2, 1, 4]], dtype=np.int64)
+
+    monkeypatch.setenv("AUTO_TESSELL_TET_EDGE_FLIP_INDEX", "0")
+    legacy_tets, legacy_info = recover_edges_via_flip(
+        points, tets, [(3, 4)], max_attempts=1,
+    )
+    monkeypatch.setenv("AUTO_TESSELL_TET_EDGE_FLIP_INDEX", "1")
+    indexed_tets, indexed_info = recover_edges_via_flip(
+        points, tets, [(3, 4)], max_attempts=1,
+    )
+
+    assert np.array_equal(indexed_tets, legacy_tets)
+    assert indexed_info == legacy_info

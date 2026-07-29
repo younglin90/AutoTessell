@@ -108,3 +108,25 @@ def test_census_distinguishes_generic_cell_families_and_clusters() -> None:
     assert sum(metrics.cell_volume_fractions.values()) == 1.0
     assert metrics.n_hex_clusters == 2
     assert metrics.largest_cluster_frac == 0.5
+
+
+def test_beta_margin_reports_a_thin_corner_without_changing_gate_logic() -> None:
+    """A thin corner has a small relative margin even with positive volume."""
+    points = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 0.01],
+            [0.0, 1.0, 1.0],
+        ]
+    )
+    metrics = compute_native_hex_metrics(points, [_cube_faces(0)], beta=0.1)
+
+    assert metrics.total_volume > 0.0
+    assert metrics.min_corner_jacobian == 0.01
+    assert metrics.beta_margin_ratio < metrics.beta
+    assert not metrics.beta_pass

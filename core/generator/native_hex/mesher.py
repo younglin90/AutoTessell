@@ -599,7 +599,7 @@ def _wall_fit_snap(
     tol: float,
     ratio: float,
     iters: int,
-) -> tuple[np.ndarray, dict[str, int]]:
+) -> tuple[np.ndarray, dict[str, object]]:
     """Project boundary verts onto the input surface with a per-vertex guard.
 
     Motif: snappyHexMesh snap-step + fTetWild envelope. Each boundary vertex is
@@ -632,6 +632,7 @@ def _wall_fit_snap(
         "n_reject_vol": 0,
         "n_reject_dist": 0,
         "n_reject_envelope": 0,
+        "n_reject_face_area": 0,
     }
     sF = np.asarray(F, dtype=np.int64)
     sV = np.asarray(V, dtype=np.float64)
@@ -639,6 +640,7 @@ def _wall_fit_snap(
         return np.asarray(pts, dtype=np.float64).copy(), stats
 
     pts = np.asarray(pts, dtype=np.float64).copy()
+    original_pts = pts.copy()
 
     # boundary faces appear in exactly one cell; their verts are the surface.
     face_cells: dict[tuple[int, ...], list[int]] = defaultdict(list)
@@ -683,6 +685,22 @@ def _wall_fit_snap(
     k = min(8, tri_cen.shape[0])
     cap_floor = float(ratio * target_edge)
     eps = max(1e-15, 1e-6 * target_edge**3)
+    face_area_guard_enabled = os.environ.get(
+        "AUTO_TESSELL_HEX_WALLFIT_FACE_AREA_GUARD", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    face_area_eps = max((float(target_edge) * 1.0e-12) ** 2, 1.0e-30)
+    candidate_quality_audit = None
+    if os.environ.get("AUTO_TESSELL_HEX_WALLFIT_CANDIDATE_QUALITY_DIAG", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        from core.generator.native_hex.wallfit_quality import (  # noqa: PLC0415
+            CandidateQualityAudit,
+            snapshot as _candidate_quality_snapshot,
+        )
+
+        candidate_quality_audit = CandidateQualityAudit()
 
     def _cell_signs(ci: int) -> tuple[np.ndarray, float]:
         """Per-face centroid-signed tet-sum + total |vol| of cell *ci*."""
@@ -714,6 +732,25 @@ def _wall_fit_snap(
         sgn, mag = _cell_signs(ci)
         if mag <= eps:
             return False
+        if face_area_guard_enabled:
+            for face in cell_faces[ci]:
+                if len(face) < 3:
+                    stats["n_reject_face_area"] += 1
+                    return False
+                anchor = pts[int(face[0])]
+                face_area = 0.0
+                for face_index in range(1, len(face) - 1):
+                    face_area += 0.5 * float(
+                        np.linalg.norm(
+                            np.cross(
+                                pts[int(face[face_index])] - anchor,
+                                pts[int(face[face_index + 1])] - anchor,
+                            )
+                        )
+                    )
+                if face_area <= face_area_eps:
+                    stats["n_reject_face_area"] += 1
+                    return False
         r = ref[ci]
         # every face that had a definite orientation keeps it (no flip).
         return bool(np.all(np.sign(sgn)[r != 0.0] == r[r != 0.0]))
@@ -753,15 +790,47 @@ def _wall_fit_snap(
                 stats["n_reject_envelope"] += 1
                 continue  # outside envelope
             orig = pts[vi].copy()
+            candidate_before = (
+                _candidate_quality_snapshot(pts, cell_faces, incident[vi])
+                if candidate_quality_audit is not None
+                else None
+            )
             pts[vi] = p0
+            candidate_trial = (
+                _candidate_quality_snapshot(pts, cell_faces, incident[vi])
+                if candidate_quality_audit is not None
+                else None
+            )
             d1 = _project(pts[vi], cand)[0] ** 0.5  # ~0 (p0 is on a triangle)
             if not (d1 < d0 - 1e-15):
                 pts[vi] = orig
                 stats["n_reject_dist"] += 1
+                if candidate_quality_audit is not None:
+                    assert candidate_before is not None and candidate_trial is not None
+                    candidate_quality_audit.record(
+                        vertex=vi,
+                        outcome="rejected",
+                        before=candidate_before,
+                        trial=candidate_trial,
+                        after=candidate_before,
+                        distance_before=d0,
+                        distance_after=d0,
+                    )
                 continue
             if all(_cell_ok(ci) for ci in incident[vi]):
                 stats["n_snapped"] += 1
                 moved += 1
+                if candidate_quality_audit is not None:
+                    assert candidate_before is not None and candidate_trial is not None
+                    candidate_quality_audit.record(
+                        vertex=vi,
+                        outcome="full",
+                        before=candidate_before,
+                        trial=candidate_trial,
+                        after=candidate_trial,
+                        distance_before=d0,
+                        distance_after=d1,
+                    )
             else:
                 # Full projection flips a face — backtrack to the largest
                 # fraction t of orig->p0 that still passes the same guard
@@ -781,11 +850,125 @@ def _wall_fit_snap(
                     pts[vi] = orig + lo * (p0 - orig)
                     stats["n_snapped_partial"] += 1
                     moved += 1
+                    if candidate_quality_audit is not None:
+                        assert candidate_before is not None and candidate_trial is not None
+                        candidate_after = _candidate_quality_snapshot(
+                            pts, cell_faces, incident[vi]
+                        )
+                        candidate_quality_audit.record(
+                            vertex=vi,
+                            outcome="partial",
+                            before=candidate_before,
+                            trial=candidate_trial,
+                            after=candidate_after,
+                            distance_before=d0,
+                            distance_after=d_partial,
+                        )
                 else:
                     pts[vi] = orig
                     stats["n_reject_vol"] += 1
+                    if candidate_quality_audit is not None:
+                        assert candidate_before is not None and candidate_trial is not None
+                        candidate_quality_audit.record(
+                            vertex=vi,
+                            outcome="rejected",
+                            before=candidate_before,
+                            trial=candidate_trial,
+                            after=candidate_before,
+                            distance_before=d0,
+                            distance_after=d0,
+                        )
         if moved == 0:
             break  # cube early-exit: nothing to fit
+    if candidate_quality_audit is not None:
+        def _surface_distance_stats(query_points: np.ndarray) -> dict[str, object]:
+            _, nearest = tree.query(query_points[boundary], k=k)
+            nearest = np.atleast_2d(np.asarray(nearest))
+            distances: list[float] = []
+            for index, vertex in enumerate(boundary.tolist()):
+                candidates = nearest[index]
+                candidates = candidates[candidates < tri_cen.shape[0]]
+                if candidates.size == 0:
+                    continue
+                distances.append(_project(query_points[vertex], candidates)[0] ** 0.5)
+            if not distances:
+                return {"n": 0, "mean": None, "p50": None, "p95": None, "maximum": None}
+            values = np.asarray(distances, dtype=np.float64)
+            return {
+                "n": int(values.size),
+                "mean": float(np.mean(values)),
+                "p50": float(np.percentile(values, 50)),
+                "p95": float(np.percentile(values, 95)),
+                "maximum": float(np.max(values)),
+            }
+
+        before_surface_distance = _surface_distance_stats(original_pts)
+        after_surface_distance = _surface_distance_stats(pts)
+        candidate_report = candidate_quality_audit.to_dict()
+        candidate_report["stage_surface_distance_before"] = before_surface_distance
+        candidate_report["stage_surface_distance_after"] = after_surface_distance
+        candidate_report["stage_surface_distance_max_delta"] = (
+            float(after_surface_distance["maximum"])
+            - float(before_surface_distance["maximum"])
+            if before_surface_distance["maximum"] is not None
+            and after_surface_distance["maximum"] is not None
+            else None
+        )
+        candidate_report["stage_surface_distance_mean_delta"] = (
+            float(after_surface_distance["mean"])
+            - float(before_surface_distance["mean"])
+            if before_surface_distance["mean"] is not None
+            and after_surface_distance["mean"] is not None
+            else None
+        )
+        stats["candidate_quality"] = candidate_report
+        log.info(
+            "native_hex_wall_fit_candidate_quality_summary",
+            n_candidates=candidate_report["n_candidates"],
+            n_full=candidate_report["n_full"],
+            n_partial=candidate_report["n_partial"],
+            n_rejected=candidate_report["n_rejected"],
+            n_applied_distance_improved=candidate_report[
+                "n_applied_distance_improved"
+            ],
+            n_distance_improved_quality_regression=candidate_report[
+                "n_distance_improved_quality_regression"
+            ],
+            strict_quality_nonregressing=candidate_report[
+                "strict_quality_nonregressing"
+            ],
+            p95_quality_nonregressing=candidate_report[
+                "p95_quality_nonregressing"
+            ],
+            combined_quality_nonregressing=candidate_report[
+                "combined_quality_nonregressing"
+            ],
+            pareto_frontier_size=candidate_report["pareto_frontier_size"],
+            boundary_key_changes=candidate_report["n_boundary_key_change"],
+            boundary_area_changes=candidate_report["n_boundary_area_change"],
+            max_abs_boundary_area_delta=candidate_report[
+                "max_abs_boundary_area_delta"
+            ],
+            max_relative_boundary_area_delta=candidate_report[
+                "max_relative_boundary_area_delta"
+            ],
+            max_applied_skew_delta=candidate_report["max_applied_skew_delta"],
+            max_applied_warpage_delta=candidate_report[
+                "max_applied_warpage_delta"
+            ],
+            stage_surface_distance_before=candidate_report[
+                "stage_surface_distance_before"
+            ],
+            stage_surface_distance_after=candidate_report[
+                "stage_surface_distance_after"
+            ],
+            stage_surface_distance_max_delta=candidate_report[
+                "stage_surface_distance_max_delta"
+            ],
+            stage_surface_distance_mean_delta=candidate_report[
+                "stage_surface_distance_mean_delta"
+            ],
+        )
     return pts, stats
 
 
@@ -1291,6 +1474,44 @@ def generate_native_hex(
                 else:
                     _os_hbc.environ["AUTO_TESSELL_HEX_BUFFER_LAYER"] = _prev_buf
             if oct_cells:
+                _transition_diag_enabled = os.environ.get(
+                    "AUTO_TESSELL_HEX_TRANSITION_PROVENANCE_DIAG", ""
+                ).strip().lower() in ("1", "true", "yes")
+                if _transition_diag_enabled:
+                    _transition_summary = oct_stats.get("transition_provenance", {})
+                    log.info(
+                        "native_hex_transition_provenance_before_writer",
+                        path="octree",
+                        **_transition_summary,
+                    )
+                _transition_quality_enabled = os.environ.get(
+                    "AUTO_TESSELL_HEX_TRANSITION_QUALITY_DIAG", ""
+                ).strip().lower() in ("1", "true", "yes")
+                _transition_quality_metadata = oct_stats.get(
+                    "_transition_quality_metadata", []
+                )
+                _log_transition_quality_stage = None
+                if _transition_quality_enabled:
+                    from core.generator.native_hex.transition_quality import (  # noqa: PLC0415
+                        audit_transition_quality,
+                    )
+
+                    def _log_transition_quality_stage(
+                        _stage_name: str, _stage_points: np.ndarray
+                    ) -> None:
+                        _quality_report = audit_transition_quality(
+                            np.asarray(_stage_points, dtype=np.float64),
+                            oct_cells,
+                            cell_metadata=_transition_quality_metadata,
+                        )
+                        log.info(
+                            "native_hex_transition_quality_stage",
+                            path="octree",
+                            stage=_stage_name,
+                            **_quality_report.to_dict(),
+                        )
+
+                    _log_transition_quality_stage("before_snap", oct_pts)
                 # beta94: iterative snap step (adaptive 경로)
                 if snap_iterations > 0:
                     try:
@@ -1314,6 +1535,8 @@ def generate_native_hex(
                         )
                     except Exception as exc:
                         log.warning("native_hex_iterative_snap_failed", error=str(exc))
+                if _log_transition_quality_stage is not None:
+                    _log_transition_quality_stage("after_iterative_snap", oct_pts)
 
                 # BETA_HEX_WALLFIT (beta1) — per-vertex guarded wall-fit on the
                 # adaptive/octree mesh (the standard/fine path). Runs after the
@@ -1335,6 +1558,8 @@ def generate_native_hex(
                             iters=3,
                         )
                         log.info("native_hex_wall_fit", path="octree", **_wf_stats)
+                        if _log_transition_quality_stage is not None:
+                            _log_transition_quality_stage("after_wall_fit", oct_pts)
 
                         # HEX-SKEW-INNER-RELAX (beta_hex4) — post-wall-fit boundary
                         # sliver (|nd| collapsed by the snap) 두께 복원. 표면 정점
@@ -1363,6 +1588,10 @@ def generate_native_hex(
                                 )
                     except Exception as exc:
                         log.warning("native_hex_wall_fit_failed", error=str(exc))
+                if _log_transition_quality_stage is not None:
+                    _log_transition_quality_stage(
+                        "after_wall_fit_and_skew_relax", oct_pts
+                    )
 
                 # HEX-MATCH-2 (2026-07-26) — Staten-2010/Ledoux-2010 local pillow
                 # insertion on boundary quads our own OpenFOAM skew formula flags,
@@ -1403,6 +1632,45 @@ def generate_native_hex(
                 _write_minimal_fv_dicts(case_dir)
                 stats = write_generic_polymesh(oct_pts, oct_cells, case_dir)
                 n_t = int(stats["num_cells"])
+                if _transition_quality_enabled:
+                    from core.generator.native_hex.metrics import (  # noqa: PLC0415
+                        read_written_polymesh_cells,
+                    )
+                    from core.generator.native_hex.transition_quality import (  # noqa: PLC0415
+                        audit_transition_quality,
+                    )
+
+                    _written = read_written_polymesh_cells(case_dir)
+                    if _written is None:
+                        log.warning(
+                            "native_hex_transition_quality_writer_unavailable",
+                            path="octree",
+                        )
+                    else:
+                        _written_pts, _written_cells = _written
+                        _writer_quality_report = audit_transition_quality(
+                            np.asarray(oct_pts, dtype=np.float64),
+                            oct_cells,
+                            cell_metadata=_transition_quality_metadata,
+                            writer_points=np.asarray(_written_pts, dtype=np.float64),
+                            writer_cell_faces=_written_cells,
+                        )
+                        log.info(
+                            "native_hex_transition_quality_writer",
+                            path="octree",
+                            **_writer_quality_report.to_dict(),
+                        )
+                if _transition_diag_enabled:
+                    log.info(
+                        "native_hex_transition_provenance_writer_boundary",
+                        path="octree",
+                        builder_cell_metadata=int(
+                            _transition_summary.get("n_cell_metadata", 0)
+                        ),
+                        written_cells=n_t,
+                        writer_metadata_forwarded=False,
+                        loss_stage="generic_polymesh_writer_boundary",
+                    )
                 _phase0_fields = _native_hex_phase0_metrics(
                     case_dir,
                     np.asarray(oct_pts, dtype=np.float64),

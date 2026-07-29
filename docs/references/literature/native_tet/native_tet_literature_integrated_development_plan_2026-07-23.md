@@ -699,3 +699,416 @@ and repeated metrics were bit-identical. Focused native-tet verification was
 The implementation is retained behind `AUTO_TESSELL_TET_SHAPE2=1` and remains
 default OFF. Broader shape coverage and downstream surface-snap interaction
 remain follow-up evidence before any default change.
+
+## 12. 2026-07-27 — `TET-CDT-SCALE-PERF-1` edge-flip index measurement
+
+The dual-torus fine run (`max_cells=15000`, BL=2) reached native-tet CDT
+recovery but did not finish within the 480-second diagnostic limit. Three
+outer CDT rounds each had zero point insertion and exited through the existing
+three-round plateau rule; the logged rounds took approximately 102, 107, and
+112 seconds. Midpoint edge recovery then inserted 82 points, and targeted
+edge-flip/BSP recovery was still active when the run was stopped. The plateau
+exit prevents unbounded retries, but does not remove the dominant local-search
+cost. The earlier naca hard-12 timeout remains withdrawn because that verifier
+selected `tier_wildmesh --strict-tier`, not native-tet.
+
+Fixed replay of `/tmp/cdt_state_dump.npz` (3,251 points, 17,720 tets, 2,047
+surface vertices, 4,096 faces) isolated the bottleneck. `check_edge_recovery()`
+took 0.081 s; one CDT cycle took 15.15 s, with the targeted edge-flip search
+accounting for 13.35 s. The old search scanned every tetrahedron for the
+opposite tetrahedron for every missing edge.
+
+`core/generator/native_tet/edge_flip_recovery.py` now has an opt-in indexed
+lane, `AUTO_TESSELL_TET_EDGE_FLIP_INDEX=1`. Stable row IDs, vertex-to-row and
+tetra-key indexes, and edge counts avoid repeated full scans while preserving
+legacy first-match/order behavior. On the fixed replay the result was
+byte-identical (`152` recoveries, `452` missing edges, identical tetra array):
+targeted flip `12.72 s -> 1.34 s` (9.48x), full one-cycle CDT `15.15 s ->
+3.79 s` (4.00x). Opt-in verification passed `3 tests`, including a new
+legacy/indexed result-equality regression. The lane remains default OFF until
+the fine end-to-end replay and broader permanent-gate sweep are complete.
+
+Decision: **measured, promising opt-in implementation; not default-on**.
+
+## 13. 2026-07-27 — `TET-BSP-SCALE-PERF-1` measurement and falsification
+
+The remaining fine-run bottleneck was isolated after the indexed edge-flip
+replay reached BSP. On a fixed state with 1,032 missing faces and 17,720 tets,
+the existing scalar BSP proposal took `59.537 s` for a 500-point budget; the
+already-present batch proposal took `1.503 s`. The batch and scalar proposals
+do not produce the same crossed-tet proposal set, so this was treated as a
+diagnostic result, not an equivalence claim.
+
+The native-tet BSP call now has two opt-in controls: `AUTO_TESSELL_TET_BSP_BATCH=1`
+selects the batch proposal, and `AUTO_TESSELL_TET_BSP_MAX_POINTS` bounds its
+proposal budget. Both default OFF/unset; the scalar path is unchanged by
+default. A real fine replay with edge-flip indexing, batch BSP, and a 500-point
+budget reached the downstream quality pass in about 246 s, but failed the
+quality/integrity conditions (`cdt_face_ratio=0.452`, `n_val_flipped=4621`,
+`n_val_degen=6`, grade B) and hit the bounded retry timeout. This combination
+is **falsified as a default-on candidate**. The large default batch budget was
+also not accepted because it remained in BSP/B-W beyond the diagnostic limit.
+
+Decision: retain both paths as measurement-only hooks, keep scalar BSP as the
+default, and open a separate correctness-first BSP recovery card. The next
+valid optimization must preserve conforming surface faces and positive
+tetra orientation before any runtime gate is considered.
+
+## 14. 2026-07-27 — `TET-BSP-RECOVERY-CORRECTNESS-1` first guard
+
+The fixed-state replay showed that a BSP/Bowyer-Watson proposal could add
+points while making the constrained-face census worse (`1,032 -> 1,076`
+missing faces). The native-tet BSP path therefore treats point insertion as a
+candidate, not an unconditional state transition. After B-W insertion and the
+existing surface snap, it rechecks the missing-face count and the physical
+boundary area. The entire candidate, including post-snap coordinates, is
+restored when the missing count does not decrease or the boundary area changes.
+It also rejects a candidate when the scale-relative non-positive/degenerate
+tet count increases. The full re-Delaunay fallback uses the same three
+acceptance tests and also restores the pre-candidate state on rejection.
+
+This is a minimal correctness guard; it does not claim that the remaining
+surface faces are recovered, nor does it make the batch proposal equivalent to
+the scalar proposal. The scalar BSP path remains default and the batch lane
+remains opt-in. Focused verification after the guard was `16 passed, 2 xfailed`, covering
+Phase-F BSP integration, CDT recovery, and the draft dual-torus native-tet
+path. A broader fine run is still required before closing the card.
+
+Decision: **implemented, measured guard; card remains open pending fine
+replay, hard-gate sweep, and deterministic surface-conformity evidence**.
+
+The bounded fine replay with indexed edge flips, opt-in batch BSP, and the
+500-point diagnostic cap still timed out at the 480-second case limit (`504.7 s`
+wall time including runner cleanup). No final quality result was produced, so
+the guard is not promoted to a default path and the card remains open as a
+correctness/performance interaction, not a solved optimization.
+
+### 2026-07-27 — fixed-state performance split
+
+On the same `/tmp/cdt_state_dump.npz` state (`17,720` tets, `1,032`
+missing faces), the proposal costs were:
+
+| stage | time | result |
+|---|---:|---|
+| scalar BSP proposal | 60.1438 s | 500 points, 2,046 subdivided tets |
+| batch BSP proposal | 1.4736 s | 500 points, 445 subdivided tets |
+| Bowyer–Watson after batch proposal | 13.3494 s | 139/500 points inserted, cavity total 1,783 |
+
+The resulting candidate had `1,076` missing faces, unchanged boundary area
+`103.399255187455`, and scale-relative non-positive/degenerate count
+`8964→8587`. The correctness guard must therefore restore it despite the
+positive non-positive-tet delta. The dominant measured cost after vectorized
+BSP is Bowyer–Watson's per-point global adjacency rebuild, but optimizing that
+cost alone is not authorized because the candidate fails constrained-face
+recovery. A future performance card must first produce a candidate with a
+strict missing-face reduction and deterministic conformity.
+
+## 15. 2026-07-27 — `TET-CDT-EDGE-FACE-MONOTONE-1` diagnostic
+
+The fixed-state surface census shows that the BSP proposal is not the only
+recovery issue. On `/tmp/cdt_state_dump.npz`, the indexed targeted 2-3 edge
+flip lane attempted 200 missing edges and recovered 152. It reduced missing
+edges `604→452` and missing faces `1032→779`, while preserving the boundary
+face set and physical boundary area exactly. The aggregate
+non-positive/degenerate count changed `8964→9071`, but the follow-up
+orientation audit shows this was 107 additional negative orientations, not
+additional degenerate tets: the degenerate count stayed `131→131`, and the
+existing final `fix_inverted_tets` stage can swap those orientations.
+
+The missing-face topology explains the dependency: all `1,032` missing faces
+have all three surface vertices present in the mesh, but none has all three
+input edges as tet edges. `176` missing faces contain one present edge and
+`856` contain two present edges. Therefore face recovery cannot be treated as
+an independent point-insertion problem; edge recovery must be a monotone,
+candidate-transactional prerequisite.
+
+Literature alignment: TetGen's recovery forms blocking-face sets and accepts
+local flips only when the constraint measure decreases; fTetWild uses
+table-driven cut-tet transactions and rejects invalid sub-tets. The current
+`recover_edges_via_flip` performs the 2-3 connectivity change but does not
+perform a candidate-level volume/boundary transaction.
+
+Decision: **measured and guarded opt-in**. The indexed lane now has an optional
+`AUTO_TESSELL_TET_EDGE_FLIP_GUARD=1` candidate transaction. It compares the
+local boundary-face key set before/after each 2-3 flip and rejects non-finite or
+scale-relative degenerate new tets before mutating the mesh. A valid synthetic
+bipyramid flip was accepted, while a coplanar candidate was rejected with
+rollback. On the fixed state, enabling the guard preserved the same
+`604→455` missing-edge and `1032→779` missing-face result; one locally unsafe
+candidate was rejected in the first 200-attempt bounded run. Repeating the
+same sorted candidate order produced the same `17,869×4` tetra array byte for
+byte, with boundary face count `1320→1320` and area
+`103.399255187455→103.399255187455`. The guard is intentionally opt-in and
+does not reject negative orientation alone because the existing
+orientation-normalization stage repairs signs deterministically. Fine replay,
+permanent gates, and repeated-run byte identity on the full pipeline remain
+open before any default promotion.
+The indexed lane and its guard remain measurement hooks, not default paths.
+
+### 2026-07-27 — candidate-order canonicalization
+
+The fixed-state diagnostic exposed a second determinism defect: before
+canonicalization, raw/sorted/reversed missing-edge orders produced respectively
+`152/452`, `149/455`, and `144/460` recovered/missing results. The recovery
+function now canonicalizes every edge as `(min(u,v), max(u,v))` and sorts the
+bounded candidate list before applying flips. With the guard and indexed lane
+enabled, all three input orders now produce the same `17,869×4` tet array,
+`149` recovered edges, `455` missing edges, one guard rejection, and the same
+SHA-256 digest. A two-bipyramid regression test confirms order-independent
+arrays and statistics. This closes candidate-order nondeterminism for the
+recovery function, but not yet full-pipeline fine determinism or promotion of
+the opt-in lane. The focused native-tet gate after this change was
+`19 passed, 2 xfailed`.
+
+### Fixed-condition direct A/B replay (`target_cells=600`, 2026-07-27)
+
+The canonical diagnostic replayed the same dual-torus input with P4C disabled,
+indexed ordering, and the guard enabled. Edge OFF produced `12219` cells /
+`2855` points, CDT edge/face ratios `0.89665/0.73291`, plane coverage/area
+`0.93168/0.94605`, mean quality `0.15154`, and `6.41 s`. Edge ON produced
+`12616` cells / `2903` points, ratios `0.93229/0.81763`, plane coverage/area
+`0.91149/0.93789`, mean quality `0.15749`, and `13.66 s`. The edge lane's
+own boundary snapshot remained exact, but a later BSP candidate violated the
+boundary guard (`1195` added, `492` removed faces; area `84.3611→115.1185`)
+and was rejected. This confirms the improvement/trade-off split and keeps
+the lane opt-in; no default promotion is justified.
+
+### Full-fine direct A/B replay (`target_cells=15000`, 2026-07-27)
+
+The fixed-condition replay was extended from the `target_cells=600` diagnostic
+to the fine-sized target. Edge OFF produced `17458` cells / `4453` points,
+`cdt edge/face = 0.80518/0.46509`, plane coverage/area
+`0.68116/0.66596`, mean quality `0.14912`, degen `6`, and `29.16 s` wall.
+Edge ON produced `17914` cells / `4535` points with the same final CDT,
+coverage, and degen values, mean quality `0.15234`, and `36.93 s` wall.
+
+The ON stage did perform `85` midpoint insertions and recovered `55` targeted
+edges while preserving its local boundary snapshot, but downstream stages
+discarded the constraint improvement. The lane therefore remains an opt-in
+measurement hook; no default promotion or gate relaxation is justified.
+
+### Bounded replay revalidation — 2026-07-27
+
+The current worktree was rerun with `target_cells=600`, P4C disabled, indexed
+edge ordering, and the boundary guard. Edge OFF reproduced
+`12219 cells / 2855 points`, edge/face ratios `0.89665/0.73291`, plane/area
+`0.93168/0.94605`, mean q `0.15154`; edge ON reproduced
+`12616 / 2903`, `0.93229/0.81763`, `0.91149/0.93789`, mean q `0.15749`.
+Wall times were `26.53 s` and `34.15 s` respectively. This revalidates the
+bounded statistic-level result only. The existing `480 s` fine replay remains
+unresolved, so no default promotion or acceptance-gate change is allowed.
+
+### Current fine-route revalidation — 2026-07-27
+
+The current worktree was also replayed at `target_cells=15000`. Because the
+route entered `_phase_bc_skip`, it is not the same fixed-condition CDT/BSP
+replay and cannot close this card. Edge OFF returned in `14.35 s` with
+`13,970` cells / `3,920` points, grade A, mean q `0.3255`. Edge ON with the
+batch/BSP cap `500` took `134.42 s` and returned `13,788` cells / `3,881`
+points, grade A, mean q `0.3237`; its edge-recovery snapshot preserved exactly
+`1560` boundary faces and area `103.399255187455`, with `85` insertions and
+`48+7` recovered flips. Final CDT/coverage fields were `-1` because the phase
+gate was skipped, so the result is measurement-only. The same run exposed an
+unbound `_tet_boundary_faces` caller failure that skipped metric/GAP; it is a
+separate caller card, not folded into BSP recovery.
+
+### 2026-07-27 `TET-METRIC-GAP-BOUNDARY-IMPORT1`
+
+The current fine-route diagnostic found that `_tet_boundary_faces` was only
+imported inside the conditional JJ3 block. When `_phase_bc_skip=True`, the
+later metric-tensor and GAP-SELF blocks still ran but raised an unbound-local
+error and silently skipped. The minimal fix adds the same local helper import
+to each of those two blocks; no lock set, operator, acceptance threshold, or
+surface policy changed.
+
+The `target_cells=600` replay after the fix executed both stages in OFF and ON
+runs. OFF returned `15,353/4,044` cells/points, grade A, mean q `0.3448`, wall
+`12.02 s`; ON with batch cap 500 returned `16,483/4,303`, grade A, mean q
+`0.3672`, wall `72.45 s`. The ON edge-recovery snapshot remained exact at
+`1,320` boundary faces and area `103.399255187455`. Focused regression was
+`15 passed, 1 xfailed`; the unrelated stellar test import mismatch remains
+outside this card.
+
+### Fixed-condition full-fine revalidation after caller fix
+
+At `target_cells=15000`, `AUTO_TESSELL_P4C_PYTETWILD=0`, indexed ordering,
+and the boundary guard, edge OFF returned `17458/4453` cells/points in
+`31.40 s`, with cdt edge/face `.80518/.46509`, plane/area `.68116/.66596`,
+mean q `.14912`, grade B. Edge ON with batch cap 500 returned `17914/4535` in
+`151.75 s`, with the same final ratios and degen count, mean q `.15234`, grade
+B. The ON lane remains opt-in: it adds `456` cells and a quality increment but
+costs about `4.8x` wall time without changing final recovery/coverage metrics.
+This closes the fixed-condition measurement portion of the card; the current
+`_phase_bc_skip` route is not mixed into the decision.
+
+### 2026-07-27 — `TET-LAZY-1` / `TET-SHAPE-3(a)` current-mesh measurement
+
+The existing diagnostic-only FSL wave-1 implementation was rerun on the fixed
+dual-torus FSL mesh. Of 61 core flat wedges, 60 were unlocked by a guarded
+Dassi depth-1 edge removal and one remained structurally blocked after the
+depth-2 and exhaustive multi-face fallback attempts. A private-copy replay
+reduced tets `12219→12159`, preserved all `4588` boundary faces, and improved
+mean quality `0.1515436139→0.1522083893`; minimum quality stayed
+`7.3576387e-09`. The 60/61 result is useful evidence that the previous
+“unflippable” label was too narrow, but it is not a worst-case quality pass.
+The environment flag remains OFF and no production promotion is made.
+
+### 2026-07-27 — `TET-LAZY-2` bounded diagnostic result
+
+On the same mesh, two alternating rounds over the first 128 sorted interior
+edges produced 128 candidate records and zero accepted candidates. Every
+candidate failed the inherited `no_improving_retriangulation` criterion, so
+only the angle round was reached; the sequence rolled back. Boundary face set
+and area were exact on sampled attempts, and input arrays were unchanged. This
+bounded run is insufficient to claim a global impossibility result, but it
+provides no acceptance evidence for promotion. The card remains
+measurement-only; no threshold or production path was modified.
+
+### 2026-07-27 — `TET-FLOW-3` first bounded implementation/measurement
+
+FLOW-3 had no implementation in the current tree, so a new diagnostic-only
+module was added and deliberately not wired into the mesher. It tests local
+2-3, cycle-validated 4-4, and general edge-removal candidates using stable
+bad-tet/rung order, exact boundary face-set comparison, signed-volume/tiling
+checks, and a global minimum-quality non-regression guard.
+
+On the fixed FSL mesh, five rungs with one round each and eight bad tets per
+rung examined 364 candidates and accepted two into a private sequence. The
+candidate sequence preserved all 4588 boundary faces and improved mean quality
+slightly, but left minimum quality unchanged; the whole sequence rolled back
+and returned the input. The same scheduler with 32 bad tets per rung exceeded
+the 120-second diagnostic budget. Therefore this first implementation is not
+eligible for production: its measured cost is too high and its owned
+worst-case axis did not improve. The required follow-up is a cavity-local
+quality/incidence evaluator, not a threshold relaxation or default-on flag.
+
+### 2026-07-27 — `TET-SHAPE-1` / `TET-WDEL-2` closure
+
+The Phase-0 report-only helpers now exist. GSM calibration gives a regular
+tet score `1.000000` and a flat calibration tet `0.00053598`; the focused
+shape/certification tests are `3 passed`. The WDEL-2 implementation is clearly
+labelled a GSM-ratio forbidden-interval proxy because the engine lacks the
+Delaunay-star and exact weight-interval inputs required by Cheng--Dey.
+
+On the fixed FSL mesh the proxy classified `152` flat candidates as `90`
+PUMPABLE and `62` LOCKED. On the 61 core wedges, actual guarded wave-1 behavior
+was `60` unlocked / `1` blocked, but the proxy predicted `4` PUMPABLE / `57`
+LOCKED: agreement `5/61 = 8.2%`, versus the `>=90%` card requirement. This is
+**measured, falsified**; no WDEL routing or production gate is enabled.
+
+### 2026-07-27 — `TET-DET-P4C` first isolation result
+
+The next correctness prerequisite is repeatability of the existing fallback
+route. Repeated cylinder runs showed identical Delaunay inputs/outputs and
+identical native-only results when `AUTO_TESSELL_P4C_PYTETWILD=0` was set.
+The default P4-C path was different on every call, even in one process with
+`num_threads=1` and with fTetWild optimization disabled. The installed
+`pytetwild` wrapper has no seed parameter, and the bundled fTetWild source
+shuffles input faces using `std::random_device` in
+`third_party/fTetWild/src/TriangleInsertion.cpp`.
+
+This is a measured external-fallback determinism obstruction. A diagnostic
+rebuild that replaced the first `random_device` seed with `42` still differed
+across fresh processes, implicating additional unordered-container and mutable
+ordering in fTetWild. The one-line experiment was therefore insufficient and
+was restored; no fallback policy or production path was changed. This blocks
+any WDEL-3 threshold decision based on the current default route. The next
+card must either normalize all relevant fTetWild order sources or define the
+self-native route as the deterministic lane after permanent gate comparison.
+
+Disabling the vendored fTetWild TBB build was also tested with
+`max_threads=1`; fresh-process outputs still differed (`584/2400`, `597/2394`,
+`588/2429` points/cells). TBB-off is therefore not a sufficient low-cost fix,
+and the normal TBB-enabled build was restored.
+
+### 2026-07-27 — `TET-FLOW-3` cavity-local cache recheck
+
+The naive FLOW-3 diagnostic was optimized without changing its guards or
+candidate policy: round-local face/edge incidence maps are now passed into the
+general edge-removal evaluator and rebuilt only after a candidate is selected.
+The `32` bad-tet / `5` rung replay dropped from about `60.3 s` to `1.84 s` and
+matched the prior candidate/acceptance/quality/boundary numbers exactly.
+
+A larger bounded run (`128` bad tets, two rounds per rung) completed in
+`6.02 s`, with `11,859` candidates and `10` private accepts. Boundary remained
+exact at `4,588` faces and candidate mean quality improved to `.1516671466`,
+but the global minimum stayed `7.3576387e-09`, forcing sequence rollback.
+This closes the performance objection to the diagnostic but not the owned
+worst-quality gate; no production promotion is justified.
+
+### 2026-07-27 — `TET-DET-RESULT1` and boundary-guard continuation
+
+The final-result contract is now measured explicitly: returned arrays, counts,
+and the on-disk `polyMesh` must describe one identical final mesh. The cylinder
+focused contract test passes. This audit also exposed three distinct naca
+late-pass failures that had been masked by the pre-W3 writer: NN1 bulk collapse
+(`696→984`), post-BSP 4-4 ring ordering (`984→1008`), and VVV8 boundary
+Laplacian area drift with unchanged keys. Candidate-level collapse guards,
+cycle-validated 4-4 guards, and a VVV8 boundary keys/area acceptance guard were
+implemented. The current naca gate is `2 passed, 1 strict xfailed`, with
+boundary `696` throughout the audited stages and internal prewrite skew
+`60.399`. These edits remain uncommitted until the full hard-12 and permanent
+gate suite is rerun.
+### 2026-07-27 continuation: hard-geometry gate
+
+The first self-implemented native-tet matrix after the final-result and
+boundary-preservation fixes is recorded in the evidence matrix. Seven of 13
+fixtures are PASS under the measurement protocol. NACA now has exact-looking
+surface/volume (`1.000`/`1.001`) and zero vertex-degenerate cells, but the
+whole-cell max skew is `34.80`; therefore the thin-sliver boundary gate must
+not be confused with the general quality gate. Dual-torus and perforated-plate
+remain 120-second timeouts. Thin disk and micro-ridge remain separate
+geometry/input cards. The next implementation card is not a threshold change:
+profile the timeout/quality failure path and preserve the current hard gates.
+
+### 2026-07-27 continuation — final-result contract and target-cell floor
+
+The result writer is now synchronized with the returned arrays and emits one
+final `polyMesh` write from FINAL-SYNC. The runtime-contract suite is `6/6`
+and the focused native-tet set is `19 passed, 1 strict xfailed`. Evidence-only
+VVV9I/J/K/P probes are default-OFF; their latent logging paths now use the
+current final arrays and do not change acceptance.
+
+The W3 best-of selector applies a deterministic minimum candidate floor
+`ceil(0.30 * target_cells)` for positive targets. This removes tiny-candidate
+selection without relaxing quality, surface, volume, or degeneracy gates. The
+current hard matrix is `6/13` PASS: six ordinary fixtures pass; cylinder and
+naca fail quality; thin disk, needle, and sharp micro-ridge fail
+geometry/quality; dual-torus and perforated plate remain timeouts. The
+non-watertight micro-ridge input is retained as an input-contract failure.
+These measurements open no Phase-1 sliver card and do not justify a permanent
+gate relaxation.
+
+### 2026-07-27 literature follow-up — blockers split before implementation
+
+The cross-engine literature follow-up is in
+`docs/references/literature/improvement_blockers_followup_2026-07-27.md`.
+For native_tet, the next cards are `TET-THIN-SECTION-1` (thickness-field
+census, report-only), `TET-GSM-CAVITY1` (boundary-pinned GSM secondary score,
+opt-in only), and `TET-CDT-PROFILE1` (recovery-stage timing). The literature
+does not justify replacing AMIPS, moving boundary vertices, or relaxing any
+surface/volume gate.
+
+The first thin-section helper is intentionally bounded to synthetic calibration
+until a spatial accelerator is added: an approximately 5k-face naca replay
+demonstrated that naive all-face ray testing is too expensive. The CDT result
+now carries report-only stage timings and the mesher logs them; focused
+CDT/thin-section tests are `6 passed`. The heavy dual-torus stage has not been
+rerun under this instrumentation, so timeout attribution remains open.
+
+The first explicit dual-torus profile attempt confirmed an additional
+precondition: the default `target_cells=600` path enters `_phase_bc_skip` before
+the CDT recovery block. The permanent-gate replay was `1 passed, 1 strict
+xfail` in `135.27 s`; an explicit CDT-enabled run with one cycle and a 20-point
+budget still bypassed the block and returned `cdt=-1.0` after `71.7 s`. A fine
+protocol that actually exercises CDT must be isolated before any recovery
+algorithm conclusion.
+
+The thin-section helper was then bounded with a deterministic 64-nearest-face
+cKDTree candidate search. Calibration-only runs on naca0012, very thin disk,
+and needle completed in `0.926/0.162/0.020 s` with hit fractions
+`293/636`, `64/128`, and `32/32`; the measured medians were
+`0.0989456`, `0.0100000`, and `5.0092388`. Because these use raw surface-vertex
+Delaunay calibration primals, they are evidence for measurement cost/scale
+only, not for a generation change. Unknown rays remain explicit and the card
+stays report-only.

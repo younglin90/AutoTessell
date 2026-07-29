@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -125,7 +126,7 @@ _FACE_DIRS: tuple[tuple[int, int, int], ...] = (
 # Conformal transition face 생성 — 다중 레벨 대응
 # --------------------------------------------------------------------------
 
-def _sub_quads_on_face(
+def _sub_quads_on_face_unoriented(
     fi_base: int, fj_base: int, fk_base: int,
     face_idx: int,
     step: int,
@@ -185,6 +186,29 @@ def _sub_quads_on_face(
             [gid(s,   0,   h), gid(s,   0,   s), gid(s,   h,   s), gid(s,   h,   h)],
             [gid(s,   h,   h), gid(s,   h,   s), gid(s,   s,   s), gid(s,   s,   h)],
         ]
+
+
+def _sub_quads_on_face(
+    fi_base: int, fj_base: int, fk_base: int,
+    face_idx: int,
+    step: int,
+    ny1: int, nz1: int,
+) -> list[list[int]]:
+    """Return coarse-face sub-quads with the parent hex face winding.
+
+    The historical coordinate tables above enumerate each sub-quad in the
+    opposite cyclic direction to ``_HEX_FACES``.  That was invisible while the
+    helper was used only as a face-key source, but it makes every split face
+    contribute the wrong signed orientation to a transition cell.  Reverse the
+    cyclic order once at this boundary so face pairing is unchanged while the
+    emitted cell shell has the same outward convention as an ordinary hex.
+    """
+    return [
+        list(reversed(face))
+        for face in _sub_quads_on_face_unoriented(
+            fi_base, fj_base, fk_base, face_idx, step, ny1, nz1
+        )
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -310,6 +334,8 @@ def _build_nlevel_cells(
     n_levels: int,
     nfx: int, nfy: int, nfz: int,
     nfy1: int, nfz1: int,
+    *,
+    cell_metadata: list[dict[str, object]] | None = None,
 ) -> list[list[list[int]]]:
     """N-level octree cell 및 face 리스트 생성.
 
@@ -325,6 +351,34 @@ def _build_nlevel_cells(
     stride = 1 << n_levels  # 최대 coarse block 크기 (fine grid units)
     covered = np.zeros((nfx, nfy, nfz), dtype=bool)
     cell_face_verts: list[list[list[int]]] = []
+    realize_mixed_levels = os.environ.get(
+        "AUTO_TESSELL_HEX_MIXED_LEVEL_REALIZATION", ""
+    ).strip().lower() in {"1", "true", "yes"}
+
+    if realize_mixed_levels:
+        # Normalize target levels before emitting any leaf.  A finer leaf in a
+        # partly coarse block would otherwise be consumed first, leaving the
+        # remaining cells stranded when the coarser pass reaches the same
+        # block.  Promote such mixed blocks as a whole to the finest level;
+        # neighboring coarse blocks can then see the actual fine slab and
+        # split their shared face deterministically.
+        level_3d = level_3d.copy()
+        for _target_lev in range(n_levels - 1, -1, -1):
+            _block_sz = 1 << (n_levels - _target_lev)
+            for _fi0 in range(0, nfx, _block_sz):
+                for _fj0 in range(0, nfy, _block_sz):
+                    for _fk0 in range(0, nfz, _block_sz):
+                        _fi1 = min(_fi0 + _block_sz, nfx)
+                        _fj1 = min(_fj0 + _block_sz, nfy)
+                        _fk1 = min(_fk0 + _block_sz, nfz)
+                        _inside_block = inside_3d[_fi0:_fi1, _fj0:_fj1, _fk0:_fk1]
+                        if not bool(_inside_block.all()):
+                            continue
+                        _levels_block = level_3d[_fi0:_fi1, _fj0:_fj1, _fk0:_fk1]
+                        if bool((_levels_block > _target_lev).any()) and bool(
+                            (_levels_block <= _target_lev).any()
+                        ):
+                            level_3d[_fi0:_fi1, _fj0:_fj1, _fk0:_fk1] = np.int8(n_levels)
 
     # 각 fine cell 의 inside 여부
     # level_3d 는 inside_3d=True 인 cell 에만 의미있다. outside cell 은 skip.
@@ -334,6 +388,36 @@ def _build_nlevel_cells(
     # 실용적 접근: fine (level=n_levels) → coarser 순서로 진행하면
     # "이 블록이 단일 레벨로 묶을 수 있는가?" 판단이 쉬움.
 
+    def provenance_for_cell(
+        fi: int,
+        fj: int,
+        fk: int,
+        target_lev: int,
+        block_sz: int,
+        n_faces: int,
+    ) -> dict[str, object]:
+        transition_dirs: list[str] = []
+        for name, (di, dj, dk) in zip(
+            ("x+", "x-", "y+", "y-", "z+", "z-"),
+            ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)),
+        ):
+            ni, nj, nk = fi + di * block_sz, fj + dj * block_sz, fk + dk * block_sz
+            if 0 <= ni < nfx and 0 <= nj < nfy and 0 <= nk < nfz:
+                if bool(inside_3d[ni, nj, nk]) and int(level_3d[ni, nj, nk]) > target_lev:
+                    transition_dirs.append(name)
+        mask = sum(1 << index for index, name in enumerate(
+            ("x+", "x-", "y+", "y-", "z+", "z-"),
+        ) if name in transition_dirs)
+        return {
+            "grid_origin": (int(fi), int(fj), int(fk)),
+            "target_level": int(target_lev),
+            "block_size": int(block_sz),
+            "n_faces": int(n_faces),
+            "transition_face_count": int(len(transition_dirs)),
+            "transition_face_dirs": tuple(transition_dirs),
+            "template_class": "uniform" if mask == 0 else f"t{mask:02d}",
+        }
+
     for target_lev in range(n_levels, -1, -1):
         block_sz = 1 << (n_levels - target_lev)  # fine grid 기준 블록 크기
         step_i = max(1, nfx // (nfx // block_sz + 1)) if block_sz > nfx else block_sz
@@ -342,13 +426,44 @@ def _build_nlevel_cells(
         for fi in range(0, nfx, block_sz):
             for fj in range(0, nfy, block_sz):
                 for fk in range(0, nfz, block_sz):
-                    # 이미 처리된 cell 은 skip
-                    if covered[fi, fj, fk]:
-                        continue
                     # 블록 범위
                     fi_end = min(fi + block_sz, nfx)
                     fj_end = min(fj + block_sz, nfy)
                     fk_end = min(fk + block_sz, nfz)
+
+                    # ``covered`` 는 fine-cell 단위 mask 이다. 블록 원점만
+                    # 검사하면, 먼저 finer leaf 하나가 처리된 부분 블록을
+                    # 통째로 skip 하면서 나머지 cell 을 잃는다. 그 결과
+                    # coarse cell 의 내부 면이 새 boundary 로 노출된다.
+                    _covered_block = covered[fi:fi_end, fj:fj_end, fk:fk_end]
+                    if bool(_covered_block.all()):
+                        continue
+
+                    # 부분적으로 finer leaf가 이미 소비된 블록은 mixed
+                    # octree의 안전한 최소 fallback으로 전체 미처리 영역을
+                    # finest hex로 승격한다. 이를 coarse로 억지 병합하면
+                    # covered cell과 중첩되거나 hole이 생긴다. 이 경로는
+                    # opt-in mixed-level realization에서만 활성화된다.
+                    if realize_mixed_levels and block_sz > 1 and bool(_covered_block.any()):
+                        for _fi in range(fi, fi_end):
+                            for _fj in range(fj, fj_end):
+                                for _fk in range(fk, fk_end):
+                                    if covered[_fi, _fj, _fk] or not bool(inside_3d[_fi, _fj, _fk]):
+                                        continue
+                                    _hex8_promoted = _hex8(_fi, _fj, _fk, nfy1, nfz1)
+                                    _faces_promoted = [
+                                        [_hex8_promoted[v] for v in lf]
+                                        for lf in _HEX_FACES
+                                    ]
+                                    cell_face_verts.append(_faces_promoted)
+                                    if cell_metadata is not None:
+                                        cell_metadata.append(
+                                            provenance_for_cell(
+                                                _fi, _fj, _fk, n_levels, 1, 6
+                                            )
+                                        )
+                                    covered[_fi, _fj, _fk] = True
+                        continue
 
                     # 블록 내 모든 cell 이 inside 이고 목표 레벨 == target_lev 이어야 함
                     # 또는 target_lev 이하 (더 거친 레벨이 허용됨) 이어야 함
@@ -358,6 +473,12 @@ def _build_nlevel_cells(
                     # 블록 크기가 1×1×1 이면 fine cell
                     if block_sz == 1:
                         if not bool(sub_inside[0, 0, 0]):
+                            continue
+                        # A finer pass must not consume cells requested at a
+                        # lower target level.  Without this guard every
+                        # inside cell is marked covered at n_levels, making
+                        # the coarse/transition passes unreachable.
+                        if realize_mixed_levels and int(sub_level[0, 0, 0]) != target_lev:
                             continue
                         # Fine cell
                         hex8 = _hex8(fi, fj, fk, nfy1, nfz1)
@@ -384,6 +505,10 @@ def _build_nlevel_cells(
                             # 제거 (60k+ cells × log evaluator overhead). 로직 영향 0:
                             # _ctype 은 debug log 외 미사용.
                         cell_face_verts.append(faces_of_cell)
+                        if cell_metadata is not None:
+                            cell_metadata.append(
+                                provenance_for_cell(fi, fj, fk, target_lev, block_sz, 6)
+                            )
                         covered[fi, fj, fk] = True
                         continue
 
@@ -426,9 +551,37 @@ def _build_nlevel_cells(
                             faces_out.append([coarse_v8[v] for v in local_verts])
                             continue
 
-                        # 인접 cell 의 목표 레벨 확인
-                        nbr_level = int(level_3d[ni, nj, nk])
-                        nbr_inside = bool(inside_3d[ni, nj, nk])
+                        # 인접 cell 하나만 보면, 접촉 면의 다른 위치에
+                        # finer leaf가 있는 경우를 놓친다. 실제 coarse-face
+                        # 접촉 슬랩 전체를 검사해 conforming sub-quad 분할
+                        # 여부를 결정한다.
+                        if di != 0:
+                            _adj_i = ni if di > 0 else ni + block_sz - 1
+                            _nbr_level_block = level_3d[
+                                _adj_i, fj:fj_end, fk:fk_end
+                            ]
+                            _nbr_inside_block = inside_3d[
+                                _adj_i, fj:fj_end, fk:fk_end
+                            ]
+                        elif dj != 0:
+                            _adj_j = nj if dj > 0 else nj + block_sz - 1
+                            _nbr_level_block = level_3d[
+                                fi:fi_end, _adj_j, fk:fk_end
+                            ]
+                            _nbr_inside_block = inside_3d[
+                                fi:fi_end, _adj_j, fk:fk_end
+                            ]
+                        else:
+                            _adj_k = nk if dk > 0 else nk + block_sz - 1
+                            _nbr_level_block = level_3d[
+                                fi:fi_end, fj:fj_end, _adj_k
+                            ]
+                            _nbr_inside_block = inside_3d[
+                                fi:fi_end, fj:fj_end, _adj_k
+                            ]
+                        nbr_inside = bool(_nbr_inside_block.any())
+                        _inside_levels = _nbr_level_block[_nbr_inside_block]
+                        nbr_level = int(_inside_levels.max()) if _inside_levels.size else 0
 
                         # 인접이 outside 이면 coarse quad (경계)
                         if not nbr_inside:
@@ -445,6 +598,12 @@ def _build_nlevel_cells(
                             faces_out.append([coarse_v8[v] for v in local_verts])
 
                     cell_face_verts.append(faces_out)
+                    if cell_metadata is not None:
+                        cell_metadata.append(
+                            provenance_for_cell(
+                                fi, fj, fk, target_lev, block_sz, len(faces_out)
+                            )
+                        )
                     covered[fi:fi_end, fj:fj_end, fk:fk_end] = True
 
     return cell_face_verts
@@ -710,6 +869,8 @@ def build_octree_hex_cells(
     level_3d[~fine_inside_3d] = 0
 
     # WWW8: feature-driven refinement — bump cells intersected by feature edges
+    n_feat = 0
+    n_www8_refined = 0
     if _WWW8_FEATURE_REFINE:
         try:
             from core.generator.native_hex.snap import (  # noqa: PLC0415
@@ -780,9 +941,18 @@ def build_octree_hex_cells(
                     level_3d[i, j, k] = np.int8(min(lv, n_lev))
 
     # N-level cell 및 face 생성
+    _collect_provenance = os.environ.get(
+        "AUTO_TESSELL_HEX_TRANSITION_PROVENANCE_DIAG", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    _collect_quality = os.environ.get(
+        "AUTO_TESSELL_HEX_TRANSITION_QUALITY_DIAG", ""
+    ).strip().lower() in {"1", "true", "yes"}
+    _collect_metadata = _collect_provenance or _collect_quality
+    _cell_metadata: list[dict[str, object]] = [] if _collect_metadata else None
     cell_face_verts = _build_nlevel_cells(
         fine_pts, fine_inside_3d, level_3d, n_lev,
         nfx, nfy, nfz, nfy1, nfz1,
+        cell_metadata=_cell_metadata,
     )
 
     # 통계: 레벨별 cell 수
@@ -807,7 +977,26 @@ def build_octree_hex_cells(
         "fine_grid": (nfx, nfy, nfz),
         "elapsed": time.perf_counter() - t0,
     }
-    log.info("native_hex_octree_done", **stats)
+    if _cell_metadata is not None:
+        from core.generator.native_hex.transition_provenance import (
+            summarize_transition_provenance,
+        )
+
+        stats["transition_provenance"] = summarize_transition_provenance(
+            _cell_metadata,
+            n_levels=n_lev,
+            n_feature_segments=n_feat,
+            n_feature_refined_cells=n_www8_refined,
+        )
+    if _collect_quality:
+        # Keep the builder-side labels available to the opt-in mesher report,
+        # but never send the potentially large metadata list to structured
+        # logs.  The default path does not allocate this field.
+        stats["_transition_quality_metadata"] = _cell_metadata or []
+    _log_stats = {
+        key: value for key, value in stats.items() if key != "_transition_quality_metadata"
+    }
+    log.info("native_hex_octree_done", **_log_stats)
     return fine_pts, cell_face_verts, stats
 
 

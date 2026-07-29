@@ -1,0 +1,59 @@
+{
+  "evaluation_summary": {
+    "verdict": "PASS",
+    "iteration": 1,
+    "tier_evaluated": "tier_wildmesh",
+    "evaluation_time_seconds": 4.496444062999217,
+    "checkmesh": {
+      "cells": 5730,
+      "faces": 11918,
+      "points": 1213,
+      "max_non_orthogonality": 68.98123413507004,
+      "avg_non_orthogonality": 13.395290894463143,
+      "max_skewness": 2.484192032830741,
+      "max_aspect_ratio": 2.8528298613596195,
+      "min_face_area": 0.0027177184114276676,
+      "min_cell_volume": 0.00005717826848640145,
+      "min_determinant": 0.32764262411805456,
+      "negative_volumes": 0,
+      "severely_non_ortho_faces": 0,
+      "failed_checks": 0,
+      "mesh_ok": true,
+      "max_boundary_skewness": 2.484192032830741,
+      "max_internal_skewness": 0.9010934453499924,
+      "max_concavity": 0.0,
+      "min_face_weight": 0.2029605153756819,
+      "min_vol_ratio": 0.25464298731868656,
+      "max_adjacent_volume_ratio": 3.9270667161491337,
+      "max_face_warpage": 0.0,
+      "max_cell_size_growth_ratio": null
+    },
+    "additional_metrics": {
+      "cell_volume_stats": null,
+      "boundary_layer": null,
+      "native_bl_phase2": null,
+      "max_cell_size_growth_ratio": null,
+      "max_expansion_ratio": null
+    },
+    "geometry_fidelity": {
+      "hausdorff_distance": 0.0016019731890333233,
+      "hausdorff_relative": 0.0009248996519229525,
+      "surface_area_deviation_percent": 0.008972668010024758,
+      "distance_rms": 0.00006428474791730183,
+      "distance_p95": 1.1443916996305594e-16,
+      "distance_p99": 0.00020991465800274342,
+      "normal_deviation_max_deg": 90.0,
+      "feature_preservation_score": 0.9999999905136262,
+      "n_self_intersect_pre": 0
+    },
+    "hard_fails": [],
+    "soft_fails": [],
+    "recommendations": [],
+    "quality_level": "draft",
+    "mesh_type": "tet",
+    "checker_engine_used": "native",
+    "user_decision": null,
+    "verdict_reasoning": "모든 기준 통과",
+    "checkmesh_note": "mesh_ok/failed_checks는 OpenFOAM checkMesh raw 출력값. verdict는 AutoTessell quality_level별 임계값으로 독립 계산됨."
+  }
+}

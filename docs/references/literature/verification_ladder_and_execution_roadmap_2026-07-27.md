@@ -7,6 +7,38 @@ This document turns the permanent rule in
 does not relax any permanent gate or discard prior hard-fixture evidence.
 Existing hard results are reclassified by level and retained as evidence.
 
+## 0. Promotion policy applied to every engine
+
+Verification and product promotion are two axes. All native_tet, native_hex,
+native_poly, and native_tri cards use the following matrix; engine plans may
+add stricter card-specific gates but may not weaken the hard invariants.
+
+| Promotion state | Minimum evidence | Allowed product effect | What still blocks the next state |
+| --- | --- | --- | --- |
+| `CORRECTNESS_KEEP` | L0 + relevant L1, deterministic, zero false certification/permanent-invariant regression | test/report/oracle only; runtime disconnected | L2 behavior and product cost unproven |
+| `EXPERIMENTAL_KEEP` | correctness keep + byte-identical OFF path; targeted L2 measured | explicit default-OFF or offline/fine lane | target may refuse/timeout; absolute budget unproven |
+| `RUNTIME_READY` | target L2 passes + all relevant permanent gates + absolute runtime/memory budget | normal-route integration candidate | L3 campaign and default transition unproven |
+| `PERMANENT` | runtime ready + L3 full regression + repeat determinism | default ON or permanent-gate replacement | none for this card |
+
+`KILL` is reserved for incorrect certification, permanent-invariant regression,
+zero practical leverage, or unjustified maintenance cost. `DEFER` names a
+missing prerequisite. A hard-fixture timeout or conservative `UNCERTAIN` does
+not erase an L0/L1-correct primitive; it prevents runtime promotion. As a
+default performance calibration, reproducible >=3x end-to-end improvement is
+material experimental evidence, while only an absolute product budget can
+grant `RUNTIME_READY`.
+
+This policy changes sequencing, not safety. Pre-meshing surface preservation,
+topology/positive measure, provenance, exact-predicate no-false-PASS,
+determinism, and every existing permanent gate remain non-negotiable at all
+states.
+
+Accordingly, legacy engine-plan language requiring the full permanent suite or
+a final wall-clock budget for "every card" is read as a runtime-promotion gate.
+A genuinely disconnected report/test/oracle card can land at
+`CORRECTNESS_KEEP` after L0/L1, but any observed mesh-output change immediately
+removes that exemption.
+
 ## 1. Reclassification of current blockers
 
 | Engine | Existing evidence | Correct level | Interpretation |

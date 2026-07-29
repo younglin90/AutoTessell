@@ -263,3 +263,36 @@ branch preservation, connection disagreement, no mutation, and default-OFF
 behavior. The exact `native_quad_literature_integrated_development_plan_2026-07-23.md`
 file requested for the initial full read was absent from this worktree and its
 Git history; the result is recorded in the current continuation plan instead.
+
+## 2026-07-26 QUAD-MESSY-GRID-TOL1 result (measured, report-only; no tolerance)
+
+Ray's public abstract, [*On Quad Mesh Extraction From Messy Grid Preserving
+Maps*](https://arxiv.org/abs/2507.15404), motivates specifying deviations from
+an ideal grid-preserving map and expressing them on a discrete structure. Only
+the abstract was read for this follow-up; no acceptable tolerance is inferred.
+
+Added `core/preprocessor/native_remesh/messy_grid_ledger.py` and
+`tests/test_native_quad_messy_grid_tol.py`. The new immutable view consumes the
+existing QUAD-POSY1 ledger and records position-singularity faces/candidates,
+exact local integer residual vectors and L1 measurements, exact branch-index
+offsets, and source-versus-observed branch loss. It does not choose a branch or
+call extraction/generation.
+
+Measured with `n_sweeps=20`, `seed=0`, `multires=True`:
+
+| Shape | position-singularity faces / candidates | local integer L1 / max | branch entries | branch span total / max | ±1/2 source faces | expected / observed ±1/2 branches | branch loss |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| cube | 12 / 16 | 39 / 4 | 4 | 4 / 1 | 0 | 0 / 0 | 0 |
+| cylinder | 427 / 443 | 867 / 4 | 16 | 16 / 1 | 0 | 0 / 0 | 0 |
+| bracket | 331 / 385 | 889 / 4 | 54 | 108 / 4 | 18 | 36 / 36 | 0 |
+
+The bracket's `-2/+2` quarter-turn labels (the existing `-1/2` and `+1/2`
+encoding) are all retained by the candidate ledger, but all 18 source faces
+remain unresolved; zero branch loss is not a resolution or extraction
+guarantee. Repeat runs are frozen-ledger and pickle-byte identical. Existing
+remesh output is byte-identical with POSY absent versus explicit
+`AUTO_TESSELL_QUAD_POSY1=0`.
+
+**Verdict: report-only.** The measurements are carried forward for a future
+full-text-informed extraction card. No tolerance is proposed and no quad
+extraction/generation path is changed.

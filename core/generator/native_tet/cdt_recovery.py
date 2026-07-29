@@ -24,7 +24,8 @@ cycle
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import time
 
 import numpy as np
 
@@ -38,6 +39,7 @@ class CDTRecoveryResult:
     ratio_after: float
     n_inserted_points: int
     reverted: int
+    stage_seconds: dict[str, float] = field(default_factory=dict)
 
 
 def _surface_edge_set(F: np.ndarray) -> set[tuple[int, int]]:
@@ -80,12 +82,15 @@ def run_cdt_recovery(
 
     protected = _surface_edge_set(F_surf)
 
+    stage_seconds: dict[str, float] = {}
+    stage_start = time.perf_counter()
     r0 = check_edge_recovery(F_surf, tets)
+    stage_seconds["initial_check"] = time.perf_counter() - stage_start
     n_before = r0.n_missing
     ratio0 = cdt_ratio(r0)
     if n_before == 0:
         return pts, tets, CDTRecoveryResult(
-            0, 0, 0, ratio0, ratio0, 0, 0,
+            0, 0, 0, ratio0, ratio0, 0, 0, stage_seconds,
         )
 
     n_inserted_total = 0
@@ -93,6 +98,7 @@ def run_cdt_recovery(
     cycles_done = 0
 
     # (a) flip-기반 edge recovery 1회 — 대각선 topology 회복.
+    stage_start = time.perf_counter()
     try:
         from core.generator.native_tet.edge_flip_recovery import (
             recover_edges_via_flip,
@@ -116,8 +122,10 @@ def run_cdt_recovery(
                 reverted += 1
     except Exception:
         pass
+    stage_seconds["edge_flip_recovery"] = time.perf_counter() - stage_start
 
     # (a2) Q2 cavity re-triangulation — surface-aligned diagonal 선택.
+    stage_start = time.perf_counter()
     try:
         from core.generator.native_tet.cavity_retri import (
             cavity_retri_for_missing_edges,
@@ -138,6 +146,7 @@ def run_cdt_recovery(
                 reverted += 1
     except Exception:
         pass
+    stage_seconds["cavity_retriangulation"] = time.perf_counter() - stage_start
 
     # (b) insertion-기반 cycle 반복.
     #
@@ -159,6 +168,7 @@ def run_cdt_recovery(
     _PLATEAU_N = 3
     _consec_zero = 0
     _cached_check: object | None = None
+    stage_start = time.perf_counter()
     for cycle in range(1, int(max_cycles) + 1):
         if _cached_check is not None:
             r_cur = _cached_check
@@ -207,8 +217,10 @@ def run_cdt_recovery(
         cycles_done = cycle
         _consec_zero = 0
         _cached_check = None  # tets 실제 변경 — 캐시 무효화, 다음 cycle 재계산.
+    stage_seconds["insertion_cycles"] = time.perf_counter() - stage_start
 
     # R99 — 최종 surface vertex 재-projection.
+    stage_start = time.perf_counter()
     if snap_final and V_surf.shape[0] > 0:
         try:
             from core.utils.aabb import TriangleBVH
@@ -219,8 +231,11 @@ def run_cdt_recovery(
             pts[surf_ids] = snapped
         except Exception:
             pass
+    stage_seconds["final_surface_snap"] = time.perf_counter() - stage_start
 
+    stage_start = time.perf_counter()
     r_final = check_edge_recovery(F_surf, tets)
+    stage_seconds["final_check"] = time.perf_counter() - stage_start
     return pts, tets, CDTRecoveryResult(
         cycles=int(cycles_done),
         n_edges_before=int(n_before),
@@ -229,4 +244,5 @@ def run_cdt_recovery(
         ratio_after=float(cdt_ratio(r_final)),
         n_inserted_points=int(n_inserted_total),
         reverted=int(reverted),
+        stage_seconds=stage_seconds,
     )

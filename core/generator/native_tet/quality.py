@@ -77,6 +77,56 @@ def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     return q
 
 
+def tet_gsm_score(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """Return a normalized read-only GSM quality score in ``[0, 1]``.
+
+    Ni et al.'s GSM energy is ``(a_hat²/18) Σ|S_i|²/V²``.  For this
+    calibration helper ``a_hat²`` is the mean squared edge length of each
+    tet, making the score scale invariant.  The reciprocal is normalized so a
+    regular unit tet scores one; degenerate or non-finite tets score zero.
+    This is a quality *report* metric, not an inversion barrier or acceptance
+    gate by itself.
+    """
+    cells = np.asarray(tets, dtype=np.int64)
+    points = np.asarray(pts, dtype=np.float64)
+    if cells.size == 0:
+        return np.zeros(0, dtype=np.float64)
+    corners = points[cells]
+    a, b, c, d = (corners[:, i] for i in range(4))
+    face_cross = np.stack(
+        [
+            np.cross(b - a, c - a),
+            np.cross(b - a, d - a),
+            np.cross(c - a, d - a),
+            np.cross(c - b, d - b),
+        ],
+        axis=1,
+    )
+    face_area_sq = 0.25 * np.einsum("...ij,...ij->...i", face_cross, face_cross)
+    area_sum = face_area_sq.sum(axis=1)
+    vol6 = np.einsum("ij,ij->i", b - a, np.cross(c - a, d - a))
+    volume_sq = (vol6 / 6.0) ** 2
+    edge_sq = np.stack(
+        [
+            np.einsum("ij,ij->i", b - a, b - a),
+            np.einsum("ij,ij->i", c - a, c - a),
+            np.einsum("ij,ij->i", d - a, d - a),
+            np.einsum("ij,ij->i", c - b, c - b),
+            np.einsum("ij,ij->i", d - b, d - b),
+            np.einsum("ij,ij->i", d - c, d - c),
+        ],
+        axis=1,
+    )
+    a_hat_sq = edge_sq.mean(axis=1)
+    energy = np.full(cells.shape[0], np.inf, dtype=np.float64)
+    safe = (volume_sq > 1e-30) & np.isfinite(volume_sq)
+    energy[safe] = a_hat_sq[safe] * area_sum[safe] / (18.0 * volume_sq[safe])
+    score = np.zeros_like(energy)
+    finite = np.isfinite(energy) & (energy > 1e-30)
+    score[finite] = np.clip(3.0 / energy[finite], 0.0, 1.0)
+    return score
+
+
 def tet_radius_edge_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     """beta990 (R111) — Shewchuk "radius-edge quality": circumradius / shortest edge.
 

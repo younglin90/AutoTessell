@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import heapq
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -192,6 +193,142 @@ def _tet_quality(pts: np.ndarray, tet: np.ndarray) -> float:
         return 0.0
     mr = 12.0 * (3.0 * vol) ** (2.0 / 3.0) / l_sq
     return float(np.clip(mr, 0.0, 1.0))
+
+
+@dataclass
+class EdgeMidpointCleanupStats:
+    """Diagnostics for the optional edge-midpoint cleanup pass."""
+
+    attempted: int = 0
+    accepted: int = 0
+    rejected_quality: int = 0
+    rejected_volume: int = 0
+    skipped_protected: int = 0
+
+
+def insert_edge_midpoint_qopt_cleanup(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    candidate_edges: list[tuple[int, int]] | np.ndarray,
+    protected_edges: set[tuple[int, int]] | None = None,
+    max_edges: int = 20,
+    min_quality_improvement: float = 1e-3,
+    allow_boundary_edges: bool = False,
+) -> tuple[np.ndarray, np.ndarray, EdgeMidpointCleanupStats]:
+    """Try quality-monotone midpoint splits on a bounded edge candidate list.
+
+    This is deliberately transactional: all tets incident to an edge are
+    replaced together, and both positive volume and the canonical boundary
+    face set must survive before the candidate is accepted.
+    """
+    points = np.asarray(pts, dtype=np.float64).copy()
+    cells = np.asarray(tets, dtype=np.int64).copy()
+    stats = EdgeMidpointCleanupStats()
+    protected = {
+        tuple(sorted((int(edge[0]), int(edge[1]))))
+        for edge in (protected_edges or set())
+    }
+    boundary_before = _boundary_keys(cells)
+
+    for raw_edge in candidate_edges:
+        if stats.attempted >= int(max_edges):
+            break
+        edge = tuple(sorted((int(raw_edge[0]), int(raw_edge[1]))))
+        if edge in protected:
+            stats.skipped_protected += 1
+            continue
+
+        incident = [
+            ti for ti, tet in enumerate(cells.tolist())
+            if edge[0] in tet and edge[1] in tet
+        ]
+        if not incident:
+            continue
+        if not allow_boundary_edges and len(incident) == 1:
+            continue
+        stats.attempted += 1
+
+        midpoint_index = points.shape[0]
+        midpoint = 0.5 * (points[edge[0]] + points[edge[1]])
+        trial_points = np.vstack((points, midpoint))
+        replacement: list[np.ndarray] = []
+        for ti in incident:
+            tet = cells[ti].tolist()
+            first = [midpoint_index if value == edge[0] else value for value in tet]
+            second = [midpoint_index if value == edge[1] else value for value in tet]
+            replacement.extend((
+                np.asarray(_orient_tet(trial_points, first), dtype=np.int64),
+                np.asarray(_orient_tet(trial_points, second), dtype=np.int64),
+            ))
+
+        trial_cells = cells.copy()
+        for slot, ti in enumerate(incident):
+            trial_cells[ti] = replacement[2 * slot]
+        trial_cells = np.vstack((
+            trial_cells,
+            np.asarray(replacement[1::2], dtype=np.int64),
+        ))
+        affected = [
+            *incident,
+            *range(cells.shape[0], trial_cells.shape[0]),
+        ]
+        affected_cells = trial_cells[np.asarray(affected, dtype=np.int64)]
+        v = trial_points[affected_cells]
+        signed6 = np.einsum(
+            "ij,ij->i",
+            v[:, 1] - v[:, 0],
+            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+        )
+        if (
+            np.any(~np.isfinite(signed6))
+            or np.any(signed6 <= 1e-30)
+            or (
+                not allow_boundary_edges
+                and _boundary_keys(trial_cells) != boundary_before
+            )
+        ):
+            stats.rejected_volume += 1
+            continue
+
+        old_quality = float(_tet_quality_batch(points, cells[np.asarray(incident)]).min())
+        new_quality = float(_tet_quality_batch(trial_points, affected_cells).min())
+        if new_quality < old_quality + float(min_quality_improvement):
+            stats.rejected_quality += 1
+            continue
+
+        points = trial_points
+        cells = trial_cells
+        stats.accepted += 1
+
+    return points, cells, stats
+
+
+def _sliver_weight_pumping_samples(
+    points: np.ndarray,
+    tets: np.ndarray,
+    *,
+    n_samples: int = 8,
+    alpha: float = 0.4,
+    max_worst_tets: int = 4,
+) -> np.ndarray:
+    """Construct bounded weight probes on vertices of the worst tets.
+
+    The helper is test-only infrastructure for the optional exudation probe;
+    it never mutates the mesh or enters the default generation path.
+    """
+    n_points = int(np.asarray(points).shape[0])
+    n_rows = max(0, int(n_samples))
+    samples = np.zeros((n_rows, n_points), dtype=np.float64)
+    if n_rows == 0 or np.asarray(tets).size == 0:
+        return samples
+    quality = _tet_quality_batch(np.asarray(points), np.asarray(tets, dtype=np.int64))
+    worst = np.argsort(quality, kind="stable")[:max(1, int(max_worst_tets))]
+    vertices = np.unique(np.asarray(tets, dtype=np.int64)[worst])
+    for row in range(n_rows):
+        exponent = n_rows - row + 1
+        samples[row, vertices] = float(alpha) ** exponent
+    return samples
 
 
 def _build_op_queue(pts: np.ndarray, tets: np.ndarray) -> list[dict]:
@@ -634,6 +771,12 @@ def lookahead_2flip_chain(
         "flip32": lambda p, t: (p,) + flip_edges_32(p, t, min_quality_improvement=-1.0, max_flips=1),
         "flip44": lambda p, t: (p,) + flip_edges_44(p, t, min_quality_improvement=-1.0, max_flips=1),
     }
+
+    # The exploratory chain search is not enabled as a production operator
+    # yet.  Return a transactional no-op rather than falling through with an
+    # implicit ``None`` that breaks the caller's result contract.
+    del _OP_MAP, top_k, lookahead_ops, min_quality_improvement, max_chains
+    return np.asarray(pts).copy(), np.asarray(tets).copy(), 0
 
 
 # ---------------------------------------------------------------------------
@@ -2944,6 +3087,11 @@ def _multi_face_removal_apply(
 
     if len(tets) == 0 or not candidates:
         return new_pts, new_tets, n_applied, energy_delta
+
+    # The transition is still an evidence-only card.  Keep the helper
+    # transactional and explicit rather than falling through with ``None``
+    # when candidates exist but the real operator is not enabled.
+    return new_pts, new_tets, n_applied, energy_delta
 
 
 # CARD BETA2294_VVV9N4_ENV_RUNNER — env-aware unified line-runner (skeleton, no caller)

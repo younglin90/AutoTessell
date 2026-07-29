@@ -19,6 +19,12 @@ class SmoothResult:
     n_iter: int
     n_interior_moved: int
     max_displacement: float
+    # QOPT contract counters.  They are zero when the quality guard is off,
+    # preserving the historical meaning of the public result fields.
+    qopt_attempted: int = 0
+    qopt_accepted: int = 0
+    qopt_rejected_volume: int = 0
+    qopt_rejected_quality: int = 0
 
 
 def _build_edge_rows(tets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -96,6 +102,9 @@ def smooth_interior(
 
     max_disp = 0.0
     n_moved = 0
+    qopt_attempted = 0
+    qopt_accepted = 0
+    qopt_rejected_quality = 0
     for _ in range(max(0, int(n_iter))):
         prev_snapshot = pts.copy() if quality_guard else None
         prev_minq = _min_q(pts) if quality_guard else 0.0
@@ -106,16 +115,16 @@ def smooth_interior(
         np.add.at(count, rows, 1)
         valid = (count > 0) & (~locked_mask)
         new_pts = pts.copy()
+        step_max = 0.0
         if valid.any():
             centroid = np.zeros_like(pts)
             centroid[valid] = sum_nbr[valid] / count[valid, None]
             delta = centroid[valid] - pts[valid]
             step = relax * delta
             new_pts[valid] = pts[valid] + step
-            max_d = float(np.linalg.norm(step, axis=1).max()) if step.size else 0.0
-            if max_d > max_disp:
-                max_disp = max_d
-            n_moved += int(valid.sum())
+            step_max = float(np.linalg.norm(step, axis=1).max()) if step.size else 0.0
+            if quality_guard:
+                qopt_attempted += int(valid.sum())
         pts[:] = new_pts
 
         if quality_guard:
@@ -123,12 +132,20 @@ def smooth_interior(
             # min_q 가 유의미하게 (>5%) 하락하면 revert.
             if prev_minq > 1e-6 and new_minq < prev_minq * 0.95:
                 pts[:] = prev_snapshot   # type: ignore[arg-type]
+                qopt_rejected_quality += int(valid.sum())
                 break
+            qopt_accepted += int(valid.sum())
+        n_moved += int(valid.sum())
+        if step_max > max_disp:
+            max_disp = step_max
 
     return SmoothResult(
         n_iter=int(n_iter),
         n_interior_moved=int(n_moved),
         max_displacement=float(max_disp),
+        qopt_attempted=int(qopt_attempted),
+        qopt_accepted=int(qopt_accepted),
+        qopt_rejected_quality=int(qopt_rejected_quality),
     )
 
 

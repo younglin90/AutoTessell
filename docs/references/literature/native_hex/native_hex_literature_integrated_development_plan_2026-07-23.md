@@ -802,3 +802,508 @@ operation on any shape. This is an honest `KILL`: no next implementation card
 is proposed, no topology mutation or production pillowing/sheet-extraction
 path was added, and the existing wall_dev and skew gates are unchanged. There
 is no before/after quality claim and no predicted growth was executed.
+
+### 2026-07-26 HEX-TRANSITION-PROVENANCE-DIAG1 result (report-only, BLOCKED)
+
+Added the opt-in diagnostic module
+`core/generator/native_hex/transition_provenance.py`, builder-side collection
+in `core/generator/native_hex/octree.py`, writer-boundary logging in
+`core/generator/native_hex/mesher.py`, the runner
+`scripts/diag_hex_transition_provenance1.py`, and regression tests in
+`tests/test_native_hex_transition_provenance.py`. The environment flag is
+`AUTO_TESSELL_HEX_TRANSITION_PROVENANCE_DIAG=1`; the default path remains OFF
+and mesh output is unchanged.
+
+At `max_cells=8000`, fine pre-BL runs produced the following deterministic
+builder-to-writer census:
+
+| Shape | builder / writer cells | builder metadata / unique origins | target-level histogram | generic template | transition cells / faces | writer loss |
+| --- | ---: | ---: | --- | --- | ---: | ---: |
+| cylinder | 6320 / 6320 | 6320 / 6320 | `{4: 6320}` | `{uniform: 6320}` | 0 / 0 | 0 |
+| sphere | 4224 / 4224 | 4224 / 4224 | `{4: 4224}` | `{uniform: 4224}` | 0 / 0 | 0 |
+| gear | 4920 / 4914 | 4920 / 4920 | `{4: 4920}` | `{uniform: 4920}` | 0 / 0 | 6 cells |
+
+Thus these three exact benchmark runs do not contain emitted mixed-level
+transition cells, even though the existing octree summary has approximate
+coarse/fine counters. The current data cannot support a transition-sheet
+quality or repair claim. Separately, the generic writer does not forward the
+builder metadata (`writer_metadata_forwarded=False`); authoritative lineage,
+transition-chain/hanging-node, emitted-template, feature, and patch/source
+provenance are still absent from the final cache. The prior
+`HEX-TRANSITION-DIAG1` `BLOCKED` status therefore remains unchanged.
+
+The gear-only six-cell drop occurs at the generic writer's existing
+degenerate-cell filtering boundary and is recorded as a separate
+`HEX-WRITER-DEGENERATE-DROP-DIAG1` audit target. The provenance census was
+report-only, did not alter surface/snap/quality behavior, and did not create a
+production repair flag. Relevant native_hex tests passed (`55 passed`; the new
+targeted group `4 passed`), with deterministic repeat output.
+
+Next measurement is `HEX-OCT-ADAPTIVE-TRANSITION-REALIZATION-DIAG1`: construct a
+mixed-level synthetic/adaptive fixture and first prove that a real transition
+template is emitted. No transition repair implementation is authorized before
+that measurement.
+
+### 2026-07-26 HEX-OCT-ADAPTIVE-TRANSITION-REALIZATION-DIAG1 result
+
+The finest-first `block_sz == 1` branch was isolated behind the new
+`AUTO_TESSELL_HEX_MIXED_LEVEL_REALIZATION` flag, default OFF. With the flag ON,
+a direct 4×4×4 synthetic input requesting `{level 1: 8, level 2: 56}` emitted
+57 cells (`level 1: 1`, `level 2: 56`), one transition cell, three transition
+directions, and 12 coarse→fine interface faces. Face incidence was
+`{1:87, 2:132}`, and the template histogram was `t21:1, uniform:56`.
+
+The same change was not safe as a default production change. A forced-ON real
+shape run changed the builder populations to cylinder `2463`, sphere `2684`,
+and gear `4542`, and the relevant native_hex regression suite failed five
+permanent gates (curved-wall fidelity, boundary skew, fine negative-volume,
+and adaptive cell-budget-related assertions). The flag is therefore retained
+as an experimental default-OFF lane; the original default path remains green
+(`57 passed`).
+
+This closes the realization existence question but does not close transition
+quality. The next card is `HEX-OCT-TRANSITION-QUALITY-1`: measure signed volume,
+face warpage, local skew, boundary face-set, and writer cell drops on the
+opt-in output before any default change or repair template is considered.
+
+### 2026-07-26 HEX-OCT-TRANSITION-QUALITY-1
+
+The opt-in quality census in `transition_quality.py` measures signed emitted
+volume, orientation-free volume, face warpage, canonical face skew, boundary
+face-set/area, face incidence, and generic-writer cell drops. It is report-only.
+
+On the synthetic mixed-level fixture (`{1:8,2:56}`), the census observed one
+transition cell, three transition faces, 12 coarse-to-fine interface faces,
+boundary face count 87, and no negative emitted signed volume. On the real
+fine pre-BL opt-in runs (`max_cells=8000`), cylinder/sphere/gear produced
+transition cell/face counts `173/229`, `63/111`, and `11/36`. Builder-to-writer
+cell counts were `2463→2445`, `2684→2684`, and `4542→4534`; boundary face-set
+was changed for cylinder and gear and equal for sphere. Gear had five negative
+emitted signed volumes at builder and four after writer; cylinder's transition
+skew p95/max was `2.123554/133.752485`, sphere's was `1.268530/1.620019`, and
+gear's was `1.149741/1.422732`.
+
+Decision: **measured, production promotion rejected**. The realization flag
+remains default-OFF. Before any transition repair implementation, isolate the
+generic-writer drop/boundary-set contract and emitted face-winding orientation
+contract. Targeted quality tests passed (`3 passed`), and the full native_hex
+file group passed (`113 passed in 141.77s`).
+
+### 2026-07-26 HEX-OCT-TRANSITION-WRITER-1
+
+The writer-boundary audit mirrored the generic writer's public degenerate-face
+contract without changing the writer. Predicted versus actual drops matched
+exactly: cylinder `18/18`, sphere `0/0`, and gear `8/8`. Predicted internal faces
+exposed by those drops also matched the actual added boundary keys: cylinder
+`60/60` and gear `23/23`; boundary keys removed were 44 and 19 respectively.
+
+The first cylinder evidence is cell 145, face 5,
+`[1113,1134,1135,1114]`: after snap, two pairs of the four coordinates are
+identical, giving face area `0.0` under `writer_area_eps≈3e-24`. The first gear
+evidence is cell 329, face 3, with the same two-pair coincidence. The writer is
+therefore **exonerated**; it deterministically removes upstream degenerate
+faces, and the boundary-set change is owner reclassification after removal.
+
+Next card: `HEX-OCT-TRANSITION-SNAP-ROOTCAUSE-1`, a stage-bisected measurement
+of zero-area faces and boundary keys after builder, iterative snap, wall-fit,
+and skew-relax. No transition repair or writer relaxation is authorized before
+that card closes.
+
+### 2026-07-26 HEX-OCT-WALLFIT-FACE-AREA-GUARD-1
+
+The stage bisection found the first cylinder/gear zero-area faces after
+`_wall_fit_snap`, not after iterative snap. An opt-in face-area check was added
+to the wall-fit candidate guard under
+`AUTO_TESSELL_HEX_WALLFIT_FACE_AREA_GUARD=1`; the default remains OFF. The
+check rejects/backtracks a candidate if an incident face area falls below a
+small scale-dependent floor, without changing the existing sign/volume,
+distance, or envelope guards.
+
+On mixed-level fine pre-BL runs, writer drops changed cylinder `18→0` and gear
+`8→0`, and boundary sets became equal. However transition skew/warpage remained
+high (cylinder skew p95/max `2.150564/133.752485`; gear
+`3.279938/11.460936`) and gear still had five builder-side negative emitted
+signed volumes. Decision: **partial, default-OFF, not a quality fix**. The next
+card must test a transition-aware wall-fit quality constraint; writer
+relaxation and broad repair ports remain blocked.
+
+### 2026-07-26 HEX-TRANS-2 — transition adjacency cross-tab (measured, falsified)
+
+The report-only census cross-tabulated boundary faces with canonical skew
+`>=2.0` against metadata-labelled transition-cell ownership and a broad
+transition-vertex adjacency proxy. The benchmark was the opt-in mixed-level
+fine pre-BL cylinder/sphere/gear run at `max_cells=8000`, default wall-fit, and
+face-area guard OFF. Since the current metadata has no authoritative hanging-
+node chain ID, vertex adjacency is explicitly not treated as exact hanging-node
+provenance.
+
+| Shape | bad faces after wall-fit/final | transition owner | owner rate | transition-vertex adjacent | vertex rate |
+|---|---:|---:|---:|---:|---:|
+| cylinder | 550 | 36 | 6.545% | 168 | 30.545% |
+| sphere | 960 | 0 | 0% | 0 | 0% |
+| gear | 135 | 10 | 7.407% | 22 | 16.296% |
+
+All three shapes had zero bad boundary faces before and after iterative snap;
+the bad population first appeared at wall-fit. The total transition-owner /
+transition-vertex-adjacent boundary populations were cylinder `588/1705`,
+sphere `267/677`, and gear `63/275`.
+
+Decision: **measured, falsified**. Bad faces do not concentrate on transition
+cells or their one-ring vertex proxy; sphere has no overlap, and most cylinder
+and gear bad faces are outside both populations. The next card is not a
+transition-only repair. It is `HEX-WALLFIT-CANDIDATE-QUALITY-1`, a report-only
+measurement of each wall-fit candidate's local skew, face warpage, signed
+volume, and boundary invariant before any transactional quality gate is
+implemented. The mixed-level realization and face-area guard remain
+default-OFF.
+
+### 2026-07-26 HEX-WALLFIT-CANDIDATE-QUALITY-1 — measured
+
+The opt-in audit snapshots each `_wall_fit_snap` boundary-vertex candidate's
+incident cells before projection, after the full projection trial, and after
+the existing full/partial/reject decision. It also records the global boundary
+face-key set and boundary area. No value participates in acceptance, rollback,
+or permanent gates.
+
+At `max_cells=500`, mixed-level realization ON, default wall-fit, and face-area
+guard OFF:
+
+| Shape | candidates | full/partial/reject | trial regressions | applied regressions | area changes | max applied skew Δ | max applied warpage Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| cylinder | 128 | 128/0/0 | 128 | 128 | 128 | +1.5313 | +0.4064 |
+| sphere | 128 | 128/0/0 | 104 | 104 | 128 | +1.4238 | +0.0571 |
+| gear | 271 | 241/12/18 | 207 | 186 | 238 | +1.2518 | +0.7688 |
+
+Boundary face keys remained equal, but boundary area changed on the moved
+surface vertices. A larger cylinder `max_cells=2000` run measured
+`560` candidates, `358/179/23` full/partial/reject, `515` trial regressions,
+`481` applied regressions, and `521` area changes. Its `2.7756e13` maximum
+skew delta is a near-zero-normal-distance numerical outlier and is not a gate
+candidate.
+
+Decision: **measured, quality regression observed**. Wall-fit's existing
+distance/envelope/no-inversion guards do not imply local quality monotonicity.
+This is a generic wall-fit candidate issue, not a transition-only issue. The
+next card is `HEX-WALLFIT-QUALITY-TRANSACTION-1`: resolve denominator and
+signed-orientation contracts, then measure a relative quality transaction with
+surface-area tolerance. It remains report-only until that contract is closed;
+mixed-level realization and face-area guard remain default-OFF.
+
+#### HEX-WALLFIT-QUALITY-TRANSACTION-1 contract precheck
+
+The checker and candidate diagnostic share the same skew denominator
+`max(abs(normal_dist), 1e-30)`. In the small cylinder census, minimum trial
+`|normal_dist|` was `0.0149533` with zero near-zero faces, while applied skew
+still increased by `+1.5313`. Therefore the small-run quality regression is
+real under the project's own metric; the much larger `2.7756e13` result is a
+separate denominator-sensitive outlier and cannot define a gate.
+
+The production wall-fit no-inversion contract is face-sign preservation against
+the pre-projection reference. The report-only centroid-fan signed-volume sum
+depends on face winding and is not an authoritative validity signal. Before
+implementing a transaction, reuse the existing face-sign contract and define a
+relative local-quality delta plus a boundary-area tolerance.
+
+### 2026-07-26 HEX-WALLFIT-QUALITY-TRANSACTION-1 result
+
+Two hypothetical report-only policies were evaluated: strict max skew/max
+warpage non-regression and p95 skew/p95 warpage non-regression. `combined`
+requires both. At the low-budget `max_cells=500` mixed-level opt-in wall-fit
+stage:
+
+| Shape | candidates | strict | p95 | combined | max relative boundary-area change |
+|---|---:|---:|---:|---:|---:|
+| cylinder | 128 | 0 | 0 | 0 | 0.2266% |
+| sphere | 128 | 24 | 0 | 0 | 0.3641% |
+| gear | 271 | 85 | 66 | 66 | 0.1702% |
+
+Boundary face-key changes were zero. Decision: **measured, naive monotone
+transaction is too restrictive**. A quality-only rollback would reject every
+measured cylinder candidate and may block wall-distance improvement. Do not
+implement it. The next card is a report-only cross-tab of candidate surface
+distance/wall deviation improvement against local quality delta, after which a
+relative trade-off transaction can be considered. Mixed-level realization and
+face-area guard remain default-OFF.
+
+### 2026-07-26 HEX-WALLFIT-QUALITY-TRANSACTION-1 surface-distance cross-tab
+
+The candidate audit also recorded actual surface-distance reduction
+`d_before - d_after` for accepted full/partial candidates.
+
+| Shape | candidates | strict | p95 | combined | distance-improved | distance-improved + quality regression |
+|---|---:|---:|---:|---:|---:|---:|
+| cylinder | 128 | 0 | 0 | 0 | 128 | 128 |
+| sphere | 128 | 24 | 0 | 0 | 128 | 104 |
+| gear | 271 | 85 | 66 | 66 | 253 | 186 |
+
+Total reductions were cylinder `5.2117`, sphere `10.8663`, and gear `16.9085`;
+maximum single-candidate reductions were `0.06122`, `0.17648`, and `0.10862`.
+Boundary face keys remained equal for every distance-improved candidate.
+
+Decision: **measured, quality-only rollback conflicts with surface fitting**.
+Every measured cylinder distance improvement had a local quality regression.
+Do not add a monotone quality gate. The next diagnostic must cross-tab final
+wall deviation/surface fidelity benefit against candidate local quality delta at
+representative mesh sizes before any Pareto-style transaction is considered.
+
+### 2026-07-26 HEX-WALLFIT-SURFACE-TRADEOFF-1 result
+
+Full wall-fit stage surface-distance measurements at the same low-budget
+mixed-level opt-in setting were:
+
+| Shape | boundary vertices | mean before→after | p95 before→after | max before→after |
+|---|---:|---|---|---|
+| cylinder | 380 | `0.027915→0.014200` | `0.061217→0.003791` | `0.373194→0.373194` |
+| sphere | 334 | `0.078905→0.046371` | `0.562459→0.562459` | `0.995472→0.995472` |
+| gear | 672 | `0.026542→0.001380` | `0.096807→0.005295` | `0.108621→0.019445` |
+
+Decision: **measured, surface-fidelity benefit confirmed**. Wall-fit reduces
+mean/p95 surface distance but can worsen local cell quality. Quality-only
+rollback conflicts with the surface contract. No transaction or new absolute
+threshold is enabled; the next validation connects candidate deltas to the
+existing final wall-dev/skew gates at representative mesh sizes.
+
+### 2026-07-26 HEX-WALLFIT-FINAL-GATE-CROSS1 — representative final-gate connection
+
+The diagnostic runner was extended to print the existing evaluator/checker
+summary from the same report-only run as the candidate snapshots. This did not
+change wall-fit acceptance. Conditions were mixed-level realization ON,
+default wall-fit, face-area guard OFF, `max_iterations=1`, and no BL layers.
+
+| shape / budget | candidates | distance-improved | distance-improved + local quality regression | combined local quality non-regressing | final verdict | final cells | final max boundary skew | negative volumes | final area deviation |
+|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| cylinder / 500 | 128 | 128 | 128 | 0 | FAIL | 412 | 2.73027 | 0 | 4.59347% |
+| sphere / 500 | 128 | 128 | 104 | 0 | FAIL | 276 | 2.85183 | 0 | 10.0102% |
+| gear / 500 | 271 | 253 | 186 | 66 | FAIL | 408 | 1.38997 | 0 | 11.4375% |
+| cylinder / 2000 | 560 | 537 | 481 | 49 | FAIL | 1384 | 125.761 | 0 | 87.0928% |
+
+At budget 500, the final checker retained zero negative-volume cells and the
+final boundary skew remained below the permanent `3.0` threshold for all three
+representative shapes, although the overall evaluator verdict was FAIL because
+other quality/coverage criteria also apply. At budget 2000, the same cylinder
+run exposed a severe final skew failure (`125.761`) despite zero negative
+volumes. The candidate report recorded `537` surface-distance improvements,
+`481` of them with a local quality regression, and only `49` satisfying the
+combined hypothetical local non-regression test. The final gate failure is
+therefore not a transition-only signature and cannot be safely repaired by a
+candidate quality-only rollback.
+
+The surface-fidelity fields in this run are the evaluator's Hausdorff/distance/
+area-deviation metrics; they are reported alongside, but are not silently
+renamed to, the native_hex wall-fit `wall_dev` contract. No permanent threshold,
+transaction, or default flag was changed. Decision: **measured, final-gate
+connection established; quality-only transaction remains rejected**. The next
+card is a new scale/performance and final-gate root-cause diagnosis for the
+large-budget cylinder, not a production wall-fit change.
+
+### 2026-07-26 HEX-OCT-MIXED-LEVEL-ROOTCAUSE-1 — measured, root cause isolated
+
+The large-budget cylinder was split by the two opt-in mechanisms, with
+candidate-quality logging disabled so diagnostic overhead could not explain the
+result.
+
+| condition | cells / census | final boundary skew | negative volumes | surface area deviation | verdict |
+|---|---|---:|---:|---:|---|
+| mixed OFF, wall-fit ON | 1781 hex | 3.20865 | 0 | 0.2637% | PASS_WITH_WARNINGS |
+| mixed ON, wall-fit OFF | 1363 hex + 22 other | 1.16279 | 0 | 93.4942% | FAIL |
+| mixed ON, wall-fit ON | 1363 hex + 22 other | 125.761 | 0 | 87.0928% | FAIL |
+| mixed OFF, wall-fit OFF | 1781 hex | 0.974374 | 0 | 15.3787% | FAIL |
+
+The mixed-level builder itself is already invalid before wall-fit: at
+`max_cells=2000`, its `before_snap` report contained `22` transition cells,
+`1479` boundary faces, and `2` negative report-only signed volumes. The source
+mechanism is visible in `_build_nlevel_cells`: the coarse cell face is split
+into four sub-quads when a finer neighbor is found, but the fine-neighbor side
+continues to emit ordinary fine quads. No conforming transition template or
+matching hanging-node face partition is created on both sides. The writer then
+preserves the resulting nonconformal geometry; it is not the primary cause.
+
+Decision: **measured, root cause found**. Wall-fit is an amplifier, not the
+origin of the large-budget mixed-level surface/topology failure. Do not enable
+mixed-level realization by default and do not add a wall-fit quality rollback
+to mask it. Open `HEX-OCT-TRANSITION-TEMPLATE-1` as a separate implementation
+card: introduce a documented conforming transition template/face partition,
+with boundary area/face-set, signed-volume, census, and deterministic output
+gates before any default promotion. The current diagnostic remains report-only.
+
+### 2026-07-26 correction — HEX-OCT-TRANSITION-WINDING-1 supersedes the preceding sub-claim
+
+The preceding paragraph's claim that the fine-neighbor side lacked a matching
+partition was too strong and is superseded by a direct synthetic face-key
+audit. For a 2:1 block, the four coarse sub-quads and the ordinary fine-neighbor
+quads do have matching vertex keys; the synthetic incidence histogram remains
+`{1: 87, 2: 132}` and is deterministic. The concrete correctness defect was
+different: every table emitted by `_sub_quads_on_face` had the cyclic order
+opposite to `_HEX_FACES`.
+
+The minimal fix keeps the coordinate tables unchanged and reverses each
+sub-quad once at the helper boundary. A new test checks that all faces of the
+synthetic transition cell have a positive outward normal dot product. Results:
+
+| check | before | after |
+|---|---:|---:|
+| synthetic negative signed transition cells | 1 | 0 |
+| synthetic transition cells | 1 | 1 |
+| synthetic face incidence histogram | `{1:87,2:132}` | `{1:87,2:132}` |
+| targeted transition tests | — | 4 passed |
+
+On the real mixed cylinder, the builder report-only negative signed count fell
+from `2` to `0` and the mixed+wall-fit-OFF writer emitted `1385` cells without
+drops. The remaining mixed-level surface/quality failure is not closed:
+mixed+wall-fit-OFF still has area deviation `93.4942%`, and mixed+wall-fit-ON
+still has final boundary skew `125.761` (cells `1383`, area deviation
+`87.7568%`). Therefore `HEX-OCT-TRANSITION-WINDING-1` is a correctness
+subcard completed, while the broader `HEX-OCT-TRANSITION-TEMPLATE-1` /
+mixed-level surface root cause remains open. No all-hex claim or default flag
+was changed.
+
+### 2026-07-27 HEX-OCT-MIXED-LEVEL-COVERAGE-1 — measured, implemented, gated
+
+The remaining mixed-level defect was isolated at two concrete points in
+`_build_nlevel_cells`. First, the loop checked only `covered[fi, fj, fk]`, so a
+finer leaf could consume the block origin while target-level-3 cells in the
+same block were skipped. In the reproduced cylinder grid,
+`(4,6,6)=level4` while `(5,6,6)` and `(4,7,6)` were `level3`; the resulting
+internal face was emitted as a boundary. Second, the coarse-face neighbor
+test sampled one neighbor index instead of the complete face-adjacent slab,
+so a fine neighbor at `(6,3,5)` was missed by the coarse block at `(6,4,4)`.
+
+The minimal opt-in fix does three things: normalizes mixed target blocks by
+promoting them to finest cells before emission, promotes any residual partial
+covered block without overlap, and computes the maximum level over the full
+adjacent face slab before deciding whether to emit four sub-quads. The
+existing sub-quad winding correction remains unchanged. The default mixed
+level flag is still OFF.
+
+| check | before coverage fix | after coverage fix |
+|---|---:|---:|
+| synthetic transition tests | 4 passed | 5 passed |
+| synthetic internal boundary faces | present | 0 |
+| real builder inner-looking boundary faces | 155 | 0 |
+| real mixed cylinder writer cells | 1383–1385 | 1655 |
+| real builder signed-negative cells | 2 | 0 |
+| writer dropped cells | 2 or predicted malformed | 0 |
+| writer boundary face-set equal | not reliable | `True` |
+
+At the representative 2,000-cell cylinder pipeline condition, the result is
+`PASS_WITH_WARNINGS`, `1655` cells, max boundary skew `3.20865134`, negative
+volumes `0`, min volume `0.00014462409`, max warpage `0.05652146`, surface-area
+deviation `0.263700907%`, boundary area `4.68488421` versus input `4.69727095`,
+and writer boundary-area delta `-1.13e-9`. The 85 non-transition boundary
+faces above the diagnostic threshold remain a separate scale/quality issue;
+the catastrophic mixed-level area/topology failure is closed, but the
+permanent `3.0` boundary-skew gate is not relaxed and mixed-level is not
+promoted to the default path.
+
+Direct repeated builder runs were deterministic (`points_equal=True`,
+`cells_equal=True`, 1627 cells in both direct runs). The native_hex regression
+suite is `118 passed` including the new partial-covered-block test.
+
+Decision: **HEX-OCT-MIXED-LEVEL-COVERAGE-1 measured, implemented, and gated**.
+The next native_hex card is the remaining large-budget boundary-skew/quality
+card (`HEX-OCT-SCALE-QUALITY-1`); default promotion and any permanent-gate
+relaxation remain prohibited.
+
+### 2026-07-27 HEX-OCT-SCALE-QUALITY-1 — measurement, implementation deferred
+
+With the coverage fix active, builder-side boundary skew is zero bad faces.
+The bad-face population appears only after `_wall_fit_snap`: a direct
+report-only comparison produced `0→80` bad faces (the full pipeline reports
+`85`). None of those bad faces has a transition-cell owner or a transition
+vertex-adjacent label. This isolates the remaining `3.20865134` final skew to
+ordinary boundary-vertex wall fitting, not to mixed-level realization.
+
+| condition | cells | max boundary skew | area deviation | bad boundary faces | result |
+|---|---:|---:|---:|---:|---|
+| mixed ON + wall-fit ON | 1655 | `3.20865134` | `0.263700907%` | 85 | PASS_WITH_WARNINGS |
+| mixed ON + wall-fit OFF | 1655 | `0.974373881` | `15.3787224%` | 0 | FAIL |
+
+The direct wall-fit candidate audit found `496/496` distance-improving
+candidates, `376` with local quality regression, `120` strict local-quality
+non-regressions, `104` combined p95 non-regressions, and zero boundary-key
+changes. Surface distance mean improved `0.0167231→0.0007091` and p95
+`0.0490482→0.00376990`. A quality-only rollback would remove most of the
+surface-fidelity gain, so no production acceptance rule is changed here.
+
+Decision: **measured, root cause narrowed to wall-fit quality trade-off**.
+`HEX-OCT-SCALE-QUALITY-1` remains open for a surface-constrained Pareto rule
+or another literature-supported local repair; permanent skew `3.0` is not
+relaxed, and mixed-level default promotion remains blocked.
+
+### 2026-07-27 HEX-WALLFIT-PARETO-1 — literature-integrated next card
+
+The wall-fit trade-off is now a separate measurement card. Current data are
+`496/496` distance-improving candidates, `376` local-quality regressions,
+`120` strict local-quality non-regressions, and `104` combined p95
+non-regressions. Wall-fit ON gives skew `3.20865134` with area deviation
+`0.263700907%`; OFF gives skew `0.974373881` but area deviation `15.3787224%`.
+
+The detailed P0/P1/P2 screening is in
+`wallfit_pareto_quality_repair_2026-07-27.md`. It covers transition
+preconditioning, transition quality control, surface-constrained HexOpt,
+boundary-sheet repair, and feature-aware sheet operations. HexOpt
+(`10.1016/j.cad.2026.104073`) is the closest FULL_READ comparator, but it
+allows tangential corner/edge/face sliding and is not a drop-in replacement
+for the frozen wall-fit lane.
+
+Next: report-only candidate-level Pareto measurement of `Δskew`, `Δwarpage`,
+`Δarea`, `Δwall_dev`, and signed-volume effects over cylinder/sphere/gear/
+bracket. No acceptance rule, permanent gate relaxation, mixed-level default
+promotion, or surface movement policy changes before the queued papers are
+FULL_READ and the frontier passes all existing invariants.
+
+### 2026-07-27 HEX-WALLFIT-PARETO-1 — first report-only run
+
+The current full-pipeline cylinder run (`max_cells=2000`, mixed-level and
+candidate diagnostics enabled) recorded `350` wall-fit candidates and a
+`117`-candidate non-dominated frontier. Boundary key changes were `0`, signed
+negative-volume increases were `0`, and strict/p95/combined quality
+non-regressions were each `16`. Stage wall distance mean changed
+`0.0120959802→0.0005450396`; p95 changed
+`0.0380725043→0.0024877153`. The final checker remained
+`PASS_WITH_WARNINGS`, with `1655` cells, skew `3.20865134`, negative volumes
+`0`, and area deviation `0.263700907%`.
+
+This confirms that a Pareto frontier exists but does not yet yield a safe
+acceptance rule: most distance-improving candidates still increase local
+skew/warpage, and the production path contains a later skew-relax stage. The
+same report-only run must be repeated on sphere, gear, and bracket before any
+candidate policy is proposed.
+
+### 2026-07-27 HEX-WALLFIT-PARETO-1 — three-shape extension
+
+The same report-only run was extended to sphere, gear, and bracket at
+`max_cells=2000`. The candidate-level results are:
+
+| shape | final cells | final max boundary skew | candidates | frontier | strict / p95 / combined non-regressing |
+|---|---:|---:|---:|---:|---:|
+| cylinder | 1655 | 3.20865134 | 350 | 117 | 16 / 16 / 16 |
+| sphere | 1057 | 14.7384497 | 404 | 157 | 36 / 36 / 36 |
+| gear | 1296 | 27.0814284 | 531 | 67 | 117 / 108 / 99 |
+| bracket | 538 | 19332.7157 | 342 | 41 | 133 / 118 / 115 |
+
+All four runs reported zero final negative volumes and zero boundary-key
+changes in the wall-fit audit. The frontier size and quality-preserving
+fraction vary substantially by shape, while all four final boundary-skew
+values exceed the permanent `3.0` gate at this budget. This falsifies a single
+global candidate threshold and does not support shape-adaptive dispatch yet.
+
+Decision: **multi-shape Pareto measurement complete; repair rule not justified**.
+The next action is to compare the frontier records against feature/entity
+provenance and local wall-dev, then read the queued transition and feature
+repair papers before opening an opt-in transaction card.
+
+### 2026-07-27 — Phase-0 β-margin revalidation
+
+The existing report-only census was revalidated without changing mesh
+generation or acceptance. The cube fixture reports `100%` hex,
+`score_che=1.0`, one cluster, volume `1.0`, and β pass. A synthetic
+positive-volume thin-corner fixture reports corner Jacobian `0.01` and fails a
+diagnostic `beta=0.1` margin while leaving the generation and permanent
+negative-volume gates untouched. This closes the measurement/diagnostic
+sub-card only; it does not authorize replacing the production gate with
+β-margin yet.
+
+Verification: Phase-0 metric and transition-related tests `16 passed`, core
+native-hex regression subset `66 passed`. The default mixed-level and wall-fit
+flags remain unchanged.

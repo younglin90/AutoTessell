@@ -1,0 +1,20 @@
+# Token-heavy paths for Codex context hygiene
+.git/
+.venv/
+node_modules/
+b_aYczSLScZNH/node_modules/
+auto_tessell_core/build/
+tessell-mesh/build_make/
+AlgoHex/
+HOHQMesh/
+VoroCrust/
+autoresearch-results/*.log
+autoresearch-results/*.log.gz
+autoresearch-results/*.json.gz
+autoresearch-results/*.tsv.gz
+harness/*.log
+harness/*.log.gz
+harness/*.txt.gz
+harness/*.md.gz
+docs/references/**/*.pdf
+tmp/

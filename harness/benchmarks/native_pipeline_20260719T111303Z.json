@@ -1,0 +1,22 @@
+{
+  "commit": "da9a183f69f9d36d641f8d23ccc32a1258ac4f55",
+  "records": [
+    {
+      "case": "hex",
+      "cells": 2197,
+      "elapsed_seconds": 1.438087,
+      "error": null,
+      "max_non_orthogonality": 0.0,
+      "max_skewness": 3.6082248264235336e-16,
+      "mesh_type": "hex_dominant",
+      "negative_volumes": 0,
+      "points": 2744,
+      "requested_cells": 2000,
+      "success": true,
+      "tier": "tier_native_hex",
+      "tier_hint": "native_hex",
+      "verdict": "PASS"
+    }
+  ],
+  "timestamp_utc": "20260719T111303Z"
+}

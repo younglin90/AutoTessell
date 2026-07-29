@@ -14,6 +14,95 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+def _native_tet_large_pass_enabled(n_cells: int) -> bool:
+    """Return whether optional large-mesh passes may run.
+
+    The optional passes are intentionally disabled for tiny cavities/fixtures:
+    below 500 cells their fixed overhead and fallback behavior are not useful.
+    Keep this as a small, testable contract instead of duplicating the cutoff
+    at each call site.
+    """
+    return int(n_cells) >= 500
+
+
+def _best_of_candidate_meets_target_floor(
+    n_cells: int,
+    target_cells: int | None,
+) -> bool:
+    """Check the conservative minimum cell floor for a candidate mesh."""
+    if target_cells is None:
+        return True
+    target = int(target_cells)
+    if target <= 0:
+        return True
+    return int(n_cells) >= int(np.ceil(0.30 * target))
+
+
+def _optional_pass_result(result: Any, n_expected: int) -> tuple[Any, str | None]:
+    """Normalize an optional-pass return value without raising downstream.
+
+    Optional native-tet passes must either return a tuple with the expected
+    arity or be treated as a guarded no-op.  ``n_expected`` is kept in the
+    signature for callers that record the expected local mesh size; it is not
+    used to reinterpret a helper's return contract.
+    """
+    del n_expected
+    if result is None:
+        return None, "helper_returned_none"
+    if not isinstance(result, tuple) or len(result) != 3:
+        return None, "helper_return_contract_mismatch"
+    return result, None
+
+
+def _run_near_wall_prewrite(
+    points: np.ndarray,
+    tets: np.ndarray,
+    surface_vertices: np.ndarray,
+    surface_faces: np.ndarray,
+    *,
+    target_cells: int | None,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Run the opt-in near-wall refinement immediately before serialization.
+
+    The measurement lane is default-off.  When enabled, the current mesh must
+    already satisfy the conservative target-cell floor; otherwise returning
+    the original objects unchanged avoids making a tiny fixture look like a
+    refinement success.
+    """
+    if os.environ.get("AUTO_TESSELL_NEAR_WALL_OFF", "0") == "1":
+        return points, tets, False
+    if os.environ.get("AUTO_TESSELL_NEAR_WALL", "0") != "1":
+        return points, tets, False
+    if not _best_of_candidate_meets_target_floor(
+        int(np.asarray(tets).shape[0]), target_cells
+    ):
+        return points, tets, False
+    try:
+        from core.generator.native_tet.near_wall import refine_near_wall
+
+        threshold = float(
+            os.environ.get("AUTO_TESSELL_NEAR_WALL_SKEW_THRESHOLD", "0.0")
+        )
+        max_owners = max(
+            1, int(os.environ.get("AUTO_TESSELL_NEAR_WALL_MAX_OWNERS", "32"))
+        )
+        result = refine_near_wall(
+            np.asarray(points, dtype=np.float64),
+            np.asarray(tets, dtype=np.int64),
+            np.asarray(surface_vertices, dtype=np.float64),
+            np.asarray(surface_faces, dtype=np.int64),
+            max_owners=max_owners,
+        )
+        if result.accepted <= 0 or result.after_skew >= max(
+            threshold, result.before_skew
+        ):
+            return points, tets, False
+        return result.points, result.tets, True
+    except Exception as exc:  # pragma: no cover - defensive optional lane
+        log.debug("native_tet_near_wall_prewrite_skipped", reason=str(exc)[:160])
+        return points, tets, False
+
+
 @dataclass
 class NativeTetResult:
     success: bool
@@ -1258,6 +1347,7 @@ def generate_native_tet(
                             missing_after=cdt_info.n_edges_after,
                             inserted=cdt_info.n_inserted_points,
                             reverted=cdt_info.reverted,
+                            stage_seconds=cdt_info.stage_seconds,
                         )
                         if cdt_info.n_inserted_points == 0:
                             _cdt_consec_zero_insert += 1
@@ -1279,7 +1369,9 @@ def generate_native_tet(
 
         # Round 50-51: iterative missing edge recovery (midpoint 삽입 + B-W).
         # Round 55: enable_edge_recovery=True 일 때만 (draft 성능 보호).
+        _edge_recovery_snapshot: tuple[np.ndarray, np.ndarray] | None = None
         if enable_edge_recovery:
+            _edge_recovery_snapshot = (all_pts.copy(), tets.copy())
             try:
                 from core.generator.native_tet.cdt_check import check_edge_recovery
                 from core.generator.native_tet.edge_recovery import propose_edge_midpoints
@@ -1376,21 +1468,101 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_edge_recovery_skipped", reason=str(exc))
 
+        # Diagnostic-only: separate edge-recovery boundary effects from the
+        # later BSP insertion stage.  The snapshot is captured only for the
+        # existing opt-in lane and never participates in acceptance.
+        if _edge_recovery_snapshot is not None:
+            try:
+                from core.generator.native_tet.boundary_invariant import (
+                    check_boundary_invariant,
+                )
+
+                edge_report = check_boundary_invariant(
+                    _edge_recovery_snapshot[0],
+                    _edge_recovery_snapshot[1],
+                    all_pts,
+                    tets,
+                    "edge_recovery_before_to_after",
+                    log_only=True,
+                )
+                log.info(
+                    "native_tet_edge_recovery_boundary_snapshot",
+                    preserved=edge_report.preserved,
+                    before_boundary_faces=edge_report.before_face_count,
+                    after_boundary_faces=edge_report.after_face_count,
+                    before_boundary_area=round(edge_report.before_area, 12),
+                    after_boundary_area=round(edge_report.after_area, 12),
+                )
+            except Exception as exc:
+                log.debug(
+                    "native_tet_edge_recovery_boundary_snapshot_skipped",
+                    reason=str(exc),
+                )
+
         # Phase F — BSP constrained insertion fallback.
         if enable_bsp_insertion:
-            from core.generator.native_tet.bsp_insert import bsp_insert_triangles
+            _bsp_batch_optin = os.environ.get(
+                "AUTO_TESSELL_TET_BSP_BATCH", "0",
+            ).strip().lower() in {"1", "true", "on", "yes"}
+            if _bsp_batch_optin:
+                from core.generator.native_tet.bsp_insert import (
+                    bsp_insert_triangles_batch as _bsp_insert,
+                )
+            else:
+                from core.generator.native_tet.bsp_insert import (
+                    bsp_insert_triangles as _bsp_insert,
+                )
             from core.generator.native_tet.bowyer_watson import bowyer_watson_insert
 
             remaining = find_missing_triangles(F, tets)
             if remaining.size > 0:
+                def _nonpositive_tet_count(
+                    candidate_pts: np.ndarray,
+                    candidate_tets: np.ndarray,
+                ) -> int:
+                    from core.generator.native_tet.validate import signed_volume6
+
+                    if candidate_tets.size == 0:
+                        return 0
+                    bbox_diag = float(
+                        np.linalg.norm(
+                            candidate_pts.max(axis=0) - candidate_pts.min(axis=0),
+                        )
+                    )
+                    volume_tol = max(bbox_diag ** 3, 1.0) * 1e-14
+                    volumes = signed_volume6(candidate_pts, candidate_tets)
+                    return int(
+                        (~np.isfinite(volumes) | (volumes <= volume_tol)).sum()
+                    )
+
+                bsp_base_nonpositive = _nonpositive_tet_count(all_pts, tets)
                 log.info(
                     "native_tet_bsp_insert_start",
                     n_missing=int(remaining.size),
+                    mode="batch" if _bsp_batch_optin else "scalar",
+                )
+                _bsp_insert_budget = int(
+                    bsp_max_inserts_per_triangle
+                ) * int(remaining.size)
+                _bsp_budget_override = os.environ.get(
+                    "AUTO_TESSELL_TET_BSP_MAX_POINTS",
+                )
+                if _bsp_budget_override:
+                    try:
+                        _bsp_insert_budget = min(
+                            _bsp_insert_budget,
+                            max(1, int(_bsp_budget_override)),
+                        )
+                    except ValueError:
+                        pass
+                log.info(
+                    "native_tet_bsp_insert_budget",
+                    max_inserts=int(_bsp_insert_budget),
                 )
                 # BSP 가 신규 점을 제안 (삽입 위치 계산).
-                pts_with_new, _tets_after, bsp_res = bsp_insert_triangles(
+                pts_with_new, _tets_after, bsp_res = _bsp_insert(
                     all_pts, tets, V, F, remaining,
-                    max_inserts=int(bsp_max_inserts_per_triangle) * int(remaining.size),
+                    max_inserts=_bsp_insert_budget,
                 )
                 if bsp_res.n_inserted_points > 0:
                     # 신규 점들만 추출해 Bowyer-Watson incremental insertion.
@@ -1400,6 +1572,8 @@ def generate_native_tet(
                         all_pts, tets, new_pts,
                     )
                     if bw_res.n_inserted > 0:
+                        bsp_base_pts = all_pts
+                        bsp_base_tets = tets
                         all_pts, tets = all_pts_new, tets_new
                         # Round 48: B-W 로 삽입된 신규 점을 입력 표면 BVH 로
                         # 한 번 snap — Hausdorff 오차 감소.
@@ -1431,23 +1605,115 @@ def generate_native_tet(
                                 "native_tet_bw_post_snap_skipped",
                                 reason=str(exc),
                             )
-                        remaining_after = find_missing_triangles(F, tets)
-                        log.info(
-                            "native_tet_bsp_bw_insert_done",
-                            bsp_proposed_points=bsp_res.n_inserted_points,
-                            bw_inserted=bw_res.n_inserted,
-                            bw_cavity_total=bw_res.n_cavity_total,
-                            missing_before=bsp_res.n_missing_before,
-                            missing_after=int(remaining_after.size),
+                        from core.generator.native_tet.boundary_invariant import (
+                            check_boundary_invariant,
                         )
+
+                        bw_boundary = check_boundary_invariant(
+                            bsp_base_pts,
+                            bsp_base_tets,
+                            all_pts,
+                            tets,
+                            "bsp_bowyer_watson_candidate",
+                            log_only=True,
+                        )
+                        remaining_after = find_missing_triangles(F, tets)
+                        bw_nonpositive = _nonpositive_tet_count(all_pts, tets)
+                        if (
+                            remaining_after.size >= remaining.size
+                            or not bw_boundary.area_equal
+                            or bw_nonpositive > bsp_base_nonpositive
+                        ):
+                            # A point insertion is not recovery by itself.  If
+                            # the constrained-face census did not improve, or
+                            # the candidate changed the physical boundary
+                            # area, discard the whole BSP/B-W candidate,
+                            # including any post-snap coordinates.
+                            all_pts = bsp_base_pts
+                            tets = bsp_base_tets
+                            if remaining_after.size >= remaining.size:
+                                reject_reason = "missing_faces_not_reduced"
+                            elif not bw_boundary.area_equal:
+                                reject_reason = "boundary_area_changed"
+                            else:
+                                reject_reason = "nonpositive_tets_increased"
+                            log.warning(
+                                "native_tet_bsp_bw_insert_rejected",
+                                reason=reject_reason,
+                                bsp_proposed_points=bsp_res.n_inserted_points,
+                                bw_inserted=bw_res.n_inserted,
+                                missing_before=int(remaining.size),
+                                missing_after=int(remaining_after.size),
+                                boundary_area_before=bw_boundary.before_area,
+                                boundary_area_after=bw_boundary.after_area,
+                                nonpositive_before=bsp_base_nonpositive,
+                                nonpositive_after=bw_nonpositive,
+                            )
+                        else:
+                            log.info(
+                                "native_tet_bsp_bw_insert_done",
+                                bsp_proposed_points=bsp_res.n_inserted_points,
+                                bw_inserted=bw_res.n_inserted,
+                                bw_cavity_total=bw_res.n_cavity_total,
+                                missing_before=bsp_res.n_missing_before,
+                                missing_after=int(remaining_after.size),
+                                nonpositive_before=bsp_base_nonpositive,
+                                nonpositive_after=bw_nonpositive,
+                            )
                     else:
                         # B-W 실패 → full re-Delaunay fallback.
+                        fallback_base_pts = all_pts
+                        fallback_base_tets = tets
                         all_pts = pts_with_new
                         dl_res3 = _run_delaunay(all_pts)
                         if dl_res3 is not None:
-                            all_pts, tets = dl_res3
-                            log.info("native_tet_bsp_insert_redelaunay_fallback")
+                            candidate_pts, candidate_tets = dl_res3
+                            from core.generator.native_tet.boundary_invariant import (
+                                check_boundary_invariant,
+                            )
+
+                            fallback_boundary = check_boundary_invariant(
+                                fallback_base_pts,
+                                fallback_base_tets,
+                                candidate_pts,
+                                candidate_tets,
+                                "bsp_redelaunay_candidate",
+                                log_only=True,
+                            )
+                            fallback_missing = find_missing_triangles(
+                                F, candidate_tets,
+                            )
+                            fallback_nonpositive = _nonpositive_tet_count(
+                                candidate_pts, candidate_tets,
+                            )
+                            if (
+                                fallback_missing.size < remaining.size
+                                and fallback_boundary.area_equal
+                                and fallback_nonpositive <= bsp_base_nonpositive
+                            ):
+                                all_pts, tets = candidate_pts, candidate_tets
+                                log.info(
+                                    "native_tet_bsp_insert_redelaunay_fallback",
+                                    missing_before=int(remaining.size),
+                                    missing_after=int(fallback_missing.size),
+                                    nonpositive_before=bsp_base_nonpositive,
+                                    nonpositive_after=fallback_nonpositive,
+                                )
+                            else:
+                                all_pts = fallback_base_pts
+                                tets = fallback_base_tets
+                                log.warning(
+                                    "native_tet_bsp_redelaunay_rejected",
+                                    missing_before=int(remaining.size),
+                                    missing_after=int(fallback_missing.size),
+                                    boundary_area_before=fallback_boundary.before_area,
+                                    boundary_area_after=fallback_boundary.after_area,
+                                    nonpositive_before=bsp_base_nonpositive,
+                                    nonpositive_after=fallback_nonpositive,
+                                )
                         else:
+                            all_pts = fallback_base_pts
+                            tets = fallback_base_tets
                             log.warning("native_tet_bsp_redelaunay_failed")
 
     # 3) Classify final centroids against each original surface. Combined soup
@@ -2763,32 +3029,50 @@ def generate_native_tet(
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기.
-    # P4-B-5h (beta2245i): _phase_bc_skip 시 P4-C 가 mesh 통째 재생성하므로
-    # 여기서 쓰지 말고 P4-C 직후 재시도. 9859 tet (skip 케이스 평균) write
-    # 시간 (3+ min) 절약 + 결과 polyMesh on-disk 가 P4-C 의 정확한 출력.
-    if _phase_bc_skip:
-        stats = {"num_cells": int(final_tets.shape[0]),
-                 "num_points": int(final_pts.shape[0])}
-        log.info("native_tet_polymesh_write_deferred",
-                 reason="_phase_bc_skip", n_tets=int(final_tets.shape[0]))
-    else:
-        try:
-            stats = PolyMeshWriter().write(
-                final_pts,
-                final_tets,
-                case_dir,
-                boundary_patch_classifier=_get_boundary_patch_classifier(),
-            )
-        except Exception as exc:
-            return NativeTetResult(
-                False, time.perf_counter() - t0,
-                message=f"polyMesh 쓰기 실패: {exc}",
-                n_self_intersect_pre=_pre_mesh_si_count,
-            )
+    # W3 및 후단 품질 pass가 final_pts/final_tets를 바꿀 수 있으므로 중간
+    # writer는 생략하고 FINAL-SYNC에서 정확히 한 번만 쓴다.  이로써 disk
+    # mesh와 반환 배열의 source-of-truth가 갈라지는 구간도 제거된다.
+    stats = {
+        "num_cells": int(final_tets.shape[0]),
+        "num_points": int(final_pts.shape[0]),
+    }
+    log.info(
+        "native_tet_polymesh_write_deferred",
+        reason="final_sync",
+        n_tets=int(final_tets.shape[0]),
+    )
 
     elapsed = time.perf_counter() - t0
     n_cells = int(stats.get("num_cells", final_tets.shape[0]))
     n_points = int(stats.get("num_points", final_pts.shape[0]))
+
+    # Diagnostic-only anchor for the final-result contract audit.  The first
+    # writer is the historical pre-W3 baseline; later local passes are checked
+    # against it without changing acceptance or mesh state.
+    _boundary_audit_anchor = (final_pts.copy(), final_tets.copy())
+
+    def _boundary_audit_probe(stage_name: str) -> None:
+        try:
+            from core.generator.native_tet.boundary_invariant import (
+                check_boundary_invariant as _check_boundary_audit,
+            )
+            _boundary_audit_report = _check_boundary_audit(
+                _boundary_audit_anchor[0], _boundary_audit_anchor[1],
+                final_pts, final_tets, stage_name, log_only=True,
+            )
+            log.info(
+                "native_tet_boundary_audit_probe",
+                stage=stage_name,
+                preserved=_boundary_audit_report.preserved,
+                before_boundary_faces=_boundary_audit_report.before_face_count,
+                after_boundary_faces=_boundary_audit_report.after_face_count,
+            )
+        except Exception as _boundary_audit_exc:
+            log.debug(
+                "native_tet_boundary_audit_probe_skipped",
+                stage=stage_name,
+                reason=str(_boundary_audit_exc)[:120],
+            )
 
     # beta830: final quality snapshot.
     final_quality = None
@@ -2956,25 +3240,74 @@ def generate_native_tet(
         )
 
         # 3 후보 중 최고 score.
+        def _candidate_meets_target_floor(t_arr: np.ndarray | None) -> bool:
+            """Do not let a tiny V-only mesh mask a requested cell budget."""
+            if t_arr is None:
+                return False
+            return _best_of_candidate_meets_target_floor(
+                int(np.asarray(t_arr).shape[0]), target_cells
+            )
+
         best_label = "final"
         best_score = final_score
         best_pts = final_pts
         best_tets = final_tets
-        if base_score > best_score + float(prefer_base_threshold):
+        if (
+            _candidate_meets_target_floor(base_filt_tets)
+            and base_score > best_score + float(prefer_base_threshold)
+        ):
             best_label = "base"
             best_score = base_score
             best_pts = base_pts_for_fallback
             best_tets = base_filt_tets
-        if v_only_score > best_score + float(prefer_base_threshold):
+        if (
+            _candidate_meets_target_floor(v_only_tets)
+            and v_only_score > best_score + float(prefer_base_threshold)
+        ):
             best_label = "v_only"
             best_score = v_only_score
             best_pts = v_only_pts
             best_tets = v_only_tets
-        if v_only_smoothed_score > best_score + float(prefer_base_threshold):
+        if (
+            _candidate_meets_target_floor(v_only_smoothed_tets)
+            and v_only_smoothed_score > best_score + float(prefer_base_threshold)
+        ):
             best_label = "v_only_smoothed"
             best_score = v_only_smoothed_score
             best_pts = v_only_smoothed_pts
             best_tets = v_only_smoothed_tets
+
+        if target_cells is not None:
+            _target_floor = int(np.ceil(0.30 * max(0, int(target_cells))))
+            for _label, _candidate in (
+                ("final", final_tets),
+                ("base", base_filt_tets),
+                ("v_only", v_only_tets),
+                ("v_only_smoothed", v_only_smoothed_tets),
+            ):
+                if _candidate is not None and int(np.asarray(_candidate).shape[0]) < _target_floor:
+                    log.info(
+                        "native_tet_best_of_candidate_rejected",
+                        candidate=_label,
+                        candidate_cells=int(np.asarray(_candidate).shape[0]),
+                        target_cells=int(target_cells),
+                        floor_cells=_target_floor,
+                        reason="below_target_cell_floor",
+                    )
+            log.info(
+                "native_tet_best_of_target_floor",
+                target_cells=int(target_cells),
+                floor_cells=_target_floor,
+                final_cells=int(final_tets.shape[0]),
+                base_cells=int(base_filt_tets.shape[0]),
+                v_only_cells=(int(v_only_tets.shape[0])
+                              if v_only_tets is not None else 0),
+                v_only_smoothed_cells=(
+                    int(v_only_smoothed_tets.shape[0])
+                    if v_only_smoothed_tets is not None else 0
+                ),
+                picked=best_label,
+            )
 
         if best_label != "final":
             log.warning(
@@ -2987,6 +3320,8 @@ def generate_native_tet(
             final_tets = best_tets
     except Exception as exc:
         log.debug("native_tet_best_of_skipped", reason=str(exc))
+
+    _boundary_audit_probe("post_best_of")
 
     # NN1 (beta1910) — sliver post-removal pass: 짧은 edge collapse 로
     # sliver tet 직접 제거. fTetWild §3.4 의 sliver removal 핵심 단계.
@@ -3052,6 +3387,8 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_sliver_post_skipped", reason=str(exc))
 
+    _boundary_audit_probe("post_nn1_collapse")
+
     # P2.1 / beta2770 — Stellar Klingner edge-contract pass (sliver removal).
     # _klingner_edge_contract_candidates → _apply_klingner_edge_contract_topK
     # 이미 모듈 존재 (stellar.py:1514, 1615) but caller 없었음 (R196 dryrun gate).
@@ -3103,6 +3440,8 @@ def generate_native_tet(
                             )
     except Exception as exc:
         log.debug("native_tet_p21_stellar_skipped", reason=str(exc)[:200])
+
+    _boundary_audit_probe("pre_rr1_flip")
 
     # RR1 (beta1950) — 2-3 face flip pass: connectivity-only sliver 깨기.
     # vertex 위치 변경 X (surface 보존), tet 재구성으로 min Q 향상.
@@ -3275,8 +3614,17 @@ def generate_native_tet(
                 if float(pre_q_v.mean_q) < 0.30:
                     from core.generator.native_tet.amips import smooth_amips_analytic
                     try:
-                        lock_ids_v = surface_new_ids2  # type: ignore[name-defined]
-                    except NameError:
+                        from core.generator.native_tet.plane_coverage import (
+                            _tet_boundary_faces,
+                        )
+                        # surface_new_ids2 is based on the pre-pass remap.  At
+                        # this point local flips/collapse may have changed the
+                        # active boundary incidence, so lock the exact current
+                        # boundary vertex set before AMIPS relocation.
+                        lock_ids_v = np.unique(
+                            _tet_boundary_faces(final_tets),
+                        ).astype(np.int64)
+                    except Exception:
                         lock_ids_v = np.arange(int(n_surface_in), dtype=np.int64)
                     ar_v, new_pts_v = smooth_amips_analytic(
                         final_pts, final_tets,
@@ -3294,6 +3642,10 @@ def generate_native_tet(
                 log.debug("native_tet_amips_post_flip_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
+
+    _boundary_audit_probe("post_rr1_flip")
+
+    _boundary_audit_probe("pre_ddd1_bsp")
 
     # DDD1 (beta2040) — BSP triangle insertion pass: missing surface triangle
     # 강제 회복. fTetWild §3.3 의 핵심 envelope 정합 단계.
@@ -3389,6 +3741,11 @@ def generate_native_tet(
                 )
     except Exception as exc:
         log.debug("native_tet_bsp_insert_skipped", reason=str(exc))
+
+    # Diagnostic-only snapshot: the EEE lane contains several local topology
+    # operations.  Compare its net result separately from later Steiner/CVT
+    # stages so a final write cannot hide the first boundary violation.
+    _eee_boundary_before = (final_pts.copy(), final_tets.copy())
 
     # EEE1 (beta2050) — BSP insert 후 flip + AMIPS post-pass: 새 Steiner
     # vertex 로 인한 sliver 추가 처리.
@@ -3540,6 +3897,27 @@ def generate_native_tet(
                     log.warning("native_tet_mmm1_skipped", reason=str(exc)[:120])
             except Exception as exc:
                 log.warning("native_tet_kkk1_skipped", reason=str(exc)[:120])
+        try:
+            from core.generator.native_tet.boundary_invariant import (
+                check_boundary_invariant as _check_eee_boundary,
+            )
+            _eee_boundary_report = _check_eee_boundary(
+                _eee_boundary_before[0], _eee_boundary_before[1],
+                final_pts, final_tets, "post_bsp_quality_eee1", log_only=True,
+            )
+            log.info(
+                "native_tet_post_bsp_quality_boundary_snapshot",
+                preserved=_eee_boundary_report.preserved,
+                before_boundary_faces=_eee_boundary_report.before_face_count,
+                after_boundary_faces=_eee_boundary_report.after_face_count,
+            )
+        except Exception as _eee_boundary_exc:
+            log.debug(
+                "native_tet_post_bsp_quality_boundary_snapshot_skipped",
+                reason=str(_eee_boundary_exc)[:120],
+            )
+        _boundary_audit_probe("post_eee_quality")
+
         # NNN1 — Steiner dry-run sliver detection (TetWild §3.3, read-only)
         if os.environ.get("AUTO_TESSELL_NNN1_DRYRUN", "1") != "0":
             try:
@@ -4047,6 +4425,8 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
+    _boundary_audit_probe("post_nnn_cvt")
+
     # VAL3 (beta2158) — initialize negative-volume tracker
     try:
         from core.generator.native_tet.stellar import _count_neg_vol as _cnv  # noqa: PLC0415
@@ -4267,10 +4647,18 @@ def generate_native_tet(
                     min_quality_improvement=1e-6,
                 )
                 _post78 = _qsnap78(_pts78, _tets78)
+                from core.generator.native_tet.boundary_invariant import (
+                    check_boundary_invariant as _check_boundary78,
+                )
+                _boundary78 = _check_boundary78(
+                    final_pts, final_tets, _pts78, _tets78,
+                    "vvv8_boundary_laplacian_candidate", log_only=True,
+                )
                 _acc78 = (
                     _post78.min_q >= _pre78.min_q - 1e-6
                     and _post78.mean_q >= _pre78.mean_q - 1e-3
                     and _tets78.shape[0] == _pre78_n
+                    and _boundary78.preserved
                 )
                 if _acc78:
                     final_pts, final_tets = _pts78, _tets78
@@ -4280,6 +4668,7 @@ def generate_native_tet(
                     pre_min=float(_pre78.min_q),
                     post_min=float(_post78.min_q),
                     accepted=bool(_acc78),
+                    boundary_preserved=bool(_boundary78.preserved),
                 )
         except Exception as exc:
             log.warning("native_tet_vvv8_skipped", reason=str(exc)[:120])
@@ -4406,6 +4795,9 @@ def generate_native_tet(
 
     # VVV12 — sliver tet detection + longest-edge midpoint split (V/L³ < 1e-3)
     _t_vvv12 = time.perf_counter()
+    # Keep the diagnostic counters defined even when the small-mesh guard
+    # skips the optional split pass.  Later report-only hooks share this scope.
+    _n_sliver_pre = 0
     if not os.environ.get("AUTO_TESSELL_VVV12_OFF"):
         try:
             if final_tets.shape[0] < 500:
@@ -4575,7 +4967,7 @@ def generate_native_tet(
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9h_skipped", reason=str(exc)[:120])
             # VVV9I #3 — envelope distance diagnostic hook (gate OFF by default)
-            _VVV9I_DIAG: bool = True
+            _VVV9I_DIAG: bool = False
             if _VVV9I_DIAG and _n_sliver_pre >= 1:
                 _t0 = time.perf_counter()
                 try:
@@ -4589,7 +4981,7 @@ def generate_native_tet(
                     _wall_ms = int((time.perf_counter() - _t0) * 1000)
                     log.info(
                         "native_tet_vvv9i_diag",
-                        n_pts=N,
+                        n_pts=int(final_pts.shape[0]),
                         n_invasion=_n_invasion,
                         max_dist=_max_dist,
                         eps=_eps,
@@ -4599,7 +4991,7 @@ def generate_native_tet(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9i_skipped", reason=str(exc)[:120])
             # VVV9J #6 — SLIM global-pass diagnostic hook (gate OFF by default, discard-only)
-            _VVV9J_DIAG: bool = True
+            _VVV9J_DIAG: bool = False
             if _VVV9J_DIAG and _n_sliver_pre >= 1:
                 try:
                     from core.generator.native_tet.stellar import _slim_global_pass  # noqa: PLC0415
@@ -4611,7 +5003,7 @@ def generate_native_tet(
                     _wall_ms_j6 = int((time.perf_counter() - _t0_j6) * 1000)
                     log.info(
                         "native_tet_vvv9j_diag",
-                        n_vertex=N,
+                        n_vertex=int(final_pts.shape[0]),
                         pre_worst_mq=float(_pre_j6.min_q),
                         post_worst_mq=float(_post_j6.min_q),
                         energy_delta=float(_res_j6["total_energy_delta"]),
@@ -4648,13 +5040,14 @@ def generate_native_tet(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
             # VVV9K #5 — priority-queue main-loop diagnostic hook (gate OFF default, discard-only)
-            _VVV9K_DIAG: bool = True  # R218: gate flip ON
+            _VVV9K_DIAG: bool = False  # evidence-only gate; default OFF
             _VVV9K_APPLY_REAL: bool = bool(os.environ.get("AUTO_TESSELL_VVV9K_APPLY", "0") == "1")
             if _VVV9K_DIAG and _n_sliver_pre >= 1:
                 try:
                     from core.generator.native_tet.stellar import _priority_queue_main_loop  # noqa: PLC0415
                     from core.generator.native_tet.quality import snapshot as _qsnap_9k  # noqa: PLC0415
-                    _q_arr_9k = _qsnap_9k(final_pts, final_tets).q_per_tet
+                    from core.generator.native_tet.stellar import _tet_quality_batch
+                    _q_arr_9k = _tet_quality_batch(final_pts, final_tets)
                     _t0_9k = time.perf_counter()
                     _pts2, _tets2, _n_imp, _n_it, _delta = _priority_queue_main_loop(
                         final_pts, final_tets, _q_arr_9k, max_iters=10, time_budget_ms=100.0
@@ -4728,7 +5121,7 @@ def generate_native_tet(
             else:
                 log.info("native_tet_vvv9n_skipped_guard", n_sliver_pre=int(_n_sliver_pre), worst_pre=float(_worst_pre))
             # VVV9P #2 — multi-face removal diagnostic hook (gate OFF default, R226 ON flip)
-            _VVV9P_DIAG: bool = True  # R226 ON (gate flip True)
+            _VVV9P_DIAG: bool = False  # evidence-only gate; default OFF
             if _VVV9P_DIAG and _n_sliver_pre >= 1 and _worst_pre < 0.10:
                 try:
                     from core.generator.native_tet.stellar import _multi_face_removal_candidates as _mfrc_9p  # noqa: PLC0415
@@ -4885,6 +5278,8 @@ def generate_native_tet(
     except Exception:
         pass
 
+    _boundary_audit_probe("post_vvv14")
+
     # TET_QUALITY1 (beta2141) — non-ortho local post-pass (mirror HEX_QUALITY1).
     # env AUTO_TESSELL_TET_QUALITY1_OFF disables. Default ON.
     _t_tq1 = time.perf_counter()
@@ -4920,6 +5315,8 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_quality1_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="TET_QUALITY1", dt_ms=int((time.perf_counter() - _t_tq1) * 1000))
+
+    _boundary_audit_probe("post_tet_quality1")
 
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
@@ -5101,6 +5498,7 @@ def generate_native_tet(
             from core.generator.native_tet.metric_tensor_sweep import (
                 metric_tensor_sweep, compute_curvature_metric,
             )
+            from core.generator.native_tet.plane_coverage import _tet_boundary_faces
             _EDGES_M = np.array([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]], dtype=np.int64)
             _e_idx_m = final_tets[:, _EDGES_M]
             _e_lens_m = np.linalg.norm(
@@ -5153,6 +5551,7 @@ def generate_native_tet(
         try:
             from core.generator.native_tet.amips import smooth_amips_multistage as _ams
             from core.generator.native_tet.quality import snapshot as _qs_self
+            from core.generator.native_tet.plane_coverage import _tet_boundary_faces
             _q_pre_self = _qs_self(final_pts, final_tets)
             _mq_pre_self = float(_q_pre_self.mean_q)
             if final_tets.shape[0] > 100:
@@ -5438,33 +5837,15 @@ def generate_native_tet(
             log.debug("native_tet_cfd_quality_amips_skipped",
                       reason=str(_amips_exc)[:120])
 
-    # P4-B-5h (beta2245i): _phase_bc_skip 으로 deferred 된 경우 (또는 P4-C 가
-    # final_pts/tets 를 재할당한 경우) polyMesh 를 정확한 최종 mesh 로 write.
-    # 2026-07-17: 조건에 ``_p4c_rewrote`` 를 추가.  이전에는 _phase_bc_skip 만
-    # 검사해, non-skip 경로에서 P4-C 가 grade-A mesh 로 재할당해도 on-disk
-    # polyMesh 가 line 1887 의 P4-C 이전 저품질 mesh 로 남았다 (곡면 벽 왜곡).
+    # P4-B-5h (beta2245i): historical post-P4C write point.  Actual writing is
+    # deferred to FINAL-SYNC below so every downstream pass contributes to one
+    # and only one on-disk source of truth.
     if _phase_bc_skip or _p4c_rewrote:
-        try:
-            stats = PolyMeshWriter().write(
-                final_pts,
-                final_tets,
-                case_dir,
-                boundary_patch_classifier=_get_boundary_patch_classifier(),
-            )
-            n_cells = int(stats.get("num_cells", final_tets.shape[0]))
-            n_points = int(stats.get("num_points", final_pts.shape[0]))
-            log.info(
-                "native_tet_polymesh_write_post_p4c",
-                num_cells=n_cells, num_points=n_points,
-                phase_bc_skip=bool(_phase_bc_skip),
-                p4c_rewrote=bool(_p4c_rewrote),
-            )
-        except Exception as exc:
-            return NativeTetResult(
-                False, time.perf_counter() - t0,
-                message=f"polyMesh post-P4C 쓰기 실패: {exc}",
-                n_self_intersect_pre=_pre_mesh_si_count,
-            )
+        log.info(
+            "native_tet_polymesh_write_post_p4c_deferred",
+            phase_bc_skip=bool(_phase_bc_skip),
+            p4c_rewrote=bool(_p4c_rewrote),
+        )
 
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
 
@@ -5508,6 +5889,47 @@ def generate_native_tet(
         except Exception as _val1_exc:
             log.debug("native_tet_validate_skipped", reason=str(_val1_exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VAL1", dt_ms=int((time.perf_counter() - _t_val1) * 1000))
+
+    # FINAL-SYNC / beta-DET-RESULT1 — W3 and later local passes can replace
+    # final_pts/final_tets after the earlier polyMesh write.  Keep the returned
+    # arrays, on-disk mesh, counts, and quality snapshot on one final source of
+    # truth; otherwise callers can observe (for example) 353/1869 metadata
+    # paired with a 73/212 v_only_smoothed array.
+    try:
+        _final_stats = PolyMeshWriter().write(
+            final_pts,
+            final_tets,
+            case_dir,
+            boundary_patch_classifier=_get_boundary_patch_classifier(),
+        )
+        n_cells = int(final_tets.shape[0])
+        n_points = int(final_pts.shape[0])
+        from core.generator.native_tet.quality import snapshot as _qsnap_final
+        final_quality = _qsnap_final(final_pts, final_tets)
+        _final_mq_sync = float(getattr(final_quality, "mean_q", 0.0))
+        grade = (
+            "A" if _final_mq_sync >= 0.20 else
+            "B" if _final_mq_sync >= 0.15 else
+            "C" if _final_mq_sync >= 0.10 else "D"
+        )
+        debug_info["n_final_tets"] = n_cells
+        debug_info["n_final_points"] = n_points
+        debug_info["final_sync_writer_cells"] = int(
+            _final_stats.get("num_cells", n_cells)
+        )
+        debug_info["final_sync_writer_points"] = int(
+            _final_stats.get("num_points", n_points)
+        )
+        log.info(
+            "native_tet_polymesh_write_final",
+            num_cells=n_cells,
+            num_points=n_points,
+        )
+    except Exception as _final_sync_exc:
+        log.warning(
+            "native_tet_final_sync_failed",
+            reason=str(_final_sync_exc)[:160],
+        )
 
     # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
     # C-VAL-5 / beta2402 — final mean_q 노출 (cycle 별 quality progression 추적).

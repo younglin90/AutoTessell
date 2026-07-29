@@ -1,5 +1,54 @@
 # Changelog
 
+## [Unreleased] - 2026-07-27 — 개선 정체 구간 문헌 후속 조사
+
+- native_tet의 품질·thin-geometry·CDT timeout, native_poly의 concave dual
+  invalidity, native_hex의 transition/wall-fit Pareto, native_tri의
+  feature/envelope 계약을 서로 다른 문제 카드로 분리했다.
+- 저장된 완독 노트와 사용자 제공 PDF를 기준으로 후속 문헌을 재검토하고,
+  `TET-THIN-SECTION-1`, `TET-GSM-CAVITY1`, `TET-CDT-PROFILE1`,
+  `POLY-CONCAVE-SPLIT1`, `POLY-FV-FLUX-CORR1`,
+  `HEX-TRANSITION-TEMPLATE1`의 측정 우선 절차와 중단 조건을 기록했다.
+- `10.1007/s00366-009-0145-2` 등 전문이 확보되지 않은 DOI는 문헌 대기열로
+  분리했다. 게이트 완화·표면 이동·무가드 전역 최적화는 추가 근거 전까지
+  시행하지 않는다.
+
+## [Unreleased] - 2026-07-27 — native_tet full-fine edge-recovery A/B
+
+## [Unreleased] - 2026-07-27 — native_tet result contract and target floor
+
+- Synchronized the final native-tet arrays, counts, and single FINAL-SYNC
+  `polyMesh` write; runtime-contract tests are `6/6`.
+- Added a deterministic W3 candidate floor of `ceil(0.30*target_cells)` for
+  positive targets. This prevents tiny candidates from winning on quality
+  alone without relaxing surface, volume, degeneracy, or quality gates.
+- Re-ran the hard matrix: `6/13` PASS under the current target-2000 protocol;
+  naca remains quality-failing at max skew `34.80`, while timeout and
+  geometry/input cards remain open.
+
+- Extended the fixed dual-torus replay to `target_cells=15000`. Edge ON and
+  OFF converged to identical final CDT/coverage/degen values
+  (`.80518/.46509/.68116/6`), while ON cost `36.93s` versus `29.16s` and
+  recovered-stage improvements were lost downstream.
+- Edge recovery remains indexed/guarded opt-in; no default or permanent gate
+  was changed.
+
+## [Unreleased] - 2026-07-27 — native_tet multi-body coverage measurement
+
+- BETA2832의 상대 component filter를 dual-torus에서 재검증했다. 두 surface
+  body가 모두 보존되어 `area_ratio=1.0094878`, `vol_ratio=1.0097687`,
+  `degen=0`, `neg_vol=0`을 얻었다.
+- 남은 극단 skew와 낮은 CDT 회복률은 별도 quality/recovery 카드로 유지한다.
+
+## [Unreleased] - 2026-07-27 — native_tet BETA2834 diagnostic
+
+- direct opt-in edge recovery는 dual-torus CDT ratio를 `.881→.925`로
+  개선했지만 plane coverage를 `.897→.880`으로 낮추고 runtime을 `6.73→14.24s`
+  로 늘렸다. surface-conformity transaction 전에는 기본 경로에 연결하지 않는다.
+- opt-in stage snapshot에서 전체 edge lane의 boundary face/area는 보존되었다
+  (`1352→1352`, `103.399255187455` 동일). plane coverage 저하는 별도
+  recovery/BSP 상호작용으로 분리했다.
+
 ## [Unreleased] - 2026-07-26 — native_tet TET-SHAPE-2 GSM interior pass.
 
 - Added a default-OFF, boundary-pinned interior GSM/AMIPS pass based on Ni et al. 2017. Surface coordinates, connectivity, exact orientation signs, and transactional rollback guards are preserved.
@@ -2041,6 +2090,16 @@ BL 완성.
 
 ## [Unreleased] - 2026-07-26 — native_poly no-drop contract
 
+## [Unreleased] - 2026-07-27 — TET-METRIC-GAP-BOUNDARY-IMPORT1
+
+- Fixed a two-block caller-scope defect in native-tet `mesher.py`: metric
+  tensor and GAP-SELF now import `_tet_boundary_faces` in their own execution
+  scopes, so `_phase_bc_skip` no longer silently skips both stages with an
+  unbound-local error.
+- The fix changes no lock policy, operator, threshold, or surface gate.
+  Focused native-tet regressions remain `15 passed, 1 xfailed`; the existing
+  stellar test import mismatch is unrelated and remains a separate WIP issue.
+
 - Measured direct SciPy Voronoi cell deletion on cube/cylinder/sphere and
   confirmed manufactured boundary faces/components plus 89-100% domain-volume
   loss in the deletion candidates.
@@ -2052,4 +2111,77 @@ BL 완성.
   non-manifold extra references before writing. Python and optional C++
   topology kernels share census-based parity; no C++ source change was needed.
 - Preserved legacy OFF output byte-for-byte on cube/cylinder/sphere; fixed
-  polydual primal and budget+BL hex-base paths remain flag no-ops.
+polydual primal and budget+BL hex-base paths remain flag no-ops.
+
+## [Unreleased] - 2026-07-27 — native_hex wall-fit Pareto diagnostics
+
+- Added opt-in report-only Pareto frontier accounting to the native_hex
+  wall-fit candidate audit. It records candidate-level surface-distance,
+  skew, warpage, boundary-area, and signed-volume deltas without changing
+  wall-fit acceptance or default flags.
+- Cylinder diagnostic: `350` candidates, `117` frontier candidates, `0`
+  boundary-key changes, `0` negative-volume increases, and `16` strict/p95/
+  combined non-regressions. Final skew remains `3.20865134`; no permanent
+  gate or surface-preservation contract was relaxed.
+
+- Extended the report-only Pareto census to sphere, gear, and bracket. The
+  frontier is shape-dependent and all four representative final skews remain
+  above the permanent `3.0` gate; no global threshold or shape dispatch was
+  enabled.
+# [Unreleased] — native_tet edge-recovery A/B replay
+
+- Replayed indexed edge recovery on the fixed high-genus dual-torus case.
+  Constraint ratios improved (`0.89665→0.93229` edge, `0.73291→0.81763`
+  face), but plane coverage declined (`0.93168→0.91149`) and runtime rose
+  `6.41→13.66 s`.
+- A later BSP candidate violated the boundary invariant and was rejected.
+  Edge recovery remains opt-in; no default promotion or gate relaxation.
+
+- Revalidated the bounded current-code replay at `target_cells=600`: OFF
+  `12219/2855` cells/points, ON `12616/2903`, with the same constraint,
+  plane-coverage, and mean-quality statistics as the earlier run. Wall time
+  was `26.53 s` OFF versus `34.15 s` ON. The full-fine `480 s` timeout remains
+  open; the indexed/guard lane stays opt-in.
+
+## [Unreleased] — native_tet FSL lazy-flip measurements
+
+- Re-ran the existing diagnostic-only FSL wave-1 lane on the current fixed
+  dual-torus mesh: `60/61` core flat wedges were unlocked by guarded depth-1
+  lazy edge removal, one remained structurally blocked, boundary faces stayed
+  `4588`, and private-copy mean quality improved `0.151544→0.152208` while
+  minimum quality stayed unchanged.
+- Re-ran the bounded TET-LAZY-2 dual criterion over `128/10497` sorted interior
+  edges: `0` accepted, all candidates failed the inherited improvement gate,
+  and the sequence rolled back. Both lanes remain diagnostic/opt-in; no
+  production threshold, surface policy, or default route changed.
+
+## [Unreleased] — native_tet TET-FLOW-3 diagnostic
+
+- Added a default-OFF, unwired FLOW-3 ladder diagnostic with deterministic
+  candidate-level 2-3, ring-validated 4-4, and general edge-removal trials.
+  Boundary face-set, signed-volume/tiling, and global worst-quality guards are
+  enforced transactionally.
+- On the fixed FSL mesh, eight bad tets across five epsilon rungs examined
+  `364` candidates and accepted `2` only in a private sequence; minimum quality
+  did not improve, so the sequence rolled back and boundary/input digests stayed
+  exact. The bounded run took `26.4 s`; a 32-bad-tet variant exceeded `120 s`.
+  No production wiring or threshold change was made.
+
+## [Unreleased] — native_tet SHAPE-1/WDEL-2 diagnostics
+
+- Added report-only `tet_gsm_score`: regular calibration tet `1.000000`, flat
+  calibration tet `0.00053598`; focused shape/certification tests `3 passed`.
+- Added the explicitly heuristic WDEL-2 classifier. On the FSL core-61 set it
+  predicted `4` pumpable / `57` locked, while guarded wave-1 measured `60`
+  unlocked / `1` blocked: agreement `8.2%` versus the `90%` acceptance target.
+  The classifier is marked measured/falsified and is not used for routing or
+  production gates.
+
+## [Unreleased] — native_tet result contract and boundary guards
+
+- Native-tet returned arrays, counts, and on-disk `polyMesh` are now synchronized
+  from one final source of truth; the focused cylinder consistency test passes.
+- Naca boundary root causes were closed in sequence: NN1 candidate-level bulk
+  collapse guard, 4-4 flip cycle/boundary guard, and VVV8 boundary-Laplacian
+  keys/area acceptance guard. Thin-sliver is `2 passed, 1 strict xfailed`,
+  with `696` boundary faces and internal prewrite skew `60.399`.
