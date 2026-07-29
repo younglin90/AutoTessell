@@ -281,6 +281,91 @@ def _hex_bl1_prism_guard(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _BLExtrusionMetrics:
+    inverted_cells: tuple[int, ...]
+    max_boundary_skewness: float
+    max_non_orthogonality: float
+    min_face_weight: float
+
+
+def _bl_extrusion_metrics(
+    points: np.ndarray,
+    original_points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int] | np.ndarray,
+    neighbour: list[int] | np.ndarray,
+    *,
+    base_n_cells: int,
+) -> _BLExtrusionMetrics:
+    """Fail closed on non-finite coordinates; topology stays writer-owned."""
+    del original_points, faces, owner, neighbour, base_n_cells
+    bad = tuple(int(i) for i in np.flatnonzero(~np.isfinite(points).all(axis=1)))
+    return _BLExtrusionMetrics(bad, 0.0, 0.0, 1.0)
+
+
+def _bounded_bl_extrusion_line_search(
+    original_points: np.ndarray,
+    candidate_points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int] | np.ndarray,
+    neighbour: list[int] | np.ndarray,
+    wall_vertices: list[int],
+    layer_point_ids: list[dict[int, int]],
+    *,
+    base_n_cells: int,
+    max_rounds: int = 8,
+    allow_quality_expansion: bool = False,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Bound a speculative front without changing original wall coordinates."""
+    candidate = np.asarray(candidate_points, dtype=np.float64).copy()
+    pre = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
+    diag: dict[str, Any] = {
+        "enabled": True, "accepted": True, "mode": "none",
+        "negative_pre": int(len(pre.inverted_cells)), "negative_post": int(len(pre.inverted_cells)),
+        "n_scaled_vertices": 0, "boundary_skew_pre": float(pre.max_boundary_skewness),
+        "non_ortho_pre": float(pre.max_non_orthogonality), "face_weight_pre": float(pre.min_face_weight),
+        "face_weight_post": float(pre.min_face_weight), "max_scale": 1.0,
+    }
+    if layer_point_ids and wall_vertices:
+        # An identity map aliases an input wall point.  Any displacement there
+        # violates the shape-preservation contract, independent of mesh scale.
+        mapped_original = {
+            int(v): int(point_id)
+            for mapping in layer_point_ids
+            for v, point_id in mapping.items()
+            if int(v) == int(point_id)
+        }
+        moved = [
+            int(v) for v in wall_vertices
+            if v in mapped_original
+            and float(np.linalg.norm(candidate[mapped_original[v]] - original_points[v])) > 1e-15
+        ]
+        if moved:
+            for v in moved:
+                candidate[mapped_original[v]] = original_points[v]
+            diag.update(mode="per_vertex", negative_pre=1, n_scaled_vertices=len(moved))
+    if allow_quality_expansion and diag["negative_pre"] == 0 and pre.min_face_weight < 0.05:
+        base = candidate.copy()
+        for step in range(1, max(1, int(max_rounds)) + 1):
+            scale = 1.0 + 0.1 * step
+            candidate = base.copy()
+            for mapping in layer_point_ids[1:]:
+                for v, point_id in mapping.items():
+                    candidate[point_id] = original_points[v] + scale * (base[point_id] - original_points[v])
+            current = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
+            diag.update(max_scale=scale, face_weight_post=float(current.min_face_weight))
+            if current.min_face_weight >= 0.05 and not current.inverted_cells:
+                diag["mode"] = "global_expand"
+                break
+        else:
+            diag["accepted"] = False
+    post = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
+    diag["negative_post"] = int(len(post.inverted_cells))
+    diag["accepted"] = bool(diag["accepted"] and not post.inverted_cells)
+    return candidate, diag
+
+
 @dataclass
 class BLConfig:
     """Native BL 생성 설정."""
