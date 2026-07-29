@@ -68,6 +68,7 @@ def test_parse_foam_boundary_returns_patches(tmp_path: Path) -> None:
     assert len(patches) >= 1
     p = patches[0]
     assert "name" in p
+    assert "type" in p
     assert "nFaces" in p
     assert "startFace" in p
     assert p["nFaces"] == 6  # 2 tets × 4 - 1 internal - 1 shared → 6 boundary
@@ -114,6 +115,9 @@ def test_parse_foam_boundary_multiple_patches(tmp_path: Path) -> None:
     names = [p["name"] for p in patches]
     assert "inlet" in names
     assert "walls" in names
+    assert {str(p["name"]): str(p["type"]) for p in patches} == {
+        "inlet": "patch", "walls": "wall"
+    }
 
 
 # ---------------------------------------------------------------------------

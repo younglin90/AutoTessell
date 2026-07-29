@@ -507,6 +507,10 @@ class NativeMeshChecker:
             mean_uniformity_factor=phase0_metrics.mean_uniformity_factor,
             p95_uniformity_factor=phase0_metrics.p95_uniformity_factor,
             max_uniformity_factor=phase0_metrics.max_uniformity_factor,
+            min_face_pairing_residual=phase0_metrics.min_face_pairing_residual,
+            mean_face_pairing_residual=phase0_metrics.mean_face_pairing_residual,
+            p95_face_pairing_residual=phase0_metrics.p95_face_pairing_residual,
+            max_face_pairing_residual=phase0_metrics.max_face_pairing_residual,
         )
 
         # ------------------------------------------------------------------

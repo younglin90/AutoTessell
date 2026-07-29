@@ -192,7 +192,9 @@ def parse_foam_labels(label_file: Path) -> list[int]:
 def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
     """Parse polyMesh/boundary and return patch info dicts.
 
-    Each dict has keys: ``name``, ``nFaces``, ``startFace``.
+    Each dict has keys: ``name``, ``type`` (when present), ``nFaces``, and
+    ``startFace``.  Patch type is part of boundary provenance: callers that
+    distinguish a wall from a patch must not need to re-parse the raw file.
     """
     text = boundary_file.read_text()
     text = _strip_foam_comments(text)
@@ -208,14 +210,16 @@ def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
     for name_raw, block in patch_blocks:
         nfaces_m = re.search(r"nFaces\s+(\d+)", block)
         startface_m = re.search(r"startFace\s+(\d+)", block)
+        type_m = re.search(r"\btype\s+([^\s;]+)", block)
         if nfaces_m and startface_m:
-            patches.append(
-                {
-                    "name": name_raw.strip(),
-                    "nFaces": int(nfaces_m.group(1)),
-                    "startFace": int(startface_m.group(1)),
-                }
-            )
+            patch: dict[str, Any] = {
+                "name": name_raw.strip(),
+                "nFaces": int(nfaces_m.group(1)),
+                "startFace": int(startface_m.group(1)),
+            }
+            if type_m:
+                patch["type"] = type_m.group(1)
+            patches.append(patch)
     return patches
 
 

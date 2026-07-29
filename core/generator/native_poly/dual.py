@@ -503,6 +503,17 @@ def _area_split(
     tol: float = 1e-6,
 ) -> tuple[float, float]:
     """boundary face 들을 (원본 surface 평면 위 area, 그 외 area) 로 분리."""
+    if not planes:
+        off = 0.0
+        for f in faces:
+            p = points[np.asarray(f, dtype=int)]
+            acc = np.zeros(3)
+            for i in range(1, len(f) - 1):
+                acc = acc + np.cross(p[i] - p[0], p[i + 1] - p[0]) / 2.0
+            off += float(np.linalg.norm(acc))
+        return 0.0, off
+    plane_normals = np.asarray([normal for normal, _ in planes], dtype=np.float64)
+    plane_offsets = np.asarray([offset for _, offset in planes], dtype=np.float64)
     on = off = 0.0
     for f in faces:
         p = points[np.asarray(f, dtype=int)]
@@ -510,7 +521,8 @@ def _area_split(
         for i in range(1, len(f) - 1):
             acc = acc + np.cross(p[i] - p[0], p[i + 1] - p[0]) / 2.0
         area = float(np.linalg.norm(acc))
-        is_on = any(np.all(np.abs(p @ n + d) < tol) for n, d in planes)
+        signed_distances = p @ plane_normals.T + plane_offsets
+        is_on = bool(np.any(np.all(np.abs(signed_distances) < tol, axis=0)))
         if is_on:
             on += area
         else:
@@ -845,7 +857,14 @@ def tet_to_poly_dual(
                 continue
             # ConvexHull 로 polyhedron 생성
             try:
-                hull = ConvexHull(pts, qhull_options="QJ")
+                # Prefer the exact hull.  ``QJ`` perturbs the input points and
+                # can turn an otherwise coplanar dual face into a warped one;
+                # retain it only as a recovery path for genuinely degenerate
+                # point sets.
+                try:
+                    hull = ConvexHull(pts)
+                except Exception:
+                    hull = ConvexHull(pts, qhull_options="QJ")
             except Exception:
                 n_skipped += 1
                 continue
@@ -1077,10 +1096,21 @@ def tet_to_poly_dual(
     # 평면 위" 인 face 뿐 — off-plane face 는 위 boundary-edge/edge-ring 이 이미
     # 내부를 닫으므로 버린다.
     surface_planes = _surface_planes(V, boundary_faces)
+    surface_plane_normals = np.asarray(
+        [normal for normal, _ in surface_planes],
+        dtype=np.float64,
+    )
+    surface_plane_offsets = np.asarray(
+        [offset for _, offset in surface_planes],
+        dtype=np.float64,
+    )
 
     def _is_on_plane(face: list[int], tol: float = 1e-6) -> bool:
         p = dual_points[np.asarray(face, dtype=int)]
-        return any(np.all(np.abs(p @ n + d) < tol) for n, d in surface_planes)
+        if not len(surface_plane_normals):
+            return False
+        signed_distances = p @ surface_plane_normals.T + surface_plane_offsets
+        return bool(np.any(np.all(np.abs(signed_distances) < tol, axis=0)))
 
     b_b_faces: list[list[int]] = []
     b_b_own: list[int] = []

@@ -259,3 +259,373 @@ therefore attributes the discrepancy to upstream primal/measurement protocol,
 not a tier-only drop or writer improvement. Keep both historical numbers as
 non-comparable ledger context; no optimization card may use them as a paired
 baseline. Sphere timeout is an explicit bound, not a quality result.
+
+## 2026-07-27 — Phase 2 invalid-dual re-audit
+
+- The historical non-manifold fan `2/18` report does not reproduce against the
+  current code path.
+- Current fixture result: final `invalid_star_cells=0`,
+  `invalid_star_subtets=0`; the Garimella intermediate candidate is rejected
+  transactionally and centroid fallback is valid.
+- **Decision:** fan-component splitting plus fallback already closes the known
+  failure. No concave-split or condition-number untangler was added; keep both
+  Phase 2 cards dormant until a fresh final-invalid fixture appears.
+
+### 2026-07-27 — sphere runtime re-audit
+
+The isolated sphere dual test completed successfully in `171.34 s`
+(`1 passed`). The aggregate native-poly dual suite exceeded a `300 s` shell
+bound after the first two fast tests; this is a performance/fixture-cost
+finding, not a new invalid-cell failure. The historical fan fixture remains
+final-valid, so no Phase 2 repair was justified. The sphere cost should be
+tracked as a separate performance card before any optimization changes the
+dual construction.
+
+### `POLY-DUAL-PERF-PLANE1` result
+
+The first bounded implementation targets only the repeated plane-membership
+tests in `_area_split` and `_is_on_plane`: the original per-plane Python
+`any/all` loops now use the same signed-distance predicate over a pre-shaped
+plane matrix. No face, point, area, topology, or acceptance rule changed.
+`cProfile` attributed the old fixed-primal run to these functions and their
+`np.all` reductions (`205.3 s` cumulative of `216.8 s` profiled wall). After
+the change, two direct repeats took `4.8930 s` and `5.3240 s`, with identical
+disk digest
+`c32d581c7a6a042b7b05d1633e82ca97abd6ecfe0d4bc6d7edc0acb86cb2f14f`,
+`669` cells / `5474` points, and zero invalid star cells/subtets. The primal
+digest remained identical. `test_native_poly_dual.py`: `7 passed`; the full
+native-poly plus boundary-provenance set: `75 passed, 38 skipped`. This closes
+the measured performance card without changing the poly quality gate or
+geometry.
+
+### Stage split (fixed primal, 2026-07-27)
+
+The new report-only benchmark fixes one native-tet primal and separates the
+stages. With `sphere.stl`, `seed_density=8`, the primal stage took `1.5787 s`
+and produced `669` points / `1632` tets with digest
+`d068ad3c73dfd13230bc901b69937e833062a75b25b7bdde2a51ebfcd6004818`.
+Three direct dual repeats on that identical `(V,T)` took `159.0619 s`,
+`162.6962 s`, and `163.1518 s`; each produced `669` cells / `5474` points,
+`invalid_star_cells=0`, and `invalid_star_subtets=0`. Therefore over 99% of
+the measured wall time is in the dual construction, not native-tet primal
+generation. The next performance investigation is inside `tet_to_poly_dual`
+(especially repeated convex-hull/face grouping), not a primal-engine repair.
+
+### `POLY-FVERR-RANDPERT1` MMS prerequisite — 2026-07-27
+
+A report-only cell-centred two-point-flux Laplacian MMS harness was added at
+`core/generator/native_poly/fv_mms.py`. It uses the manufactured solution
+`u=x²+y²+z²`, exact Dirichlet values, deterministic Cartesian hex grids, and
+interior-node perturbations up to Katz's 25% level. The regular grid reproduces
+L2 order `2.0, 2.0`; the uncorrected two-point kernel under 25% random
+perturbation gives orders `0.7658, 0.6690`. This is a diagnostic falsification
+of the *uncorrected kernel* as a second-order method, not a claim about the
+production native-poly route.
+
+Applied to actual fixed-primal native-poly outputs, the solver reports:
+
+| shape | cells / points | result |
+|---|---:|---|
+| sphere, seed 8 | 669 / 5474 | solved; max non-ortho `63.8878°`, skew proxy `0.235625`, L2 `0.559198` |
+| cube, seed 8 | 15 / 78 | rejected: non-positive internal two-point coefficient |
+| cylinder, seed 6 | 1583 / 10891 | rejected: zero-area face |
+
+The rejections are explicit prerequisite failures and are not converted into
+solution-error numbers. The native-poly production path and gates are
+unchanged. `tests/test_native_poly_fv_mms.py` passes `2`; the random-perturbed
+MMS benchmark is deterministic for a fixed seed.
+
+### Correction diagnostic follow-up — 2026-07-27
+
+The harness now also exposes an optional bounded deferred non-orthogonal
+correction. This is report-only and is not wired into native-poly production.
+On the synthetic Cartesian grid with 25% deterministic interior perturbation,
+the corrected diagnostic recovered L2 orders `2.0094, 2.1250` (uncorrected:
+`0.7658, 0.6690`). This validates the measurement harness's ability to expose
+the expected non-orthogonal error mechanism; it does not validate the same
+scheme on arbitrary native-poly cells.
+
+The native-poly sphere is an explicit counterexample to promotion: the same
+fixed primal (`669` cells / `5474` dual points) changed from uncorrected
+`L2=0.559198` to corrected `L2=1707.868144`, with
+`max_non_ortho=63.8878°`. The correction therefore remains a diagnostic
+experiment and the production FV-accuracy card stays open pending a
+solver-consistent face-flux implementation and prerequisite mesh repair for
+the cube/cylinder rejects. `tests/test_native_poly_fv_mms.py` now passes `3`.
+
+### Native-output prerequisite repeatability audit — 2026-07-27
+
+The native-output adapter was repeated before interpreting any FV error. Under
+the default environment, two cylinder runs with the same `seed_density=6`
+selected different upstream fallback outcomes: `(1619 cells, 11053 points,
+10 zero-area faces, 2 non-positive internal coefficients)` versus `(1618
+cells, 11110 points, 6 zero-area faces, 0 non-positive coefficients)`. This
+is a measurement-protocol failure, not evidence for a solver correction.
+
+With `AUTO_TESSELL_P4C_PYTETWILD=0` fixed to the pure native path, the two
+cylinder repeats were byte-stable at `(73 cells, 596 points)`, but still had
+`20` non-positive internal two-point coefficients. The fixed cube run had
+`15 cells / 78 points`, `5` zero-area faces, and `8` negative internal
+coefficients. The native dual validity diagnostics simultaneously reported
+`7/51` invalid cells/subtets for cube and `71/553` for cylinder in this
+protocol. Both the default and fixed-native protocols therefore fail the
+FV prerequisite contract; no solver-order claim is made until upstream dual
+validity and path determinism are repaired.
+
+### Upstream dual-invalidity path isolation — 2026-07-27
+
+The two current dual-face assembly routes were isolated without changing
+source behavior. Forcing the legacy ConvexHull route (path A) produced the
+same result as the topology-ring route (path B): cube `7 invalid cells / 51
+invalid subtets` and cylinder `71 / 541` in the fixed-native protocol. The
+dispatch choice and the classified Garimella point candidate are therefore
+not sufficient root causes.
+
+The concrete cube example is boundary cell `0`: internal 6-gon and 5-gon
+faces produce negative region-center subtets, and boundary face id `63` is
+the zero-area triangle `[43,67,42]`. All seven cube invalid cells are boundary
+cells; cylinder has `65` boundary-invalid and `6` interior-invalid cells in
+the same audit. This points to dual face construction/coplanar-cap handling
+(warped internal polygons and degenerate boundary caps), not to the FV
+discretization. No unconditional face deletion or invalid-mesh acceptance
+change was made; a transactional dual-face repair card is required.
+
+### Dual-face geometry census — 2026-07-27
+
+The fixed-native face census quantifies the repair target. Cube has `62`
+unique internal faces with `24` warped above relative deviation `1e-8`, a
+maximum relative warpage `0.45028`, and `2` zero-area internal faces; its `27`
+boundary faces include `3` zero-area caps. Cylinder has `352` internal faces,
+`220` warped above the same threshold with maximum relative warpage `0.62611`,
+and `212` boundary faces with `9` warped caps. These are far beyond numerical
+noise and explain the FV prerequisite failure. The next card must construct or
+reject each affected face transactionally while preserving owner/neighbour,
+boundary area, patch identity, and deterministic output; simply deleting the
+zero-area faces is not admissible.
+
+### Literature update for the repair boundary — 2026-07-27
+
+- Nishikawa (2022), *A flux correction for finite-volume discretizations*,
+  DOI `10.1016/j.jcp.2022.111481`, derives a correction for non-planar faces
+  and explicitly requires a consistent control-volume definition. This
+  supports the MMS measurement, but does not license applying a correction to
+  cells with zero-area faces or invalid owner/neighbour geometry.
+- Bonaventura and Della Rocca (2018), *Convergence analysis of a cell centered
+  finite volume diffusion operator on non-orthogonal polyhedral meshes*,
+  arXiv `1806.09180`, analyzes corrected two-point flux under admissible,
+  sufficiently regular meshes and notes that coercivity can fail on highly
+  irregular meshes. The negative coefficients observed here violate that
+  prerequisite; this paper is not evidence for a gate relaxation.
+- Walton, Hassan, and Morgan (2017), *Advances in co-volume mesh generation
+  and mesh optimisation techniques*, DOI `10.1016/j.compstruc.2016.06.009`,
+  treats Delaunay–Voronoi dual quality and the containment of Voronoi vertices
+  in their primal elements as a generation objective. This is the closest
+  literature direction for the next dual-face repair card.
+
+Decision: keep `POLY-FVERR-RANDPERT1` open as a prerequisite measurement and
+start the next card with dual validity/face construction, not a production FV
+flux correction.
+
+### `POLY-DUAL-FACE-REPAIR1` bounded candidates — 2026-07-27
+
+Three small face-construction candidates were measured on the fixed-native
+`AUTO_TESSELL_P4C_PYTETWILD=0`, `seed_density=6` protocol before retaining any
+default behavior:
+
+| candidate | cube | cylinder | sphere | decision |
+| --- | --- | --- | --- | --- |
+| preserve every `ConvexHull.simplices` triangle | `7/51 -> 7/21`, boundary faces `27 -> 322` | `71/553 -> 18/78`, boundary faces `212 -> 2588` | `2/14 -> 0/0`, boundary faces `3842 -> 26570` | **falsified**: invalidity reduction is purchased by destroying face pairing/topology |
+| source-triangle cap reconstruction (temporary opt-in) | `7/51 -> 2/30`, area ratio `1.0`, boundary faces `27 -> 36` | `71/553 -> 70/440`, area ratio `1.03328 -> 1.0`, boundary faces `212 -> 384` | `2/14 -> 2/14`, area ratio `1.0` | **falsified as full repair**: cap zeros improve, internal invalidity/warpage remains and sphere regresses |
+| exact `ConvexHull` first, `QJ` only on Qhull failure | `2/30` | `70/440` | `0/0` | **retained** as a minimal default-safe numerical fix; not a closure of the card |
+
+The first two candidates were removed rather than left as hidden production
+switches. The retained change avoids unconditional Qhull point perturbation,
+while preserving the old `QJ` recovery path for genuinely degenerate point
+sets. It passed `22` focused native-poly tests and `py_compile`. The fixed
+native FV prerequisite still rejects cube/cylinder because non-positive
+internal coefficients remain; no FV gate or star-validity threshold was
+relaxed. The remaining issue is the topology-ring internal face geometry:
+the fixed-native census still has `24/62` warped cube internal faces and
+`220/352` warped cylinder internal faces. The next card must repair or reject
+those faces transactionally without converting them into unpaired boundary
+faces.
+
+A follow-up diagnostic split of each topology-ring polygon into paired
+triangles was also falsified. A fan using an existing ring vertex changed the
+fixed-native invalid counts to cube `7/69`, cylinder `65/903`, and sphere
+`36/144`; a fan around a newly added shared face-centre point was worse at
+cube `15/177`, cylinder `73/1269`, and sphere `278/1776`. Both were removed.
+This rules out naive triangulation as the next repair mechanism.
+
+The topology-ring walk itself was then audited. It had no early-closure loss:
+all internal-edge rings were complete and closed (`42/42` cube, `156/156`
+cylinder, `1331/1331` sphere), with zero missing incident tets and zero
+self-intersecting projected rings. Ring geometry is nevertheless not benign:
+max best-fit-plane deviation was `0.07581` cube, `0.20622` cylinder, and
+`0.25778` sphere; projected concavity occurred in `0`, `14`, and `38` rings.
+This falsifies ring-order repair as the primary mechanism and keeps the
+upstream dual-point/face-consistency card open.
+
+### Well-centered primal audit — 2026-07-27
+
+The same fixed-native tets were audited by solving each tet circumcenter and
+checking its barycentric coordinates. Only `20/40` cube, `8/212` cylinder,
+and `196/1913` sphere tets were well-centered; the remaining circumcenters
+were outside the primal tet. This is consistent with the Walton--Hassan--
+Morgan Delaunay/Voronoi prerequisite and explains why a centroid dual produces
+warped edge rings: it is robustly inside each tet, but it is not equidistant
+from every primal edge. A raw circumcenter diagnostic was worse (`14/136`,
+`68/932`, and `449/3782` invalid candidate cell/subtets for cube/cylinder/
+sphere) and was not retained. The next repair should therefore be framed as
+an upstream well-centered/weighted-dual experiment with transactional fallback,
+not as a face-order or face-deletion patch.
+
+### `POLY-DUAL-WELL-CENTER1` bounded interior-move diagnostic — 2026-07-27
+
+The literature follow-up selected VanderZee et al., *Well-Centered
+Triangulation* (`arXiv:0802.2108`), because its optimization moves interior
+vertices while keeping connectivity and boundary vertices fixed.  The related
+simple-domain study (`arXiv:0806.2332`) distinguishes well-centeredness from
+general angle/sliver quality, while Cheng--Dey--Shewchuk's weighted Delaunay
+refinement (DOI `10.1137/S0097539703418808`) is the stronger future route for
+deterministic boundary-conforming quality.
+
+A standalone deterministic local experiment proposed moves toward neighbour
+means and incident circumcenter means.  A move was accepted only when incident
+tet orientation and near-zero-volume checks passed and the local negative
+circumcenter-barycentric penalty decreased.  Boundary displacement was exactly
+zero:
+
+| shape | accepted moves | well-centered before -> after | negative penalty before -> after | centroid dual invalid before -> after | Garimella candidate |
+| --- | ---: | --- | --- | --- | --- |
+| cube | 6 | `20/40 -> 20/40` | `7205.0 -> 92.0912` | `2/30 -> 2/30` | rejected `11/240` |
+| cylinder | 10 | `8/212 -> 24/212` | `5133.97 -> 875.166` | `70/440 -> 70/440` | rejected `68/558` |
+| sphere | 129 | `196/1913 -> 228/1913` | `9200.91 -> 1866.95` | `0/0 -> 0/0` | rejected `82/404` |
+
+The local lane improves primal circumcenter containment but does not change the
+exported centroid-dual invalidity, and the clipped-circumcenter candidate is
+still rejected by the existing star guard.  It is therefore **measured,
+insufficient as a dual repair**, and remains diagnostic-only.  Raw
+circumcenter activation is still prohibited; the card remains open for a
+weighted-Delaunay or dual-face-aware objective.
+
+A second report-only point-placement split was also measured: use the exact
+circumcenter only for already well-centered primal tets and keep the centroid
+for every other tet.  The candidate invalid counts were cube `11/156`,
+cylinder `70/457`, and sphere `10/56`; the existing whole-candidate guard still
+rejected all three, and the exported result remained the centroid fallback.
+Per-cell silent mixing was not attempted because tet dual points are shared by
+multiple primal-vertex cells and could break face-point consistency.
+
+### `POLY-DUAL-TOPOLOGY-1` necessary-condition audit — 2026-07-27
+
+The same native outputs were checked for the 3D well-centered necessary
+condition that every interior vertex have at least seven incident edges.  The
+fixed-native census found one interior point below seven on cube (minimum
+valence `6`), one on cylinder (minimum `6`), and seven on sphere (minimum `0`;
+the zero-valence point is an unused exported primal point).  Counts were
+computed from the actual tet incidence, not from the nominal point array.
+
+| shape | boundary vertices | interior points | interior valence < 7 | minimum valence |
+| --- | ---: | ---: | ---: | ---: |
+| cube | 8 | 7 | 1 | 6 |
+| cylinder | 66 | 7 | 1 | 6 |
+| sphere | 642 | 64 | 7 | 0 |
+
+This is evidence for a topology obstruction, not proof that every low-valence
+point causes the observed dual invalidity.  The next diagnostic must map the
+low-valence/orphan points to incident tets, dual cells, and warped internal
+faces before attempting any connectivity-changing operation.
+
+The first topology-map run reported non-boundary edges with fewer than three
+incident tets, but a code audit found a diagnostic bug: its boundary-edge set
+used only the first edge of each boundary triangle. That run is superseded and
+must not be used as evidence. After fixing the edge-set construction, the same
+fixed-native outputs have **zero** incomplete interior edge links: cube `0/42`,
+cylinder `0/156`, sphere `0/1331` (`incomplete_rings_lt3 / closed internal
+edges`). Recovery-off, recovery-on, and Phase-A-on replay all remained `0/0/0`,
+so there is no measured recovery/filtering boundary to repair. The low-valence
+cube/cylinder vertices still have six closed, planar
+candidate rings, while normal edges carry the observed warpage (`max 0.05126`
+cube, `0.11737` cylinder, `0.15141` sphere). Thus no upstream edge-link repair
+card is justified by this measurement.
+
+Decision: `POLY-DUAL-TOPOLOGY-1` **measured, false alarm due diagnostic bug**.
+The native-tet audit agrees with the corrected map (`valid=True`, zero open and
+non-manifold boundary edges). Keep the topology card closed for the current
+fixtures and return to a dual-point/face-consistency candidate only after a new
+independent mechanism is measured.
+### `POLY-DUAL-TOPOLOGY-1` checker cross-check — 2026-07-27 (superseded)
+
+The apparent open-link examples above came from the same diagnostic edge-set
+bug, not from the generated tets. With the corrected map, cube/cylinder/sphere
+have zero incomplete non-boundary edge links, and the native-tet audit reports
+zero open/non-manifold boundary edges and one boundary component in all cases.
+The proposed `POLY-DUAL-CONNECTIVITY-REPAIR1` card is therefore **not opened**.
+
+### `POLY-DUAL-FACE-WARP1` report-only primal relocation — 2026-07-27
+
+The next bounded mechanism minimized affected closed internal centroid-dual
+ring warpage by moving interior primal vertices toward their one-ring mean.
+Orientation/nonzero-volume guards were mandatory and boundary displacement was
+zero. Accepted moves were cube `0`, cylinder `4`, sphere `109`; max ring
+warpage changed `0.051261 -> 0.051261`, `0.117367 -> 0.117367`, and
+`0.151415 -> 0.144893`. Dual invalid cells/subtets changed `2/30 -> 2/30`,
+`70/440 -> 70/440`, and `0/0 -> 0/0`.
+
+Decision: **measured, insufficient**. The report-only objective does not
+resolve cube/cylinder FV validity and is not connected to production. A future
+candidate must change dual face construction or include an explicit
+star-validity/owner-neighbour objective, not just ring planarity.
+
+### `POLY-FVERR-RANDPERT1` report-only MMS prerequisite — 2026-07-27
+
+The isolated scalar MMS diagnostic in `core/generator/native_poly/fv_mms.py`
+was executed on `n=4,8,16` Cartesian grids. It is not an OpenFOAM replacement
+and is not connected to native_poly generation or gates. The manufactured
+solution is `u=x²+y²+z²` with exact Dirichlet boundary data.
+
+| perturbation | correction | L2 errors (`n=4,8,16`) | observed orders | result |
+| --- | --- | --- | --- | --- |
+| `0.0` | off | `1.5625e-2, 3.90625e-3, 9.765625e-4` | `2.000, 2.000` | baseline verified |
+| `0.25` | off | `1.95425e-2, 1.14931e-2, 7.22836e-3` | `0.766, 0.669` | non-orthogonal degradation measured |
+| `0.0` | report-only correction | `8.13143e-2, 1.96935e-2, 4.38054e-3` | `2.046, 2.169` | second-order retained; larger constant |
+| `0.25` | report-only correction | `8.53081e-2, 2.11889e-2, 4.85770e-3` | `2.009, 2.125` | Katz-style order recovered |
+
+Decision: `POLY-FVERR-RANDPERT1` is no longer blocked as a measurement card,
+but the correction remains **diagnostic-only**. The result supports measuring
+face non-orthogonality/warpage together with solution error; it does not justify
+relaxing the existing FV prerequisite or enabling a production flux correction.
+
+## 2026-07-27 `POLY-FVERR-FACEPAIR1` report-only measurement
+
+Added a deterministic per-cell residual following Juretić's proposed
+`min_pairing sum |S_i n_i + S_j n_j| / sum |S_i|`. Opposite equal-area face
+vectors contribute zero; odd face counts leave one explicit unmatched-vector
+penalty rather than inventing a face. The metric is report-only and is wired
+through `PolyPhase0Metrics` and `CheckMeshResult`; no gate or mesh operation
+uses it.
+
+Analytic checks distinguish a six-face cube-like cell (`0.0`) from a regular
+tetra-like four-face cell (strictly positive residual), and the Phase-0 metric
+plus MMS tests pass `14/14`. This closes only the implementation/calibration
+sub-card. A native-poly versus native-hex versus native-tet census is still
+required before interpreting a threshold or making an FV accuracy claim.
+
+### `POLY-DUAL-BOUNDARY-SEMANTICS-L0/L1` — 2026-07-28
+
+The new read-only audit requires every exported classified dual boundary cap
+to have one valid owner, positive area, exactly one containing primal boundary
+triangle, the matching patch name/type, and a per-source-triangle cap-area sum
+equal to the primal triangle area. A hand tetrahedron L0 accepts exact caps
+and rejects a wrong patch label. The classified two-patch bipyramid L1 passes:
+all `18` boundary caps map uniquely and its maximum source-area error is zero.
+
+The measurement exposed a reader/provenance gap rather than a generator defect:
+`parse_foam_boundary` discarded OpenFOAM's patch `type`, making a valid
+`source_low` `patch` appear as the default `wall`. The parser now retains the
+additive `type` field; focused boundary semantics, parser, and dual-classified
+tests pass `19/19`. This is still only a synthetic-primal L1 certificate. A
+native-poly L2 source-surface claim remains blocked by native-tet's global
+source-surface ledger, so the audit is not wired as a production acceptance
+gate yet.

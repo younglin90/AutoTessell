@@ -64,6 +64,8 @@ def test_phase0_cube_metrics_have_analytic_values() -> None:
     assert report.min_circle_ratio == pytest.approx(1.0 / np.sqrt(3.0))
     assert report.min_sphericity == pytest.approx((np.pi / 6.0) ** (1.0 / 3.0))
     assert report.min_uniformity_factor == pytest.approx(1.0)
+    assert report.min_face_pairing_residual == pytest.approx(0.0, abs=1e-14)
+    assert report.max_face_pairing_residual == pytest.approx(0.0, abs=1e-14)
 
 
 def test_phase0_warped_face_reports_planar_deviation_and_normal_spread() -> None:
@@ -93,6 +95,25 @@ def test_phase0_juretic_psi_exposes_internal_gate_definition() -> None:
 
     # d = 2 and the line/face miss is 0.2, hence psi = |m|/|d| = 0.1.
     assert report.max_juretic_psi == pytest.approx(0.1)
+
+
+def test_phase0_face_pairing_distinguishes_cube_like_and_tet_like_cells() -> None:
+    from core.evaluator.poly_quality_metrics import _face_pairing_residual
+
+    cube_normals = np.asarray(
+        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]],
+        dtype=np.float64,
+    )
+    cube_areas = np.ones(6, dtype=np.float64)
+    tet_normals = np.asarray(
+        [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]],
+        dtype=np.float64,
+    )
+    tet_normals /= np.linalg.norm(tet_normals, axis=1)[:, None]
+    tet_areas = np.ones(4, dtype=np.float64)
+
+    assert _face_pairing_residual(cube_normals, cube_areas, list(range(6))) == pytest.approx(0.0)
+    assert _face_pairing_residual(tet_normals, tet_areas, list(range(4))) > 0.1
 
 
 def test_native_checker_wires_phase0_fields_into_checkmesh_report(tmp_path) -> None:

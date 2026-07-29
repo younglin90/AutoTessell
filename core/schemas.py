@@ -396,6 +396,10 @@ class CheckMeshResult(BaseModel):
     mean_uniformity_factor: float | None = None
     p95_uniformity_factor: float | None = None
     max_uniformity_factor: float | None = None
+    min_face_pairing_residual: float | None = None
+    mean_face_pairing_residual: float | None = None
+    p95_face_pairing_residual: float | None = None
+    max_face_pairing_residual: float | None = None
 
 
 class CellVolumeStats(BaseModel):

@@ -47,6 +47,10 @@ class PolyPhase0Metrics:
     mean_uniformity_factor: float = 0.0
     p95_uniformity_factor: float = 0.0
     max_uniformity_factor: float = 0.0
+    min_face_pairing_residual: float = 0.0
+    mean_face_pairing_residual: float = 0.0
+    p95_face_pairing_residual: float = 0.0
+    max_face_pairing_residual: float = 0.0
 
 
 def _summary(values: list[float] | np.ndarray) -> tuple[float, float, float, float]:
@@ -61,6 +65,67 @@ def _summary(values: list[float] | np.ndarray) -> tuple[float, float, float, flo
         float(np.percentile(arr, 95.0)),
         float(arr.max()),
     )
+
+
+def _minimum_pairing_sum(vectors: np.ndarray) -> float:
+    """Return the minimum unpaired-vector sum over deterministic pairings.
+
+    A perfectly opposite pair contributes zero.  An odd face count leaves one
+    vector unmatched and charges its magnitude; this keeps the diagnostic
+    defined for arbitrary polyhedra without inventing a face.  The cell sizes
+    in the native-poly lane are small, so exhaustive pairing is bounded and
+    makes the reported minimum independent of traversal order.
+    """
+    values = np.asarray(vectors, dtype=np.float64)
+    if values.ndim != 2 or values.shape[1] != 3:
+        raise ValueError("vectors must have shape (n, 3)")
+    if len(values) == 0:
+        return 0.0
+    norms = np.linalg.norm(values, axis=1)
+    memo: dict[int, float] = {}
+
+    def solve(mask: int) -> float:
+        if mask == 0:
+            return 0.0
+        cached = memo.get(mask)
+        if cached is not None:
+            return cached
+        first_bit = mask & -mask
+        first = first_bit.bit_length() - 1
+        rest = mask ^ first_bit
+        best = float(norms[first]) + solve(rest)
+        remaining = rest
+        while remaining:
+            second_bit = remaining & -remaining
+            second = second_bit.bit_length() - 1
+            pair = float(np.linalg.norm(values[first] + values[second]))
+            best = min(best, pair + solve(rest ^ second_bit))
+            remaining ^= second_bit
+        memo[mask] = best
+        return best
+
+    return solve((1 << len(values)) - 1)
+
+
+def _face_pairing_residual(
+    face_normals: np.ndarray,
+    face_areas: np.ndarray,
+    incident_faces: list[int],
+) -> float:
+    """Juretić-style ``min pairing sum / total face area`` for one cell."""
+    if not incident_faces:
+        return 0.0
+    ids = np.asarray(incident_faces, dtype=np.int64)
+    normals = np.asarray(face_normals, dtype=np.float64)[ids]
+    areas = np.asarray(face_areas, dtype=np.float64)[ids]
+    valid = np.isfinite(normals).all(axis=1) & np.isfinite(areas) & (areas > 1.0e-30)
+    if not np.any(valid):
+        return 0.0
+    vectors = normals[valid] * areas[valid, None]
+    denominator = float(np.linalg.norm(vectors, axis=1).sum())
+    if denominator <= 1.0e-30:
+        return 0.0
+    return float(np.clip(_minimum_pairing_sum(vectors) / denominator, 0.0, 1.0))
 
 
 def _face_planarity_and_normal_spread(
@@ -203,6 +268,7 @@ def compute_poly_phase0_metrics(
     circle_ratios: list[float] = []
     sphericities: list[float] = []
     diameters: list[float] = []
+    pairing_residuals: list[float] = []
     for cell_id, incident_faces in enumerate(cell_face_ids):
         if not incident_faces:
             continue
@@ -210,6 +276,9 @@ def compute_poly_phase0_metrics(
         if len(vertex_ids) < 4:
             continue
         vertices = points[np.asarray(vertex_ids, dtype=np.int64)]
+        pairing_residuals.append(
+            _face_pairing_residual(face_normals, face_areas, incident_faces),
+        )
         diameter = float(np.max(np.linalg.norm(vertices[:, np.newaxis] - vertices, axis=2)))
         diameters.append(diameter)
 
@@ -250,6 +319,7 @@ def compute_poly_phase0_metrics(
     else:
         uniformity = np.empty(0, dtype=np.float64)
     uniformity_summary = _summary(uniformity)
+    pairing_summary = _summary(pairing_residuals)
 
     return PolyPhase0Metrics(
         max_face_planar_deviation=face_dev_summary[3],
@@ -277,4 +347,8 @@ def compute_poly_phase0_metrics(
         mean_uniformity_factor=uniformity_summary[1],
         p95_uniformity_factor=uniformity_summary[2],
         max_uniformity_factor=uniformity_summary[3],
+        min_face_pairing_residual=pairing_summary[0],
+        mean_face_pairing_residual=pairing_summary[1],
+        p95_face_pairing_residual=pairing_summary[2],
+        max_face_pairing_residual=pairing_summary[3],
     )
