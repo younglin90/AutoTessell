@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        screen_swap_candidates_batch as _c_screen_swap_candidates_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_screen_swap_candidates_batch = None
+
 
 @dataclass
 class SwapCandidatesResult:
@@ -63,6 +70,22 @@ def screen_swap_candidates(
     # tet shape quality (Klingner-like Q from BETA2709).
     from core.evaluator.tet_qshape import tet_qshape
     Q, _ = tet_qshape(pts, tets)
+
+    native = (
+        _c_screen_swap_candidates_batch(tets, Q, q_threshold)
+        if _c_screen_swap_candidates_batch is not None
+        else None
+    )
+    if native is not None:
+        out_edges, out_q, stats = native
+        n_internal, n_2_3, n_4_7 = stats
+        return out_edges, out_q, SwapCandidatesResult(
+            n_internal_edges=n_internal,
+            n_swap_candidates=int(out_edges.shape[0]),
+            n_2_3_shell=n_2_3,
+            n_4_7_shell=n_4_7,
+            elapsed_s=time.perf_counter() - t0,
+        )
 
     # build edge → list of incident tets.
     e_idx = tets[:, _TET_EDGES]  # (T, 6, 2).

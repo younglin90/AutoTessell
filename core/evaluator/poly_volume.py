@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        poly_volume_stats_batch as _c_poly_volume_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_poly_volume_stats_batch = None
+
 
 @dataclass
 class PolyVolumeResult:
@@ -48,6 +55,20 @@ def poly_cell_volumes(
         return np.zeros(0, dtype=np.float64), PolyVolumeResult(
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_poly_volume_stats_batch is not None:
+        native = _c_poly_volume_stats_batch(pts, cell_face_lists)
+        if native is not None:
+            vols, stats, n_neg = native
+            return vols, PolyVolumeResult(
+                n_cells=n_cells,
+                volume_min=stats[0],
+                volume_max=stats[1],
+                volume_mean=stats[2],
+                total_volume=stats[3],
+                n_negative=n_neg,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     vols = np.zeros(n_cells, dtype=np.float64)
 

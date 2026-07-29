@@ -15,6 +15,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_vertex_mean_curvature_batch as _c_surface_vertex_mean_curvature_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_vertex_mean_curvature_batch = None
+
 
 @dataclass
 class MeanCurvatureResult:
@@ -48,6 +55,20 @@ def vertex_mean_curvature(
             n_vertices=n_v,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_surface_vertex_mean_curvature_batch is not None:
+        native = _c_surface_vertex_mean_curvature_batch(V, F)
+        if native is not None:
+            H, stats = native
+            h_min, h_max, h_mean, h_p99 = stats
+            return H, MeanCurvatureResult(
+                n_vertices=n_v,
+                h_norm_min=float(h_min),
+                h_norm_max=float(h_max),
+                h_norm_mean=float(h_mean),
+                h_norm_p99=float(h_p99),
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     H = np.zeros((n_v, 3), dtype=np.float64)
     A = np.zeros(n_v, dtype=np.float64)

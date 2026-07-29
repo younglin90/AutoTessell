@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        detect_degenerate_tets_stats as _c_detect_degenerate_tets_stats,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_detect_degenerate_tets_stats = None
+
 
 @dataclass
 class DegenerateResult:
@@ -58,6 +65,23 @@ def detect_degenerate_tets(
 
     if n_t == 0:
         return DegenerateResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_detect_degenerate_tets_stats is not None:
+        native = _c_detect_degenerate_tets_stats(
+            pts, tets, zero_tol, sliver_cube_ratio,
+        )
+        if native is not None:
+            n_inv, n_zero, n_sliv, n_ok, worst, smallest_abs = native
+            return DegenerateResult(
+                n_tets=n_t,
+                n_inverted=n_inv,
+                n_zero_vol=n_zero,
+                n_sliver=n_sliv,
+                n_ok=n_ok,
+                worst_volume=worst,
+                smallest_abs_volume=smallest_abs,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     a = pts[tets[:, 0]]
     b = pts[tets[:, 1]]

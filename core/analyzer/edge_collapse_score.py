@@ -16,6 +16,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        edge_collapse_priority_batch as _c_edge_collapse_priority_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_edge_collapse_priority_batch = None
+
 
 @dataclass
 class CollapseScoreResult:
@@ -59,6 +66,26 @@ def edge_collapse_priority(
 
     from core.evaluator.tet_qshape import tet_qshape
     Q, _ = tet_qshape(pts, tets)
+
+    native_priority = (
+        _c_edge_collapse_priority_batch(pts, tets, Q, q_threshold, top_k)
+        if _c_edge_collapse_priority_batch is not None
+        else None
+    )
+    if native_priority is not None:
+        edges_arr, scores_arr = native_priority
+        if edges_arr.shape[0] == 0:
+            return (
+                np.zeros((0, 2), dtype=np.int64),
+                np.zeros(0, dtype=np.float64),
+                CollapseScoreResult(elapsed_s=time.perf_counter() - t0),
+            )
+        return edges_arr, scores_arr, CollapseScoreResult(
+            n_candidates=int(edges_arr.shape[0]),
+            score_max=float(scores_arr[0]),
+            score_median=float(np.median(scores_arr)),
+            elapsed_s=time.perf_counter() - t0,
+        )
 
     # tet 의 6 edge.
     e_idx = tets[:, _TET_EDGES]  # (T, 6, 2).

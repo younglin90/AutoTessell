@@ -11,6 +11,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_circumsphere_batch as _c_tet_circumsphere_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_circumsphere_batch = None
+
 
 @dataclass
 class CircumsphereResult:
@@ -46,6 +53,19 @@ def tet_circumspheres(
             np.zeros(0, dtype=np.float64),
             CircumsphereResult(elapsed_s=time.perf_counter() - t0),
         )
+
+    if _c_tet_circumsphere_batch is not None:
+        native = _c_tet_circumsphere_batch(pts, tets)
+        if native is not None:
+            centers, radii, stats, n_deg = native
+            return centers, radii, CircumsphereResult(
+                n_tets=n_t,
+                radius_min=stats[0],
+                radius_max=stats[1],
+                radius_mean=stats[2],
+                n_degenerate=n_deg,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     a = pts[tets[:, 0]]; b = pts[tets[:, 1]]
     c = pts[tets[:, 2]]; d = pts[tets[:, 3]]

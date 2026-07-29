@@ -11,6 +11,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_inradius_batch as _c_tet_inradius_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_inradius_batch = None
+
 
 @dataclass
 class TetInradiusResult:
@@ -42,6 +49,19 @@ def tet_inradii(
         return np.zeros(0, dtype=np.float64), TetInradiusResult(
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_tet_inradius_batch is not None:
+        native = _c_tet_inradius_batch(pts, tets)
+        if native is not None:
+            r, stats, n_zero = native
+            return r, TetInradiusResult(
+                n_tets=n_t,
+                r_min=stats[0],
+                r_max=stats[1],
+                r_mean=stats[2],
+                n_zero_radius=n_zero,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     a = pts[tets[:, 0]]; b = pts[tets[:, 1]]
     c = pts[tets[:, 2]]; d = pts[tets[:, 3]]

@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_shortest_edges_batch as _c_tet_shortest_edges_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_tet_shortest_edges_batch = None
+
 
 @dataclass
 class SliverCollapseResult:
@@ -68,18 +75,23 @@ def detect_sliver_collapse_edges(
             elapsed_s=time.perf_counter() - t0,
         )
 
-    # 각 tet 의 6 edge length, shortest edge 인덱스.
-    e_idx = tets[:, _TET_EDGES]  # (T, 6, 2).
-    p0 = pts[e_idx[..., 0]]
-    p1 = pts[e_idx[..., 1]]
-    e_lens = np.linalg.norm(p1 - p0, axis=-1)  # (T, 6).
+    native_short = (
+        _c_tet_shortest_edges_batch(pts, tets)
+        if _c_tet_shortest_edges_batch is not None
+        else None
+    )
+    if native_short is not None:
+        short_edges, short_edge_len = native_short
+    else:
+        # 각 tet 의 6 edge length, shortest edge 인덱스.
+        e_idx = tets[:, _TET_EDGES]  # (T, 6, 2).
+        p0 = pts[e_idx[..., 0]]
+        p1 = pts[e_idx[..., 1]]
+        e_lens = np.linalg.norm(p1 - p0, axis=-1)  # (T, 6).
 
-    short_edge_local = e_lens.argmin(axis=1)  # (T,) 0..5.
-    short_edge_len = e_lens[np.arange(n_t), short_edge_local]
-
-    short_edges = np.zeros((n_t, 2), dtype=np.int64)
-    for k in range(n_t):
-        short_edges[k] = e_idx[k, short_edge_local[k]]
+        short_edge_local = e_lens.argmin(axis=1)  # (T,) 0..5.
+        short_edge_len = e_lens[np.arange(n_t), short_edge_local]
+        short_edges = e_idx[np.arange(n_t), short_edge_local]
 
     keep = sliver_mask
     if max_collapse_edge is not None:

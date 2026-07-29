@@ -25,8 +25,16 @@ from typing import NamedTuple
 import numpy as np
 
 from core.utils.logging import get_logger
+from core.utils.native_extensions import load_native_metrics
 
 log = get_logger(__name__)
+
+try:
+    from core.generator.native_tet._native import (
+        poly_validate_volumes_batch as _c_poly_validate_volumes_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_poly_validate_volumes_batch = None
 
 # PPP4 skeleton — clipping default OFF
 _NATIVE_POLY_PPP4_ENABLE: bool = True  # PPP5 — clipping activated
@@ -255,6 +263,37 @@ def validate_poly_cell_volumes(
         return 0, 0
 
     pts = np.asarray(points, dtype=np.float64)
+    native_metrics = load_native_metrics()
+    if native_metrics is not None and hasattr(native_metrics, "validate_poly_volumes"):
+        try:
+            n_negative, n_degenerate = native_metrics.validate_poly_volumes(
+                pts,
+                cells,
+                float(degenerate_eps),
+            )
+            log.info(
+                "native_poly_validate",
+                n_cells=len(cells),
+                n_negative_volume=int(n_negative),
+                n_degenerate=int(n_degenerate),
+                backend="pybind",
+            )
+            return int(n_negative), int(n_degenerate)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native_metrics.validate_poly_volumes failed", error=str(exc))
+
+    if _c_poly_validate_volumes_batch is not None:
+        native = _c_poly_validate_volumes_batch(pts, cells, float(degenerate_eps))
+        if native is not None:
+            n_negative, n_degenerate = native
+            log.info(
+                "native_poly_validate",
+                n_cells=len(cells),
+                n_negative_volume=n_negative,
+                n_degenerate=n_degenerate,
+            )
+            return n_negative, n_degenerate
+
     n_negative = 0
     n_degenerate = 0
     for ci, cell_faces in enumerate(cells):

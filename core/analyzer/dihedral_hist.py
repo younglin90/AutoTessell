@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_dihedral_histogram_batch as _c_surface_dihedral_histogram_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_dihedral_histogram_batch = None
+
 
 @dataclass
 class DihedralHistResult:
@@ -55,6 +62,22 @@ def dihedral_histogram(
             counts=tuple([0] * (len(bin_edges_deg) - 1)),
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_surface_dihedral_histogram_batch is not None:
+        bins = np.asarray(bin_edges_deg, dtype=np.float64)
+        native = _c_surface_dihedral_histogram_batch(V, F, bins)
+        if native is not None:
+            counts, stats = native
+            n_edges, angle_min, angle_max, angle_mean = stats
+            return DihedralHistResult(
+                n_edges=int(n_edges),
+                angle_min_deg=float(angle_min),
+                angle_max_deg=float(angle_max),
+                angle_mean_deg=float(angle_mean),
+                bins_deg=tuple(bin_edges_deg),
+                counts=tuple(int(c) for c in counts),
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # face normals.
     e1 = V[F[:, 1]] - V[F[:, 0]]

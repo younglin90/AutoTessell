@@ -24,11 +24,13 @@ try:
         build_edge_to_tets as _c_build_edge_to_tets,
         edge_lengths_batch as _c_edge_lengths_batch,
         is_available as _kernels_available,
+        metric_edge_lengths_batch as _c_metric_edge_lengths_batch,
     )
     _USE_C_KERNELS: bool = _kernels_available()
 except Exception:
     _c_build_edge_to_tets = None  # type: ignore[assignment]
     _c_edge_lengths_batch = None  # type: ignore[assignment]
+    _c_metric_edge_lengths_batch = None  # type: ignore[assignment]
     _USE_C_KERNELS = False
 
 
@@ -89,18 +91,12 @@ def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], fl
         result = _c_build_edge_to_tets(tets)
         if result is not None:
             edges_all, _tet_idx = result
-            # unique (C 출력은 이미 정렬된 쌍이지만 중복이 있음)
-            struct = np.ascontiguousarray(edges_all).view(
-                np.dtype((np.void, edges_all.dtype.itemsize * 2))
-            )
-            _, idx = np.unique(struct, return_index=True)
-            uniq = edges_all[idx]
-            lens_arr = _c_edge_lengths_batch(pts, uniq)
+            lens_arr = _c_edge_lengths_batch(pts, edges_all)
             if lens_arr is not None:
-                return {
-                    (int(uniq[i, 0]), int(uniq[i, 1])): float(lens_arr[i])
-                    for i in range(uniq.shape[0])
-                }
+                return dict(zip(
+                    zip(edges_all[:, 0].tolist(), edges_all[:, 1].tolist()),
+                    map(float, lens_arr.tolist()),
+                ))
 
     # --- Python/numpy 경로 (fallback) ---
     pairs = np.stack(
@@ -117,10 +113,10 @@ def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], fl
     _, idx = np.unique(struct, return_index=True)
     uniq = pairs[idx]
     lens = np.linalg.norm(pts[uniq[:, 0]] - pts[uniq[:, 1]], axis=1)
-    return {
-        (int(uniq[i, 0]), int(uniq[i, 1])): float(lens[i])
-        for i in range(uniq.shape[0])
-    }
+    return dict(zip(
+        zip(uniq[:, 0].tolist(), uniq[:, 1].tolist()),
+        map(float, lens.tolist()),
+    ))
 
 
 def _edge_lengths_with_metric(
@@ -130,6 +126,11 @@ def _edge_lengths_with_metric(
 
     l² = (p-q)ᵀ M_avg (p-q), M_avg = 0.5 (M_p + M_q).
     """
+    if _USE_C_KERNELS and _c_metric_edge_lengths_batch is not None:
+        result = _c_metric_edge_lengths_batch(pts, tets, M)
+        if result is not None:
+            return result
+
     pair_idx = np.array(
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )

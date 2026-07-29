@@ -22,6 +22,15 @@ from collections import defaultdict
 
 import numpy as np
 
+try:
+    from core.generator.native_tet._native import (
+        surface_boundary_edges_batch as _c_surface_boundary_edges_batch,
+        surface_edge_stats_batch as _c_surface_edge_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_boundary_edges_batch = None
+    _c_surface_edge_stats_batch = None
+
 
 # ---------------------------------------------------------------------------
 # Edge helpers
@@ -76,6 +85,11 @@ def is_watertight(faces: np.ndarray) -> bool:
     """모든 edge 가 정확히 2 face 를 공유하면 watertight."""
     if faces.size == 0:
         return False
+    if _c_surface_edge_stats_batch is not None:
+        stats = _c_surface_edge_stats_batch(faces)
+        if stats is not None:
+            _n_unique, n_boundary, n_nonmanifold, max_count = stats
+            return bool(n_boundary == 0 and n_nonmanifold == 0 and max_count == 2)
     e = _edges_per_face(faces)
     # numpy unique with counts — (unique_edges, counts)
     uq, cnt = np.unique(e, axis=0, return_counts=True)
@@ -86,6 +100,10 @@ def is_edge_manifold(faces: np.ndarray) -> bool:
     """각 edge 가 최대 2 face 를 공유하면 edge-manifold."""
     if faces.size == 0:
         return True
+    if _c_surface_edge_stats_batch is not None:
+        stats = _c_surface_edge_stats_batch(faces)
+        if stats is not None:
+            return bool(stats[3] <= 2)
     e = _edges_per_face(faces)
     _, cnt = np.unique(e, axis=0, return_counts=True)
     return bool((cnt <= 2).all())
@@ -95,6 +113,10 @@ def count_non_manifold_edges(faces: np.ndarray) -> int:
     """3 face 이상 공유하는 edge 수."""
     if faces.size == 0:
         return 0
+    if _c_surface_edge_stats_batch is not None:
+        stats = _c_surface_edge_stats_batch(faces)
+        if stats is not None:
+            return int(stats[2])
     e = _edges_per_face(faces)
     _, cnt = np.unique(e, axis=0, return_counts=True)
     return int((cnt >= 3).sum())
@@ -114,6 +136,10 @@ def boundary_edges(faces: np.ndarray) -> np.ndarray:
     """1 face 만 참조하는 edge 들 (surface boundary). (K, 2)."""
     if faces.size == 0:
         return np.zeros((0, 2), dtype=np.int64)
+    if _c_surface_boundary_edges_batch is not None:
+        out = _c_surface_boundary_edges_batch(faces)
+        if out is not None:
+            return out
     e = _edges_per_face(faces)
     uq, cnt = np.unique(e, axis=0, return_counts=True)
     return uq[cnt == 1]
@@ -128,6 +154,10 @@ def compute_euler(n_vertices: int, faces: np.ndarray) -> int:
     """V - E + F. E 는 unique undirected edge 수."""
     if faces.size == 0:
         return int(n_vertices)
+    if _c_surface_edge_stats_batch is not None:
+        stats = _c_surface_edge_stats_batch(faces)
+        if stats is not None:
+            return int(n_vertices - stats[0] + faces.shape[0])
     e = _edges_per_face(faces)
     uq = np.unique(e, axis=0)
     return int(n_vertices - uq.shape[0] + faces.shape[0])

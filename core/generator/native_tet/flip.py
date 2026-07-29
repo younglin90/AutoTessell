@@ -14,7 +14,12 @@ flip 은 quality 가 개선될 때 + topology 가 valid 할 때만 수행. 본 �
 """
 from __future__ import annotations
 
+import importlib
+import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -34,6 +39,35 @@ except Exception:
     _c_build_face_to_tets = None  # type: ignore[assignment]
     _c_build_edge_to_tets = None  # type: ignore[assignment]
     _USE_C_KERNELS = False
+
+_NATIVE_METRICS: Any | None = None
+_NATIVE_METRICS_IMPORT_ATTEMPTED = False
+
+
+def _load_native_metrics() -> Any | None:
+    global _NATIVE_METRICS, _NATIVE_METRICS_IMPORT_ATTEMPTED
+    if _NATIVE_METRICS_IMPORT_ATTEMPTED:
+        return _NATIVE_METRICS
+    _NATIVE_METRICS_IMPORT_ATTEMPTED = True
+
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    repo_root = Path(__file__).resolve().parents[3]
+    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
+
+    for candidate in candidate_dirs:
+        if candidate.is_dir():
+            candidate_s = str(candidate)
+            if candidate_s not in sys.path:
+                sys.path.insert(0, candidate_s)
+
+    try:
+        _NATIVE_METRICS = importlib.import_module("native_metrics")
+    except Exception:
+        _NATIVE_METRICS = None
+    return _NATIVE_METRICS
 
 
 @dataclass
@@ -69,36 +103,23 @@ def _face_map_vectorized(tets: np.ndarray) -> dict[tuple[int, int, int], list[in
     if tets.size == 0:
         return {}
 
+    native_metrics = _load_native_metrics()
+    if native_metrics is not None:
+        builder = getattr(native_metrics, "build_tet_face_map", None)
+        if builder is not None:
+            try:
+                return builder(tets)
+            except Exception:
+                pass
+
     # --- C 경로 ---
     if _USE_C_KERNELS and _c_build_face_to_tets is not None:
         result = _c_build_face_to_tets(tets)
         if result is not None:
             face_arr, tet_idx, _slot = result
-            # face_arr: (n*4, 3), tet_idx: (n*4,)
-            # Use numpy-based grouping (argsort on encoded key) to avoid Python loop.
-            n = tets.shape[0]
-            max_id = int(tets.max()) + 1 if n > 0 else 1
-            key64 = (
-                face_arr[:, 0].astype(np.int64) * max_id * max_id
-                + face_arr[:, 1].astype(np.int64) * max_id
-                + face_arr[:, 2].astype(np.int64)
-            )
-            sort_order = np.argsort(key64, kind="stable")
-            sorted_keys = key64[sort_order]
-            sorted_ti   = tet_idx[sort_order]
-            # group boundaries via np.unique
-            uniq_keys, first_idx, counts = np.unique(
-                sorted_keys, return_index=True, return_counts=True,
-            )
             m: dict[tuple[int, int, int], list[int]] = {}
-            fa_s = face_arr[sort_order]
-            for gi in range(uniq_keys.shape[0]):
-                s = int(first_idx[gi])
-                c = int(counts[gi])
-                row = fa_s[s]
-                k = (int(row[0]), int(row[1]), int(row[2]))
-                owners = sorted_ti[s: s + c].tolist()
-                m[k] = owners
+            for row, ti in zip(face_arr.tolist(), tet_idx.tolist()):
+                m.setdefault((row[0], row[1], row[2]), []).append(ti)
             return m
 
     # --- Python 경로 (fallback) ---
@@ -176,21 +197,15 @@ def _tet_signed_vol6_batch_arr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
 def _boundary_edges_from_fmap(
     fmap: dict[tuple[int, int, int], list[int]],
 ) -> set[tuple[int, int]]:
-    """Vectorized: extract boundary edges from face→owners dict.
-
-    A face with exactly 1 owner is a boundary face; its 3 edges are boundary edges.
-    Builds numpy arrays from the boundary-face keys then sorts pairs in bulk.
-    """
-    bfaces = [k for k, lst in fmap.items() if len(lst) == 1]
-    if not bfaces:
-        return set()
-    bf_arr = np.array(bfaces, dtype=np.int64)  # (F, 3) already sorted (from _face_map_vectorized)
-    # 3 edge pairs per face: (0,1), (0,2), (1,2)
-    ep0 = bf_arr[:, [0, 1]]  # (F, 2)
-    ep1 = bf_arr[:, [0, 2]]
-    ep2 = bf_arr[:, [1, 2]]
-    all_edges = np.concatenate([ep0, ep1, ep2], axis=0)  # (3F, 2) — already sorted (face keys are sorted)
-    return {(int(row[0]), int(row[1])) for row in all_edges}
+    """Extract boundary edges from face→owners dict."""
+    out: set[tuple[int, int]] = set()
+    add = out.add
+    for (a, b, c), owners in fmap.items():
+        if len(owners) == 1:
+            add((a, b))
+            add((a, c))
+            add((b, c))
+    return out
 
 
 def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
@@ -198,31 +213,23 @@ def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
     if T.size == 0:
         return {}
 
+    native_metrics = _load_native_metrics()
+    if native_metrics is not None:
+        builder = getattr(native_metrics, "build_tet_edge_map", None)
+        if builder is not None:
+            try:
+                return builder(T)
+            except Exception:
+                pass
+
     # --- C 경로 ---
     if _USE_C_KERNELS and _c_build_edge_to_tets is not None:
         result = _c_build_edge_to_tets(T)
         if result is not None:
             edges_arr, tet_idx_arr = result
-            # numpy-based grouping avoids Python dict insert loop.
-            n_v = int(T.max()) + 1 if T.size > 0 else 1
-            key64 = (
-                edges_arr[:, 0].astype(np.int64) * n_v
-                + edges_arr[:, 1].astype(np.int64)
-            )
-            sort_order = np.argsort(key64, kind="stable")
-            sorted_keys = key64[sort_order]
-            sorted_ti   = tet_idx_arr[sort_order]
-            uniq_keys, first_idx, counts = np.unique(
-                sorted_keys, return_index=True, return_counts=True,
-            )
             m: dict[tuple[int, int], list[int]] = {}
-            ea_s = edges_arr[sort_order]
-            for gi in range(uniq_keys.shape[0]):
-                s = int(first_idx[gi])
-                c = int(counts[gi])
-                row = ea_s[s]
-                k = (int(row[0]), int(row[1]))
-                m[k] = sorted_ti[s: s + c].tolist()
+            for row, ti in zip(edges_arr.tolist(), tet_idx_arr.tolist()):
+                m.setdefault((row[0], row[1]), []).append(ti)
             return m
 
     # --- Python/numpy 경로 (fallback) ---

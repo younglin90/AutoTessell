@@ -9,6 +9,15 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_area_volume_stats_batch as _c_surface_area_volume_stats_batch,
+        surface_edge_stats_batch as _c_surface_edge_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_area_volume_stats_batch = None
+    _c_surface_edge_stats_batch = None
+
 
 @dataclass
 class GeometryKPIResult:
@@ -51,26 +60,40 @@ def compute_geometry_kpi(
     bbox_diag = float(np.linalg.norm(extents))
     bbox_vol = float(extents[0] * extents[1] * extents[2])
 
-    # surface area.
-    e1 = V[F[:, 1]] - V[F[:, 0]]
-    e2 = V[F[:, 2]] - V[F[:, 0]]
-    cross = np.cross(e1, e2)
-    face_areas = 0.5 * np.linalg.norm(cross, axis=1)
-    surf_area = float(face_areas.sum())
+    native_area_volume = None
+    if _c_surface_area_volume_stats_batch is not None:
+        native_area_volume = _c_surface_area_volume_stats_batch(V, F)
+    if native_area_volume is not None:
+        surf_area, enclosed_vol, _native_bbox_vol = native_area_volume
+        surf_area = float(surf_area)
+        enclosed_vol = float(enclosed_vol)
+    else:
+        # surface area.
+        e1 = V[F[:, 1]] - V[F[:, 0]]
+        e2 = V[F[:, 2]] - V[F[:, 0]]
+        cross = np.cross(e1, e2)
+        face_areas = 0.5 * np.linalg.norm(cross, axis=1)
+        surf_area = float(face_areas.sum())
 
-    # signed volume (divergence theorem).
-    # V = (1/6) Σ ((p0 × p1) · p2).
-    p0 = V[F[:, 0]]; p1 = V[F[:, 1]]; p2 = V[F[:, 2]]
-    enclosed_vol = float(((np.cross(p0, p1) * p2).sum(axis=1)).sum()) / 6.0
+        # signed volume (divergence theorem).
+        # V = (1/6) Σ ((p0 × p1) · p2).
+        p0 = V[F[:, 0]]; p1 = V[F[:, 1]]; p2 = V[F[:, 2]]
+        enclosed_vol = float(((np.cross(p0, p1) * p2).sum(axis=1)).sum()) / 6.0
 
-    # edge count (unique).
-    edges_per_face = np.stack([
-        F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]],
-    ], axis=1).reshape(-1, 2)
-    edges_canon = np.sort(edges_per_face, axis=1)
-    # unique edges.
-    keys = edges_canon[:, 0].astype(np.int64) * (n_v + 1) + edges_canon[:, 1].astype(np.int64)
-    n_e = int(np.unique(keys).size)
+    native_edge_stats = None
+    if _c_surface_edge_stats_batch is not None:
+        native_edge_stats = _c_surface_edge_stats_batch(F)
+    if native_edge_stats is not None:
+        n_e = int(native_edge_stats[0])
+    else:
+        # edge count (unique).
+        edges_per_face = np.stack([
+            F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]],
+        ], axis=1).reshape(-1, 2)
+        edges_canon = np.sort(edges_per_face, axis=1)
+        # unique edges.
+        keys = edges_canon[:, 0].astype(np.int64) * (n_v + 1) + edges_canon[:, 1].astype(np.int64)
+        n_e = int(np.unique(keys).size)
 
     # Euler χ = V - E + F.
     chi = n_v - n_e + n_f

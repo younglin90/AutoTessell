@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_area_volume_stats_batch as _c_surface_area_volume_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_area_volume_stats_batch = None
+
 
 @dataclass
 class SurfaceVolumeResult:
@@ -42,6 +49,20 @@ def surface_volume_integral(
 
     if n_f == 0 or V.shape[0] == 0:
         return SurfaceVolumeResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_surface_area_volume_stats_batch is not None:
+        native = _c_surface_area_volume_stats_batch(V, F)
+        if native is not None:
+            area, vol, bbox_vol = native
+            fill = abs(vol) / max(bbox_vol, 1e-30)
+            return SurfaceVolumeResult(
+                n_triangles=n_f,
+                surface_area=float(area),
+                enclosed_volume=float(vol),
+                bbox_volume=float(bbox_vol),
+                fill_ratio=float(fill),
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     a = V[F[:, 0]]
     b = V[F[:, 1]]

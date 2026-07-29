@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        bl_prism_quality_stats_batch as _c_bl_prism_quality_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_bl_prism_quality_stats_batch = None
+
 
 @dataclass
 class BLQualityResult:
@@ -52,6 +59,22 @@ def bl_prism_quality(
 
     if n_p == 0:
         return BLQualityResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_bl_prism_quality_stats_batch is not None:
+        native = _c_bl_prism_quality_stats_batch(pts, prisms)
+        if native is not None:
+            stats, n_inv = native
+            return BLQualityResult(
+                n_prisms=n_p,
+                aspect_min=stats[0],
+                aspect_max=stats[1],
+                aspect_mean=stats[2],
+                thickness_uniformity_mean=stats[3],
+                skew_max=stats[4],
+                skew_mean=stats[5],
+                n_inverted=n_inv,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     p0, p1, p2 = pts[prisms[:, 0]], pts[prisms[:, 1]], pts[prisms[:, 2]]
     p3, p4, p5 = pts[prisms[:, 3]], pts[prisms[:, 4]], pts[prisms[:, 5]]

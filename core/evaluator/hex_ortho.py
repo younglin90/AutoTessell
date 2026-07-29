@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_ortho_stats_batch as _c_hex_ortho_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_ortho_stats_batch = None
+
 
 @dataclass
 class HexOrthoResult:
@@ -57,6 +64,19 @@ def hex_ortho_stats(
 
     if n_h == 0:
         return HexOrthoResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_hex_ortho_stats_batch is not None:
+        native = _c_hex_ortho_stats_batch(pts, hexes)
+        if native is not None:
+            stats, n_above = native
+            return HexOrthoResult(
+                n_hexes=n_h,
+                ortho_min_deg=stats[0],
+                ortho_max_deg=stats[1],
+                ortho_mean_deg=stats[2],
+                n_above_30deg=n_above,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     corners = pts[hexes]  # (H, 8, 3).
     cell_center = corners.mean(axis=1)  # (H, 3).

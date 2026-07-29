@@ -10,6 +10,13 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_diag_stats_batch as _c_surface_diag_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_diag_stats_batch = None
+
 
 @dataclass
 class SurfaceDiagResult:
@@ -59,6 +66,45 @@ def diagnose_surface(
             elapsed_s=time.perf_counter() - t0,
             warnings=["empty face array"],
         )
+
+    if _c_surface_diag_stats_batch is not None:
+        cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+        native = _c_surface_diag_stats_batch(V, F, cos_thresh, sliver_area_tol)
+        if native is not None:
+            counts, stats = native
+            n_inconsistent, n_sliver, n_sharp, _n_dihedral_pairs = counts
+            (
+                dihedral_min,
+                dihedral_max,
+                dihedral_mean,
+                face_area_min,
+                face_area_max,
+                aspect_max,
+            ) = stats
+            warnings: list[str] = []
+            if n_sliver > 0:
+                warnings.append(f"sliver faces: {n_sliver}/{n_f}")
+            if n_inconsistent > 0:
+                warnings.append(f"inconsistent normals: {n_inconsistent} edge pairs")
+            if aspect_max > 100:
+                warnings.append(f"high face aspect: max={aspect_max:.1f}")
+            if n_sharp > n_f * 0.5:
+                warnings.append(f"many sharp edges: {n_sharp}/{n_f} > 50% (CAD-like)")
+            return SurfaceDiagResult(
+                n_vertices=n_v,
+                n_faces=n_f,
+                n_inconsistent_normals=int(n_inconsistent),
+                n_sliver_faces=int(n_sliver),
+                n_dihedral_sharp=int(n_sharp),
+                dihedral_min_deg=float(dihedral_min),
+                dihedral_max_deg=float(dihedral_max),
+                dihedral_mean_deg=float(dihedral_mean),
+                face_area_min=float(face_area_min),
+                face_area_max=float(face_area_max),
+                aspect_ratio_max=float(aspect_max),
+                elapsed_s=time.perf_counter() - t0,
+                warnings=warnings,
+            )
 
     # face normals + areas.
     e1 = V[F[:, 1]] - V[F[:, 0]]

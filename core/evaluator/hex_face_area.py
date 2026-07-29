@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_face_area_stats_batch as _c_hex_face_area_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_face_area_stats_batch = None
+
 
 @dataclass
 class HexFaceAreaResult:
@@ -62,6 +69,21 @@ def hex_face_area_stats(
 
     if n_h == 0:
         return HexFaceAreaResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_hex_face_area_stats_batch is not None:
+        native = _c_hex_face_area_stats_batch(pts, hexes)
+        if native is not None:
+            stats, n_stretched = native
+            return HexFaceAreaResult(
+                n_hexes=n_h,
+                area_min=stats[0],
+                area_max=stats[1],
+                area_mean=stats[2],
+                ratio_max=stats[3],
+                ratio_mean=stats[4],
+                n_stretched=n_stretched,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     corners = pts[hexes]  # (H, 8, 3).
 

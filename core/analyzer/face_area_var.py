@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_face_area_distribution_stats_batch as _c_surface_face_area_distribution_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_face_area_distribution_stats_batch = None
+
 
 @dataclass
 class FaceAreaVarResult:
@@ -44,6 +51,23 @@ def face_area_variance(
 
     if n_f == 0 or V.shape[0] == 0:
         return FaceAreaVarResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_surface_face_area_distribution_stats_batch is not None:
+        native = _c_surface_face_area_distribution_stats_batch(V, F)
+        if native is not None:
+            area_min, area_max, a_mean, a_std, p01, p99 = native
+            cv = a_std / max(a_mean, 1e-30)
+            ratio = float(p99) / max(float(p01), 1e-30)
+            return FaceAreaVarResult(
+                n_triangles=n_f,
+                area_min=float(area_min),
+                area_max=float(area_max),
+                area_mean=float(a_mean),
+                area_std=float(a_std),
+                cv=float(cv),
+                p99_to_p01=ratio,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     a = V[F[:, 0]]; b = V[F[:, 1]]; c = V[F[:, 2]]
     cross = np.cross(b - a, c - a)

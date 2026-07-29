@@ -12,6 +12,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        poly_aspect_stats_batch as _c_poly_aspect_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_poly_aspect_stats_batch = None
+
 
 @dataclass
 class PolyAspectResult:
@@ -39,6 +46,20 @@ def poly_cell_aspect(
     n_cells = len(cell_vertices)
     if n_cells == 0:
         return PolyAspectResult()
+
+    if _c_poly_aspect_stats_batch is not None:
+        native = _c_poly_aspect_stats_batch(pts, cell_vertices)
+        if native is not None:
+            stats, n_above_5, n_valid = native
+            if n_valid == 0:
+                return PolyAspectResult(n_cells=n_cells)
+            return PolyAspectResult(
+                n_cells=n_cells,
+                aspect_min=stats[0],
+                aspect_max=stats[1],
+                aspect_mean=stats[2],
+                n_above_5=n_above_5,
+            )
 
     aspects = []
     for cv in cell_vertices:

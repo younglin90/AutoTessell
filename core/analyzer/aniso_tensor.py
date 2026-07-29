@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_aniso_tensor_batch as _c_tet_aniso_tensor_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_aniso_tensor_batch = None
+
 
 @dataclass
 class AnisoTensorResult:
@@ -54,6 +61,20 @@ def tet_aniso_tensor(
         return np.zeros(0, dtype=np.float64), AnisoTensorResult(
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_tet_aniso_tensor_batch is not None:
+        native = _c_tet_aniso_tensor_batch(pts, tets)
+        if native is not None:
+            ratio, stats, n_above_5 = native
+            return ratio, AnisoTensorResult(
+                n_tets=n_t,
+                aniso_min=stats[0],
+                aniso_max=stats[1],
+                aniso_mean=stats[2],
+                aniso_p99=stats[3],
+                n_above_5=n_above_5,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # (T, 6, 2) → (T, 6, 3) edge vectors.
     e_idx = tets[:, _TET_EDGES]

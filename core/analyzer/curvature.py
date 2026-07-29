@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_vertex_gaussian_curvature_batch as _c_surface_vertex_gaussian_curvature_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_vertex_gaussian_curvature_batch = None
+
 
 @dataclass
 class CurvatureResult:
@@ -44,6 +51,22 @@ def vertex_gaussian_curvature(
 
     if n_v == 0 or n_f == 0:
         return np.zeros(0, dtype=np.float64), CurvatureResult(
+            elapsed_s=time.perf_counter() - t0,
+        )
+
+    native = (
+        _c_surface_vertex_gaussian_curvature_batch(V, F)
+        if _c_surface_vertex_gaussian_curvature_batch is not None
+        else None
+    )
+    if native is not None:
+        K, stats = native
+        return K, CurvatureResult(
+            n_vertices=n_v,
+            curvature_min=stats[0],
+            curvature_max=stats[1],
+            curvature_mean=stats[2],
+            curvature_total=stats[3],
             elapsed_s=time.perf_counter() - t0,
         )
 

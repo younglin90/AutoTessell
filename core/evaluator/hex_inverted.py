@@ -10,6 +10,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_inverted_stats_batch as _c_hex_inverted_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_inverted_stats_batch = None
+
 
 @dataclass
 class HexInvertedResult:
@@ -59,6 +66,19 @@ def detect_inverted_hexes(
 
     if n_h == 0:
         return HexInvertedResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_hex_inverted_stats_batch is not None:
+        native = _c_hex_inverted_stats_batch(pts, hexes, 100)
+        if native is not None:
+            indices, counts, worst = native
+            return HexInvertedResult(
+                n_hexes=n_h,
+                n_inverted=counts[0],
+                inverted_indices=[int(i) for i in indices],
+                worst_j_min=worst,
+                worst_hex_idx=counts[1],
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     corners = pts[hexes]  # (H, 8, 3).
 

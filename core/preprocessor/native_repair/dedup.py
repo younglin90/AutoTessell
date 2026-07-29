@@ -3,6 +3,13 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from core.generator.native_tet._native import (
+        surface_dedup_vertices_quantized as _c_surface_dedup_vertices_quantized,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_dedup_vertices_quantized = None
+
 
 def dedup_vertices(
     vertices: np.ndarray, faces: np.ndarray, *, tol: float = 1e-9,
@@ -21,6 +28,11 @@ def dedup_vertices(
     F = np.asarray(faces, dtype=np.int64)
     if V.size == 0:
         return V.reshape(0, 3), F.reshape(0, 3) if F.size else F, 0
+
+    if _c_surface_dedup_vertices_quantized is not None:
+        native = _c_surface_dedup_vertices_quantized(V, F, tol)
+        if native is not None:
+            return native
 
     scale = 1.0 / max(tol, 1e-30)
     keys = np.round(V * scale).astype(np.int64)

@@ -10,6 +10,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_feature_edges_stats_batch as _c_surface_feature_edges_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_feature_edges_stats_batch = None
+
 
 @dataclass
 class FeatureEdgeResult:
@@ -53,6 +60,21 @@ def extract_feature_edges(
             feature_angle_deg=feature_angle_deg,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if not return_edges and _c_surface_feature_edges_stats_batch is not None:
+        cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+        native = _c_surface_feature_edges_stats_batch(V, F, cos_thresh)
+        if native is not None:
+            n_feature, n_bnd, n_sharp, n_corners = native
+            return FeatureEdgeResult(
+                n_feature_edges=n_feature,
+                n_boundary_edges=n_bnd,
+                n_sharp_dihedral_edges=n_sharp,
+                n_corner_vertices=n_corners,
+                feature_angle_deg=feature_angle_deg,
+                elapsed_s=time.perf_counter() - t0,
+                edge_pairs=None,
+            )
 
     # face normals.
     e1 = V[F[:, 1]] - V[F[:, 0]]

@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_jacobian_stats_batch as _c_hex_jacobian_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_jacobian_stats_batch = None
+
 
 @dataclass
 class HexJacobianResult:
@@ -64,6 +71,21 @@ def hex_jacobian_stats(
 
     if n_h == 0:
         return HexJacobianResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_hex_jacobian_stats_batch is not None:
+        native = _c_hex_jacobian_stats_batch(pts, hexes)
+        if native is not None:
+            stats, n_inv = native
+            return HexJacobianResult(
+                n_hexes=n_h,
+                j_min=stats[0],
+                j_max=stats[1],
+                j_mean=stats[2],
+                n_inverted=n_inv,
+                scaled_j_min=stats[3],
+                scaled_j_mean=stats[4],
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # gather corner coords: hexes (H, 8) → (H, 8, 3).
     corners = pts[hexes]  # (H, 8, 3).

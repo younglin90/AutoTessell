@@ -12,6 +12,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        screen_flip_candidates_batch as _c_screen_flip_candidates_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_screen_flip_candidates_batch = None
+
 
 @dataclass
 class FlipCandidatesResult:
@@ -55,6 +62,19 @@ def screen_flip_candidates(
 
     adj, _ = build_tet_face_adjacency(tets)
     Q, _ = tet_qshape(pts, tets)
+
+    native = (
+        _c_screen_flip_candidates_batch(adj, Q, q_threshold)
+        if _c_screen_flip_candidates_batch is not None
+        else None
+    )
+    if native is not None:
+        out, out_q, n_internal = native
+        return out, out_q, FlipCandidatesResult(
+            n_internal_faces=n_internal,
+            n_flip_candidates=int(out.shape[0]),
+            elapsed_s=time.perf_counter() - t0,
+        )
 
     # 각 internal face → (tet_a, tet_b) where adj[a, f]=b.
     pairs: list[tuple[int, int]] = []

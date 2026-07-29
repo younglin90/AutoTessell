@@ -10,11 +10,10 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Any
 
 from core.generator.openfoam_writer import OpenFOAMWriter
 from core.generator.tier15_cfmesh import _hex_repair_surface  # noqa: F401
-from core.schemas import MeshStrategy, TierAttempt, GeneratorStep
+from core.schemas import GeneratorStep, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -46,10 +45,46 @@ class CfMeshPolyGenerator:
         try:
             cfm = _import_vendored()
         except Exception as exc:
+            if os.environ.get("AUTO_TESSELL_POLY_CFMESH_IMPORT_FALLBACK", "1") != "0":
+                logger.warning(
+                    "poly_cfmesh_native_import_failed_try_native_poly",
+                    error=str(exc),
+                )
+                try:
+                    from core.generator.tier_native_poly import (  # noqa: PLC0415
+                        TierNativePolyGenerator,
+                    )
+
+                    fallback_case_dir = case_dir if case_dir is not None else Path("./case")
+                    fallback = TierNativePolyGenerator().run(
+                        strategy,
+                        preprocessed_path=preprocessed_path,
+                        case_dir=fallback_case_dir,
+                    )
+                    fallback.steps.insert(
+                        0,
+                        GeneratorStep(
+                            name="import_cfmesh_native",
+                            status="failed",
+                            time=0.0,
+                        ),
+                    )
+                    if fallback.status == "success":
+                        return fallback
+                    logger.warning(
+                        "poly_cfmesh_native_fallback_failed",
+                        error=fallback.error_message,
+                    )
+                except Exception as fallback_exc:  # noqa: BLE001
+                    logger.warning(
+                        "poly_cfmesh_native_fallback_exception",
+                        error=str(fallback_exc),
+                    )
             return TierAttempt(
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=time.monotonic() - t_start,
+                steps=[GeneratorStep(name="import_cfmesh_native", status="failed", time=0.0)],
                 error_message=f"cfmesh_native import 실패: {exc}",
             )
 

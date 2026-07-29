@@ -9,6 +9,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_edge_lengths_stats_batch as _c_surface_edge_lengths_stats_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_edge_lengths_stats_batch = None
+
 
 @dataclass
 class EdgeStatsResult:
@@ -43,6 +50,28 @@ def compute_edge_stats(
 
     if n_f == 0:
         return EdgeStatsResult(elapsed_s=time.perf_counter() - t0)
+
+    native = (
+        _c_surface_edge_lengths_stats_batch(V, F)
+        if _c_surface_edge_lengths_stats_batch is not None
+        else None
+    )
+    if native is not None:
+        all_edges, n_unique, aspect_max, aspect_mean = native
+        return EdgeStatsResult(
+            n_edges_total=int(all_edges.size),
+            n_edges_unique=n_unique,
+            edge_min=float(all_edges.min()),
+            edge_max=float(all_edges.max()),
+            edge_mean=float(all_edges.mean()),
+            edge_std=float(all_edges.std()),
+            edge_p5=float(np.percentile(all_edges, 5)),
+            edge_p50=float(np.percentile(all_edges, 50)),
+            edge_p95=float(np.percentile(all_edges, 95)),
+            aspect_ratio_max=aspect_max,
+            aspect_ratio_mean=aspect_mean,
+            elapsed_s=time.perf_counter() - t0,
+        )
 
     # per-face 3 edges.
     e_a = np.linalg.norm(V[F[:, 1]] - V[F[:, 0]], axis=1)

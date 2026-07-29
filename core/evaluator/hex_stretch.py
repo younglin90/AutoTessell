@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_stretch_stats_batch as _c_hex_stretch_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_stretch_stats_batch = None
+
 
 @dataclass
 class HexStretchResult:
@@ -54,6 +61,19 @@ def hex_stretch_stats(
 
     if n_h == 0:
         return HexStretchResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_hex_stretch_stats_batch is not None:
+        native = _c_hex_stretch_stats_batch(pts, hexes)
+        if native is not None:
+            stats, n_below = native
+            return HexStretchResult(
+                n_hexes=n_h,
+                stretch_min=stats[0],
+                stretch_max=stats[1],
+                stretch_mean=stats[2],
+                n_below_0p1=n_below,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     corners = pts[hexes]  # (H, 8, 3).
 

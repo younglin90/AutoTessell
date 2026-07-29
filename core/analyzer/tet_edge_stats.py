@@ -14,6 +14,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_edge_stats_batch as _c_tet_edge_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_edge_stats_batch = None
+
 
 @dataclass
 class TetEdgeStatsResult:
@@ -59,6 +66,22 @@ def tet_edge_stats(
 
     if n_t == 0:
         return TetEdgeStatsResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_tet_edge_stats_batch is not None:
+        native = _c_tet_edge_stats_batch(pts, tets, sliver_aniso)
+        if native is not None:
+            stats, n_sliver = native
+            return TetEdgeStatsResult(
+                n_tets=n_t,
+                edge_min=stats[0],
+                edge_max=stats[1],
+                edge_mean=stats[2],
+                edge_p99=stats[3],
+                aniso_max=stats[4],
+                aniso_mean=stats[5],
+                n_sliver=n_sliver,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # (T, 6, 2) edge index → (T, 6) length.
     e_idx = tets[:, _TET_EDGES]  # (T, 6, 2).

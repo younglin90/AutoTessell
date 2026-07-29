@@ -10,6 +10,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        build_tet_face_adjacency_stats as _c_build_tet_face_adjacency_stats,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_build_tet_face_adjacency_stats = None
+
 
 @dataclass
 class TetFaceAdjResult:
@@ -45,6 +52,21 @@ def build_tet_face_adjacency(
         return np.zeros((0, 4), dtype=np.int64), TetFaceAdjResult(
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_build_tet_face_adjacency_stats is not None:
+        native = _c_build_tet_face_adjacency_stats(tets)
+        if native is not None:
+            adj, stats = native
+            n_unique, n_bnd, n_int, n_nm = stats
+            return adj, TetFaceAdjResult(
+                n_tets=n_t,
+                n_faces_total=n_t * 4,
+                n_unique_faces=n_unique,
+                n_boundary_faces=n_bnd,
+                n_interior_faces=n_int,
+                n_nonmanifold=n_nm,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # build (n_t * 4, 3) face array (sorted), with (tet_idx, face_idx) tag.
     all_faces = np.zeros((n_t * 4, 3), dtype=np.int64)

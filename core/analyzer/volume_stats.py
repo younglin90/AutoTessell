@@ -10,6 +10,13 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_volume_stats_batch as _c_tet_volume_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_volume_stats_batch = None
+
 
 @dataclass
 class VolumeStatsResult:
@@ -70,6 +77,32 @@ def compute_tet_stats(
 
     if n_t == 0:
         return VolumeStatsResult(n_cells=0, elapsed_s=time.perf_counter() - t0)
+
+    if _c_tet_volume_stats_batch is not None:
+        native = _c_tet_volume_stats_batch(pts, tets, n_bins)
+        if native is not None:
+            stats, n_neg, counts = native
+            edges = np.linspace(0.0, 1.0, n_bins + 1)
+            histogram = [
+                (float(edges[i]), float(edges[i + 1]), int(counts[i]))
+                for i in range(n_bins)
+            ]
+            return VolumeStatsResult(
+                n_cells=n_t,
+                n_tet=n_t,
+                quality_min=stats[0],
+                quality_max=stats[1],
+                quality_mean=stats[2],
+                quality_p5=stats[3],
+                quality_p50=stats[4],
+                quality_p95=stats[5],
+                volume_min=stats[6],
+                volume_max=stats[7],
+                volume_total=stats[8],
+                n_negative_volume=n_neg,
+                elapsed_s=time.perf_counter() - t0,
+                histogram_bins=histogram,
+            )
 
     # vectorized tet quality.
     p0 = pts[tets[:, 0]]

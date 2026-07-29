@@ -10,6 +10,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_boundary_vertex_stats_batch as _c_tet_boundary_vertex_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_boundary_vertex_stats_batch = None
+
 
 @dataclass
 class BoundaryStatsResult:
@@ -55,7 +62,14 @@ def boundary_vertex_stats(
     n_int = n_v - n_surf
 
     # surface vertex 인 tets 카운트 (≥1 surface idx).
-    if n_t > 0:
+    native_counts = (
+        _c_tet_boundary_vertex_stats_batch(tets, n_surf)
+        if _c_tet_boundary_vertex_stats_batch is not None and n_t > 0
+        else None
+    )
+    if native_counts is not None:
+        n_bnd_tets, n_int_tets = native_counts
+    elif n_t > 0:
         is_surface_v = tets < n_surf  # (T, 4) bool.
         n_bnd_tets = int(is_surface_v.any(axis=1).sum())
         n_int_tets = n_t - n_bnd_tets

@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        surface_vertex_valence_batch as _c_surface_vertex_valence_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_vertex_valence_batch = None
+
 
 @dataclass
 class VertexValenceResult:
@@ -58,6 +65,40 @@ def surface_vertex_valence(
         )
 
     n_v = int(n_vertices) if n_vertices is not None else int(F.max() + 1)
+
+    if _c_surface_vertex_valence_batch is not None:
+        native = _c_surface_vertex_valence_batch(F, n_v)
+        if native is not None:
+            face_val, edge_val, stats, means = native
+            (
+                n_used,
+                face_min,
+                face_max,
+                edge_min,
+                edge_max,
+                n_high,
+                n_isolated,
+            ) = stats
+            face_mean, edge_mean = means
+            if n_used == 0:
+                return face_val, edge_val, VertexValenceResult(
+                    n_vertices=n_v,
+                    n_isolated=n_isolated,
+                    elapsed_s=time.perf_counter() - t0,
+                )
+            return face_val, edge_val, VertexValenceResult(
+                n_vertices=n_v,
+                n_used=n_used,
+                face_valence_min=face_min,
+                face_valence_max=face_max,
+                face_valence_mean=face_mean,
+                edge_valence_min=edge_min,
+                edge_valence_max=edge_max,
+                edge_valence_mean=edge_mean,
+                n_high_face_valence=n_high,
+                n_isolated=n_isolated,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     # face valence: bincount of vertex appearance in F.
     face_val = np.bincount(F.reshape(-1), minlength=n_v).astype(np.int64)

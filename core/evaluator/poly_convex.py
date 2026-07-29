@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        poly_convex_stats_batch as _c_poly_convex_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_poly_convex_stats_batch = None
+
 
 @dataclass
 class PolyConvexResult:
@@ -52,6 +59,20 @@ def poly_cell_convex(
 
     if n_cells == 0:
         return PolyConvexResult(elapsed_s=time.perf_counter() - t0)
+
+    if _c_poly_convex_stats_batch is not None:
+        native = _c_poly_convex_stats_batch(pts, cell_vertices, cell_face_planes, tol)
+        if native is not None:
+            n_convex, max_viol = native
+            n_non = n_cells - n_convex
+            return PolyConvexResult(
+                n_cells=n_cells,
+                n_convex=n_convex,
+                n_non_convex=n_non,
+                convex_ratio=float(n_convex) / max(n_cells, 1),
+                max_violation=max_viol,
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     n_convex = 0
     max_viol = 0.0

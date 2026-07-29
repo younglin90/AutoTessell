@@ -11,8 +11,16 @@ from typing import NamedTuple
 import numpy as np
 
 from core.utils.logging import get_logger
+from core.utils.native_extensions import load_native_metrics
 
 log = get_logger(__name__)
+
+try:
+    from core.generator.native_tet._native import (
+        hex_validate_volumes_batch as _c_hex_validate_volumes_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_validate_volumes_batch = None
 
 # HEX_CACHE (beta2177) — single-slot LRU adjacency cache keyed on hex_cells.tobytes().
 # Mirrors PERF3/4 (R113/R114) tet adjacency cache.  Default ON.
@@ -335,6 +343,38 @@ def validate_hex_cell_volumes(
     if n == 0:
         log.info("native_hex_validate", n_cells=0, n_flipped=0, n_degenerate=0)
         return hex_cells, 0, 0
+
+    native_metrics = load_native_metrics()
+    if native_metrics is not None and hasattr(native_metrics, "validate_hex_volumes"):
+        try:
+            fixed, n_flipped, n_degenerate = native_metrics.validate_hex_volumes(
+                pts,
+                hex_cells,
+                float(degenerate_eps),
+            )
+            fixed_arr = np.asarray(fixed, dtype=np.int64)
+            log.info(
+                "native_hex_validate",
+                n_cells=n,
+                n_flipped=int(n_flipped),
+                n_degenerate=int(n_degenerate),
+                backend="pybind",
+            )
+            return fixed_arr, int(n_flipped), int(n_degenerate)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native_metrics.validate_hex_volumes failed", error=str(exc))
+
+    if _c_hex_validate_volumes_batch is not None:
+        native = _c_hex_validate_volumes_batch(pts, hex_cells, float(degenerate_eps))
+        if native is not None:
+            fixed, n_flipped, n_degenerate = native
+            log.info(
+                "native_hex_validate",
+                n_cells=n,
+                n_flipped=n_flipped,
+                n_degenerate=n_degenerate,
+            )
+            return fixed, n_flipped, n_degenerate
 
     # 6-tet decomposition of a hex (local vertex indices).
     # Standard decomposition into 5 or 6 tets; use 6-tet fan from vertex 0.

@@ -3,6 +3,13 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from core.generator.native_tet._native import (
+        surface_remove_degenerate_faces_mask as _c_surface_remove_degenerate_faces_mask,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_surface_remove_degenerate_faces_mask = None
+
 
 def _face_areas(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     if F.size == 0:
@@ -28,6 +35,12 @@ def remove_degenerate_faces(
         return F, 0
 
     V = np.asarray(vertices, dtype=np.float64)
+    if _c_surface_remove_degenerate_faces_mask is not None:
+        native = _c_surface_remove_degenerate_faces_mask(V, F, area_tol)
+        if native is not None:
+            keep, n_removed = native
+            return F[keep], int(n_removed)
+
     areas = _face_areas(V, F)
     keep_area = areas >= area_tol
 

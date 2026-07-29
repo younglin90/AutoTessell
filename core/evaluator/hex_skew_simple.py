@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        hex_skew_simple_stats_batch as _c_hex_skew_simple_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_hex_skew_simple_stats_batch = None
+
 
 @dataclass
 class HexSkewSimpleResult:
@@ -47,6 +54,18 @@ def hex_skew_simple(
     n_h = int(hexes.shape[0])
     if n_h == 0:
         return HexSkewSimpleResult()
+
+    if _c_hex_skew_simple_stats_batch is not None:
+        native = _c_hex_skew_simple_stats_batch(pts, hexes)
+        if native is not None:
+            stats, n_above = native
+            return HexSkewSimpleResult(
+                n_hexes=n_h,
+                skew_min=stats[0],
+                skew_max=stats[1],
+                skew_mean=stats[2],
+                n_above_1=n_above,
+            )
 
     corners = pts[hexes]  # (H, 8, 3).
     cell_c = corners.mean(axis=1)  # (H, 3).

@@ -13,6 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import (
+        tet_vertex_valence_batch as _c_tet_vertex_valence_batch,
+    )
+except Exception:  # pragma: no cover - native extension optional
+    _c_tet_vertex_valence_batch = None
+
 
 @dataclass
 class TetValenceResult:
@@ -51,6 +58,22 @@ def tet_vertex_valence(
             n_vertices=n_v,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    if _c_tet_vertex_valence_batch is not None:
+        native = _c_tet_vertex_valence_batch(tets, n_v)
+        if native is not None:
+            valence, stats, floats = native
+            return valence, TetValenceResult(
+                n_vertices=n_v,
+                n_used=stats[0],
+                valence_min=stats[1],
+                valence_max=stats[2],
+                valence_mean=floats[0],
+                valence_p99=floats[1],
+                n_above_50=stats[3],
+                n_isolated=stats[4],
+                elapsed_s=time.perf_counter() - t0,
+            )
 
     valence = np.bincount(tets.reshape(-1), minlength=n_v).astype(np.int64)
     used = valence > 0

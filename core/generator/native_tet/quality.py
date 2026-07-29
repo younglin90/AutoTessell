@@ -14,6 +14,23 @@ from dataclasses import dataclass
 
 import numpy as np
 
+try:
+    from core.generator.native_tet._native import (
+        tet_quality_batch as _c_quality_batch,
+        tet_aspect_ratio_batch as _c_aspect_ratio_batch,
+        tet_min_dihedral_deg_batch as _c_min_dihedral_deg_batch,
+        tet_min_solid_angle_sr_batch as _c_min_solid_angle_sr_batch,
+        tet_radius_edge_ratio_batch as _c_radius_edge_ratio_batch,
+        tet_signed_vol6_batch as _c_signed_vol6_batch,
+    )
+except Exception:  # pragma: no cover - optional native extension
+    _c_quality_batch = None
+    _c_aspect_ratio_batch = None
+    _c_min_dihedral_deg_batch = None
+    _c_min_solid_angle_sr_batch = None
+    _c_radius_edge_ratio_batch = None
+    _c_signed_vol6_batch = None
+
 
 def snapshot_to_dict(snap: "QualitySnapshot | None") -> dict:
     """QualitySnapshot → JSON-serializable dict. 로그/리포트/bench 파일 공용."""
@@ -56,6 +73,10 @@ def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0)
+    if _c_quality_batch is not None:
+        out = _c_quality_batch(pts, tets)
+        if out is not None:
+            return out
     v = pts[tets]
     e01 = np.linalg.norm(v[:, 1] - v[:, 0], axis=1)
     e02 = np.linalg.norm(v[:, 2] - v[:, 0], axis=1)
@@ -135,6 +156,10 @@ def tet_radius_edge_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0)
+    if _c_radius_edge_ratio_batch is not None:
+        out = _c_radius_edge_ratio_batch(pts, tets)
+        if out is not None:
+            return out
     v = pts[tets]
     a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
     e1 = np.linalg.norm(b - a, axis=1)
@@ -159,6 +184,10 @@ def tet_min_solid_angle_sr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0)
+    if _c_min_solid_angle_sr_batch is not None:
+        out = _c_min_solid_angle_sr_batch(pts, tets)
+        if out is not None:
+            return out
     v = pts[tets]
 
     def _sa(o, p1, p2, p3):
@@ -187,6 +216,10 @@ def tet_aspect_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0)
+    if _c_aspect_ratio_batch is not None:
+        out = _c_aspect_ratio_batch(pts, tets)
+        if out is not None:
+            return out
     v = pts[tets]
     a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
 
@@ -226,6 +259,10 @@ def tet_min_dihedral_deg(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0)
+    if _c_min_dihedral_deg_batch is not None:
+        out = _c_min_dihedral_deg_batch(pts, tets)
+        if out is not None:
+            return out
     v = pts[tets]
     a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
 
@@ -261,6 +298,36 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     if tets_arr.size == 0:
         return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
 
+    if (
+        _c_quality_batch is not None
+        and _c_signed_vol6_batch is not None
+        and _c_aspect_ratio_batch is not None
+        and _c_min_dihedral_deg_batch is not None
+    ):
+        q = _c_quality_batch(pts, tets_arr)
+        vol6_signed = _c_signed_vol6_batch(pts, tets_arr)
+        aspect = _c_aspect_ratio_batch(pts, tets_arr)
+        dih = _c_min_dihedral_deg_batch(pts, tets_arr)
+        if q is not None and vol6_signed is not None and aspect is not None and dih is not None:
+            vol6 = np.abs(vol6_signed)
+            w_sum = float(vol6.sum())
+            vol_weighted_mean_q = float((q * vol6).sum() / w_sum) if w_sum > 0 else 0.0
+            q_p10, q_median = np.percentile(q, [10, 50])
+            dih_p10, dih_median = np.percentile(dih, [10, 50])
+            return QualitySnapshot(
+                n_tets=int(q.size),
+                min_q=float(q.min()),
+                mean_q=float(q.mean()),
+                median_q=float(q_median),
+                max_aspect=float(aspect.max()),
+                mean_aspect=float(aspect.mean()),
+                min_dihedral_deg=float(dih.min()),
+                median_dihedral_deg=float(dih_median),
+                vol_weighted_mean_q=vol_weighted_mean_q,
+                p10_q=float(q_p10),
+                p10_dihedral_deg=float(dih_p10),
+            )
+
     # --- single vertex gather (shared across all metrics) ---
     v = pts[tets_arr]                   # (N,4,3)
     a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
@@ -288,41 +355,49 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     q = np.zeros(len(tets_arr))
     q[safe] = 8.48 * vol[safe] / (emax[safe] ** 3)
 
-    # --- aspect ratio (circumradius/inradius approx) ---
-    def _area_norm(p, q_v, r):
-        return 0.5 * np.linalg.norm(np.cross(q_v - p, r - p), axis=1)
-    A1 = _area_norm(a, b, c)
-    A2 = _area_norm(a, b, d)
-    A3 = _area_norm(a, c, d)
-    A4 = _area_norm(b, c, d)
-    surf_sum = A1 + A2 + A3 + A4
-    inrad = np.where(surf_sum > 1e-30, 3.0 * vol / surf_sum, 0.0)
-    rmax = emax / 2.0
-    safe_inrad = np.where(inrad > 1e-30, inrad, 1.0)
-    aspect = np.where(inrad > 1e-30, rmax / safe_inrad, 1e6)
+    aspect = None
+    if _c_aspect_ratio_batch is not None:
+        aspect = _c_aspect_ratio_batch(pts, tets_arr)
+    if aspect is None:
+        # --- aspect ratio (circumradius/inradius approx) ---
+        def _area_norm(p, q_v, r):
+            return 0.5 * np.linalg.norm(np.cross(q_v - p, r - p), axis=1)
+        A1 = _area_norm(a, b, c)
+        A2 = _area_norm(a, b, d)
+        A3 = _area_norm(a, c, d)
+        A4 = _area_norm(b, c, d)
+        surf_sum = A1 + A2 + A3 + A4
+        inrad = np.where(surf_sum > 1e-30, 3.0 * vol / surf_sum, 0.0)
+        rmax = emax / 2.0
+        safe_inrad = np.where(inrad > 1e-30, inrad, 1.0)
+        aspect = np.where(inrad > 1e-30, rmax / safe_inrad, 1e6)
 
-    # --- dihedral angles via face normals ---
-    def _unit_n(p, q_v, r):
-        n = np.cross(q_v - p, r - p)
-        nrm = np.linalg.norm(n, axis=1, keepdims=True)
-        return n / np.where(nrm > 1e-30, nrm, 1.0)
+    dih = None
+    if _c_min_dihedral_deg_batch is not None:
+        dih = _c_min_dihedral_deg_batch(pts, tets_arr)
+    if dih is None:
+        # --- dihedral angles via face normals ---
+        def _unit_n(p, q_v, r):
+            n = np.cross(q_v - p, r - p)
+            nrm = np.linalg.norm(n, axis=1, keepdims=True)
+            return n / np.where(nrm > 1e-30, nrm, 1.0)
 
-    n_abc = _unit_n(a, b, c)
-    n_abd = _unit_n(a, b, d)
-    n_acd = _unit_n(a, c, d)
-    n_bcd = _unit_n(b, c, d)
+        n_abc = _unit_n(a, b, c)
+        n_abd = _unit_n(a, b, d)
+        n_acd = _unit_n(a, c, d)
+        n_bcd = _unit_n(b, c, d)
 
-    def _dih(n1, n2):
-        dot = np.clip(np.einsum("ij,ij->i", n1, n2), -1.0, 1.0)
-        return np.rad2deg(np.arccos(dot))
+        def _dih(n1, n2):
+            dot = np.clip(np.einsum("ij,ij->i", n1, n2), -1.0, 1.0)
+            return np.rad2deg(np.arccos(dot))
 
-    dh1 = 180.0 - _dih(n_abc, n_abd)
-    dh2 = 180.0 - _dih(n_abc, n_acd)
-    dh3 = 180.0 - _dih(n_abd, n_acd)
-    dh4 = 180.0 - _dih(n_abc, n_bcd)
-    dh5 = 180.0 - _dih(n_abd, n_bcd)
-    dh6 = 180.0 - _dih(n_acd, n_bcd)
-    dih = np.minimum.reduce([dh1, dh2, dh3, dh4, dh5, dh6])
+        dh1 = 180.0 - _dih(n_abc, n_abd)
+        dh2 = 180.0 - _dih(n_abc, n_acd)
+        dh3 = 180.0 - _dih(n_abd, n_acd)
+        dh4 = 180.0 - _dih(n_abc, n_bcd)
+        dh5 = 180.0 - _dih(n_abd, n_bcd)
+        dh6 = 180.0 - _dih(n_acd, n_bcd)
+        dih = np.minimum.reduce([dh1, dh2, dh3, dh4, dh5, dh6])
 
     # --- volume-weighted mean quality ---
     w_sum = float(vol6.sum())

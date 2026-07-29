@@ -13,6 +13,11 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+try:
+    from core.generator.native_tet._native import tet_qshape_batch as _c_tet_qshape_batch
+except Exception:  # pragma: no cover - optional native extension
+    _c_tet_qshape_batch = None
+
 
 @dataclass
 class TetQShapeResult:
@@ -54,31 +59,36 @@ def tet_qshape(
             elapsed_s=time.perf_counter() - t0,
         )
 
-    a = pts[tets[:, 0]]
-    b = pts[tets[:, 1]]
-    c = pts[tets[:, 2]]
-    d = pts[tets[:, 3]]
-    vol = np.einsum("ij,ij->i", np.cross(b - a, c - a), d - a) / 6.0
-    abs_vol = np.abs(vol)
+    Q = None
+    if _c_tet_qshape_batch is not None:
+        Q = _c_tet_qshape_batch(pts, tets)
 
-    e_idx = tets[:, _TET_EDGES]
-    p0 = pts[e_idx[..., 0]]
-    p1 = pts[e_idx[..., 1]]
-    e_lens_sq = ((p1 - p0) ** 2).sum(axis=-1)  # (T, 6).
-    sum_l_sq = e_lens_sq.sum(axis=1)
+    if Q is None:
+        a = pts[tets[:, 0]]
+        b = pts[tets[:, 1]]
+        c = pts[tets[:, 2]]
+        d = pts[tets[:, 3]]
+        vol = np.einsum("ij,ij->i", np.cross(b - a, c - a), d - a) / 6.0
+        abs_vol = np.abs(vol)
 
-    safe = sum_l_sq > 1e-30
-    Q = np.zeros(n_t, dtype=np.float64)
-    # constant: 12 * (3)^(2/3) ≈ 12 * 2.0801 = 24.96 — but normalize so regular = 1.
-    # regular tet edge=1: V = sqrt(2)/12, sum L_sq = 6.
-    # raw = (3V)^(2/3) / sum L_sq = (sqrt(2)/4)^(2/3) / 6 = 0.0857
-    # 그래서 Q = raw / 0.0857 → regular = 1.
-    raw = np.zeros(n_t, dtype=np.float64)
-    raw[safe] = (3.0 * abs_vol[safe]) ** (2.0 / 3.0) / sum_l_sq[safe]
-    Q = raw / 0.0857  # regular = 1.
-    Q = np.clip(Q, 0.0, 1.0)
-    # inverted tets → 0.
-    Q[vol <= 0] = 0.0
+        e_idx = tets[:, _TET_EDGES]
+        p0 = pts[e_idx[..., 0]]
+        p1 = pts[e_idx[..., 1]]
+        e_lens_sq = ((p1 - p0) ** 2).sum(axis=-1)  # (T, 6).
+        sum_l_sq = e_lens_sq.sum(axis=1)
+
+        safe = sum_l_sq > 1e-30
+        Q = np.zeros(n_t, dtype=np.float64)
+        # constant: 12 * (3)^(2/3) ≈ 12 * 2.0801 = 24.96 — but normalize so regular = 1.
+        # regular tet edge=1: V = sqrt(2)/12, sum L_sq = 6.
+        # raw = (3V)^(2/3) / sum L_sq = (sqrt(2)/4)^(2/3) / 6 = 0.0857
+        # 그래서 Q = raw / 0.0857 → regular = 1.
+        raw = np.zeros(n_t, dtype=np.float64)
+        raw[safe] = (3.0 * abs_vol[safe]) ** (2.0 / 3.0) / sum_l_sq[safe]
+        Q = raw / 0.0857  # regular = 1.
+        Q = np.clip(Q, 0.0, 1.0)
+        # inverted tets → 0.
+        Q[vol <= 0] = 0.0
 
     return Q, TetQShapeResult(
         n_tets=n_t,

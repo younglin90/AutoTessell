@@ -10,6 +10,15 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
+try:  # pragma: no cover - exercised by C-kernel tests when available.
+    from core.generator.native_tet._native import (
+        surface_feature_report_stats_batch as _c_surface_feature_report_stats_batch,
+        surface_unique_edge_length_stats_batch as _c_surface_unique_edge_length_stats_batch,
+    )
+except Exception:  # pragma: no cover - native extension is optional.
+    _c_surface_feature_report_stats_batch = None
+    _c_surface_unique_edge_length_stats_batch = None
+
 
 @dataclass
 class FeatureReport:
@@ -55,27 +64,56 @@ def feature_report(
         rep.elapsed_s = time.perf_counter() - t0
         return rep
 
-    # edge length stats.
-    edges = np.concatenate([
-        F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]],
-    ], axis=0)
-    edges = np.sort(edges, axis=1)
-    edges_unique = np.unique(edges, axis=0)
-    e_lens = np.linalg.norm(V[edges_unique[:, 1]] - V[edges_unique[:, 0]], axis=1)
-    rep.edge_min = float(e_lens.min())
-    rep.edge_max = float(e_lens.max())
-    p01, p99 = np.percentile(e_lens, [1, 99])
-    rep.edge_p99_ratio = float(p99 / max(p01, 1e-30))
+    # edge length / sharp-edge stats.
+    n_total_edges = 0
+    feature_edges_done = False
+    native_feature_report = None
+    if _c_surface_feature_report_stats_batch is not None:
+        cos_thresh = float(np.cos(np.deg2rad(sharp_angle_deg)))
+        native_feature_report = _c_surface_feature_report_stats_batch(V, F, cos_thresh)
 
-    # sharp edges via existing utility.
-    try:
-        from core.analyzer.feature_edges import extract_feature_edges
-        info = extract_feature_edges(V, F, feature_angle_deg=sharp_angle_deg)
-        rep.n_sharp_edges = int(info.n_sharp_dihedral_edges)
+    if native_feature_report is not None:
+        counts, length_stats = native_feature_report
+        n_total_edges, _n_feature, _n_boundary, n_sharp, _n_corners = counts
+        edge_min, edge_max, p01, p99 = length_stats
+        rep.edge_min = float(edge_min)
+        rep.edge_max = float(edge_max)
+        rep.edge_p99_ratio = float(p99 / max(p01, 1e-30))
+        rep.n_sharp_edges = int(n_sharp)
+        rep.sharp_ratio = float(n_sharp) / max(n_total_edges, 1)
+        feature_edges_done = True
+
+    native_edge_stats = None
+    if not feature_edges_done and _c_surface_unique_edge_length_stats_batch is not None:
+        native_edge_stats = _c_surface_unique_edge_length_stats_batch(V, F)
+
+    if not feature_edges_done and native_edge_stats is not None:
+        n_total_edges, edge_min, edge_max, p01, p99 = native_edge_stats
+        rep.edge_min = float(edge_min)
+        rep.edge_max = float(edge_max)
+        rep.edge_p99_ratio = float(p99 / max(p01, 1e-30))
+    elif not feature_edges_done:
+        edges = np.concatenate([
+            F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]],
+        ], axis=0)
+        edges = np.sort(edges, axis=1)
+        edges_unique = np.unique(edges, axis=0)
+        e_lens = np.linalg.norm(V[edges_unique[:, 1]] - V[edges_unique[:, 0]], axis=1)
+        rep.edge_min = float(e_lens.min())
+        rep.edge_max = float(e_lens.max())
+        p01, p99 = np.percentile(e_lens, [1, 99])
+        rep.edge_p99_ratio = float(p99 / max(p01, 1e-30))
         n_total_edges = int(edges_unique.shape[0])
-        rep.sharp_ratio = float(info.n_sharp_dihedral_edges) / max(n_total_edges, 1)
-    except Exception as exc:
-        rep.notes.append(f"feature_edges skipped: {exc}")
+
+    if not feature_edges_done:
+        # sharp edges via existing utility.
+        try:
+            from core.analyzer.feature_edges import extract_feature_edges
+            info = extract_feature_edges(V, F, feature_angle_deg=sharp_angle_deg)
+            rep.n_sharp_edges = int(info.n_sharp_dihedral_edges)
+            rep.sharp_ratio = float(info.n_sharp_dihedral_edges) / max(n_total_edges, 1)
+        except Exception as exc:
+            rep.notes.append(f"feature_edges skipped: {exc}")
 
     # curvature.
     try:
