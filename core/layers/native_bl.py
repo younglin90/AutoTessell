@@ -82,6 +82,32 @@ def _local_thickness_factor(
     return factors
 
 
+def _nearby_opposite_front_mask(
+    front_normals: np.ndarray,
+    front_points: np.ndarray,
+    *,
+    normal_dot_threshold: float = -0.5,
+) -> np.ndarray:
+    """Conservative local opposing-front probe for per-vertex BL caps.
+
+    Only local pairs are considered; distant opposing normals on separate
+    components must not shrink an otherwise valid wall layer.
+    """
+    normals = np.asarray(front_normals, dtype=np.float64)
+    points = np.asarray(front_points, dtype=np.float64)
+    if normals.ndim != 2 or points.ndim != 2 or len(points) != len(normals):
+        return np.zeros(len(points), dtype=bool)
+    if len(points) < 2:
+        return np.zeros(len(points), dtype=bool)
+    span = float(np.linalg.norm(np.ptp(points, axis=0)))
+    if span <= 1.0e-30:
+        return np.zeros(len(points), dtype=bool)
+    dot = normals @ normals.T
+    distance = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+    np.fill_diagonal(distance, np.inf)
+    return ((dot < normal_dot_threshold) & (distance <= span * 0.25)).any(axis=1)
+
+
 def _check_prism_front_collision(
     front_normals: np.ndarray,
     front_points: np.ndarray,
@@ -6599,16 +6625,21 @@ def generate_native_bl(
         """
         if _BL_QQQ4_LOCAL_THICKNESS and _BL_QQQ1_FRONT_COLLISION:
             try:
-                # vertex 단위 collision_mask: 인접 wall vertex 와 법선이 거의 반대(dot<-0.5)
+                # vertex 단위 collision_mask: local opposing front only.
                 wall_vn = np.array([vnorm[v] for v in wall_vert_indices])
-                dots_v = wall_vn @ wall_vn.T
-                np.fill_diagonal(dots_v, 0.0)
-                coll_v = (dots_v < -0.5).any(axis=1)  # shape (Nw,)
+                coll_v = _nearby_opposite_front_mask(
+                    wall_vn, points[np.asarray(wall_vert_indices, dtype=np.int64)]
+                )
                 factors_w = _local_thickness_factor(coll_v, len(wall_vert_indices), thin_factor=0.5)
                 # vertex_scale_pass 와 merge (곱); local copy 로 caller 영향 차단
                 vertex_scale_pass = dict(vertex_scale_pass)
                 for vi_idx, v in enumerate(wall_vert_indices):
                     vertex_scale_pass[v] = vertex_scale_pass.get(v, 1.0) * float(factors_w[vi_idx])
+                if use_per_v_cum_pass and vertex_cum_map_pass is not None:
+                    vertex_cum_map_pass = {
+                        vertex: np.asarray(offsets, dtype=np.float64).copy() * float(factors_w[index])
+                        for index, (vertex, offsets) in enumerate(vertex_cum_map_pass.items())
+                    }
             except Exception as _exc:
                 import logging as _lg
                 _lg.getLogger(__name__).warning("native_bl_qqq5_skipped reason=%s", str(_exc)[:120])
