@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Build AutoTessell C++ extensions (cinolib_hex, robusthex)
+# Build AutoTessell C++ extensions.
 #
 # Usage:
 #   ./auto_tessell_core/build_extensions.sh
 #   ./auto_tessell_core/build_extensions.sh --clean
+#   ./auto_tessell_core/build_extensions.sh --clean --native-only
 #
 # Requirements:
 #   - cmake >= 3.15
-#   - g++ with C++17 support
+#   - g++ with C++23 support
 #   - pybind11 (pip install pybind11)
 #   - libeigen3-dev
 #   - libtbb-dev
@@ -16,13 +17,24 @@
 #       - robust_hex_dominant_meshing (git clone ...)
 #         with submodules: ext/tbb, ext/tetgen, ext/pcg32, ext/rply
 
-set -e
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
+PYTHON_BIN="${PYTHON:-python3}"
+CLEAN=0
+NATIVE_ONLY=0
 
-PYBIND11_DIR="$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+for arg in "$@"; do
+    case "$arg" in
+        --clean) CLEAN=1 ;;
+        --native-only) NATIVE_ONLY=1 ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+    esac
+done
 
-if [[ "$1" == "--clean" ]]; then
+PYBIND11_DIR="$($PYTHON_BIN -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+
+if [[ "$CLEAN" == 1 ]]; then
     echo "Cleaning build directory..."
     rm -rf "$BUILD_DIR"
 fi
@@ -30,15 +42,35 @@ fi
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-cmake "$SCRIPT_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -Dpybind11_DIR="$PYBIND11_DIR" \
+cmake_args=(
+    "$SCRIPT_DIR"
+    -DCMAKE_BUILD_TYPE=Release
+    -Dpybind11_DIR="$PYBIND11_DIR"
     -Wno-dev
+)
 
-# Build core native metric kernels first; they have no third-party meshing
-# source dependency and speed up NativeMeshChecker when present.
-cmake --build . --target native_metrics -j"$(nproc)"
-echo "native_metrics built: $BUILD_DIR/native_metrics*.so"
+if [[ "$NATIVE_ONLY" == 1 ]]; then
+    cmake_args+=(
+        -DBUILD_ROBUSTHEX=OFF
+        -DBUILD_FTETWILD=OFF
+        -DBUILD_CFMESH=OFF
+    )
+fi
+
+cmake "${cmake_args[@]}"
+
+# Core kernels have no external mesher dependency. Keep this list explicit so a
+# successful build proves every Python hot-path wrapper remains buildable.
+native_targets=(native_metrics native_polymesh native_snap native_hex_quality)
+for target in "${native_targets[@]}"; do
+    cmake --build . --target "$target" -j"$(nproc)"
+    echo "$target built: $BUILD_DIR/$target*.so"
+done
+
+if [[ "$NATIVE_ONLY" == 1 ]]; then
+    echo "Done. Native-only extensions built in $BUILD_DIR"
+    exit 0
+fi
 
 cmake --build . --target cinolib_hex -j"$(nproc)"
 echo ""

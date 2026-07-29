@@ -4,6 +4,12 @@ CAD/mesh input to OpenFOAM `polyMesh`. Native-first: self-implemented engines ru
 first; external engines are reference/fallback only. Never add an external dependency
 without a written self-implementation plan.
 
+Performance-sensitive geometry, topology, quality, and search kernels are C++23-first
+and exposed through thin pybind11/NumPy bindings. Python remains the orchestration,
+schema, logging, and test layer. Replace a Python kernel only after parity,
+surface-invariant, determinism, and verification-ladder checks pass; never perform a
+wholesale rewrite.
+
 ## Pipeline
 
 `Analyzer -> Preprocessor -> Strategist -> Generator -> Evaluator`
@@ -41,6 +47,8 @@ without a written self-implementation plan.
    literature and public reference implementations. Before reporting an inaccessible DOI,
    search the local PDF manifests and archive; never request a listed paper again.
 7. Parallelization/performance follows correctness.
+8. Keep only active worktree checkouts. Completed clean worktrees may be removed after
+   their branch ref is verified; dirty worktrees are user assets and must be preserved.
 
 ## Load only when relevant
 
