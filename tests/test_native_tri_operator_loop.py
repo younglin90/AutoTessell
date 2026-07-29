@@ -433,4 +433,61 @@ def test_frey_sizing_sphere_is_finite_and_curvature_adaptive() -> None:
         tx.vertex_target_lengths,
         estimate_curvature_sizing(vertices, faces, 0.01),
     )
+    radius = float(np.median(np.linalg.norm(vertices - np.mean(vertices, axis=0), axis=1)))
+    analytic_length = float(np.sqrt(6.0 * 0.01 * radius - 3.0 * 0.01**2))
+    assert float(np.median(lengths)) == pytest.approx(analytic_length, rel=0.01)
     assert float(np.ptp(lengths)) < 0.5 * float(np.median(lengths))
+
+
+def test_curvature_edge_target_uses_conservative_endpoint_minimum() -> None:
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+    tx = OperatorTransaction(vertices, faces, curvature_epsilon=0.01)
+    tx.vertex_target_lengths = np.array([0.2, 0.8, 1.0], dtype=float)
+    assert tx._edge_target_length((0, 1), None) == pytest.approx(0.2)
+
+
+def test_sizing_aware_relocation_uses_triangle_barycenter_weights() -> None:
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    faces = _tet_surface()[1]
+    tx = OperatorTransaction(vertices, faces, curvature_epsilon=0.01)
+    tx.vertex_target_lengths = np.array([1.0, 1.0, 1.0, 10.0], dtype=float)
+
+    result = tx._sizing_weighted_barycenter(
+        tx.state,
+        0,
+        incident_faces=tx._state_vertex_faces()[0],
+    )
+    assert result is not None
+    target, normal = result
+    assert np.isfinite(target).all()
+    assert np.isfinite(normal).all()
+
+    weights = []
+    barycenters = []
+    for face_index in tx._state_vertex_faces()[0]:
+        face = faces[face_index]
+        tri = vertices[face]
+        area = 0.5 * np.linalg.norm(np.cross(tri[1] - tri[0], tri[2] - tri[0]))
+        weights.append(area * float(np.mean(tx.vertex_target_lengths[face])))
+        barycenters.append(np.mean(tri, axis=0))
+    expected = np.average(np.asarray(barycenters), axis=0, weights=np.asarray(weights))
+    np.testing.assert_allclose(target, expected)
+
+    report = tx.smooth_vertex(
+        0,
+        relocation_lambda=0.1,
+        sizing_aware_relocation=True,
+    )
+    assert report.accepted

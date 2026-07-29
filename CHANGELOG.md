@@ -84,6 +84,77 @@
   using those absolute values as a paired baseline. Sphere is bounded at 30 s
   and reports timeout without a route conclusion.
 
+## [Unreleased] - 2026-07-27 — TRI-OPERATOR-CORPUS-1 expansion
+
+- Extended the guarded native-tri operator smoke corpus with needle and
+  multi-scale sphere fixtures; both retained manifold/watertight topology and
+  positive triangle area, while their poor angle/Hausdorff results remain open
+  quality cards.
+- Isolated the high-genus dual-torus one-round run as
+  `TRI-OPERATOR-PERF-1`: it exceeded the 120-second diagnostic budget before
+  returning. No topology guard was relaxed and no production path was changed.
+- Phase timing isolated split `16.26 s`/`1,472` accepted, collapse
+  `135.56 s`/`2,938` accepted over `2,939` full scans and `10,868,702`
+  candidate checks, then flip at least `148.16 s` for its first 225 accepted
+  reports before a 300-second bound. The next card is a semantics-preserving
+  worklist experiment with A/B output checks.
+- The report-only stable-label/heap worklist A/B was faster on cube, cylinder,
+  and thin disk but changed accepted counts and final byte digests on all three.
+  It is falsified as a drop-in replacement and remains diagnostic-only; no
+  production operator or guard was changed.
+- Added opt-in `AUTO_TESSELL_TRI_LOCAL_GUARDS1=1` for a conservative changed
+  face/one-ring guard experiment. It matched the OFF path byte-for-byte on the
+  five small corpus fixtures and passed `37` focused tests, but did not finish
+  the high-genus dual-torus flip phase within 300 seconds; it remains OFF and
+  unpromoted.
+
+## [Unreleased] - 2026-07-27 — TRI-METRIC-FIELD1 / TRI-BL-TANGENT1
+
+- Added an optional per-vertex SPD metric field to the native-tri transactional
+  operator loop. Split/collapse use unit-mesh metric hysteresis and transfer
+  the field conservatively on topology edits; the default scalar path is
+  unchanged.
+- Added tangent-only surface metric evaluation, explicit normal-discontinuity
+  and feature-edge rejection, and metric feature-vertex smoothing locks.
+  Full BL normal spacing remains a separate handoff and does not move surface
+  vertices.
+- Verification: all native-tri tests pass (`35 passed`), including guarded
+  metric split/collapse, feature rejection, and deterministic fixture audits.
+- Added a report-only BL handoff audit that separates tangent and normal
+  metric lengths and explicitly counts feature-vertex rejection. Full suite:
+  `37 passed`; no normal-layer points are moved.
+
+- Repeated the four-fixture metric audit with byte-identical output: cube
+  isotropic `16/16`, sphere curvature target `0.160770–0.172150`, cylinder
+  target `0.25–2.0`, and BL proxy eigenvalues `16–1600`. Sharp-feature tangent
+  rejection remained cube `18/18`, cylinder `192/192`; focused metric/operator
+suite remained `33 passed`. No normal-layer placement was added.
+
+## [Unreleased] - 2026-07-27 — TRI-CORPUS-1 expanded L2 baseline.
+
+- Isolated ten L2 native-remesh fixtures with per-shape failure capture. Nine
+  measured; sharp micro-ridge exposed the existing empty-face
+  `_tangential_relocate` `IndexError`.
+- Cube/sphere remained manifold and watertight; cylinder, thin disk, needle,
+  perforated plate, multi-scale sphere, and dual torus violated topology or
+  geometry contracts. Feature-recall proxies ranged from `66.7%` on cube to
+  `0.024%` on the perforated plate.
+- Retained the JSON corpus report and did not change `native_remesh` or wire
+  the native-tri operator loop into production. This is a baseline gate, not a
+  repair card.
+
+## [Unreleased] - 2026-07-27 — TRI-OPERATOR-CORPUS-1 first guarded round.
+
+- Added a report-only five-fixture direct operator-loop corpus runner. One
+  split→collapse→flip round with smoothing disabled kept cube, sphere,
+  cylinder, and thin disk manifold/watertight; wing remained manifold but
+  open as expected.
+- Accepted/rejected reports were `16/3`, `0/0`, `204/18`, `176/22`, and
+  `34/14`; all output triangles were finite and positive-area.
+- Repeated JSON output was byte-identical. No production tier wiring or guard
+  relaxation was added; thin-disk quality and wing closure remain separate
+  cards.
+
 ## [Unreleased] - 2026-07-26 — TET-MM-1 diagnostic KILL.
 
 - Evaluated frozen-boundary Huang/Dassi MMPDE smoothing alone on fixed naca

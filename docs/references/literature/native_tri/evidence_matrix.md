@@ -121,3 +121,293 @@ contracts. Candidate discovery remains the unchanged brute-force AABB scan.
 the deterministic index was slower on all three despite bit-exact candidate,
 attribution, and repeat equivalence; see `TRI-SHELL-CANDIDATE1-KILL.md`.
 Full DOMAIN completion remains separate.
+
+## 2026-07-27 — TRI-CURV-SIZE1
+
+- Existing implementation: `estimate_curvature_sizing()` with guarded Dunyach
+  radicand, flat fallback, and bounded length extension; operator-loop edges
+  consume endpoint-mean target lengths.
+- `epsilon=0.01` direct measurement: cube `L=0.25/0.25/0.25` (lower bound),
+  sphere `L=0.1608498/0.1722745/0.1724617` (min/median/max).
+- One sizing-aware round with smoothing disabled preserved watertight edge
+  incidence `[2]` on cube and sphere; cube accepted 55 guarded operations,
+  sphere accepted 0 at this target.
+- `tests/test_native_tri*.py`: `21 passed`.
+- **Decision:** scalar sizing measured/retained; anisotropic metric algebra and
+  BL metric intersection remain separate cards.
+
+## 2026-07-27 — TRI-METRIC-FIELD1 / SIZING-BL-INTERSECT1
+
+- Added an unconnected primitive module
+  `core/preprocessor/native_tri/metric.py`: finite/SPD audit, tangent/normal
+  BL source metric, metric edge lengths, and conservative SPD intersection.
+- The intersection is a generalized-eigenvalue Loewner upper bound, so neither
+  surface nor BL requested resolution is silently relaxed. Equal fields are
+  idempotent and rigid coordinate rotations commute with the operation.
+- Four analytic tests pass: diagonal intersection/dominance, rotation
+  covariance, requested tangent/normal eigenvalues, and endpoint metric edge
+  length. Existing native-tri tests remain `21 passed`; the full native-tri
+  glob including the eight metric tests is `29 passed`.
+- **Not wired:** no split/collapse/flip/smooth behavior changed. The next gate
+  is a four-fixture isotropic/curvature/BL measurement before any operator-loop
+  integration.
+
+### Four-fixture result
+
+- Cube isotropic: all 8 metrics valid, condition `1.0`, edge metric lengths
+  `4.0–5.657`.
+- Sphere curvature field: target lengths `0.16077–0.17215`, all 162 metrics
+  valid, edge lengths `1.603–1.892`.
+- Cylinder curvature field: target lengths `0.25–2.0`, all 66 metrics valid,
+  edge lengths `0.784–8.038`.
+- Cube BL proxy (`normal_length=0.1`): SPD audit passed, but full 3-D edge
+  lengths inflated to `32.8–65.1`. The normal eigenvalue must not participate
+  in surface-edge evaluation at sharp corners; tangent surface spacing and
+  normal BL placement are separate quantities.
+- **Decision:** do not wire the full BL proxy into operators. Open the next
+  measurement as tangent-only metric evaluation plus an explicit normal-layer
+  handoff/feature-corner rejection rule.
+- Feature-aware tangent audit: sphere had `0` vertices above 45 degrees and
+  `480/480` evaluable edges; cube had `8` feature vertices and rejected
+  `18/18` edges; capped cylinder had `64` feature vertices and rejected
+  `192/192` edges. No feature vertex was smoothed or moved.
+
+## 2026-07-27 — SIZING-METRIC-ALG1 guarded operator handoff
+
+- `OperatorTransaction` now accepts an optional per-vertex `(n, 3, 3)` SPD
+  `metric_field`; the default `None` path is unchanged.
+- With no scalar target override, split/collapse hysteresis uses the endpoint
+  metric length and the unit-mesh bounds `4/3` and `4/5`. World-space link,
+  fold-over, and exact-orientation guards remain active.
+- A split inserts an endpoint-intersection metric; a collapse replaces the
+  keeper metric with the same conservative SPD intersection before removing
+  the victim. A custom candidate that changes vertex count without this
+  transaction handoff is rejected rather than leaving a stale field.
+- Verification: single-edge split and cube-edge collapse both remap the field
+  with finite positive eigenvalues; metric-only `run_one_round(smooth=False)`
+  executes without a scalar target; invalid field length is rejected.
+- Full native-tri glob plus the new handoff checks: **33 passed**. No BL normal
+  metric is wired into surface operators; tangent-only evaluation and the
+  separate normal-layer handoff remain the next card.
+
+## 2026-07-27 — TRI-BL-TANGENT1 guarded surface handoff
+
+- `OperatorTransaction` can now receive endpoint normals and an optional
+  feature-vertex mask alongside the SPD field. Surface split/collapse
+  hysteresis uses only the tangent projection; the BL normal eigenvalue is
+  deliberately ignored for surface edges.
+- Edges whose endpoint normals do not define an allowed common tangent plane,
+  or which touch a declared feature vertex, are explicitly rejected rather
+  than evaluated with a fabricated tangent plane. Declared metric feature
+  vertices are also locked against smoothing; topology-changing operations
+  conservatively remap normals and the feature mask.
+- Synthetic tangent/feature and normal-discontinuity cases plus the complete
+  native-tri glob pass: **35 passed**. This closes the surface-side handoff
+  only; normal-layer placement remains unimplemented and separate.
+
+## 2026-07-27 — TRI-BL-HANDOFF1 report-only audit
+
+- Added `audit_bl_handoff()` and `BLHandoffReport` to separate reciprocal
+  metric strength along the wall normal from the two tangent lengths.
+- The analytic BL proxy (`L_t=0.5`, `L_n=0.1`) reports exactly those scales;
+  feature vertices are counted as explicit tangent rejections, not assigned a
+  fabricated plane. No points, normals, or operator decisions are mutated.
+- Full native-tri glob plus the handoff tests: **37 passed**. This closes the
+  audit card; production normal-layer placement remains a later feature/BL
+  integration card.
+
+### `TRI-METRIC-FIELD1` four-fixture repeat audit — 2026-07-27
+
+The report-only metric diagnostic was repeated and its output was
+byte-identical. Cube isotropic metrics had eigenvalues `16/16` and edge metric
+lengths `4.0–5.656854`; sphere curvature sizing had target lengths
+`0.160770–0.172150` and edge lengths `1.603004–1.892360`; cylinder had target
+lengths `0.25–2.0` and edge lengths `0.784137–8.038338`. The BL proxy with
+normal length `0.1` had eigenvalues `16–1600`, condition `100`, and full 3-D
+edge lengths `32.8013–65.1185`; sharp cube/cylinder features rejected all
+`18/18` and `192/192` surface edges from tangent evaluation.
+
+Focused metric/operator verification remained **33 passed**. Decision:
+representation, SPD audit, deterministic repeat, and guarded operator handoff
+are sound; full normal-layer placement is still not implemented, and the BL
+normal eigenvalue remains excluded from surface operators.
+
+## 2026-07-27 TRI-CORPUS-1 expanded L2 baseline
+
+`scripts/diag_native_tri_corpus_expanded.py` isolated each fixture while
+reusing the existing L2 `native_remesh.isotropic` measurement. The new
+operator-loop was not called. Nine of ten expanded fixtures returned a
+measurement; `sharp_features_micro_ridge.stl` raised the existing
+`IndexError: too many indices for array` in `_tangential_relocate` after the
+remesher produced an empty face array.
+
+| fixture | manifold | watertight | min/max angle | sampled Hausdorff | feature recall proxy |
+|---|---|---|---:|---:|---:|
+| cube | true | true | `47.64/84.73°` | `0.7833` | `66.7%` |
+| sphere | true | true | `54.11/71.78°` | `0.0169` | n/a |
+| cylinder | false | false | `11.10/153.53°` | `0.5198` | `26.6%` |
+| very thin disk | false | false | `0/176.22°` | `0.5346` | `3.1%` |
+| wing with spike | true | false | `1.10/173.40°` | `0.8299` | `5.9%` |
+| extreme needle | false | false | `0.156/179.67°` | `5.0000` | `33.3%` |
+| perforated plate | false | false | `0.199/179.24°` | `1.5001` | `0.024%` |
+| multi-scale sphere | true | false | `0/114.30°` | `0.4178` | `41.7%` |
+| sharp micro-ridge | exception | exception | — | — | — |
+| high-genus dual torus | false | false | `1.88/175.81°` | `0.2468` | n/a |
+
+This confirms the L2 path is a diagnostic baseline, not a native-tri product
+implementation: manifold/watertight, geometry drift, angle, and feature
+provenance failures are widespread outside the simple cube/sphere cases. The
+expanded corpus is therefore a correctness gate for the new guarded
+operator-loop, not a target for silently repairing `native_remesh` in this
+card. The raw report is retained at
+`tests/stl/tri_corpus_20260727.json`.
+
+## 2026-07-27 TRI-OPERATOR-CORPUS-1 first guarded round
+
+The new native-tri operator loop was exercised directly on five compact
+fixtures with one split→collapse→flip round and smoothing disabled. The
+report-only runner kept all existing link, fold-over, and exact-orientation
+guards active. The output JSON was repeated twice with identical SHA-256
+`ff0e18af4504b7fdd8a5e4115ef73bd5e8346105e9042d2c9a68f3b62732ae3c`.
+
+| fixture | accepted/rejected reports | output V/F | manifold | watertight | min doubled area | min/max angle |
+|---|---:|---:|---|---|---:|---:|
+| cube | `16/3` | `4/4` | true | true | `0.7291` | `50.58/69.71°` |
+| sphere | `0/0` | `642/1280` | true | true | `0.01817` | `54.10/71.80°` |
+| cylinder | `204/18` | `18/32` | true | true | `0.1404` | `18.95/129.60°` |
+| very thin disk | `176/22` | `58/112` | true | true | `0.00750` | `5.62/168.75°` |
+| wing with spike | `34/14` | `24/32` | true | false | `0.00418` | `9.65/153.22°` |
+
+All output coordinates were finite and no accepted transaction created a
+zero-area triangle. This closes the first correctness smoke wave, not a
+quality pass: thin disk has a near-flat angle distribution and wing remains
+open/non-watertight. Keep `TRI-OPERATOR-CORPUS-1` as a permanent gate and open
+separate quality/feature cards rather than relaxing topology or orientation
+guards.
+
+The expanded correctness wave added needle and multi-scale sphere. Needle
+completed in `61/17` accepted/rejected reports with manifold/watertight true,
+but max angle `179.79°` and sampled Hausdorff `5.0000`; multi-scale sphere
+completed in `32/68`, manifold/watertight true, with angles
+`31.26/81.79°`. A one-round high-genus dual-torus run exceeded the 120-second
+diagnostic budget before returning, so it is recorded as a performance card,
+not as a correctness failure. The seven completed rows are retained in
+`tests/stl/tri_operator_corpus_20260727.json`.
+
+### 2026-07-27 TRI-OPERATOR-PERF-1 — dual-torus phase timing
+
+The report-only profiler `scripts/profile_native_tri_operator_timeout.py`
+mirrored the production split→collapse→flip order and added no operator
+behavior. On `high_genus_dual_torus.stl` (2,047 input vertices, 4,096 input
+faces, target edge `0.3314317589`), split took `16.26 s` and accepted `1,472`
+of `6,144` initial edge candidates. Collapse took `135.56 s`, accepted `2,938`
+edits over `2,939` scans, and rebuilt the candidate list to a cumulative
+`10,868,702` candidate checks before ending at `585` vertices and `1,172`
+faces. Flip then took at least `148.16 s` for its first `225` accepted reports
+and timed out at the `300 s` diagnostic limit without reaching its phase end.
+
+This is a deterministic algorithmic scaling issue, not an observed infinite
+loop: each accepted edit triggers a full-edge scan, while `should_flip_edge`
+also constructs and scores a local candidate for every scanned edge. The
+minimum safe next card is a semantics-preserving worklist/priority-queue
+experiment with output and report-sequence A/B checks. Do not lower topology,
+fold-over, exact-predicate, or quality guards merely to meet a timeout.
+
+### 2026-07-27 TRI-OPERATOR-PERF-1 worklist A/B — falsified as drop-in equivalent
+
+The report-only `scripts/diag_native_tri_worklist_ab.py` implemented a stable
+label + heap experiment, refreshing only the local edge neighborhood after an
+accepted collapse/flip. This follows the local-priority-queue pattern used in
+classical remeshing/simplification literature, but it is not a drop-in
+replacement unless its candidate semantics are proven equivalent.
+
+| fixture | current time / accepted / V×F | worklist time / accepted / V×F | topology equal | byte digest equal |
+|---|---:|---:|---|---|
+| cube | `0.0255 s / 16 / 4×4` | `0.0135 s / 11 / 10×16` | yes | no |
+| cylinder | `0.7285 s / 204 / 18×32` | `0.1439 s / 99 / 98×192` | yes | no |
+| very thin disk | `2.3853 s / 176 / 58×112` | `0.1608 s / 120 / 84×164` | yes | no |
+
+The candidate is therefore **falsified as semantics-preserving**: it changes
+accepted-operation counts and final mesh arrays even though these three small
+fixtures remain manifold/watertight. It is retained only as a lower-bound
+performance diagnostic. Do not wire it into production or use its quality
+numbers as an improvement claim. A future optimization must either preserve
+the current full-rescan candidate ordering exactly or introduce an explicit
+new operator-loop contract and corpus gate.
+
+### 2026-07-27 TRI-OPERATOR-LOCAL-GUARD1 — opt-in equivalence experiment
+
+An opt-in `AUTO_TESSELL_TRI_LOCAL_GUARDS1=1` path was added to test a narrower
+guard domain while leaving the default OFF path untouched. It first proves the
+committed state has a valid global link condition, then checks the changed
+faces plus every face incident to their changed vertices. Ambiguous candidate
+correspondences fall back to the legacy full-mesh guard. Link, fold-over,
+exact-orientation, finite, manifold, and watertight rules were not weakened.
+
+The flag passed the core operator/metric/shell suite (`37 passed`) and matched
+the OFF path exactly on cube, cylinder, thin disk, needle, and multi-scale
+sphere: accepted/rejected reports, final coordinates/faces, quality values,
+and topology were byte-identical. On the high-genus dual-torus profiler,
+split improved `16.26 -> 11.32 s` and collapse `135.56 -> 129.39 s`; flip
+reached `250` accepted reports by `300 s` versus `225` in the OFF run, but
+neither run completed the phase inside the bound. This is an equivalence
+success on the small corpus but not a sufficient performance win for
+promotion. Keep the flag opt-in and record the card as **measured,
+insufficient** pending a truly exact-result-preserving reduction of full-mesh
+validation cost.
+
+### 2026-07-27 TRI-CURV-SIZE1 repeat and operator smoke
+
+The optional scalar curvature lane was rerun on the current three benchmark
+fixtures with `epsilon=0.01`. The sizing field remained finite and
+deterministic: cube `0.125/0.137108/1.000` (min/median/max after one guarded
+round), sphere `0.160850/0.172274/0.172462`, and cylinder
+`0.125/0.125/1.000`. One no-smoothing round accepted `55` cube operations,
+`0` sphere operations, and `304` cylinder operations. All three outputs
+remained manifold and watertight. The current metric/operator/guard suite is
+`34 passed`.
+
+This confirms the scalar Dunyach field and endpoint-mean hysteresis handoff,
+but not a production default: the cylinder field spans cap/side curvature
+classes and the cube/cylinder sharp-feature mask rejects all surface edges
+that lack one common tangent plane. Anisotropic BL normal placement and
+ODT-style relocation remain separate, unconnected cards.
+
+### 2026-07-27 TRI-ADAPT-LOOP1 scalar A/B smoke
+
+The current operator loop was compared with constant world-space sizing on
+cube, sphere, and cylinder. The curvature lane (`epsilon=0.01`) kept all
+outputs manifold and watertight. Relative to the constant lane, it produced
+cube `26/48` vertices/faces with `25` accepted smooth moves (constant `8/12`,
+`8` smooth moves), sphere unchanged at `642/1280` with `641` smooth moves in
+both lanes, and cylinder `59/114` with `46` smooth moves (constant `33/62`,
+`33` smooth moves). This is a sizing/relocation interaction measurement only;
+the current relocation target is still an area-weighted one-ring centroid, not
+the full Dunyach ODT barycenter. No default behavior or quality gate changed.
+
+The sizing handoff was then tightened to use the conservative minimum of the
+two endpoint target lengths for each edge. The previous endpoint mean could
+relax an edge whose one endpoint required finer resolution; the minimum keeps
+the hysteresis decision conservative without changing the topology guards.
+The focused metric/operator/local-guard suite passed `35` tests, and the
+metric audit remained finite and SPD on cube, sphere, and cylinder. This is
+still a scalar sizing-policy change in the opt-in native-tri lane; it is not
+the anisotropic ODT/BL relocation card.
+
+### 2026-07-27 TRI-ODT-RELAX1 — sizing-aware barycenter diagnostic
+
+The opt-in `sizing_aware_relocation=True` path now implements Dunyach
+equation (6): each incident triangle barycenter is weighted by its area and
+the mean of its three vertex target lengths. The existing tangent projection,
+surface projection, exact orientation, fold-over, manifold, and rollback
+guards remain unchanged; the default centroid path is unchanged.
+
+| fixture | centroid min angle | sizing-aware min angle | accepted smooth | topology/finite |
+|---|---:|---:|---:|---|
+| cube | `15.3643°` | `17.1170°` | `25 / 25` | pass / pass |
+| sphere | `52.8198°` | `53.5676°` | `641 / 641` | pass / pass |
+| cylinder | `0.4866°` | `3.8507°` | `50 / 53` | pass / pass |
+
+The six-row report repeated byte-identically. This is a measured opt-in
+improvement, not a production-default promotion: feature-line sliding,
+two-sided envelope gating, and anisotropic BL intersection remain open.

@@ -21,13 +21,25 @@ from .bijective_shell import (
     ShellCheckpointReport,
     ShellProvenanceReport,
 )
+from .metric import (
+    audit_spd_metrics,
+    intersect_spd_metrics,
+    metric_edge_lengths,
+    tangent_metric_edge_lengths,
+)
 
 _SHELL_PROVENANCE_ENV = "AUTO_TESSELL_TRI_SHELL_PROVENANCE1"
+_LOCAL_GUARDS_ENV = "AUTO_TESSELL_TRI_LOCAL_GUARDS1"
 
 
 def shell_provenance_reporting_enabled() -> bool:
     """Return whether the default-OFF provenance census is enabled."""
     return os.environ.get(_SHELL_PROVENANCE_ENV) == "1"
+
+
+def local_guard_path_enabled() -> bool:
+    """Return whether the opt-in local-equivalence guard path is enabled."""
+    return os.environ.get(_LOCAL_GUARDS_ENV) == "1"
 
 #: One triangle is three ``float64`` points, i.e. 9 * 8 bytes of coordinates.
 _TRIANGLE_KEY_BYTES = 72
@@ -279,6 +291,10 @@ class OperatorTransaction:
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
         curvature_epsilon: float | None = None,
+        metric_field: np.ndarray | None = None,
+        metric_normals: np.ndarray | None = None,
+        metric_feature_vertices: np.ndarray | None = None,
+        metric_max_normal_angle_deg: float | None = None,
     ) -> None:
         self._state = MeshState(
             np.asarray(vertices, dtype=np.float64).copy(),
@@ -297,6 +313,26 @@ class OperatorTransaction:
         self.vertex_target_lengths: np.ndarray | None = None
         if curvature_epsilon is not None:
             self._refresh_curvature_sizing()
+        if metric_field is not None and len(metric_field) != len(self.state.vertices):
+            raise ValueError("metric_field length must match vertices")
+        self.metric_field = self._validate_metric_field(metric_field)
+        self.metric_normals = self._validate_metric_normals(metric_normals)
+        if self.metric_normals is not None and self.metric_field is None:
+            raise ValueError("metric_normals require metric_field")
+        if metric_feature_vertices is not None and self.metric_normals is None:
+            raise ValueError("metric_feature_vertices require metric_normals")
+        self.metric_feature_vertices = self._validate_metric_feature_vertices(
+            metric_feature_vertices,
+        )
+        if metric_max_normal_angle_deg is not None and (
+            metric_max_normal_angle_deg < 0.0
+            or not np.isfinite(metric_max_normal_angle_deg)
+        ):
+            raise ValueError("metric_max_normal_angle_deg must be finite and non-negative")
+        self.metric_max_normal_angle_deg = metric_max_normal_angle_deg
+        self._pending_metric_field: np.ndarray | None = None
+        self._pending_metric_normals: np.ndarray | None = None
+        self._pending_metric_feature_vertices: np.ndarray | None = None
         self.shell_checkpoint_reports: list[ShellCheckpointReport] = []
         self.shell_provenance_reports: list[ShellProvenanceReport] = []
         self.shell_provenance_report_failures: list[str] = []
@@ -450,6 +486,77 @@ class OperatorTransaction:
             return None
         return incident
 
+    @classmethod
+    def _local_guard_inputs(
+        cls,
+        before: MeshState,
+        after: MeshState,
+        face_correspondence: FaceCorrespondence | None,
+    ) -> tuple[MeshState, np.ndarray, FaceCorrespondence] | None:
+        """Return a conservative local guard view when unchanged faces are known.
+
+        The caller has already constructed a candidate from a valid committed
+        state.  A correspondence pair whose corner coordinates differ marks a
+        geometrically changed face; all faces incident to those corners are
+        included for the local topology census.  If the candidate contract is
+        ambiguous, return ``None`` so the legacy full-mesh guards remain in
+        force.  This helper never changes the candidate or the acceptance rule;
+        it only identifies the smallest safe proof domain for the opt-in path.
+        """
+        if face_correspondence is None or not face_correspondence:
+            return None
+        if not np.isfinite(after.vertices).all():
+            return None
+        pairs = np.asarray(face_correspondence, dtype=np.int64)
+        if pairs.ndim != 2 or pairs.shape[1] != 2:
+            return None
+        old_indices, new_indices = pairs[:, 0], pairs[:, 1]
+        if (
+            old_indices.min() < 0
+            or old_indices.max() >= len(before.faces)
+            or new_indices.min() < 0
+            or new_indices.max() >= len(after.faces)
+        ):
+            return None
+        old_triangles = before.vertices[before.faces[old_indices]]
+        new_triangles = after.vertices[after.faces[new_indices]]
+        changed = np.any(old_triangles != new_triangles, axis=(1, 2))
+        selected_pairs = pairs[changed] if changed.any() else pairs
+        selected_new = np.unique(selected_pairs[:, 1])
+        if selected_new.size == 0:
+            return None
+        affected_vertices = np.unique(after.faces[selected_new].reshape(-1))
+        local_mask = np.any(np.isin(after.faces, affected_vertices), axis=1)
+        local_indices = np.flatnonzero(local_mask)
+        if local_indices.size == 0:
+            return None
+        local_faces = after.faces[local_indices]
+        new_position = {int(index): position for position, index in enumerate(local_indices.tolist())}
+        local_pairs = tuple(
+            (int(old_index), new_position[int(new_index)])
+            for old_index, new_index in selected_pairs.tolist()
+            if int(new_index) in new_position
+        )
+        if not local_pairs:
+            return None
+        return MeshState(after.vertices, local_faces), selected_new, local_pairs
+
+    @classmethod
+    def _local_exact_orientation_guard(
+        cls,
+        after: MeshState,
+        selected_new: np.ndarray,
+    ) -> bool:
+        """Check only changed faces; unchanged faces inherit the valid state."""
+        triangles = after.vertices[after.faces[selected_new]]
+        if not np.isfinite(triangles).all():
+            return False
+        keys = _triangle_keys(triangles)
+        return all(
+            cls._triangle_orientation_certified(triangle, key)
+            for triangle, key in zip(triangles, keys)
+        )
+
     def attempt(
         self,
         operator: OperatorKind,
@@ -473,24 +580,70 @@ class OperatorTransaction:
                 np.asarray(candidate[0], dtype=np.float64),
                 np.asarray(candidate[1], dtype=np.int64),
             )
-            if not self._link_condition(after):
-                return GuardReport(False, operator, "link_condition_failed")
-            after_triangles = after.vertices[after.faces]
-            after_keys = _triangle_keys(after_triangles)
-            if not self._foldover_guard(
-                before,
-                after,
-                face_correspondence,
-                after_triangles=after_triangles,
-                after_keys=after_keys,
-            ):
-                return GuardReport(False, operator, "foldover_guard_failed")
-            if not self._exact_orientation_guard(
-                after,
-                triangles=after_triangles,
-                triangle_keys=after_keys,
-            ):
-                return GuardReport(False, operator, "exact_orientation_failed")
+            pending_metric = self._pending_metric_field
+            if self.metric_field is not None and len(after.vertices) != len(before.vertices):
+                if pending_metric is None or len(pending_metric) != len(after.vertices):
+                    return GuardReport(False, operator, "metric_field_shape_mismatch")
+                if (
+                    self.metric_normals is not None
+                    and (
+                        self._pending_metric_normals is None
+                        or len(self._pending_metric_normals) != len(after.vertices)
+                    )
+                ):
+                    return GuardReport(False, operator, "metric_normals_shape_mismatch")
+                if (
+                    self.metric_feature_vertices is not None
+                    and (
+                        self._pending_metric_feature_vertices is None
+                        or len(self._pending_metric_feature_vertices) != len(after.vertices)
+                    )
+                ):
+                    return GuardReport(False, operator, "metric_feature_shape_mismatch")
+            local_inputs = (
+                self._local_guard_inputs(before, after, face_correspondence)
+                if local_guard_path_enabled() and self._state_link_condition()
+                else None
+            )
+            if local_inputs is None:
+                if not self._link_condition(after):
+                    return GuardReport(False, operator, "link_condition_failed")
+                after_triangles = after.vertices[after.faces]
+                after_keys = _triangle_keys(after_triangles)
+                if not self._foldover_guard(
+                    before,
+                    after,
+                    face_correspondence,
+                    after_triangles=after_triangles,
+                    after_keys=after_keys,
+                ):
+                    return GuardReport(False, operator, "foldover_guard_failed")
+                if not self._exact_orientation_guard(
+                    after,
+                    triangles=after_triangles,
+                    triangle_keys=after_keys,
+                ):
+                    return GuardReport(False, operator, "exact_orientation_failed")
+            else:
+                local_after, selected_new, local_pairs = local_inputs
+                if not self._link_condition(local_after):
+                    return GuardReport(False, operator, "link_condition_failed")
+                local_triangles = local_after.vertices[local_after.faces]
+                local_keys = _triangle_keys(local_triangles)
+                local_correspondence = tuple(
+                    (old_index, int(new_index))
+                    for old_index, new_index in local_pairs
+                )
+                if not self._foldover_guard(
+                    before,
+                    local_after,
+                    local_correspondence,
+                    after_triangles=local_triangles,
+                    after_keys=local_keys,
+                ):
+                    return GuardReport(False, operator, "foldover_guard_failed")
+                if not self._local_exact_orientation_guard(after, selected_new):
+                    return GuardReport(False, operator, "exact_orientation_failed")
             if operator is OperatorKind.FLIP and not self._flip_improves(
                 before,
                 after,
@@ -505,6 +658,12 @@ class OperatorTransaction:
             return GuardReport(False, operator, "exact_orientation_failed")
 
         self.state = MeshState(after.vertices.copy(), after.faces.copy())
+        if pending_metric is not None:
+            self.metric_field = pending_metric.copy()
+        if self._pending_metric_normals is not None:
+            self.metric_normals = self._pending_metric_normals.copy()
+        if self._pending_metric_feature_vertices is not None:
+            self.metric_feature_vertices = self._pending_metric_feature_vertices.copy()
         return GuardReport(True, operator, "committed")
 
     def should_split_edge(
@@ -513,6 +672,9 @@ class OperatorTransaction:
         target_edge_length: float | None = None,
     ) -> bool:
         """Return whether ``edge`` exceeds the upper split hysteresis bound."""
+        metric_length = self._metric_edge_length(edge, target_edge_length)
+        if metric_length is not None:
+            return bool(np.isfinite(metric_length) and metric_length > 4.0 / 3.0)
         target = self._edge_target_length(edge, target_edge_length)
         a, b = self._edge_vertices(edge)
         length = float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
@@ -526,12 +688,16 @@ class OperatorTransaction:
         """Split one eligible edge at its midpoint and commit transactionally."""
         before = self.state.copy()
         try:
-            target = self._edge_target_length(edge, target_edge_length)
             a, b = self._edge_vertices(edge)
-            edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
-            if not np.isfinite(edge_length):
-                return GuardReport(False, OperatorKind.SPLIT, "malformed_edge")
-            if edge_length <= (4.0 / 3.0) * target:
+            metric_length = self._metric_edge_length(edge, target_edge_length)
+            if metric_length is None:
+                target = self._edge_target_length(edge, target_edge_length)
+                edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
+                if not np.isfinite(edge_length):
+                    return GuardReport(False, OperatorKind.SPLIT, "malformed_edge")
+                if edge_length <= (4.0 / 3.0) * target:
+                    return GuardReport(False, OperatorKind.SPLIT, "split_threshold_not_exceeded")
+            elif not np.isfinite(metric_length) or metric_length <= 4.0 / 3.0:
                 return GuardReport(False, OperatorKind.SPLIT, "split_threshold_not_exceeded")
 
             incident = self._state_edge_link_condition(a, b)
@@ -548,11 +714,19 @@ class OperatorTransaction:
             self.state = before
             return GuardReport(False, OperatorKind.SPLIT, "malformed_edge")
 
-        report = self.attempt(
-            OperatorKind.SPLIT,
-            (vertices, faces),
-            face_correspondence=correspondence,
-        )
+        self._pending_metric_field = self._metric_after_split(a, b)
+        self._pending_metric_normals = self._metric_normals_after_split(a, b)
+        self._pending_metric_feature_vertices = self._metric_features_after_split(a, b)
+        try:
+            report = self.attempt(
+                OperatorKind.SPLIT,
+                (vertices, faces),
+                face_correspondence=correspondence,
+            )
+        finally:
+            self._pending_metric_field = None
+            self._pending_metric_normals = None
+            self._pending_metric_feature_vertices = None
         if not report.accepted:
             self.state = before
         elif self.curvature_epsilon is not None:
@@ -565,6 +739,9 @@ class OperatorTransaction:
         target_edge_length: float | None = None,
     ) -> bool:
         """Return whether ``edge`` is below the strict collapse bound."""
+        metric_length = self._metric_edge_length(edge, target_edge_length)
+        if metric_length is not None:
+            return bool(np.isfinite(metric_length) and metric_length < 4.0 / 5.0)
         target = self._edge_target_length(edge, target_edge_length)
         a, b = self._edge_vertices(edge)
         length = float(np.linalg.norm(self.state.vertices[a] - self.state.vertices[b]))
@@ -578,13 +755,21 @@ class OperatorTransaction:
         """Collapse one eligible edge to its midpoint transactionally."""
         before = self.state.copy()
         try:
-            target = self._edge_target_length(edge, target_edge_length)
             a, b = self._edge_vertices(edge)
             a, b = min(a, b), max(a, b)
-            edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
-            if not np.isfinite(edge_length):
-                return GuardReport(False, OperatorKind.COLLAPSE, "malformed_edge")
-            if edge_length >= (4.0 / 5.0) * target:
+            metric_length = self._metric_edge_length((a, b), target_edge_length)
+            if metric_length is None:
+                target = self._edge_target_length((a, b), target_edge_length)
+                edge_length = float(np.linalg.norm(before.vertices[a] - before.vertices[b]))
+                if not np.isfinite(edge_length):
+                    return GuardReport(False, OperatorKind.COLLAPSE, "malformed_edge")
+                if edge_length >= (4.0 / 5.0) * target:
+                    return GuardReport(
+                        False,
+                        OperatorKind.COLLAPSE,
+                        "collapse_threshold_not_exceeded",
+                    )
+            elif not np.isfinite(metric_length) or metric_length >= 4.0 / 5.0:
                 return GuardReport(
                     False,
                     OperatorKind.COLLAPSE,
@@ -604,11 +789,19 @@ class OperatorTransaction:
             self.state = before
             return GuardReport(False, OperatorKind.COLLAPSE, "malformed_edge")
 
-        report = self.attempt(
-            OperatorKind.COLLAPSE,
-            (vertices, faces),
-            face_correspondence=correspondence,
-        )
+        self._pending_metric_field = self._metric_after_collapse(a, b)
+        self._pending_metric_normals = self._metric_normals_after_collapse(a, b)
+        self._pending_metric_feature_vertices = self._metric_features_after_collapse(a, b)
+        try:
+            report = self.attempt(
+                OperatorKind.COLLAPSE,
+                (vertices, faces),
+                face_correspondence=correspondence,
+            )
+        finally:
+            self._pending_metric_field = None
+            self._pending_metric_normals = None
+            self._pending_metric_feature_vertices = None
         if not report.accepted:
             self.state = before
         elif self.curvature_epsilon is not None:
@@ -677,16 +870,21 @@ class OperatorTransaction:
         vertex_index: int,
         *,
         relocation_lambda: float = 0.5,
+        sizing_aware_relocation: bool = False,
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
     ) -> GuardReport:
         """Tangentially relocate one vertex with transactional rejection.
 
-        The target is an area-weighted centroid of the vertex's one-ring
-        neighbours.  Only the displacement tangent to the area-weighted
-        vertex normal is applied.  Projection is then applied when the vertex
-        is a declared surface vertex; the full mesh is checked before commit.
+        The default target is an area-weighted centroid of the vertex's
+        one-ring neighbours.  When ``sizing_aware_relocation`` is enabled and
+        a curvature sizing field is available, the target instead uses the
+        Dunyach equation-(6) triangle-barycenter weights
+        ``area * mean(L(vertex))``.  Only the displacement tangent to the
+        area-weighted vertex normal is applied.  Projection is then applied
+        when the vertex is a declared surface vertex; the full mesh is checked
+        before commit.
         """
         before = self.state.copy()
         try:
@@ -696,6 +894,16 @@ class OperatorTransaction:
                     False,
                     OperatorKind.SMOOTH,
                     "malformed_vertex",
+                    index,
+                )
+            if (
+                self.metric_feature_vertices is not None
+                and bool(self.metric_feature_vertices[index])
+            ):
+                return GuardReport(
+                    False,
+                    OperatorKind.SMOOTH,
+                    "metric_feature_vertex_locked",
                     index,
                 )
             factor = self._relocation_factor(relocation_lambda)
@@ -711,6 +919,19 @@ class OperatorTransaction:
                     "smooth_degenerate_vertex",
                     index,
                 )
+            if sizing_aware_relocation:
+                centroid_and_normal = self._sizing_weighted_barycenter(
+                    before,
+                    index,
+                    incident_faces=self._state_vertex_faces()[index],
+                )
+                if centroid_and_normal is None:
+                    return GuardReport(
+                        False,
+                        OperatorKind.SMOOTH,
+                        "sizing_field_unavailable",
+                        index,
+                    )
             centroid, normal = centroid_and_normal
             normal_length = float(np.linalg.norm(normal))
             if not np.isfinite(normal_length) or normal_length <= np.finfo(float).tiny:
@@ -764,6 +985,8 @@ class OperatorTransaction:
             (vertices, before.faces.copy()),
             face_correspondence=correspondence,
         )
+        if report.accepted and sizing_aware_relocation and self.curvature_epsilon is not None:
+            self._refresh_curvature_sizing()
         return GuardReport(report.accepted, report.operator, report.reason, index)
 
     def smooth_vertices(
@@ -771,6 +994,7 @@ class OperatorTransaction:
         vertex_indices: Iterable[int] | None = None,
         *,
         relocation_lambda: float = 0.5,
+        sizing_aware_relocation: bool = False,
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
@@ -788,6 +1012,7 @@ class OperatorTransaction:
             self.smooth_vertex(
                 index,
                 relocation_lambda=relocation_lambda,
+                sizing_aware_relocation=sizing_aware_relocation,
                 surface_points=surface_points,
                 surface_projection=surface_projection,
                 surface_vertices=projected_vertices,
@@ -801,6 +1026,7 @@ class OperatorTransaction:
         *,
         smooth: bool = True,
         relocation_lambda: float = 0.5,
+        sizing_aware_relocation: bool = False,
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
@@ -815,7 +1041,8 @@ class OperatorTransaction:
         """
         target = (
             None
-            if target_edge_length is None and self.vertex_target_lengths is not None
+            if target_edge_length is None
+            and (self.vertex_target_lengths is not None or self.metric_field is not None)
             else self._target_length(target_edge_length)
         )
         reports: list[GuardReport] = []
@@ -856,6 +1083,7 @@ class OperatorTransaction:
             reports.extend(
                 self.smooth_vertices(
                     relocation_lambda=relocation_lambda,
+                    sizing_aware_relocation=sizing_aware_relocation,
                     surface_points=surface_points,
                     surface_projection=surface_projection,
                     surface_vertices=surface_vertices,
@@ -870,6 +1098,7 @@ class OperatorTransaction:
         *,
         smooth: bool = True,
         relocation_lambda: float = 0.5,
+        sizing_aware_relocation: bool = False,
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
@@ -879,6 +1108,7 @@ class OperatorTransaction:
             target_edge_length,
             smooth=smooth,
             relocation_lambda=relocation_lambda,
+            sizing_aware_relocation=sizing_aware_relocation,
             surface_points=surface_points,
             surface_projection=surface_projection,
             surface_vertices=surface_vertices,
@@ -890,6 +1120,7 @@ class OperatorTransaction:
         target_edge_length: float | None = None,
         *,
         relocation_lambda: float = 0.5,
+        sizing_aware_relocation: bool = False,
         surface_points: np.ndarray | None = None,
         surface_projection: SurfaceProjection | None = None,
         surface_vertices: Iterable[int] | None = None,
@@ -923,6 +1154,7 @@ class OperatorTransaction:
             reports = self.run_one_round(
                 target_edge_length,
                 relocation_lambda=relocation_lambda,
+                sizing_aware_relocation=sizing_aware_relocation,
                 surface_points=surface_points,
                 surface_projection=surface_projection,
                 surface_vertices=surface_vertices,
@@ -1060,11 +1292,177 @@ class OperatorTransaction:
             return None
         return centroid, weighted_normal
 
+    def _sizing_weighted_barycenter(
+        self,
+        mesh: MeshState,
+        vertex_index: int,
+        *,
+        incident_faces: Sequence[int] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """Return Dunyach's sizing-weighted triangle-barycenter target.
+
+        Equation (6) weights each incident triangle barycenter by its area and
+        by the average target length at that triangle's vertices.  This is an
+        opt-in relocation target; the caller still applies the tangent
+        projection and the full transactional guard before committing it.
+        """
+        lengths = self.vertex_target_lengths
+        if lengths is None or len(lengths) != len(mesh.vertices):
+            return None
+        weighted_centroid = np.zeros(3, dtype=np.float64)
+        weighted_normal = np.zeros(3, dtype=np.float64)
+        total_weight = 0.0
+        candidate_faces = (
+            mesh.faces.tolist()
+            if incident_faces is None
+            else [mesh.faces[face_index].tolist() for face_index in incident_faces]
+        )
+        for face in candidate_faces:
+            if vertex_index not in face:
+                continue
+            indices = np.asarray(face, dtype=np.int64)
+            tri = mesh.vertices[indices]
+            cross = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+            twice_area = float(np.linalg.norm(cross))
+            if not np.isfinite(twice_area) or twice_area <= np.finfo(float).tiny:
+                continue
+            face_lengths = lengths[indices]
+            length_at_barycenter = float(np.mean(face_lengths))
+            if not np.isfinite(length_at_barycenter) or length_at_barycenter <= 0.0:
+                continue
+            area = 0.5 * twice_area
+            weight = area * length_at_barycenter
+            weighted_centroid += weight * np.mean(tri, axis=0)
+            weighted_normal += area * cross / twice_area
+            total_weight += weight
+
+        if total_weight <= 0.0 or not np.isfinite(total_weight):
+            return None
+        centroid = weighted_centroid / total_weight
+        if not np.isfinite(centroid).all() or not np.isfinite(weighted_normal).all():
+            return None
+        return centroid, weighted_normal
+
     def _target_length(self, override: float | None) -> float:
         target = self.target_edge_length if override is None else override
         if target is None or not np.isfinite(target) or target <= 0.0:
             raise ValueError("target_edge_length must be finite and positive")
         return float(target)
+
+    @staticmethod
+    def _validate_metric_field(metric_field: np.ndarray | None) -> np.ndarray | None:
+        if metric_field is None:
+            return None
+        values = np.asarray(metric_field, dtype=np.float64)
+        if values.ndim != 3 or values.shape[1:] != (3, 3):
+            raise ValueError("metric_field must have shape (n, 3, 3)")
+        report = audit_spd_metrics(values)
+        if not report.valid:
+            raise ValueError("metric_field must contain finite SPD tensors")
+        return 0.5 * (values + np.swapaxes(values, 1, 2))
+
+    def _validate_metric_normals(self, normals: np.ndarray | None) -> np.ndarray | None:
+        if normals is None:
+            return None
+        values = np.asarray(normals, dtype=np.float64)
+        if values.shape != self.state.vertices.shape:
+            raise ValueError("metric_normals must have the same shape as vertices")
+        lengths = np.linalg.norm(values, axis=1)
+        if np.any(lengths <= 1e-14) or not np.isfinite(values).all():
+            raise ValueError("metric_normals must be finite and nonzero")
+        return values.copy()
+
+    def _validate_metric_feature_vertices(
+        self,
+        feature_vertices: np.ndarray | None,
+    ) -> np.ndarray | None:
+        if feature_vertices is None:
+            return None
+        values = np.asarray(feature_vertices, dtype=bool)
+        if values.shape != (len(self.state.vertices),):
+            raise ValueError("metric_feature_vertices must have shape (n,)")
+        return values.copy()
+
+    def _metric_edge_length(
+        self,
+        edge: tuple[int, int],
+        override: float | None,
+    ) -> float | None:
+        if self.metric_field is None or override is not None:
+            return None
+        a, b = self._edge_vertices(edge)
+        edge_rows = np.asarray([[a, b]], dtype=np.int64)
+        try:
+            if self.metric_normals is not None:
+                return float(
+                    tangent_metric_edge_lengths(
+                        self.state.vertices,
+                        edge_rows,
+                        self.metric_field,
+                        self.metric_normals,
+                        max_normal_angle_deg=self.metric_max_normal_angle_deg,
+                        feature_vertices=self.metric_feature_vertices,
+                    )[0],
+                )
+            return float(metric_edge_lengths(self.state.vertices, edge_rows, self.metric_field)[0])
+        except ValueError:
+            # A feature edge or discontinuous normal has no admissible tangent
+            # plane.  NaN makes both hysteresis predicates reject it without
+            # falling back to an unrelated world-space metric.
+            return float("nan")
+
+    def _metric_after_split(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_field is None:
+            return None
+        inserted = intersect_spd_metrics(
+            self.metric_field[[a]],
+            self.metric_field[[b]],
+        )[0]
+        return np.vstack((self.metric_field, inserted[None, ...]))
+
+    def _metric_after_collapse(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_field is None:
+            return None
+        merged = intersect_spd_metrics(
+            self.metric_field[[a]],
+            self.metric_field[[b]],
+        )[0]
+        values = np.delete(self.metric_field, b, axis=0)
+        values[a] = merged
+        return values
+
+    def _metric_normals_after_split(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_normals is None:
+            return None
+        inserted = self.metric_normals[a] + self.metric_normals[b]
+        length = float(np.linalg.norm(inserted))
+        if length <= 1e-14 or not np.isfinite(length):
+            return None
+        return np.vstack((self.metric_normals, inserted[None, :] / length))
+
+    def _metric_normals_after_collapse(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_normals is None:
+            return None
+        merged = self.metric_normals[a] + self.metric_normals[b]
+        length = float(np.linalg.norm(merged))
+        if length <= 1e-14 or not np.isfinite(length):
+            return None
+        values = np.delete(self.metric_normals, b, axis=0)
+        values[a] = merged / length
+        return values
+
+    def _metric_features_after_split(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_feature_vertices is None:
+            return None
+        inserted = bool(self.metric_feature_vertices[a] or self.metric_feature_vertices[b])
+        return np.concatenate((self.metric_feature_vertices, np.asarray([inserted])))
+
+    def _metric_features_after_collapse(self, a: int, b: int) -> np.ndarray | None:
+        if self.metric_feature_vertices is None:
+            return None
+        values = np.delete(self.metric_feature_vertices, b, axis=0)
+        values[a] = bool(self.metric_feature_vertices[a] or self.metric_feature_vertices[b])
+        return values
 
     def _edge_target_length(
         self,
@@ -1075,7 +1473,11 @@ class OperatorTransaction:
             return self._target_length(override)
         if self.vertex_target_lengths is not None:
             a, b = self._edge_vertices(edge)
-            return float((self.vertex_target_lengths[a] + self.vertex_target_lengths[b]) * 0.5)
+            # Dunyach et al. use the conservative endpoint minimum: a
+            # high-curvature endpoint controls the whole edge. Averaging
+            # would silently relax the fine endpoint and can suppress a
+            # required split near a feature.
+            return float(min(self.vertex_target_lengths[a], self.vertex_target_lengths[b]))
         return self._target_length(None)
 
     def _refresh_curvature_sizing(self) -> None:

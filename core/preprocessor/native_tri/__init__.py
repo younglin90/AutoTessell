@@ -25,9 +25,11 @@ from .operator_loop import (
     estimate_curvature_sizing,
     shell_provenance_reporting_enabled,
 )
+from .metric import BLHandoffReport, audit_bl_handoff
 
 __all__ = [
     "BijectiveShell",
+    "BLHandoffReport",
     "GuardReport",
     "MeshState",
     "OperatorKind",
@@ -41,6 +43,7 @@ __all__ = [
     "ShellProvenanceReport",
     "SourceFacePayload",
     "build_linear_bijective_shell",
+    "audit_bl_handoff",
     "estimate_curvature_sizing",
     "shell_provenance_reporting_enabled",
 ]
