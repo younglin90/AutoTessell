@@ -366,6 +366,68 @@ def _bounded_bl_extrusion_line_search(
     return candidate, diag
 
 
+def _repair_triangular_selected_wall_holes(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: np.ndarray,
+    neighbour: np.ndarray,
+    wall_faces: list[int],
+    face_to_patch: dict[int, tuple[int, int]],
+) -> tuple[np.ndarray, list[int], dict[str, Any]]:
+    """Close only a three-edge selected-wall hole backed by an existing face.
+
+    No coordinates are created or moved.  Ambiguous loops are reported and
+    left untouched, so input topology remains the hard authority.
+    """
+    del points, face_to_patch
+    edge_count: dict[tuple[int, int], int] = {}
+    for face_id in wall_faces:
+        face = faces[face_id]
+        if len(face) != 3:
+            continue
+        for i in range(3):
+            edge = tuple(sorted((int(face[i]), int(face[(i + 1) % 3]))))
+            edge_count[edge] = edge_count.get(edge, 0) + 1
+    open_edges = [edge for edge, count in edge_count.items() if count == 1]
+    diag: dict[str, Any] = {
+        "n_open_edges_pre": len(open_edges), "n_open_edges_post": len(open_edges),
+        "n_repaired_triangles": 0, "repairs": [],
+    }
+    if len(open_edges) != 3 or len({vertex for edge in open_edges for vertex in edge}) != 3:
+        return owner.copy(), list(wall_faces), diag
+    canonical = tuple(sorted({vertex for edge in open_edges for vertex in edge}))
+    matches = [
+        face_id for face_id, face in enumerate(faces)
+        if len(face) == 3 and tuple(sorted(int(v) for v in face)) == canonical
+    ]
+    if len(matches) != 1:
+        return owner.copy(), list(wall_faces), diag
+    match = matches[0]
+    covered = {int(owner[f]) for f in wall_faces}
+    all_cells = set(int(x) for x in owner)
+    all_cells.update(int(x) for x in neighbour)
+    candidates = sorted(all_cells - covered)
+    if len(candidates) != 1:
+        return owner.copy(), list(wall_faces), diag
+    repaired_owner = int(candidates[0])
+    faces.append(list(faces[match]))
+    owner_out = np.append(np.asarray(owner, dtype=np.int64), repaired_owner)
+    wall_out = [*wall_faces, len(faces) - 1]
+    diag.update(
+        n_open_edges_post=0,
+        n_repaired_triangles=1,
+        repairs=[{
+            "canonical_key": list(canonical),
+            "canonical_matches": [{
+                "face": int(match), "owner": int(owner[match]),
+                "neighbour": int(neighbour[match]) if match < len(neighbour) else None,
+            }],
+            "missing_owner": repaired_owner,
+        }],
+    )
+    return owner_out, wall_out, diag
+
+
 @dataclass
 class BLConfig:
     """Native BL 생성 설정."""
