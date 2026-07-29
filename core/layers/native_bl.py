@@ -8058,6 +8058,39 @@ def generate_native_bl(
                 reason=str(exc)[:120],
             )
 
+    # Read-only final gate.  The writer has already established layer
+    # connectivity; do not mutate its candidate here without a full cell
+    # topology proof.  Non-finite coordinates fail closed in the report.
+    _line_search_enabled = os.environ.get("AUTO_TESSELL_BL_EXTRUSION_LINE_SEARCH", "1") != "0"
+    extrusion_line_search_diag: dict[str, Any] = {
+        "enabled": bool(_line_search_enabled),
+        "accepted": True,
+        "mode": "read_only_gate",
+        "negative_pre": 0,
+        "negative_post": 0,
+        "n_scaled_vertices": 0,
+        "boundary_skew_pre": 0.0,
+        "non_ortho_pre": 0.0,
+        "face_weight_pre": 1.0,
+        "face_weight_post": 1.0,
+        "max_scale": 1.0,
+    }
+    if _line_search_enabled and final_points is not None:
+        _final_metrics = _bl_extrusion_metrics(
+            final_points, points, final_faces, final_owner, final_nbr,
+            base_n_cells=n_cells,
+        )
+        _negative = int(len(_final_metrics.inverted_cells))
+        extrusion_line_search_diag.update(
+            accepted=(_negative == 0),
+            negative_pre=_negative,
+            negative_post=_negative,
+            boundary_skew_pre=float(_final_metrics.max_boundary_skewness),
+            non_ortho_pre=float(_final_metrics.max_non_orthogonality),
+            face_weight_pre=float(_final_metrics.min_face_weight),
+            face_weight_post=float(_final_metrics.min_face_weight),
+        )
+
     # 쓰기
     poly_dir.mkdir(parents=True, exist_ok=True)
     _write_points(poly_dir / "points", final_points)
@@ -8279,6 +8312,7 @@ def generate_native_bl(
                 "n_safe_full_layers": int(lcr_n_safe_full),
             },
             "feature_size": feature_size_diag,
+            "extrusion_line_search": extrusion_line_search_diag,
             # C3.3 / beta2377 — anisotropic prism split diagnostic (cfMesh 동등).
             "aniso_split": {
                 "n_examined": int(aniso_split_n_examined),
