@@ -42,4 +42,3 @@ card is measurement-only (`TET-DUWANG-CONSTRAINT-PROTECTION-AUDIT1`). It must
 report the current behaviour and fail closed; no face-point splitting, Steiner
 placement, or production mutation is authorized until that ledger passes
 minimal → basic → difficult → regression validation.
-

@@ -1,8 +1,8 @@
 # Chen et al. 2011 - enhanced Steiner-point-suppression boundary recovery
 
-**Authors:** Jianjun Chen, Dawei Zhao, Zhengge Huang, Yao Zheng, Shuming Gao  
-**Venue:** *Computers & Structures* 89(5-6), 455-466 (2011)  
-**DOI:** `10.1016/j.compstruc.2010.11.016`  
+**Authors:** Jianjun Chen, Dawei Zhao, Zhengge Huang, Yao Zheng, Shuming Gao
+**Venue:** *Computers & Structures* 89(5-6), 455-466 (2011)
+**DOI:** `10.1016/j.compstruc.2010.11.016`
 **Status:** FULL_READ (user-supplied `chen2011.pdf`, pp. 457-459 visually
 checked on 2026-07-28).
 
