@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 
@@ -64,7 +65,7 @@ def test_disabled_engine_skips_gracefully(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("mt,expected_engine_contains", [
     ("tet", "native_bl"),
-    ("hex_dominant", "native_bl"),
+    ("hex_dominant", "native_hex_bl"),
     ("poly", "poly_bl_transition"),
 ])
 def test_auto_engine_routes_by_mesh_type(
@@ -86,6 +87,10 @@ def test_auto_engine_routes_by_mesh_type(
             success = True
             message = "stub"
         return _R()
+
+    def _stub_native_hex_bl(case_dir, **kw):
+        captured["engine_used"] = "native_hex_bl"
+        return True, "stub", 1
 
     # tet_bl_subdivide 경로
     def _stub_subdivide(case_dir, **kw):
@@ -111,6 +116,7 @@ def test_auto_engine_routes_by_mesh_type(
     monkeypatch.setattr(nb, "generate_native_bl", _stub_generate_native_bl)
     monkeypatch.setattr(tb, "subdivide_prism_layers_to_tet", _stub_subdivide)
     monkeypatch.setattr(pb, "run_poly_bl_transition", _stub_poly_bl)
+    monkeypatch.setattr(tlp, "_run_native_hex_bl", _stub_native_hex_bl)
 
     gen = tlp.LayersPostGenerator()
     strategy = _make_strategy(mt, engine="auto")
@@ -147,3 +153,67 @@ def test_auto_engine_unknown_mesh_type_falls_back_to_native_bl(
     case = _make_case_with_polymesh(tmp_path)
     gen.run(strategy, preprocessed_path=tmp_path / "in.stl", case_dir=case)
     assert captured.get("called") is True
+
+
+def test_native_hex_bl_rewrites_quad_caps_and_preserves_patch_types(
+    tmp_path: Path,
+) -> None:
+    """Quad caps become bulk/BL internal faces; top walls retain patch types."""
+    from core.generator.polymesh_writer import write_generic_polymesh
+    from core.generator.tier_layers_post import _run_native_hex_bl
+    from core.utils.polymesh_reader import (
+        parse_foam_boundary,
+        parse_foam_faces,
+        parse_foam_labels,
+    )
+
+    points = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    cell_faces = [[
+        [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+        [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+    ]]
+    inlet_key = tuple(sorted(cell_faces[0][0]))
+
+    def _classify(face, _points):
+        if tuple(sorted(face)) == inlet_key:
+            return "inlet", "patch"
+        return "wall", "wall"
+
+    write_generic_polymesh(
+        points, cell_faces, tmp_path, boundary_patch_classifier=_classify,
+    )
+    ok, msg, n_quad = _run_native_hex_bl(
+        tmp_path,
+        num_layers=2,
+        growth_ratio=1.2,
+        first_thickness=0.05,
+        params={},
+    )
+    assert ok, msg
+    assert n_quad == 5
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    faces = parse_foam_faces(poly_dir / "faces")
+    owner = parse_foam_labels(poly_dir / "owner")
+    neighbour = parse_foam_labels(poly_dir / "neighbour")
+    assert max(owner) + 1 == 11  # 1 bulk + 5 quads * 2 layers
+    assert len(owner) == len(faces)
+    assert len(neighbour) < len(faces)
+
+    # Each original wall quad is now an internal bulk/BL cap.  The inlet
+    # remains boundary because patch type is not wall.
+    for face in cell_faces[0][1:]:
+        cap_key = tuple(sorted(face))
+        fi = next(i for i, out_face in enumerate(faces) if tuple(sorted(out_face)) == cap_key)
+        assert fi < len(neighbour)
+        assert owner[fi] == 0
+        assert neighbour[fi] > 0
+
+    boundary = parse_foam_boundary(poly_dir / "boundary")
+    assert {entry["name"] for entry in boundary} == {"inlet", "wall"}
+    raw_boundary = (poly_dir / "boundary").read_text(encoding="utf-8")
+    assert "inlet\n    {\n        type            patch;" in raw_boundary
+    assert "wall\n    {\n        type            wall;" in raw_boundary

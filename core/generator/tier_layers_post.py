@@ -17,9 +17,12 @@
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -27,6 +30,179 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 TIER_NAME = "tier_layers_post"
+
+
+_HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
+    (0, 3, 2, 1),
+    (4, 5, 6, 7),
+    (0, 1, 5, 4),
+    (3, 7, 6, 2),
+    (0, 4, 7, 3),
+    (1, 2, 6, 5),
+)
+
+
+def _boundary_entries_with_types(boundary_file: Path) -> list[dict[str, Any]]:
+    """Read boundary entries, retaining patch ``type`` for a topology rewrite."""
+    from core.utils.polymesh_reader import parse_foam_boundary  # noqa: PLC0415
+
+    entries = parse_foam_boundary(boundary_file)
+    text = boundary_file.read_text(encoding="utf-8")
+    for entry in entries:
+        name = re.escape(str(entry.get("name", "")))
+        match = re.search(
+            rf"{name}\s*\{{(?P<body>.*?)\}}",
+            text,
+            flags=re.DOTALL,
+        )
+        if match is not None:
+            kind = re.search(r"\btype\s+([^;\s]+)\s*;", match.group("body"))
+            if kind is not None:
+                entry["type"] = kind.group(1)
+        entry.setdefault("type", "patch")
+    return entries
+
+
+def _run_native_hex_bl(
+    case_dir: Path,
+    *,
+    num_layers: int,
+    growth_ratio: float,
+    first_thickness: float,
+    params: dict[str, Any],
+) -> tuple[bool, str, int]:
+    """Append native hex stacks to existing quad wall faces.
+
+    The original wall quad becomes the bulk/BL cap.  Rebuilding through the
+    generic writer deduplicates that canonical face into one internal face and
+    keeps all other cells unchanged.
+    """
+    from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
+    from core.layers.native_bl import _collect_wall_faces  # noqa: PLC0415
+    from core.layers.native_hex_bl import extrude_hex_bl  # noqa: PLC0415
+    from core.utils.polymesh_reader import (  # noqa: PLC0415
+        parse_foam_faces,
+        parse_foam_labels,
+        parse_foam_points_array,
+    )
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    points = parse_foam_points_array(poly_dir / "points")
+    faces = [list(face) for face in parse_foam_faces(poly_dir / "faces")]
+    owner = [int(v) for v in parse_foam_labels(poly_dir / "owner")]
+    neighbour = [int(v) for v in parse_foam_labels(poly_dir / "neighbour")]
+    if not len(points) or len(owner) != len(faces) or len(neighbour) > len(faces):
+        return False, "invalid_polyMesh_topology", 0
+
+    boundary = _boundary_entries_with_types(poly_dir / "boundary")
+    selected, _, _ = _collect_wall_faces(
+        boundary,
+        _coerce_str_list(params.get("post_layers_wall_patch_names")),
+        set_faces=_coerce_int_list(
+            params.get("post_layers_set_faces")
+            if "post_layers_set_faces" in params
+            else params.get("post_layers_set_face_ids")
+        ),
+        ignore_faces=_coerce_int_list(
+            params.get("post_layers_ignore_faces")
+            if "post_layers_ignore_faces" in params
+            else params.get("post_layers_ignore_face_ids")
+        ),
+        ignore_patch_names=_coerce_str_list(
+            params.get("post_layers_ignore_patch_names")),
+        ignore_patch_prefixes=_coerce_str_list(
+            params.get("post_layers_ignore_patch_prefixes")),
+    )
+    quad_faces = [fi for fi in selected if 0 <= fi < len(faces) and len(faces[fi]) == 4]
+    if not quad_faces:
+        return False, "no_quad_wall_faces", 0
+
+    n_cells = max(owner + neighbour, default=-1) + 1
+    if n_cells <= 0:
+        return False, "polyMesh_has_no_cells", 0
+    cell_faces: list[list[list[int]]] = [[] for _ in range(n_cells)]
+    for fi, face in enumerate(faces):
+        own = owner[fi]
+        if own < 0 or own >= n_cells:
+            return False, f"invalid_owner:{fi}", 0
+        cell_faces[own].append(list(face))
+        if fi < len(neighbour):
+            nbr = neighbour[fi]
+            if nbr < 0 or nbr >= n_cells:
+                return False, f"invalid_neighbour:{fi}", 0
+            cell_faces[nbr].append(list(reversed(face)))
+
+    face_patch: dict[int, tuple[str, str]] = {}
+    for patch in boundary:
+        name = str(patch.get("name", "defaultWall"))
+        kind = str(patch.get("type", "patch"))
+        start = int(patch["startFace"])
+        for fi in range(start, start + int(patch["nFaces"])):
+            face_patch[fi] = (name, kind)
+
+    wall_quads = np.asarray([faces[fi] for fi in quad_faces], dtype=np.int64)
+    vertex_normals = np.zeros_like(points)
+    for quad in wall_quads:
+        p0, p1, p2, p3 = points[quad]
+        normal = np.cross(p1 - p0, p2 - p0) + np.cross(p2 - p0, p3 - p0)
+        if float(np.linalg.norm(normal)) <= 1e-20:
+            return False, "degenerate_quad_wall_face", 0
+        for vertex in quad:
+            vertex_normals[int(vertex)] += normal
+    normal_lengths = np.linalg.norm(vertex_normals, axis=1)
+    wall_vertices = np.unique(wall_quads)
+    if np.any(normal_lengths[wall_vertices] <= 1e-20):
+        return False, "degenerate_quad_wall_normal", 0
+    vertex_normals[wall_vertices] /= normal_lengths[wall_vertices, None]
+
+    new_points, hexes, result = extrude_hex_bl(
+        points,
+        wall_quads,
+        vertex_normals,
+        num_layers=int(num_layers),
+        first_thickness=float(first_thickness),
+        growth_ratio=float(growth_ratio),
+    )
+    if result.n_hex_cells <= 0:
+        return False, "native_hex_bl_created_no_cells", 0
+
+    patch_by_face_key: dict[tuple[int, ...], tuple[str, str]] = {}
+    for fi, patch in face_patch.items():
+        if 0 <= fi < len(faces):
+            patch_by_face_key[tuple(sorted(faces[fi]))] = patch
+    for qi, fi in enumerate(quad_faces):
+        source_patch = face_patch[fi]
+        for layer in range(int(num_layers)):
+            hex_cell = hexes[qi * int(num_layers) + layer]
+            # A side face can remain boundary where selected and unselected
+            # patches meet.  Keep it on its source wall patch; sides shared by
+            # two selected quads deduplicate to internal faces instead.
+            for local in _HEX_FACES[1:]:
+                patch_by_face_key[tuple(
+                    sorted(int(hex_cell[v]) for v in local)
+                )] = source_patch
+
+    for hex_cell in hexes:
+        cell_faces.append([
+            [int(hex_cell[v]) for v in local] for local in _HEX_FACES
+        ])
+
+    def _patch_classifier(face: list[int], _points: np.ndarray) -> tuple[str, str]:
+        return patch_by_face_key.get(tuple(sorted(int(v) for v in face)), ("defaultWall", "wall"))
+
+    stats = write_generic_polymesh(
+        new_points,
+        cell_faces,
+        case_dir,
+        boundary_patch_classifier=_patch_classifier,
+    )
+    return (
+        True,
+        "native_hex_bl OK — "
+        f"quads={result.n_wall_quads}, layers={result.n_layers}, "
+        f"hexes={result.n_hex_cells}, cells={stats['num_cells']}",
+        int(result.n_wall_quads),
+    )
 
 
 def _coerce_bool(v: object, default: bool) -> bool:
@@ -1518,7 +1694,7 @@ class LayersPostGenerator:
                 # failure.  Keep auto on the deterministic native BL path.
                 engine = "native_bl"
             elif mt == "hex_dominant":
-                engine = "native_bl"
+                engine = "native_hex_bl"
             elif mt == "poly":
                 engine = "poly_bl_transition"
             else:
@@ -1619,6 +1795,31 @@ class LayersPostGenerator:
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
+        elif engine in ("native_hex_bl", "hex_bl", "python_hex_bl"):
+            ok, msg, n_quad = _run_native_hex_bl(
+                case_dir,
+                num_layers=num_layers,
+                growth_ratio=growth_ratio,
+                first_thickness=first_thickness,
+                params=params,
+            )
+            if not ok and n_quad == 0 and msg == "no_quad_wall_faces":
+                # Quad caps must never enter the prism/fan path.  With no
+                # selected quads, retain the existing native BL behavior for
+                # triangular or polygonal walls.
+                try:
+                    from core.layers.native_bl import BLConfig, generate_native_bl
+                except Exception as exc:
+                    ok, msg = False, f"native_bl fallback import 실패: {exc}"
+                else:
+                    cfg_bl = _build_bl_config(
+                        BLConfig, params, num_layers, growth_ratio,
+                        first_thickness, quality_level=_quality_level,
+                    )
+                    _res = generate_native_bl(case_dir, cfg_bl)
+                    ok = bool(_res.success)
+                    msg = f"native_hex_bl no quads; fallback: {_res.message}"
+                    _bl_p2 = _extract_bl_phase2_stats(_res)
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
             # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
             # 분할. 결과는 전체 tet mesh.
