@@ -38,7 +38,8 @@ without a written self-implementation plan.
 5. Preserve unrelated dirty-tree work. No destructive Git commands. Use path-scoped
    stash only when isolation is required.
 6. Before each improvement round, inspect relevant full-read notes/evidence plus primary
-   literature and public reference implementations. Report inaccessible DOI.
+   literature and public reference implementations. Before reporting an inaccessible DOI,
+   search the local PDF manifests and archive; never request a listed paper again.
 7. Parallelization/performance follows correctness.
 
 ## Load only when relevant
