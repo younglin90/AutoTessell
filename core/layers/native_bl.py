@@ -1071,6 +1071,86 @@ def _relative_thickness_ratio(case_dir: Path, engine_tag: str) -> tuple[float, s
     return 0.3, "default"
 
 
+def _select_native_tet_dominant_cap_faces(
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_faces: list[int],
+    *,
+    engine_tag: str,
+    min_bbox_aspect: float = 2.0,
+    preferred_axis: int | None = None,
+) -> tuple[list[int], dict[str, Any]]:
+    """Select two planar end caps for native-tet BL without moving vertices."""
+    selected = list(wall_faces)
+    diagnostic: dict[str, Any] = {"applied": False}
+    if engine_tag != "native_tet" or len(wall_faces) < 2:
+        return selected, diagnostic
+    coords = np.asarray(points, dtype=np.float64)
+    extent = np.ptp(coords, axis=0)
+    positive = extent[extent > 1.0e-12]
+    if positive.size < 2:
+        return selected, diagnostic
+    ratio = float(np.max(positive) / np.min(positive))
+    if ratio < float(min_bbox_aspect):
+        return selected, diagnostic
+    if preferred_axis is not None:
+        axis = int(preferred_axis)
+    else:
+        minimum = float(np.min(positive))
+        minima = np.flatnonzero(np.isclose(extent, minimum, rtol=1.0e-9, atol=1.0e-12))
+        # A rod has two equally thin transverse dimensions; its caps are the
+        # long-axis ends.  A slab has one uniquely thin normal.
+        axis = int(np.argmax(extent)) if minima.size > 1 else int(minima[0])
+    lower = float(np.min(coords[:, axis]))
+    upper = float(np.max(coords[:, axis]))
+    tolerance = max(1.0e-12, float(extent[axis]) * 1.0e-9)
+    caps: list[int] = []
+    for face_index in wall_faces:
+        face = faces[face_index]
+        values = coords[np.asarray(face, dtype=np.int64), axis]
+        if np.all(np.abs(values - lower) <= tolerance) or np.all(np.abs(values - upper) <= tolerance):
+            caps.append(int(face_index))
+    if len(caps) >= 2:
+        selected = caps
+        diagnostic = {
+            "applied": True,
+            "thin_axis": axis,
+            "axis_extent_ratio": ratio,
+        }
+    return selected, diagnostic
+
+
+def _filter_small_native_tet_wall_components(
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_faces: list[int],
+) -> tuple[list[int], dict[str, Any]]:
+    """Keep largest vertex-connected wall component; report, never rewrite."""
+    if not wall_faces:
+        return [], {"applied": False, "components": 0}
+    remaining = set(int(index) for index in wall_faces)
+    components: list[list[int]] = []
+    vertices = {index: set(faces[index]) for index in remaining}
+    while remaining:
+        seed = remaining.pop()
+        component = [seed]
+        stack = [seed]
+        while stack:
+            current = stack.pop()
+            linked = [other for other in remaining if vertices[current] & vertices[other]]
+            for other in linked:
+                remaining.remove(other)
+                component.append(other)
+                stack.append(other)
+        components.append(sorted(component))
+    if len(components) == 1:
+        return list(wall_faces), {"applied": False, "components": 1}
+    def area(component: list[int]) -> float:
+        return float(sum(_face_normal_area(np.asarray(points, dtype=np.float64), faces[index])[1] for index in component))
+    kept = max(components, key=area)
+    return kept, {"applied": True, "components": len(components), "kept_faces": len(kept)}
+
+
 def _geometric_layer_thickness(
     first_thickness: float | np.ndarray,
     n_layers: int,
