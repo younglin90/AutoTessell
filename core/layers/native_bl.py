@@ -315,6 +315,11 @@ class BLConfig:
     feature_lock: bool = True
     feature_angle_deg: float = 45.0
     feature_reduction_ratio: float = 0.5
+    # Keep collision-derived first-layer caps local, then bound the jump to
+    # adjacent open-wall vertices.  Disabled by default to preserve legacy
+    # thickness selection exactly.
+    feature_size_smoothing: bool = False
+    feature_size_gradient_limit: float = 0.0
     # beta65: degenerate prism quality check — 생성된 prism 의 aspect ratio
     # (max edge / min thickness) 를 계산해 threshold 초과 수를 보고. 기본 on.
     quality_check_enabled: bool = True
@@ -5668,6 +5673,7 @@ def generate_native_bl(
     """
     t_start = time.perf_counter()
     cfg = config or BLConfig()
+    requested_layers = int(cfg.num_layers)
     poly_dir = case_dir / "constant" / "polyMesh"
     if not (poly_dir / "faces").exists():
         return NativeBLResult(
@@ -6164,6 +6170,36 @@ def generate_native_bl(
             min_scale=float(min(vertex_scale.values())),
         )
 
+    # GLFS: collision gaps must not globally collapse an otherwise open wall.
+    # Preserve the narrowest vertex cap, and only limit the first-layer jump
+    # from it.  This is an explicit opt-in because it changes local sizing.
+    feature_size_diag: dict[str, Any] = {
+        "enabled": bool(cfg.feature_size_smoothing),
+        "n_limited": 0,
+        "gradient_limit": float(cfg.feature_size_gradient_limit),
+    }
+    feature_size_first: dict[int, float] = {}
+    if cfg.feature_size_smoothing and collision_dist and wall_vert_indices:
+        safety = float(cfg.collision_safety_factor)
+        first_caps = {
+            int(v): min(float(cfg.first_thickness), float(collision_dist.get(v, np.inf)) * safety)
+            for v in wall_vert_indices
+        }
+        min_first = min(first_caps.values())
+        gradient = max(float(cfg.feature_size_gradient_limit), 0.0)
+        for v in wall_vert_indices:
+            cap = first_caps[int(v)]
+            smoothed = min(cap, min_first + gradient)
+            feature_size_first[int(v)] = smoothed
+            if smoothed < cap - 1e-15:
+                feature_size_diag["n_limited"] += 1
+        log.info(
+            "native_bl_feature_size_smoothing",
+            n_limited=feature_size_diag["n_limited"],
+            min_first=min_first,
+            gradient_limit=gradient,
+        )
+
     # C2 / beta2368 — per-vertex Layer Count Reduction (Pointwise T-Rex 동등) diagnostic.
     # collision_dist 가 이미 계산되어 있을 때만 실행. env-gate
     # AUTO_TESSELL_LCR_OFF=1 로 비활성. C2.3 에서 NativeBLResult 로 노출.
@@ -6602,6 +6638,19 @@ def generate_native_bl(
             _lg.getLogger(__name__).warning(
                 "native_bl_BL1_curvature_skipped reason=%s", str(_bl1_exc)[:200]
             )
+
+    # The feature-size envelope is applied after adaptive sizing so collision
+    # caps remain hard constraints and no adaptive path can re-expand them.
+    if feature_size_first:
+        use_per_vertex_cum = True
+        vertex_cum_map = {}
+        for v in wall_vert_indices:
+            ft = feature_size_first[int(v)]
+            v_thick = np.array(
+                [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+                dtype=np.float64,
+            )
+            vertex_cum_map[int(v)] = np.concatenate(([0.0], np.cumsum(v_thick)))
 
     # 5-7) Prism 생성 내부 함수 (beta93: shrink iteration 에서 반복 호출 가능)
     def _run_prism_pass(
@@ -8052,6 +8101,8 @@ def generate_native_bl(
             else {}
         )
         quality_summary = {
+            "requested_layers": int(requested_layers),
+            "used_layers": int(cfg.num_layers),
             "n_wall_faces": int(n_wall_faces),
             "n_wall_verts": int(len(wall_vert_indices)),
             "n_prism_cells": int(n_prism_total),
@@ -8080,6 +8131,7 @@ def generate_native_bl(
                 "min_layers_used": int(lcr_min_layers_used),
                 "n_safe_full_layers": int(lcr_n_safe_full),
             },
+            "feature_size": feature_size_diag,
             # C3.3 / beta2377 — anisotropic prism split diagnostic (cfMesh 동등).
             "aniso_split": {
                 "n_examined": int(aniso_split_n_examined),
