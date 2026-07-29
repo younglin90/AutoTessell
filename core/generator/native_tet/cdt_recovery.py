@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 import time
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass
@@ -46,8 +47,8 @@ def _surface_edge_set(F: np.ndarray) -> set[tuple[int, int]]:
     """C-PERF-28 / beta2479 — vectorize via lexsort+pack-unique."""
     if F.size == 0:
         return set()
-    src = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
-    dst = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    src: NDArray[np.int64] = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst: NDArray[np.int64] = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
     u = np.minimum(src, dst); v = np.maximum(src, dst)
     n_max = int(F.max()) + 1
     pack = u * n_max + v
@@ -107,7 +108,7 @@ def run_cdt_recovery(
         if r_cur.n_missing > 0:
             pts_before = pts.copy(); tets_before = tets.copy()
             out = recover_edges_via_flip(
-                pts, tets, r_cur.missing_edges,
+                pts, tets, r_cur.missing_edges, protected_faces=F_surf.tolist(),
             )
             if isinstance(out, tuple):
                 tets_new = out[0] if len(out) >= 1 else tets
@@ -134,7 +135,7 @@ def run_cdt_recovery(
         if r_cur.n_missing > 0:
             tets_before = tets.copy()
             tets_new, retri_info = cavity_retri_for_missing_edges(
-                pts, tets, r_cur.missing_edges,
+                pts, tets, r_cur.missing_edges, protected_faces=F_surf.tolist(),
             )
             r_try = check_edge_recovery(F_surf, tets_new)
             if r_try.n_missing < r_cur.n_missing:
@@ -190,6 +191,7 @@ def run_cdt_recovery(
         new_pts, new_tets, _ins = bowyer_watson_insert(
             pts, tets, prop.new_points,
             protected_edges=protected,
+            protected_faces=F_surf.tolist(),
         )
         if new_tets.shape[0] == 0:
             # tets 불변 — 캐시된 r_cur 는 다음 cycle 에도 여전히 유효.

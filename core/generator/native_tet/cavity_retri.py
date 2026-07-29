@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -54,6 +55,7 @@ def cavity_retri_for_missing_edges(
     *,
     min_quality: float = 0.0,
     max_attempts: int = 1000,
+    protected_faces: Sequence[Sequence[int]] | None = None,
 ) -> tuple[np.ndarray, CavityRetriResult]:
     """missing edge 들을 대각선 선택 기반 2-3 flip 으로 회복.
 
@@ -61,6 +63,10 @@ def cavity_retri_for_missing_edges(
         - u 와 v 가 모두 한 face 를 공유하는 두 tet 페어 (a,b,c,u) / (a,b,c,v)
           를 찾는다.
         - 새 3 tet (a,b,u,v), (b,c,u,v), (c,a,u,v) 가 모두 valid 면 교체.
+
+    ``protected_faces`` guards only source faces that are direct immediately
+    before a candidate 2-to-3 operation. It never treats a raw-key change as
+    preserved and does not move points or insert Steiner vertices.
     """
     pts = np.asarray(pts, dtype=np.float64)
     tets = np.asarray(tets, dtype=np.int64).copy()
@@ -154,6 +160,43 @@ def cavity_retri_for_missing_edges(
         if not ok or q_min < float(min_quality):
             n_skip_q += 1
             continue
+
+        if protected_faces:
+            from core.generator.native_tet.duwang_constraint_protection_l0 import (
+                audit_direct_constraint_face_protection_l0,
+            )
+
+            prior_new = (
+                np.asarray(new_tets_list, dtype=np.int64)
+                if new_tets_list
+                else np.empty((0, 4), dtype=np.int64)
+            )
+            before_candidate = (
+                np.vstack([tets[alive], prior_new]) if prior_new.size else tets[alive]
+            )
+            candidate_alive = alive.copy()
+            candidate_alive[tu] = False
+            candidate_alive[tv] = False
+            candidate = np.vstack([
+                tets[candidate_alive],
+                prior_new,
+                np.asarray(new_combos, dtype=np.int64),
+            ])
+            before_face_keys = {
+                tuple(sorted(int(tet[index]) for index in range(4) if index != omitted))
+                for tet in before_candidate
+                for omitted in range(4)
+            }
+            direct_faces = tuple(
+                face
+                for face in protected_faces
+                if tuple(sorted(int(vertex) for vertex in face)) in before_face_keys
+            )
+            if direct_faces and not audit_direct_constraint_face_protection_l0(
+                before_candidate.tolist(), candidate.tolist(), direct_faces
+            ).accepted:
+                n_skip_q += 1
+                continue
 
         # 적용: 기존 tu, tv kill + 새 3 tet append.
         alive[tu] = False

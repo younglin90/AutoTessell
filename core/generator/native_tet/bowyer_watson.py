@@ -19,6 +19,7 @@ Full re-Delaunay 대신 신규 점 p 를 기존 tet mesh 에 점진 삽입:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -154,6 +155,7 @@ def bowyer_watson_insert(
     *,
     max_cavity_size: int = 500,
     protected_edges: set[tuple[int, int]] | None = None,
+    protected_faces: Sequence[Sequence[int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, BWInsertResult]:
     """신규 점들을 순차적으로 incremental insertion.
 
@@ -168,6 +170,10 @@ def bowyer_watson_insert(
         new_points: (K, 3) — 삽입할 점들.
         max_cavity_size: cavity 크기 상한 — 초과 시 해당 점 skip (degenerate
           방지).
+        protected_faces: 이미 direct tet face 로 회복된 입력 surface face.
+          후보가 이 key 를 정확한 owner-consistent subdivision 으로 유지하지
+          못하면 point insertion 전체를 revert 한다. 아직 없는 source face 는
+          이 helper 가 거짓 보존 주장으로 취급하지 않는다.
 
     Returns:
         (new_pts, new_tets, result).
@@ -310,7 +316,31 @@ def bowyer_watson_insert(
         new_tets_arr[flip, 1] = new_tets_arr[flip, 2]
         new_tets_arr[flip, 2] = tmp
 
-        tets_cur = np.vstack([kept, new_tets_arr])
+        candidate_tets = np.vstack([kept, new_tets_arr])
+        if protected_faces is not None and len(protected_faces) > 0:
+            from core.generator.native_tet.duwang_constraint_subdivision_l1 import (
+                audit_constraint_face_subdivision_l1,
+            )
+
+            before_keys = {
+                tuple(sorted(int(tet[index]) for index in range(4) if index != omitted))
+                for tet in tets_cur
+                for omitted in range(4)
+            }
+            direct_faces = tuple(
+                face
+                for face in protected_faces
+                if tuple(sorted(int(vertex) for vertex in face)) in before_keys
+            )
+            if direct_faces:
+                protection = audit_constraint_face_subdivision_l1(
+                    pts_list, tets_cur.tolist(), candidate_tets.tolist(), direct_faces
+                )
+                if not protection.accepted:
+                    pts_list.pop()
+                    continue
+
+        tets_cur = candidate_tets
 
         n_inserted += 1
         n_cavity_total += n_cav
