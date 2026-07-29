@@ -28,6 +28,7 @@ Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95). 반복
 """
 from __future__ import annotations
 
+import json
 import os
 
 import shutil
@@ -993,6 +994,81 @@ def validate_bl_thickness_uniformity(
             msg="first-layer thickness variation exceeds CFD y+ uniformity threshold",
         )
     return rel_variation
+
+
+def _apply_local_collision_factors(
+    wall_vertices: list[int],
+    first_thickness: np.ndarray,
+    collision_factors: dict[int, float],
+    cumulative_offsets: dict[int, np.ndarray] | None,
+    *,
+    use_per_vertex_cumulative: bool,
+) -> tuple[dict[int, float], dict[int, np.ndarray] | None]:
+    """Return bounded local collision scales without mutating input offsets.
+
+    A disabled or unavailable factor is identity.  Per-vertex cumulative
+    offsets are copied before scaling, so a rejected BL candidate cannot alter
+    the source path used by a later rollback or retry.
+    """
+    scales: dict[int, float] = {}
+    scaled: dict[int, np.ndarray] | None = None
+    if use_per_vertex_cumulative and cumulative_offsets is not None:
+        scaled = {vertex: np.asarray(offsets, dtype=np.float64).copy()
+                  for vertex, offsets in cumulative_offsets.items()}
+    for index, vertex in enumerate(wall_vertices):
+        _ = first_thickness[index] if index < len(first_thickness) else 0.0
+        factor = float(collision_factors.get(int(vertex), 1.0))
+        factor = min(1.0, max(0.0, factor))
+        scales[int(vertex)] = factor
+        if scaled is not None and int(vertex) in scaled:
+            # Cumulative paths already encode the local collision cap.  Scale
+            # them once by the per-vertex first-layer factor, never again by
+            # the diagnostic cap stored in ``scales``.
+            path_scale = float(first_thickness[index]) if index < len(first_thickness) else 1.0
+            scaled[int(vertex)] *= min(1.0, max(0.0, path_scale))
+    return scales, scaled
+
+
+def _evaluator_prism_aspect(base_edges: np.ndarray, heights: np.ndarray) -> float:
+    """Conservative prism aspect proxy used only for BL candidate rejection."""
+    edge = np.asarray(base_edges, dtype=np.float64)
+    height = np.asarray(heights, dtype=np.float64)
+    if edge.size == 0 or height.size == 0:
+        return float("inf")
+    positive = height[height > 1.0e-30]
+    if positive.size == 0:
+        return float("inf")
+    return float(np.max(edge) / np.min(positive))
+
+
+def _relative_thickness_ratio(case_dir: Path, engine_tag: str) -> tuple[float, str]:
+    """Resolve relative BL thickness without conflating zero-layer routing.
+
+    Explicit environment input wins.  Native tet has a smaller default, while
+    the convex-extrusion marker records a validated transition-only override.
+    """
+    raw = os.environ.get("AUTO_TESSELL_BL_REL_RATIO")
+    if raw is not None:
+        try:
+            ratio = float(raw)
+        except ValueError:
+            ratio = float("nan")
+        if np.isfinite(ratio) and ratio > 0.0:
+            return ratio, "environment"
+    if (case_dir / "native_tet_convex_extrusion.marker").exists():
+        return 0.25, "native_tet_convex_extrusion"
+    selected = str(engine_tag).lower()
+    log_path = case_dir / "generator_log.json"
+    if log_path.exists():
+        try:
+            selected = str(json.loads(log_path.read_text(encoding="utf-8")).get(
+                "selected_tier", selected
+            )).lower()
+        except (OSError, ValueError, TypeError):
+            pass
+    if "native_tet" in selected or selected in {"tet", "native-tet"}:
+        return 0.08, "native_tet_default"
+    return 0.3, "default"
 
 
 def _geometric_layer_thickness(
