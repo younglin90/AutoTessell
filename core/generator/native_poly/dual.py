@@ -371,15 +371,22 @@ _TET_EDGES: tuple[tuple[int, int], ...] = (
 )
 
 
-def _compute_tet_dual_points(V: np.ndarray, T: np.ndarray) -> np.ndarray:
-    """Place Garimella dual points inside each primal tetrahedron.
+def _compute_tet_dual_points_python(
+    V: np.ndarray,
+    T: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Python oracle for Garimella dual points and placement provenance.
 
     A well-centered tetrahedron uses its circumcenter.  Otherwise the point is
     placed on the centroid-to-circumcenter segment at the closest parameter
     that remains inside the tetrahedron.  The centroid is the robust fallback
     for singular or non-finite circumcenter systems.
+
+    Status values match the native ABI: 0=circumcenter, 1=clipped,
+    2=singular-centroid, 3=non-finite-solve-centroid.
     """
     dual_points = np.empty((T.shape[0], 3), dtype=np.float64)
+    statuses = np.empty(T.shape[0], dtype=np.uint8)
     for ti, tet in enumerate(T):
         p = V[tet]
         centroid = p.mean(axis=0)
@@ -395,10 +402,12 @@ def _compute_tet_dual_points(V: np.ndarray, T: np.ndarray) -> np.ndarray:
             bary = np.asarray([1.0 - bary_tail.sum(), *bary_tail], dtype=np.float64)
         except np.linalg.LinAlgError:
             dual_points[ti] = centroid
+            statuses[ti] = 2
             continue
 
         if not np.isfinite(circumcenter).all() or not np.isfinite(bary).all():
             dual_points[ti] = centroid
+            statuses[ti] = 3
             continue
 
         alpha = 1.0
@@ -409,8 +418,70 @@ def _compute_tet_dual_points(V: np.ndarray, T: np.ndarray) -> np.ndarray:
             # Stay strictly inside after clipping to a boundary face.  This
             # avoids manufacturing a zero signed subtet from the dual point.
             alpha = max(0.0, alpha * (1.0 - 1e-12))
-        dual_points[ti] = centroid + alpha * (circumcenter - centroid)
-    return dual_points
+        result = centroid + alpha * (circumcenter - centroid)
+        if not np.isfinite(result).all():
+            dual_points[ti] = centroid
+            statuses[ti] = 3
+            continue
+        dual_points[ti] = result
+        statuses[ti] = 1 if alpha < 1.0 else 0
+    return dual_points, statuses
+
+
+def _compute_tet_dual_points_with_status(
+    V: np.ndarray,
+    T: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Use the strict contiguous C++23 kernel, or the Python oracle."""
+    from core.utils.native_extensions import load_native_polymesh
+
+    if V.ndim != 2 or V.shape[1:] != (3,):
+        raise ValueError("points must have shape (N, 3)")
+    if T.ndim != 2 or T.shape[1:] != (4,):
+        raise ValueError("tets must have shape (M, 4)")
+    try:
+        finite_points = bool(np.isfinite(V).all())
+    except TypeError as exc:
+        raise ValueError("points must contain only finite coordinates") from exc
+    if not finite_points:
+        raise ValueError("points must contain only finite coordinates")
+    if np.issubdtype(T.dtype, np.bool_) or not np.issubdtype(T.dtype, np.integer):
+        raise ValueError("tets must contain integer vertex indices")
+    if T.size:
+        if np.any(T < 0) or np.any(T >= V.shape[0]):
+            raise ValueError("tet vertex index out of range")
+        if np.any(np.diff(np.sort(T, axis=1), axis=1) == 0):
+            raise ValueError("tet repeats a vertex index")
+
+    native = load_native_polymesh()
+    native_compatible = (
+        V.dtype == np.dtype(np.float64)
+        and T.dtype == np.dtype(np.int64)
+        and V.flags.c_contiguous
+        and T.flags.c_contiguous
+    )
+    if native is not None and hasattr(native, "compute_tet_dual_points") and native_compatible:
+        result = native.compute_tet_dual_points(V, T)
+    else:
+        result = _compute_tet_dual_points_python(V, T)
+
+    points_array = np.asarray(result[0])
+    status_array = np.asarray(result[1])
+    if (
+        points_array.dtype != np.dtype(np.float64)
+        or points_array.shape != (T.shape[0], 3)
+        or status_array.dtype != np.dtype(np.uint8)
+        or status_array.shape != (T.shape[0],)
+        or not np.isfinite(points_array).all()
+        or np.any(status_array > 3)
+    ):
+        raise RuntimeError("tet dual-point kernel returned an invalid result")
+    return points_array, status_array
+
+
+def _compute_tet_dual_points(V: np.ndarray, T: np.ndarray) -> np.ndarray:
+    """Place Garimella dual points without changing the public ndarray API."""
+    return _compute_tet_dual_points_with_status(V, T)[0]
 
 
 def _build_tet_topology(
@@ -625,12 +696,10 @@ def _area_split(
 
     native = load_native_polymesh()
     if native is not None and hasattr(native, "face_plane_geometry"):
-        plane_normals = np.asarray(
-            [normal for normal, _ in planes], dtype=np.float64
-        ).reshape(-1, 3)
-        plane_offsets = np.asarray(
-            [offset for _, offset in planes], dtype=np.float64
+        plane_normals = np.asarray([normal for normal, _ in planes], dtype=np.float64).reshape(
+            -1, 3
         )
+        plane_offsets = np.asarray([offset for _, offset in planes], dtype=np.float64)
         on, off, _ = native.face_plane_geometry(
             points,
             faces,
@@ -1125,9 +1194,7 @@ def tet_to_poly_dual(
     from core.utils.native_extensions import load_native_polymesh
 
     native_face_geometry = load_native_polymesh()
-    if native_face_geometry is not None and not hasattr(
-        native_face_geometry, "face_flip_mask"
-    ):
+    if native_face_geometry is not None and not hasattr(native_face_geometry, "face_flip_mask"):
         native_face_geometry = None
 
     log.info(
@@ -1149,9 +1216,7 @@ def tet_to_poly_dual(
             return list(reversed(face))
         return face
 
-    def _orient_faces_outward(
-        faces: list[list[int]], owners: list[int]
-    ) -> list[list[int]]:
+    def _orient_faces_outward(faces: list[list[int]], owners: list[int]) -> list[list[int]]:
         if not faces:
             return []
         if native_face_geometry is None:

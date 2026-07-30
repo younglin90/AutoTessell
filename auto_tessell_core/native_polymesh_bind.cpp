@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <span>
 #include <stdexcept>
@@ -21,6 +22,11 @@ namespace py = pybind11;
 namespace {
 
 using Label = long long;
+static_assert(
+    sizeof(Label) == sizeof(std::int64_t)
+        && std::numeric_limits<Label>::is_signed
+        && std::numeric_limits<Label>::digits == 63,
+    "native_polymesh requires a signed 64-bit Label");
 using Face = std::vector<Label>;
 using Cell = std::vector<Face>;
 using Cells = std::vector<Cell>;
@@ -109,6 +115,87 @@ struct TopologyResult {
     Label num_faces_dropped = 0;
     std::vector<std::pair<Label, Label>> non_manifold;
 };
+
+enum class DualPointStatus : std::uint8_t {
+    Circumcenter = 0,
+    Clipped = 1,
+    SingularCentroid = 2,
+    NonFiniteSolveCentroid = 3,
+};
+
+enum class Solve3Status : unsigned char {
+    Success,
+    Singular,
+    NonFinite,
+};
+
+[[nodiscard]] Solve3Status solve_3x3(
+    std::array<double, 9> matrix,
+    std::array<double, 3> rhs,
+    std::array<double, 3>& solution) noexcept
+{
+    for (size_t column = 0U; column < 3U; ++column) {
+        size_t pivot_row = column;
+        double pivot_magnitude = std::abs(matrix[column * 3U + column]);
+        for (size_t row = column + 1U; row < 3U; ++row) {
+            const double candidate = std::abs(matrix[row * 3U + column]);
+            if (candidate > pivot_magnitude) {
+                pivot_magnitude = candidate;
+                pivot_row = row;
+            }
+        }
+        if (!std::isfinite(pivot_magnitude)) {
+            return Solve3Status::NonFinite;
+        }
+        if (pivot_magnitude == 0.0) {
+            return Solve3Status::Singular;
+        }
+        if (pivot_row != column) {
+            for (size_t entry = column; entry < 3U; ++entry) {
+                std::swap(
+                    matrix[column * 3U + entry],
+                    matrix[pivot_row * 3U + entry]);
+            }
+            std::swap(rhs[column], rhs[pivot_row]);
+        }
+
+        const double pivot = matrix[column * 3U + column];
+        for (size_t row = column + 1U; row < 3U; ++row) {
+            const double factor = matrix[row * 3U + column] / pivot;
+            if (!std::isfinite(factor)) {
+                return Solve3Status::NonFinite;
+            }
+            matrix[row * 3U + column] = 0.0;
+            for (size_t entry = column + 1U; entry < 3U; ++entry) {
+                matrix[row * 3U + entry] -= factor * matrix[column * 3U + entry];
+            }
+            rhs[row] -= factor * rhs[column];
+        }
+    }
+
+    for (size_t reverse = 0U; reverse < 3U; ++reverse) {
+        const size_t row = 2U - reverse;
+        double value = rhs[row];
+        for (size_t column = row + 1U; column < 3U; ++column) {
+            value -= matrix[row * 3U + column] * solution[column];
+        }
+        const double pivot = matrix[row * 3U + row];
+        if (pivot == 0.0) {
+            return Solve3Status::Singular;
+        }
+        solution[row] = value / pivot;
+        if (!std::isfinite(solution[row])) {
+            return Solve3Status::NonFinite;
+        }
+    }
+    return Solve3Status::Success;
+}
+
+[[nodiscard]] bool finite3(const std::array<double, 3>& point) noexcept
+{
+    return std::isfinite(point[0]) && std::isfinite(point[1])
+        && std::isfinite(point[2]);
+}
 
 size_t point_offset(Label vertex, size_t num_points)
 {
@@ -726,6 +813,179 @@ py::tuple build_topology(
         std::move(result.non_manifold));
 }
 
+py::tuple compute_tet_dual_points(
+    const py::array_t<double, py::array::c_style>& points,
+    const py::array_t<Label, py::array::c_style>& tets)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (tets.ndim() != 2 || tets.shape(1) != 4) {
+        throw std::invalid_argument("tets must have shape (M, 4)");
+    }
+
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const size_t tet_count = static_cast<size_t>(tets.shape(0));
+    constexpr size_t max_size = std::numeric_limits<size_t>::max();
+    if (point_count > max_size / 3U || tet_count > max_size / 4U
+        || tet_count > max_size / 3U
+        || tet_count
+            > static_cast<size_t>(std::numeric_limits<py::ssize_t>::max())
+        || point_count > static_cast<size_t>(std::numeric_limits<Label>::max())) {
+        throw std::length_error("tet dual-point array is too large");
+    }
+    py::array_t<double> dual_points({
+        static_cast<py::ssize_t>(tet_count), static_cast<py::ssize_t>(3)});
+    py::array_t<std::uint8_t> statuses({static_cast<py::ssize_t>(tet_count)});
+    const double* const point_data = points.data();
+    const Label* const tet_data = tets.data();
+    double* const dual_data = dual_points.mutable_data();
+    std::uint8_t* const status_data = statuses.mutable_data();
+
+    {
+        py::gil_scoped_release release;
+        for (size_t index = 0U; index < point_count * 3U; ++index) {
+            if (!std::isfinite(point_data[index])) {
+                throw std::invalid_argument("points must contain only finite coordinates");
+            }
+        }
+
+        for (size_t tet_index = 0U; tet_index < tet_count; ++tet_index) {
+            std::array<Label, 4> vertices{};
+            for (size_t local = 0U; local < 4U; ++local) {
+                const Label vertex = tet_data[tet_index * 4U + local];
+                if (vertex < 0 || static_cast<size_t>(vertex) >= point_count) {
+                    throw std::invalid_argument("tet vertex index out of range");
+                }
+                for (size_t previous = 0U; previous < local; ++previous) {
+                    if (vertices[previous] == vertex) {
+                        throw std::invalid_argument("tet repeats a vertex index");
+                    }
+                }
+                vertices[local] = vertex;
+            }
+
+            std::array<double, 12> local_points{};
+            for (size_t local = 0U; local < 4U; ++local) {
+                const double* const source = point_data
+                    + static_cast<size_t>(vertices[local]) * 3U;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    local_points[local * 3U + axis] = source[axis];
+                }
+            }
+
+            std::array<double, 3> centroid{};
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                centroid[axis] = (
+                    local_points[axis] + local_points[3U + axis]
+                    + local_points[6U + axis] + local_points[9U + axis])
+                    * 0.25;
+            }
+            if (!finite3(centroid)) {
+                throw std::invalid_argument("tet centroid is non-finite");
+            }
+
+            const auto write_centroid = [&](const DualPointStatus status) {
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    dual_data[tet_index * 3U + axis] = centroid[axis];
+                }
+                status_data[tet_index] = static_cast<std::uint8_t>(status);
+            };
+
+            std::array<double, 9> circumcenter_matrix{};
+            std::array<double, 3> circumcenter_rhs{};
+            double p0_squared = 0.0;
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                p0_squared += local_points[axis] * local_points[axis];
+            }
+            for (size_t row = 0U; row < 3U; ++row) {
+                double point_squared = 0.0;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    const double coordinate = local_points[(row + 1U) * 3U + axis];
+                    circumcenter_matrix[row * 3U + axis] = 2.0
+                        * (coordinate - local_points[axis]);
+                    point_squared += coordinate * coordinate;
+                }
+                circumcenter_rhs[row] = point_squared - p0_squared;
+            }
+
+            std::array<double, 3> circumcenter{};
+            const Solve3Status circumcenter_status = solve_3x3(
+                circumcenter_matrix, circumcenter_rhs, circumcenter);
+            if (circumcenter_status != Solve3Status::Success) {
+                write_centroid(
+                    circumcenter_status == Solve3Status::Singular
+                        ? DualPointStatus::SingularCentroid
+                        : DualPointStatus::NonFiniteSolveCentroid);
+                continue;
+            }
+
+            std::array<double, 9> barycentric_matrix{};
+            std::array<double, 3> barycentric_rhs{};
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                barycentric_rhs[axis] = circumcenter[axis] - local_points[axis];
+                for (size_t column = 0U; column < 3U; ++column) {
+                    barycentric_matrix[axis * 3U + column] =
+                        local_points[(column + 1U) * 3U + axis]
+                        - local_points[axis];
+                }
+            }
+            std::array<double, 3> barycentric_tail{};
+            const Solve3Status barycentric_status = solve_3x3(
+                barycentric_matrix, barycentric_rhs, barycentric_tail);
+            if (barycentric_status != Solve3Status::Success) {
+                write_centroid(
+                    barycentric_status == Solve3Status::Singular
+                        ? DualPointStatus::SingularCentroid
+                        : DualPointStatus::NonFiniteSolveCentroid);
+                continue;
+            }
+
+            std::array<double, 4> barycentric{
+                1.0 - barycentric_tail[0] - barycentric_tail[1]
+                    - barycentric_tail[2],
+                barycentric_tail[0],
+                barycentric_tail[1],
+                barycentric_tail[2],
+            };
+            if (!finite3(circumcenter)
+                || !std::all_of(
+                    barycentric.begin(),
+                    barycentric.end(),
+                    [](const double value) { return std::isfinite(value); })) {
+                write_centroid(DualPointStatus::NonFiniteSolveCentroid);
+                continue;
+            }
+
+            double alpha = 1.0;
+            for (const double coordinate : barycentric) {
+                if (coordinate < 0.0) {
+                    alpha = std::min(alpha, 0.25 / (0.25 - coordinate));
+                }
+            }
+            const bool clipped = alpha < 1.0;
+            if (clipped) {
+                alpha = std::max(0.0, alpha * (1.0 - 1e-12));
+            }
+            std::array<double, 3> result{};
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                result[axis] = centroid[axis]
+                    + alpha * (circumcenter[axis] - centroid[axis]);
+            }
+            if (!finite3(result)) {
+                write_centroid(DualPointStatus::NonFiniteSolveCentroid);
+                continue;
+            }
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                dual_data[tet_index * 3U + axis] = result[axis];
+            }
+            status_data[tet_index] = static_cast<std::uint8_t>(
+                clipped ? DualPointStatus::Clipped : DualPointStatus::Circumcenter);
+        }
+    }
+    return py::make_tuple(std::move(dual_points), std::move(statuses));
+}
+
 py::tuple build_tet_incidence_maps(
     const py::array_t<Label, py::array::c_style | py::array::forcecast>& tets_array,
     const Label num_vertices)
@@ -842,6 +1102,11 @@ PYBIND11_MODULE(native_polymesh, module)
         py::arg("vertices"),
         py::arg("cell_faces"),
         py::arg("area_eps"));
+    module.def(
+        "compute_tet_dual_points",
+        &compute_tet_dual_points,
+        py::arg("points").noconvert(),
+        py::arg("tets").noconvert());
     module.def(
         "build_tet_incidence_maps",
         &build_tet_incidence_maps,
