@@ -2046,6 +2046,12 @@ struct TriangleEdgeIncidence {
     std::vector<signed char> directions;
 };
 
+struct TriangleFlipEdgeRecord {
+    long long first_face = -1;
+    long long second_face = -1;
+    long long count = 0;
+};
+
 struct CurvatureEdgeRecord {
     std::array<long long, 2> key;
     size_t face_index;
@@ -2107,6 +2113,287 @@ py::array_t<double> triangle_quality_batch(const py::array& triangles_input)
             : 0.0;
     }
     return quality;
+}
+
+[[nodiscard]] double triangle_mean_ratio(
+    const py::detail::unchecked_reference<double, 2>& vertices,
+    const std::array<long long, 3>& face) noexcept
+{
+    const long long i0 = face[0];
+    const long long i1 = face[1];
+    const long long i2 = face[2];
+    const double edge01_x = vertices(i1, 0) - vertices(i0, 0);
+    const double edge01_y = vertices(i1, 1) - vertices(i0, 1);
+    const double edge01_z = vertices(i1, 2) - vertices(i0, 2);
+    const double edge12_x = vertices(i2, 0) - vertices(i1, 0);
+    const double edge12_y = vertices(i2, 1) - vertices(i1, 1);
+    const double edge12_z = vertices(i2, 2) - vertices(i1, 2);
+    const double edge20_x = vertices(i0, 0) - vertices(i2, 0);
+    const double edge20_y = vertices(i0, 1) - vertices(i2, 1);
+    const double edge20_z = vertices(i0, 2) - vertices(i2, 2);
+    const double denominator =
+        edge01_x * edge01_x + edge01_y * edge01_y + edge01_z * edge01_z
+        + edge12_x * edge12_x + edge12_y * edge12_y + edge12_z * edge12_z
+        + edge20_x * edge20_x + edge20_y * edge20_y + edge20_z * edge20_z;
+    const double cross_x = edge01_z * edge20_y - edge01_y * edge20_z;
+    const double cross_y = edge01_x * edge20_z - edge01_z * edge20_x;
+    const double cross_z = edge01_y * edge20_x - edge01_x * edge20_y;
+    const double area_twice = std::sqrt(
+        cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
+    constexpr double normalization = 2.0 * std::numbers::sqrt3_v<double>;
+    return denominator > 0.0 && std::isfinite(denominator)
+            && std::isfinite(area_twice)
+        ? normalization * area_twice / denominator
+        : 0.0;
+}
+
+py::array_t<bool> triangle_flip_candidate_mask(
+    const py::array& vertices_input,
+    const py::array& faces_input,
+    const py::array& edges_input)
+{
+    if (!vertices_input.dtype().is(py::dtype::of<double>())
+        || (vertices_input.flags() & py::array::c_style) == 0
+        || vertices_input.ndim() != 2 || vertices_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "vertices must be a C-contiguous float64 array with shape (N, 3)");
+    }
+    if (!faces_input.dtype().is(py::dtype::of<long long>())
+        || (faces_input.flags() & py::array::c_style) == 0
+        || faces_input.ndim() != 2 || faces_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "faces must be a C-contiguous int64 array with shape (F, 3)");
+    }
+    if (!edges_input.dtype().is(py::dtype::of<long long>())
+        || (edges_input.flags() & py::array::c_style) == 0
+        || edges_input.ndim() != 2 || edges_input.shape(1) != 2) {
+        throw std::invalid_argument(
+            "edges must be a C-contiguous int64 array with shape (E, 2)");
+    }
+
+    const auto vertices_array =
+        py::reinterpret_borrow<py::array_t<double>>(vertices_input);
+    const auto faces_array =
+        py::reinterpret_borrow<py::array_t<long long>>(faces_input);
+    const auto edges_array =
+        py::reinterpret_borrow<py::array_t<long long>>(edges_input);
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto faces = faces_array.unchecked<2>();
+    const auto edges = edges_array.unchecked<2>();
+    const py::ssize_t vertex_count = vertices.shape(0);
+    const py::ssize_t face_count = faces.shape(0);
+    const py::ssize_t edge_count = edges.shape(0);
+
+    py::array_t<bool> result({edge_count});
+    auto accepted = result.mutable_unchecked<1>();
+    std::fill_n(accepted.mutable_data(0), edge_count, false);
+
+    using EdgeKey = std::array<long long, 2>;
+    using FaceKey = std::array<long long, 3>;
+    const auto edge_key = [](long long first, long long second) noexcept {
+        return EdgeKey{std::min(first, second), std::max(first, second)};
+    };
+    const auto face_key = [](long long first, long long second, long long third) {
+        FaceKey key{first, second, third};
+        std::sort(key.begin(), key.end());
+        return key;
+    };
+
+    py::gil_scoped_release release;
+
+    for (py::ssize_t vertex = 0; vertex < vertex_count; ++vertex) {
+        for (py::ssize_t axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(vertices(vertex, axis))) {
+                return result;
+            }
+        }
+    }
+    if (face_count == 0) {
+        return result;
+    }
+
+    std::unordered_map<EdgeKey, TriangleFlipEdgeRecord, FixedIndexHash<2>> topology;
+    topology.reserve(static_cast<size_t>(face_count) * 4U);
+    std::unordered_set<FaceKey, FixedIndexHash<3>> unique_faces;
+    unique_faces.reserve(static_cast<size_t>(face_count) * 2U);
+    bool valid_state = true;
+    for (py::ssize_t face_index = 0; face_index < face_count; ++face_index) {
+        const long long a = faces(face_index, 0);
+        const long long b = faces(face_index, 1);
+        const long long c = faces(face_index, 2);
+        if (a < 0 || b < 0 || c < 0 || a >= vertex_count || b >= vertex_count
+            || c >= vertex_count || a == b || b == c || c == a
+            || !unique_faces.insert(face_key(a, b, c)).second) {
+            valid_state = false;
+            break;
+        }
+        const std::array<EdgeKey, 3> local_edges{
+            edge_key(a, b), edge_key(b, c), edge_key(c, a)};
+        for (const EdgeKey& key : local_edges) {
+            auto& record = topology[key];
+            if (record.count == 0) {
+                record.first_face = face_index;
+            } else if (record.count == 1) {
+                record.second_face = face_index;
+            }
+            ++record.count;
+            if (record.count > 2) {
+                valid_state = false;
+                break;
+            }
+        }
+        if (!valid_state) {
+            break;
+        }
+    }
+    if (!valid_state) {
+        return result;
+    }
+
+    std::vector<long long> valence(static_cast<size_t>(vertex_count), 0);
+    std::vector<long long> boundary_degree(static_cast<size_t>(vertex_count), 0);
+    for (const auto& [key, record] : topology) {
+        if (key[0] != key[1]) {
+            ++valence[static_cast<size_t>(key[0])];
+            ++valence[static_cast<size_t>(key[1])];
+        }
+        if (record.count == 1) {
+            ++boundary_degree[static_cast<size_t>(key[0])];
+            ++boundary_degree[static_cast<size_t>(key[1])];
+        }
+    }
+    const auto deviation = [](long long vertex_valence, long long boundary_count) {
+        if (vertex_valence == 0) {
+            return 0LL;
+        }
+        const long long target = boundary_count > 0 ? 4LL : 6LL;
+        return std::llabs(vertex_valence - target);
+    };
+    long long total_deviation = 0;
+    for (py::ssize_t vertex = 0; vertex < vertex_count; ++vertex) {
+        total_deviation += deviation(
+            valence[static_cast<size_t>(vertex)],
+            boundary_degree[static_cast<size_t>(vertex)]);
+    }
+
+    for (py::ssize_t candidate_index = 0; candidate_index < edge_count;
+         ++candidate_index) {
+        const long long a = edges(candidate_index, 0);
+        const long long b = edges(candidate_index, 1);
+        if (a < 0 || b < 0 || a >= vertex_count || b >= vertex_count || a == b) {
+            continue;
+        }
+        const auto topology_it = topology.find(edge_key(a, b));
+        if (topology_it == topology.end() || topology_it->second.count != 2) {
+            continue;
+        }
+        const long long first_index = topology_it->second.first_face;
+        const long long second_index = topology_it->second.second_face;
+
+        long long x = -1;
+        long long y = -1;
+        long long c = -1;
+        for (py::ssize_t offset = 0; offset < 3; ++offset) {
+            const long long first = faces(first_index, offset);
+            const long long second = faces(first_index, (offset + 1) % 3);
+            if ((first == a && second == b) || (first == b && second == a)) {
+                x = first;
+                y = second;
+                c = faces(first_index, (offset + 2) % 3);
+                break;
+            }
+        }
+        if (x < 0) {
+            continue;
+        }
+        long long d = -1;
+        for (py::ssize_t offset = 0; offset < 3; ++offset) {
+            if (faces(second_index, offset) == y
+                && faces(second_index, (offset + 1) % 3) == x) {
+                d = faces(second_index, (offset + 2) % 3);
+                break;
+            }
+        }
+        if (d < 0 || c == d || c == x || c == y || d == x || d == y) {
+            continue;
+        }
+
+        const std::array<long long, 3> first_face{
+            faces(first_index, 0), faces(first_index, 1), faces(first_index, 2)};
+        const std::array<long long, 3> second_face{
+            faces(second_index, 0), faces(second_index, 1), faces(second_index, 2)};
+        const std::array<long long, 3> new_first{c, x, d};
+        const std::array<long long, 3> new_second{c, d, y};
+        const double old_quality = std::min(
+            triangle_mean_ratio(vertices, first_face),
+            triangle_mean_ratio(vertices, second_face));
+        const double new_quality = std::min(
+            triangle_mean_ratio(vertices, new_first),
+            triangle_mean_ratio(vertices, new_second));
+        if (new_quality > old_quality + 1e-12) {
+            accepted(candidate_index) = true;
+            continue;
+        }
+
+        std::unordered_map<EdgeKey, long long, FixedIndexHash<2>> edge_deltas;
+        edge_deltas.reserve(8);
+        const auto add_face_delta = [&](const std::array<long long, 3>& face,
+                                        const long long delta) {
+            edge_deltas[edge_key(face[0], face[1])] += delta;
+            edge_deltas[edge_key(face[1], face[2])] += delta;
+            edge_deltas[edge_key(face[2], face[0])] += delta;
+        };
+        add_face_delta(first_face, -1);
+        add_face_delta(second_face, -1);
+        add_face_delta(new_first, 1);
+        add_face_delta(new_second, 1);
+
+        std::array<long long, 4> touched{x, y, c, d};
+        std::array<long long, 4> new_valence{
+            valence[static_cast<size_t>(x)], valence[static_cast<size_t>(y)],
+            valence[static_cast<size_t>(c)], valence[static_cast<size_t>(d)]};
+        std::array<long long, 4> new_boundary{
+            boundary_degree[static_cast<size_t>(x)],
+            boundary_degree[static_cast<size_t>(y)],
+            boundary_degree[static_cast<size_t>(c)],
+            boundary_degree[static_cast<size_t>(d)]};
+        for (const auto& [key, delta] : edge_deltas) {
+            const auto old_it = topology.find(key);
+            const long long old_count =
+                old_it == topology.end() ? 0LL : old_it->second.count;
+            const long long new_count = old_count + delta;
+            if (new_count < 0) {
+                valid_state = false;
+                break;
+            }
+            for (size_t local = 0; local < touched.size(); ++local) {
+                if (touched[local] != key[0] && touched[local] != key[1]) {
+                    continue;
+                }
+                if ((old_count > 0) != (new_count > 0)) {
+                    new_valence[local] += new_count > 0 ? 1 : -1;
+                }
+                if (old_count == 1) {
+                    --new_boundary[local];
+                }
+                if (new_count == 1) {
+                    ++new_boundary[local];
+                }
+            }
+        }
+        if (!valid_state) {
+            return result;
+        }
+        long long after_deviation = total_deviation;
+        for (size_t local = 0; local < touched.size(); ++local) {
+            after_deviation -= deviation(
+                valence[static_cast<size_t>(touched[local])],
+                boundary_degree[static_cast<size_t>(touched[local])]);
+            after_deviation += deviation(new_valence[local], new_boundary[local]);
+        }
+        accepted(candidate_index) = after_deviation < total_deviation;
+    }
+    return result;
 }
 
 py::dict estimate_triangle_curvature_sizing(
@@ -3949,6 +4236,10 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("maximum_length") = py::none());
     m.def("triangle_quality_batch", &triangle_quality_batch,
           py::arg("triangles").noconvert());
+    m.def("triangle_flip_candidate_mask", &triangle_flip_candidate_mask,
+          py::arg("vertices").noconvert(),
+          py::arg("faces").noconvert(),
+          py::arg("edges").noconvert());
     m.def("select_quad_pairs", &select_quad_pairs,
           py::arg("vertices").noconvert(),
           py::arg("triangles").noconvert(),

@@ -50,6 +50,7 @@
         "prepare_quad_pairs",
         "quad_dominant_transaction",
         "select_quad_pairs",
+        "triangle_flip_candidate_mask",
         "triangle_intersections_interval",
         "triangle_intersections_segment",
         "triangle_quality_batch",

@@ -981,6 +981,46 @@ class OperatorTransaction:
             before_deviation=self._state_valence_deviation(),
         )
 
+    def _flip_candidate_mask(
+        self,
+        edges: Sequence[tuple[int, int]],
+    ) -> np.ndarray:
+        """Return frozen-state flip decisions in input edge order.
+
+        The native kernel is deliberately only a filter: Python keeps the
+        deterministic minimum-length choice and ``flip_edge`` re-runs every
+        transactional topology, orientation, and provenance guard before a
+        mutation.  The fallback calls the scalar oracle edge by edge.
+        """
+        if not edges:
+            return np.empty(0, dtype=np.bool_)
+
+        from core.utils.native_extensions import load_native_metrics
+
+        native = load_native_metrics()
+        if native is None or not hasattr(native, "triangle_flip_candidate_mask"):
+            return np.fromiter(
+                (self.should_flip_edge(edge) for edge in edges),
+                dtype=np.bool_,
+                count=len(edges),
+            )
+
+        edge_array = np.ascontiguousarray(np.asarray(edges, dtype=np.int64))
+        result = native.triangle_flip_candidate_mask(
+            np.ascontiguousarray(self.state.vertices),
+            np.ascontiguousarray(self.state.faces),
+            edge_array,
+        )
+        if (
+            not isinstance(result, np.ndarray)
+            or result.dtype != np.dtype(np.bool_)
+            or result.ndim != 1
+            or len(result) != len(edges)
+            or not result.flags.c_contiguous
+        ):
+            raise RuntimeError("native triangle_flip_candidate_mask returned an invalid mask")
+        return result
+
     def flip_edge(self, edge: tuple[int, int]) -> GuardReport:
         """Flip one internal edge when valence or local triangle quality improves."""
         before = self.state.copy()
@@ -1218,10 +1258,10 @@ class OperatorTransaction:
 
         processed.clear()
         while True:
+            pending_edges = tuple(edge for edge in self._unique_edges() if edge not in processed)
+            candidate_mask = self._flip_candidate_mask(pending_edges)
             candidates = [
-                edge
-                for edge in self._unique_edges()
-                if edge not in processed and self.should_flip_edge(edge)
+                edge for edge, accepted in zip(pending_edges, candidate_mask) if bool(accepted)
             ]
             if not candidates:
                 break

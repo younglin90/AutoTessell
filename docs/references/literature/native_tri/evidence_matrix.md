@@ -411,3 +411,20 @@ guards remain unchanged; the default centroid path is unchanged.
 The six-row report repeated byte-identically. This is a measured opt-in
 improvement, not a production-default promotion: feature-line sliding,
 two-sided envelope gating, and anisotropic BL intersection remain open.
+
+### 2026-07-31 TRI-FLIP-FILTER-CPP23-1 — frozen-state candidate batch
+
+The scalar flip scan built `1,836` full-mesh candidates per cylinder round
+before selecting any edge.  A serial C++23 kernel now constructs topology,
+valence, and boundary counts once and returns the identical Boolean candidate
+mask in edge order.  Python still selects the minimum-length edge and the
+unchanged transaction rebuilds and validates the actual flip.  Filter copy
+pairs fell `1,836 -> 0`; the `46` required real transaction builds remain.
+
+The cylinder round improved `0.512485236 -> 0.307059165 s` (`1.669x`) and peak
+RSS decreased `52,224 -> 44,544 KiB`.  Direct filter speedup was `64.99x`.
+Cube, sphere, and cylinder had zero scalar/native edge-decision mismatches;
+full reports, accepted count, input bytes, and vertex/face hashes matched over
+three repeats.  The focused suite is recorded in
+`tri_flip_filter_cpp23_2026-07-31.md`.  This is an independent first-party
+implementation; no external source or `third_party/` content was used.
