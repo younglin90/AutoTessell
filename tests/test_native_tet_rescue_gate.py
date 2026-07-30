@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from core.generator.native_tet.rescue_gate import audit_tet_boundary, has_strict_writer_topology
+from core.generator.native_tet.rescue_gate import (
+    audit_tet_boundary,
+    drop_duplicate_tet_groups_if_strict_topology_restored,
+    has_strict_writer_topology,
+)
 
 
 def _cube() -> tuple[np.ndarray, np.ndarray]:
@@ -57,6 +61,23 @@ def test_duplicate_tet_is_rejected() -> None:
     assert audit.n_duplicate_tets == 1
     assert audit.n_nonmanifold_faces > 0
     assert not has_strict_writer_topology(points, np.vstack([tets, tets[:1]]))
+
+
+def test_duplicate_group_repair_refuses_boundary_changing_drop() -> None:
+    points, tets = _cube()
+    duplicated = np.vstack([tets, tets[:1]])
+
+    repair = drop_duplicate_tet_groups_if_strict_topology_restored(
+        points,
+        duplicated,
+    )
+
+    assert not repair.applied
+    assert repair.n_duplicate_groups == 1
+    assert repair.n_removed_tets == 2
+    assert repair.reason == "duplicate_group_drop_changes_boundary"
+    assert not repair.boundary_preserved
+    np.testing.assert_array_equal(repair.tets, duplicated)
 
 
 def test_degenerate_tet_is_rejected() -> None:

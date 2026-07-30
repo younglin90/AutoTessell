@@ -8,12 +8,16 @@ import numpy as np
 
 from core.analyzer.file_reader import load_mesh
 from core.generator.native_tet.mesher import generate_native_tet
-
+from core.generator.native_tet.rescue_gate import audit_tet_boundary
+from core.generator.native_tet.writer_topology import audit_written_polymesh
 
 CYLINDER = Path(__file__).resolve().parent / "benchmarks" / "cylinder.stl"
 
 
-def test_non_manifold_native_tet_output_fails_closed(tmp_path, monkeypatch) -> None:
+def test_exact_duplicate_groups_restore_strict_native_tet_topology(
+    tmp_path,
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
     monkeypatch.setenv("AUTO_TESSELL_CONVEX_EXTRUSION_RESCUE", "0")
     mesh = load_mesh(CYLINDER)
@@ -29,7 +33,29 @@ def test_non_manifold_native_tet_output_fails_closed(tmp_path, monkeypatch) -> N
         enable_phase_c=False,
     )
 
-    assert not result.success
-    assert "writer rejected output topology" in result.message
-    assert "non-manifold face references: count=10" in result.message
-    assert not (case_dir / "constant" / "polyMesh").exists()
+    assert result.success
+    assert result.n_cells == 1495
+    repair = result.debug_info["strict_topology_duplicate_group_repair"]
+    assert repair == {
+        "applied": True,
+        "n_duplicate_groups": 2,
+        "n_removed_tets": 4,
+        "reason": "exact_duplicate_groups_removed_with_boundary_preserved",
+        "boundary_preserved": True,
+        "before_nonmanifold_faces": 4,
+        "after_nonmanifold_faces": 0,
+    }
+    assert "native_tet_strict_topology_duplicate_groups_removed: 4" in (
+        result.warnings or []
+    )
+
+    tet_audit = audit_tet_boundary(result.tet_points, result.tets)
+    assert tet_audit.n_nonmanifold_faces == 0
+    assert tet_audit.n_duplicate_tets == 0
+    assert tet_audit.n_degenerate_tets == 0
+    assert tet_audit.n_open_edges == 0
+    assert tet_audit.n_nonmanifold_edges == 0
+
+    written = audit_written_polymesh(case_dir / "constant" / "polyMesh")
+    assert written.n_cells == result.n_cells
+    assert all(cell.is_tetrahedron_encoding for cell in written.cells)
