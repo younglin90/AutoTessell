@@ -15,6 +15,7 @@ def test_input_vertex_presence_accepts_a_reordered_exact_copy() -> None:
 
     assert accepted
     assert missing == 0
+    assert _input_vertices_exactly_present_l0(source, candidate) == (accepted, missing)
 
 
 def test_input_vertex_presence_rejects_a_dropped_sharp_corner() -> None:
@@ -25,3 +26,14 @@ def test_input_vertex_presence_rejects_a_dropped_sharp_corner() -> None:
 
     assert not accepted
     assert missing == 1
+
+
+def test_input_vertex_presence_fails_closed_for_a_malformed_candidate() -> None:
+    source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0)), dtype=np.float64)
+    candidate = source.copy()
+    candidate[2, 2] = np.nan
+
+    accepted, missing = _input_vertices_exactly_present_l0(source, candidate)
+
+    assert not accepted
+    assert missing == len(source)
