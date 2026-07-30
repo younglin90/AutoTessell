@@ -2,11 +2,12 @@
 
 Date: 2026-07-31
 
-Base: `eacd9ba20f05dc699a1443cb2ca039a56145c550`
+Base at final blocker review: `e7ee5016d7be98c1749eb35b93dbe51edc55dc4d`
 
 Scope: report-only Phase-0 face-pairing evaluation. No mesh point, face,
 owner, neighbour, boundary, routing, acceptance threshold, target-cell,
-boundary-layer, source-geometry, provenance, or `third_party/` change.
+boundary-layer, source-geometry, provenance, or `third_party/` change. The
+native ABI contract gains the required public `minimum_pairing_sum` symbol.
 
 ## Frozen hypothesis and acceptance
 
@@ -28,7 +29,7 @@ Primary metric: wall time of `NativeMeshChecker` on the deterministic sphere
   identical; three exact repeats are identical
 - rollback: any parity failure, order dependence, nontermination, permanent
   field/hash change, runtime above 15 seconds, external-code provenance, or
-  `third_party/`/build-contract change
+  unauthorized `third_party/` or ABI-contract change
 
 Promotion target: `L1_PASS / CORRECTNESS_KEEP`. The metric remains report-only.
 
@@ -75,13 +76,21 @@ an Edmonds/Galil primal-dual alternating forest with odd-cycle contraction and
 expansion. Runtime is O(V^3); dense edge storage and blossom membership use
 O(V^2) memory. The current report contract caps one cell at 256 faces.
 
-Reduced costs use signed 64-bit integers. Savings are normalized onto
-`2^50` integer levels, while the returned objective is summed from the original
-double-precision savings selected by the matching. For at most 256 faces, the
-maximum selection error introduced by quantization is bounded by
-`128 / 2^50` times the largest saving, approximately `1.14e-13 * max_saving`.
-The observed worst scaled difference over the extended oracle census was
-`3.67e-15`.
+No saving is quantized. Every positive binary64 saving is decomposed exactly
+as an odd integer coefficient times a power of two. A problem-local common
+exponent maps all coefficients into fixed-capacity signed integers without
+dropping low bits. The implementation selects 128, 256, 512, 1024, or 2176
+bits from the observed exponent span. The largest representation covers the
+entire finite binary64 exponent range plus cardinality and primal-dual
+headroom. A dominant exact common bonus preserves maximum cardinality without
+changing the order among full matchings.
+
+The returned scalar is not reconstructed as `all singles - selected saving`.
+It directly evaluates every selected pair norm and the one possible unmatched
+norm, sorts those costs for order-independent accumulation, and sums in
+`long double`. This removes catastrophic cancellation on mixed-scale cells.
+The observed worst scaled difference over the committed 1,500-case exhaustive
+oracle census is `3.56e-16`.
 
 The same polynomial kernel replaces the pre-existing exponential helper in
 the native triangle Phase-0 path. Python keeps the original exhaustive dynamic
@@ -89,8 +98,9 @@ program as the optional-extension fallback and small-input oracle.
 
 ## Result
 
-The exact sphere checker completed three times in `2.61946`, `2.44775`, and
-`2.42832` seconds. Maximum time is `2.61946 s`, at least `68.7x` faster than
+After exact mixed-scale blocker repair, the sphere checker completed three
+times in `2.69395`, `2.61871`, and `2.54303` seconds. Maximum time is
+`2.69395 s`, at least `66.8x` faster than
 the 180-second baseline lower bound and below the 15-second absolute budget.
 All three `CheckMeshResult` models were identical. Comparison with the
 diagnostic placeholder found zero differences outside the four report-only
@@ -115,7 +125,11 @@ Native/exhaustive parity passed 1,500 deterministic cases spanning every size
 from 0 through 14, Gaussian, scaled `1e-12` to `1e12`, near-collinear,
 antipodal, and rounded tie-heavy families. Dense 37- and 64-vector tests,
 equal weights, antipodal duplicates, near ties, and eight permutations per
-case terminate deterministically.
+case terminate deterministically. Two mixed-scale cancellation/selection
+regressions cover every permutation; the six-vector case combines `1e9` and
+`2e-7` magnitudes and returns exact zero. An odd mixed-scale case returns
+`1.414213562373095e-7` for every permutation. A deterministic odd-cycle
+regression and a 37-vector sparse-positive-saving core are also invariant.
 
 ## Primary research, GitHub audit, and license boundary
 
@@ -147,12 +161,12 @@ remains possible.
 ## Verification status
 
 Fresh isolated `native_metrics` builds with GCC 13.3.0, C++23, Release,
-`-Wall -Wextra -Wpedantic -Werror`. Focused Phase-0 and matching tests pass
-`18/18`. After rebasing over the Cycle-36 fused native-quad transaction, the
-full relevant native metrics, Phase-0, dual, polyMesh, star fail-closed,
-harness, and quad-transaction selection passes `102/102 in 39.18 s`; its two
-warnings are the pre-existing all-NaN reduction fixture warnings. Ruff, Black,
-and `git diff --check` pass. Strict focused mypy reports five pre-existing
+`-Wall -Wextra -Wpedantic -Werror`. The fresh eight-module
+`native_build_evidence` target verifies the exact ABI contract including
+`minimum_pairing_sum`. Focused matching and ABI tests pass `17/17`; after the
+fresh eight-module build, the combined relevant suite passes `111/111 in
+50.60 s`, with two pre-existing all-NaN reduction warnings. Ruff, Black, and
+`git diff --check` pass. Strict focused mypy reports five pre-existing
 `no-any-return` diagnostics in `polymesh_reader.py` and the unchanged
 `_juretic_psi` return expression; it reports no diagnostic in the new matching
 wrapper, kernel test, or exhaustive oracle.

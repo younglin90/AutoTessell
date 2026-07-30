@@ -43,6 +43,7 @@
         "compute_triangle_phase0_metrics_topology",
         "count_faces_not_upper_triangular",
         "estimate_triangle_curvature_sizing",
+        "minimum_pairing_sum",
         "parse_foam_faces_file",
         "parse_foam_faces_topology_file",
         "parse_foam_labels_file",

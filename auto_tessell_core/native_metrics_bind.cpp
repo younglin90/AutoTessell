@@ -35,6 +35,7 @@ namespace py = pybind11;
 namespace {
 
 using Point3 = std::array<double, 3>;
+constexpr std::size_t kMaximumPairingFaceCount = 256;
 
 py::array_t<long long> copy_index_vector(const std::vector<long long>& values);
 
@@ -939,36 +940,119 @@ double norm3(const Point3& value)
         + value[2] * value[2]);
 }
 
+struct BinarySaving final {
+    std::uint64_t coefficient = 0;
+    int exponent = 0;
+};
+
+BinarySaving decompose_binary_saving(double value)
+{
+    if (!(value > 0.0)) {
+        return {};
+    }
+    const std::uint64_t bits = std::bit_cast<std::uint64_t>(value);
+    const std::uint64_t fraction = bits & ((std::uint64_t{1} << 52) - 1);
+    const unsigned exponent_field = static_cast<unsigned>((bits >> 52) & 0x7ffU);
+    std::uint64_t coefficient = fraction;
+    int exponent = -1074;
+    if (exponent_field != 0) {
+        coefficient |= std::uint64_t{1} << 52;
+        exponent = static_cast<int>(exponent_field) - 1023 - 52;
+    }
+    const unsigned trailing_zeros = std::countr_zero(coefficient);
+    coefficient >>= trailing_zeros;
+    exponent += static_cast<int>(trailing_zeros);
+    return {coefficient, exponent};
+}
+
+template <std::size_t WordCount>
+std::vector<int> solve_exact_pair_matching(
+    const std::vector<std::vector<double>>& savings,
+    std::size_t graph_size,
+    int minimum_exponent,
+    std::size_t cardinality_shift)
+{
+    using Matching = autotessell::matching::MaximumWeightMatching<WordCount>;
+    using Weight = typename Matching::Weight;
+    Matching matching(static_cast<int>(graph_size));
+    for (std::size_t first = 0; first < graph_size; ++first) {
+        for (std::size_t second = first + 1; second < graph_size; ++second) {
+            Weight edge_weight = Weight::shifted(1, cardinality_shift);
+            const BinarySaving binary = decompose_binary_saving(savings[first][second]);
+            if (binary.coefficient != 0) {
+                const auto shift = static_cast<std::size_t>(
+                    binary.exponent - minimum_exponent);
+                edge_weight += Weight::shifted(binary.coefficient, shift);
+            }
+            matching.add_edge(
+                static_cast<int>(first + 1),
+                static_cast<int>(second + 1),
+                edge_weight.doubled());
+        }
+    }
+    return matching.solve();
+}
+
+std::vector<int> dispatch_exact_pair_matching(
+    const std::vector<std::vector<double>>& savings,
+    std::size_t graph_size,
+    int minimum_exponent,
+    std::size_t required_bits)
+{
+    // A dominant common bonus preserves maximum cardinality during every
+    // primal-dual phase without discarding any lower exact saving bit.
+    const std::size_t cardinality_shift = required_bits
+        + static_cast<std::size_t>(std::bit_width(graph_size));
+    // Reserve headroom for the dominant bonus, doubled edge weights, and duals.
+    const std::size_t working_bits = cardinality_shift + 16;
+    if (working_bits <= 128) {
+        return solve_exact_pair_matching<2>(
+            savings, graph_size, minimum_exponent, cardinality_shift);
+    }
+    if (working_bits <= 256) {
+        return solve_exact_pair_matching<4>(
+            savings, graph_size, minimum_exponent, cardinality_shift);
+    }
+    if (working_bits <= 512) {
+        return solve_exact_pair_matching<8>(
+            savings, graph_size, minimum_exponent, cardinality_shift);
+    }
+    if (working_bits <= 1024) {
+        return solve_exact_pair_matching<16>(
+            savings, graph_size, minimum_exponent, cardinality_shift);
+    }
+    if (working_bits <= 2176) {
+        return solve_exact_pair_matching<34>(
+            savings, graph_size, minimum_exponent, cardinality_shift);
+    }
+    throw std::overflow_error("binary64 matching weights exceed exact capacity");
+}
+
 double minimum_pairing_sum(const std::vector<Point3>& vectors)
 {
     if (vectors.empty()) {
         return 0.0;
     }
-    constexpr size_t maximum_face_count = 256;
-    if (vectors.size() > maximum_face_count) {
+    if (vectors.size() > kMaximumPairingFaceCount) {
         throw std::invalid_argument(
             "native Phase-0 pairing supports at most 256 faces per cell");
     }
 
     std::vector<double> norms;
     norms.reserve(vectors.size());
-    double all_single_cost = 0.0;
     for (const auto& vector : vectors) {
         const double magnitude = norm3(vector);
         if (!std::isfinite(magnitude)) {
             throw std::invalid_argument("pairing vectors must be finite");
         }
         norms.push_back(magnitude);
-        all_single_cost += magnitude;
-    }
-    if (!std::isfinite(all_single_cost)) {
-        throw std::invalid_argument("pairing vector magnitudes must have a finite sum");
     }
 
     const size_t graph_size = vectors.size() + (vectors.size() & 1U);
     std::vector<std::vector<double>> savings(
         graph_size, std::vector<double>(graph_size, 0.0));
-    double maximum_saving = 0.0;
+    std::optional<int> minimum_exponent;
+    std::size_t required_bits = 1;
     for (size_t first = 0; first < vectors.size(); ++first) {
         for (size_t second = first + 1; second < vectors.size(); ++second) {
             const Point3 pair{
@@ -982,55 +1066,103 @@ double minimum_pairing_sum(const std::vector<Point3>& vectors)
             const double saving = std::max(0.0, raw_saving);
             savings[first][second] = saving;
             savings[second][first] = saving;
-            maximum_saving = std::max(maximum_saving, saving);
-        }
-    }
-
-    using Matching = autotessell::matching::MaximumWeightMatching;
-    constexpr Matching::Weight quantization_max = Matching::Weight{1} << 50;
-    constexpr Matching::Weight cardinality_bonus = quantization_max + 1;
-    Matching matching(static_cast<int>(graph_size));
-    for (size_t first = 0; first < graph_size; ++first) {
-        for (size_t second = first + 1; second < graph_size; ++second) {
-            Matching::Weight quantized_saving = 0;
-            if (maximum_saving > 0.0) {
-                const long double ratio = static_cast<long double>(savings[first][second])
-                    / static_cast<long double>(maximum_saving);
-                quantized_saving = static_cast<Matching::Weight>(std::llround(
-                    ratio * static_cast<long double>(quantization_max)));
+            const BinarySaving binary = decompose_binary_saving(saving);
+            if (binary.coefficient != 0) {
+                minimum_exponent = minimum_exponent.has_value()
+                    ? std::min(*minimum_exponent, binary.exponent)
+                    : binary.exponent;
             }
-            matching.add_edge(
-                static_cast<int>(first + 1),
-                static_cast<int>(second + 1),
-                2 * (cardinality_bonus + quantized_saving));
         }
     }
 
-    const std::vector<int> mates = matching.solve();
-    double selected_saving = 0.0;
+    const int exact_exponent = minimum_exponent.value_or(0);
+    for (std::size_t first = 0; first < vectors.size(); ++first) {
+        for (std::size_t second = first + 1; second < vectors.size(); ++second) {
+            const BinarySaving binary = decompose_binary_saving(savings[first][second]);
+            if (binary.coefficient != 0) {
+                const auto coefficient_bits = static_cast<std::size_t>(
+                    std::bit_width(binary.coefficient));
+                required_bits = std::max(
+                    required_bits,
+                    coefficient_bits + static_cast<std::size_t>(
+                        binary.exponent - exact_exponent));
+            }
+        }
+    }
+
+    const std::vector<int> mates = dispatch_exact_pair_matching(
+        savings, graph_size, exact_exponent, required_bits);
+    if (mates.size() != graph_size) {
+        throw std::logic_error("weighted pairing returned an incomplete mate vector");
+    }
+    std::vector<bool> covered(graph_size, false);
+    for (std::size_t first = 0; first < graph_size; ++first) {
+        const int second_raw = mates[first];
+        if (second_raw < 0 || static_cast<std::size_t>(second_raw) >= graph_size) {
+            throw std::logic_error("weighted pairing mate is out of range");
+        }
+        const auto second = static_cast<std::size_t>(second_raw);
+        if (second == first) {
+            throw std::logic_error("weighted pairing returned a self match");
+        }
+        if (mates[second] != static_cast<int>(first)) {
+            throw std::logic_error("weighted pairing mate relation is not involutive");
+        }
+        if (first < second) {
+            if (covered[first] || covered[second]) {
+                throw std::logic_error("weighted pairing reused a vertex");
+            }
+            covered[first] = true;
+            covered[second] = true;
+        }
+    }
+    if (std::find(covered.begin(), covered.end(), false) != covered.end()) {
+        throw std::logic_error("weighted pairing did not cover every vertex");
+    }
+    std::vector<double> selected_costs;
+    selected_costs.reserve((vectors.size() + 1) / 2);
     for (size_t first = 0; first < vectors.size(); ++first) {
         const int second_raw = mates[first];
         if (second_raw < 0) {
             throw std::logic_error("weighted pairing did not produce a full matching");
         }
         const auto second = static_cast<size_t>(second_raw);
-        if (second < vectors.size() && first < second) {
-            selected_saving += savings[first][second];
+        if (second >= vectors.size()) {
+            selected_costs.push_back(norms[first]);
+        } else if (first < second) {
+            const Point3 pair{
+                vectors[first][0] + vectors[second][0],
+                vectors[first][1] + vectors[second][1],
+                vectors[first][2] + vectors[second][2]};
+            selected_costs.push_back(norm3(pair));
         }
     }
-    return std::max(0.0, all_single_cost - selected_saving);
+    std::sort(selected_costs.begin(), selected_costs.end());
+    long double objective = 0.0L;
+    for (const double cost : selected_costs) {
+        objective += static_cast<long double>(cost);
+    }
+    const double result = static_cast<double>(objective);
+    if (!std::isfinite(result)) {
+        throw std::invalid_argument("pairing objective must remain finite");
+    }
+    return result;
 }
 
-double minimum_pairing_sum_array(
-    py::array_t<double, py::array::c_style | py::array::forcecast> vectors)
+double minimum_pairing_sum_array(py::array vectors)
 {
     if (vectors.ndim() != 2 || vectors.shape(1) != 3) {
         throw std::invalid_argument("vectors must have shape (n, 3)");
     }
-    const auto values = vectors.unchecked<2>();
+    if (vectors.shape(0) > static_cast<py::ssize_t>(kMaximumPairingFaceCount)) {
+        throw std::invalid_argument(
+            "native Phase-0 pairing supports at most 256 faces per cell");
+    }
+    py::array_t<double, py::array::c_style | py::array::forcecast> values_array(vectors);
+    const auto values = values_array.unchecked<2>();
     std::vector<Point3> copied;
-    copied.reserve(static_cast<size_t>(vectors.shape(0)));
-    for (py::ssize_t row = 0; row < vectors.shape(0); ++row) {
+    copied.reserve(static_cast<size_t>(values_array.shape(0)));
+    for (py::ssize_t row = 0; row < values_array.shape(0); ++row) {
         copied.push_back(Point3{values(row, 0), values(row, 1), values(row, 2)});
     }
     py::gil_scoped_release release;

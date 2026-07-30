@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -11,20 +12,231 @@
 
 namespace autotessell::matching {
 
+// Fixed-capacity signed integer used to preserve every bit of a binary64
+// edge weight.  WordCount is selected per problem, so ordinary meshes use two
+// words while adversarial mixed-scale inputs can expand without quantization.
+template <std::size_t WordCount>
+class ExactInteger final {
+public:
+    static_assert(WordCount > 0);
+
+    constexpr ExactInteger() = default;
+    constexpr ExactInteger(std::uint64_t value) { words_[0] = value; }
+
+    [[nodiscard]] static ExactInteger shifted(
+        std::uint64_t coefficient, std::size_t bit_shift)
+    {
+        ExactInteger result;
+        const std::size_t word = bit_shift / 64;
+        const unsigned offset = static_cast<unsigned>(bit_shift % 64);
+        if (word >= WordCount) {
+            throw std::overflow_error("exact matching weight exceeds capacity");
+        }
+        result.words_[word] = coefficient << offset;
+        if (offset != 0) {
+            if (word + 1 >= WordCount && (coefficient >> (64 - offset)) != 0) {
+                throw std::overflow_error("exact matching weight exceeds capacity");
+            }
+            if (word + 1 < WordCount) {
+                result.words_[word + 1] = coefficient >> (64 - offset);
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] static constexpr ExactInteger maximum() noexcept
+    {
+        ExactInteger result;
+        result.words_.fill(~std::uint64_t{0});
+        return result;
+    }
+
+    [[nodiscard]] constexpr bool is_zero() const noexcept
+    {
+        for (const std::uint64_t word : words_) {
+            if (word != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    constexpr ExactInteger& operator+=(const ExactInteger& other)
+    {
+        if (other.is_zero()) {
+            return *this;
+        }
+        if (is_zero()) {
+            *this = other;
+            return *this;
+        }
+        if (negative_ == other.negative_) {
+            add_magnitude(other);
+            return *this;
+        }
+        const int order = compare_magnitude(other);
+        if (order == 0) {
+            words_.fill(0);
+            negative_ = false;
+        } else if (order > 0) {
+            subtract_magnitude(other);
+        } else {
+            ExactInteger result = other;
+            result.subtract_magnitude(*this);
+            *this = result;
+        }
+        return *this;
+    }
+
+    constexpr ExactInteger& operator-=(const ExactInteger& other)
+    {
+        ExactInteger negated = other;
+        if (!negated.is_zero()) {
+            negated.negative_ = !negated.negative_;
+        }
+        return *this += negated;
+    }
+
+    [[nodiscard]] constexpr ExactInteger doubled() const
+    {
+        ExactInteger result;
+        result.negative_ = negative_;
+        std::uint64_t carry = 0;
+        for (std::size_t index = 0; index < WordCount; ++index) {
+            const std::uint64_t next_carry = words_[index] >> 63;
+            result.words_[index] = (words_[index] << 1) | carry;
+            carry = next_carry;
+        }
+        if (carry != 0) {
+            throw std::overflow_error("exact matching weight doubling overflow");
+        }
+        return result;
+    }
+
+    [[nodiscard]] constexpr ExactInteger halved() const noexcept
+    {
+        ExactInteger result;
+        result.negative_ = negative_;
+        std::uint64_t carry = 0;
+        for (std::size_t index = WordCount; index-- > 0;) {
+            const std::uint64_t next_carry = words_[index] & 1U;
+            result.words_[index] = (words_[index] >> 1) | (carry << 63);
+            carry = next_carry;
+        }
+        if (result.is_zero()) {
+            result.negative_ = false;
+        }
+        return result;
+    }
+
+    friend constexpr ExactInteger operator+(
+        ExactInteger first, const ExactInteger& second)
+    {
+        first += second;
+        return first;
+    }
+
+    friend constexpr ExactInteger operator-(
+        ExactInteger first, const ExactInteger& second)
+    {
+        first -= second;
+        return first;
+    }
+
+    friend constexpr bool operator==(
+        const ExactInteger&, const ExactInteger&) noexcept = default;
+
+    friend constexpr bool operator<(
+        const ExactInteger& first, const ExactInteger& second) noexcept
+    {
+        if (first.negative_ != second.negative_) {
+            return first.negative_;
+        }
+        const int magnitude_order = first.compare_magnitude(second);
+        return first.negative_ ? magnitude_order > 0 : magnitude_order < 0;
+    }
+
+    friend constexpr bool operator>(
+        const ExactInteger& first, const ExactInteger& second) noexcept
+    {
+        return second < first;
+    }
+
+    friend constexpr bool operator<=(
+        const ExactInteger& first, const ExactInteger& second) noexcept
+    {
+        return !(second < first);
+    }
+
+    friend constexpr bool operator>=(
+        const ExactInteger& first, const ExactInteger& second) noexcept
+    {
+        return !(first < second);
+    }
+
+private:
+    [[nodiscard]] constexpr int compare_magnitude(
+        const ExactInteger& other) const noexcept
+    {
+        for (std::size_t index = WordCount; index-- > 0;) {
+            if (words_[index] != other.words_[index]) {
+                return words_[index] < other.words_[index] ? -1 : 1;
+            }
+        }
+        return 0;
+    }
+
+    constexpr void add_magnitude(const ExactInteger& other)
+    {
+        std::uint64_t carry = 0;
+        for (std::size_t index = 0; index < WordCount; ++index) {
+            const std::uint64_t first = words_[index] + other.words_[index];
+            const bool first_carry = first < words_[index];
+            const std::uint64_t second = first + carry;
+            const bool second_carry = second < first;
+            words_[index] = second;
+            carry = static_cast<std::uint64_t>(first_carry || second_carry);
+        }
+        if (carry != 0) {
+            throw std::overflow_error("exact matching weight addition overflow");
+        }
+    }
+
+    constexpr void subtract_magnitude(const ExactInteger& other) noexcept
+    {
+        std::uint64_t borrow = 0;
+        for (std::size_t index = 0; index < WordCount; ++index) {
+            const std::uint64_t first = words_[index] - other.words_[index];
+            const bool first_borrow = words_[index] < other.words_[index];
+            const std::uint64_t second = first - borrow;
+            const bool second_borrow = first < borrow;
+            words_[index] = second;
+            borrow = static_cast<std::uint64_t>(first_borrow || second_borrow);
+        }
+        if (is_zero()) {
+            negative_ = false;
+        }
+    }
+
+    std::array<std::uint64_t, WordCount> words_{};
+    bool negative_ = false;
+};
+
 // First-party Edmonds/Galil primal-dual maximum-weight matching.
 //
 // The implementation uses exact integer reduced costs.  Contracted odd cycles
 // occupy indices above the original vertex range.  Runtime is O(V^3), memory
 // is O(V^2).  It intentionally exposes only the mate vector needed by the
 // report-only polyhedral face-pairing metric.
+template <std::size_t WordCount>
 class MaximumWeightMatching final {
 public:
-    using Weight = std::int64_t;
+    using Weight = ExactInteger<WordCount>;
 
     explicit MaximumWeightMatching(int vertex_count)
-        : vertex_count_(vertex_count),
-          active_count_(vertex_count),
-          capacity_(2 * vertex_count + 1),
+        : vertex_count_(validated_vertex_count(vertex_count)),
+          active_count_(vertex_count_),
+          capacity_(checked_capacity(vertex_count_)),
           edge_(static_cast<std::size_t>(capacity_),
                 std::vector<Edge>(static_cast<std::size_t>(capacity_))),
           dual_(static_cast<std::size_t>(capacity_), 0),
@@ -38,9 +250,6 @@ public:
           immediate_child_(static_cast<std::size_t>(capacity_),
                            std::vector<int>(static_cast<std::size_t>(capacity_), 0))
     {
-        if (vertex_count_ < 0) {
-            throw std::invalid_argument("vertex count must be non-negative");
-        }
         for (int vertex = 1; vertex <= vertex_count_; ++vertex) {
             base_[static_cast<std::size_t>(vertex)] = vertex;
             immediate_child_[static_cast<std::size_t>(vertex)]
@@ -93,6 +302,24 @@ public:
     }
 
 private:
+    [[nodiscard]] static int validated_vertex_count(int vertex_count)
+    {
+        if (vertex_count < 0) {
+            throw std::invalid_argument("vertex count must be non-negative");
+        }
+        return vertex_count;
+    }
+
+    [[nodiscard]] static int checked_capacity(int vertex_count)
+    {
+        constexpr int maximum_safe_count =
+            (std::numeric_limits<int>::max() - 1) / 2;
+        if (vertex_count > maximum_safe_count) {
+            throw std::invalid_argument("vertex count exceeds matching capacity");
+        }
+        return 2 * vertex_count + 1;
+    }
+
     struct Edge final {
         int from = 0;
         int to = 0;
@@ -102,7 +329,7 @@ private:
     static constexpr int kUnseen = -1;
     static constexpr int kOuter = 0;
     static constexpr int kInner = 1;
-    static constexpr Weight kInfinity = std::numeric_limits<Weight>::max() / 4;
+    static constexpr Weight kInfinity = Weight::maximum();
 
     int vertex_count_;
     int active_count_;
@@ -140,7 +367,7 @@ private:
     [[nodiscard]] Weight reduced_cost(const Edge& edge) const
     {
         return dual_[static_cast<std::size_t>(edge.from)]
-            + dual_[static_cast<std::size_t>(edge.to)] - 2 * edge.weight;
+            + dual_[static_cast<std::size_t>(edge.to)] - edge.weight.doubled();
     }
 
     void update_slack(int outer_vertex, int target_base)
@@ -420,7 +647,8 @@ private:
         for (int blossom = vertex_count_ + 1; blossom <= active_count_; ++blossom) {
             if (base_[static_cast<std::size_t>(blossom)] == blossom
                 && forest_label_[static_cast<std::size_t>(blossom)] == kInner) {
-                step = std::min(step, dual_[static_cast<std::size_t>(blossom)] / 2);
+                step = std::min(
+                    step, dual_[static_cast<std::size_t>(blossom)].halved());
             }
         }
         for (int target = 1; target <= active_count_; ++target) {
@@ -435,7 +663,7 @@ private:
             if (forest_label_[static_cast<std::size_t>(target)] == kUnseen) {
                 step = std::min(step, cost);
             } else if (forest_label_[static_cast<std::size_t>(target)] == kOuter) {
-                step = std::min(step, cost / 2);
+                step = std::min(step, cost.halved());
             }
         }
         return step;
@@ -456,9 +684,9 @@ private:
                 continue;
             }
             if (forest_label_[static_cast<std::size_t>(blossom)] == kOuter) {
-                dual_[static_cast<std::size_t>(blossom)] += 2 * step;
+                dual_[static_cast<std::size_t>(blossom)] += step.doubled();
             } else if (forest_label_[static_cast<std::size_t>(blossom)] == kInner) {
-                dual_[static_cast<std::size_t>(blossom)] -= 2 * step;
+                dual_[static_cast<std::size_t>(blossom)] -= step.doubled();
             }
         }
     }
@@ -526,7 +754,7 @@ private:
             if (step == kInfinity) {
                 return false;
             }
-            if (step < 0) {
+            if (step < Weight{0}) {
                 throw std::logic_error("weighted matching negative dual step");
             }
             apply_dual_step(step);

@@ -112,9 +112,11 @@ def _minimum_pairing_sum(vectors: np.ndarray) -> float:
     if len(values) == 0:
         return 0.0
     native_metrics = load_native_metrics()
-    if native_metrics is not None and hasattr(native_metrics, "minimum_pairing_sum"):
-        return float(native_metrics.minimum_pairing_sum(values))
-    return _minimum_pairing_sum_exhaustive(values)
+    if native_metrics is None:
+        return _minimum_pairing_sum_exhaustive(values)
+    if not hasattr(native_metrics, "minimum_pairing_sum"):
+        raise RuntimeError("loaded native_metrics is missing required minimum_pairing_sum ABI")
+    return float(native_metrics.minimum_pairing_sum(values))
 
 
 def _face_pairing_residual(
