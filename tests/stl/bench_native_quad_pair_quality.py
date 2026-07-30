@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import statistics
 import time
@@ -72,6 +73,10 @@ def _timed(function: Callable[[], Any]) -> float:
     start = time.perf_counter()
     function()
     return time.perf_counter() - start
+
+
+def _array_sha256(array: np.ndarray) -> str:
+    return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
 
 
 def _measure_alternating(
@@ -144,6 +149,12 @@ def main() -> None:
             native.validate_triangle_surface_and_build_edge_faces
         )
     )
+    legacy_preflight_backend = SimpleNamespace(
+        validate_triangle_surface_and_build_edge_faces=(
+            native.validate_triangle_surface_and_build_edge_faces
+        ),
+        select_quad_pairs=native.select_quad_pairs,
+    )
 
     def native_route() -> Any:
         return native_quad_dominant_remesh(vertices, triangles)
@@ -155,19 +166,38 @@ def main() -> None:
         finally:
             native_extensions.load_native_metrics = original_loader
 
+    def legacy_preflight_route() -> Any:
+        native_extensions.load_native_metrics = lambda: legacy_preflight_backend
+        try:
+            return native_quad_dominant_remesh(vertices, triangles)
+        finally:
+            native_extensions.load_native_metrics = original_loader
+
     python_selector_public_times, native_public_times = _measure_alternating(
         python_selector_route, native_route, args.repeats
     )
+    legacy_preflight_public_times, native_prepared_public_times = _measure_alternating(
+        legacy_preflight_route, native_route, args.repeats
+    )
     native_result = native_route()
     python_selector_result = python_selector_route()
+    legacy_preflight_result = legacy_preflight_route()
     np.testing.assert_array_equal(native_result.vertices, python_selector_result.vertices)
     np.testing.assert_array_equal(native_result.triangles, python_selector_result.triangles)
     np.testing.assert_array_equal(native_result.quads, python_selector_result.quads)
+    np.testing.assert_array_equal(native_result.vertices, legacy_preflight_result.vertices)
+    np.testing.assert_array_equal(native_result.triangles, legacy_preflight_result.triangles)
+    np.testing.assert_array_equal(native_result.quads, legacy_preflight_result.quads)
+    assert (
+        native_result.diagnostics.model_dump() == legacy_preflight_result.diagnostics.model_dump()
+    )
 
     python_kernel_median = statistics.median(python_kernel_times)
     native_kernel_median = statistics.median(native_kernel_times)
     python_selector_public_median = statistics.median(python_selector_public_times)
     native_public_median = statistics.median(native_public_times)
+    legacy_preflight_public_median = statistics.median(legacy_preflight_public_times)
+    native_prepared_public_median = statistics.median(native_prepared_public_times)
     memory: dict[str, float | int] = {}
     if args.trace_memory:
 
@@ -181,12 +211,18 @@ def main() -> None:
 
         python_peak = peak_bytes(python_kernel)
         native_peak = peak_bytes(native_kernel)
+        legacy_preflight_peak = peak_bytes(legacy_preflight_route)
+        native_prepared_peak = peak_bytes(native_route)
         memory = {
             "python_kernel_peak_bytes": python_peak,
             "native_kernel_peak_bytes": native_peak,
             "python_kernel_peak_bytes_per_pair": python_peak / len(face_pairs),
             "native_kernel_peak_bytes_per_pair": native_peak / len(face_pairs),
             "python_heap_reduction_percent": 100.0 * (1.0 - native_peak / python_peak),
+            "legacy_preflight_public_peak_bytes": legacy_preflight_peak,
+            "native_prepared_public_peak_bytes": native_prepared_peak,
+            "preflight_public_heap_reduction_percent": 100.0
+            * (1.0 - native_prepared_peak / legacy_preflight_peak),
         }
     print(
         json.dumps(
@@ -195,6 +231,9 @@ def main() -> None:
                 "triangles": len(triangles),
                 "face_pairs": len(face_pairs),
                 "accepted_pairs": len(expected[0]),
+                "output_vertex_sha256": _array_sha256(native_result.vertices),
+                "output_triangle_sha256": _array_sha256(native_result.triangles),
+                "output_quad_sha256": _array_sha256(native_result.quads),
                 "repeats": args.repeats,
                 "python_kernel_seconds": python_kernel_times,
                 "native_kernel_seconds": native_kernel_times,
@@ -206,6 +245,13 @@ def main() -> None:
                 "python_selector_public_median_seconds": python_selector_public_median,
                 "native_public_median_seconds": native_public_median,
                 "public_speedup": python_selector_public_median / native_public_median,
+                "legacy_preflight_public_seconds": legacy_preflight_public_times,
+                "native_prepared_public_seconds": native_prepared_public_times,
+                "legacy_preflight_public_median_seconds": legacy_preflight_public_median,
+                "native_prepared_public_median_seconds": native_prepared_public_median,
+                "preflight_public_speedup": (
+                    legacy_preflight_public_median / native_prepared_public_median
+                ),
                 **memory,
             },
             indent=2,

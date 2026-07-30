@@ -158,9 +158,7 @@ def _validate_input(
     from core.utils.native_extensions import load_native_metrics
 
     native = load_native_metrics()
-    if native is not None and hasattr(
-        native, "validate_triangle_surface_and_build_edge_faces"
-    ):
+    if native is not None and hasattr(native, "validate_triangle_surface_and_build_edge_faces"):
         return native.validate_triangle_surface_and_build_edge_faces(
             vertices,
             triangles,
@@ -244,6 +242,144 @@ def _feature_edges(
         if len(incident) == 2 and float(np.dot(*normals[incident])) < cos_limit:
             protected.add(edge)
     return protected
+
+
+def _prepare_quad_pairs_python(
+    vertices: np.ndarray,
+    triangles: NDArray[np.int64],
+    protected_wall_edges: object,
+    feature_angle_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reference topology preflight and pair-preparation implementation."""
+    edge_faces = _validate_input(vertices, triangles)
+    wall_edges = _validated_wall_edges(protected_wall_edges, edge_faces)
+    boundary_edges = {edge for edge, incident in edge_faces.items() if len(incident) == 1}
+    feature_edges = _feature_edges(vertices, triangles, edge_faces, feature_angle_deg)
+    protected = boundary_edges | feature_edges | wall_edges
+    unprotected_face_pairs: list[tuple[int, int]] = []
+    candidate_pairs = 0
+    rejected_protected = 0
+    for edge, incident in edge_faces.items():
+        if len(incident) != 2:
+            continue
+        candidate_pairs += 1
+        if edge in protected:
+            rejected_protected += 1
+            continue
+        first, second = sorted(incident)
+        unprotected_face_pairs.append((first, second))
+    face_pairs = np.asarray(unprotected_face_pairs, dtype=np.int64).reshape((-1, 2))
+    diagnostics = np.asarray(
+        (
+            len(boundary_edges),
+            len(feature_edges),
+            len(wall_edges),
+            candidate_pairs,
+            rejected_protected,
+        ),
+        dtype=np.int64,
+    )
+    return face_pairs, diagnostics
+
+
+def _prepare_quad_pairs(
+    vertices: np.ndarray,
+    triangles: NDArray[np.int64],
+    protected_wall_edges: object,
+    feature_angle_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Use the flat-array native preflight when its exact ABI is available."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "prepare_quad_pairs"):
+        return _prepare_quad_pairs_python(
+            vertices,
+            triangles,
+            protected_wall_edges,
+            feature_angle_deg,
+        )
+    if isinstance(protected_wall_edges, (str, bytes)) or not isinstance(
+        protected_wall_edges, Iterable
+    ):
+        raise ValueError("protected_wall_edges must contain pairs of exact signed int64 indices")
+    supplied_wall_edges = tuple(protected_wall_edges)
+    decoded_wall_edges = [_decode_protected_wall_edge(value) for value in supplied_wall_edges]
+    wall_edges = np.asarray(decoded_wall_edges, dtype=np.int64).reshape((-1, 2))
+    result = native.prepare_quad_pairs(
+        vertices,
+        triangles,
+        wall_edges,
+        feature_angle_deg,
+    )
+    if not isinstance(result, tuple) or len(result) != 2:
+        raise RuntimeError("native prepare_quad_pairs returned an invalid result")
+    face_pairs, diagnostics = result
+    if (
+        not isinstance(face_pairs, np.ndarray)
+        or face_pairs.dtype != np.dtype(np.int64)
+        or face_pairs.ndim != 2
+        or face_pairs.shape[1] != 2
+        or not face_pairs.flags.c_contiguous
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid face_pairs")
+    if (
+        not isinstance(diagnostics, np.ndarray)
+        or diagnostics.dtype != np.dtype(np.int64)
+        or diagnostics.shape != (5,)
+        or not diagnostics.flags.c_contiguous
+        or (diagnostics < 0).any()
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid diagnostics")
+    if face_pairs.size and (
+        face_pairs.min() < 0
+        or face_pairs.max() >= len(triangles)
+        or (face_pairs[:, 0] >= face_pairs[:, 1]).any()
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid face-pair indices")
+    returned_pairs = [tuple(map(int, pair)) for pair in face_pairs]
+    if len(returned_pairs) != len(set(returned_pairs)):
+        raise RuntimeError("native prepare_quad_pairs returned duplicate face pairs")
+    unique_wall_edges = {_edge_key(first, second) for first, second in decoded_wall_edges}
+    if len(face_pairs):
+        first_triangles = triangles[face_pairs[:, 0]]
+        second_triangles = triangles[face_pairs[:, 1]]
+        shared_mask = (first_triangles[:, :, None] == second_triangles[:, None, :]).any(axis=2)
+        if not (shared_mask.sum(axis=1) == 2).all():
+            raise RuntimeError("native prepare_quad_pairs returned a non-adjacent face pair")
+        shared_edges = np.sort(first_triangles[shared_mask].reshape((-1, 2)), axis=1)
+        if any(tuple(map(int, edge)) in unique_wall_edges for edge in shared_edges):
+            raise RuntimeError("native prepare_quad_pairs returned a protected wall pair")
+        with np.errstate(over="ignore", invalid="ignore"):
+            face_points = vertices[triangles]
+            normals = np.cross(
+                face_points[:, 1] - face_points[:, 0],
+                face_points[:, 2] - face_points[:, 0],
+            )
+            lengths = np.linalg.norm(normals, axis=1)
+            unit_normals = np.divide(
+                normals,
+                lengths[:, None],
+                out=np.zeros_like(normals),
+                where=lengths[:, None] > 1e-30,
+            )
+            normal_dots = np.einsum(
+                "ij,ij->i",
+                unit_normals[face_pairs[:, 0]],
+                unit_normals[face_pairs[:, 1]],
+            )
+        cosine_limit = float(np.cos(np.deg2rad(feature_angle_deg)))
+        if (normal_dots < cosine_limit).any():
+            raise RuntimeError("native prepare_quad_pairs returned a protected feature pair")
+    if int(diagnostics[2]) != len(unique_wall_edges):
+        raise RuntimeError("native prepare_quad_pairs returned invalid wall-edge count")
+    if (
+        int(diagnostics[1]) > int(diagnostics[3])
+        or int(diagnostics[4]) > int(diagnostics[3])
+        or int(diagnostics[3]) != len(face_pairs) + int(diagnostics[4])
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned inconsistent diagnostics")
+    return face_pairs, diagnostics
 
 
 def _oriented_quad(first: np.ndarray, second: np.ndarray) -> np.ndarray | None:
@@ -441,9 +577,18 @@ def native_quad_dominant_remesh(
     settings = config or QuadDominantConfig()
     input_triangles = _decode_triangle_indices(triangles)
     output_vertices = np.asarray(vertices, dtype=np.float64).copy()
-    edge_faces = _validate_input(output_vertices, input_triangles)
     diagnostics = QuadDominantDiagnostics(input_triangles=int(len(input_triangles)))
-    wall_edges = _validated_wall_edges(settings.protected_wall_edges, edge_faces)
+    face_pairs, preparation_diagnostics = _prepare_quad_pairs(
+        output_vertices,
+        input_triangles,
+        settings.protected_wall_edges,
+        settings.feature_angle_deg,
+    )
+    diagnostics.protected_boundary_edges = int(preparation_diagnostics[0])
+    diagnostics.protected_feature_edges = int(preparation_diagnostics[1])
+    diagnostics.protected_wall_edges = int(preparation_diagnostics[2])
+    diagnostics.candidate_pairs = int(preparation_diagnostics[3])
+    diagnostics.rejected_protected = int(preparation_diagnostics[4])
     if not len(input_triangles):
         diagnostics.fallback_reason = "empty_input"
         return QuadDominantResult(
@@ -453,26 +598,6 @@ def native_quad_dominant_remesh(
             diagnostics=diagnostics,
         )
 
-    boundary_edges = {edge for edge, incident in edge_faces.items() if len(incident) == 1}
-    feature_edges = _feature_edges(
-        output_vertices, input_triangles, edge_faces, settings.feature_angle_deg
-    )
-    protected = boundary_edges | feature_edges | wall_edges
-    diagnostics.protected_boundary_edges = len(boundary_edges)
-    diagnostics.protected_feature_edges = len(feature_edges)
-    diagnostics.protected_wall_edges = len(wall_edges)
-
-    unprotected_face_pairs: list[tuple[int, int]] = []
-    for edge, incident in edge_faces.items():
-        if len(incident) != 2:
-            continue
-        diagnostics.candidate_pairs += 1
-        if edge in protected:
-            diagnostics.rejected_protected += 1
-            continue
-        first, second = sorted(incident)
-        unprotected_face_pairs.append((first, second))
-    face_pairs = np.asarray(unprotected_face_pairs, dtype=np.int64).reshape((-1, 2))
     accepted_pairs, output_quads, qualities, rejected_quality = _select_quad_pairs(
         output_vertices,
         input_triangles,
