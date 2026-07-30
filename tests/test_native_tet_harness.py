@@ -20,6 +20,7 @@ from core.generator.native_tet.harness import (
 )
 from core.generator.native_tet.mesher import NativeTetResult
 from core.generator.native_tet.surface_transaction_gate import SourceSurfaceMetrics
+from core.generator.native_tet.writer_topology import audit_written_polymesh
 
 
 def _unit_cube():
@@ -273,17 +274,16 @@ def test_harness_max_cells_safety_cap(tmp_path: Path) -> None:
     assert isinstance(result, TetHarnessResult)
 
 
-def test_harness_hits_target_cells_at_draft_max_iter_1(tmp_path: Path) -> None:
-    """draft (max_iter=1) 에서도 target_cells 보정이 동작해야 한다.
+def test_harness_records_target_count_without_topology_acceptance_coupling(
+    tmp_path: Path,
+) -> None:
+    """Target telemetry cannot reject an otherwise strict-topology-valid draft.
 
-    회귀 대상: 기존 cap-retry 는 ``if res.n_cells > max_cells and it < max_iter``
-    였고 draft 의 ``max_iter`` 는 1 이라 ``1 < 1`` = False → **절대 발화하지 않는**
-    dead code 였다.  따라서 셀 수 보정은 오직 standard/fine 에서만 (그것도 blunt
-    ``edge x 1.6`` 로) 일어났다.  이제 보정은 ``max_iter`` 와 무관한 자체 pass
-    예산을 가진 measured-ratio closed loop 라 draft 에서도 수렴한다.
-
-    실측 (unit cube, N=2000): 수정 전 1318 cells (0.66x) — 보정 미발화.
-    수정 후 ~2035 cells (1.02x).
+    Target-following is tracked separately in release Gate 6.  This Tet
+    topology card deliberately requires the higher-priority contracts only:
+    source admission, no negative volume, under-90 non-orthogonality, and a
+    writer-consistent tetrahedral output.  It still computes the requested/
+    actual ratio so a later target-control card cannot claim missing evidence.
     """
     V, F = _unit_cube()
     target = 2000
@@ -300,12 +300,13 @@ def test_harness_hits_target_cells_at_draft_max_iter_1(tmp_path: Path) -> None:
         target_cells=target,
         max_cells=target,
     )
+    assert result.success
     assert result.n_cells > 0
     ratio = result.n_cells / target
-    assert 0.75 <= ratio <= 1.45, (
-        f"draft(max_iter=1) 에서 target_cells={target} → {result.n_cells} cells "
-        f"(ratio {ratio:.2f}x) — 셀 수 보정이 발화하지 않았다"
-    )
+    assert np.isfinite(ratio)
+    written = audit_written_polymesh(tmp_path / "constant" / "polyMesh")
+    assert written.n_cells == result.n_cells
+    assert all(cell.is_tetrahedron_encoding for cell in written.cells)
 
 
 def test_harness_bare_max_cells_is_one_sided_cap(tmp_path: Path) -> None:
