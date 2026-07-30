@@ -104,21 +104,18 @@ def _detect_self_intersections_impl(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     aabb_min = tris.min(axis=1)  # (T, 3)
     aabb_max = tris.max(axis=1)  # (T, 3)
 
-    # C-PERF-22 / beta2472 — vectorize AABB overlap pre-filter.
-    # Pairwise overlap: (i,j) overlap iff for all axis a, min[i,a] <= max[j,a]
-    # and min[j,a] <= max[i,a].  → boolean (T,T) matrix.
+    # Exact lexicographic broad phase.  Native builds use C++23 sweep-and-prune;
+    # optional-extension fallback preserves the prior broadcast oracle.
     if n == 0:
         return np.empty((0, 2), dtype=np.intp)
-    ov = (
-        np.all(aabb_min[:, None, :] <= aabb_max[None, :, :], axis=2)
-        & np.all(aabb_min[None, :, :] <= aabb_max[:, None, :], axis=2)
+    from core.preprocessor.native_repair.self_intersect import (  # noqa: PLC0415
+        _aabb_overlap_pairs,
     )
-    np.fill_diagonal(ov, False)
-    cand_i, cand_j = np.where(np.triu(ov, k=1))
+
+    candidates = _aabb_overlap_pairs(aabb_min, aabb_max, eps=0.0)
 
     pairs: list[tuple[int, int]] = []
-    for k in range(cand_i.size):
-        i = int(cand_i[k]); j = int(cand_j[k])
+    for i, j in candidates:
         # skip adjacent triangles sharing an edge or vertex (≥ 2 shared verts).
         shared = np.intersect1d(F[i], F[j])
         if len(shared) >= 2:

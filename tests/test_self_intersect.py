@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from core.preprocessor.native_repair.self_intersect import (
     SelfIntersectReport,
@@ -20,6 +21,31 @@ def test_two_crossing_triangles_detected() -> None:
     assert r.has_self_intersection
     assert r.n_intersections >= 1
     assert (0, 1) in r.intersecting_face_pairs
+
+
+def test_native_exact_broad_phase_replaces_large_mesh_approximation() -> None:
+    """Native availability must bypass a deliberately empty k=1 search."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "aabb_overlap_pairs"):
+        pytest.skip("native exact AABB broad phase is not built")
+
+    vertices = np.array([
+        [0, 0, 0], [1, 0, 0], [0.5, 1, 0],
+        [0.5, 0, -1], [0.5, 0, 1], [0.5, 1, 0.5],
+    ], dtype=np.float64)
+    faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)
+
+    report = detect_self_intersections(
+        vertices,
+        faces,
+        max_pairs_for_o_n_squared=0,
+        kdtree_k=1,
+    )
+
+    assert report.intersecting_face_pairs == [(0, 1)]
+    assert report.n_pairs_tested == 1
 
 
 def test_far_apart_triangles_no_intersection() -> None:

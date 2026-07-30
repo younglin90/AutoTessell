@@ -373,6 +373,49 @@ the released region.  Both were used as design references only; no external
 source was copied.  Fast-math, parallel reductions, tolerance changes, and
 `third_party/` edits remain prohibited for this validity gate.
 
+## Surface self-intersection exact broad-phase card
+
+Two production self-intersection detectors previously materialized quadratic
+NumPy broadcast matrices.  The public detector also switched above `5,000`
+faces to centroid `k=16` nearest neighbours, which is not a complete broad
+phase: elongated overlapping triangles can have distant centroids and never
+become candidates.  An exception in that approximate path returned a false
+clean report.  These behaviors directly weaken the shape-preservation gate.
+
+The first-party `native_metrics` C++23 module now exposes an exact AABB
+sweep-and-prune kernel.  It validates finite `(N,3)` minimum/maximum arrays and
+epsilon before releasing the GIL, chooses the widest deterministic sweep axis,
+stable-sorts by `(minimum, face id)`, prunes one flat active vector, tests all
+three axes inclusively, and lexicographically sorts canonical `(i,j)` output.
+Complexity is `O(F log F + A + K log K)` time and `O(F + K)` space, where `A`
+is the number of active-set comparisons and `K` the exact output size.  Dense
+all-overlap input still requires quadratic output, but no quadratic matrix is
+allocated.  Python fallback behavior remains available when native extensions
+are absent.
+
+Only candidate generation moved.  The Tet-private detector still excludes
+two-shared-vertex pairs and uses its `1e-10` interval predicate; the public
+repair detector still excludes any shared vertex and uses its `1e-12` segment
+predicate.  This separation is mandatory because repair can delete faces.
+Input geometry, adjacency policy, narrow-phase arithmetic, and result order
+are unchanged.  No external intersection implementation was copied.
+
+On the `642`-vertex / `1,280`-face sphere, all `7,866` AABB candidates match
+the Python oracle.  Broad-phase median changes from `0.068847826 s` to
+`0.002956569 s` (`23.29x`); complete public detection changes from
+`0.081276332 s` to `0.015302687 s` (`5.31x`) with `216` narrow tests and zero
+intersections.  The Tet-private path changes from `0.741000228 s` to
+`0.663361401 s` (`1.12x`) and preserves all `4,750` legacy detections.  A
+`100,000`-box sparse corpus completes in `0.001812726 s` with zero candidates.
+Direct native metrics tests pass `39`; wider repair/native-tri tests pass `95`.
+The dense random-triangle legacy test now exercises exact candidates and makes
+that wider batch cost about `106 s`; native narrow-phase migration is the next
+performance card, not grounds to restore approximate false-negative behavior.
+
+CGAL 6.2 documents exact self-intersection reporting atop iso-oriented box
+intersection as an architectural reference.  Teschner et al. provide the
+spatial broad-phase background.  Neither source code nor dependency is used.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
@@ -399,3 +442,5 @@ source was copied.  Fast-math, parallel reductions, tolerance changes, and
   <https://www.graphics.rwth-aachen.de/media/openvolumemesh_static/Documentation/OpenVolumeMesh-Doc-Latest/index.html>
 - CGAL 6.2 Polygon Mesh Processing normal computation:
   <https://doc.cgal.org/latest/Polygon_mesh_processing/group__PMP__normal__grp.html>
+- CGAL 6.2 Polygon Mesh Processing intersection functions:
+  <https://doc.cgal.org/latest/Polygon_mesh_processing/group__PMP__intersection__grp.html>

@@ -23,6 +23,74 @@ def _native_metrics_or_skip():
     return module
 
 
+def _aabb_overlap_oracle(
+    minimum: np.ndarray,
+    maximum: np.ndarray,
+    epsilon: float,
+) -> np.ndarray:
+    overlap = np.all(
+        (maximum[:, None, :] >= minimum[None, :, :] - epsilon)
+        & (maximum[None, :, :] >= minimum[:, None, :] - epsilon),
+        axis=2,
+    )
+    first, second = np.where(np.triu(overlap, k=1))
+    return np.column_stack((first, second)).astype(np.int64, copy=False)
+
+
+@pytest.mark.parametrize("epsilon", (0.0, 1e-12))
+def test_native_aabb_overlap_pairs_matches_exact_oracle(epsilon: float) -> None:
+    module = _native_metrics_or_skip()
+    rng = np.random.default_rng(20260730)
+    minimum = rng.normal(size=(96, 3))
+    extent = rng.uniform(0.0, 0.8, size=(96, 3))
+    maximum = minimum + extent
+    # Equal sweep keys, exact touching, nesting, and epsilon-only contact.
+    minimum[:4] = np.asarray(
+        ((0.0, 0.0, 0.0),) * 4,
+        dtype=np.float64,
+    )
+    maximum[0] = (1.0, 1.0, 1.0)
+    maximum[1] = (0.5, 0.5, 0.5)
+    minimum[2] = (1.0, 0.25, 0.25)
+    maximum[2] = (2.0, 0.75, 0.75)
+    minimum[3] = (1.0 + 5e-13, 0.25, 0.25)
+    maximum[3] = (2.0, 0.75, 0.75)
+
+    expected = _aabb_overlap_oracle(minimum, maximum, epsilon)
+    first = np.asarray(
+        module.aabb_overlap_pairs(minimum, maximum, epsilon), dtype=np.int64
+    )
+    second = np.asarray(
+        module.aabb_overlap_pairs(minimum, maximum, epsilon), dtype=np.int64
+    )
+
+    assert first.shape == expected.shape
+    assert first.dtype == np.dtype(np.int64)
+    assert np.array_equal(first, expected)
+    assert first.tobytes() == second.tobytes()
+
+
+def test_native_aabb_overlap_pairs_empty_and_invalid_inputs() -> None:
+    module = _native_metrics_or_skip()
+    empty = np.empty((0, 3), dtype=np.float64)
+    result = np.asarray(module.aabb_overlap_pairs(empty, empty))
+    assert result.shape == (0, 2)
+    assert result.dtype == np.dtype(np.int64)
+
+    with pytest.raises(ValueError, match="shape"):
+        module.aabb_overlap_pairs(np.zeros((2, 2)), np.zeros((2, 2)))
+    with pytest.raises(ValueError, match="matching lengths"):
+        module.aabb_overlap_pairs(np.zeros((2, 3)), np.zeros((1, 3)))
+    with pytest.raises(ValueError, match="finite values"):
+        module.aabb_overlap_pairs(
+            np.asarray(((0.0, 0.0, np.nan),)), np.ones((1, 3))
+        )
+    with pytest.raises(ValueError, match="minimum exceeds maximum"):
+        module.aabb_overlap_pairs(np.ones((1, 3)), np.zeros((1, 3)))
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        module.aabb_overlap_pairs(np.zeros((1, 3)), np.ones((1, 3)), -1.0)
+
+
 def _python_faces_not_upper_triangular(
     owner: np.ndarray, neighbour: np.ndarray
 ) -> int:

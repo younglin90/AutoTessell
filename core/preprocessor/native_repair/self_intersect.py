@@ -4,13 +4,13 @@ P2.6 / beta2322 — skeleton: detect-only path.
 이후 카드에서 resolve (split / Boolean) 추가 예정.
 
 알고리즘 (Möller 1997 triangle-triangle intersection):
-  1. AABB tree (sklearn KDTree on triangle centroids) 로 후보 페어 정렬.
+  1. Native exact sweep-and-prune (optional) 또는 Python broad phase 로 후보 생성.
   2. 각 후보 (i, j) 페어 → tri_tri_intersect_3d (Möller separating-axis test).
   3. 인접 (공유 vertex/edge) tri 는 자동 제외 (false positive 방지).
   4. 진짜 교차 페어를 (i, j) 튜플 list 로 반환.
 
 성능:
-  - O(F log F) candidate gen + O(K) intersection tests, K = 후보 페어 수.
+  - Native: O(F log F + A) candidate gen + O(K) intersection tests.
   - 100k face 메쉬에서 ≤ 1s 목표.
 
 상위 caller (P2.6 차후 카드):
@@ -46,7 +46,7 @@ def _tri_aabbs(V: np.ndarray, F: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return pts.min(axis=1), pts.max(axis=1)
 
 
-def _aabb_overlap_pairs(
+def _python_aabb_overlap_pairs(
     aabb_min: np.ndarray,
     aabb_max: np.ndarray,
     *,
@@ -70,6 +70,38 @@ def _aabb_overlap_pairs(
     ov_upper = np.triu(ov, k=1)
     ii, jj = np.where(ov_upper)
     return list(zip(ii.tolist(), jj.tolist()))
+
+
+def _native_aabb_overlap_pairs(
+    aabb_min: np.ndarray,
+    aabb_max: np.ndarray,
+    *,
+    eps: float,
+) -> list[tuple[int, int]] | None:
+    """Return exact native candidates, or ``None`` when extension is absent."""
+    from core.utils.native_extensions import load_native_metrics  # noqa: PLC0415
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "aabb_overlap_pairs"):
+        return None
+    pairs = np.asarray(
+        native.aabb_overlap_pairs(aabb_min, aabb_max, eps),
+        dtype=np.int64,
+    )
+    return [(int(pair[0]), int(pair[1])) for pair in pairs]
+
+
+def _aabb_overlap_pairs(
+    aabb_min: np.ndarray,
+    aabb_max: np.ndarray,
+    *,
+    eps: float = 1e-12,
+) -> list[tuple[int, int]]:
+    """Exact lexicographic AABB candidates with an optional C++23 sweep."""
+    native_pairs = _native_aabb_overlap_pairs(aabb_min, aabb_max, eps=eps)
+    if native_pairs is not None:
+        return native_pairs
+    return _python_aabb_overlap_pairs(aabb_min, aabb_max, eps=eps)
 
 
 def _shares_vertex(F: np.ndarray, i: int, j: int) -> bool:
@@ -299,10 +331,10 @@ def detect_self_intersections(
     Args:
         V: (N, 3) vertex 좌표.
         F: (M, 3) triangle vertex indices.
-        max_pairs_for_o_n_squared: O(M^2) brute force 임계. 이하면 모든
-            페어 AABB 비교, 초과 시 KDTree O(M log M) 경로.
-        kdtree_k: KDTree query 의 k-nearest. 작으면 후보 ↓ (놓침 위험), 크면
-            정확하지만 느림. 기본 16.
+        max_pairs_for_o_n_squared: native extension 미사용 시 O(M^2) Python
+            brute-force와 approximate KDTree fallback을 나누는 face 임계값.
+        kdtree_k: native extension 미사용 large-mesh fallback의 k-nearest.
+            작으면 후보 누락 위험이 크다. 기본 16.
 
     Returns:
         SelfIntersectReport.
@@ -319,8 +351,14 @@ def detect_self_intersections(
 
     aabb_min, aabb_max = _tri_aabbs(V, F)
 
-    # beta2323 — KDTree path 추가 (대형 mesh).
-    if n_faces > max_pairs_for_o_n_squared:
+    # Native sweep is exact at every size.  The approximate KDTree remains only
+    # an optional-extension fallback for backward-compatible installations.
+    native_candidates = _native_aabb_overlap_pairs(
+        aabb_min, aabb_max, eps=1e-12
+    )
+    if native_candidates is not None:
+        cand = native_candidates
+    elif n_faces > max_pairs_for_o_n_squared:
         try:
             cand = _kdtree_overlap_pairs(V, F, aabb_min, aabb_max, k=kdtree_k)
         except Exception:
@@ -332,7 +370,7 @@ def detect_self_intersections(
                 elapsed_s=_t.perf_counter() - t0,
             )
     else:
-        cand = _aabb_overlap_pairs(aabb_min, aabb_max)
+        cand = _python_aabb_overlap_pairs(aabb_min, aabb_max)
 
     pairs: list[tuple[int, int]] = []
     n_tested = 0

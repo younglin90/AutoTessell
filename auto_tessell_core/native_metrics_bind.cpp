@@ -1939,6 +1939,125 @@ py::dict validate_triangle_surface_and_build_edge_faces(
     return result;
 }
 
+py::array_t<long long> aabb_overlap_pairs(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& aabb_min,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& aabb_max,
+    const double epsilon)
+{
+    if (aabb_min.ndim() != 2 || aabb_min.shape(1) != 3
+        || aabb_max.ndim() != 2 || aabb_max.shape(1) != 3) {
+        throw std::invalid_argument("AABBs must have shape (N, 3)");
+    }
+    if (aabb_min.shape(0) != aabb_max.shape(0)) {
+        throw std::invalid_argument("AABB arrays must have matching lengths");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+
+    const size_t count = static_cast<size_t>(aabb_min.shape(0));
+    const double* const minimum = aabb_min.data();
+    const double* const maximum = aabb_max.data();
+    for (size_t box = 0U; box < count; ++box) {
+        for (size_t axis = 0U; axis < 3U; ++axis) {
+            const size_t offset = box * 3U + axis;
+            if (!std::isfinite(minimum[offset])
+                || !std::isfinite(maximum[offset])) {
+                throw std::invalid_argument("AABBs must contain finite values");
+            }
+            if (minimum[offset] > maximum[offset]) {
+                throw std::invalid_argument("AABB minimum exceeds maximum");
+            }
+        }
+    }
+
+    std::vector<std::pair<long long, long long>> pairs;
+    {
+        py::gil_scoped_release release;
+
+        size_t sweep_axis = 0U;
+        if (count > 0U) {
+            double global_minimum[3]{minimum[0], minimum[1], minimum[2]};
+            double global_maximum[3]{maximum[0], maximum[1], maximum[2]};
+            for (size_t box = 1U; box < count; ++box) {
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    const size_t offset = box * 3U + axis;
+                    global_minimum[axis] = std::min(
+                        global_minimum[axis], minimum[offset]);
+                    global_maximum[axis] = std::max(
+                        global_maximum[axis], maximum[offset]);
+                }
+            }
+            double widest_extent = global_maximum[0] - global_minimum[0];
+            for (size_t axis = 1U; axis < 3U; ++axis) {
+                const double extent = global_maximum[axis] - global_minimum[axis];
+                if (extent > widest_extent) {
+                    widest_extent = extent;
+                    sweep_axis = axis;
+                }
+            }
+        }
+
+        std::vector<size_t> order(count);
+        std::iota(order.begin(), order.end(), 0U);
+        std::stable_sort(
+            order.begin(), order.end(),
+            [&](const size_t left, const size_t right) {
+                const double left_minimum = minimum[left * 3U + sweep_axis];
+                const double right_minimum = minimum[right * 3U + sweep_axis];
+                return left_minimum < right_minimum
+                    || (left_minimum == right_minimum && left < right);
+            });
+
+        std::vector<size_t> active;
+        active.reserve(count);
+        for (const size_t current : order) {
+            const double current_minimum =
+                minimum[current * 3U + sweep_axis] - epsilon;
+            size_t kept = 0U;
+            for (const size_t candidate : active) {
+                if (maximum[candidate * 3U + sweep_axis] >= current_minimum) {
+                    active[kept++] = candidate;
+                }
+            }
+            active.resize(kept);
+
+            for (const size_t candidate : active) {
+                bool overlaps = true;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    const size_t candidate_offset = candidate * 3U + axis;
+                    const size_t current_offset = current * 3U + axis;
+                    if (maximum[candidate_offset]
+                            < minimum[current_offset] - epsilon
+                        || maximum[current_offset]
+                            < minimum[candidate_offset] - epsilon) {
+                        overlaps = false;
+                        break;
+                    }
+                }
+                if (overlaps) {
+                    const size_t first = std::min(candidate, current);
+                    const size_t second = std::max(candidate, current);
+                    pairs.emplace_back(
+                        static_cast<long long>(first),
+                        static_cast<long long>(second));
+                }
+            }
+            active.push_back(current);
+        }
+        std::sort(pairs.begin(), pairs.end());
+    }
+
+    py::array_t<long long> result({
+        static_cast<py::ssize_t>(pairs.size()), static_cast<py::ssize_t>(2)});
+    long long* const output = result.mutable_data();
+    for (size_t index = 0U; index < pairs.size(); ++index) {
+        output[index * 2U] = pairs[index].first;
+        output[index * 2U + 1U] = pairs[index].second;
+    }
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_metrics, m)
@@ -2014,4 +2133,7 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("validate_triangle_surface_and_build_edge_faces",
           &validate_triangle_surface_and_build_edge_faces,
           py::arg("vertices"), py::arg("triangles"));
+    m.def("aabb_overlap_pairs", &aabb_overlap_pairs,
+          py::arg("aabb_min"), py::arg("aabb_max"),
+          py::arg("epsilon") = 1e-12);
 }
