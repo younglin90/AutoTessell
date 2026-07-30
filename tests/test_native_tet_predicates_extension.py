@@ -444,3 +444,54 @@ def test_native_cdt_audit_missing_edges_are_deterministic_and_sorted() -> None:
     ]
     assert outputs[0] == sorted(outputs[0])
     assert outputs[0] == outputs[1] == outputs[2]
+
+
+def test_native_source_component_audit_requires_exact_contiguous_abi() -> None:
+    module = _module_or_skip()
+    points = np.asarray(
+        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)),
+        dtype=np.float64,
+    )
+    faces = np.asarray(
+        ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)),
+        dtype=np.int64,
+    )
+    tets = np.asarray(((0, 1, 2, 3),), dtype=np.int64)
+
+    assert module.audit_source_component_bijection(
+        points, faces, points.copy(), tets
+    )["bijective"]
+    with pytest.raises(TypeError, match="dtype float64"):
+        module.audit_source_component_bijection(
+            points.astype(np.float32), faces, points, tets
+        )
+    with pytest.raises(TypeError, match="dtype int64"):
+        module.audit_source_component_bijection(
+            points, faces.astype(np.int32), points, tets
+        )
+    with pytest.raises(ValueError, match="C-contiguous"):
+        module.audit_source_component_bijection(
+            np.asfortranarray(points), faces, points, tets
+        )
+    with pytest.raises(ValueError, match="C-contiguous"):
+        module.audit_source_component_bijection(
+            points, np.vstack([faces, faces])[::2], points, tets
+        )
+    nonfinite = points.copy()
+    nonfinite[0, 0] = np.inf
+    with pytest.raises(ValueError, match="finite"):
+        module.audit_source_component_bijection(points, faces, nonfinite, tets)
+    duplicate_source = points.copy()
+    duplicate_source[1] = duplicate_source[0]
+    with pytest.raises(ValueError, match="ambiguous duplicate"):
+        module.audit_source_component_bijection(
+            duplicate_source, faces, points, tets
+        )
+    with pytest.raises(ValueError, match="duplicates a source coordinate"):
+        module.audit_source_component_bijection(
+            points, faces, np.vstack([points, points[:1]]), tets
+        )
+    with pytest.raises(ValueError, match="out of range"):
+        module.audit_source_component_bijection(
+            points, faces, points, np.asarray(((0, 1, 2, 9),), dtype=np.int64)
+        )

@@ -87,6 +87,7 @@
     "native_tet_predicates": {
       "public_symbols": [
         "audit_cdt_constraints",
+        "audit_source_component_bijection",
         "audit_tet_boundary",
         "flip_44_quality",
         "insphere_signs",
