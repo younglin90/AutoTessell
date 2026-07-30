@@ -80,6 +80,97 @@ def test_native_face_geometry_rejects_invalid_connectivity() -> None:
         native.face_flip_mask(points, [[0, 1, 3]], np.asarray([0]), centroids)
 
 
+@pytest.mark.parametrize(
+    ("points", "faces", "owners", "neighbours", "n_cells"),
+    (
+        (
+            np.asarray(
+                (
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                    (0.0, 0.0, 1.0),
+                ),
+                dtype=np.float64,
+            ),
+            [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]],
+            [0, 0, 0, 0],
+            [],
+            1,
+        ),
+        (
+            np.asarray(
+                (
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                    (0.0, 0.0, 1.0),
+                    (0.0, 0.0, -1.0),
+                ),
+                dtype=np.float64,
+            ),
+            [
+                [0, 2, 1],
+                [0, 1, 3],
+                [1, 2, 3],
+                [2, 0, 3],
+                [0, 1, 4],
+                [1, 2, 4],
+                [2, 0, 4],
+            ],
+            [0, 0, 0, 0, 1, 1, 1],
+            [1],
+            3,
+        ),
+    ),
+)
+def test_native_star_validity_matches_python_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    points: np.ndarray,
+    faces: list[list[int]],
+    owners: list[int],
+    neighbours: list[int],
+    n_cells: int,
+) -> None:
+    from core.generator.native_poly import dual
+    from core.utils import native_extensions
+
+    native = _native_or_skip()
+    if not hasattr(native, "star_validity"):
+        pytest.skip("native star-validity kernel is not built")
+
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: None)
+    expected = dual._star_validity(
+        points, faces, owners, neighbours, n_cells, max_examples=32
+    )
+    actual = native.star_validity(
+        points, faces, owners, neighbours, n_cells, 1e-12, 32
+    )
+
+    assert actual[:2] == expected[:2]
+    assert len(actual[2]) == len(expected[2])
+    for actual_example, expected_example in zip(actual[2], expected[2], strict=True):
+        assert actual_example.keys() == expected_example.keys()
+        for key, expected_value in expected_example.items():
+            actual_value = actual_example[key]
+            if isinstance(expected_value, float):
+                assert actual_value == pytest.approx(expected_value, abs=1e-15)
+            else:
+                assert actual_value == expected_value
+
+
+def test_native_star_validity_rejects_invalid_connectivity() -> None:
+    native = _native_or_skip()
+    if not hasattr(native, "star_validity"):
+        pytest.skip("native star-validity kernel is not built")
+
+    points = np.eye(3, dtype=np.float64)
+    with pytest.raises(IndexError, match="face vertex index is out of bounds"):
+        native.star_validity(points, [[0, 1, 3]], [0], [], 1)
+    with pytest.raises(ValueError, match="owners length must cover faces"):
+        native.star_validity(points, [[0, 1, 2]], [], [], 1)
+
+
 def test_native_face_geometry_preserves_dual_output_bytes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -264,6 +264,20 @@ def _star_validity(
     if not points.size or not faces or not owner:
         return 0, 0, ()
 
+    from core.utils.native_extensions import load_native_polymesh
+
+    native = load_native_polymesh()
+    if native is not None and hasattr(native, "star_validity"):
+        return native.star_validity(
+            points,
+            faces,
+            owner,
+            neighbour,
+            n_cells,
+            tolerance,
+            max_examples,
+        )
+
     cell_faces: list[list[tuple[list[int], int]]] = [[] for _ in range(n_cells)]
     n_internal = len(neighbour)
     for face_id, face in enumerate(faces):

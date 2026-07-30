@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <numeric>
 #include <span>
 #include <stdexcept>
 #include <unordered_map>
@@ -38,6 +39,22 @@ struct RaggedFaces {
         const size_t begin = offsets[index];
         return {indices.data() + begin, offsets[index + 1U] - begin};
     }
+};
+
+enum class StarExampleKind : unsigned char {
+    FewerThanFourVertices,
+    NonPositiveSubtet,
+};
+
+struct StarExample {
+    StarExampleKind kind;
+    Label cell;
+    Label face = -1;
+    Label edge_a = -1;
+    Label edge_b = -1;
+    size_t edge_index = 0U;
+    double signed_volume6 = 0.0;
+    double normalized_signed_volume6 = 0.0;
 };
 
 struct FaceHash {
@@ -308,6 +325,249 @@ py::tuple face_plane_geometry(
     return py::make_tuple(on_area, off_area, std::move(on_plane));
 }
 
+py::tuple star_validity(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::sequence& faces,
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& owners,
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& neighbours,
+    const Label num_cells,
+    const double tolerance,
+    const Label max_examples)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (owners.ndim() != 1) {
+        throw std::invalid_argument("owners must have shape (F,)");
+    }
+    if (neighbours.ndim() != 1) {
+        throw std::invalid_argument("neighbours must have shape (I,)");
+    }
+
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const RaggedFaces ragged = parse_ragged_faces(faces, point_count);
+    const size_t face_count = ragged.size();
+    if (static_cast<size_t>(owners.shape(0)) < face_count) {
+        throw std::invalid_argument("owners length must cover faces");
+    }
+    if (point_count == 0U || face_count == 0U || owners.shape(0) == 0
+        || num_cells <= 0) {
+        return py::make_tuple(0, 0, py::tuple());
+    }
+
+    const size_t cell_count = static_cast<size_t>(num_cells);
+    const size_t internal_count = std::min(
+        face_count, static_cast<size_t>(neighbours.shape(0)));
+    const Label* const owner_data = owners.data();
+    const Label* const neighbour_data = neighbours.data();
+    const double* const point_data = points.data();
+    const size_t example_limit = max_examples > 0
+        ? static_cast<size_t>(max_examples)
+        : 0U;
+
+    std::vector<size_t> cell_face_offsets(cell_count + 1U, 0U);
+    // ±(face_index + 1): sign stores orientation without padding a struct.
+    std::vector<Label> cell_face_refs;
+    std::vector<StarExample> examples;
+    Label invalid_cells = 0;
+    Label invalid_subtets = 0;
+
+    {
+        py::gil_scoped_release release;
+
+        for (size_t face_index = 0U; face_index < face_count; ++face_index) {
+            const Label owner = owner_data[face_index];
+            if (owner >= 0 && owner < num_cells) {
+                ++cell_face_offsets[static_cast<size_t>(owner) + 1U];
+            }
+            if (face_index < internal_count) {
+                const Label neighbour = neighbour_data[face_index];
+                if (neighbour >= 0 && neighbour < num_cells) {
+                    ++cell_face_offsets[static_cast<size_t>(neighbour) + 1U];
+                }
+            }
+        }
+        std::partial_sum(
+            cell_face_offsets.begin(), cell_face_offsets.end(),
+            cell_face_offsets.begin());
+        cell_face_refs.resize(cell_face_offsets.back());
+        std::vector<size_t> write_offsets = cell_face_offsets;
+        for (size_t face_index = 0U; face_index < face_count; ++face_index) {
+            const Label owner = owner_data[face_index];
+            if (owner >= 0 && owner < num_cells) {
+                cell_face_refs[write_offsets[static_cast<size_t>(owner)]++] =
+                    static_cast<Label>(face_index) + 1;
+            }
+            if (face_index < internal_count) {
+                const Label neighbour = neighbour_data[face_index];
+                if (neighbour >= 0 && neighbour < num_cells) {
+                    cell_face_refs[write_offsets[static_cast<size_t>(neighbour)]++] =
+                        -(static_cast<Label>(face_index) + 1);
+                }
+            }
+        }
+
+        double minimum[3]{point_data[0], point_data[1], point_data[2]};
+        double maximum[3]{point_data[0], point_data[1], point_data[2]};
+        for (size_t point_index = 1U; point_index < point_count; ++point_index) {
+            const double* const point = point_data + point_index * 3U;
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                minimum[axis] = std::min(minimum[axis], point[axis]);
+                maximum[axis] = std::max(maximum[axis], point[axis]);
+            }
+        }
+        const double dx = maximum[0] - minimum[0];
+        const double dy = maximum[1] - minimum[1];
+        const double dz = maximum[2] - minimum[2];
+        const double extent = std::sqrt(dx * dx + dy * dy + dz * dz);
+        const double scale = std::max(extent * extent * extent, 1e-30);
+
+        examples.reserve(std::min(example_limit, cell_face_refs.size()));
+        std::vector<Label> cell_vertices;
+        for (size_t cell_index = 0U; cell_index < cell_count; ++cell_index) {
+            cell_vertices.clear();
+            for (size_t reference_index = cell_face_offsets[cell_index];
+                 reference_index < cell_face_offsets[cell_index + 1U];
+                 ++reference_index) {
+                const Label encoded_reference = cell_face_refs[reference_index];
+                const size_t face_index = static_cast<size_t>(
+                    std::abs(encoded_reference) - 1);
+                const auto face = ragged.face(face_index);
+                cell_vertices.insert(
+                    cell_vertices.end(), face.begin(), face.end());
+            }
+            std::sort(cell_vertices.begin(), cell_vertices.end());
+            cell_vertices.erase(
+                std::unique(cell_vertices.begin(), cell_vertices.end()),
+                cell_vertices.end());
+            if (cell_vertices.size() < 4U) {
+                ++invalid_cells;
+                ++invalid_subtets;
+                if (examples.size() < example_limit) {
+                    examples.push_back({
+                        StarExampleKind::FewerThanFourVertices,
+                        static_cast<Label>(cell_index)});
+                }
+                continue;
+            }
+
+            double region_center[3]{0.0, 0.0, 0.0};
+            for (const Label vertex : cell_vertices) {
+                const double* const point = point_data
+                    + static_cast<size_t>(vertex) * 3U;
+                region_center[0] += point[0];
+                region_center[1] += point[1];
+                region_center[2] += point[2];
+            }
+            const double inverse_cell_vertices =
+                1.0 / static_cast<double>(cell_vertices.size());
+            region_center[0] *= inverse_cell_vertices;
+            region_center[1] *= inverse_cell_vertices;
+            region_center[2] *= inverse_cell_vertices;
+
+            bool cell_bad = false;
+            for (size_t reference_index = cell_face_offsets[cell_index];
+                 reference_index < cell_face_offsets[cell_index + 1U];
+                 ++reference_index) {
+                const Label encoded_reference = cell_face_refs[reference_index];
+                const bool reversed = encoded_reference < 0;
+                const size_t face_index = static_cast<size_t>(
+                    std::abs(encoded_reference) - 1);
+                const auto face = ragged.face(face_index);
+                if (face.empty()) {
+                    continue;
+                }
+                double face_center[3]{0.0, 0.0, 0.0};
+                for (size_t local = 0U; local < face.size(); ++local) {
+                    const size_t oriented_local = reversed
+                        ? face.size() - 1U - local
+                        : local;
+                    const Label vertex = face[oriented_local];
+                    const double* const point = point_data
+                        + static_cast<size_t>(vertex) * 3U;
+                    face_center[0] += point[0];
+                    face_center[1] += point[1];
+                    face_center[2] += point[2];
+                }
+                const double inverse_face_vertices =
+                    1.0 / static_cast<double>(face.size());
+                face_center[0] *= inverse_face_vertices;
+                face_center[1] *= inverse_face_vertices;
+                face_center[2] *= inverse_face_vertices;
+
+                for (size_t edge_index = 0U; edge_index < face.size(); ++edge_index) {
+                    const size_t oriented_index = reversed
+                        ? face.size() - 1U - edge_index
+                        : edge_index;
+                    const size_t oriented_next = reversed
+                        ? (oriented_index == 0U ? face.size() - 1U : oriented_index - 1U)
+                        : (oriented_index + 1U) % face.size();
+                    const Label a = face[oriented_index];
+                    const Label b = face[oriented_next];
+                    const double* const point_a = point_data
+                        + static_cast<size_t>(a) * 3U;
+                    const double* const point_b = point_data
+                        + static_cast<size_t>(b) * 3U;
+                    const double edge_x = point_b[0] - point_a[0];
+                    const double edge_y = point_b[1] - point_a[1];
+                    const double edge_z = point_b[2] - point_a[2];
+                    const double face_x = face_center[0] - point_a[0];
+                    const double face_y = face_center[1] - point_a[1];
+                    const double face_z = face_center[2] - point_a[2];
+                    const double region_x = region_center[0] - point_a[0];
+                    const double region_y = region_center[1] - point_a[1];
+                    const double region_z = region_center[2] - point_a[2];
+                    const double cross_x = face_y * region_z - face_z * region_y;
+                    const double cross_y = face_z * region_x - face_x * region_z;
+                    const double cross_z = face_x * region_y - face_y * region_x;
+                    const double signed_volume6 = edge_x * cross_x
+                        + edge_y * cross_y + edge_z * cross_z;
+                    const double normalized = -signed_volume6 / scale;
+                    if (normalized <= tolerance) {
+                        cell_bad = true;
+                        ++invalid_subtets;
+                        if (examples.size() < example_limit) {
+                            examples.push_back({
+                                StarExampleKind::NonPositiveSubtet,
+                                static_cast<Label>(cell_index),
+                                static_cast<Label>(face_index),
+                                a,
+                                b,
+                                edge_index,
+                                signed_volume6,
+                                normalized});
+                        }
+                    }
+                }
+            }
+            if (cell_bad) {
+                ++invalid_cells;
+            }
+        }
+    }
+
+    py::tuple python_examples(examples.size());
+    for (size_t index = 0U; index < examples.size(); ++index) {
+        const StarExample& example = examples[index];
+        py::dict item;
+        item["cell"] = example.cell;
+        if (example.kind == StarExampleKind::FewerThanFourVertices) {
+            item["face"] = py::none();
+            item["edge"] = py::none();
+            item["normalized_signed_volume6"] = 0.0;
+            item["reason"] = "fewer_than_four_dual_vertices";
+        } else {
+            item["face"] = example.face;
+            item["edge"] = py::make_tuple(example.edge_a, example.edge_b);
+            item["edge_index"] = example.edge_index;
+            item["signed_volume6"] = example.signed_volume6;
+            item["normalized_signed_volume6"] = example.normalized_signed_volume6;
+        }
+        python_examples[index] = std::move(item);
+    }
+    return py::make_tuple(invalid_cells, invalid_subtets, std::move(python_examples));
+}
+
 bool clean_face(
     const Face& face,
     const double* points,
@@ -574,7 +834,8 @@ py::tuple build_tet_incidence_maps(
 
 PYBIND11_MODULE(native_polymesh, module)
 {
-    module.doc() = "C++ face cleaning and topology kernel for AutoTessell polyMesh";
+    module.doc() =
+        "C++ face geometry, topology, and validity kernels for AutoTessell polyMesh";
     module.def(
         "build_topology",
         &build_topology,
@@ -601,4 +862,14 @@ PYBIND11_MODULE(native_polymesh, module)
         py::arg("plane_normals"),
         py::arg("plane_offsets"),
         py::arg("tolerance") = 1e-6);
+    module.def(
+        "star_validity",
+        &star_validity,
+        py::arg("points"),
+        py::arg("faces"),
+        py::arg("owners"),
+        py::arg("neighbours"),
+        py::arg("num_cells"),
+        py::arg("tolerance") = 1e-12,
+        py::arg("max_examples") = 8);
 }

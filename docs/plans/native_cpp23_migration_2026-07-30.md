@@ -337,6 +337,42 @@ documentation supports validation followed by unchecked native array access;
 CGAL's Polygon Mesh Processing manual supports computing face normals in
 batches to factor shared work.  Neither implementation was copied.
 
+## Poly dual star-validity CSR card
+
+`native_poly.dual._star_validity` previously built one nested Python face list
+per cell, copied every owner face, copied and reversed every neighbour face,
+created a set plus sorted list of vertices per cell, then allocated NumPy
+gather, mean, subtraction, cross-product, and dot-product temporaries for every
+face edge.  The replacement parses ragged faces once, builds cell-face
+incidence as flat CSR, and stores orientation in the sign of a single 64-bit
+face reference.  This halves reference storage compared with a padded
+`{size_t, bool}` record and preserves global face-scan order.
+
+Connectivity and array shapes are validated while the GIL is held.  The
+complete audit then runs outside the GIL using contiguous point/label buffers,
+one reused vertex vector, `std::span` face views, and scalar sequential double
+arithmetic.  Only the bounded diagnostic examples are materialized as Python
+dictionaries after the GIL is reacquired.  Runtime remains `O(I log U)` in the
+worst case because each cell's incident vertex IDs are sorted and uniqued;
+temporary storage is `O(I + C + Umax)` without Python objects in the numerical
+loop.  Face, edge, cell, diagnostic, and neighbour-reversal order are unchanged.
+
+On a representative final polyMesh with `17,746` points, `20,284` faces, and
+`4,885` cells, median star audit time changes from `2.452648831 s` to
+`0.003886981 s` (`630.99x`).  Both paths report `295` invalid cells and `729`
+invalid subtets with the same bounded diagnostic ordering.  Six complete dual
+runs, three per route, produced one identical full polyMesh SHA-256 snapshot;
+the native route changes neither topology nor geometry.  Focused binding and
+dual tests pass `4`; the wider extension/no-drop suite passes `24`; the
+non-sphere dual contract suite passes `15`.  GCC 13.3 builds the C++23 target
+without warnings.
+
+WG21 `std::span` guidance supports the non-owning contiguous face view, and
+current pybind11 GIL guidance requires all Python-object access to stay outside
+the released region.  Both were used as design references only; no external
+source was copied.  Fast-math, parallel reductions, tolerance changes, and
+`third_party/` edits remain prohibited for this validity gate.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
@@ -349,6 +385,10 @@ batches to factor shared work.  Neither implementation was copied.
   <https://pybind11.readthedocs.io/en/stable/upgrade.html>
 - pybind11 NumPy buffer and direct-access guidance:
   <https://pybind11.readthedocs.io/en/stable/advanced/pycpp/numpy.html>
+- pybind11 GIL release guidance:
+  <https://pybind11.readthedocs.io/en/stable/advanced/misc.html>
+- WG21 P0122R7, `std::span`:
+  <https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p0122r7.pdf>
 - Teschner et al., optimized spatial hashing for collision detection:
   <https://www.research-collection.ethz.ch/entities/publication/f29bfb28-ee5f-4a7e-9905-f787e138bb81>
 - SciPy radius-pair query contract used by the optional fallback:
