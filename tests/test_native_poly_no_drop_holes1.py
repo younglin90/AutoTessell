@@ -172,7 +172,9 @@ def test_direct_scipy_no_drop_real_smoke(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("AUTO_TESSELL_POLY_NO_DROP_HOLES1", "1")
-    cases = (("cube", False, 0), ("cylinder", False, 0), ("sphere", True, 36))
+    # BL=0 must count only base Voronoi cells. The former 36-cell oracle
+    # included nine hidden prism cells from the now-disabled layer path.
+    cases = (("cube", False, 0), ("cylinder", False, 0), ("sphere", True, 27))
     for shape, expect_success, expected_cells in cases:
         mesh = read_stl(_REPO / "tests" / "benchmarks" / f"{shape}.stl")
         result = voronoi.generate_native_poly_voronoi(
