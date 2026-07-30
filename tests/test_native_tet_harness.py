@@ -7,13 +7,19 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import core.generator.native_tet.harness as tet_harness
 from core.generator._tier_native_common import _edge_from_target_cells
 from core.generator.native_tet.harness import (
+    _TET_HARNESS_MAX_HAUSDORFF_RELATIVE,
     _TET_HARNESS_MAX_NON_ORTHOGONALITY,
+    _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE,
     TetHarnessResult,
+    _evaluate_source_shape_contract,
     _evaluate_tet_mesh,
     run_native_tet_harness,
 )
+from core.generator.native_tet.mesher import NativeTetResult
+from core.generator.native_tet.surface_transaction_gate import SourceSurfaceMetrics
 
 
 def _unit_cube():
@@ -31,6 +37,150 @@ def _unit_cube():
         [0, 4, 7], [0, 7, 3],
     ], dtype=np.int64)
     return V, F
+
+
+def _tetrahedron():
+    return (
+        np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float),
+        np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=np.int64),
+    )
+
+
+def _source_metric_result() -> NativeTetResult:
+    points, _faces = _tetrahedron()
+    return NativeTetResult(
+        success=True, elapsed=0.0, n_cells=1, n_points=4,
+        hausdorff_relative=0.0, plane_coverage=1.0, plane_area_coverage=1.0,
+        tet_points=points,
+        tets=np.array([[0, 1, 2, 3]], dtype=np.int64),
+    )
+
+
+def _set_source_measurement(monkeypatch: pytest.MonkeyPatch, values: tuple | None) -> None:
+    def _measure(*_args):
+        if values is None:
+            raise RuntimeError("probe failure")
+        return SourceSurfaceMetrics(*values)
+
+    monkeypatch.setattr(
+        "core.generator.native_tet.surface_transaction_gate.measure_source_surface_metrics",
+        _measure,
+    )
+
+
+@pytest.mark.parametrize(("cube", "values", "expected", "reason"), [
+    (True, (_TET_HARNESS_MAX_HAUSDORFF_RELATIVE,
+            _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE,
+            _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE), True, "ok"),
+    (True, (0.01, -1.0, 0.8), False, "source_metrics_unavailable"),
+    (True, (0.01, 0.8, float("nan")), False, "source_metrics_nonfinite"),
+    (True, (_TET_HARNESS_MAX_HAUSDORFF_RELATIVE + 1e-9, 0.8, 0.8), False,
+     "hausdorff_relative_exceeds_standard"),
+    (True, (0.01, _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE - 1e-9, 0.8), False,
+     "planar_source_coverage_below_b_grade"),
+    (True, (0.01, 0.8, _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE - 1e-9), False,
+     "planar_source_coverage_below_b_grade"),
+    (False, (0.01, 0.0, 0.0), True, "ok"),
+    (True, None, False, "source_metrics_measurement_failed"),
+])
+def test_source_shape_contract(
+    cube: bool,
+    values: tuple | None,
+    expected: bool,
+    reason: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """L0: final remeasurement, not stale result fields, controls admission."""
+    V, F = _unit_cube() if cube else _tetrahedron()
+    _set_source_measurement(monkeypatch, values)
+    accepted, actual_reason, metrics = _evaluate_source_shape_contract(
+        V, F, _source_metric_result()
+    )
+    assert accepted is expected
+    assert actual_reason == reason
+    assert set(metrics) == {"hausdorff_relative", "plane_coverage", "plane_area_coverage"}
+
+
+def test_harness_rejects_only_source_invalid_candidate_without_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """L0: source-invalid mesh never reaches checker, best_case, or case_dir."""
+    V, F = _unit_cube()
+    generated = tmp_path / "generated"
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+
+    def _fake_generate(*_args, **_kwargs):
+        generated.mkdir()
+        (generated / "marker").write_text("invalid source candidate", encoding="utf-8")
+        return _source_metric_result(), generated, 0.1774782413111788
+
+    def _checker_must_not_run(_case_dir: Path):
+        raise AssertionError("source-invalid candidate reached NativeMeshChecker")
+
+    monkeypatch.setattr(tet_harness, "_generate_with_cell_rebudget", _fake_generate)
+    monkeypatch.setattr(tet_harness, "_evaluate_tet_mesh", _checker_must_not_run)
+    _set_source_measurement(
+        monkeypatch, (0.049830696267310334, 0.0, 0.6933725645168424)
+    )
+
+    result = run_native_tet_harness(V, F, case_dir, max_iter=1)
+
+    assert not result.success
+    assert result.n_cells == 1
+    assert "source_shape_contract_rejected" in result.message
+    assert "planar_source_coverage_below_b_grade" in result.message
+    assert not generated.exists()
+    assert list(case_dir.iterdir()) == []
+
+
+def test_harness_preserves_prior_source_valid_best_when_later_candidate_is_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """L0: later source rejection cannot replace an earlier source-valid best."""
+    V, F = _unit_cube()
+    case_dir = tmp_path / "case"
+    candidates = ["source-valid", "source-invalid"]
+    measurements = [
+        SourceSurfaceMetrics(0.01, 1.0, 1.0),
+        SourceSurfaceMetrics(0.01, 0.0, 0.6933725645168424),
+    ]
+    generated: list[Path] = []
+
+    def _fake_generate(*_args, **_kwargs):
+        marker = candidates.pop(0)
+        path = tmp_path / marker
+        path.mkdir()
+        (path / "marker").write_text(marker, encoding="utf-8")
+        generated.append(path)
+        return _source_metric_result(), path, 0.2
+
+    def _failing_checker(_case_dir: Path) -> tuple[bool, dict]:
+        return False, {
+            "cells": 1,
+            "points": 4,
+            "max_non_orthogonality": 91.0,
+            "max_skewness": 0.0,
+            "negative_volumes": 0,
+            "mesh_ok": True,
+        }
+
+    monkeypatch.setattr(tet_harness, "_generate_with_cell_rebudget", _fake_generate)
+    monkeypatch.setattr(tet_harness, "_evaluate_tet_mesh", _failing_checker)
+    monkeypatch.setattr(
+        "core.generator.native_tet.surface_transaction_gate.measure_source_surface_metrics",
+        lambda *_args: measurements.pop(0),
+    )
+
+    result = run_native_tet_harness(V, F, case_dir, max_iter=2)
+
+    assert not result.success
+    assert result.n_cells == 1
+    assert (case_dir / "marker").read_text(encoding="utf-8") == "source-valid"
+    assert not generated[0].exists()
+    assert not generated[1].exists()
 
 
 def test_harness_returns_tet_harness_result(tmp_path: Path) -> None:
