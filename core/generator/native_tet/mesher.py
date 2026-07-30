@@ -5730,8 +5730,8 @@ def generate_native_tet(
 
                 _new_pts_m, _new_tets_m, _metric_topology_txn = (
                     apply_metric_topology_transaction(
-                        V,
-                        F,
+                        _input_source_vertices,
+                        _input_source_faces,
                         _pre_pts_m,
                         _pre_tets_m,
                         _new_pts_m,
@@ -5763,8 +5763,8 @@ def generate_native_tet(
             if _metric_source_txn_enabled:
                 if _metric_sweep_committed:
                     final_pts, final_tets, _metric_surface_txn = apply_metric_surface_transaction(
-                        V,
-                        F,
+                        _input_source_vertices,
+                        _input_source_faces,
                         _pre_pts_m,
                         _pre_tets_m,
                         _new_pts_m,

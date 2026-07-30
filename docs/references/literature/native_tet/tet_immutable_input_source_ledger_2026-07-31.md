@@ -49,8 +49,9 @@ The entry point now takes one owning `float64` vertex copy and one owning
 `int64` face copy, then marks both read-only.  Input self-intersection checking
 and optional repair continue on separate working arrays.  The explicit
 fTetWild audit, final edge/face/plane/Hausdorff evidence, P4C acceptance,
-source-prefix restoration, strict source-topology audit, and final shape
-evidence all consume the immutable source ledger.
+metric-topology and metric-surface transactions, source-prefix restoration,
+strict source-topology audit, and final shape evidence all consume the
+immutable source ledger.
 
 Construction costs `O(|V| + |F|)` time and space once per call.  It adds no
 copy inside refinement or optimization loops.  Read-only NumPy ownership also
@@ -97,7 +98,12 @@ external implementation.  No dependency, generated code, GPL/AGPL source, or
   unchanged; caller input bytes unchanged.
 - Reordered source: strict topology valid, component bijection valid, source
   faces preserved, caller input bytes unchanged.
-- New L0 suite: `3 passed in 2.22s`.
+- New L0 suite: `4 passed`; the auto-fix/rebind metric-transaction
+  instrumentation alone passes in `2.63s`.
+- Both metric transaction call sites receive the same owning, C-contiguous,
+  read-only source arrays.  They equal the pre-repair caller source and share
+  memory with neither the writable non-contiguous caller views nor the arrays
+  returned by auto-fix.
 - Shape/topology/provenance focused suite: `60 passed in 16.50s`.
 - Representative result consistency: `3 passed in 51.63s`; cube, cylinder,
   and sphere counts, hashes, and shape evidence unchanged.
