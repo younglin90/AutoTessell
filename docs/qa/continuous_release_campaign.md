@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `14`
+- cycle: `15`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `1217f03860690cbe0c1ab27fcaf4f8cf2f32da0c`
+- last_verified_master: `fee82ef197343607be31dca4212b68a2b48a2190`
 - allowed_to_stop: `false`
-- next_action: `Reproduce and localize the Tet P4C 7-of-8 source-corner failure; select a deterministic shape-preserving fix before further target-cell work.`
+- next_action: `Port the profiled native-Poly face-geometry sweep to a first-party C++23 batch kernel while retaining exact face, owner, patch, and disk-output parity.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -807,3 +807,57 @@ scope. Future MIT-core boundary follows
   seeds.  Localize whether nondeterminism enters external fallback output,
   candidate acceptance, or post-fallback topology passes.  Shape preservation
   remains hard priority; target-cell tuning stays deferred.
+
+## Cycle 15 checkpoint -- 2026-07-30
+
+### Tet P4C immutable-source acceptance evidence
+
+- Baseline cube Phase-A failed once in five independent processes with only
+  `6/8` exact source corners.  Direct instrumentation then localized the first
+  divergence to raw `pytetwild` output: four of twelve identical calls returned
+  only `7/8` exact corners, and final output copied the same deficient candidate.
+- `fee82ef1` connects the existing exact source-vertex certificate to every P4C
+  tier before candidate acceptance.  A higher-quality candidate that loses any
+  immutable source coordinate is rejected; the next tier is attempted, and the
+  original native mesh remains if all tiers reject.  No tolerance, snapping,
+  source-corner insertion, topology repair, or `third_party/` modification was
+  added.  Target-cell count remains subordinate to this shape gate.
+- Twelve independent stochastic P4C cube runs pass the `8/8` corner contract;
+  four runs took the longer retry path.  Focused source/surface/Phase-A/Phase-C/
+  result-consistency validation reports `10 passed` both before and after the
+  verified merge.
+- The external fallback remains topology-nondeterministic.  Repository evidence
+  shows fresh-process variation even with one thread and optimization disabled;
+  fTetWild has multiple internal unordered/random worklists.  Those third-party
+  sources were inspected only to localize behavior and were not edited.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-tet-p4c-source-gate-1-fee82ef1.bundle`,
+  SHA-256 `f0ff062d50d287d72f0ab53e2064bbc10db59ce79596f9d9d3067121f4f8339f`.
+  Worktree and branch were removed after bundle and merge verification.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-15 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Eight native targets previously build warning-clean on Ubuntu/GCC 13; platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused Tet suite passes; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Known P4C exact-corner acceptance hole is closed across 12 repeats; full corpus and exact surface-ledger integration remain. |
+| 5 Mesh validity | UNVERIFIED | Source presence now gates P4C; complete strict-topology corpus missing. |
+| 6 Cell count | FAIL | Deferred Tet target and Poly target following remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | P4C quality rule retained behind source fidelity; complete matrix missing. |
+| 9 Reproducibility | FAIL | External P4C point/tet topology hashes still vary across identical fresh processes. |
+| 10 Robustness | UNVERIFIED | Source-loss candidate now fails closed; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | P4C retry cost is observable; frozen release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | First-party gate only; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile evidence selects native-Poly face geometry: `_area_split`,
+  `_flip_if_inward`, and `_is_on_plane` account for about `3.81 s` of an
+  `8.93 s` representative dual conversion.  Design one C++23 ragged-face batch
+  API with exact sequential arithmetic and face/owner/patch/output parity.
