@@ -5,13 +5,16 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from core.generator.native_tet.rescue_gate import TetBoundaryAudit
 
 
 def _input_vertices_exactly_present_l0(
@@ -55,12 +58,13 @@ def _input_vertices_exactly_present_l0(
 def _p4c_candidate_meets_acceptance_l0(
     source_vertices: object,
     candidate_vertices: object,
+    candidate_tets: object,
     *,
     old_mean_quality: float,
     candidate_mean_quality: float,
     old_cell_count: int,
     candidate_cell_count: int,
-) -> tuple[bool, int]:
+) -> tuple[bool, int, TetBoundaryAudit]:
     """Apply the immutable-source gate before accepting a P4C candidate.
 
     Cell count is deliberately only a coarse safety floor here.  An external
@@ -71,12 +75,25 @@ def _p4c_candidate_meets_acceptance_l0(
     source_preserved, missing_source_vertices = _input_vertices_exactly_present_l0(
         source_vertices, candidate_vertices
     )
+    from core.generator.native_tet.rescue_gate import audit_tet_boundary
+
+    topology = audit_tet_boundary(candidate_vertices, candidate_tets)
+    topology_preserved = bool(
+        topology.n_tets > 0
+        and topology.n_boundary_faces > 0
+        and topology.n_open_edges == 0
+        and topology.n_nonmanifold_edges == 0
+        and topology.n_nonmanifold_faces == 0
+        and topology.n_duplicate_tets == 0
+        and topology.n_degenerate_tets == 0
+    )
     accepted = bool(
         source_preserved
+        and topology_preserved
         and float(candidate_mean_quality) > float(old_mean_quality)
         and int(candidate_cell_count) >= max(50, int(old_cell_count) // 4)
     )
-    return accepted, missing_source_vertices
+    return accepted, missing_source_vertices, topology
 
 
 def _native_tet_large_pass_enabled(n_cells: int) -> bool:
@@ -5853,9 +5870,14 @@ def generate_native_tet(
                 else:
                     _g = "D"
                 _n_cells_new = int(_tw_f.shape[0])
-                _accept, _missing_source_vertices = _p4c_candidate_meets_acceptance_l0(
+                (
+                    _accept,
+                    _missing_source_vertices,
+                    _p4c_topology,
+                ) = _p4c_candidate_meets_acceptance_l0(
                     V,
                     _tw_v,
+                    _tw_f,
                     old_mean_quality=_mq_old,
                     candidate_mean_quality=_mq_new,
                     old_cell_count=_n_cells_old,
@@ -5867,6 +5889,12 @@ def generate_native_tet(
                     n_cells=_n_cells_new, mq=round(_mq_new, 3),
                     elapsed=round(_t_fb, 2), accepted=_accept,
                     missing_source_vertices=_missing_source_vertices,
+                    open_edges=_p4c_topology.n_open_edges,
+                    nonmanifold_edges=_p4c_topology.n_nonmanifold_edges,
+                    nonmanifold_faces=_p4c_topology.n_nonmanifold_faces,
+                    boundary_components=_p4c_topology.n_boundary_components,
+                    duplicate_tets=_p4c_topology.n_duplicate_tets,
+                    degenerate_tets=_p4c_topology.n_degenerate_tets,
                 )
                 if not _accept:
                     continue

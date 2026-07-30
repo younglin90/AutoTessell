@@ -278,6 +278,18 @@ corner contract; four runs exercised a slower retry tier.  This closes the
 known corner-loss acceptance hole, but it does not claim deterministic P4C
 topology because the external solver still returns varying point/tet hashes.
 
+P4C candidate acceptance also reuses the first-party C++23 Tet boundary audit
+before replacement.  Eight raw cube candidates happened to be clean
+(`open/non-manifold/duplicate/degenerate = 0`), but quality and cell count alone
+cannot certify that contract for arbitrary inputs.  The transaction now rejects
+open boundary edges, non-manifold boundary edges/faces, duplicate tetrahedra,
+degenerate tetrahedra, or an empty boundary.  Boundary component count is
+recorded but deliberately not forced to one: disconnected source components
+are valid project inputs, so the stronger single-component `audit.valid`
+property would be an unrealistically strict gate.  Eight independent pipeline
+runs passed after integration; one exercised a fallback retry.  This adds no
+geometry repair, threshold relaxation, or external-source modification.
+
 ## Poly dual face-geometry batch card
 
 Representative profiling attributed about `3.81 s` of an `8.93 s` dual

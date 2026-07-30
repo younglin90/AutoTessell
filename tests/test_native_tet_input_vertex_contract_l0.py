@@ -43,14 +43,18 @@ def test_input_vertex_presence_fails_closed_for_a_malformed_candidate() -> None:
 
 
 def test_p4c_acceptance_rejects_better_quality_when_a_source_corner_is_missing() -> None:
-    source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0)), dtype=np.float64)
+    source = np.asarray(
+        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
+    )
     candidate = np.asarray(
-        ((0, 0, 0), (1, 0, 0), (0, 1 + 1e-12, 0)), dtype=np.float64
+        ((0, 0, 0), (1, 0, 0), (0, 1 + 1e-12, 0), (0, 0, 1)),
+        dtype=np.float64,
     )
 
-    accepted, missing = _p4c_candidate_meets_acceptance_l0(
+    accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
         source,
         candidate,
+        np.asarray(((0, 1, 2, 3),), dtype=np.int64),
         old_mean_quality=0.1,
         candidate_mean_quality=0.9,
         old_cell_count=100,
@@ -59,15 +63,19 @@ def test_p4c_acceptance_rejects_better_quality_when_a_source_corner_is_missing()
 
     assert not accepted
     assert missing == 1
+    assert topology.valid
 
 
 def test_p4c_acceptance_keeps_quality_and_cell_floor_after_source_gate() -> None:
-    source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0)), dtype=np.float64)
-    candidate = source[[2, 0, 1]].copy()
+    source = np.asarray(
+        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
+    )
+    candidate = source[[2, 0, 3, 1]].copy()
 
-    accepted, missing = _p4c_candidate_meets_acceptance_l0(
+    accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
         source,
         candidate,
+        np.asarray(((1, 3, 0, 2),), dtype=np.int64),
         old_mean_quality=0.1,
         candidate_mean_quality=0.2,
         old_cell_count=100,
@@ -76,3 +84,27 @@ def test_p4c_acceptance_keeps_quality_and_cell_floor_after_source_gate() -> None
 
     assert accepted
     assert missing == 0
+    assert topology.valid
+
+
+def test_p4c_acceptance_rejects_duplicate_tet_topology() -> None:
+    points = np.asarray(
+        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
+    )
+    duplicate_tets = np.asarray(
+        ((0, 1, 2, 3), (0, 1, 2, 3)), dtype=np.int64
+    )
+
+    accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
+        points,
+        points.copy(),
+        duplicate_tets,
+        old_mean_quality=0.1,
+        candidate_mean_quality=0.9,
+        old_cell_count=100,
+        candidate_cell_count=10_000,
+    )
+
+    assert not accepted
+    assert missing == 0
+    assert topology.n_duplicate_tets == 1
