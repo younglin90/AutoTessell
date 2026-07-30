@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `12`
+- cycle: `13`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `875f676cfc054db0173c63d3f285ea6ac2a74290`
+- last_verified_master: `789f5c3e8f25c42dc69512d38dda28ca5250b299`
 - allowed_to_stop: `false`
-- next_action: `Profile the native tri/quad operator loop and port one measured adjacency or candidate-evaluation kernel while preserving exact source identity.`
+- next_action: `Measure a fused native-quad input-validation and edge-incidence pass; do not retry the standalone edge-map port.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -730,3 +730,30 @@ scope. Future MIT-core boundary follows
 - Profile tri/quad operator adjacency and candidate-evaluation loops.  Port one
   measured kernel without changing source coordinates, protected edges,
   triangle identity, physical groups, or deterministic operator ordering.
+
+## Cycle 13 checkpoint -- 2026-07-30
+
+### Rejected native-quad edge-map experiment
+
+- Baseline profiling found `_edge_faces` at `2.105385 s` and `78.43 MiB`
+  traced Python heap for `180,000` triangles and `270,600` unique edges.
+- A first-party C++23 compatibility prototype preserved exact edge insertion
+  order and incident-face lists.  Its isolated result was only `1.13x` faster
+  (`2.316470 s` to `2.041235 s`) with `8.44%` traced-heap reduction.
+- End-to-end quad-dominant conversion on `9,800` triangles was neutral/slower:
+  `3.586859 s` Python versus `3.593937 s` native (`0.998x`).  Vertices,
+  triangles, quads, and diagnostics matched exactly; focused validation was
+  `59 passed` with two known all-NaN warnings.
+- The prototype was rejected and not merged.  Retrying the same standalone
+  dict-returning edge-map hypothesis is prohibited.  Recoverable bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-quad-edge-incidence-rejected.bundle`,
+  SHA-256 `215957ab39e8e9f5d5a93ef6215bcdb3c424fb7f861648d4604eca479755eecc`.
+  Its worktree and branch were removed.  `master` source and `third_party/`
+  were unchanged.
+
+### Next automatic action
+
+- Measure a fused native-quad input-validation plus edge-incidence kernel.
+  It must eliminate the duplicate full surface scan and Python vertex-link
+  graph together, preserve exact error precedence/messages, and improve the
+  representative end-to-end conversion.  Otherwise reject it too.
