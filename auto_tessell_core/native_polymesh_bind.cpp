@@ -104,6 +104,12 @@ struct FaceBucket {
     std::vector<FaceRef> refs;
 };
 
+template <size_t Size>
+struct CanonicalSimplexRecord {
+    std::array<Label, Size> key;
+    Label owner;
+};
+
 struct TopologyResult {
     std::vector<Face> internal_faces;
     std::vector<Label> internal_owner;
@@ -986,6 +992,167 @@ py::tuple compute_tet_dual_points(
     return py::make_tuple(std::move(dual_points), std::move(statuses));
 }
 
+py::tuple audit_tet_primal_conformity(
+    const py::array_t<double, py::array::c_style>& points,
+    const py::array_t<Label, py::array::c_style>& tets)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (tets.ndim() != 2 || tets.shape(1) != 4) {
+        throw std::invalid_argument("tets must have shape (M, 4)");
+    }
+
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const size_t tet_count = static_cast<size_t>(tets.shape(0));
+    constexpr size_t max_size = std::numeric_limits<size_t>::max();
+    if (point_count > max_size / 3U || tet_count > max_size / 4U
+        || tet_count > static_cast<size_t>(std::numeric_limits<Label>::max())
+        || point_count > static_cast<size_t>(std::numeric_limits<Label>::max())) {
+        throw std::length_error("tet primal-conformity array is too large");
+    }
+
+    using TetRecord = CanonicalSimplexRecord<4>;
+    using FaceRecord = CanonicalSimplexRecord<3>;
+    std::vector<TetRecord> canonical_tets;
+    canonical_tets.reserve(tet_count);
+    std::vector<FaceRecord> canonical_faces;
+    canonical_faces.reserve(tet_count * 4U);
+    std::vector<Label> negative_orientation_rows;
+    negative_orientation_rows.reserve(tet_count / 8U);
+
+    constexpr std::array<std::array<size_t, 3>, 4> local_faces{{
+        {{1, 2, 3}}, {{0, 3, 2}}, {{0, 1, 3}}, {{0, 2, 1}},
+    }};
+    const double* const point_data = points.data();
+    const Label* const tet_data = tets.data();
+
+    {
+        py::gil_scoped_release release;
+        for (size_t point_index = 0U; point_index < point_count * 3U; ++point_index) {
+            if (!std::isfinite(point_data[point_index])) {
+                throw std::invalid_argument("points must contain only finite coordinates");
+            }
+        }
+
+        for (size_t tet_index = 0U; tet_index < tet_count; ++tet_index) {
+            std::array<Label, 4> tet{};
+            for (size_t local = 0U; local < 4U; ++local) {
+                const Label vertex = tet_data[tet_index * 4U + local];
+                if (vertex < 0 || static_cast<size_t>(vertex) >= point_count) {
+                    throw std::invalid_argument("tet vertex index out of range");
+                }
+                for (size_t previous = 0U; previous < local; ++previous) {
+                    if (tet[previous] == vertex) {
+                        throw std::invalid_argument("tet repeats a vertex index");
+                    }
+                }
+                tet[local] = vertex;
+            }
+
+            std::array<Label, 4> canonical_tet = tet;
+            std::sort(canonical_tet.begin(), canonical_tet.end());
+            canonical_tets.push_back(
+                {canonical_tet, static_cast<Label>(tet_index)});
+            for (const auto& local_face : local_faces) {
+                std::array<Label, 3> face{
+                    tet[local_face[0]], tet[local_face[1]], tet[local_face[2]]};
+                std::sort(face.begin(), face.end());
+                canonical_faces.push_back({face, static_cast<Label>(tet_index)});
+            }
+
+            const double* const p0 = point_data + static_cast<size_t>(tet[0]) * 3U;
+            const double* const p1 = point_data + static_cast<size_t>(tet[1]) * 3U;
+            const double* const p2 = point_data + static_cast<size_t>(tet[2]) * 3U;
+            const double* const p3 = point_data + static_cast<size_t>(tet[3]) * 3U;
+            const double ax = p1[0] - p0[0];
+            const double ay = p1[1] - p0[1];
+            const double az = p1[2] - p0[2];
+            const double bx = p2[0] - p0[0];
+            const double by = p2[1] - p0[1];
+            const double bz = p2[2] - p0[2];
+            const double cx = p3[0] - p0[0];
+            const double cy = p3[1] - p0[1];
+            const double cz = p3[2] - p0[2];
+            const double signed_volume6 = ax * (by * cz - bz * cy)
+                - ay * (bx * cz - bz * cx)
+                + az * (bx * cy - by * cx);
+            if (!std::isfinite(signed_volume6)) {
+                throw std::invalid_argument("tet signed volume is non-finite");
+            }
+            if (signed_volume6 == 0.0) {
+                throw std::invalid_argument("tet signed volume is zero");
+            }
+            if (signed_volume6 < 0.0) {
+                negative_orientation_rows.push_back(static_cast<Label>(tet_index));
+            }
+        }
+
+        const auto record_less = [](const auto& first, const auto& second) {
+            return first.key < second.key
+                || (first.key == second.key && first.owner < second.owner);
+        };
+        std::sort(canonical_tets.begin(), canonical_tets.end(), record_less);
+        std::sort(canonical_faces.begin(), canonical_faces.end(), record_less);
+    }
+
+    std::vector<std::pair<std::array<Label, 4>, std::vector<Label>>> duplicate_groups;
+    for (size_t begin = 0U; begin < canonical_tets.size();) {
+        size_t end = begin + 1U;
+        while (end < canonical_tets.size()
+               && canonical_tets[end].key == canonical_tets[begin].key) {
+            ++end;
+        }
+        if (end - begin > 1U) {
+            std::vector<Label> owners;
+            owners.reserve(end - begin);
+            for (size_t index = begin; index < end; ++index) {
+                owners.push_back(canonical_tets[index].owner);
+            }
+            duplicate_groups.emplace_back(canonical_tets[begin].key, std::move(owners));
+        }
+        begin = end;
+    }
+
+    std::vector<std::pair<std::array<Label, 3>, std::vector<Label>>> nonmanifold_groups;
+    for (size_t begin = 0U; begin < canonical_faces.size();) {
+        size_t end = begin + 1U;
+        while (end < canonical_faces.size()
+               && canonical_faces[end].key == canonical_faces[begin].key) {
+            ++end;
+        }
+        if (end - begin > 2U) {
+            std::vector<Label> owners;
+            owners.reserve(end - begin);
+            for (size_t index = begin; index < end; ++index) {
+                owners.push_back(canonical_faces[index].owner);
+            }
+            nonmanifold_groups.emplace_back(
+                canonical_faces[begin].key, std::move(owners));
+        }
+        begin = end;
+    }
+
+    py::tuple python_duplicates(duplicate_groups.size());
+    for (size_t index = 0U; index < duplicate_groups.size(); ++index) {
+        const auto& [key, owners] = duplicate_groups[index];
+        python_duplicates[index] = py::make_tuple(
+            py::make_tuple(key[0], key[1], key[2], key[3]),
+            py::cast(owners));
+    }
+    py::tuple python_nonmanifold(nonmanifold_groups.size());
+    for (size_t index = 0U; index < nonmanifold_groups.size(); ++index) {
+        const auto& [key, owners] = nonmanifold_groups[index];
+        python_nonmanifold[index] = py::make_tuple(
+            py::make_tuple(key[0], key[1], key[2]),
+            py::cast(owners));
+    }
+    return py::make_tuple(
+        std::move(python_duplicates),
+        std::move(python_nonmanifold),
+        py::cast(negative_orientation_rows));
+}
+
 py::tuple build_tet_incidence_maps(
     const py::array_t<Label, py::array::c_style | py::array::forcecast>& tets_array,
     const Label num_vertices)
@@ -1105,6 +1272,11 @@ PYBIND11_MODULE(native_polymesh, module)
     module.def(
         "compute_tet_dual_points",
         &compute_tet_dual_points,
+        py::arg("points").noconvert(),
+        py::arg("tets").noconvert());
+    module.def(
+        "audit_tet_primal_conformity",
+        &audit_tet_primal_conformity,
         py::arg("points").noconvert(),
         py::arg("tets").noconvert());
     module.def(

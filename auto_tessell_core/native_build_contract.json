@@ -55,6 +55,7 @@
     },
     "native_polymesh": {
       "public_symbols": [
+        "audit_tet_primal_conformity",
         "build_tet_incidence_maps",
         "build_topology",
         "compute_tet_dual_points",
