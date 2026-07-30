@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `13`
+- cycle: `14`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `789f5c3e8f25c42dc69512d38dda28ca5250b299`
+- last_verified_master: `1217f03860690cbe0c1ab27fcaf4f8cf2f32da0c`
 - allowed_to_stop: `false`
-- next_action: `Measure a fused native-quad input-validation and edge-incidence pass; do not retry the standalone edge-map port.`
+- next_action: `Reproduce and localize the Tet P4C 7-of-8 source-corner failure; select a deterministic shape-preserving fix before further target-cell work.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -757,3 +757,53 @@ scope. Future MIT-core boundary follows
   It must eliminate the duplicate full surface scan and Python vertex-link
   graph together, preserve exact error precedence/messages, and improve the
   representative end-to-end conversion.  Otherwise reject it too.
+
+## Cycle 14 checkpoint -- 2026-07-30
+
+### Native quad fused-preflight evidence
+
+- `1217f038` fuses quad finite/index validation, canonical face identity,
+  zero-area detection, directed edge manifold/orientation checks, vertex-link
+  connectivity, and ordered edge-to-face incidence in one C++23 kernel.
+  Python fallback also reuses the edge owners collected by validation, so both
+  routes eliminate the prior second surface scan.
+- Planar `9,800`-triangle public-route benchmark under identical allocation
+  tracing: `19.717281 s` fallback versus `17.251941 s` native (`1.143x`);
+  traced Python heap `15.54 MiB` versus `11.27 MiB` (`27.48%` reduction).
+  Source vertices, residual triangles, `4,900` quads, all ordering, and every
+  diagnostic field match exactly.
+- Degenerate, duplicate, zero-area, inconsistent-edge, non-manifold-edge, and
+  non-manifold-vertex fixtures assert exact native/Python error parity.
+  Post-merge quad-dominant, messy-grid, multires, and native-metrics suites
+  report `93 passed`; two known all-NaN warnings remain.
+- Bundle verification passes at
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-quad-fused-preflight-1-1217f038.bundle`,
+  SHA-256 `71af03d3da90d6f012bed091a2b926020a3ac9321043e94f3c74a2eaf4cdbd51`.
+  Worktree and branch were removed.  `third_party/` remains unchanged.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-14 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean after integration. |
+| 2 Build | UNVERIFIED | Changed native target is warning-clean on Ubuntu/GCC 13; platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused 93-test suite passes; immutable-head full suite missing. |
+| 4 Shape preservation | FAIL | Quad source arrays are exact; Tet P4C 7/8-corner case remains. |
+| 5 Mesh validity | UNVERIFIED | Quad invalid topology fails closed; complete corpus missing. |
+| 6 Cell count | FAIL | Poly target following and deferred Tet target unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | Quad quality output unchanged; matrix incomplete. |
+| 9 Reproducibility | FAIL | Tet P4C non-determinism remains. |
+| 10 Robustness | UNVERIFIED | Quad preflight strengthened; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | Quad end-to-end time/heap improve; frozen release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Migration and failure ledger updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Reproduce the Tet P4C cube source-corner loss under identical inputs and
+  seeds.  Localize whether nondeterminism enters external fallback output,
+  candidate acceptance, or post-fallback topology passes.  Shape preservation
+  remains hard priority; target-cell tuning stays deferred.
