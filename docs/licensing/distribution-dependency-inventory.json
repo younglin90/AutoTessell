@@ -132,7 +132,7 @@
           "id": "cmake:pybind11",
           "kind": "cmake_direct",
           "declaration": "find_package(pybind11 CONFIG REQUIRED)",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:26",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:28",
           "distribution_condition": "always",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -145,7 +145,7 @@
           "id": "cmake:Eigen3",
           "kind": "cmake_direct",
           "declaration": "find_package(Eigen3 3.3 REQUIRED NO_MODULE)",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:29",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:31",
           "distribution_condition": "always",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -158,7 +158,7 @@
           "id": "source:cinolib",
           "kind": "cmake_direct",
           "declaration": "target_include_directories(cinolib_hex PRIVATE \"${CINOLIB_DIR}/include\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:47",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:58",
           "distribution_condition": "always",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -171,7 +171,7 @@
           "id": "source:robusthex",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_ROBUSTHEX AND EXISTS \"${ROBUSTHEX_DIR}/src/meshio.cpp\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:97",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:120",
           "distribution_condition": "BUILD_ROBUSTHEX and ROBUSTHEX_DIR source present",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -184,7 +184,7 @@
           "id": "source:fTetWild",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_FTETWILD AND EXISTS \"${FTETWILD_SRC_DIR}/CMakeLists.txt\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:182",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:205",
           "distribution_condition": "BUILD_FTETWILD and FTETWILD_SRC_DIR present",
           "license_assertion": {
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
@@ -199,7 +199,7 @@
           "id": "source:cfMesh",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_CFMESH AND EXISTS \"${CFMESH_SRC_DIR}/CMakeLists.txt\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:203",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:226",
           "distribution_condition": "BUILD_CFMESH and CFMESH_SRC_DIR present",
           "license_assertion": {
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
