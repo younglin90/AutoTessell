@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `7`
+- cycle: `8`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `2a530343f42954ca034020a5e3af36d0305d3483`
+- last_verified_master: `363a38369b1fe334088553892d47fa42f2dc3504`
 - allowed_to_stop: `false`
-- next_action: `TET-STRICT-TOPOLOGY-CUBE-PROBE-1; HEX-NEXT-CARD-SCAN-1 in parallel; then poly and tri/quad gate cards.`
+- next_action: `TET-STRICT-TOPOLOGY-CORPUS-PROBE-1; HEX-NEXT-CARD-SCAN-2; POLY-NEXT-CARD-SCAN-2; TRI-QUAD-NEXT-CARD-SCAN-2 in parallel.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -396,3 +396,86 @@ scope. Future MIT-core boundary follows
 - After those, select native-poly and native-tri/quad cards from their own
   research/evidence records.  Gate 6 remains recorded but is not the tet lane's
   scheduling priority.
+
+## Cycle 8 checkpoint — 2026-07-30
+
+### User-priority application
+
+- Native-tet strict topology is scheduled before target-cell control.  Gate 6
+  remains an explicit `FAIL`, but it is not an acceptance condition for the
+  current tet topology cards.
+- The only relaxed tet assertion is the stale exact final count (`1495`).  The
+  replacement requires positive duplicate-repair evidence, unchanged boundary,
+  zero residual duplicate/degenerate/open/non-manifold entities, strict writer
+  success, and tetrahedron encoding for every written cell.  A true 3+-cell
+  face, invalid cell, or shape-contract failure remains fail-closed.
+
+### Integration, recovery, and cleanup evidence
+
+- `ff5a0275` merged through `8dd402f0`.  Native-tet harness candidates now
+  remeasure final arrays immediately before evaluator/best-case selection.  A
+  missing, non-finite, or planar source-coverage failure is rejected before
+  output promotion.  Focused source-contract suite: `8 passed in 2.01 s`.
+  Archive: `tet-harness-source-shape-contract-ff5a0275/`
+  (`sha256:65b7349ecdd9e411b6a76cc4b80de2fd857765e5cef8500b04285b8863b8886b`).
+- `4185f419` merged through `54f0fc1b`.  The cylinder strict-topology regression
+  now treats the observed final count (`1493`) as Gate-6 evidence rather than a
+  topology invariant.  Parent post-merge topology/rescue suite: `8 passed in
+  16.57 s`.  Archive: `tet-strict-topology-contract-calibration-4185f419/`
+  (`sha256:3c5c93b4842f967b99044d698284380bb868c0a4bd507c0b5e06380a5b8b0627`).
+- `e561609b` merged through `129ffaeb`.  Native-hex wallfit candidate labels
+  now require a valid authoritative source manifest; missing, altered, or
+  ambiguous sidecars report `UNAVAILABLE` rather than inferred provenance.
+  Focused suite: `10 passed in 2.34 s`.  Archives:
+  `hex-wallfit-candidate-provenance-e4768527/` and
+  `hex-wallfit-candidate-provenance-e561609b/`.
+- `372cc430` merged through `c6fb8f93`.  Native-poly fails before writer output
+  when an explicit boundary entity mapping omits an extracted boundary face.
+  Focused suite: `2 passed in 2.14 s`.  Archive:
+  `poly-dual-classify-coverage-372cc430/`
+  (`sha256:19cf89ce1174b09ada79afed247d5b7cfb108a9d74eb4cdab7d91607266a3989`).
+- `a303bbc1` merged through `363a3836`.  Native quad decoding now rejects lossy
+  raw triangle indices and nonexistent/degenerate protected wall edges before
+  pairing; valid input ordering and coordinates remain unchanged.  Parent
+  focused suite: `32 passed in 2.27 s`.  Archive:
+  `quad-input-identity-a303bbc1/`
+  (`sha256:229e907f1beae171c52048a33bcbfa1f5e55f269c89ada88f6203f4873ed6535`).
+- All four integrated lanes were rebased or conflict-reviewed against current
+  `master`, post-merge tested, archive-verified, then removed exactly.  The
+  current repository scan has one primary worktree, `master` only, a clean
+  working tree, `git diff --check` pass, and no `third_party/` diff.
+- Strict global mypy is still baseline-blocked: invoking it for the changed quad
+  module follows the import graph and reports `2784` existing errors in `152`
+  files.  This card introduced no reported new focused type error; the global
+  type baseline remains release work, not a PASS.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-8 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | Current scan is clean with one primary worktree; terminal scan must repeat after the next isolated lanes. |
+| 2 Build | UNVERIFIED | Native Release configuration matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused suites pass; immutable-head full test evidence remains missing. |
+| 4 Shape preservation | UNVERIFIED | Tet final-array source guard and local face/quad contracts strengthened; representative corpus proof remains missing. |
+| 5 Mesh validity | UNVERIFIED | Cylinder duplicate repair is writer-valid; strict topology must be classified over the cube/corpus without target acceptance coupling. |
+| 6 Cell count | FAIL | Tet target work is explicitly deferred; existing poly target-following failure remains. |
+| 7 Boundary layer | UNVERIFIED | BL0 evidence exists; positive-layer corpus remains missing. |
+| 8 Quality | UNVERIFIED | No complete engine/fixture quality specification matrix. |
+| 9 Reproducibility | UNVERIFIED | Card-local deterministic checks exist; engine corpus is missing. |
+| 10 Robustness | UNVERIFIED | Quad input identity and explicit failure reporting improved; adverse corpus is incomplete. |
+| 11 Performance | UNVERIFIED | No frozen Release benchmark budgets. |
+| 12 Packaging | UNVERIFIED | Wheel smoke only; native and installer clean-install proof missing. |
+| 13 License/provenance | UNVERIFIED | GPL/no-third-party policy held; resolved release-artifact proof remains incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Release operations/checklist proof missing. |
+| 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
+
+### Next automatic actions
+
+- `TET-STRICT-TOPOLOGY-CORPUS-PROBE-1`: classify strict topology, writer
+  validity, and source metrics on cube and cylinder with target count recorded
+  only as diagnostic.  Do not weaken real topology or shape gates.
+- In parallel, research and select one bounded native-hex, native-poly, and
+  native-tri/quad card from current Gate-4/5/7/10 deficits.  No external code
+  reuse and no `third_party/` modification.
+- Run an immutable-head validation baseline only after the next integration
+  cycle; retain all unrun/full-suite gates as `UNVERIFIED`.
