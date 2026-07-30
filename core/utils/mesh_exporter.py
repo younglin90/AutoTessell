@@ -6,6 +6,7 @@ meshio를 활용해 생성된 OpenFOAM polyMesh를 다양한 CFD 솔버 포맷�
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -16,6 +17,10 @@ from core.utils.polymesh_reader import (
     parse_foam_faces,
     parse_foam_labels,
     parse_foam_points,
+)
+from core.utils.surface_volume_padding import (
+    SurfacePaddingReport,
+    write_padded_surface_to_openfoam,
 )
 
 log = get_logger(__name__)
@@ -89,6 +94,34 @@ _EXTENSION_TO_FORMAT: dict[str, str] = {
     # .msh: 기본 fluent (cfMesh/ANSYS Fluent .msh). gmsh 는 명시 fmt 필요.
     ".msh": "fluent",
 }
+
+
+def export_planar_surface_volume_to_openfoam(
+    vertices: np.ndarray | Sequence[Sequence[float]],
+    faces: Sequence[Sequence[int]],
+    case_dir: Path,
+    *,
+    direction: Literal[-1, 1] = 1,
+    tolerance: float = 1e-9,
+    patch_name: str = "paddedSurfaceWall",
+    patch_type: str = "wall",
+) -> SurfacePaddingReport:
+    """Write a native-padded planar surface as an OpenFOAM polyMesh.
+
+    This compatibility export endpoint deliberately delegates validation,
+    extrusion, face winding, and connectivity to the native padding result and
+    the standard generic polyMesh writer.  It does not construct volume cells
+    or alter the caller's input arrays.
+    """
+    return write_padded_surface_to_openfoam(
+        vertices,
+        faces,
+        case_dir,
+        direction=direction,
+        tolerance=tolerance,
+        patch_name=patch_name,
+        patch_type=patch_type,
+    )
 
 
 def _write_vtp_via_pyvista(
