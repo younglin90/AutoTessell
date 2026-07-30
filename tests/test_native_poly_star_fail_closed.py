@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from core.generator.native_poly.dual import tet_to_poly_dual
 from core.utils.polymesh_reader import parse_foam_boundary
@@ -125,12 +126,15 @@ def test_residual_star_invalid_cube_refuses_deterministically_without_artifacts(
 
         assert result.success is False
         assert result.n_cells == 15
-        assert result.invalid_star_cells == 5
-        assert result.invalid_star_subtets == 25
+        # Four arithmetic-center false negatives have feasible kernel witnesses.
+        # Cell 6 remains genuinely non-star-shaped and must keep the whole write
+        # transaction fail-closed.
+        assert result.invalid_star_cells == 1
+        assert result.invalid_star_subtets == 9
         assert result.message == (
-            "star_validity_refused: mode=centroid, invalid_cells=5, "
-            "invalid_subtets=25; garimella point candidate rejected: "
-            "star_invalid_cells=5, star_invalid_subtets=25"
+            "star_validity_refused: mode=centroid, invalid_cells=1, "
+            "invalid_subtets=9; garimella point candidate rejected: "
+            "star_invalid_cells=1, star_invalid_subtets=9"
         )
         poly_dir = case_dir / "constant" / "polyMesh"
         assert not any(
@@ -151,6 +155,56 @@ def test_residual_star_invalid_cube_refuses_deterministically_without_artifacts(
 
     assert observations[1:] == observations[:1] * 2
     assert _array_digest(_INVALID_CUBE_PRIMAL_POINTS, _INVALID_CUBE_PRIMAL_TETS) == input_digest
+
+
+def test_kernel_witness_projection_matches_python_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import native_extensions
+
+    native_result = tet_to_poly_dual(
+        _INVALID_CUBE_PRIMAL_POINTS,
+        _INVALID_CUBE_PRIMAL_TETS,
+        tmp_path / "native",
+    )
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: None)
+    python_result = tet_to_poly_dual(
+        _INVALID_CUBE_PRIMAL_POINTS,
+        _INVALID_CUBE_PRIMAL_TETS,
+        tmp_path / "python",
+    )
+
+    assert (
+        native_result.success,
+        native_result.invalid_star_cells,
+        native_result.invalid_star_subtets,
+        native_result.message,
+    ) == (
+        python_result.success,
+        python_result.invalid_star_cells,
+        python_result.invalid_star_subtets,
+        python_result.message,
+    )
+    assert len(native_result.star_examples) == len(python_result.star_examples)
+    for native_example, python_example in zip(
+        native_result.star_examples,
+        python_result.star_examples,
+        strict=True,
+    ):
+        assert native_example.keys() == python_example.keys()
+        for key, python_value in python_example.items():
+            native_value = native_example[key]
+            if isinstance(python_value, float):
+                assert native_value == pytest.approx(python_value, abs=1e-15)
+            else:
+                assert native_value == python_value
+    for case_dir in (tmp_path / "native", tmp_path / "python"):
+        poly_dir = case_dir / "constant" / "polyMesh"
+        assert not any(
+            (poly_dir / name).exists()
+            for name in ("points", "faces", "owner", "neighbour", "boundary")
+        )
 
 
 def test_valid_classified_bipyramid_preserves_bytes_and_patch_provenance(

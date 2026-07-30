@@ -493,8 +493,10 @@ def _star_validity(
 
     A face is oriented outward from its owner.  The neighbour sees the same
     face in reverse.  For an outward face, ``-det(edge, face_center, region_center)``
-    must be positive for every face edge.  The region center is the arithmetic
-    mean of the dual vertices present in the cell's faces.
+    must be positive for every face edge.  The arithmetic mean of the dual
+    vertices is the fast-path witness.  Only when it fails, eight deterministic
+    half-space projection sweeps seek another kernel witness; the original
+    signed-subtet inequalities are then rechecked without relaxing ``tolerance``.
     """
     if not points.size or not faces or not owner:
         return 0, 0, ()
@@ -549,34 +551,79 @@ def _star_validity(
             continue
 
         region_center = points[np.asarray(cell_vertex_ids)].mean(axis=0)
-        cell_bad = False
-        for face, face_id in cell_face_refs:
-            face_center = points[np.asarray(face)].mean(axis=0)
-            for edge_index, (a, b) in enumerate(zip(face, face[1:] + face[:1])):
-                signed_volume6 = float(
-                    np.dot(
-                        points[b] - points[a],
-                        np.cross(
-                            face_center - points[a],
-                            region_center - points[a],
-                        ),
-                    )
-                )
-                normalized = -signed_volume6 / scale
-                if normalized <= tolerance:
-                    cell_bad = True
-                    invalid_subtets += 1
-                    if len(examples) < max_examples:
-                        examples.append(
-                            {
-                                "cell": cell_id,
-                                "face": face_id,
-                                "edge": (int(a), int(b)),
-                                "edge_index": edge_index,
-                                "signed_volume6": signed_volume6,
-                                "normalized_signed_volume6": normalized,
-                            }
+
+        def audit_center(*, collect_examples: bool) -> int:
+            violations = 0
+            for face, face_id in cell_face_refs:
+                face_center = points[np.asarray(face)].mean(axis=0)
+                for edge_index, (a, b) in enumerate(zip(face, face[1:] + face[:1], strict=True)):
+                    signed_volume6 = float(
+                        np.dot(
+                            points[b] - points[a],
+                            np.cross(
+                                face_center - points[a],
+                                region_center - points[a],
+                            ),
                         )
+                    )
+                    normalized = -signed_volume6 / scale
+                    if normalized <= tolerance:
+                        violations += 1
+                        if collect_examples and len(examples) < max_examples:
+                            examples.append(
+                                {
+                                    "cell": cell_id,
+                                    "face": face_id,
+                                    "edge": (int(a), int(b)),
+                                    "edge_index": edge_index,
+                                    "signed_volume6": signed_volume6,
+                                    "normalized_signed_volume6": normalized,
+                                }
+                            )
+            return violations
+
+        cell_bad_count = audit_center(collect_examples=False)
+        if cell_bad_count and np.all(np.isfinite(region_center)) and np.isfinite(scale):
+            tolerance_scaled = tolerance * scale
+            inward_guard = (
+                64.0
+                * float(np.finfo(np.float64).eps)
+                * max(
+                    scale,
+                    abs(tolerance_scaled),
+                    float(np.finfo(np.float64).tiny),
+                )
+            )
+            for _sweep in range(8):
+                projection_valid = True
+                for face, _face_id in cell_face_refs:
+                    face_center = points[np.asarray(face)].mean(axis=0)
+                    for a, b in zip(face, face[1:] + face[:1], strict=True):
+                        edge = points[b] - points[a]
+                        face_offset = face_center - points[a]
+                        normal = np.cross(edge, face_offset)
+                        signed_volume6 = float(np.dot(normal, region_center - points[a]))
+                        normal_squared = float(np.dot(normal, normal))
+                        if not (
+                            np.isfinite(signed_volume6)
+                            and np.isfinite(normal_squared)
+                            and normal_squared > float(np.finfo(np.float64).tiny)
+                        ):
+                            projection_valid = False
+                            continue
+                        if signed_volume6 >= -tolerance_scaled:
+                            region_center -= (
+                                (signed_volume6 + tolerance_scaled + inward_guard) / normal_squared
+                            ) * normal
+                if not projection_valid:
+                    break
+                cell_bad_count = audit_center(collect_examples=False)
+                if cell_bad_count == 0:
+                    break
+
+        cell_bad_count = audit_center(collect_examples=True)
+        cell_bad = cell_bad_count > 0
+        invalid_subtets += cell_bad_count
         if cell_bad:
             invalid_cells += 1
     return invalid_cells, invalid_subtets, tuple(examples)
