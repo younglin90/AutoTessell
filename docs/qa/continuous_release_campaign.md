@@ -2102,3 +2102,133 @@ scope. Future MIT-core boundary follows
   Quad hot-path profiling, and the next Poly card in parallel.  Keep strict
   shape/topology/validity and provenance ahead of target-cell count.  Full
   checker timeout evidence remains queued; it is not a pass.
+
+## Cycle 36 checkpoint -- 2026-07-31
+
+### Tet source-component face census
+
+- `1bc65359` replaces the exact component certificate's global sorted `4T`
+  face array with a reserved first-party C++23 hash-incidence census.  The
+  32-component median changes `0.681927 -> 0.034191 s` (`19.95x`) and RSS
+  changes `133,972 -> 113,808 KiB` while all component, malformed-input,
+  topology, and provenance reports remain exact.  Post-merge validation passes
+  `37`.
+- Bundle: `native-tet-cycle36-1bc65359.bundle`, SHA-256
+  `eac808a61e3164475ca318d4e64f28eda76cea3bb7d38274971858a316124fb7`.
+
+### Hex wall-fit local scale C++23 batch
+
+- `b061e55e` computes each incident cell edge scale once in
+  `native_hex_quality.boundary_vertex_local_scales`.  Whole wall-fit changes
+  `0.481632 -> 0.213631 s` (`2.2545x`); the isolated scale stage is `51.68x`.
+  Output, statistics, topology, provenance, and traced peak memory are exact.
+  Expanded validation passes `110`; post-merge focused validation passes `45`.
+- Bundle: `native-hex-cycle36-b061e55e.bundle`, SHA-256
+  `8c46d5cf798203aaecc389d8cba1172a7320dac0d22658411800b94fc6ea2448`.
+
+### Quad fused transaction C++23
+
+- `81d5b17a` fuses guarded prepare/select/assembly while Python retains an
+  independent vectorized topology and provenance audit.  The frozen public
+  path changes `0.052478 -> 0.018678 s` (`2.810x`), or `119.87x` versus the
+  full Python oracle.  Hashes and diagnostics remain exact; expanded validation
+  passes `153` and post-merge validation passes `66`.
+- Full text remained inaccessible for DOI `10.1002/nme.7644` and DOI
+  `10.1137/1.9781611978575.6`.
+- Bundle: `native-quad-cycle36-81d5b17a.bundle`, SHA-256
+  `77c9dea0a297b5ff579a12835f0364bc479a98725fcfa9aeebc74801209df0a3`.
+
+### Explicit native build precedence
+
+- `e7ee5016` makes `AUTOTESSELL_EXT_BUILD_DIR` load its exact first-party
+  module even when a stale module name is already cached.  A present but broken
+  explicit ABI fails closed; an absent explicit candidate retains the defined
+  fallback.  Fresh eight-module C++23 warnings-as-errors build and `174`
+  affected tests pass.
+- Bundle: `common-native-loader-cycle36-e7ee5016.bundle`, SHA-256
+  `c8fa366594bbc11d0fa2a91c1f4fdd64f2aead115b3b4b6410495e8fac629137`.
+
+### Poly exact pairing C++23
+
+- `1c6ff93f` replaces the exponential Phase-0 face pairing with an independent
+  `O(V^3)` / `O(V^2)` general weighted matching kernel.  A mandatory adversarial
+  review rejected the first candidate for mixed-scale quantization, objective
+  cancellation, and an ABI-contract omission.  None of that candidate reached
+  `master`.
+- The amended exact-binary64 implementation passes all prior counterexamples,
+  `1,500` exhaustive cases, an additional `2,400` mixed-scale permutation
+  checks, and the independent re-review.  The sphere checker changes from a
+  `>180 s` timeout to `2.54..2.69 s` (`>=66.8x`), with exact five-file hashes,
+  `mesh_ok=true`, and zero negative cells.  Fresh post-merge cross-validation
+  passes `112` after rebuilding the previously stale native-polymesh module.
+- Bundle: `native-poly-cycle36-1c6ff93f.bundle`, SHA-256
+  `4c09e6f88f29b6e25db3162f50d99fa7fe4dd8c34c11ec17b33c23dd978d16f0`.
+
+## Cycle 37 checkpoint -- 2026-07-31
+
+### Tet inverted-cell strict certificate
+
+- `b8025929` adds exact `n_inverted_tets` evidence to the final source-topology
+  certificate.  A reversed tetrahedron changes from a false valid result to a
+  fail-closed result with count one.  The unmodified sphere remains `669/1,631`,
+  inverted count zero, and exact SHA-256
+  `a87a55050628cf6987b0479cd35ed6b541dbbb52ce3cd94c5d92ee545f42082a`.
+  A 48,000-tet audit regresses `6.14%`, inside the fixed `10%` budget.  Focused
+  validation passes `75`; post-merge validation passes `56`.
+- Bundle: `native-tet-cycle37-b8025929.bundle`, SHA-256
+  `c41725149e89877a39693ddff79cf3dcf3a63a864bfdb2dc932ff560efda7bef`.
+
+### Hex original-source invariant
+
+- `1f1f5b97` removes the hidden PRE3 isotropic-remesh substitution from the
+  native-Hex generator.  The adverse replacement had changed a closed source
+  from watertight to open, Euler `2 -> 0`, area `-0.4193%`, and volume
+  `-0.5895%` while returning success.  The generator now uses only the exact
+  input source; adverse runtime changes `2.958305 -> 0.453269 s` (`6.526x`).
+- Cube, cylinder, gear, bracket, and adverse output/statistic hashes remain
+  exact, with zero reported negative, inverted, or degenerate cells.  Full Hex
+  validation passes `193` with `11` pre-existing skips.
+- Bundle: `native-hex-cycle37-1f1f5b97.bundle`, SHA-256
+  `a1a9ffb14f52e2793685f63d1dc24c20cba9369fcd04d9df04fc0c03d43a475d`.
+
+### Quad similarity-range robustness
+
+- `8fa06841` applies only local exact-power-of-two similarity normalization to
+  C++23 and Python-oracle quality calculations.  The same planar patch changes
+  from `3/8` to `8/8` accepted scales over `1e-150..1e150`; invalid topology,
+  warped, concave, wall, and protected-feature gates remain fail closed.
+- The frozen 60x60 hashes remain exact.  Median time is `0.020220 s`, `+9.89%`
+  and below the fixed `0.02116 s` cap.  Expanded validation passes `168`; the
+  post-Poly rebase cross-suite passes `93`, and post-merge validation passes
+  `39`.
+- Full text remained inaccessible for DOI `10.1145/3731143`.
+- Bundle: `native-quad-cycle37-8fa06841.bundle`, SHA-256
+  `48229b97777f972c86dabb0bd46226d0c32d24ffcbe35bb4662c497c966fbc6c`.
+
+### Cycle-37 gate re-evaluation
+
+| Gate | Status | Cycle-36/37 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | Research worktrees and branches are zero and `master` is clean after this ledger commit, but the tracked installer executable remains. |
+| 2 Build | UNVERIFIED | Repeated fresh GCC 13.3 C++23 warnings-as-errors targets pass; supported OS/compiler matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Expanded engine and cross-engine suites pass; immutable-head full unit/integration/regression suite remains. |
+| 4 Shape preservation | UNVERIFIED | Hex hidden source substitution is removed and all card hashes pass; complete representative corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Tet inversion false pass is closed and frozen outputs remain valid; all-engine adverse corpus remains. |
+| 6 Cell count | FAIL | Deliberately deferred behind shape/topology/validity as directed. |
+| 7 Boundary layer | UNVERIFIED | Zero/one/multiple-layer release corpus remains. |
+| 8 Quality | UNVERIFIED | Poly pairing and Quad scale-range metrics pass; complete fixture specifications remain. |
+| 9 Reproducibility | FAIL | New paths are deterministic; independent wheel bytes and external P4C hashes remain unresolved. |
+| 10 Robustness | UNVERIFIED | Mixed-scale, stale-ABI, inverted-cell, and source-substitution cases are covered; adverse corpus remains incomplete. |
+| 11 Performance | UNVERIFIED | All Cycle-36/37 card budgets pass; frozen all-engine end-to-end budgets remain. |
+| 12 Packaging | FAIL | Windows wheel/installer/UI/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | Changes are independent first-party C++23/Python with no `third_party/` edits; global inventory remains. |
+| 14 Documentation/operations | UNVERIFIED | Evidence is current; release and rollback operations remain incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Start the next all-engine cycle from this immutable head.  Keep strict input
+  shape, topology, validity, provenance, and realistic boundary-layer contracts
+  ahead of target-cell count.  Prioritize the full immutable-head suite and
+  representative shape/validity corpus while continuing one bounded engine
+  hypothesis per lane.
