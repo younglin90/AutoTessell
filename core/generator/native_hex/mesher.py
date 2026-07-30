@@ -310,7 +310,12 @@ def _write_polymesh_hex(
         faces = [[int(cell[v]) for v in local] for local in _HEX_FACES]
         cell_faces.append(faces)
 
-    return write_generic_polymesh(vertices, cell_faces, case_dir)
+    # Native hex is a fixed-topology engine: silently dropping a collapsed
+    # cell or truncating a face referenced by 3+ cells changes the generated
+    # solid.  The generic writer already audits both conditions (through the
+    # C++23 native_polymesh kernel when available), so make that contract hard
+    # for this engine instead of emitting a partially connected polyMesh.
+    return write_generic_polymesh(vertices, cell_faces, case_dir, strict=True)
 
 
 def _native_hex_phase0_metrics(
