@@ -27,6 +27,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,103 @@ class PolyDualResult:
     invalid_star_cells: int = 0
     invalid_star_subtets: int = 0
     star_examples: tuple[dict[str, Any], ...] = ()
+
+
+def _preflight_tet_dual_inputs(
+    vertices: Any,
+    tetrahedra: Any,
+) -> tuple[np.ndarray | None, np.ndarray | None, str | None]:
+    """Decode a finite, non-lossy tetrahedral input before any output write.
+
+    ``tet_to_poly_dual`` is also called directly by the layer-transition path,
+    so this boundary must not rely on upstream native-tet validation.  In
+    particular, ``np.asarray(..., dtype=np.int64)`` would silently truncate
+    fractional connectivity and turn negative indices into NumPy reverse
+    indexing.  Keep the accepted ordinary integer-array/list inputs unchanged,
+    but return an explicit, deterministic refusal for malformed raw data.
+    """
+    try:
+        raw_vertices = np.asarray(vertices)
+    except (TypeError, ValueError):
+        return None, None, "vertices must be a finite (Nv, 3) array"
+    if (
+        raw_vertices.ndim != 2
+        or raw_vertices.shape[1:] != (3,)
+        or raw_vertices.shape[0] == 0
+        or np.iscomplexobj(raw_vertices)
+    ):
+        return None, None, "vertices must be a finite (Nv, 3) array"
+    try:
+        with np.errstate(over="ignore", invalid="ignore"):
+            vertex_array = np.asarray(raw_vertices, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return None, None, "vertices must be a finite (Nv, 3) array"
+    if not np.isfinite(vertex_array).all():
+        return None, None, "vertices must be a finite (Nv, 3) array"
+
+    try:
+        raw_tets = np.asarray(tetrahedra)
+    except (TypeError, ValueError):
+        return None, None, "tet connectivity must be a non-empty (Nt, 4) array"
+    if raw_tets.ndim != 2 or raw_tets.shape[1:] != (4,) or raw_tets.shape[0] == 0:
+        return None, None, "tet connectivity must be a non-empty (Nt, 4) array"
+
+    if np.issubdtype(raw_tets.dtype, np.bool_):
+        return None, None, "tet connectivity must use non-boolean integer indices"
+    if np.issubdtype(raw_tets.dtype, np.integer):
+        # Check range before narrowing an unsigned or platform-width dtype.
+        if np.any(raw_tets < 0) or np.any(raw_tets >= vertex_array.shape[0]):
+            return None, None, "tet connectivity contains an out-of-range vertex index"
+        tet_array = np.asarray(raw_tets, dtype=np.int64)
+    elif raw_tets.dtype == object:
+        raw_values = raw_tets.reshape(-1).tolist()
+        if any(
+            isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral)
+            for value in raw_values
+        ):
+            return None, None, "tet connectivity must use non-boolean integer indices"
+        decoded = [int(value) for value in raw_values]
+        if any(value < 0 or value >= vertex_array.shape[0] for value in decoded):
+            return None, None, "tet connectivity contains an out-of-range vertex index"
+        tet_array = np.asarray(decoded, dtype=np.int64).reshape(raw_tets.shape)
+    else:
+        return None, None, "tet connectivity must use non-boolean integer indices"
+
+    duplicate_rows = np.flatnonzero(
+        np.any(np.diff(np.sort(tet_array, axis=1), axis=1) == 0, axis=1)
+    )
+    if duplicate_rows.size:
+        return (
+            None,
+            None,
+            "tet connectivity repeats a vertex index in rows: "
+            f"{tuple(int(row) for row in duplicate_rows.tolist())}",
+        )
+
+    tet_points = vertex_array[tet_array]
+    signed_volume6 = np.einsum(
+        "ij,ij->i",
+        tet_points[:, 1] - tet_points[:, 0],
+        np.cross(tet_points[:, 2] - tet_points[:, 0], tet_points[:, 3] - tet_points[:, 0]),
+    )
+    nonfinite_volume_rows = np.flatnonzero(~np.isfinite(signed_volume6))
+    if nonfinite_volume_rows.size:
+        return (
+            None,
+            None,
+            "tet geometry has a non-finite signed volume in rows: "
+            f"{tuple(int(row) for row in nonfinite_volume_rows.tolist())}",
+        )
+    zero_volume_rows = np.flatnonzero(signed_volume6 == 0.0)
+    if zero_volume_rows.size:
+        return (
+            None,
+            None,
+            "tet geometry is degenerate in rows: "
+            f"{tuple(int(row) for row in zero_volume_rows.tolist())}",
+        )
+
+    return vertex_array, tet_array, None
 
 
 def _normalise_entity_label(label: Any) -> tuple[str, str]:
@@ -677,13 +775,20 @@ def tet_to_poly_dual(
     """
     t0 = time.perf_counter()
 
-    V = np.asarray(V, dtype=np.float64)
-    T = np.asarray(T, dtype=np.int64)
+    vertex_array, tet_array, preflight_error = _preflight_tet_dual_inputs(V, T)
+    if preflight_error is not None:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message=f"invalid tet dual input: {preflight_error}",
+        )
+    assert vertex_array is not None
+    assert tet_array is not None
+    V = vertex_array
+    T = tet_array
     original_V = V.copy()
     n_verts = int(V.shape[0])
     n_tets = int(T.shape[0])
-    if n_verts == 0 or n_tets == 0:
-        return PolyDualResult(False, 0.0, message="빈 tet mesh")
 
     try:
         from scipy.spatial import ConvexHull  # noqa: PLC0415
@@ -910,9 +1015,7 @@ def tet_to_poly_dual(
                 # 평면 위 CCW sort (cell centroid 밖 방향 normal)
                 poly_pts = pts[verts_list]
                 c = poly_pts.mean(axis=0)
-                n_plane = np.array(
-                    [eqs[simp_ids[0], 0], eqs[simp_ids[0], 1], eqs[simp_ids[0], 2]]
-                )
+                n_plane = np.array([eqs[simp_ids[0], 0], eqs[simp_ids[0], 1], eqs[simp_ids[0], 2]])
                 # ConvexHull 은 normal 을 바깥 방향으로 내보냄 (d < 0 for inside). centroid
                 # 에서 c 로 가는 방향이 n_plane 과 같은 부호여야 cell 바깥.
                 # e1 = c 에서 첫 vertex 로
@@ -946,7 +1049,9 @@ def tet_to_poly_dual(
                     if lv in local_face_triangles
                 }
                 cap_labels = {
-                    source_entity_labels[tri] for tri in cap_triangles if tri in source_entity_labels
+                    source_entity_labels[tri]
+                    for tri in cap_triangles
+                    if tri in source_entity_labels
                 }
                 # A hull cap may span multiple coplanar source faces.  The
                 # classified path below splits those caps per source triangle; the

@@ -641,3 +641,46 @@ tests pass `19/19`. This is still only a synthetic-primal L1 certificate. A
 native-poly L2 source-surface claim remains blocked by native-tet's global
 source-surface ledger, so the audit is not wired as a production acceptance
 gate yet.
+
+### `POLY-DUAL-TET-INPUT-CONTRACT-L0` — 2026-07-30
+
+**Release connection.** This is a bounded Gate-5/Gate-10 card, not a target-cell
+or routing change. A direct call to `tet_to_poly_dual` previously converted raw
+connectivity with `np.asarray(..., dtype=np.int64)` before validating it:
+`3.9` silently became `3`, and `-1` became NumPy reverse indexing. The former
+produced a successful one-tet output; the latter produced a different successful
+three-cell output. Out-of-range and wrong-shape rows instead escaped as Python
+exceptions. Those outcomes cannot establish a valid polyMesh or a truthful
+robust failure.
+
+**Primary-source provenance and license.** The sole external source consulted
+for this card was the current official OpenFOAM Foundation
+[`checkMesh` source](https://github.com/OpenFOAM/OpenFOAM-dev/blob/master/applications/utilities/mesh/manipulation/checkMesh/checkMesh.C),
+accessed 2026-07-30: it documents separate topology and geometry validation and
+an `-allTopology` option. The repository
+[`README.org`](https://github.com/OpenFOAM/OpenFOAM-dev/blob/master/README.org)
+and [`COPYING`](https://github.com/OpenFOAM/OpenFOAM-dev/blob/master/COPYING)
+identify the source as GPL-3.0-or-later. No OpenFOAM code, algorithm, test data,
+or third-party dependency was copied; this card only applies the independent
+boundary rule that invalid mesh addressing must be refused before writing.
+
+**Mechanism and boundary.** `dual.py` now accepts finite `(Nv, 3)` coordinates
+and raw non-boolean integral `(Nt, 4)` connectivity only. It rejects malformed,
+fractional, boolean, string, negative, out-of-range, repeated-index, and
+zero-volume tetrahedra before importing the writer path or creating `case_dir`.
+It deliberately does **not** add a positive-orientation requirement, so existing
+valid accepted input semantics are preserved. The implementation changes neither
+dual point placement, source classification, routing, target-cell behavior, nor
+any default for valid inputs.
+
+**L0/L1 evidence.** The hand-checkable unit tetrahedron retains
+`cells/points/faces = 4/15/18`; all invalid witnesses return the same explicit
+failure on two calls, leave both input arrays unchanged, and create no output
+directory. The classified two-patch bipyramid remains the L1 representative
+fixture. The focused L0/L1 subset reports `16 passed, 4 deselected in 2.48s`
+after excluding only the existing sphere/harness cases. The full
+`tests/test_native_poly_dual.py` baseline exceeded the local 124-second command
+budget because of those existing sphere/harness tests, so it is a timeout
+record, not a pass claim. This closes only the raw-input failure ambiguity;
+campaign shape, corpus topology, positive-layer, and adverse-fixture coverage
+remain open.
