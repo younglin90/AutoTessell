@@ -21,7 +21,11 @@ def test_targeted_poly_refuses_primal_vertex_floor_failure(
 
     def fake_tet(*_args, **kwargs):
         seen["floor"] = kwargs["min_final_vertices"]
-        return SimpleNamespace(success=False, tets=None, message="target_primal_vertex_floor_unmet")
+        return SimpleNamespace(
+            success=False,
+            tets=None,
+            message="target_primal_vertex_floor_unmet: actual=15, required=25",
+        )
 
     monkeypatch.setattr(harness_module, "generate_native_tet", fake_tet)
     monkeypatch.setattr(
@@ -32,4 +36,4 @@ def test_targeted_poly_refuses_primal_vertex_floor_failure(
     )
     assert seen["floor"] == 25
     assert result.success is False
-    assert "FAIL" in result.message
+    assert result.message == "target_primal_vertex_floor_unmet: actual=15, required=25"

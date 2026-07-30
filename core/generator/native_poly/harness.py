@@ -154,6 +154,7 @@ def run_native_poly_harness(
     best_metrics: dict = {}
     current_seed = int(seed_density)
     tet_cells_by_iteration: list[int] = []
+    floor_failures: list[str] = []
     min_final_vertices = (
         max(int(np.asarray(vertices).shape[0]) + 1, int(ceil(int(target_cells) * 0.5)))
         if target_cells is not None and int(target_cells) > 0
@@ -179,6 +180,8 @@ def run_native_poly_harness(
                 seed_density=current_seed,
             )
             if not tet_res.success or tet_res.tets is None:
+                if tet_res.message.startswith("target_primal_vertex_floor_unmet:"):
+                    floor_failures.append(tet_res.message)
                 log.warning(
                     "native_poly_harness_tet_fail",
                     iteration=it,
@@ -331,6 +334,14 @@ def run_native_poly_harness(
         target_cells_relative_error=relative_error,
         target_cells_status=target_status,
     )
+    final_message = (
+        floor_failures[-1]
+        if len(floor_failures) == int(max_iter)
+        else (
+            f"native_poly_harness FAIL after {max_iter} iter "
+            f"(best negative_volumes={last_metrics.get('negative_volumes', -1)})"
+        )
+    )
     return PolyHarnessResult(
         success=False,
         elapsed=time.perf_counter() - t0,
@@ -340,10 +351,7 @@ def run_native_poly_harness(
         negative_volumes=last_metrics.get("negative_volumes", 0),
         max_non_ortho=float(last_metrics.get("max_non_orthogonality", 0.0)),
         max_skewness=float(last_metrics.get("max_skewness", 0.0)),
-        message=(
-            f"native_poly_harness FAIL after {max_iter} iter "
-            f"(best negative_volumes={last_metrics.get('negative_volumes', -1)})"
-        ),
+        message=final_message,
         target_cells_requested=requested,
         tet_cells_by_iteration=tuple(tet_cells_by_iteration),
         final_poly_cells=final_poly_cells,
