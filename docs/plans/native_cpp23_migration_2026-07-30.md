@@ -733,6 +733,27 @@ Linux and Windows.  Current GPL metadata and matching source-distribution duties
 remain unchanged; no external adapter or `third_party/` source belongs in this
 wheel profile.
 
+## First-party native wheel card
+
+The Linux distribution now builds all eight first-party extensions through
+scikit-build-core in strict C++23 mode.  The profile forces all optional external
+adapters OFF, removes Eigen from the first-party dependency graph, installs only
+the eight declared modules, and fails the build on compiler warnings.  A fresh
+environment outside the repository imports and calls every kernel successfully.
+
+The matching source archive contains the exact C++/C/Python sources and build
+configuration needed for those modules, while excluding adapters, `third_party`,
+binaries, caches, and worktree snapshots.  GPL-3.0-or-later metadata uses PEP 639
+and restricts license files to the root `LICENSE` and `NOTICE`.  Boost headers are
+declared as a BSL-1.0 build-only dependency for the exact Tet predicate module;
+they produce no runtime shared-library dependency.
+
+Release artifacts must be created from a fresh tracked snapshot.  Building in a
+developer source tree that contains ignored external checkouts can make backend
+license discovery include unrelated nested license files even when their source
+directories are excluded.  Artifact verification therefore rejects any such
+path and is part of the release contract.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

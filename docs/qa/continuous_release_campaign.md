@@ -1682,3 +1682,80 @@ scope. Future MIT-core boundary follows
   out of the first-party-only path, add exact install rules, and validate a fresh
   wheel outside the repository with real kernel smoke tests and forbidden-adapter
   scans.  Keep the current GPL distribution metadata and matching source archive.
+
+## Cycle 30 checkpoint -- 2026-07-30
+
+### First-party native wheel and corresponding-source profile
+
+- `3a0f1818` replaces the pure-Python setuptools build with scikit-build-core
+  `1.x` and an explicit first-party distribution profile.  It compiles and
+  installs exactly `native_metrics`, `native_bl`, `native_polymesh`,
+  `native_snap`, `native_surface_padding`, `native_hex_quality`,
+  `native_tet_predicates`, and `native_tet_qopt`.
+- When the distribution profile is active, cinolib, robusthex, fTetWild, and
+  cfMesh adapters are forcibly OFF.  Their source and binaries are forbidden in
+  both wheel and source archive.  Unconditional Eigen discovery was removed from
+  the first-party-only path; the three legacy adapter consumers retain their
+  existing conditional requirement.
+- All eight targets use strict C++23 with compiler extensions disabled and the
+  wheel profile treats warnings as errors.  GCC 13.3 builds all eight with zero
+  warnings.  A range-loop structured binding in `native_surface_padding` was
+  changed to a const reference, removing one copy and the only strict warning.
+- `native_tet_predicates` now declares Boost.Multiprecision explicitly as a
+  build-only BSL-1.0 header dependency.  The wheel's dynamic dependency closure
+  contains no Boost runtime library; Shewchuk `predicates.c` remains project-local
+  public-domain source compiled with `-fno-fast-math`.
+- The source archive contains all eight binding sources, CMake configuration,
+  Python sources, Shewchuk source, GPL `LICENSE`/`NOTICE`, and the distribution
+  inventory/provenance records.  It contains no adapter source, `third_party/`,
+  compiled binary, build/cache data, or worktree snapshot.
+- `215cb01c` adopts PEP 639 `GPL-3.0-or-later` metadata and restricts license-file
+  discovery to the root `LICENSE` and `NOTICE`.  This closes leakage of ignored
+  external-checkout `AlgoHex/LICENSE` and `voro/LICENSE` into a locally built
+  source archive.
+- Release artifacts must be built from a fresh tracked snapshot.  A dirty source
+  directory containing ignored external checkouts can still influence backend
+  license discovery; it is not accepted as release evidence.  The post-merge
+  evidence below was built from `git archive` of `master` commit `5ffcae3c`.
+- Post-merge fresh-snapshot wheel:
+  `auto_tessell-1.0.0-cp312-cp312-linux_x86_64.whl`, `3,060,754` bytes,
+  SHA-256 `073fcaefcd14dfaf76e1ba414ff0974edfda32a07d99a902667517a7d93a65e4`.
+  It contains exactly eight native extensions and zero forbidden adapter module.
+- Matching source archive: `auto_tessell-1.0.0.tar.gz`, `10,245,552` bytes,
+  SHA-256 `6a2764547832a638d0feac4dd0fd626cea7ee09ef7b0f20c6320525a923ebde8`.
+  The committed artifact verifier reports `modules=8 forbidden=0 source=present`.
+- A fresh Python 3.12 environment outside the repository installed the wheel and
+  all declared dependencies.  Eight real native kernel calls pass and `pip check`
+  reports no broken requirements.  Static packaging tests pass `3` post-merge.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-wheel-first-party-2-215cb01c.bundle`,
+  SHA-256 `fc2794466ed4bdaa4f73fdb4cc495b811c86de08aa7cfaf576111bcbb85d81a7`.
+  Worktree, branch, fresh environment, and generated artifacts were removed.
+
+### Cycle-30 gate re-evaluation
+
+| Gate | Status | Cycle-30 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean and research worktrees are gone, but tracked `installer/dist/AutoTessell-1.2.0-Setup.exe` is an unresolved build artifact. |
+| 2 Build | UNVERIFIED | Linux GCC 13.3 strict C++23 first-party matrix passes; Windows and declared compiler matrix remain. |
+| 3 Automated tests | UNVERIFIED | Packaging contract and eight-kernel smoke pass; full suite and known engine failures remain. |
+| 4 Shape preservation | UNVERIFIED | Packaging does not change geometry; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Packaging does not change generated meshes; all-engine corpus remains. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology/validity; Poly target unresolved. |
+| 7 Boundary layer | UNVERIFIED | Installed native BL kernel smoke passes; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | Installed metrics/hex-quality/qopt smoke passes; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | Source archive hash reproduced, but independently built wheel bytes differ; deterministic binary build remains. |
+| 10 Robustness | UNVERIFIED | Fresh-install kernel smoke passes; adverse mesh corpus incomplete. |
+| 11 Performance | UNVERIFIED | Native extensions are no longer silently omitted from Linux wheel; frozen benchmark budgets remain. |
+| 12 Packaging | FAIL | Linux first-party wheel subgate passes; Windows wheel, repair/audit, installer, uninstall/reinstall, and UI workflow remain. |
+| 13 License/provenance | UNVERIFIED | GPL/PEP639/source mapping improved; dependency inventory still has unresolved release assertions. |
+| 14 Documentation/operations | UNVERIFIED | Native wheel profile documented; version/release/rollback operations remain inconsistent. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Continue C++23 engine rotation with the highest-impact Hex and Tri/Quad flat-
+  array Python kernels while a common release lane audits version identity and
+  unresolved dependency licenses.  Do not delete the tracked installer binary
+  without a separate reviewed artifact-retention decision.  Keep shape,
+  topology, and provenance ahead of target-cell count.
