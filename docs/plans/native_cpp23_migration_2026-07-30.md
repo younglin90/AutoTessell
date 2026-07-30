@@ -693,6 +693,46 @@ No geometry, face order, wall patch, topology threshold, dependency, external
 source, or `third_party/` file changed.  GCC 13.3 strict C++23 builds warning-
 free without fast-math or compiler extensions.
 
+## Tet CDT audit card
+
+The strict edge/face recovery audit previously materialized `6T` tet edges,
+`4T` tet faces, `3F` surface edges, and `F` surface faces through NumPy advanced
+indexing, Python tuples, and sets.  Its packed scalar keys could overflow for
+sparse high provenance labels and alter a topology decision.
+
+The first-party C++23 transaction now uses fixed-width edge/face structs in
+reserved contiguous vectors.  Canonical sort, unique, and a linear merge avoid
+both Python object allocation and packed-key overflow.  The exact Python oracle
+uses row-wise uniqueness rather than packing.  On the representative audit the
+frozen path costs `61.982 ms`, while native costs `6.101 ms` (`10.16x`); strict
+topology counts and deterministic missing-edge order are exact.  No recovery
+threshold or acceptance gate was relaxed.
+
+## Poly dual-point card
+
+The Garimella dual-point path previously dispatched two NumPy linear solves and
+created multiple temporary arrays for every tetrahedron.  The C++23 kernel reads
+contiguous primal arrays, uses fixed stack storage and a partial-pivot `3x3`
+solver, writes one contiguous output, and reports the placement mode explicitly.
+It performs no per-tetrahedron heap allocation.
+
+For `50,000` tetrahedra, median runtime changes from `2.826957 s` to
+`0.004894 s` (`577.586x`).  `1e-9` quantized provenance keys, status values, and
+classified Poly topology/patch output match the Python oracle.  Invalid primal
+connectivity is rejected before backend selection, so extension availability
+cannot change fail-closed behavior.
+
+## Native wheel blocker and next card
+
+The current setuptools wheel has no CMake integration or install rules, so every
+native optimization silently falls back after installation.  The next common
+card must use an isolated first-party-only build profile: eight native modules
+ON, four external adapters forced OFF, strict C++23 targets, explicit top-level
+extension install destinations, and fresh-environment kernel smoke tests on
+Linux and Windows.  Current GPL metadata and matching source-distribution duties
+remain unchanged; no external adapter or `third_party/` source belongs in this
+wheel profile.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

@@ -1598,3 +1598,87 @@ scope. Future MIT-core boundary follows
   kernel that consumes already-flat arrays.  Keep strict topology/shape and
   provenance ahead of target-cell count; require end-to-end gain, exact hashes,
   and a warning-free first-party C++23 ABI before integration.
+
+## Cycle 29 checkpoint -- 2026-07-30
+
+### C++23 strict Tet CDT constraint audit
+
+- `7fcc1f91` replaces the Python tuple/set and packed-integer CDT audit hot path
+  with first-party `native_tet_predicates.audit_cdt_constraints`.  Flat canonical
+  edge/face records are sorted, uniqued, and merged without packed keys, removing
+  sparse `int64` overflow from the strict topology decision.
+- The direct ABI accepts exact C-contiguous `int64` `(F,3)` and `(T,4)` arrays,
+  releases the GIL only after validation, and returns deterministic
+  lexicographically sorted missing edges.  Negative, fractional, object, and
+  overflowing unsigned provenance indices fail closed.  The Python oracle and
+  extension-absent fallback remain independent and exact.
+- The `F=2,536`, `T=9,859` audit changes from the frozen `61.982 ms` baseline to
+  native median `6.101 ms` (`10.16x`); the overflow-safe Python oracle median is
+  `149.271 ms`, making the native transaction `24.46x` faster.  GCC 13.3 strict
+  C++23 builds warning-free.
+- Focused validation passes `28`; post-merge isolated-build validation passes
+  `25` with the known generated-cube L1 assertion deselected.  That assertion
+  fails identically on immutable pre-card `master` (`present_edges=0`) and no
+  topology threshold was relaxed.
+- `615ee589` makes the direct extension test use the shared loader so
+  `AUTOTESSELL_EXT_BUILD_DIR` outranks a stale repo-local module.  No algorithm
+  changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-tet-cdt-audit-2-615ee589.bundle`,
+  SHA-256 `8016976d852512f04a2258bcce18972b06e3b6cd1d49b5dd452b71dda4a6801c`.
+  Worktree, branch, and isolated builds were removed.
+
+### C++23 Poly Garimella dual-point kernel
+
+- `e6149462` adds first-party `native_polymesh.compute_tet_dual_points` with a
+  strict contiguous `float64`/`int64` ABI.  Each tetrahedron uses fixed stack
+  arrays and a partial-pivot `3x3` solve, allocates no heap storage in the inner
+  loop, and emits a contiguous point array plus an explicit `uint8` placement
+  status census.
+- Backend-independent preflight makes native and Python paths reject the same
+  non-finite points and negative, out-of-range, or repeated indices.  The public
+  ndarray API is unchanged.  Primal points and tetrahedra are read-only; the
+  full classified-dual topology, owner/neighbour, patch, and provenance outputs
+  match the Python fallback.
+- On `50,000` tetrahedra, Python median is `2.826957 s` and native median is
+  `0.004894 s` (`577.586x`).  Quantized `1e-9` provenance keys and all placement
+  statuses match exactly.  Random, well-centered, clipped, singular,
+  near-singular, `1e100` scale, empty, invalid, non-contiguous, and three-run
+  deterministic fixtures pass.
+- GCC 13.3 strict C++23 builds warning-free.  Focused/native-extension validation
+  passes `23`; post-merge isolated-build validation also passes `23`.  A combined
+  heavy sphere suite timed out after `184 s` without a failing node id and remains
+  `UNVERIFIED`, not PASS.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-dual-points-1-e6149462.bundle`,
+  SHA-256 `a635e614468d1b5123df61aea528dc96022280572f556d195267291480c0a893`.
+  Worktree, branch, and isolated builds were removed.
+
+### Cycle-29 gate re-evaluation
+
+| Gate | Status | Cycle-29 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Tet and Poly targets build warning-free with GCC 13.3 strict C++23; supported matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Both focused suites pass; known Tet baseline failure and timed-out heavy Poly/full suite remain. |
+| 4 Shape preservation | UNVERIFIED | Strict CDT counts and classified Poly topology/provenance parity pass; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | No geometry mutation was introduced; all-engine validity corpus remains. |
+| 6 Cell count | FAIL | Deferred behind topology/validity as directed; Poly target remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | No BL contract changed; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | Dual placement parity passes; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | Both new kernels are deterministic for three runs; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Sparse-index and degenerate dual fixtures pass; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | CDT `10.16x` and Poly dual `577.586x`; frozen all-engine budgets remain. |
+| 12 Packaging | FAIL | Audit found that current wheel/installer contains none of the first-party native extensions. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++23; GPL/no-third-party policy held; distribution inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Cycle evidence recorded; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Add an isolated scikit-build-core distribution profile that builds and installs
+  exactly the eight first-party native extensions while forcing cinolib,
+  robusthex, fTetWild, and cfMesh adapters OFF.  Move unconditional Eigen lookup
+  out of the first-party-only path, add exact install rules, and validate a fresh
+  wheel outside the repository with real kernel smoke tests and forbidden-adapter
+  scans.  Keep the current GPL distribution metadata and matching source archive.
