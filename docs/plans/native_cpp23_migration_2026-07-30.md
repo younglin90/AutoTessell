@@ -278,6 +278,40 @@ corner contract; four runs exercised a slower retry tier.  This closes the
 known corner-loss acceptance hole, but it does not claim deterministic P4C
 topology because the external solver still returns varying point/tet hashes.
 
+## Poly dual face-geometry batch card
+
+Representative profiling attributed about `3.81 s` of an `8.93 s` dual
+conversion to repeated Python polygon area, plane-membership, and outward-face
+orientation loops.  The C++23 kernel parses ragged Python faces once into flat
+offset/index storage, validates all connectivity before releasing the GIL, and
+then scans contiguous labels and point coordinates.  It returns only compact
+flip/plane masks plus the two scalar area reductions; Python face, owner,
+neighbour, patch, and provenance ordering remains authoritative.
+
+The orientation pass is `O(I)` time for `I` face indices and `O(I + F)`
+temporary space.  Plane classification and fan-area accumulation are
+`O(I * P)` time for `P` source planes and the same flat temporary space.  No
+per-face NumPy gather, cross-product array, signed-distance matrix, or Python
+list of temporary vectors is allocated inside the numerical loop.  Arithmetic
+remains sequential double precision with strict `< tolerance`; parallel
+reduction, `-ffast-math`, FMA-dependent rewrites, and threshold changes are
+forbidden because the area result selects production topology.
+
+On `20,000` mixed on/off-plane quads, median area classification changes from
+`1.195620 s` to `0.001883 s` (`635.03x`) and orientation from `0.593882 s` to
+`0.001343 s` (`442.05x`), with exact masks and area parity.  On a deterministic
+sphere primal (`706` points / `1,913` tets), the complete dual route changes
+from `6.023769 s` median to `3.473974 s` median (`1.73x`).  Both paths emit
+`699` cells, `5,755` points, zero invalid stars/subtets, and identical complete
+polyMesh SHA-256 snapshots.  Under `tracemalloc`, runtime improves `36.72 s`
+to `25.99 s`; traced Python peak changes only `22.063 MiB` to `21.937 MiB`
+because final nested face objects remain the dominant Python allocation.
+
+The implementation is independent first-party work.  The pybind11 buffer
+documentation supports validation followed by unchecked native array access;
+CGAL's Polygon Mesh Processing manual supports computing face normals in
+batches to factor shared work.  Neither implementation was copied.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
@@ -298,3 +332,5 @@ topology because the external solver still returns varying point/tet hashes.
   <https://doc.cgal.org/latest/Periodic_3_triangulation_3/>
 - OpenVolumeMesh topology-kernel documentation:
   <https://www.graphics.rwth-aachen.de/media/openvolumemesh_static/Documentation/OpenVolumeMesh-Doc-Latest/index.html>
+- CGAL 6.2 Polygon Mesh Processing normal computation:
+  <https://doc.cgal.org/latest/Polygon_mesh_processing/group__PMP__normal__grp.html>

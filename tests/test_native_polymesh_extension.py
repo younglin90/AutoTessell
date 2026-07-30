@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import types
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,115 @@ def _native_or_skip() -> Any:
     if module is None or not hasattr(module, "build_topology"):
         pytest.skip("native_polymesh extension is not built")
     return module
+
+
+def test_native_face_geometry_matches_python_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.generator.native_poly import dual
+    from core.utils import native_extensions
+
+    native = _native_or_skip()
+    if not hasattr(native, "face_flip_mask") or not hasattr(
+        native, "face_plane_geometry"
+    ):
+        pytest.skip("native face-geometry batch kernel is not built")
+
+    points = np.asarray(
+        (
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (1.0, 0.0, 1.0),
+            (0.0, 1.0, 1.0),
+        ),
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2, 3], [4, 5, 6]]
+    owners = np.asarray((0, 1), dtype=np.int64)
+    centroids = np.asarray(((0.5, 0.5, -1.0), (0.25, 0.25, 2.0)))
+    normals = np.asarray(((0.0, 0.0, 1.0),), dtype=np.float64)
+    offsets = np.asarray((0.0,), dtype=np.float64)
+
+    flip_mask = np.asarray(
+        native.face_flip_mask(points, faces, owners, centroids), dtype=bool
+    )
+    assert flip_mask.tolist() == [False, True]
+
+    native_on, native_off, on_plane = native.face_plane_geometry(
+        points, faces, normals, offsets, 1e-6
+    )
+    assert np.asarray(on_plane, dtype=bool).tolist() == [True, False]
+
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: None)
+    python_on, python_off = dual._area_split(
+        points, faces, [(normals[0], float(offsets[0]))]
+    )
+    assert float(native_on) == pytest.approx(python_on, abs=1e-15)
+    assert float(native_off) == pytest.approx(python_off, abs=1e-15)
+
+
+def test_native_face_geometry_rejects_invalid_connectivity() -> None:
+    native = _native_or_skip()
+    if not hasattr(native, "face_flip_mask"):
+        pytest.skip("native face-geometry batch kernel is not built")
+
+    points = np.eye(3, dtype=np.float64)
+    centroids = np.zeros((1, 3), dtype=np.float64)
+    with pytest.raises(IndexError, match="face vertex index is out of bounds"):
+        native.face_flip_mask(points, [[0, 1, 3]], np.asarray([0]), centroids)
+
+
+def test_native_face_geometry_preserves_dual_output_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.generator.native_poly.dual import tet_to_poly_dual
+    from core.utils import native_extensions
+
+    native = _native_or_skip()
+    if not hasattr(native, "face_flip_mask"):
+        pytest.skip("native face-geometry batch kernel is not built")
+    incidence_only = types.SimpleNamespace(
+        build_tet_incidence_maps=native.build_tet_incidence_maps
+    )
+    vertices = np.asarray(
+        (
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.3, 0.3, 1.0),
+            (0.3, 0.3, -1.0),
+        ),
+        dtype=np.float64,
+    )
+    tets = np.asarray(((0, 1, 2, 3), (0, 2, 1, 4)), dtype=np.int64)
+
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: native)
+    native_case = tmp_path / "native_face_geometry"
+    native_result = tet_to_poly_dual(vertices, tets, native_case)
+
+    monkeypatch.setattr(
+        native_extensions, "load_native_polymesh", lambda: incidence_only
+    )
+    python_case = tmp_path / "python_face_geometry"
+    python_result = tet_to_poly_dual(vertices, tets, python_case)
+
+    assert native_result.success and python_result.success
+    assert (
+        native_result.n_cells,
+        native_result.n_points,
+        native_result.invalid_star_cells,
+        native_result.invalid_star_subtets,
+    ) == (
+        python_result.n_cells,
+        python_result.n_points,
+        python_result.invalid_star_cells,
+        python_result.invalid_star_subtets,
+    )
+    assert _case_snapshot(native_case) == _case_snapshot(python_case)
 
 
 def _case_snapshot(case_dir: Path) -> dict[str, tuple[str, bytes]]:

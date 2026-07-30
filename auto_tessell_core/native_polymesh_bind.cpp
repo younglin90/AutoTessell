@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,6 +23,22 @@ using Label = long long;
 using Face = std::vector<Label>;
 using Cell = std::vector<Face>;
 using Cells = std::vector<Cell>;
+
+struct RaggedFaces {
+    std::vector<size_t> offsets;
+    std::vector<Label> indices;
+
+    [[nodiscard]] size_t size() const noexcept
+    {
+        return offsets.empty() ? 0U : offsets.size() - 1U;
+    }
+
+    [[nodiscard]] std::span<const Label> face(const size_t index) const noexcept
+    {
+        const size_t begin = offsets[index];
+        return {indices.data() + begin, offsets[index + 1U] - begin};
+    }
+};
 
 struct FaceHash {
     size_t operator()(const Face& face) const noexcept
@@ -90,6 +107,205 @@ size_t point_offset(Label vertex, size_t num_points)
         throw py::index_error("vertex index is out of bounds");
     }
     return static_cast<size_t>(normalized) * 3U;
+}
+
+RaggedFaces parse_ragged_faces(const py::sequence& faces, const size_t num_points)
+{
+    RaggedFaces result;
+    const size_t face_count = static_cast<size_t>(py::len(faces));
+    result.offsets.reserve(face_count + 1U);
+    result.offsets.push_back(0U);
+
+    size_t total_indices = 0U;
+    for (const py::handle face_handle : faces) {
+        const auto face = py::reinterpret_borrow<py::sequence>(face_handle);
+        total_indices += static_cast<size_t>(py::len(face));
+        result.offsets.push_back(total_indices);
+    }
+    result.indices.reserve(total_indices);
+
+    for (const py::handle face_handle : faces) {
+        const auto face = py::reinterpret_borrow<py::sequence>(face_handle);
+        for (const py::handle vertex_handle : face) {
+            Label vertex = py::cast<Label>(vertex_handle);
+            if (vertex < 0) {
+                vertex += static_cast<Label>(num_points);
+            }
+            if (vertex < 0 || static_cast<size_t>(vertex) >= num_points) {
+                throw py::index_error("face vertex index is out of bounds");
+            }
+            result.indices.push_back(vertex);
+        }
+    }
+    return result;
+}
+
+py::array_t<bool> face_flip_mask(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::sequence& faces,
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& owners,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& cell_centroids)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (owners.ndim() != 1) {
+        throw std::invalid_argument("owners must have shape (F,)");
+    }
+    if (cell_centroids.ndim() != 2 || cell_centroids.shape(1) != 3) {
+        throw std::invalid_argument("cell_centroids must have shape (C, 3)");
+    }
+
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const RaggedFaces ragged = parse_ragged_faces(faces, point_count);
+    if (static_cast<size_t>(owners.shape(0)) != ragged.size()) {
+        throw std::invalid_argument("owners length must match faces");
+    }
+    const auto owner_values = owners.unchecked<1>();
+    const Label centroid_count = static_cast<Label>(cell_centroids.shape(0));
+    for (size_t face_index = 0; face_index < ragged.size(); ++face_index) {
+        if (ragged.face(face_index).size() < 3U) {
+            throw std::invalid_argument("faces must contain at least three vertices");
+        }
+        const Label owner = owner_values(static_cast<py::ssize_t>(face_index));
+        if (owner < 0 || owner >= centroid_count) {
+            throw py::index_error("face owner index is out of bounds");
+        }
+    }
+
+    py::array_t<bool> result({static_cast<py::ssize_t>(ragged.size())});
+    bool* const flips = result.mutable_data();
+    const double* const point_data = points.data();
+    const double* const centroid_data = cell_centroids.data();
+    const Label* const owner_data = owners.data();
+
+    {
+        py::gil_scoped_release release;
+        for (size_t face_index = 0; face_index < ragged.size(); ++face_index) {
+            const std::span<const Label> face = ragged.face(face_index);
+            double face_centroid[3]{0.0, 0.0, 0.0};
+            for (const Label vertex : face) {
+                const double* const point = point_data + static_cast<size_t>(vertex) * 3U;
+                face_centroid[0] += point[0];
+                face_centroid[1] += point[1];
+                face_centroid[2] += point[2];
+            }
+            const double inverse_size = 1.0 / static_cast<double>(face.size());
+            face_centroid[0] *= inverse_size;
+            face_centroid[1] *= inverse_size;
+            face_centroid[2] *= inverse_size;
+
+            const double* const p0 = point_data + static_cast<size_t>(face[0]) * 3U;
+            const double* const p1 = point_data + static_cast<size_t>(face[1]) * 3U;
+            const double* const p2 = point_data + static_cast<size_t>(face[2]) * 3U;
+            const double ax = p1[0] - p0[0];
+            const double ay = p1[1] - p0[1];
+            const double az = p1[2] - p0[2];
+            const double bx = p2[0] - p0[0];
+            const double by = p2[1] - p0[1];
+            const double bz = p2[2] - p0[2];
+            const double nx = ay * bz - az * by;
+            const double ny = az * bx - ax * bz;
+            const double nz = ax * by - ay * bx;
+            const double* const cell_centroid = centroid_data
+                + static_cast<size_t>(owner_data[face_index]) * 3U;
+            const double direction = nx * (face_centroid[0] - cell_centroid[0])
+                + ny * (face_centroid[1] - cell_centroid[1])
+                + nz * (face_centroid[2] - cell_centroid[2]);
+            flips[face_index] = direction < 0.0;
+        }
+    }
+    return result;
+}
+
+py::tuple face_plane_geometry(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::sequence& faces,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& plane_normals,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& plane_offsets,
+    const double tolerance)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (plane_normals.ndim() != 2 || plane_normals.shape(1) != 3) {
+        throw std::invalid_argument("plane_normals must have shape (P, 3)");
+    }
+    if (plane_offsets.ndim() != 1
+        || plane_offsets.shape(0) != plane_normals.shape(0)) {
+        throw std::invalid_argument("plane_offsets must have shape (P,)");
+    }
+
+    const RaggedFaces ragged = parse_ragged_faces(
+        faces, static_cast<size_t>(points.shape(0)));
+    for (size_t face_index = 0; face_index < ragged.size(); ++face_index) {
+        if (ragged.face(face_index).size() < 3U) {
+            throw std::invalid_argument("faces must contain at least three vertices");
+        }
+    }
+
+    py::array_t<bool> on_plane({static_cast<py::ssize_t>(ragged.size())});
+    bool* const flags = on_plane.mutable_data();
+    const double* const point_data = points.data();
+    const double* const normal_data = plane_normals.data();
+    const double* const offset_data = plane_offsets.data();
+    const size_t plane_count = static_cast<size_t>(plane_normals.shape(0));
+    double on_area = 0.0;
+    double off_area = 0.0;
+
+    {
+        py::gil_scoped_release release;
+        for (size_t face_index = 0; face_index < ragged.size(); ++face_index) {
+            const std::span<const Label> face = ragged.face(face_index);
+            const double* const base = point_data + static_cast<size_t>(face[0]) * 3U;
+            double area_vector[3]{0.0, 0.0, 0.0};
+            for (size_t local = 1U; local + 1U < face.size(); ++local) {
+                const double* const first = point_data
+                    + static_cast<size_t>(face[local]) * 3U;
+                const double* const second = point_data
+                    + static_cast<size_t>(face[local + 1U]) * 3U;
+                const double ax = first[0] - base[0];
+                const double ay = first[1] - base[1];
+                const double az = first[2] - base[2];
+                const double bx = second[0] - base[0];
+                const double by = second[1] - base[1];
+                const double bz = second[2] - base[2];
+                area_vector[0] += (ay * bz - az * by) / 2.0;
+                area_vector[1] += (az * bx - ax * bz) / 2.0;
+                area_vector[2] += (ax * by - ay * bx) / 2.0;
+            }
+            const double area = std::sqrt(
+                area_vector[0] * area_vector[0]
+                + area_vector[1] * area_vector[1]
+                + area_vector[2] * area_vector[2]);
+
+            bool matches_plane = false;
+            for (size_t plane = 0U; plane < plane_count && !matches_plane; ++plane) {
+                const double* const normal = normal_data + plane * 3U;
+                bool all_vertices_match = true;
+                for (const Label vertex : face) {
+                    const double* const point = point_data
+                        + static_cast<size_t>(vertex) * 3U;
+                    const double distance = point[0] * normal[0]
+                        + point[1] * normal[1]
+                        + point[2] * normal[2]
+                        + offset_data[plane];
+                    if (!(std::abs(distance) < tolerance)) {
+                        all_vertices_match = false;
+                        break;
+                    }
+                }
+                matches_plane = all_vertices_match;
+            }
+            flags[face_index] = matches_plane;
+            if (matches_plane) {
+                on_area += area;
+            } else {
+                off_area += area;
+            }
+        }
+    }
+    return py::make_tuple(on_area, off_area, std::move(on_plane));
 }
 
 bool clean_face(
@@ -370,4 +586,19 @@ PYBIND11_MODULE(native_polymesh, module)
         &build_tet_incidence_maps,
         py::arg("tets"),
         py::arg("num_vertices"));
+    module.def(
+        "face_flip_mask",
+        &face_flip_mask,
+        py::arg("points"),
+        py::arg("faces"),
+        py::arg("owners"),
+        py::arg("cell_centroids"));
+    module.def(
+        "face_plane_geometry",
+        &face_plane_geometry,
+        py::arg("points"),
+        py::arg("faces"),
+        py::arg("plane_normals"),
+        py::arg("plane_offsets"),
+        py::arg("tolerance") = 1e-6);
 }

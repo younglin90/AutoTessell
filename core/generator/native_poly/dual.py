@@ -607,6 +607,25 @@ def _area_split(
     tol: float = 1e-6,
 ) -> tuple[float, float]:
     """boundary face 들을 (원본 surface 평면 위 area, 그 외 area) 로 분리."""
+    from core.utils.native_extensions import load_native_polymesh
+
+    native = load_native_polymesh()
+    if native is not None and hasattr(native, "face_plane_geometry"):
+        plane_normals = np.asarray(
+            [normal for normal, _ in planes], dtype=np.float64
+        ).reshape(-1, 3)
+        plane_offsets = np.asarray(
+            [offset for _, offset in planes], dtype=np.float64
+        )
+        on, off, _ = native.face_plane_geometry(
+            points,
+            faces,
+            plane_normals,
+            plane_offsets,
+            float(tol),
+        )
+        return float(on), float(off)
+
     if not planes:
         off = 0.0
         for f in faces:
@@ -1089,6 +1108,14 @@ def tet_to_poly_dual(
 
     dual_points = np.asarray(all_points, dtype=np.float64)
 
+    from core.utils.native_extensions import load_native_polymesh
+
+    native_face_geometry = load_native_polymesh()
+    if native_face_geometry is not None and not hasattr(
+        native_face_geometry, "face_flip_mask"
+    ):
+        native_face_geometry = None
+
     log.info(
         "native_poly_dual_cells",
         n_cells=len(cell_face_lists),
@@ -1108,6 +1135,30 @@ def tet_to_poly_dual(
             return list(reversed(face))
         return face
 
+    def _orient_faces_outward(
+        faces: list[list[int]], owners: list[int]
+    ) -> list[list[int]]:
+        if not faces:
+            return []
+        if native_face_geometry is None:
+            return [
+                _flip_if_inward(face, cell_centroid_list[owner])
+                for face, owner in zip(faces, owners)
+            ]
+        flip_mask = np.asarray(
+            native_face_geometry.face_flip_mask(
+                dual_points,
+                faces,
+                np.asarray(owners, dtype=np.int64),
+                np.asarray(cell_centroid_list, dtype=np.float64),
+            ),
+            dtype=bool,
+        )
+        return [
+            list(reversed(face)) if bool(flip_mask[index]) else face
+            for index, face in enumerate(faces)
+        ]
+
     # 3a) path A (기존): ConvexHull face 정확 정점집합 dedup
     face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
     for ci, face_list in enumerate(cell_face_lists):
@@ -1125,12 +1176,12 @@ def tet_to_poly_dual(
             (ca, fa), (cb, fb) = refs
             own, nbr = min(ca, cb), max(ca, cb)
             f_use = fa if ca == own else fb
-            a_i_faces.append(_flip_if_inward(f_use, cell_centroid_list[own]))
+            a_i_faces.append(f_use)
             a_i_own.append(own)
             a_i_nbr.append(nbr)
         elif len(refs) == 1:
             ci, fv = refs[0]
-            a_b_faces.append(_flip_if_inward(fv, cell_centroid_list[ci]))
+            a_b_faces.append(fv)
             a_b_own.append(ci)
             if classification_active:
                 face_idx = cell_face_lists[ci].index(fv)
@@ -1156,7 +1207,7 @@ def tet_to_poly_dual(
         if own is None or nbr is None:
             continue
         face = [int(tet_point_id[ti]) for ti in ring]
-        b_i_faces.append(_flip_if_inward(face, cell_centroid_list[own]))
+        b_i_faces.append(face)
         b_i_own.append(own)
         b_i_nbr.append(nbr)
 
@@ -1210,7 +1261,7 @@ def tet_to_poly_dual(
             be_face.pop()
         if len(be_face) < 3:
             continue
-        b_i_faces.append(_flip_if_inward(be_face, cell_centroid_list[own]))
+        b_i_faces.append(be_face)
         b_i_own.append(own)
         b_i_nbr.append(nbr)
 
@@ -1271,15 +1322,45 @@ def tet_to_poly_dual(
                     if not face or face[-1] != pid:
                         face.append(pid)
                 if len(face) >= 3:
-                    b_b_faces.append(_flip_if_inward(face, cell_centroid_list[ci]))
+                    b_b_faces.append(face)
                     b_b_own.append(ci)
                     b_b_labels.append(source_entity_labels[tri])
     else:
+        cap_faces: list[list[int]] = []
+        cap_owners: list[int] = []
         for ci in range(len(cell_face_lists)):
             for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
-                if is_cap and _is_on_plane(list(f)):
-                    b_b_faces.append(_flip_if_inward(list(f), cell_centroid_list[ci]))
-                    b_b_own.append(ci)
+                if is_cap:
+                    cap_faces.append(list(f))
+                    cap_owners.append(ci)
+        if (
+            native_face_geometry is not None
+            and hasattr(native_face_geometry, "face_plane_geometry")
+            and cap_faces
+        ):
+            _, _, cap_on_plane = native_face_geometry.face_plane_geometry(
+                dual_points,
+                cap_faces,
+                surface_plane_normals.reshape(-1, 3),
+                surface_plane_offsets,
+                1e-6,
+            )
+            for face, owner, is_on_plane in zip(
+                cap_faces, cap_owners, np.asarray(cap_on_plane, dtype=bool)
+            ):
+                if bool(is_on_plane):
+                    b_b_faces.append(face)
+                    b_b_own.append(owner)
+        else:
+            for face, owner in zip(cap_faces, cap_owners):
+                if _is_on_plane(face):
+                    b_b_faces.append(face)
+                    b_b_own.append(owner)
+
+    a_i_faces = _orient_faces_outward(a_i_faces, a_i_own)
+    a_b_faces = _orient_faces_outward(a_b_faces, a_b_own)
+    b_i_faces = _orient_faces_outward(b_i_faces, b_i_own)
+    b_b_faces = _orient_faces_outward(b_b_faces, b_b_own)
 
     # 3d) 단조 가드: on/off-plane boundary area split 으로 path 선택.
     # path B 가 void 를 늘리거나 surface coverage 를 깨면 path A 로 복귀한다.
