@@ -30,6 +30,24 @@ _SOURCE_FACES = [
     [2, 3, 7, 6],
     [3, 0, 4, 7],
 ]
+_Z30 = np.array(
+    [
+        [np.cos(np.deg2rad(30.0)), -np.sin(np.deg2rad(30.0)), 0.0],
+        [np.sin(np.deg2rad(30.0)), np.cos(np.deg2rad(30.0)), 0.0],
+        [0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+_RANDOM_ROTATION, _ = np.linalg.qr(
+    np.array(
+        [
+            [-0.80193143, -1.324359, -0.24836162],
+            [0.42044524, 1.13604653, 0.1097064],
+            [-0.55264732, -0.78478036, 0.74874577],
+        ],
+        dtype=np.float64,
+    )
+)
 
 
 def _write_cube(
@@ -307,19 +325,70 @@ def test_inward_box_rejects_margin_equality_and_near_collapse(
     assert not _transaction_artifacts(case_dir)
 
 
-def test_inward_rejects_rotated_box_before_candidate(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("layers", "scale", "rotation", "expected_cells"),
+    [
+        (1, np.ones(3), _Z30, 7),
+        (3, np.array([2.0, 3.0, 4.0]), _RANDOM_ROTATION, 19),
+    ],
+)
+def test_inward_accepts_certified_rotated_boxes_without_source_drift(
+    tmp_path: Path,
+    layers: int,
+    scale: np.ndarray,
+    rotation: np.ndarray,
+    expected_cells: int,
+) -> None:
+    from core.evaluator.native_checker import NativeMeshChecker
+    from core.generator.tier_layers_post import _run_native_hex_bl
+    from core.utils.polymesh_reader import parse_foam_points_array
+
+    source = (_SOURCE_POINTS * scale) @ rotation.T
+    hashes: list[str] = []
+    messages: list[str] = []
+    for repeat in range(3):
+        case_dir = tmp_path / f"rotated-{layers}-{repeat}"
+        _write_cube(case_dir, points=source)
+        source_points = parse_foam_points_array(case_dir / "constant" / "polyMesh" / "points")
+        ok, message, actual = _run_native_hex_bl(
+            case_dir,
+            num_layers=layers,
+            growth_ratio=1.2,
+            first_thickness=0.05,
+            params={"post_layers_hex_inward_shell": True},
+        )
+        assert ok, message
+        assert actual == 6
+        assert f"requested_layers={layers}" in message
+        assert f"actual_layers={layers}" in message
+        assert "provenance_points=8" in message
+        assert "provenance_faces=6" in message
+        checker = NativeMeshChecker().run(case_dir)
+        assert checker.mesh_ok
+        assert checker.cells == expected_cells
+        assert checker.negative_volumes == 0
+        assert checker.min_determinant > 0.0
+
+        output_points = parse_foam_points_array(case_dir / "constant" / "polyMesh" / "points")
+        for source_point in source_points:
+            assert np.count_nonzero(np.all(output_points == source_point, axis=1)) == 1
+        hashes.append(_digest(case_dir))
+        messages.append(message)
+        assert not _transaction_artifacts(case_dir)
+
+    assert len(set(hashes)) == 1
+    assert len(set(messages)) == 1
+
+
+def test_inward_rejects_sheared_box_before_candidate(tmp_path: Path) -> None:
     from core.generator.tier_layers_post import _run_native_hex_bl
 
-    angle = np.deg2rad(30.0)
-    rotation = np.array(
-        [
-            [np.cos(angle), -np.sin(angle), 0.0],
-            [np.sin(angle), np.cos(angle), 0.0],
-            [0.0, 0.0, 1.0],
-        ]
+    shear = np.array(
+        [[1.0, 1.0e-3, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
     )
-    case_dir = tmp_path / "rotated"
-    _write_cube(case_dir, points=_SOURCE_POINTS @ rotation.T)
+    case_dir = tmp_path / "sheared"
+    _write_cube(case_dir, points=_SOURCE_POINTS @ shear.T)
     before = _bytes(case_dir)
     ok, message, actual = _run_native_hex_bl(
         case_dir,
@@ -330,7 +399,27 @@ def test_inward_rejects_rotated_box_before_candidate(tmp_path: Path) -> None:
     )
     assert not ok
     assert actual == 0
-    assert message.startswith("native_hex_bl_inward_l0_contract:axis_")
+    assert message.endswith("basis_edges_are_not_orthogonal")
+    assert _bytes(case_dir) == before
+    assert not _transaction_artifacts(case_dir)
+
+
+def test_inward_rejects_near_degenerate_box_before_candidate(tmp_path: Path) -> None:
+    from core.generator.tier_layers_post import _run_native_hex_bl
+
+    case_dir = tmp_path / "near-degenerate"
+    _write_cube(case_dir, points=_SOURCE_POINTS * np.array([1.0e-9, 1.0, 1.0]))
+    before = _bytes(case_dir)
+    ok, message, actual = _run_native_hex_bl(
+        case_dir,
+        num_layers=1,
+        growth_ratio=1.2,
+        first_thickness=0.05,
+        params={"post_layers_hex_inward_shell": True},
+    )
+    assert not ok
+    assert actual == 0
+    assert message.endswith("box_side_length_not_positive")
     assert _bytes(case_dir) == before
     assert not _transaction_artifacts(case_dir)
 

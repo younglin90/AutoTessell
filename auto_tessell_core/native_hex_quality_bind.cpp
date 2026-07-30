@@ -9,7 +9,10 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <set>
 #include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace py = pybind11;
@@ -86,6 +89,215 @@ Point3 cross(const Point3& lhs, const Point3& rhs)
 double norm(const Point3& value)
 {
     return std::sqrt(dot(value, value));
+}
+
+py::dict certify_oriented_box(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points_array,
+    const std::vector<Face>& faces)
+{
+    constexpr double tolerance_factor = 8.0;
+    const double normalized_tolerance =
+        tolerance_factor * std::sqrt(std::numeric_limits<double>::epsilon());
+    const py::buffer_info point_info = points_array.request();
+    if (point_info.ndim != 2 || point_info.shape[0] != 8 || point_info.shape[1] != 3) {
+        throw std::invalid_argument("requires_exactly_8_finite_points");
+    }
+    if (faces.size() != 6U) {
+        throw std::invalid_argument("requires_exactly_6_quad_faces");
+    }
+
+    const auto points = points_array.unchecked<2>();
+    std::array<Point3, 8> vertices{};
+    Point3 minima{};
+    Point3 maxima{};
+    for (size_t vertex = 0; vertex < vertices.size(); ++vertex) {
+        Point3 point{};
+        for (size_t axis = 0; axis < 3U; ++axis) {
+            point[axis] = points(
+                static_cast<py::ssize_t>(vertex), static_cast<py::ssize_t>(axis));
+            if (!std::isfinite(point[axis])) {
+                throw std::invalid_argument("requires_exactly_8_finite_points");
+            }
+        }
+        vertices[vertex] = point;
+        if (vertex == 0U) {
+            minima = point;
+            maxima = point;
+        } else {
+            for (size_t axis = 0; axis < 3U; ++axis) {
+                minima[axis] = std::min(minima[axis], point[axis]);
+                maxima[axis] = std::max(maxima[axis], point[axis]);
+            }
+        }
+    }
+    const double bounding_diagonal = norm(subtract(maxima, minima));
+    const double coordinate_tolerance =
+        normalized_tolerance * std::max(1.0, bounding_diagonal);
+
+    std::map<std::pair<Label, Label>, int> edge_incidence;
+    std::set<Label> used_vertices;
+    for (const Face& face : faces) {
+        if (face.size() != 4U) {
+            throw std::invalid_argument("requires_exactly_6_quad_faces");
+        }
+        std::set<Label> face_vertices;
+        for (size_t slot = 0; slot < face.size(); ++slot) {
+            const Label vertex = face[slot];
+            const Label adjacent = face[(slot + 1U) % face.size()];
+            if (vertex < 0 || vertex >= 8 || adjacent < 0 || adjacent >= 8) {
+                throw std::invalid_argument("face_point_id_out_of_range");
+            }
+            face_vertices.insert(vertex);
+            used_vertices.insert(vertex);
+            const auto edge = std::minmax(vertex, adjacent);
+            ++edge_incidence[{edge.first, edge.second}];
+        }
+        if (face_vertices.size() != 4U) {
+            throw std::invalid_argument("quad_has_repeated_vertex");
+        }
+    }
+    if (used_vertices.size() != 8U) {
+        throw std::invalid_argument("requires_exactly_8_used_vertices");
+    }
+    if (edge_incidence.size() != 12U
+        || std::any_of(edge_incidence.begin(), edge_incidence.end(),
+            [](const auto& entry) { return entry.second != 2; })) {
+        throw std::invalid_argument("requires_12_edges_with_incidence_2");
+    }
+
+    std::array<std::vector<Label>, 8> adjacency{};
+    for (const auto& [edge, incidence] : edge_incidence) {
+        (void)incidence;
+        adjacency[static_cast<size_t>(edge.first)].push_back(edge.second);
+        adjacency[static_cast<size_t>(edge.second)].push_back(edge.first);
+    }
+    for (auto& neighbors : adjacency) {
+        std::sort(neighbors.begin(), neighbors.end());
+        if (neighbors.size() != 3U) {
+            throw std::invalid_argument("box_graph_requires_vertex_degree_3");
+        }
+    }
+
+    constexpr Label anchor = 0;
+    std::array<Label, 3> basis_neighbors{
+        adjacency[anchor][0], adjacency[anchor][1], adjacency[anchor][2]};
+    std::array<Point3, 3> basis{};
+    std::array<double, 3> side_lengths{};
+    for (size_t axis = 0; axis < 3U; ++axis) {
+        basis[axis] = subtract(
+            vertices[static_cast<size_t>(basis_neighbors[axis])], vertices[anchor]);
+        side_lengths[axis] = norm(basis[axis]);
+        if (!std::isfinite(side_lengths[axis])
+            || side_lengths[axis] <= 4.0 * coordinate_tolerance) {
+            throw std::invalid_argument("box_side_length_not_positive");
+        }
+    }
+    for (size_t first = 0; first < 3U; ++first) {
+        for (size_t second = first + 1U; second < 3U; ++second) {
+            const double normalized_dot = std::abs(dot(basis[first], basis[second]))
+                / (side_lengths[first] * side_lengths[second]);
+            if (!std::isfinite(normalized_dot)
+                || normalized_dot > normalized_tolerance) {
+                throw std::invalid_argument("basis_edges_are_not_orthogonal");
+            }
+        }
+    }
+    double determinant = dot(cross(basis[0], basis[1]), basis[2]);
+    if (determinant < 0.0) {
+        std::swap(basis[1], basis[2]);
+        std::swap(side_lengths[1], side_lengths[2]);
+        std::swap(basis_neighbors[1], basis_neighbors[2]);
+        determinant = -determinant;
+    }
+    const double normalized_determinant =
+        determinant / (side_lengths[0] * side_lengths[1] * side_lengths[2]);
+    if (!std::isfinite(normalized_determinant)
+        || normalized_determinant < 1.0 - 4.0 * normalized_tolerance) {
+        throw std::invalid_argument("basis_is_not_right_handed_orthogonal");
+    }
+
+    std::array<int, 8> vertex_roles{};
+    vertex_roles.fill(-1);
+    std::array<Label, 8> role_vertices{};
+    role_vertices.fill(-1);
+    for (size_t vertex = 0; vertex < vertices.size(); ++vertex) {
+        int matched_role = -1;
+        for (int role = 0; role < 8; ++role) {
+            Point3 expected = vertices[anchor];
+            for (size_t axis = 0; axis < 3U; ++axis) {
+                if ((role & (1 << axis)) != 0) {
+                    expected = add(expected, basis[axis]);
+                }
+            }
+            if (norm(subtract(vertices[vertex], expected)) <= coordinate_tolerance) {
+                if (matched_role != -1) {
+                    throw std::invalid_argument("corner_role_is_not_unique");
+                }
+                matched_role = role;
+            }
+        }
+        if (matched_role == -1 || role_vertices[static_cast<size_t>(matched_role)] != -1) {
+            throw std::invalid_argument("points_are_not_8_oriented_box_corners");
+        }
+        vertex_roles[vertex] = matched_role;
+        role_vertices[static_cast<size_t>(matched_role)] = static_cast<Label>(vertex);
+    }
+
+    std::set<std::pair<int, int>> edge_roles;
+    for (const auto& [edge, incidence] : edge_incidence) {
+        (void)incidence;
+        const int first_role = vertex_roles[static_cast<size_t>(edge.first)];
+        const int second_role = vertex_roles[static_cast<size_t>(edge.second)];
+        const int difference = first_role ^ second_role;
+        if (difference != 1 && difference != 2 && difference != 4) {
+            throw std::invalid_argument("edge_does_not_match_oriented_box_role");
+        }
+        edge_roles.emplace(std::min(first_role, second_role), std::max(first_role, second_role));
+    }
+    if (edge_roles.size() != 12U) {
+        throw std::invalid_argument("edge_roles_are_not_bijective");
+    }
+
+    std::vector<std::array<int, 2>> face_roles;
+    face_roles.reserve(faces.size());
+    std::set<std::array<int, 2>> unique_face_roles;
+    for (const Face& face : faces) {
+        int constant_axis = -1;
+        int constant_side = -1;
+        for (int axis = 0; axis < 3; ++axis) {
+            const int side = (vertex_roles[static_cast<size_t>(face[0])] >> axis) & 1;
+            const bool constant = std::all_of(face.begin(), face.end(), [&](Label vertex) {
+                return ((vertex_roles[static_cast<size_t>(vertex)] >> axis) & 1) == side;
+            });
+            if (constant) {
+                if (constant_axis != -1) {
+                    throw std::invalid_argument("face_role_is_not_unique");
+                }
+                constant_axis = axis;
+                constant_side = side;
+            }
+        }
+        if (constant_axis == -1) {
+            throw std::invalid_argument("face_does_not_match_oriented_box_plane");
+        }
+        const std::array<int, 2> role{constant_axis, constant_side};
+        if (!unique_face_roles.insert(role).second) {
+            throw std::invalid_argument("face_roles_are_not_bijective");
+        }
+        face_roles.push_back(role);
+    }
+    if (unique_face_roles.size() != 6U) {
+        throw std::invalid_argument("face_roles_are_not_bijective");
+    }
+
+    py::dict report;
+    report["side_lengths"] = side_lengths;
+    report["vertex_roles"] = vertex_roles;
+    report["face_roles"] = face_roles;
+    report["basis_neighbors"] = basis_neighbors;
+    report["normalized_tolerance"] = normalized_tolerance;
+    report["coordinate_tolerance"] = coordinate_tolerance;
+    return report;
 }
 
 Label normalize_index(Label index, py::ssize_t point_count)
@@ -712,6 +924,11 @@ py::array_t<double> hex_face_nonorthogonality(
 PYBIND11_MODULE(native_hex_quality, module)
 {
     module.doc() = "C++ OpenFOAM-style quality primitives for hexahedral meshes";
+    module.def(
+        "certify_oriented_box",
+        &certify_oriented_box,
+        py::arg("points"),
+        py::arg("faces"));
     module.def(
         "boundary_vertex_local_scales",
         &boundary_vertex_local_scales,

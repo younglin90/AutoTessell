@@ -76,7 +76,7 @@ def _hex_inward_l0_box_contract(
     selected: list[int],
     face_patch: dict[int, tuple[str, str]],
 ) -> tuple[bool, str, np.ndarray]:
-    """Recognize only one axis-aligned rectangular base hex."""
+    """Recognize one certified orthogonal rectangular base hex."""
     if len(points) != 8 or not np.all(np.isfinite(points)):
         return False, "requires_exactly_8_finite_points", np.zeros(3)
     if len(faces) != 6 or any(len(face) != 4 for face in faces):
@@ -100,48 +100,29 @@ def _hex_inward_l0_box_contract(
             edge_incidence[edge] = edge_incidence.get(edge, 0) + 1
     if len(edge_incidence) != 12 or set(edge_incidence.values()) != {2}:
         return False, "requires_12_edges_with_incidence_2", np.zeros(3)
+    try:
+        from core.utils.native_extensions import (  # noqa: PLC0415
+            import_native_extension,
+        )
 
-    lows = np.empty(3, dtype=np.float64)
-    highs = np.empty(3, dtype=np.float64)
-    for axis in range(3):
-        coordinates = np.unique(points[:, axis])
-        if len(coordinates) != 2:
-            return False, f"axis_{axis}_requires_exactly_2_planes", np.zeros(3)
-        lows[axis], highs[axis] = coordinates
-    side_lengths = highs - lows
-    if np.any(side_lengths <= 0.0):
-        return False, "box_side_length_not_positive", np.zeros(3)
-
-    expected_corners = {
-        (x, y, z)
-        for x in (float(lows[0]), float(highs[0]))
-        for y in (float(lows[1]), float(highs[1]))
-        for z in (float(lows[2]), float(highs[2]))
-    }
-    actual_corners = {tuple(float(value) for value in point) for point in points}
-    if actual_corners != expected_corners:
-        return False, "points_are_not_8_aabb_corners", np.zeros(3)
-    for first_vertex, second_vertex in edge_incidence:
-        if int(np.count_nonzero(points[first_vertex] != points[second_vertex])) != 1:
-            return False, "edge_is_not_one_aabb_axis", np.zeros(3)
-
-    expected_planes = {
-        (axis, float(value))
-        for axis in range(3)
-        for value in (lows[axis], highs[axis])
-    }
-    actual_planes: list[tuple[int, float]] = []
-    for face in faces:
-        constant_axes = [
-            axis for axis in range(3)
-            if len(np.unique(points[np.asarray(face, dtype=np.int64), axis])) == 1
-        ]
-        if len(constant_axes) != 1:
-            return False, "face_is_not_one_aabb_plane", np.zeros(3)
-        axis = constant_axes[0]
-        actual_planes.append((axis, float(points[int(face[0]), axis])))
-    if set(actual_planes) != expected_planes or len(set(actual_planes)) != 6:
-        return False, "faces_do_not_match_6_aabb_planes", np.zeros(3)
+        native_quality = import_native_extension("native_hex_quality")
+        certificate = native_quality.certify_oriented_box(points, faces)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"oriented_box_certificate:{exc}", np.zeros(3)
+    side_lengths = np.asarray(certificate.get("side_lengths"), dtype=np.float64)
+    vertex_roles = np.asarray(certificate.get("vertex_roles"), dtype=np.int64)
+    face_roles = np.asarray(certificate.get("face_roles"), dtype=np.int64)
+    if (
+        side_lengths.shape != (3,)
+        or vertex_roles.shape != (8,)
+        or face_roles.shape != (6, 2)
+        or not np.all(np.isfinite(side_lengths))
+        or np.any(side_lengths <= 0.0)
+        or set(vertex_roles.tolist()) != set(range(8))
+        or {tuple(role) for role in face_roles.tolist()}
+        != {(axis, side) for axis in range(3) for side in range(2)}
+    ):
+        return False, "oriented_box_certificate_invalid_abi", np.zeros(3)
     return True, "ok", side_lengths
 
 

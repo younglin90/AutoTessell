@@ -248,6 +248,75 @@ def test_native_boundary_vertex_local_scales_reject_invalid_boundary() -> None:
         )
 
 
+def test_native_oriented_box_certificate_assigns_every_role() -> None:
+    native = _native_or_skip()
+    assert hasattr(native, "certify_oriented_box")
+    points, cells = _structured_hexes(1, 1, 1)
+    faces = [[int(cells[0, local]) for local in face] for face in quality._HEX_FACES]
+    random_matrix = np.array(
+        [
+            [-0.80193143, -1.324359, -0.24836162],
+            [0.42044524, 1.13604653, 0.1097064],
+            [-0.55264732, -0.78478036, 0.74874577],
+        ],
+        dtype=np.float64,
+    )
+    rotation, _ = np.linalg.qr(random_matrix)
+    transformed = (points * np.array([2.0, 3.0, 4.0])) @ rotation.T
+
+    report = native.certify_oriented_box(transformed, faces)
+
+    np.testing.assert_allclose(
+        np.sort(np.asarray(report["side_lengths"])),
+        [2.0, 3.0, 4.0],
+        rtol=2e-15,
+        atol=2e-15,
+    )
+    assert sorted(report["vertex_roles"]) == list(range(8))
+    assert sorted(tuple(role) for role in report["face_roles"]) == [
+        (axis, side) for axis in range(3) for side in range(2)
+    ]
+    assert float(report["normalized_tolerance"]) == pytest.approx(
+        8.0 * np.sqrt(np.finfo(np.float64).eps), rel=0.0, abs=0.0
+    )
+
+
+def test_native_oriented_box_certificate_has_frozen_serialization_envelope() -> None:
+    native = _native_or_skip()
+    points, cells = _structured_hexes(1, 1, 1)
+    faces = [[int(cells[0, local]) for local in face] for face in quality._HEX_FACES]
+    tolerance = 8.0 * np.sqrt(np.finfo(np.float64).eps)
+
+    below = np.array([[1.0, 0.25 * tolerance, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    native.certify_oriented_box(points @ below.T, faces)
+
+    above = np.array([[1.0, 2.0 * tolerance, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    with pytest.raises(ValueError, match="basis_edges_are_not_orthogonal"):
+        native.certify_oriented_box(points @ above.T, faces)
+
+    sheared = np.array([[1.0, 1.0e-3, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    with pytest.raises(ValueError, match="basis_edges_are_not_orthogonal"):
+        native.certify_oriented_box(points @ sheared.T, faces)
+
+    near_degenerate = points * np.array([1.0e-9, 1.0, 1.0])
+    with pytest.raises(ValueError, match="box_side_length_not_positive"):
+        native.certify_oriented_box(near_degenerate, faces)
+
+
+def test_native_oriented_box_certificate_rejects_non_cube_face_edges() -> None:
+    native = _native_or_skip()
+    points, cells = _structured_hexes(1, 1, 1)
+    faces = [[int(cells[0, local]) for local in face] for face in quality._HEX_FACES]
+    malformed = [face.copy() for face in faces]
+    malformed[0][1], malformed[0][2] = malformed[0][2], malformed[0][1]
+
+    with pytest.raises(
+        ValueError,
+        match="requires_12_edges_with_incidence_2|edge_does_not_match_oriented_box_role",
+    ):
+        native.certify_oriented_box(points, malformed)
+
+
 def test_native_generic_cell_face_signs_match_python() -> None:
     native = _native_or_skip()
     assert hasattr(native, "generic_cell_face_signs")

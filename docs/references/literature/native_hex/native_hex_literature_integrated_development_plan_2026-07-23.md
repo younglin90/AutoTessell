@@ -1307,3 +1307,23 @@ sub-card only; it does not authorize replacing the production gate with
 Verification: Phase-0 metric and transition-related tests `16 passed`, core
 native-hex regression subset `66 passed`. The default mixed-level and wall-fit
 flags remain unchanged.
+
+### 2026-07-31 HEX-BL-ORIENTED-BOX-CONTRACT-1 — bounded rigid-frame extension
+
+Cycle39's default-OFF fixed-outer inward shell was extended from one AABB to one
+certified orthogonal box under rigid rotation. A C++23 certificate assigns every
+source vertex, edge, and face exactly one box role before the unchanged inward
+constructor runs. Rotated unit BL1 and arbitrary-SO(3) `2x3x4` BL3 requests now
+fulfil `2/2` instead of `0/2`, with source drift `0`, invalid/inverted cells `0`,
+exact `8/8` point and `6/6` face provenance, and deterministic three-run hashes.
+
+The `%.9g` writer serialization envelope is frozen at `8*sqrt(epsilon)` and is
+tested immediately below and above. A `1e-3` shear and a near-degenerate side
+remain byte-preserving refusals. AABB output hashes, BL0/OFF behavior, thickness
+bound, validity/Jacobian gates, and atomic transaction remain exact.
+
+Decision: **L1_PASS / EXPERIMENTAL_KEEP, default OFF**. This is not the
+`HEX-SHEET-2` general-CAD mechanism and does not pass Gate 7. Ridge/corner
+topology, partial patch selection, multi-cell core coupling, narrow gaps, and
+layer-front collision remain separate report-first prerequisites. Evidence:
+`hex_oriented_box_inward_shell_2026-07-31.md`; full native-Hex tests `241 passed`.

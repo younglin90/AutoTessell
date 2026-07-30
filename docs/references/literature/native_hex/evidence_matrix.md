@@ -723,3 +723,30 @@ Evidence and literature scope are in
 `hex_fixed_outer_inward_shell_l0_2026-07-31.md`. Decision:
 **EXPERIMENTAL_KEEP, default OFF**. This one-AABB-box result does not promote
 general all-quad/CAD boundary layers or Gate 7.
+
+## 2026-07-31 — HEX-BL-ORIENTED-BOX-CONTRACT-1
+
+The default-OFF fixed-outer path now replaces its AABB-only geometry test with
+a C++23 oriented-orthogonal-box certificate. The source topology remains exact:
+eight corner roles, twelve cube-edge roles, and six `(axis, side)` face roles
+must each be bijective. The inward constructor, strict thickness limit,
+signed-volume/corner-Jacobian gates, provenance, lock, and atomic transaction
+are unchanged.
+
+The project writer's `%.9g` round-trip produced normalized orthogonality residual
+`1.1032821337527498e-9` on an arbitrary rotated `2x3x4` box. The frozen
+serialization envelope is `8*sqrt(epsilon)=1.1920928955078125e-7`; direct tests
+immediately below and above it prevent later threshold drift.
+
+Rotated unit-box BL1 and rotated `2x3x4` BL3 requests changed from `0/2` fulfilled
+to `2/2`, with source drift `0`, invalid/inverted cells `0`, exact point `8/8`
+and face `6/6` provenance, and identical three-run hashes. A `1e-3` shear and a
+`1e-9` side are deterministic byte-preserving refusals. Axis-aligned BL1/BL3
+five-file hashes remain exactly
+`468d49b2c27caeede8ef21248a43bb6ec253bc7720a0f8d234dcdf914a50d959` and
+`9e8d079c973291cac6627c697e47bee1dd0128fe51a549ad0e5fe0517705fdcc`.
+
+Decision: **L1_PASS / EXPERIMENTAL_KEEP, default OFF**. Full native-Hex files:
+`241 passed`. General CAD, multi-cell cores, non-orthogonal cells, partial
+patches, ridge/corner topology, narrow-gap collision, and Gate 7 remain open.
+Full evidence: `hex_oriented_box_inward_shell_2026-07-31.md`.
