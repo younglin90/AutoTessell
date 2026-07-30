@@ -196,6 +196,37 @@ def test_pipeline_uses_native_quad_dominant_when_explicit() -> None:
         np.testing.assert_array_equal(remeshed.faces, expected_faces)
 
 
+def test_pipeline_native_quad_invalid_topology_returns_unchanged_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.preprocessor.pipeline import Preprocessor
+
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    faces = np.array([[0, 1, 1]], dtype=np.int64)
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    vertices_before = mesh.vertices.copy()
+    faces_before = mesh.faces.copy()
+    preprocessor = Preprocessor()
+
+    def unexpected_legacy(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("explicit native quad rejection must not reach legacy remeshing")
+
+    monkeypatch.setattr(preprocessor._remesher, "remesh_l2", unexpected_legacy)
+    remeshed, accepted, record = preprocessor._l2_remesh(
+        mesh,
+        None,
+        remesh_engine="native_quad_dominant",
+        prefer_native=False,
+    )
+
+    assert accepted is False
+    assert record["method"] == "native_quad_dominant"
+    assert record["params"]["fallback_reason"] == "native_quad_dominant_error:ValueError"
+    assert record["gate_passed"] is False
+    np.testing.assert_array_equal(remeshed.vertices, vertices_before)
+    np.testing.assert_array_equal(remeshed.faces, faces_before)
+
+
 def test_positive_target_is_explicitly_rejected_before_native_engine_or_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

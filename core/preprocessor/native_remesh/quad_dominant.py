@@ -9,9 +9,54 @@ quad must pass local convexity, scaled-Jacobian, aspect, and warpage gates.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
+from numbers import Integral
+from typing import TypeGuard
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_INT64_MIN = int(np.iinfo(np.int64).min)
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+
+def _is_exact_index(value: object) -> TypeGuard[Integral]:
+    return not isinstance(value, (bool, np.bool_)) and isinstance(value, Integral)
+
+
+def _decode_triangle_indices(values: object) -> NDArray[np.int64]:
+    """Return exact signed-int64 triangle indices without lossy coercion."""
+    try:
+        raw_triangles = np.asarray(values)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError("triangles must have shape (M, 3)") from None
+    if raw_triangles.ndim != 2 or raw_triangles.shape[1] != 3:
+        raise ValueError("triangles must have shape (M, 3)")
+    if any(not _is_exact_index(value) for value in raw_triangles.flat):
+        raise ValueError("triangles must contain exact finite signed int64 indices")
+    if any(int(value) < _INT64_MIN or int(value) > _INT64_MAX for value in raw_triangles.flat):
+        raise ValueError("triangle indices exceed signed int64 range")
+    try:
+        return np.asarray(raw_triangles, dtype=np.int64).copy()
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError("triangle indices exceed signed int64 range") from None
+
+
+def _decode_protected_wall_edge(value: object) -> tuple[int, int]:
+    """Decode one wall edge without accepting Pydantic/NumPy coercions."""
+    if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+        raise ValueError("protected_wall_edges must contain pairs of exact signed int64 indices")
+    raw_edge: tuple[object, ...] = tuple(value)
+    if len(raw_edge) != 2:
+        raise ValueError("protected_wall_edges must contain pairs of exact signed int64 indices")
+    first, second = raw_edge
+    if not _is_exact_index(first) or not _is_exact_index(second):
+        raise ValueError("protected_wall_edges must contain pairs of exact signed int64 indices")
+    first_index, second_index = int(first), int(second)
+    if not (_INT64_MIN <= first_index <= _INT64_MAX and _INT64_MIN <= second_index <= _INT64_MAX):
+        raise ValueError("protected_wall_edges contain indices outside signed int64 range")
+    return first_index, second_index
 
 
 class QuadDominantConfig(BaseModel):
@@ -22,6 +67,15 @@ class QuadDominantConfig(BaseModel):
     max_aspect_ratio: float = Field(default=4.0, ge=1.0)
     max_warpage: float = Field(default=0.05, ge=0.0, le=1.0)
     protected_wall_edges: list[tuple[int, int]] = Field(default_factory=list)
+
+    @field_validator("protected_wall_edges", mode="before")
+    @classmethod
+    def _decode_protected_wall_edges(cls, values: object) -> list[tuple[int, int]]:
+        if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+            raise ValueError(
+                "protected_wall_edges must contain pairs of exact signed int64 indices"
+            )
+        return [_decode_protected_wall_edge(value) for value in values]
 
 
 class QuadDominantDiagnostics(BaseModel):
@@ -65,12 +119,10 @@ def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
         raise ValueError("vertices must have shape (N, 3)")
     if triangles.ndim != 2 or triangles.shape[1] != 3:
         raise ValueError("triangles must have shape (M, 3)")
-    if (
-        not np.isfinite(vertices).all()
-        or (triangles < 0).any()
-        or (triangles >= len(vertices)).any()
-    ):
-        raise ValueError("surface contains non-finite vertices or invalid triangle indices")
+    if not np.isfinite(vertices).all():
+        raise ValueError("surface contains non-finite vertices")
+    if (triangles < 0).any() or (triangles >= len(vertices)).any():
+        raise ValueError("triangle indices are outside the input vertex range")
     seen_faces: set[tuple[int, int, int]] = set()
     edge_directions: dict[tuple[int, int], list[int]] = defaultdict(list)
     for triangle in triangles:
@@ -101,6 +153,29 @@ def _edge_faces(triangles: np.ndarray) -> dict[tuple[int, int], list[int]]:
             first, second = int(triangle[local_index]), int(triangle[(local_index + 1) % 3])
             edges[_edge_key(first, second)].append(face_index)
     return dict(edges)
+
+
+def _validated_wall_edges(
+    protected_wall_edges: object,
+    input_edges: dict[tuple[int, int], list[int]],
+) -> set[tuple[int, int]]:
+    """Return canonical declared wall edges only when they exist in the input."""
+    if isinstance(protected_wall_edges, (str, bytes)) or not isinstance(
+        protected_wall_edges, Iterable
+    ):
+        raise ValueError("protected_wall_edges must contain pairs of exact signed int64 indices")
+    supplied = tuple(protected_wall_edges)
+
+    wall_edges: set[tuple[int, int]] = set()
+    for value in supplied:
+        first, second = _decode_protected_wall_edge(value)
+        if first == second:
+            raise ValueError("protected wall edge must have distinct endpoints")
+        edge = _edge_key(first, second)
+        if edge not in input_edges:
+            raise ValueError(f"protected wall edge {edge} is not an input surface edge")
+        wall_edges.add(edge)
+    return wall_edges
 
 
 def _unit_normal(points: np.ndarray) -> np.ndarray:
@@ -178,10 +253,12 @@ def native_quad_dominant_remesh(
 ) -> QuadDominantResult:
     """Convert safe adjacent triangle pairs into quads without moving vertices."""
     settings = config or QuadDominantConfig()
+    input_triangles = _decode_triangle_indices(triangles)
     output_vertices = np.asarray(vertices, dtype=np.float64).copy()
-    input_triangles = np.asarray(triangles, dtype=np.int64).copy()
     _validate_input(output_vertices, input_triangles)
     diagnostics = QuadDominantDiagnostics(input_triangles=int(len(input_triangles)))
+    edge_faces = _edge_faces(input_triangles)
+    wall_edges = _validated_wall_edges(settings.protected_wall_edges, edge_faces)
     if not len(input_triangles):
         diagnostics.fallback_reason = "empty_input"
         return QuadDominantResult(
@@ -191,16 +268,10 @@ def native_quad_dominant_remesh(
             diagnostics=diagnostics,
         )
 
-    edge_faces = _edge_faces(input_triangles)
     boundary_edges = {edge for edge, incident in edge_faces.items() if len(incident) == 1}
     feature_edges = _feature_edges(
         output_vertices, input_triangles, edge_faces, settings.feature_angle_deg
     )
-    wall_edges = {
-        _edge_key(int(first), int(second))
-        for first, second in settings.protected_wall_edges
-        if 0 <= int(first) < len(output_vertices) and 0 <= int(second) < len(output_vertices)
-    }
     protected = boundary_edges | feature_edges | wall_edges
     diagnostics.protected_boundary_edges = len(boundary_edges)
     diagnostics.protected_feature_edges = len(feature_edges)
