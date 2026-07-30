@@ -231,6 +231,18 @@ disabling legacy deletion into writer-invalid output. OFF remains byte-identical
 on all three fixtures. Fixed-primal polydual and budget+BL hex-base paths are
 flag no-ops.
 
+## 2026-07-30 `POLY-DUAL-CLASSIFY-COVERAGE1` provenance hardening
+
+An explicit ``boundary_face_entities`` mapping is now an all-or-nothing
+source-provenance contract: before any dual geometry or polyMesh output is
+written, every extracted canonical primal boundary triangle must have a mapping.
+Missing entries produce a deterministic failure containing the sorted tuple of
+missing canonical triangles. Unclassified calls retain the existing
+``defaultWall`` behavior, and complete mappings retain the existing classified
+cap partition, points, cells, and writer semantics. This is a conservative
+coverage guard only; it does not alter geometry, topology, routing, defaults,
+or cell targets.
+
 ## 2026-07-26 `POLY-ROUTE-ATTRIB1` measured evidence
 
 Diagnostic module: `core/generator/native_poly/route_attribution.py`.
