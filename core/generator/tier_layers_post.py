@@ -41,6 +41,11 @@ _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
     (1, 2, 6, 5),
 )
 
+_HEX_INWARD_L0_HALF_SIDE_SAFETY = 0.90
+_POLYMESH_AUTHORITATIVE_NAMES = frozenset(
+    {"points", "faces", "owner", "neighbour", "boundary"},
+)
+
 
 def _boundary_entries_with_types(boundary_file: Path) -> list[dict[str, Any]]:
     """Read boundary entries, retaining patch ``type`` for a topology rewrite."""
@@ -63,6 +68,137 @@ def _boundary_entries_with_types(boundary_file: Path) -> list[dict[str, Any]]:
     return entries
 
 
+def _hex_inward_l0_box_contract(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    selected: list[int],
+    face_patch: dict[int, tuple[str, str]],
+) -> tuple[bool, str, np.ndarray]:
+    """Recognize only one axis-aligned rectangular base hex."""
+    if len(points) != 8 or not np.all(np.isfinite(points)):
+        return False, "requires_exactly_8_finite_points", np.zeros(3)
+    if len(faces) != 6 or any(len(face) != 4 for face in faces):
+        return False, "requires_exactly_6_quad_faces", np.zeros(3)
+    if neighbour or len(owner) != 6 or set(owner) != {0}:
+        return False, "requires_one_cell_with_no_neighbours", np.zeros(3)
+    all_faces = set(range(6))
+    if set(selected) != all_faces or set(face_patch) != all_faces:
+        return False, "requires_all_6_boundary_quads_selected", np.zeros(3)
+
+    used_vertices = {int(vertex) for face in faces for vertex in face}
+    if used_vertices != set(range(8)):
+        return False, "requires_exactly_8_used_vertices", np.zeros(3)
+    edge_incidence: dict[tuple[int, int], int] = {}
+    for face in faces:
+        if len(set(int(vertex) for vertex in face)) != 4:
+            return False, "quad_has_repeated_vertex", np.zeros(3)
+        for index, vertex in enumerate(face):
+            adjacent = int(face[(index + 1) % 4])
+            edge = tuple(sorted((int(vertex), adjacent)))
+            edge_incidence[edge] = edge_incidence.get(edge, 0) + 1
+    if len(edge_incidence) != 12 or set(edge_incidence.values()) != {2}:
+        return False, "requires_12_edges_with_incidence_2", np.zeros(3)
+
+    lows = np.empty(3, dtype=np.float64)
+    highs = np.empty(3, dtype=np.float64)
+    for axis in range(3):
+        coordinates = np.unique(points[:, axis])
+        if len(coordinates) != 2:
+            return False, f"axis_{axis}_requires_exactly_2_planes", np.zeros(3)
+        lows[axis], highs[axis] = coordinates
+    side_lengths = highs - lows
+    if np.any(side_lengths <= 0.0):
+        return False, "box_side_length_not_positive", np.zeros(3)
+
+    expected_corners = {
+        (x, y, z)
+        for x in (float(lows[0]), float(highs[0]))
+        for y in (float(lows[1]), float(highs[1]))
+        for z in (float(lows[2]), float(highs[2]))
+    }
+    actual_corners = {tuple(float(value) for value in point) for point in points}
+    if actual_corners != expected_corners:
+        return False, "points_are_not_8_aabb_corners", np.zeros(3)
+    for first_vertex, second_vertex in edge_incidence:
+        if int(np.count_nonzero(points[first_vertex] != points[second_vertex])) != 1:
+            return False, "edge_is_not_one_aabb_axis", np.zeros(3)
+
+    expected_planes = {
+        (axis, float(value))
+        for axis in range(3)
+        for value in (lows[axis], highs[axis])
+    }
+    actual_planes: list[tuple[int, float]] = []
+    for face in faces:
+        constant_axes = [
+            axis for axis in range(3)
+            if len(np.unique(points[np.asarray(face, dtype=np.int64), axis])) == 1
+        ]
+        if len(constant_axes) != 1:
+            return False, "face_is_not_one_aabb_plane", np.zeros(3)
+        axis = constant_axes[0]
+        actual_planes.append((axis, float(points[int(face[0]), axis])))
+    if set(actual_planes) != expected_planes or len(set(actual_planes)) != 6:
+        return False, "faces_do_not_match_6_aabb_planes", np.zeros(3)
+    return True, "ok", side_lengths
+
+
+def _polymesh_manifest(root: Path) -> dict[str, tuple[str, bytes | str]]:
+    """Capture every polyMesh entry without following internal symlinks."""
+    manifest: dict[str, tuple[str, bytes | str]] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            import os
+
+            manifest[relative] = "symlink", os.readlink(path)
+        elif path.is_dir():
+            manifest[relative] = "directory", b""
+        elif path.is_file():
+            manifest[relative] = "file", path.read_bytes()
+        else:
+            raise OSError(f"unsupported polyMesh entry:{relative}")
+    return manifest
+
+
+def _hex_inward_direct_gate(
+    points: np.ndarray,
+    cell_faces: list[list[list[int]]],
+    hexes: np.ndarray,
+) -> tuple[bool, str, float, float]:
+    """Direct signed-volume and corner-Jacobian gate for the L0 box."""
+    from core.layers.native_hex_inward_validity import (  # noqa: PLC0415
+        signed_cell_volumes,
+        signed_hex_corner_determinants,
+    )
+
+    bbox_diag = float(np.linalg.norm(np.ptp(points, axis=0)))
+    cubic_scale = max(bbox_diag, np.finfo(np.float64).tiny) ** 3
+    epsilon = max(cubic_scale * 1.0e-12, np.finfo(np.float64).tiny)
+    volumes = signed_cell_volumes(points, cell_faces)
+    if volumes.size == 0 or not np.all(np.isfinite(volumes)):
+        return False, "non_finite_signed_volume", float("nan"), float("nan")
+    min_volume = float(np.min(volumes))
+    if min_volume <= epsilon:
+        return False, f"non_positive_signed_volume:{min_volume:.17g}", min_volume, float("nan")
+
+    determinants = signed_hex_corner_determinants(points, hexes)
+    if determinants.size == 0 or not np.all(np.isfinite(determinants)):
+        return False, "non_finite_corner_jacobian", min_volume, float("nan")
+    min_determinant = float(np.min(determinants))
+    if min_determinant <= epsilon:
+        return (
+            False,
+            f"non_positive_corner_jacobian:{min_determinant:.17g}",
+            min_volume,
+            min_determinant,
+        )
+
+    return True, "ok", min_volume, min_determinant
+
+
 def _run_native_hex_bl(
     case_dir: Path,
     *,
@@ -70,6 +206,71 @@ def _run_native_hex_bl(
     growth_ratio: float,
     first_thickness: float,
     params: dict[str, Any],
+) -> tuple[bool, str, int]:
+    """Run native hex BL under one process-crash-safe case lock."""
+    from core.layers.native_hex_inward_lock import (  # noqa: PLC0415
+        HexBLTransactionActive,
+        HexBLTransactionError,
+        HexBLTransactionUnsupported,
+        acquire_hexbl_transaction_lock,
+        hexbl_transaction_lock_supported,
+    )
+
+    inward_shell = _coerce_bool(
+        params.get("post_layers_hex_inward_shell"),
+        False,
+    )
+    if not hexbl_transaction_lock_supported():
+        if inward_shell:
+            return False, "native_hex_bl_inward_transaction_unsupported_platform", 0
+        return _run_native_hex_bl_locked(
+            case_dir,
+            num_layers=num_layers,
+            growth_ratio=growth_ratio,
+            first_thickness=first_thickness,
+            params=params,
+            inward_shell=False,
+            transaction_lock=None,
+        )
+
+    try:
+        with acquire_hexbl_transaction_lock(case_dir / "constant") as transaction_lock:
+            return _run_native_hex_bl_locked(
+                case_dir,
+                num_layers=num_layers,
+                growth_ratio=growth_ratio,
+                first_thickness=first_thickness,
+                params=params,
+                inward_shell=inward_shell,
+                transaction_lock=transaction_lock,
+            )
+    except HexBLTransactionActive:
+        return False, "native_hex_bl_transaction_active", 0
+    except HexBLTransactionUnsupported:
+        if inward_shell:
+            return False, "native_hex_bl_inward_transaction_unsupported_platform", 0
+        return _run_native_hex_bl_locked(
+            case_dir,
+            num_layers=num_layers,
+            growth_ratio=growth_ratio,
+            first_thickness=first_thickness,
+            params=params,
+            inward_shell=False,
+            transaction_lock=None,
+        )
+    except HexBLTransactionError as exc:
+        return False, f"native_hex_bl_transaction_lock_failed:{exc}", 0
+
+
+def _run_native_hex_bl_locked(
+    case_dir: Path,
+    *,
+    num_layers: int,
+    growth_ratio: float,
+    first_thickness: float,
+    params: dict[str, Any],
+    inward_shell: bool,
+    transaction_lock: Any | None,
 ) -> tuple[bool, str, int]:
     """Append native hex stacks to existing quad wall faces.
 
@@ -79,14 +280,35 @@ def _run_native_hex_bl(
     """
     from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
     from core.layers.native_bl import _collect_wall_faces  # noqa: PLC0415
-    from core.layers.native_hex_bl import extrude_hex_bl  # noqa: PLC0415
+    from core.layers.native_hex_bl import (  # noqa: PLC0415
+        extrude_hex_bl,
+        extrude_hex_bl_inward_shell,
+    )
+    from core.layers.native_hex_inward_lock import (  # noqa: PLC0415
+        HexBLTransactionError,
+        HexBLTransactionUnsupported,
+    )
+    from core.layers.native_hex_inward_transaction import (  # noqa: PLC0415
+        begin_hexbl_transaction,
+        commit_hexbl_candidate,
+        prepare_hexbl_candidate,
+        recover_hexbl_transaction,
+    )
     from core.utils.polymesh_reader import (  # noqa: PLC0415
         parse_foam_faces,
         parse_foam_labels,
         parse_foam_points_array,
     )
 
-    poly_dir = case_dir / "constant" / "polyMesh"
+    constant_dir = case_dir / "constant"
+    if transaction_lock is not None:
+        try:
+            recover_hexbl_transaction(transaction_lock)
+        except HexBLTransactionError as exc:
+            return False, f"native_hex_bl_transaction_recovery_failed:{exc}", 0
+    poly_dir = constant_dir / "polyMesh"
+    # Cycle39 EXPERIMENTAL_KEEP: closed all-quad L0 only; default remains OFF.
+    original_manifest = _polymesh_manifest(poly_dir) if inward_shell else {}
     points = parse_foam_points_array(poly_dir / "points")
     faces = [list(face) for face in parse_foam_faces(poly_dir / "faces")]
     owner = [int(v) for v in parse_foam_labels(poly_dir / "owner")]
@@ -140,6 +362,46 @@ def _run_native_hex_bl(
         for fi in range(start, start + int(patch["nFaces"])):
             face_patch[fi] = (name, kind)
 
+    box_side_lengths = np.zeros(3, dtype=np.float64)
+    if inward_shell:
+        contract_ok, contract_reason, box_side_lengths = _hex_inward_l0_box_contract(
+            points,
+            faces,
+            owner,
+            neighbour,
+            selected,
+            face_patch,
+        )
+        if not contract_ok:
+            return False, f"native_hex_bl_inward_l0_contract:{contract_reason}", 0
+        layers = int(num_layers)
+        first = float(first_thickness)
+        growth = float(growth_ratio)
+        if (
+            layers < 1
+            or not np.isfinite(first)
+            or first <= 0.0
+            or not np.isfinite(growth)
+            or growth <= 0.0
+        ):
+            return False, "native_hex_bl_inward_l0_contract:invalid_layer_sizes", 0
+        with np.errstate(over="ignore", invalid="ignore"):
+            layer_thicknesses = first * np.power(growth, np.arange(layers))
+        total_thickness = float(np.sum(layer_thicknesses))
+        safe_limit = (
+            _HEX_INWARD_L0_HALF_SIDE_SAFETY
+            * 0.5
+            * float(np.min(box_side_lengths))
+        )
+        if not np.isfinite(total_thickness) or not total_thickness < safe_limit:
+            return (
+                False,
+                "native_hex_bl_inward_l0_thickness_limit:"
+                f"total={total_thickness:.17g},limit={safe_limit:.17g},"
+                f"half_side_safety={_HEX_INWARD_L0_HALF_SIDE_SAFETY:.2f}",
+                0,
+            )
+
     wall_quads = np.asarray([faces[fi] for fi in quad_faces], dtype=np.int64)
     vertex_normals = np.zeros_like(points)
     for quad in wall_quads:
@@ -154,15 +416,32 @@ def _run_native_hex_bl(
     if np.any(normal_lengths[wall_vertices] <= 1e-20):
         return False, "degenerate_quad_wall_normal", 0
     vertex_normals[wall_vertices] /= normal_lengths[wall_vertices, None]
-
-    new_points, hexes, result = extrude_hex_bl(
-        points,
-        wall_quads,
-        vertex_normals,
-        num_layers=int(num_layers),
-        first_thickness=float(first_thickness),
-        growth_ratio=float(growth_ratio),
-    )
+    input_points_before = points.copy() if inward_shell else points
+    input_wall_quads_before = wall_quads.copy() if inward_shell else wall_quads
+    inward_provenance: Any | None = None
+    if inward_shell:
+        try:
+            new_points, hexes, result, inward_provenance = (
+                extrude_hex_bl_inward_shell(
+                    points,
+                    wall_quads,
+                    vertex_normals,
+                    num_layers=int(num_layers),
+                    first_thickness=float(first_thickness),
+                    growth_ratio=float(growth_ratio),
+                )
+            )
+        except ValueError as exc:
+            return False, f"native_hex_bl_inward_invalid:{exc}", 0
+    else:
+        new_points, hexes, result = extrude_hex_bl(
+            points,
+            wall_quads,
+            vertex_normals,
+            num_layers=int(num_layers),
+            first_thickness=float(first_thickness),
+            growth_ratio=float(growth_ratio),
+        )
     if result.n_hex_cells <= 0:
         return False, "native_hex_bl_created_no_cells", 0
 
@@ -185,6 +464,44 @@ def _run_native_hex_bl(
             f"max_deviation={max_source_deviation:.17g}",
             0,
         )
+    if inward_shell:
+        assert inward_provenance is not None
+        source_point_ids = np.asarray(
+            inward_provenance.source_point_ids, dtype=np.int64,
+        )
+        outer_point_ids = np.asarray(
+            inward_provenance.outer_point_ids, dtype=np.int64,
+        )
+        outer_faces = np.asarray(
+            inward_provenance.outer_face_point_ids, dtype=np.int64,
+        )
+        source_rows = np.asarray(
+            inward_provenance.source_quad_rows, dtype=np.int64,
+        )
+        point_bijection = (
+            len(source_point_ids) == len(np.unique(source_point_ids))
+            and len(outer_point_ids) == len(np.unique(outer_point_ids))
+            and len(source_point_ids) == len(outer_point_ids)
+            and not np.intersect1d(source_point_ids, outer_point_ids).size
+        )
+        face_bijection = (
+            np.array_equal(source_rows, np.arange(len(wall_quads), dtype=np.int64))
+            and len({tuple(sorted(face)) for face in outer_faces.tolist()})
+            == len(wall_quads)
+        )
+        lineage_exact = (
+            point_bijection
+            and face_bijection
+            and np.array_equal(new_points[outer_point_ids], points[source_point_ids])
+            and np.array_equal(new_points[outer_faces], points[wall_quads])
+            and np.array_equal(outer_faces, outer_hexes[:, 4:8])
+        )
+        inputs_unchanged = (
+            np.array_equal(points, input_points_before)
+            and np.array_equal(wall_quads, input_wall_quads_before)
+        )
+        if not lineage_exact or not inputs_unchanged:
+            return False, "native_hex_bl_inward_provenance_not_bijective", 0
 
     patch_by_face_key: dict[tuple[int, ...], tuple[str, str]] = {}
     for fi, patch in face_patch.items():
@@ -209,6 +526,136 @@ def _run_native_hex_bl(
 
     def _patch_classifier(face: list[int], _points: np.ndarray) -> tuple[str, str]:
         return patch_by_face_key.get(tuple(sorted(int(v) for v in face)), ("defaultWall", "wall"))
+
+    if inward_shell:
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        assert inward_provenance is not None
+        gate_ok, gate_reason, min_signed_volume, min_corner_jacobian = (
+            _hex_inward_direct_gate(
+                new_points,
+                cell_faces,
+                hexes,
+            )
+        )
+        if not gate_ok:
+            return False, f"native_hex_bl_inward_rejected:{gate_reason}", 0
+
+        try:
+            if transaction_lock is None:
+                raise HexBLTransactionUnsupported("held transaction lock unavailable")
+            transaction = begin_hexbl_transaction(transaction_lock)
+            stage_case = transaction.stage_root
+            stats = write_generic_polymesh(
+                new_points,
+                cell_faces,
+                stage_case,
+                boundary_patch_classifier=_patch_classifier,
+                strict=True,
+            )
+            staged_result = NativeMeshChecker().run(stage_case)
+            stage_poly = transaction.stage_poly
+            stage_points = parse_foam_points_array(stage_poly / "points")
+            stage_faces = [list(face) for face in parse_foam_faces(stage_poly / "faces")]
+            stage_boundary = _boundary_entries_with_types(stage_poly / "boundary")
+            staged_patch_records: dict[
+                tuple[int, ...], list[tuple[tuple[str, str], tuple[int, ...]]]
+            ] = {}
+            for patch in stage_boundary:
+                patch_value = (
+                    str(patch.get("name", "defaultWall")),
+                    str(patch.get("type", "patch")),
+                )
+                start = int(patch["startFace"])
+                for face_index in range(start, start + int(patch["nFaces"])):
+                    staged_face = tuple(int(vertex) for vertex in stage_faces[face_index])
+                    key = tuple(sorted(staged_face))
+                    staged_patch_records.setdefault(key, []).append(
+                        (patch_value, staged_face),
+                    )
+
+            def _same_oriented_cycle(
+                actual: tuple[int, ...], expected: tuple[int, ...],
+            ) -> bool:
+                if len(actual) != len(expected):
+                    return False
+                doubled = actual + actual
+                return any(
+                    doubled[offset : offset + len(expected)] == expected
+                    for offset in range(len(actual))
+                )
+
+            provenance_ok = np.array_equal(
+                stage_points[outer_point_ids], points[source_point_ids],
+            )
+            for source_row, source_face_index in enumerate(quad_faces):
+                outer_key = tuple(
+                    sorted(int(vertex) for vertex in outer_faces[source_row])
+                )
+                records = staged_patch_records.get(outer_key, [])
+                expected_face = tuple(int(vertex) for vertex in outer_faces[source_row])
+                provenance_ok = (
+                    provenance_ok
+                    and len(records) == 1
+                    and records[0][0] == face_patch[source_face_index]
+                    and _same_oriented_cycle(records[0][1], expected_face)
+                )
+            if not provenance_ok:
+                raise HexBLTransactionError("stage provenance failed")
+            if (
+                not bool(staged_result.mesh_ok)
+                or int(staged_result.negative_volumes) != 0
+                or float(staged_result.min_determinant) <= 0.0
+            ):
+                raise HexBLTransactionError(
+                    "stage validity failed:"
+                    f"negative={int(staged_result.negative_volumes)},"
+                    f"min_determinant={float(staged_result.min_determinant):.17g}",
+                )
+            if _polymesh_manifest(poly_dir) != original_manifest:
+                raise HexBLTransactionError("authoritative polyMesh changed during stage")
+            staged_manifest = _polymesh_manifest(stage_poly)
+            original_extras = {
+                path: value for path, value in original_manifest.items()
+                if path.split("/", maxsplit=1)[0] not in _POLYMESH_AUTHORITATIVE_NAMES
+            }
+            staged_extras = {
+                path: value for path, value in staged_manifest.items()
+                if path.split("/", maxsplit=1)[0] not in _POLYMESH_AUTHORITATIVE_NAMES
+            }
+            if staged_extras != original_extras:
+                raise HexBLTransactionError("staged polyMesh extras changed")
+            prepare_hexbl_candidate(transaction_lock, transaction)
+            commit_hexbl_candidate(transaction_lock, transaction)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                if transaction_lock is None:
+                    raise HexBLTransactionError("held transaction lock unavailable")
+                recovery_action = recover_hexbl_transaction(transaction_lock)
+            except HexBLTransactionError as recovery_exc:
+                return (
+                    False,
+                    "native_hex_bl_inward_transaction_failed:"
+                    f"{exc};recovery_failed={recovery_exc}",
+                    0,
+                )
+            return (
+                False,
+                "native_hex_bl_inward_transaction_failed:"
+                f"{exc};recovery={recovery_action}",
+                0,
+            )
+        return (
+            True,
+            "native_hex_bl_inward OK — "
+            f"quads={result.n_wall_quads}, requested_layers={result.n_layers}, "
+            f"actual_layers={result.n_layers}, hexes={result.n_hex_cells}, "
+            f"cells={stats['num_cells']}, provenance_points={len(source_point_ids)}, "
+            f"provenance_faces={len(quad_faces)}, "
+            f"min_signed_volume={min_signed_volume:.17g}, "
+            f"min_corner_jacobian={min_corner_jacobian:.17g}",
+            int(result.n_wall_quads),
+        )
 
     stats = write_generic_polymesh(
         new_points,

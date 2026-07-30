@@ -690,3 +690,36 @@ from the cube baseline; no permanent negative-volume gate was changed.
 Verification: Phase-0 metrics/transition/provenance/realization/wall-fit tests
 `16 passed`; core native-hex regression subset `66 passed`. The existing
 permanent gates and default mixed-level/wall-fit flags are unchanged.
+
+## 2026-07-31 — HEX-BL-FIXED-OUTER-INWARD-SHELL-L0-1
+
+A critic rejected commit `5dedfe79`; it must not be merged alone. Its broad
+closed-all-quad admission, incomplete generic self-intersection dependency,
+and sequential five-file promotion exceeded the evidence.
+
+A second critic rejected commit `4011b195`; it also must not be merged alone.
+Directory-level promotion lacked inter-process ownership, so another invocation
+could treat a live stage as crash residue. The remediated path holds one
+exclusive non-blocking Linux `flock` on the existing `constant` directory inode
+from recovery through validation, commit, and controlled cleanup. Mutating
+transaction APIs require a live same-inode lock proof. Contention changes no
+authoritative or transaction state; process death releases the lock for the
+next invocation's recovery. Directory locking creates no cleanup artifact.
+
+The remediated default-OFF path mechanically admits only one axis-aligned
+rectangular base hex: 1 cell, 8 finite Cartesian corners, 6 selected boundary
+quads/planes, and 12 edges with incidence two. Unit-cube one/three layers and a
+non-unit `2x3x4` box pass with source drift `0`, negative volumes `0`, positive
+signed-volume/corner-Jacobian gates, and exact lineage. The fixed analytic
+limit is `total < 0.90 * 0.5 * minimum_side`; equality/near-collapse, rotated
+box, two-cell input, and partial selection are refused before construction.
+
+Promotion now copies and validates the entire original `polyMesh`, then uses a
+strict UUID marker, same-filesystem file/directory `fsync`, and atomic directory
+renames. Recovery tests cover staging, both rename windows, committed cleanup,
+invalid token/symlink, and ambiguous topology without speculative deletion.
+
+Evidence and literature scope are in
+`hex_fixed_outer_inward_shell_l0_2026-07-31.md`. Decision:
+**EXPERIMENTAL_KEEP, default OFF**. This one-AABB-box result does not promote
+general all-quad/CAD boundary layers or Gate 7.

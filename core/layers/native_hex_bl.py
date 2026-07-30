@@ -42,6 +42,17 @@ class HexBLResult:
     elapsed_s: float
 
 
+@dataclass(frozen=True)
+class HexBLInwardProvenance:
+    """Source-wall to duplicated outer-boundary lineage."""
+
+    source_point_ids: NDArray[np.int64]
+    outer_point_ids: NDArray[np.int64]
+    source_quad_rows: NDArray[np.int64]
+    outer_face_point_ids: NDArray[np.int64]
+    layer_point_ids: NDArray[np.int64]
+
+
 def _layer_thicknesses(
     first_thickness: float, growth_ratio: float, n_layers: int,
 ) -> NDArray[np.float64]:
@@ -172,3 +183,107 @@ def extrude_hex_bl(
         total_thickness=total_t,
         elapsed_s=_t.perf_counter() - t0,
     )
+
+
+def extrude_hex_bl_inward_shell(
+    points: NDArray[np.float64],
+    wall_quads: NDArray[np.int64],
+    vertex_normals: NDArray[np.float64],
+    *,
+    num_layers: int,
+    first_thickness: float,
+    growth_ratio: float = 1.2,
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.int64],
+    HexBLResult,
+    HexBLInwardProvenance,
+]:
+    """Build an inward hex shell while keeping the outer wall exact.
+
+    Original wall point ids become the innermost interface so existing volume
+    cells remain connected.  The authoritative source wall is duplicated at
+    new point ids, with one explicit source-to-outer provenance entry per
+    point and quad.  Inputs are never mutated.
+    """
+    import time as _t
+
+    started = _t.perf_counter()
+    pts = np.asarray(points, dtype=np.float64)
+    quads = np.asarray(wall_quads, dtype=np.int64)
+    normals = np.asarray(vertex_normals, dtype=np.float64)
+    layers = int(num_layers)
+    first = float(first_thickness)
+    growth = float(growth_ratio)
+    if pts.ndim != 2 or pts.shape[1] != 3:
+        raise ValueError(f"points 는 (P,3) 형태여야 함 (got {pts.shape})")
+    if quads.ndim != 2 or quads.shape[1] != 4:
+        raise ValueError(f"wall_quads 는 (Q,4) 형태여야 함 (got {quads.shape})")
+    if normals.shape != pts.shape:
+        raise ValueError(f"vertex_normals 크기 {normals.shape} ≠ points {pts.shape}")
+    if layers < 1 or not np.isfinite(first) or first <= 0.0:
+        raise ValueError("inward shell requires num_layers >= 1 and positive thickness")
+    if not np.isfinite(growth) or growth <= 0.0:
+        raise ValueError("inward shell requires positive finite growth_ratio")
+    if quads.size and (int(quads.min()) < 0 or int(quads.max()) >= len(pts)):
+        raise ValueError("wall_quads point id out of range")
+
+    wall_vertices = np.unique(quads.ravel())
+    wall_count = int(len(wall_vertices))
+    thicknesses = _layer_thicknesses(first, growth, layers)
+    offsets = _cumulative_offsets(thicknesses)
+
+    new_points = pts.copy()
+    if wall_count:
+        new_points[wall_vertices] = pts[wall_vertices] - float(offsets[-1]) * normals[wall_vertices]
+        duplicated_levels = (
+            pts[wall_vertices][None, :, :]
+            - offsets[:layers, None, None] * normals[wall_vertices][None, :, :]
+        )
+        new_points = np.concatenate(
+            (new_points, duplicated_levels.reshape((-1, 3))),
+            axis=0,
+        )
+
+    point_rows = np.full(len(pts), -1, dtype=np.int64)
+    point_rows[wall_vertices] = np.arange(wall_count, dtype=np.int64)
+    quad_rows = point_rows[quads]
+    base_id = int(len(pts))
+    layer_point_ids = np.empty((layers + 1, wall_count), dtype=np.int64)
+    for layer in range(layers):
+        layer_point_ids[layer] = (
+            base_id
+            + layer * wall_count
+            + np.arange(
+                wall_count,
+                dtype=np.int64,
+            )
+        )
+    layer_point_ids[layers] = wall_vertices
+
+    hex_grid = np.empty((len(quads), layers, 8), dtype=np.int64)
+    for output_layer in range(layers):
+        source_layer = layers - 1 - output_layer
+        inner = layer_point_ids[source_layer + 1][quad_rows]
+        outer = layer_point_ids[source_layer][quad_rows]
+        hex_grid[:, output_layer, :4] = inner
+        hex_grid[:, output_layer, 4:] = outer
+    hex_cells = hex_grid.reshape((-1, 8))
+
+    provenance = HexBLInwardProvenance(
+        source_point_ids=wall_vertices.copy(),
+        outer_point_ids=layer_point_ids[0].copy(),
+        source_quad_rows=np.arange(len(quads), dtype=np.int64),
+        outer_face_point_ids=layer_point_ids[0][quad_rows].copy(),
+        layer_point_ids=layer_point_ids.copy(),
+    )
+    result = HexBLResult(
+        n_wall_quads=int(len(quads)),
+        n_wall_verts=wall_count,
+        n_layers=layers,
+        n_hex_cells=int(len(quads) * layers),
+        n_new_points=int(wall_count * layers),
+        total_thickness=float(offsets[-1]),
+        elapsed_s=_t.perf_counter() - started,
+    )
+    return new_points, hex_cells, result, provenance
