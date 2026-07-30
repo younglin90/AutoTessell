@@ -258,6 +258,91 @@ warnings remain.  Invalid degenerate, duplicate, zero-area, inconsistent-edge,
 non-manifold-edge, and non-manifold-vertex fixtures assert exact native/Python
 error parity.
 
+## Quad bulk pair-quality and deterministic-selection card
+
+The accepted `QUAD-PAIR-QUALITY-CPP23-1` card ports the remaining dominant
+quad-pair loop without changing its pairing policy, thresholds, routing, or
+fallback.  The production route was already using the first-party C++ surface
+preflight, but each interior pair still crossed Python/NumPy separately for an
+oriented four-cycle, seven cross products, repeated norm/dot operations, a
+rolled `4 x 3` edge array, quality tuples, candidate tuples, sorting, and
+greedy face consumption.
+
+The frozen pre-card benchmark was a planar `60 x 60` grid: `7,200` triangles,
+`10,680` interior pairs, and `3,600` selected quads.  In the final
+alternating-order run, the Python candidate kernel median was `2.090906 s`
+and the Python-selector public route was `2.294814 s`.  `cProfile` on the
+smaller `1,800`-triangle fixture attributed
+`0.946 / 1.098 s` (`86.2%`) to `_quad_quality`, including `20,280` calls to
+`numpy.cross`.  The declared acceptance limits were `0.422 s` for the bulk
+kernel, `0.98 s` for the public route, and `128` traced Python bytes per input
+pair, with exact topology/order/classification and quality differences no
+larger than `1e-14`.
+
+`native_metrics.select_quad_pairs` consumes exact C-contiguous `float64`
+vertices and `int64` triangle/pair arrays.  It validates finite coordinates,
+index bounds, distinct triangle vertices and face pairs, then releases the GIL.
+Four-point geometry uses stack `std::array` values.  Candidate records are
+reserved contiguous POD storage; accepted candidates are retained by index,
+so no candidate record is copied.  Stable score/face ordering and a contiguous
+byte consumption mask preserve the existing deterministic greedy result.
+Compact NumPy arrays are allocated only after the GIL is reacquired.  The
+Python wrapper validates native output dtype, shape, contiguity, finiteness,
+ranges, ordering, and face-pair provenance without coercion.  A malformed
+present backend fails closed and never falls back silently.
+
+Complexity remains `O(K log K)` time for `K` eligible face pairs and
+`O(F + K + A)` auxiliary space for `F` faces and `A` accepted pairs.  The
+material change is data layout and allocation count: no Python object graph or
+tiny NumPy allocation exists in the inner loop.  On the frozen fixture the
+native kernel median was `0.001536 s` (`1361.13x`) and the complete public
+route was `0.228755 s` (`10.03x`).  Traced Python peak heap changed from
+`6,419,120` to `260,019` bytes (`601.04` to `24.35` bytes per pair, `95.95%`
+reduction).  The run alternated Python/native order while unrelated `-j16`
+SEMO builds and an independent AutoTessell regression were active; all medians
+nevertheless cleared the absolute limits by large margins.  A clean-load Gate
+11 rerun remains pending.  Reproduce with:
+
+```bash
+AUTOTESSELL_EXT_BUILD_DIR=auto_tessell_core/build-triquad-make \
+PYTHONPATH=. python tests/stl/bench_native_quad_pair_quality.py \
+  --size 60 --repeats 7 --trace-memory
+```
+
+The finite-input contract received one explicit safety correction in both
+native and Python implementations.  Coordinates near `1e300` can overflow
+derived cross products even though every input value is finite.  The old loop
+could admit NaN quality and score values into sorting.  Both paths now classify
+any non-finite derived metric/score as `rejected_quality`, preserve the input
+triangles, and emit no non-finite diagnostic.
+
+Research was used only to confirm policy, not to copy implementation.  The
+[Gmsh 4.15.2 manual](https://gmsh.info/doc/texinfo/gmsh.html) describes Blossom
+minimum-cost perfect matching and explicitly permits triangle remainders when
+recombination would create badly shaped quads.  Remacle et al., *Blossom-Quad:
+A non-uniform quadrilateral mesh generator using a minimum-cost perfect-matching
+algorithm*, IJNME 89 (2012), 1102-1119,
+[doi:10.1002/nme.3279](https://doi.org/10.1002/nme.3279), supplied the graph
+matching context.  Its official Wiley abstract was accessible; the full Wiley
+page returned HTTP 403 and the official Gmsh preprint timed out during this
+round.  The First Gmsh Workshop material defines an angle-based eta quad
+quality that vanishes for degenerate angles; its direct GitLab PDF was blocked
+by Anubis, so only indexed text was readable.  No Gmsh, Blossom, or other
+external source code or dependency was used.  This card deliberately retains
+AutoTessell's existing deterministic greedy selector instead of adopting
+Blossom.
+
+Verification reached `L1_PASS`; product promotion remains unclaimed pending a
+clean-load Gate 11 rerun and the full L3 campaign.  The focused public,
+direct-ABI, fallback, nextafter-threshold, malformed-backend, huge-coordinate,
+and pipeline suite reported `51 passed`; the wider native-quad diagnostic,
+surface-remesh, native-default, and policy regression selection reported
+`134 passed`.  Three repeated public runs had identical vertices, triangles,
+quads, ordering, and diagnostics.  Native-disabled topology and classification
+were exact; the largest native/Python quality difference was below `1e-14`.
+The GCC 13 Release C++23 build passed `-Wall -Wextra -Wpedantic -Werror` with
+zero warnings.
+
 ## Tet P4C immutable-source acceptance card
 
 Repeated cube diagnostics localized the source-corner loss to the external

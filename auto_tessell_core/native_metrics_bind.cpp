@@ -18,6 +18,7 @@
 #include <fstream>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -2026,6 +2027,345 @@ py::dict validate_triangle_surface_and_build_edge_faces(
     return result;
 }
 
+struct QuadPairCandidate {
+    double score;
+    std::array<long long, 2> face_pair;
+    std::array<long long, 4> quad;
+    std::array<double, 3> quality;
+};
+
+[[nodiscard]] Point3 scale(const Point3& value, const double factor) noexcept
+{
+    return {value[0] * factor, value[1] * factor, value[2] * factor};
+}
+
+[[nodiscard]] Point3 add(const Point3& left, const Point3& right) noexcept
+{
+    return {left[0] + right[0], left[1] + right[1], left[2] + right[2]};
+}
+
+[[nodiscard]] double dot_product(
+    const Point3& left, const Point3& right) noexcept
+{
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+[[nodiscard]] std::optional<std::array<long long, 4>> oriented_quad(
+    const std::array<long long, 3>& first,
+    const std::array<long long, 3>& second) noexcept
+{
+    std::array<long long, 2> shared{};
+    size_t shared_count = 0;
+    for (const long long first_vertex : first) {
+        if (std::find(second.begin(), second.end(), first_vertex) == second.end()) {
+            continue;
+        }
+        if (shared_count == shared.size()) {
+            return std::nullopt;
+        }
+        shared[shared_count++] = first_vertex;
+    }
+    if (shared_count != shared.size()) {
+        return std::nullopt;
+    }
+
+    constexpr std::array<size_t, 3> next{{1, 2, 0}};
+    constexpr std::array<size_t, 3> opposite{{2, 0, 1}};
+    for (size_t local = 0; local < first.size(); ++local) {
+        const long long edge_start = first[local];
+        const long long edge_end = first[next[local]];
+        const bool is_shared_edge =
+            (edge_start == shared[0] && edge_end == shared[1])
+            || (edge_start == shared[1] && edge_end == shared[0]);
+        if (!is_shared_edge) {
+            continue;
+        }
+        const auto second_opposite = std::find_if(
+            second.begin(), second.end(), [&](const long long vertex) {
+                return vertex != shared[0] && vertex != shared[1];
+            });
+        if (second_opposite == second.end()) {
+            return std::nullopt;
+        }
+        return std::array<long long, 4>{
+            first[opposite[local]], edge_start, *second_opposite, edge_end};
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::array<double, 3>> quad_quality(
+    const std::array<Point3, 4>& points) noexcept
+{
+    const Point3 first_edge = sub(points[1], points[0]);
+    const Point3 first_diagonal = sub(points[2], points[0]);
+    const Point3 second_diagonal = sub(points[3], points[0]);
+    const Point3 normal = add(
+        cross(first_edge, first_diagonal),
+        cross(first_diagonal, second_diagonal));
+    const double normal_length = norm3(normal);
+    if (normal_length <= 1e-30) {
+        return std::nullopt;
+    }
+    const Point3 unit_normal = scale(normal, 1.0 / normal_length);
+
+    std::array<double, 4> lengths{};
+    constexpr std::array<size_t, 4> next{{1, 2, 3, 0}};
+    constexpr std::array<size_t, 4> previous{{3, 0, 1, 2}};
+    for (size_t corner = 0; corner < points.size(); ++corner) {
+        lengths[corner] = norm3(sub(points[next[corner]], points[corner]));
+    }
+    const auto [minimum_length, maximum_length] =
+        std::minmax_element(lengths.begin(), lengths.end());
+    if (*minimum_length <= 1e-30) {
+        return std::nullopt;
+    }
+
+    std::array<double, 4> scaled_jacobians{};
+    for (size_t corner = 0; corner < points.size(); ++corner) {
+        const Point3 next_edge = sub(points[next[corner]], points[corner]);
+        const Point3 previous_edge = sub(
+            points[previous[corner]], points[corner]);
+        const double denominator = norm3(next_edge) * norm3(previous_edge);
+        const double value = dot_product(
+            cross(next_edge, previous_edge), unit_normal)
+            / denominator;
+        if (value <= 1e-12) {
+            return std::nullopt;
+        }
+        scaled_jacobians[corner] = value;
+    }
+
+    const Point3 plane_normal = cross(first_edge, first_diagonal);
+    const double plane_length = norm3(plane_normal);
+    if (plane_length <= 1e-30) {
+        return std::nullopt;
+    }
+    const double warpage = std::abs(
+        dot_product(second_diagonal, scale(plane_normal, 1.0 / plane_length)))
+        / *maximum_length;
+    return std::array<double, 3>{
+        *std::min_element(scaled_jacobians.begin(), scaled_jacobians.end()),
+        *maximum_length / *minimum_length,
+        warpage,
+    };
+}
+
+py::dict select_quad_pairs(
+    const py::array_t<double, py::array::c_style>& vertices_array,
+    const py::array_t<long long, py::array::c_style>& triangles_array,
+    const py::array_t<long long, py::array::c_style>& face_pairs_array,
+    const double minimum_scaled_jacobian,
+    const double maximum_aspect_ratio,
+    const double maximum_warpage)
+{
+    if (vertices_array.ndim() != 2 || vertices_array.shape(1) != 3) {
+        throw std::invalid_argument(
+            "vertices must be a C-contiguous float64 array with shape (N, 3)");
+    }
+    if (triangles_array.ndim() != 2 || triangles_array.shape(1) != 3) {
+        throw std::invalid_argument(
+            "triangles must be a C-contiguous int64 array with shape (M, 3)");
+    }
+    if (face_pairs_array.ndim() != 2 || face_pairs_array.shape(1) != 2) {
+        throw std::invalid_argument(
+            "face_pairs must be a C-contiguous int64 array with shape (K, 2)");
+    }
+    if (!std::isfinite(minimum_scaled_jacobian)
+        || minimum_scaled_jacobian <= 0.0
+        || minimum_scaled_jacobian > 1.0) {
+        throw std::invalid_argument(
+            "minimum_scaled_jacobian must be finite and in (0, 1]");
+    }
+    if (!std::isfinite(maximum_aspect_ratio)
+        || maximum_aspect_ratio < 1.0) {
+        throw std::invalid_argument(
+            "maximum_aspect_ratio must be finite and at least 1");
+    }
+    if (!std::isfinite(maximum_warpage)
+        || maximum_warpage < 0.0
+        || maximum_warpage > 1.0) {
+        throw std::invalid_argument(
+            "maximum_warpage must be finite and in [0, 1]");
+    }
+
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto triangles = triangles_array.unchecked<2>();
+    const auto face_pairs = face_pairs_array.unchecked<2>();
+    const size_t vertex_count = static_cast<size_t>(vertices.shape(0));
+    const size_t face_count = static_cast<size_t>(triangles.shape(0));
+    const size_t pair_count = static_cast<size_t>(face_pairs.shape(0));
+    std::vector<QuadPairCandidate> candidates;
+    candidates.reserve(pair_count);
+    std::vector<size_t> accepted_indices;
+    accepted_indices.reserve(std::min(pair_count, face_count / 2U));
+    long long rejected_quality = 0;
+
+    {
+        py::gil_scoped_release release;
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            for (size_t axis = 0; axis < 3; ++axis) {
+                if (!std::isfinite(vertices(
+                        static_cast<py::ssize_t>(vertex),
+                        static_cast<py::ssize_t>(axis)))) {
+                    throw std::invalid_argument("vertices must contain only finite values");
+                }
+            }
+        }
+
+        for (size_t face = 0; face < face_count; ++face) {
+            std::array<long long, 3> triangle{};
+            for (size_t local = 0; local < triangle.size(); ++local) {
+                const long long vertex = triangles(
+                    static_cast<py::ssize_t>(face),
+                    static_cast<py::ssize_t>(local));
+                if (vertex < 0 || vertex >= static_cast<long long>(vertex_count)) {
+                    throw std::invalid_argument(
+                        "triangles contain an invalid vertex index");
+                }
+                triangle[local] = vertex;
+            }
+            std::sort(triangle.begin(), triangle.end());
+            if (std::adjacent_find(triangle.begin(), triangle.end())
+                != triangle.end()) {
+                throw std::invalid_argument(
+                    "triangles must contain three distinct vertex indices");
+            }
+        }
+
+        std::unordered_set<std::array<long long, 2>, FixedIndexHash<2>> unique_pairs;
+        unique_pairs.reserve(pair_count);
+        for (size_t pair_index = 0; pair_index < pair_count; ++pair_index) {
+            std::array<long long, 2> pair{
+                face_pairs(static_cast<py::ssize_t>(pair_index), 0),
+                face_pairs(static_cast<py::ssize_t>(pair_index), 1),
+            };
+            if (pair[0] < 0 || pair[1] < 0
+                || pair[0] >= static_cast<long long>(face_count)
+                || pair[1] >= static_cast<long long>(face_count)) {
+                throw std::invalid_argument(
+                    "face_pairs contain an invalid triangle index");
+            }
+            if (pair[0] == pair[1]) {
+                throw std::invalid_argument(
+                    "face_pairs must contain two distinct triangle indices");
+            }
+            if (pair[1] < pair[0]) {
+                std::swap(pair[0], pair[1]);
+            }
+            if (!unique_pairs.insert(pair).second) {
+                throw std::invalid_argument("face_pairs contain a duplicate pair");
+            }
+
+            std::array<long long, 3> first{};
+            std::array<long long, 3> second{};
+            for (size_t local = 0; local < first.size(); ++local) {
+                first[local] = triangles(
+                    static_cast<py::ssize_t>(pair[0]),
+                    static_cast<py::ssize_t>(local));
+                second[local] = triangles(
+                    static_cast<py::ssize_t>(pair[1]),
+                    static_cast<py::ssize_t>(local));
+            }
+            const auto quad = oriented_quad(first, second);
+            if (!quad.has_value()) {
+                ++rejected_quality;
+                continue;
+            }
+            std::array<Point3, 4> points{};
+            for (size_t corner = 0; corner < quad->size(); ++corner) {
+                const auto vertex = static_cast<py::ssize_t>((*quad)[corner]);
+                points[corner] = {
+                    vertices(vertex, 0),
+                    vertices(vertex, 1),
+                    vertices(vertex, 2),
+                };
+            }
+            const auto quality = quad_quality(points);
+            if (!quality.has_value()
+                || !std::isfinite((*quality)[0])
+                || !std::isfinite((*quality)[1])
+                || !std::isfinite((*quality)[2])
+                || (*quality)[0] < minimum_scaled_jacobian
+                || (*quality)[1] > maximum_aspect_ratio
+                || (*quality)[2] > maximum_warpage) {
+                ++rejected_quality;
+                continue;
+            }
+            const double score = (*quality)[0] - (*quality)[2];
+            if (!std::isfinite(score)) {
+                ++rejected_quality;
+                continue;
+            }
+            candidates.push_back(QuadPairCandidate{
+                score, pair, *quad, *quality});
+        }
+
+        std::stable_sort(
+            candidates.begin(), candidates.end(),
+            [](const QuadPairCandidate& left, const QuadPairCandidate& right) {
+                if (left.score != right.score) {
+                    return left.score > right.score;
+                }
+                if (left.face_pair[0] != right.face_pair[0]) {
+                    return left.face_pair[0] < right.face_pair[0];
+                }
+                return left.face_pair[1] < right.face_pair[1];
+            });
+        std::vector<unsigned char> consumed(face_count, 0U);
+        for (size_t candidate_index = 0;
+             candidate_index < candidates.size(); ++candidate_index) {
+            const auto& candidate = candidates[candidate_index];
+            const size_t first = static_cast<size_t>(candidate.face_pair[0]);
+            const size_t second = static_cast<size_t>(candidate.face_pair[1]);
+            if (consumed[first] != 0U || consumed[second] != 0U) {
+                continue;
+            }
+            consumed[first] = 1U;
+            consumed[second] = 1U;
+            accepted_indices.push_back(candidate_index);
+        }
+        std::sort(
+            accepted_indices.begin(), accepted_indices.end(),
+            [&](const size_t left_index, const size_t right_index) {
+                const auto& left = candidates[left_index];
+                const auto& right = candidates[right_index];
+                if (left.face_pair[0] != right.face_pair[0]) {
+                    return left.face_pair[0] < right.face_pair[0];
+                }
+                return left.face_pair[1] < right.face_pair[1];
+            });
+    }
+
+    const auto accepted_count = static_cast<py::ssize_t>(accepted_indices.size());
+    py::array_t<long long> accepted_pairs({accepted_count, py::ssize_t{2}});
+    py::array_t<long long> quads({accepted_count, py::ssize_t{4}});
+    py::array_t<double> quality({accepted_count, py::ssize_t{3}});
+    auto accepted_pairs_out = accepted_pairs.mutable_unchecked<2>();
+    auto quads_out = quads.mutable_unchecked<2>();
+    auto quality_out = quality.mutable_unchecked<2>();
+    for (py::ssize_t index = 0; index < accepted_count; ++index) {
+        const auto& candidate = candidates[
+            accepted_indices[static_cast<size_t>(index)]];
+        for (py::ssize_t local = 0; local < 2; ++local) {
+            accepted_pairs_out(index, local) =
+                candidate.face_pair[static_cast<size_t>(local)];
+        }
+        for (py::ssize_t local = 0; local < 4; ++local) {
+            quads_out(index, local) = candidate.quad[static_cast<size_t>(local)];
+        }
+        for (py::ssize_t metric = 0; metric < 3; ++metric) {
+            quality_out(index, metric) =
+                candidate.quality[static_cast<size_t>(metric)];
+        }
+    }
+    py::dict result;
+    result["accepted_face_pairs"] = std::move(accepted_pairs);
+    result["quads"] = std::move(quads);
+    result["quality"] = std::move(quality);
+    result["rejected_quality"] = rejected_quality;
+    return result;
+}
+
 [[nodiscard]] double dot(const Point3& left, const Point3& right) noexcept
 {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
@@ -2603,6 +2943,12 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("validate_triangle_surface_and_build_edge_faces",
           &validate_triangle_surface_and_build_edge_faces,
           py::arg("vertices"), py::arg("triangles"));
+    m.def("select_quad_pairs", &select_quad_pairs,
+          py::arg("vertices").noconvert(),
+          py::arg("triangles").noconvert(),
+          py::arg("face_pairs").noconvert(),
+          py::arg("minimum_scaled_jacobian"),
+          py::arg("maximum_aspect_ratio"), py::arg("maximum_warpage"));
     m.def("aabb_overlap_pairs", &aabb_overlap_pairs,
           py::arg("aabb_min"), py::arg("aabb_max"),
           py::arg("epsilon") = 1e-12);

@@ -292,6 +292,145 @@ def _quad_quality(points: np.ndarray) -> tuple[float, float, float] | None:
     return min(scaled), float(lengths.max() / lengths.min()), warpage
 
 
+def _select_quad_pairs_python(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    face_pairs: np.ndarray,
+    *,
+    min_scaled_jacobian: float,
+    max_aspect_ratio: float,
+    max_warpage: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Reference pair-quality, ordering, and greedy-selection implementation."""
+    candidates: list[tuple[float, int, int, np.ndarray, tuple[float, float, float]]] = []
+    rejected_quality = 0
+    for first_raw, second_raw in face_pairs:
+        first, second = sorted((int(first_raw), int(second_raw)))
+        quad = _oriented_quad(triangles[first], triangles[second])
+        if quad is None:
+            rejected_quality += 1
+            continue
+        quality = _quad_quality(vertices[quad])
+        if quality is None or not np.isfinite(quality).all():
+            rejected_quality += 1
+            continue
+        scaled_jacobian, aspect_ratio, warpage = quality
+        if (
+            scaled_jacobian < min_scaled_jacobian
+            or aspect_ratio > max_aspect_ratio
+            or warpage > max_warpage
+        ):
+            rejected_quality += 1
+            continue
+        score = scaled_jacobian - warpage
+        if not np.isfinite(score):
+            rejected_quality += 1
+            continue
+        candidates.append((score, first, second, quad, quality))
+
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+    consumed: set[int] = set()
+    accepted: list[tuple[int, int, np.ndarray, tuple[float, float, float]]] = []
+    for _, first, second, quad, quality in candidates:
+        if first not in consumed and second not in consumed:
+            consumed.update((first, second))
+            accepted.append((first, second, quad, quality))
+    accepted.sort(key=lambda item: (item[0], item[1]))
+    accepted_pairs = np.asarray([(item[0], item[1]) for item in accepted], dtype=np.int64).reshape(
+        (-1, 2)
+    )
+    quads = np.asarray([item[2] for item in accepted], dtype=np.int64).reshape((-1, 4))
+    quality = np.asarray([item[3] for item in accepted], dtype=np.float64).reshape((-1, 3))
+    return accepted_pairs, quads, quality, rejected_quality
+
+
+def _select_quad_pairs(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    face_pairs: np.ndarray,
+    *,
+    min_scaled_jacobian: float,
+    max_aspect_ratio: float,
+    max_warpage: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Use the allocation-bounded native selector when its ABI is available."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "select_quad_pairs"):
+        return _select_quad_pairs_python(
+            vertices,
+            triangles,
+            face_pairs,
+            min_scaled_jacobian=min_scaled_jacobian,
+            max_aspect_ratio=max_aspect_ratio,
+            max_warpage=max_warpage,
+        )
+    result = native.select_quad_pairs(
+        vertices,
+        triangles,
+        face_pairs,
+        min_scaled_jacobian,
+        max_aspect_ratio,
+        max_warpage,
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError("native select_quad_pairs returned a non-dict result")
+
+    def exact_array(name: str, dtype: np.dtype[np.generic], columns: int) -> np.ndarray:
+        value = result.get(name)
+        if (
+            not isinstance(value, np.ndarray)
+            or value.dtype != dtype
+            or value.ndim != 2
+            or value.shape[1] != columns
+            or not value.flags.c_contiguous
+        ):
+            raise RuntimeError(f"native select_quad_pairs returned invalid {name} array")
+        return value
+
+    accepted_pairs = exact_array("accepted_face_pairs", np.dtype(np.int64), 2)
+    quads = exact_array("quads", np.dtype(np.int64), 4)
+    quality = exact_array("quality", np.dtype(np.float64), 3)
+    accepted_count = len(accepted_pairs)
+    if len(quads) != accepted_count or len(quality) != accepted_count:
+        raise RuntimeError("native select_quad_pairs returned inconsistent row counts")
+    if quality.size and not np.isfinite(quality).all():
+        raise RuntimeError("native select_quad_pairs returned non-finite quality")
+    if quality.size and (
+        (quality[:, 0] < min_scaled_jacobian).any()
+        or (quality[:, 0] > 1.0 + 1e-14).any()
+        or (quality[:, 1] < 1.0 - 1e-14).any()
+        or (quality[:, 1] > max_aspect_ratio).any()
+        or (quality[:, 2] < 0.0).any()
+        or (quality[:, 2] > max_warpage).any()
+    ):
+        raise RuntimeError("native select_quad_pairs returned out-of-range quality")
+    if accepted_pairs.size and (accepted_pairs.min() < 0 or accepted_pairs.max() >= len(triangles)):
+        raise RuntimeError("native select_quad_pairs returned an invalid face index")
+    if quads.size and (quads.min() < 0 or quads.max() >= len(vertices)):
+        raise RuntimeError("native select_quad_pairs returned an invalid vertex index")
+    if any(len(set(map(int, row))) != 2 for row in accepted_pairs):
+        raise RuntimeError("native select_quad_pairs returned a repeated face index")
+    if any(len(set(map(int, row))) != 4 for row in quads):
+        raise RuntimeError("native select_quad_pairs returned a repeated quad vertex")
+    supplied_pairs = {tuple(sorted((int(pair[0]), int(pair[1])))) for pair in face_pairs}
+    returned_pairs = [tuple(map(int, pair)) for pair in accepted_pairs]
+    if any(
+        pair[0] >= pair[1] or pair not in supplied_pairs for pair in returned_pairs
+    ) or returned_pairs != sorted(set(returned_pairs)):
+        raise RuntimeError("native select_quad_pairs returned invalid face-pair provenance")
+    rejected_quality = result.get("rejected_quality")
+    if (
+        isinstance(rejected_quality, (bool, np.bool_))
+        or not isinstance(rejected_quality, Integral)
+        or int(rejected_quality) < 0
+        or int(rejected_quality) > len(face_pairs)
+    ):
+        raise RuntimeError("native select_quad_pairs returned invalid rejected_quality")
+    return accepted_pairs, quads, quality, int(rejected_quality)
+
+
 def native_quad_dominant_remesh(
     vertices: np.ndarray,
     triangles: np.ndarray,
@@ -323,7 +462,7 @@ def native_quad_dominant_remesh(
     diagnostics.protected_feature_edges = len(feature_edges)
     diagnostics.protected_wall_edges = len(wall_edges)
 
-    candidates: list[tuple[float, int, int, np.ndarray, tuple[float, float, float]]] = []
+    unprotected_face_pairs: list[tuple[int, int]] = []
     for edge, incident in edge_faces.items():
         if len(incident) != 2:
             continue
@@ -332,39 +471,26 @@ def native_quad_dominant_remesh(
             diagnostics.rejected_protected += 1
             continue
         first, second = sorted(incident)
-        quad = _oriented_quad(input_triangles[first], input_triangles[second])
-        quality = _quad_quality(output_vertices[quad]) if quad is not None else None
-        if quality is None:
-            diagnostics.rejected_quality += 1
-            continue
-        scaled_jacobian, aspect_ratio, warpage = quality
-        if (
-            scaled_jacobian < settings.min_scaled_jacobian
-            or aspect_ratio > settings.max_aspect_ratio
-            or warpage > settings.max_warpage
-        ):
-            diagnostics.rejected_quality += 1
-            continue
-        candidates.append((scaled_jacobian - warpage, first, second, quad, quality))
-
-    candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
-    consumed: set[int] = set()
-    accepted: list[tuple[int, int, np.ndarray, tuple[float, float, float]]] = []
-    for _, first, second, quad, quality in candidates:
-        if first not in consumed and second not in consumed:
-            consumed.update((first, second))
-            accepted.append((first, second, quad, quality))
-    accepted.sort(key=lambda item: (item[0], item[1]))
-    output_quads = np.array([item[2] for item in accepted], dtype=np.int64).reshape((-1, 4))
+        unprotected_face_pairs.append((first, second))
+    face_pairs = np.asarray(unprotected_face_pairs, dtype=np.int64).reshape((-1, 2))
+    accepted_pairs, output_quads, qualities, rejected_quality = _select_quad_pairs(
+        output_vertices,
+        input_triangles,
+        face_pairs,
+        min_scaled_jacobian=settings.min_scaled_jacobian,
+        max_aspect_ratio=settings.max_aspect_ratio,
+        max_warpage=settings.max_warpage,
+    )
+    diagnostics.rejected_quality = rejected_quality
+    consumed = set(accepted_pairs.reshape(-1).tolist())
     output_triangles = np.array(
         [triangle for index, triangle in enumerate(input_triangles) if index not in consumed],
         dtype=np.int64,
     ).reshape((-1, 3))
-    diagnostics.accepted_pairs = len(accepted)
+    diagnostics.accepted_pairs = len(accepted_pairs)
     diagnostics.output_quads = int(len(output_quads))
     diagnostics.output_triangles = int(len(output_triangles))
-    if accepted:
-        qualities = np.asarray([item[3] for item in accepted], dtype=np.float64)
+    if len(accepted_pairs):
         diagnostics.min_quad_scaled_jacobian = float(qualities[:, 0].min())
         diagnostics.max_quad_aspect_ratio = float(qualities[:, 1].max())
         diagnostics.max_quad_warpage = float(qualities[:, 2].max())
