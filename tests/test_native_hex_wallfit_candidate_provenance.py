@@ -103,7 +103,9 @@ def test_wallfit_records_unique_authoritative_source_entity(
 
     report = cast(dict[str, Any], stats["candidate_quality"])
     assert np.array_equal(baseline, points)
-    assert baseline_stats["n_snapped"] == stats["n_snapped"]
+    assert baseline_stats == {
+        key: value for key, value in stats.items() if key != "candidate_quality"
+    }
     assert report["n_candidates"] > 0
     assert report["n_source_provenance_authoritative"] > 0
     assert report["n_source_provenance_unavailable"] == 0
@@ -215,7 +217,9 @@ def test_stock_input_report_only_diagnostic_is_byte_identical_and_unavailable(
 
     report = cast(dict[str, Any], diagnostic_stats["candidate_quality"])
     assert np.array_equal(baseline, diagnostic)
-    assert baseline_stats["n_snapped"] == diagnostic_stats["n_snapped"]
+    assert baseline_stats == {
+        key: value for key, value in diagnostic_stats.items() if key != "candidate_quality"
+    }
     assert report["n_candidates"] > 0
     assert report["n_source_provenance_authoritative"] == 0
     assert report["n_source_provenance_ambiguous"] == 0
