@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import sys
 from fractions import Fraction
 from itertools import permutations
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-_BUILD = Path(__file__).resolve().parents[1] / "auto_tessell_core" / "build"
-
 
 def _module_or_skip():
-    if str(_BUILD) not in sys.path:
-        sys.path.insert(0, str(_BUILD))
-    return pytest.importorskip("native_tet_predicates")
+    from core.utils.native_extensions import load_native_tet_predicates
+
+    module = load_native_tet_predicates()
+    if module is None:
+        pytest.skip("native_tet_predicates extension is unavailable")
+    return module
 
 
 def _orient3d_double(points: np.ndarray) -> np.ndarray:
