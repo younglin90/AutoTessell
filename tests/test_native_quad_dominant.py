@@ -219,12 +219,24 @@ def test_invalid_topology_is_rejected_before_quad_pairing(
     vertices: np.ndarray,
     triangles: np.ndarray,
     message: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with pytest.raises(ValueError, match=message):
+    from core.utils import native_extensions
+
+    errors: list[str] = []
+    with pytest.raises(ValueError, match=message) as native_error:
         native_quad_dominant_remesh(vertices, triangles)
+    errors.append(str(native_error.value))
+    monkeypatch.setattr(native_extensions, "load_native_metrics", lambda: None)
+    with pytest.raises(ValueError, match=message) as python_error:
+        native_quad_dominant_remesh(vertices, triangles)
+    errors.append(str(python_error.value))
+    assert errors[0] == errors[1]
 
 
-def test_vertex_link_non_manifold_input_fails_closed_without_mutation() -> None:
+def test_vertex_link_non_manifold_input_fails_closed_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Two fans at one vertex cannot be emitted as a source-topology-preserving mesh."""
     vertices = np.array(
         [
@@ -242,7 +254,11 @@ def test_vertex_link_non_manifold_input_fails_closed_without_mutation() -> None:
     triangles_before = triangles.copy()
     errors: list[str] = []
 
-    for _ in range(2):
+    from core.utils import native_extensions
+
+    for attempt in range(2):
+        if attempt == 1:
+            monkeypatch.setattr(native_extensions, "load_native_metrics", lambda: None)
         with pytest.raises(ValueError) as caught:
             native_quad_dominant_remesh(vertices, triangles)
         errors.append(str(caught.value))

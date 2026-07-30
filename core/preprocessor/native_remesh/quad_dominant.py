@@ -142,7 +142,10 @@ def _validate_vertex_links(triangles: NDArray[np.int64]) -> None:
             raise ValueError(f"surface contains non-manifold vertex {vertex}")
 
 
-def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
+def _validate_input(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+) -> dict[tuple[int, int], list[int]]:
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         raise ValueError("vertices must have shape (N, 3)")
     if triangles.ndim != 2 or triangles.shape[1] != 3:
@@ -151,9 +154,22 @@ def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
         raise ValueError("surface contains non-finite vertices")
     if (triangles < 0).any() or (triangles >= len(vertices)).any():
         raise ValueError("triangle indices are outside the input vertex range")
+
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is not None and hasattr(
+        native, "validate_triangle_surface_and_build_edge_faces"
+    ):
+        return native.validate_triangle_surface_and_build_edge_faces(
+            vertices,
+            triangles,
+        )
+
     seen_faces: set[tuple[int, int, int]] = set()
     edge_directions: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for triangle in triangles:
+    edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for face_index, triangle in enumerate(triangles):
         first, second, third = (int(vertex) for vertex in triangle)
         face_key = tuple(sorted((first, second, third)))
         if len(set(face_key)) != 3:
@@ -167,12 +183,14 @@ def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
         for start, end in ((first, second), (second, third), (third, first)):
             edge = _edge_key(start, end)
             edge_directions[edge].append(1 if (start, end) == edge else -1)
+            edge_faces[edge].append(face_index)
     for edge, directions in edge_directions.items():
         if len(directions) > 2:
             raise ValueError(f"surface contains non-manifold edge {edge}")
         if len(directions) == 2 and directions[0] == directions[1]:
             raise ValueError(f"surface contains inconsistent orientation at edge {edge}")
     _validate_vertex_links(triangles)
+    return dict(edge_faces)
 
 
 def _edge_faces(triangles: np.ndarray) -> dict[tuple[int, int], list[int]]:
@@ -284,9 +302,8 @@ def native_quad_dominant_remesh(
     settings = config or QuadDominantConfig()
     input_triangles = _decode_triangle_indices(triangles)
     output_vertices = np.asarray(vertices, dtype=np.float64).copy()
-    _validate_input(output_vertices, input_triangles)
+    edge_faces = _validate_input(output_vertices, input_triangles)
     diagnostics = QuadDominantDiagnostics(input_triangles=int(len(input_triangles)))
-    edge_faces = _edge_faces(input_triangles)
     wall_edges = _validated_wall_edges(settings.protected_wall_edges, edge_faces)
     if not len(input_triangles):
         diagnostics.fallback_reason = "empty_input"

@@ -1750,6 +1750,195 @@ py::array_t<long long> copy_index_vector(const std::vector<long long>& values)
     return result;
 }
 
+template <size_t Size>
+struct FixedIndexHash {
+    size_t operator()(const std::array<long long, Size>& values) const noexcept
+    {
+        size_t seed = Size;
+        for (const long long value : values) {
+            seed ^= std::hash<long long>{}(value) + 0x9e3779b97f4a7c15ULL
+                + (seed << 6U) + (seed >> 2U);
+        }
+        return seed;
+    }
+};
+
+struct TriangleEdgeIncidence {
+    std::array<long long, 2> key;
+    std::vector<long long> face_indices;
+    std::vector<signed char> directions;
+};
+
+py::dict validate_triangle_surface_and_build_edge_faces(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& vertices_array,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& triangles_array)
+{
+    if (vertices_array.ndim() != 2 || vertices_array.shape(1) != 3) {
+        throw std::invalid_argument("vertices must have shape (N, 3)");
+    }
+    if (triangles_array.ndim() != 2 || triangles_array.shape(1) != 3) {
+        throw std::invalid_argument("triangles must have shape (M, 3)");
+    }
+
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto triangles = triangles_array.unchecked<2>();
+    const size_t vertex_count = static_cast<size_t>(vertices.shape(0));
+    const size_t face_count = static_cast<size_t>(triangles.shape(0));
+    std::vector<TriangleEdgeIncidence> edge_buckets;
+    edge_buckets.reserve(face_count * 3U / 2U + 1U);
+    std::unordered_map<
+        std::array<long long, 2>, size_t, FixedIndexHash<2>> edge_indices;
+    edge_indices.reserve(face_count * 3U / 2U + 1U);
+    std::unordered_set<std::array<long long, 3>, FixedIndexHash<3>> unique_faces;
+    unique_faces.reserve(face_count);
+    std::vector<std::vector<std::array<long long, 2>>> vertex_link_edges(vertex_count);
+    constexpr std::array<std::array<size_t, 2>, 3> local_edges{{
+        {{0, 1}}, {{1, 2}}, {{2, 0}},
+    }};
+
+    {
+        py::gil_scoped_release release;
+
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            for (size_t coordinate = 0; coordinate < 3; ++coordinate) {
+                if (!std::isfinite(vertices(
+                        static_cast<py::ssize_t>(vertex),
+                        static_cast<py::ssize_t>(coordinate)))) {
+                    throw std::invalid_argument("surface contains non-finite vertices");
+                }
+            }
+        }
+        for (size_t face = 0; face < face_count; ++face) {
+            for (size_t local = 0; local < 3; ++local) {
+                const long long vertex = triangles(
+                    static_cast<py::ssize_t>(face),
+                    static_cast<py::ssize_t>(local));
+                if (vertex < 0 || vertex >= static_cast<long long>(vertex_count)) {
+                    throw std::invalid_argument(
+                        "triangle indices are outside the input vertex range");
+                }
+            }
+        }
+
+        for (size_t face_index = 0; face_index < face_count; ++face_index) {
+            std::array<long long, 3> triangle{
+                triangles(static_cast<py::ssize_t>(face_index), 0),
+                triangles(static_cast<py::ssize_t>(face_index), 1),
+                triangles(static_cast<py::ssize_t>(face_index), 2),
+            };
+            std::array<long long, 3> face_key = triangle;
+            std::sort(face_key.begin(), face_key.end());
+            if (std::adjacent_find(face_key.begin(), face_key.end())
+                != face_key.end()) {
+                throw std::invalid_argument("surface contains a degenerate triangle");
+            }
+            if (!unique_faces.insert(face_key).second) {
+                throw std::invalid_argument("surface contains a duplicate triangle");
+            }
+
+            const auto coordinate = [&](const size_t local, const size_t axis) {
+                return vertices(
+                    static_cast<py::ssize_t>(triangle[local]),
+                    static_cast<py::ssize_t>(axis));
+            };
+            const double ax = coordinate(1, 0) - coordinate(0, 0);
+            const double ay = coordinate(1, 1) - coordinate(0, 1);
+            const double az = coordinate(1, 2) - coordinate(0, 2);
+            const double bx = coordinate(2, 0) - coordinate(0, 0);
+            const double by = coordinate(2, 1) - coordinate(0, 1);
+            const double bz = coordinate(2, 2) - coordinate(0, 2);
+            const double cx = ay * bz - az * by;
+            const double cy = az * bx - ax * bz;
+            const double cz = ax * by - ay * bx;
+            if (std::sqrt(cx * cx + cy * cy + cz * cz) <= 1e-30) {
+                throw std::invalid_argument("surface contains a zero-area triangle");
+            }
+
+            for (const auto& local_edge : local_edges) {
+                const long long start = triangle[local_edge[0]];
+                const long long end = triangle[local_edge[1]];
+                std::array<long long, 2> key{start, end};
+                signed char direction = 1;
+                if (key[1] < key[0]) {
+                    std::swap(key[0], key[1]);
+                    direction = -1;
+                }
+                const auto [position, inserted] = edge_indices.emplace(
+                    key, edge_buckets.size());
+                if (inserted) {
+                    edge_buckets.push_back(TriangleEdgeIncidence{key, {}, {}});
+                }
+                auto& bucket = edge_buckets[position->second];
+                bucket.face_indices.push_back(static_cast<long long>(face_index));
+                bucket.directions.push_back(direction);
+            }
+
+            vertex_link_edges[static_cast<size_t>(triangle[0])].push_back(
+                {triangle[1], triangle[2]});
+            vertex_link_edges[static_cast<size_t>(triangle[1])].push_back(
+                {triangle[2], triangle[0]});
+            vertex_link_edges[static_cast<size_t>(triangle[2])].push_back(
+                {triangle[0], triangle[1]});
+        }
+
+        for (const auto& bucket : edge_buckets) {
+            if (bucket.directions.size() > 2) {
+                throw std::invalid_argument(
+                    "surface contains non-manifold edge ("
+                    + std::to_string(bucket.key[0]) + ", "
+                    + std::to_string(bucket.key[1]) + ")");
+            }
+            if (bucket.directions.size() == 2
+                && bucket.directions[0] == bucket.directions[1]) {
+                throw std::invalid_argument(
+                    "surface contains inconsistent orientation at edge ("
+                    + std::to_string(bucket.key[0]) + ", "
+                    + std::to_string(bucket.key[1]) + ")");
+            }
+        }
+
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            const auto& link_edges = vertex_link_edges[vertex];
+            if (link_edges.empty()) {
+                continue;
+            }
+            std::unordered_map<long long, std::vector<long long>> adjacency;
+            adjacency.reserve(link_edges.size() * 2U);
+            for (const auto& edge : link_edges) {
+                adjacency[edge[0]].push_back(edge[1]);
+                adjacency[edge[1]].push_back(edge[0]);
+            }
+            std::vector<long long> pending{adjacency.begin()->first};
+            std::unordered_set<long long> visited;
+            visited.reserve(adjacency.size());
+            while (!pending.empty()) {
+                const long long neighbour = pending.back();
+                pending.pop_back();
+                if (!visited.insert(neighbour).second) {
+                    continue;
+                }
+                const auto position = adjacency.find(neighbour);
+                if (position != adjacency.end()) {
+                    pending.insert(
+                        pending.end(), position->second.begin(), position->second.end());
+                }
+            }
+            if (visited.size() != adjacency.size()) {
+                throw std::invalid_argument(
+                    "surface contains non-manifold vertex "
+                    + std::to_string(vertex));
+            }
+        }
+    }
+
+    py::dict result;
+    for (auto& bucket : edge_buckets) {
+        result[py::make_tuple(bucket.key[0], bucket.key[1])] =
+            py::cast(std::move(bucket.face_indices));
+    }
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_metrics, m)
@@ -1822,4 +2011,7 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("count_faces_not_upper_triangular",
           &count_faces_not_upper_triangular,
           py::arg("owner"), py::arg("neighbour"));
+    m.def("validate_triangle_surface_and_build_edge_faces",
+          &validate_triangle_surface_and_build_edge_faces,
+          py::arg("vertices"), py::arg("triangles"));
 }

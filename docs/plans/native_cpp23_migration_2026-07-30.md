@@ -232,6 +232,32 @@ vertices and four opposite-cell adjacency slots, with edges/facets represented
 as cell-local subfaces.  OpenVolumeMesh documentation was reviewed only as an
 architectural reference for a separate topology kernel; no source was copied.
 
+## Quad fused input-topology preflight card
+
+The quad-dominant route previously scanned every input triangle once in
+`_validate_input`, built Python face/edge/link sets, discarded edge ownership,
+then scanned the same triangles again in `_edge_faces`.  A rejected prototype
+that ported only the second scan produced no end-to-end gain (`0.998x`), so that
+hypothesis is archived and must not be repeated.
+
+The accepted C++23 card fuses finite-coordinate and index validation, canonical
+face identity, zero-area detection, directed edge manifold/orientation checks,
+vertex-link connectivity, and ordered edge-to-face incidence.  It retains the
+existing failure precedence and exact messages.  Edge buckets preserve
+first-seen order independently of unordered-map traversal.  Python fallback
+also reuses edge ownership collected during validation, eliminating its own
+second scan.  Input vertices and triangle connectivity are read-only.
+
+On a planar `9,800`-triangle conversion, the complete public route changes from
+`19.717281 s` to `17.251941 s` under identical traced-allocation measurement
+(`1.143x`).  Traced Python heap changes from `15.54 MiB` to `11.27 MiB`
+(`27.48%` reduction).  Vertices, residual triangles, `4,900` quads, ordering,
+and all diagnostics match exactly.  Quad topology/multires/messy-grid plus
+native-metrics validation reports `93 passed`; two pre-existing all-NaN
+warnings remain.  Invalid degenerate, duplicate, zero-area, inconsistent-edge,
+non-manifold-edge, and non-manifold-vertex fixtures assert exact native/Python
+error parity.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
