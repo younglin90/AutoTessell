@@ -296,3 +296,28 @@ remesh output is byte-identical with POSY absent versus explicit
 **Verdict: report-only.** The measurements are carried forward for a future
 full-text-informed extraction card. No tolerance is proposed and no quad
 extraction/generation path is changed.
+
+## 2026-07-30 QUAD-INPUT-IDENTITY-L0 result (L0/L1 focused verification)
+
+`core/preprocessor/native_remesh/quad_dominant.py` now decodes raw triangle
+indices before the `int64` conversion. Bool, fractional, string, non-finite,
+out-of-range, and signed-`int64` overflow payloads fail closed with stable
+errors instead of being silently coerced into a different topology. Declared
+wall edges are decoded without Pydantic coercion, canonicalized for lookup, and
+must be distinct edges present in the input topology; absent or degenerate
+edges fail before candidate pairing.
+
+The hand-checkable planar two-triangle fixture covers each rejection twice,
+verifies immutable inputs, and confirms that the reverse-order real diagonal
+`(2, 0)` canonicalizes, protects exactly one edge, and preserves both input
+triangles. Existing cube, planar-pair, and warped-pair tests retain their
+previous valid output ordering and quality results. The explicit pipeline route
+continues to return the unchanged source with
+`native_quad_dominant_error:ValueError` and without legacy fallback when native
+topology validation rejects.
+
+Focused verification: `pytest -q tests/test_native_quad_dominant.py
+tests/test_native_face_remesh.py` reported **32 passed**. This card changes no
+target-cell semantics, geometry movement, pairing policy for valid inputs,
+routing, defaults, or extraction claims; it only makes malformed topology and
+declared wall identity truthful failures.

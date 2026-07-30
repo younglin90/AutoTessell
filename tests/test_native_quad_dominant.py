@@ -68,6 +68,116 @@ def test_warped_pair_fails_quality_gate_and_preserves_triangles() -> None:
 
 
 @pytest.mark.parametrize(
+    ("triangles", "message"),
+    [
+        (
+            np.array(((0, 1, 2.5), (0, 2, 3)), dtype=object),
+            "triangles must contain exact finite signed int64 indices",
+        ),
+        (
+            np.array(((False, 1, 2), (False, 2, 3)), dtype=object),
+            "triangles must contain exact finite signed int64 indices",
+        ),
+        (
+            np.array((("0", 1, 2), ("0", 2, 3)), dtype=object),
+            "triangles must contain exact finite signed int64 indices",
+        ),
+        (
+            np.array(((0, 1, float("inf")), (0, 2, 3)), dtype=object),
+            "triangles must contain exact finite signed int64 indices",
+        ),
+        (
+            np.array(((0, 1, 4), (0, 2, 3)), dtype=np.int64),
+            "triangle indices are outside the input vertex range",
+        ),
+        (
+            np.array(((0, 1, 2**63), (0, 2, 3)), dtype=object),
+            "triangle indices exceed signed int64 range",
+        ),
+    ],
+)
+def test_invalid_triangle_indices_reject_without_lossy_cast(
+    triangles: np.ndarray,
+    message: str,
+) -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    vertices_before = vertices.copy()
+    triangles_before = triangles.copy()
+    errors: list[str] = []
+
+    for _ in range(2):
+        with pytest.raises(ValueError) as caught:
+            native_quad_dominant_remesh(vertices, triangles)
+        errors.append(str(caught.value))
+
+    assert errors == [message, message]
+    np.testing.assert_equal(vertices, vertices_before)
+    np.testing.assert_equal(triangles, triangles_before)
+
+
+def test_explicit_real_wall_edge_is_canonicalized_and_blocks_pairing() -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+    vertices_before = vertices.copy()
+    triangles_before = triangles.copy()
+    config = QuadDominantConfig(protected_wall_edges=[(np.int64(2), np.int64(0))])
+
+    first = native_quad_dominant_remesh(vertices, triangles, config=config)
+    second = native_quad_dominant_remesh(vertices, triangles, config=config)
+
+    np.testing.assert_array_equal(first.triangles, triangles)
+    assert first.quads.shape == (0, 4)
+    assert first.diagnostics.protected_wall_edges == 1
+    assert first.diagnostics.candidate_pairs == 1
+    assert first.diagnostics.rejected_protected == 1
+    np.testing.assert_array_equal(first.vertices, second.vertices)
+    np.testing.assert_array_equal(first.triangles, second.triangles)
+    np.testing.assert_array_equal(first.quads, second.quads)
+    assert first.diagnostics.model_dump() == second.diagnostics.model_dump()
+    np.testing.assert_equal(vertices, vertices_before)
+    np.testing.assert_equal(triangles, triangles_before)
+
+
+@pytest.mark.parametrize(
+    ("protected_wall_edges", "message"),
+    [
+        ([(1, 3)], "protected wall edge (1, 3) is not an input surface edge"),
+        ([(0, 0)], "protected wall edge must have distinct endpoints"),
+    ],
+)
+def test_invalid_protected_wall_edge_fails_closed(
+    protected_wall_edges: list[tuple[int, int]],
+    message: str,
+) -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+    vertices_before = vertices.copy()
+    triangles_before = triangles.copy()
+    config = QuadDominantConfig(protected_wall_edges=protected_wall_edges)
+    errors: list[str] = []
+
+    for _ in range(2):
+        with pytest.raises(ValueError) as caught:
+            native_quad_dominant_remesh(vertices, triangles, config=config)
+        errors.append(str(caught.value))
+
+    assert errors == [message, message]
+    np.testing.assert_equal(vertices, vertices_before)
+    np.testing.assert_equal(triangles, triangles_before)
+
+
+@pytest.mark.parametrize("protected_wall_edges", [[(True, 2)], [("0", "2")]])
+def test_protected_wall_edges_reject_lossy_raw_indices(
+    protected_wall_edges: list[tuple[int, int]],
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="protected_wall_edges must contain pairs of exact signed int64 indices",
+    ):
+        QuadDominantConfig(protected_wall_edges=protected_wall_edges)
+
+
+@pytest.mark.parametrize(
     ("vertices", "triangles", "message"),
     [
         (
@@ -86,9 +196,7 @@ def test_warped_pair_fails_quality_gate_and_preserves_triangles() -> None:
             "zero-area triangle",
         ),
         (
-            np.array(
-                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-            ),
+            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
             np.array([[0, 1, 2], [0, 1, 3]], dtype=np.int64),
             "inconsistent orientation",
         ),
