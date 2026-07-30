@@ -887,11 +887,16 @@ class PolyMeshWriter:
         # 직전 vectorize 카드의 잔존 회귀 (row.tolist() — row 가 list 라 AttributeError).
         cell_faces: list[list[list[int]]] = _all_face_verts.tolist()
 
+        # A tetrahedral output cannot represent a 3+-cell face in OpenFOAM's
+        # owner/neighbour model.  Keep the generic writer permissive for its
+        # existing poly/hex compatibility callers, but reject such input for
+        # the native-tet contract before any polyMesh files are created.
         stats = write_generic_polymesh(
             vertices,
             cell_faces,
             case_dir,
             boundary_patch_classifier=boundary_patch_classifier,
+            strict=True,
         )
 
         # Writer-specific system files (GAMG solver 등 tet 솔루션 설정) 덮어쓰기.

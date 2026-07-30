@@ -574,6 +574,16 @@ def generate_native_tet(
                         "ftetwild_polymesh_write_failed",
                         reason=str(_exc_w)[:200],
                     )
+                    return NativeTetResult(
+                        False,
+                        _time.perf_counter() - _t_ftw,
+                        n_cells=int(_r_ftw.tets.shape[0]),
+                        n_points=int(_r_ftw.pts.shape[0]),
+                        message=(
+                            "native_tet writer rejected output topology: "
+                            f"{_exc_w}"
+                        ),
+                    )
                 _elapsed = _time.perf_counter() - _t_ftw
                 log.info(
                     "ftetwild_loop_used",
@@ -5929,6 +5939,20 @@ def generate_native_tet(
         log.warning(
             "native_tet_final_sync_failed",
             reason=str(_final_sync_exc)[:160],
+        )
+        return NativeTetResult(
+            False,
+            time.perf_counter() - t0,
+            n_cells=int(final_tets.shape[0]),
+            n_points=int(final_pts.shape[0]),
+            message=(
+                "native_tet writer rejected output topology: "
+                f"{_final_sync_exc}"
+            ),
+            tet_points=final_pts,
+            tets=final_tets,
+            warnings=warnings_list or None,
+            debug_info=debug_info,
         )
 
     # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
