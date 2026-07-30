@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `20`
+- cycle: `21`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `853c679996b693745cdff63e01aeeb6f6e26427c`
+- last_verified_master: `a29b322a73f97fb222764603a807f77d1201a002`
 - allowed_to_stop: `false`
-- next_action: `Port the two profiled surface triangle-intersection narrow predicates to separate first-party C++23 modes, preserving each detector's adjacency, epsilon, coplanar, ordering, and diagnostic contract while removing the dense exact-candidate Python bottleneck.`
+- next_action: `Profile boundary-layer ray-triangle collision distance and design a first-party native_bl C++23 exact nearest-positive-hit kernel that removes quadratic Python masks and the >20k-triangle skipped-collision path without changing wall geometry or requested layer semantics.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1131,3 +1131,57 @@ scope. Future MIT-core boundary follows
 - Port public segment-based and Tet-private interval-based triangle narrow
   predicates as explicitly separate native modes.  Preserve each epsilon,
   adjacency exclusion, coplanar behavior, lexicographic pair order, and count.
+
+## Cycle 21 checkpoint -- 2026-07-30
+
+### Native surface triangle narrow-phase evidence
+
+- `a29b322a` adds separate first-party C++23 public-segment and Tet-private
+  interval predicates.  Their adjacency exclusions, `1e-12`/`1e-10` epsilon,
+  coplanar rejection, candidate order, tested counts, and output order remain
+  independent and match the existing Python oracles.
+- Flat contiguous vertices, triangles, and candidates are validated before
+  GIL release.  Fixed `std::array<double,3>` arithmetic removes per-pair set,
+  gather, cross, norm, dot, and temporary-array allocations.  Python objects
+  are created only after the native loop.
+- Deterministic random corpus (`12,020` candidates): public `4,477` and private
+  `4,899` hits match exactly.  Sphere public detection
+  `0.082783340 s -> 0.001095325 s` (`75.58x`), preserving `216/0`
+  tested/intersections.  Tet-private detection
+  `0.749367660 s -> 0.001488219 s` (`503.53x`), preserving `4,750` pairs.
+- The dense self-intersection suite returns from about `106 s` to `2.94 s`.
+  Combined pre-merge validation passes `136`; post-merge native rebuild and
+  metrics/self-intersection/surface-defect suites pass `75`.  Two unrelated
+  existing all-NaN metric warnings remain.
+- GCC 13.3 C++23 build is warning-free.  No fast-math, threshold, geometry,
+  adjacency policy, `third_party/`, external code, or dependency changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-si-narrowphase-1-a29b322a.bundle`,
+  SHA-256 `0f1b48d03ed5c634de1e1d9005450583b3a5cf0ea9a5aac2fb3e1da8755e3928`.
+  Worktree, branch, and isolated build were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-21 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider/post-merge suites pass; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Exact native candidate+narrow results preserve both Python contracts; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Intersection diagnostics are exact and fast in native builds; strict all-engine corpus incomplete. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer collision corpus remains the next priority. |
+| 8 Quality | UNVERIFIED | No quality threshold changed; complete matrix missing. |
+| 9 Reproducibility | FAIL | Native intersection output deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Dense and sparse native intersection paths pass; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | SI dense regression closed; frozen all-engine budgets missing. |
+| 12 Packaging | UNVERIFIED | CMake native extensions are not yet included in wheel evidence. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile boundary-layer ray/triangle collision distance.  Replace quadratic
+  Python masks and the large-mesh skipped-collision path with an exact
+  first-party `native_bl` kernel only under wall-shape/layer-count parity.
