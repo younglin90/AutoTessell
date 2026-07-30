@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `8`
+- cycle: `9`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `363a38369b1fe334088553892d47fa42f2dc3504`
+- last_verified_master: `4246cf6f478a69290264862e967a968c2c8124bb`
 - allowed_to_stop: `false`
-- next_action: `TET-STRICT-TOPOLOGY-CORPUS-PROBE-1; HEX-NEXT-CARD-SCAN-2; POLY-NEXT-CARD-SCAN-2; TRI-QUAD-NEXT-CARD-SCAN-2 in parallel.`
+- next_action: `Rebase the protected Tet worktree onto current master, then run TET-STRICT-TOPOLOGY-CORPUS-PROBE-1 with target count diagnostic-only.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -479,3 +479,72 @@ scope. Future MIT-core boundary follows
   reuse and no `third_party/` modification.
 - Run an immutable-head validation baseline only after the next integration
   cycle; retain all unrun/full-suite gates as `UNVERIFIED`.
+
+## Cycle 9 checkpoint — 2026-07-30
+
+### Repository integration and storage cleanup evidence
+
+- Common pytest collection (`37f8e2d0`), native-hex input preflight
+  (`51046a1c` after rebase), and native-poly invalid dual-tet input preflight
+  (`59930f43` after rebase) were reviewed, tested, and merged sequentially.
+  Current integrated master before this ledger commit is
+  `4246cf6f478a69290264862e967a968c2c8124bb`.
+- Post-merge focused validation in the rebuilt environment reports `29 passed
+  in 26.03 s`: common collection `2`, hex preflight `14`, and poly preflight
+  `13`.  An additional representative native-hex target/layer selection reports
+  `6 passed` before integration.  These are focused results, not Gate-3 proof.
+- The three merged worktrees and their branches were removed through Git.  The
+  only remaining research worktree is the protected, clean
+  `codex/tet-vonly-contract-probe-1` lane at pre-integration commit `3a5c387b`.
+- Two complete-history bundles were written to
+  `D:\\AutoTessell-cleanup-backup-20260730`: pre-cleanup SHA-256
+  `451f260b9dcd48e873fce7b3cfcec2eb5c722e2471e2dc5454961a0a799161e5`
+  and post-integration SHA-256
+  `5a1b59cca595de3810850ae6f03c9940fc81633577b3acec107f80aefc300609`.
+  Both pass `git bundle verify`.
+- Exact ignored/generated paths were moved to the D: quarantine, including
+  selected FetchContent source directories and Python/build caches.  The whole
+  tracked `build_make/_deps` tree was not deleted.  The quarantine is about
+  `344 MiB`.
+- The prior project archive was copied to D:, verified by recursive diff, then
+  removed from WSL.  The full former `.venv` library and both project
+  micromamba environments were archived to D: before their exact originals
+  were removed.  The current project `.venv` was rebuilt without the optional
+  AI/GPU extra; declared native/GUI/CAD/Netgen imports and the focused suite
+  pass.  The old full environment remains recoverable from D:.
+- WSL filesystem used space fell from about `226 GiB` to `207 GiB`.  The D:
+  backup root is about `14 GiB`.  C: space is not yet reclaimed because the
+  non-sparse `ext4.vhdx` has not been compacted.
+- Offline VHDX compaction is blocked in this session because the Windows token
+  is not elevated (`ADMIN=False`).  Sparse-VHD conversion was not attempted.
+  Compaction requires an elevated Windows session after WSL shutdown and an
+  offline VHDX backup.
+- `git diff --check` and `git fsck --full` pass.  `git fsck` reports historical
+  dangling objects only; no prune or aggressive GC was run.  No `third_party/`
+  file changed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-9 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | Primary master is clean before this ledger write; one protected active Tet worktree remains. |
+| 2 Build | UNVERIFIED | Rebuilt Python environment imports pass; clean native Release matrix remains missing. |
+| 3 Automated tests | UNVERIFIED | New merged focused suite is `29 passed`; immutable-head full suite remains missing. |
+| 4 Shape preservation | UNVERIFIED | No cleanup changed geometry code; representative corpus proof remains missing. |
+| 5 Mesh validity | UNVERIFIED | Tet strict-topology corpus probe remains next. |
+| 6 Cell count | FAIL | Tet target remains diagnostic/deferred; poly target following remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus remains missing. |
+| 8 Quality | UNVERIFIED | Complete engine/fixture quality matrix remains missing. |
+| 9 Reproducibility | UNVERIFIED | Complete three-run corpus remains missing. |
+| 10 Robustness | UNVERIFIED | Hex/poly input preflight evidence is focused only. |
+| 11 Performance | UNVERIFIED | Frozen Release benchmark budgets remain missing. |
+| 12 Packaging | UNVERIFIED | Current environment smoke passes; installer proof remains missing. |
+| 13 License/provenance | UNVERIFIED | GPL/no-third-party policy held; release-artifact proof remains incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Cleanup recovery evidence added; release operations proof remains incomplete. |
+| 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
+
+### Next automatic action
+
+- Rebase the protected Tet lane onto current master and execute
+  `TET-STRICT-TOPOLOGY-CORPUS-PROBE-1`.  Treat target-cell count as diagnostic;
+  retain essential shape, validity, writer, and residual non-manifold gates.
