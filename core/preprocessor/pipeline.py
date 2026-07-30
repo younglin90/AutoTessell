@@ -430,6 +430,8 @@ class Preprocessor:
             (리메쉬된 메쉬, gate_passed, step_record) 튜플.
         """
         if prefer_native:
+            if remesh_engine.lower() == "native_tri":
+                return self._l2_remesh_native_tri(mesh, target_faces)
             return self._l2_remesh_native(mesh, target_faces)
         # legacy 경로 — pyACVD/pymeshlab/vorpalite 체인
         return self._remesher.remesh_l2(
@@ -500,6 +502,53 @@ class Preprocessor:
             gate_passed=passed,
         )
         return new_mesh, passed, step_record
+
+    def _l2_remesh_native_tri(
+        self,
+        mesh: trimesh.Trimesh,
+        target_faces: int | None,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """Expose native-tri L2 only through its fail-closed source contract."""
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+        from core.preprocessor.native_tri.route import run_native_tri_l2_route  # noqa: PLC0415
+
+        source_vertices = np.asarray(mesh.vertices, dtype=np.float64)
+        source_faces = np.asarray(mesh.faces, dtype=np.int64)
+        route = run_native_tri_l2_route(
+            source_vertices,
+            source_faces,
+            target_faces=target_faces,
+            boundary_layers=0,
+        )
+        unchanged_mesh = _tm.Trimesh(
+            vertices=route.vertices,
+            faces=route.faces,
+            process=False,
+        )
+        step_record = {
+            "step": "l2_remesh",
+            "method": "native_tri_fail_closed",
+            "params": {
+                "reason": route.reason,
+                "target_faces_requested": route.target_faces_requested,
+                "target_faces_actual": route.target_faces_actual,
+                "target_faces_absolute_error": route.target_faces_absolute_error,
+                "target_faces_relative_error": route.target_faces_relative_error,
+                "boundary_layers_requested": route.boundary_layers_requested,
+                "boundary_layers_actual": route.boundary_layers_actual,
+                "layer_budget_reserved": route.layer_budget_reserved,
+                "source_vertices_hash": route.source_vertices_hash,
+                "source_faces_hash": route.source_faces_hash,
+                "provenance_hash": route.provenance_hash,
+            },
+            "input_faces": int(len(source_faces)),
+            "output_faces": int(len(route.faces)),
+            "time_seconds": 0.0,
+            "gate_passed": False,
+        }
+        log.warning("native_tri_l2_fail_closed", reason=route.reason)
+        return unchanged_mesh, False, step_record
 
     def _voxelize_repair(
         self,
