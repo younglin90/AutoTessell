@@ -20,6 +20,9 @@ def test_scikit_build_profile_enables_exact_first_party_set() -> None:
     settings = config["tool"]["scikit-build"]
     assert settings["cmake"]["source-dir"] == "auto_tessell_core"
     assert settings["wheel"]["packages"] == ["cli", "core", "desktop"]
+    assert config["project"]["license"] == "GPL-3.0-or-later"
+    assert config["project"]["license-files"] == ["LICENSE", "NOTICE"]
+    assert "license-files" not in settings["wheel"]
     definitions = settings["cmake"]["define"]
     assert definitions["AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE"] == "ON"
     for module in EXPECTED_MODULES:

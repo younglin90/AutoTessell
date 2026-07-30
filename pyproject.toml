@@ -6,7 +6,8 @@ build-backend = "scikit_build_core.build"
 name = "auto-tessell"
 version = "1.0.0"
 description = "CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 CLI 도구"
-license = {text = "GPL-3.0-or-later"}
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -108,7 +109,6 @@ auto-tessell-qt = "desktop.qt_main:main"
 cmake.source-dir = "auto_tessell_core"
 cmake.build-type = "Release"
 wheel.packages = ["cli", "core", "desktop"]
-wheel.license-files = ["LICENSE", "NOTICE"]
 wheel.exclude = [
     "core/generator/native_tet/_native/libtet_kernels.so",
     "core/utils/_shewchuk/*.so",
