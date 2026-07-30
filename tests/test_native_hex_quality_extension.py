@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import astuple
 from typing import Any
 
@@ -177,6 +178,74 @@ def test_native_generic_signed_volumes_match_python() -> None:
         rtol=2e-13,
         atol=2e-13,
     )
+
+
+def test_native_boundary_vertex_local_scales_are_bitwise_exact() -> None:
+    native = _native_or_skip()
+    assert hasattr(native, "boundary_vertex_local_scales")
+    points, cells = _structured_hexes(4, 3, 2)
+    rng = np.random.default_rng(31)
+    points = points + rng.normal(scale=0.015, size=points.shape)
+    cell_faces = [
+        [[int(cell[local]) for local in face] for face in quality._HEX_FACES]
+        for cell in cells
+    ]
+    face_cells: dict[tuple[int, ...], list[int]] = defaultdict(list)
+    for cell_index, cell in enumerate(cell_faces):
+        for face in cell:
+            face_cells[tuple(sorted(face))].append(cell_index)
+    boundary_vertices = {
+        vertex
+        for face, owners in face_cells.items()
+        if len(owners) == 1
+        for vertex in face
+    }
+    incident = {vertex: set() for vertex in boundary_vertices}
+    for cell_index, cell in enumerate(cell_faces):
+        for vertex in {value for face in cell for value in face} & boundary_vertices:
+            incident[vertex].add(cell_index)
+    boundary = np.asarray(sorted(boundary_vertices), dtype=np.int64)
+    expected = np.zeros(boundary.shape[0], dtype=np.float64)
+    for output_index, vertex in enumerate(boundary.tolist()):
+        for cell_index in incident[vertex]:
+            for face in cell_faces[cell_index]:
+                for edge in range(len(face)):
+                    expected[output_index] = max(
+                        expected[output_index],
+                        float(
+                            np.linalg.norm(
+                                points[face[edge]] - points[face[(edge + 1) % len(face)]]
+                            )
+                        ),
+                    )
+
+    actual = native.boundary_vertex_local_scales(points, cell_faces, boundary)
+
+    assert isinstance(actual, np.ndarray)
+    assert actual.dtype == np.dtype(np.float64)
+    assert actual.flags.c_contiguous
+    assert np.array_equal(actual, expected)
+
+
+def test_native_boundary_vertex_local_scales_reject_invalid_boundary() -> None:
+    native = _native_or_skip()
+    points, cells = _structured_hexes(1, 1, 1)
+    cell_faces = [
+        [[int(cells[0, local]) for local in face] for face in quality._HEX_FACES]
+    ]
+
+    with pytest.raises(ValueError, match="shape"):
+        native.boundary_vertex_local_scales(
+            points, cell_faces, np.asarray([[0]], dtype=np.int64)
+        )
+    with pytest.raises(ValueError, match="unique"):
+        native.boundary_vertex_local_scales(
+            points, cell_faces, np.asarray([0, 0], dtype=np.int64)
+        )
+    with pytest.raises(IndexError):
+        native.boundary_vertex_local_scales(
+            points, cell_faces, np.asarray([len(points)], dtype=np.int64)
+        )
 
 
 def test_native_generic_cell_face_signs_match_python() -> None:

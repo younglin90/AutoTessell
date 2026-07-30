@@ -368,6 +368,68 @@ py::array_t<double> generic_cell_signed_volumes(
     return volumes;
 }
 
+py::array_t<double> boundary_vertex_local_scales(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    const Cells& cell_faces,
+    py::array_t<Label, py::array::c_style | py::array::forcecast> boundary_vertices)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (boundary_vertices.ndim() != 1) {
+        throw std::invalid_argument("boundary_vertices must have shape (B,)");
+    }
+
+    const py::ssize_t point_count = points.shape(0);
+    const py::ssize_t boundary_count = boundary_vertices.shape(0);
+    py::array_t<double> local_scales({boundary_count});
+    const auto point_view = points.unchecked<2>();
+    const auto boundary_view = boundary_vertices.unchecked<1>();
+    auto output = local_scales.mutable_unchecked<1>();
+
+    {
+        py::gil_scoped_release release;
+        std::vector<py::ssize_t> boundary_slots(
+            static_cast<size_t>(point_count), py::ssize_t{-1});
+        for (py::ssize_t slot = 0; slot < boundary_count; ++slot) {
+            const Label vertex = normalize_index(
+                boundary_view(slot), point_count);
+            auto& mapped_slot = boundary_slots[static_cast<size_t>(vertex)];
+            if (mapped_slot != py::ssize_t{-1}) {
+                throw std::invalid_argument("boundary_vertices must be unique");
+            }
+            mapped_slot = slot;
+            output(slot) = 0.0;
+        }
+
+        for (const Cell& cell : cell_faces) {
+            double cell_scale = 0.0;
+            for (const Face& face : cell) {
+                const size_t face_size = face.size();
+                for (size_t edge = 0; edge < face_size; ++edge) {
+                    const Point3 first = load_point(
+                        point_view, face[edge], point_count);
+                    const Point3 second = load_point(
+                        point_view, face[(edge + 1) % face_size], point_count);
+                    cell_scale = std::max(
+                        cell_scale, norm(subtract(first, second)));
+                }
+            }
+            for (const Face& face : cell) {
+                for (const Label raw_vertex : face) {
+                    const Label vertex = normalize_index(raw_vertex, point_count);
+                    const py::ssize_t slot =
+                        boundary_slots[static_cast<size_t>(vertex)];
+                    if (slot != py::ssize_t{-1}) {
+                        output(slot) = std::max(output(slot), cell_scale);
+                    }
+                }
+            }
+        }
+    }
+    return local_scales;
+}
+
 py::tuple generic_cell_face_signs(
     py::array_t<double, py::array::c_style | py::array::forcecast> points,
     const Cell& cell_faces)
@@ -650,6 +712,12 @@ py::array_t<double> hex_face_nonorthogonality(
 PYBIND11_MODULE(native_hex_quality, module)
 {
     module.doc() = "C++ OpenFOAM-style quality primitives for hexahedral meshes";
+    module.def(
+        "boundary_vertex_local_scales",
+        &boundary_vertex_local_scales,
+        py::arg("points"),
+        py::arg("cell_faces"),
+        py::arg("boundary_vertices"));
     module.def(
         "hex_quality_primitives",
         &hex_quality_primitives,

@@ -13,6 +13,7 @@
     },
     "native_hex_quality": {
       "public_symbols": [
+        "boundary_vertex_local_scales",
         "generic_cell_face_signs",
         "generic_cell_signed_volumes",
         "generic_side_metrics",

@@ -744,6 +744,7 @@ def _wall_fit_snap(
 
     from core.generator.native_hex.quality import (  # noqa: PLC0415
         _native_generic_cell_face_signs,
+        _load_native_hex_quality,
     )
     from core.generator.native_hex.snap import (  # noqa: PLC0415
         _closest_point_on_triangle,
@@ -786,22 +787,54 @@ def _wall_fit_snap(
         for v in {int(x) for face in cell for x in face} & boundary_verts:
             incident[v].add(ci)
 
+    boundary = np.array(sorted(boundary_verts), dtype=np.int64)
+
+    def _native_local_scales() -> np.ndarray | None:
+        native_quality = _load_native_hex_quality()
+        if native_quality is None:
+            return None
+        kernel = getattr(native_quality, "boundary_vertex_local_scales", None)
+        if kernel is None:
+            raise RuntimeError(
+                "loaded native_hex_quality is missing boundary_vertex_local_scales"
+            )
+        values = kernel(pts, cell_faces, boundary)
+        if (
+            not isinstance(values, np.ndarray)
+            or values.dtype != np.dtype(np.float64)
+            or values.shape != (boundary.shape[0],)
+            or not values.flags.c_contiguous
+        ):
+            raise RuntimeError(
+                "native_hex_quality.boundary_vertex_local_scales returned invalid ABI"
+            )
+        return values
+
     # Local sizing: per boundary vertex, the max edge length among all faces of
     # its incident cells. Captures the coarse-octree-cell scale at level
     # transitions so fine quality's per-vertex envelope isn't clamped by the
     # global finest-cell target_edge (card HEX-WALLFIT-FINE).
     local_scale: dict[int, float] = {}
-    for v, cells in incident.items():
-        m = 0.0
-        for ci in cells:
-            for face in cell_faces[ci]:
-                fv = [int(x) for x in face]
-                n = len(fv)
-                for i in range(n):
-                    e = float(np.linalg.norm(pts[fv[i]] - pts[fv[(i + 1) % n]]))
-                    if e > m:
-                        m = e
-        local_scale[v] = m
+    native_local_scales = _native_local_scales()
+    if native_local_scales is None:
+        for v, cells in incident.items():
+            m = 0.0
+            for ci in cells:
+                for face in cell_faces[ci]:
+                    fv = [int(x) for x in face]
+                    n = len(fv)
+                    for i in range(n):
+                        e = float(
+                            np.linalg.norm(pts[fv[i]] - pts[fv[(i + 1) % n]])
+                        )
+                        if e > m:
+                            m = e
+            local_scale[v] = m
+    else:
+        local_scale = {
+            int(vertex): float(native_local_scales[index])
+            for index, vertex in enumerate(boundary.tolist())
+        }
 
     tri_A = sV[sF[:, 0]]
     tri_B = sV[sF[:, 1]]
@@ -936,7 +969,6 @@ def _wall_fit_snap(
                 )
         return best_points, squared_distances, valid
 
-    boundary = np.array(sorted(boundary_verts), dtype=np.int64)
     for _ in range(int(iters)):
         query_points = pts[boundary]
         _, nn = tree.query(query_points, k=k)
