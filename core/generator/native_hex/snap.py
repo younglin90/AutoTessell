@@ -20,9 +20,12 @@ projection 해 Hausdorff 거리를 개선한다.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import sys
+from importlib.machinery import EXTENSION_SUFFIXES
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +55,35 @@ class _SegArrWithWeights(np.ndarray):
         self._seg_weight = getattr(obj, "_seg_weight", None)
 
 
+def _native_snap_candidate(directory: Path) -> Path | None:
+    for suffix in (*EXTENSION_SUFFIXES, ".py"):
+        candidate = directory / f"native_snap{suffix}"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _module_is_from_directory(module: Any, directory: Path) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return False
+    try:
+        return Path(module_file).resolve().parent == directory.resolve()
+    except OSError:
+        return False
+
+
+def _load_explicit_native_snap(candidate: Path) -> Any:
+    digest = hashlib.sha256(str(candidate.resolve()).encode()).hexdigest()[:16]
+    module_name = f"_autotessell_native_{digest}.native_snap"
+    spec = spec_from_file_location(module_name, candidate)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load explicit native_snap candidate: {candidate}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _load_native_snap() -> Any | None:
     """Load optional C++ candidate-reduction kernels."""
     global _NATIVE_SNAP, _NATIVE_SNAP_IMPORT_ATTEMPTED
@@ -60,18 +92,38 @@ def _load_native_snap() -> Any | None:
     _NATIVE_SNAP_IMPORT_ATTEMPTED = True
 
     candidate_dirs: list[Path] = []
+    explicit_dir: Path | None = None
     env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
     if env_dir:
-        candidate_dirs.append(Path(env_dir))
+        explicit_dir = Path(env_dir)
+        candidate_dirs.append(explicit_dir)
     candidate_dirs.append(Path(__file__).resolve().parents[3] / "auto_tessell_core" / "build")
-    for candidate in candidate_dirs:
+    # Insert the default first and the explicit override last. Repeated
+    # insert(0, ...) then leaves AUTOTESSELL_EXT_BUILD_DIR at highest priority.
+    for candidate in reversed(candidate_dirs):
         if candidate.is_dir():
             candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
+            if candidate_s in sys.path:
+                sys.path.remove(candidate_s)
+            sys.path.insert(0, candidate_s)
+
+    cached = sys.modules.get("native_snap")
+    explicit_candidate = _native_snap_candidate(explicit_dir) if explicit_dir is not None else None
+    importlib.invalidate_caches()
 
     try:
-        _NATIVE_SNAP = importlib.import_module("native_snap")
+        if (
+            explicit_dir is not None
+            and explicit_candidate is not None
+            and cached is not None
+            and not _module_is_from_directory(cached, explicit_dir)
+        ):
+            # CPython caches single-phase extensions by import name even after
+            # sys.modules eviction. A path-stable package alias can load the
+            # explicit binary because its final component remains native_snap.
+            _NATIVE_SNAP = _load_explicit_native_snap(explicit_candidate)
+        else:
+            _NATIVE_SNAP = importlib.import_module("native_snap")
     except Exception:  # noqa: BLE001
         _NATIVE_SNAP = None
     return _NATIVE_SNAP
