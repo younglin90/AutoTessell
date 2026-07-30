@@ -552,11 +552,13 @@ effective result plus all component counts instead of the stale raw zero.
 
 The large hybrid fixture's `1,280` result must not yet be relaxed: a full
 owner-plus-neighbour signed audit also reports `1,280` negative cells.  The
-single-tetra boundary-layer fixture is more severe: its first BL output has
-`9/9` negative signed cells, but the old global-flip-rate exemption reports
-zero.  The next change belongs in native BL prism/face assembly and in replacing
-that exemption with the authoritative signed audit, not in a weaker validity
-threshold.  Geometry and the release gate are unchanged by this evidence card.
+valid `PolyMeshWriter` single-tetra fixture remains positive through its first
+BL insertion, then exposes exactly `4` negative prism cells after a second BL
+plus hybrid rewrite.  The next change belongs in duplicate-BL prevention and
+prism/hybrid face assembly, followed by replacing the structurally weak
+owner-only heuristic with the authoritative signed audit after corpus parity;
+it does not belong in a weaker validity threshold.  Geometry and the release
+gate are unchanged by this evidence card.
 
 ## Primary technical sources
 

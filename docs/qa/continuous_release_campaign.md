@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `23`
+- cycle: `24`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `de5fa5d745632ed88ce54e8fa125d9a23a60bf32`
+- last_verified_master: `b99966a87c3014a4353e3133840ba1dc58d4c840`
 - allowed_to_stop: `false`
-- next_action: `Reproduce the poly-hybrid NativeMeshChecker negative-volume result/log disagreement, trace the authoritative cell-volume path, and port the validated ragged polyhedral volume audit to first-party C++23 if exact Python-oracle parity can be established.`
+- next_action: `Prevent duplicate native-BL insertion in poly_bl_transition and repair the resulting prism/hybrid face winding so the valid PolyMeshWriter single-tet fixture remains signed-positive after transition; preserve requested layer reporting and wall geometry.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1303,3 +1303,65 @@ scope. Future MIT-core boundary follows
   result/log disagreement.  Establish one authoritative oriented cell-volume
   oracle, then move its ragged face/cell traversal to first-party C++23 only if
   topology, sign, ordering, tolerance, and diagnostic parity are exact.
+
+## Cycle 24 checkpoint -- 2026-07-30
+
+### Native oriented-volume audit evidence
+
+- `b99966a8` adds first-party C++23
+  `native_metrics.compute_oriented_cell_volume_audit`.  It reuses flat face
+  centres, raw normals, areas, cell centres, owner, and neighbour arrays; owner
+  contributes with `+`, neighbour with `-`.  The GIL is released for contiguous
+  loops and only two `O(C)` result arrays are allocated.
+- The audit returns signed cell volumes plus absolute pyramid sums.  Report-only
+  negative classification uses a fixed per-cell `1e-12 * absolute_sum`
+  tolerance.  Existing absolute-pyramid quality magnitudes and release gates
+  are unchanged pending corpus/OpenFOAM parity.
+- Checker observability is now truthful: the final event reports effective,
+  raw-pyramid, owner-heuristic, oriented-negative, and oriented-degenerate
+  counts.  The previous result/log `1280/0` disagreement cannot recur silently.
+- Unit cube outward/reversed values are `+1/-1`; a shared owner/neighbour face
+  contributes positively to both cells; native/Python fallback arrays match.
+  Three disconnected tets with one reversed cell report effective/raw/oriented
+  `1/0/1`; the outward control reports `0/0/0`.
+- The sphere hybrid's `1,280` negative result is confirmed by an all-incident
+  signed audit and must not be threshold-relaxed.  A valid `PolyMeshWriter`
+  single-tet remains positive after first BL, then produces exactly `4`
+  negative prism cells after duplicate BL plus hybrid transition.  That is the
+  next generation-path defect.
+- Post-merge native metrics/checker/poly-transition validation passes `66`; two
+  pre-existing all-NaN reduction warnings remain.
+- GCC 13.3 C++23 build is warning-free.  No geometry, gate threshold,
+  dependency, or `third_party/` change.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-checker-volume-audit-1-b99966a8.bundle`,
+  SHA-256 `1f5f0dc6af744848e3d0da8b8894ab8454e4dc3d02533850deba84094e727ed3`.
+  Worktree, branch, and isolated build were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-24 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused audit/checker suites pass; invalid hybrid regression remains and immutable-head full suite is missing. |
+| 4 Shape preservation | UNVERIFIED | Audit is read-only; full corpus remains. |
+| 5 Mesh validity | FAIL | Signed audit confirms 4-cell minimal and 1,280-cell sphere hybrid inversions. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target remains unresolved. |
+| 7 Boundary layer | FAIL | First BL is valid, but duplicate BL plus hybrid transition inverts prism cells. |
+| 8 Quality | UNVERIFIED | Magnitude metrics unchanged; complete matrix missing. |
+| 9 Reproducibility | FAIL | Audit deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Invalid winding now observable; generation repair missing. |
+| 11 Performance | UNVERIFIED | Flat native audit removes Python orchestration cost; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | CMake native extensions are not yet included in wheel evidence. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Use the valid `PolyMeshWriter` single-tet reproduction to stop a second BL
+  insertion inside `poly_bl_transition`, or reject it before mutation if the
+  existing hybrid already contains layers.  Then verify oriented volumes,
+  wall envelope, requested/used layer report, connectivity, and exact rollback
+  semantics before touching the owner-only checker gate.
