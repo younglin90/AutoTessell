@@ -618,24 +618,25 @@ def test_huge_finite_coordinates_never_emit_nonfinite_quad_quality() -> None:
     face_pairs = np.array([[0, 1]], dtype=np.int64)
 
     direct = native.select_quad_pairs(vertices, triangles, face_pairs, 0.2, 4.0, 0.05)
-    assert direct["rejected_quality"] == 1
-    assert np.asarray(direct["quality"]).shape == (0, 3)
-    with np.errstate(over="ignore", invalid="ignore"):
-        fallback = _select_quad_pairs_python(
-            vertices,
-            triangles,
-            face_pairs,
-            min_scaled_jacobian=0.2,
-            max_aspect_ratio=4.0,
-            max_warpage=0.05,
-        )
-        result = native_quad_dominant_remesh(vertices, triangles)
-    assert fallback[2].shape == (0, 3)
-    assert fallback[3] == 1
+    fallback = _select_quad_pairs_python(
+        vertices,
+        triangles,
+        face_pairs,
+        min_scaled_jacobian=0.2,
+        max_aspect_ratio=4.0,
+        max_warpage=0.05,
+    )
+    result = native_quad_dominant_remesh(vertices, triangles)
+    assert direct["rejected_quality"] == 0
+    assert fallback[3] == 0
+    np.testing.assert_array_equal(direct["accepted_face_pairs"], fallback[0])
+    np.testing.assert_array_equal(direct["quads"], fallback[1])
+    np.testing.assert_array_equal(direct["quality"], fallback[2])
+    assert np.isfinite(direct["quality"]).all()
     np.testing.assert_array_equal(result.vertices, vertices)
-    np.testing.assert_array_equal(result.triangles, triangles)
-    assert result.quads.shape == (0, 4)
-    assert result.diagnostics.rejected_quality == 1
+    assert result.triangles.shape == (0, 3)
+    assert result.quads.shape == (1, 4)
+    assert result.diagnostics.rejected_quality == 0
     for value in (
         result.diagnostics.min_quad_scaled_jacobian,
         result.diagnostics.max_quad_aspect_ratio,

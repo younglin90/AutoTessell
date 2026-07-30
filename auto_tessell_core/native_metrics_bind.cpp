@@ -2535,6 +2535,55 @@ struct QuadPreparationPair {
     size_t encounter_order;
 };
 
+template <size_t Size>
+[[nodiscard]] std::optional<std::array<Point3, Size>>
+similarity_normalized_points(
+    const std::array<Point3, Size>& points) noexcept
+{
+    double coordinate_magnitude = 0.0;
+    for (const Point3& point : points) {
+        for (const double coordinate : point) {
+            coordinate_magnitude = std::max(
+                coordinate_magnitude, std::abs(coordinate));
+        }
+    }
+    if (!std::isfinite(coordinate_magnitude)
+        || coordinate_magnitude == 0.0) {
+        return std::nullopt;
+    }
+    int coordinate_exponent = 0;
+    static_cast<void>(std::frexp(
+        coordinate_magnitude, &coordinate_exponent));
+
+    std::array<Point3, Size> relative{};
+    Point3 origin{};
+    for (size_t coordinate = 0; coordinate < origin.size(); ++coordinate) {
+        origin[coordinate] = std::scalbn(
+            points[0][coordinate], -coordinate_exponent);
+    }
+    double local_magnitude = 0.0;
+    for (size_t point = 0; point < points.size(); ++point) {
+        for (size_t coordinate = 0; coordinate < origin.size(); ++coordinate) {
+            relative[point][coordinate] = std::scalbn(
+                points[point][coordinate], -coordinate_exponent)
+                - origin[coordinate];
+            local_magnitude = std::max(
+                local_magnitude, std::abs(relative[point][coordinate]));
+        }
+    }
+    if (!std::isfinite(local_magnitude) || local_magnitude == 0.0) {
+        return std::nullopt;
+    }
+    int local_exponent = 0;
+    static_cast<void>(std::frexp(local_magnitude, &local_exponent));
+    for (Point3& point : relative) {
+        for (double& coordinate : point) {
+            coordinate = std::scalbn(coordinate, -local_exponent);
+        }
+    }
+    return relative;
+}
+
 [[nodiscard]] bool quad_preparation_edge_less(
     const QuadPreparationEdge& left,
     const QuadPreparationEdge& right) noexcept
@@ -2676,8 +2725,13 @@ py::tuple prepare_quad_pairs(
                 const auto vertex = static_cast<py::ssize_t>(triangle[local]);
                 return {vertices(vertex, 0), vertices(vertex, 1), vertices(vertex, 2)};
             };
-            const Point3 first = point(0);
-            const Point3 normal = cross(sub(point(1), first), sub(point(2), first));
+            const std::array<Point3, 3> face_points{
+                point(0), point(1), point(2)};
+            const auto normalized = similarity_normalized_points(face_points);
+            if (!normalized.has_value()) {
+                throw std::invalid_argument("surface contains a zero-area triangle");
+            }
+            const Point3 normal = cross((*normalized)[1], (*normalized)[2]);
             const double normal_length = norm3(normal);
             if (normal_length <= 1e-30) {
                 throw std::invalid_argument("surface contains a zero-area triangle");
@@ -2942,9 +2996,14 @@ struct QuadPairCandidate {
 [[nodiscard]] std::optional<std::array<double, 3>> quad_quality(
     const std::array<Point3, 4>& points) noexcept
 {
-    const Point3 first_edge = sub(points[1], points[0]);
-    const Point3 first_diagonal = sub(points[2], points[0]);
-    const Point3 second_diagonal = sub(points[3], points[0]);
+    const auto normalized = similarity_normalized_points(points);
+    if (!normalized.has_value()) {
+        return std::nullopt;
+    }
+    const auto& local = *normalized;
+    const Point3 first_edge = local[1];
+    const Point3 first_diagonal = local[2];
+    const Point3 second_diagonal = local[3];
     const Point3 normal = add(
         cross(first_edge, first_diagonal),
         cross(first_diagonal, second_diagonal));
@@ -2957,8 +3016,8 @@ struct QuadPairCandidate {
     std::array<double, 4> lengths{};
     constexpr std::array<size_t, 4> next{{1, 2, 3, 0}};
     constexpr std::array<size_t, 4> previous{{3, 0, 1, 2}};
-    for (size_t corner = 0; corner < points.size(); ++corner) {
-        lengths[corner] = norm3(sub(points[next[corner]], points[corner]));
+    for (size_t corner = 0; corner < local.size(); ++corner) {
+        lengths[corner] = norm3(sub(local[next[corner]], local[corner]));
     }
     const auto [minimum_length, maximum_length] =
         std::minmax_element(lengths.begin(), lengths.end());
@@ -2967,10 +3026,10 @@ struct QuadPairCandidate {
     }
 
     std::array<double, 4> scaled_jacobians{};
-    for (size_t corner = 0; corner < points.size(); ++corner) {
-        const Point3 next_edge = sub(points[next[corner]], points[corner]);
+    for (size_t corner = 0; corner < local.size(); ++corner) {
+        const Point3 next_edge = sub(local[next[corner]], local[corner]);
         const Point3 previous_edge = sub(
-            points[previous[corner]], points[corner]);
+            local[previous[corner]], local[corner]);
         const double denominator = norm3(next_edge) * norm3(previous_edge);
         const double value = dot_product(
             cross(next_edge, previous_edge), unit_normal)

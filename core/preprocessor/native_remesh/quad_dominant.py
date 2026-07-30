@@ -8,10 +8,11 @@ quad must pass local convexity, scaled-Jacobian, aspect, and warpage gates.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Iterable
 from numbers import Integral
-from typing import TypeGuard
+from typing import TypeGuard, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -116,6 +117,49 @@ def _edge_key(first: int, second: int) -> tuple[int, int]:
     return (first, second) if first < second else (second, first)
 
 
+def _similarity_normalized_points(
+    points: NDArray[np.float64],
+) -> NDArray[np.float64] | None:
+    """Return local points after exact power-of-two similarity scaling."""
+    coordinate_magnitude = float(np.abs(points).max(initial=0.0))
+    if not np.isfinite(coordinate_magnitude) or coordinate_magnitude == 0.0:
+        return None
+    _, coordinate_exponent = np.frexp(coordinate_magnitude)
+    scaled = np.ldexp(points, -coordinate_exponent)
+    relative = scaled - scaled[0]
+    local_magnitude = float(np.abs(relative).max(initial=0.0))
+    if not np.isfinite(local_magnitude) or local_magnitude == 0.0:
+        return None
+    _, local_exponent = np.frexp(local_magnitude)
+    return cast(NDArray[np.float64], np.ldexp(relative, -local_exponent))
+
+
+def _cross3(left: NDArray[np.float64], right: NDArray[np.float64]) -> NDArray[np.float64]:
+    return cast(
+        NDArray[np.float64],
+        np.asarray(
+            (
+                float(left[1]) * float(right[2]) - float(left[2]) * float(right[1]),
+                float(left[2]) * float(right[0]) - float(left[0]) * float(right[2]),
+                float(left[0]) * float(right[1]) - float(left[1]) * float(right[0]),
+            ),
+            dtype=np.float64,
+        ),
+    )
+
+
+def _dot3(left: NDArray[np.float64], right: NDArray[np.float64]) -> float:
+    return (
+        float(left[0]) * float(right[0])
+        + float(left[1]) * float(right[1])
+        + float(left[2]) * float(right[2])
+    )
+
+
+def _norm3(value: NDArray[np.float64]) -> float:
+    return math.sqrt(_dot3(value, value))
+
+
 def _validate_vertex_links(triangles: NDArray[np.int64]) -> None:
     """Reject vertices whose incident-triangle link has multiple components."""
     links: dict[int, dict[int, set[int]]] = {}
@@ -178,7 +222,8 @@ def _validate_input(
             raise ValueError("surface contains a duplicate triangle")
         seen_faces.add(face_key)
         points = vertices[np.asarray((first, second, third), dtype=np.int64)]
-        if float(np.linalg.norm(np.cross(points[1] - points[0], points[2] - points[0]))) <= 1e-30:
+        normalized = _similarity_normalized_points(points)
+        if normalized is None or _norm3(_cross3(normalized[1], normalized[2])) <= 1e-30:
             raise ValueError("surface contains a zero-area triangle")
         for start, end in ((first, second), (second, third), (third, first)):
             edge = _edge_key(start, end)
@@ -226,8 +271,11 @@ def _validated_wall_edges(
 
 
 def _unit_normal(points: np.ndarray) -> np.ndarray:
-    normal = np.cross(points[1] - points[0], points[2] - points[0])
-    length = float(np.linalg.norm(normal))
+    normalized = _similarity_normalized_points(points)
+    if normalized is None:
+        return np.zeros(3, dtype=np.float64)
+    normal = _cross3(normalized[1], normalized[2])
+    length = _norm3(normal)
     return normal / length if length > 1e-30 else np.zeros(3, dtype=np.float64)
 
 
@@ -241,7 +289,7 @@ def _feature_edges(
     cos_limit = float(np.cos(np.deg2rad(angle_deg)))
     protected: set[tuple[int, int]] = set()
     for edge, incident in edges.items():
-        if len(incident) == 2 and float(np.dot(*normals[incident])) < cos_limit:
+        if len(incident) == 2 and _dot3(*normals[incident]) < cos_limit:
             protected.add(edge)
     return protected
 
@@ -335,6 +383,16 @@ def _validate_preparation_result(
                 face_points[:, 2] - face_points[:, 0],
             )
             lengths = np.linalg.norm(normals, axis=1)
+            if not np.isfinite(lengths).all() or (lengths <= 1e-30).any():
+                normals = np.asarray(
+                    [_unit_normal(points) for points in face_points],
+                    dtype=np.float64,
+                )
+                lengths = np.linalg.norm(normals, axis=1)
+                if not np.isfinite(lengths).all() or (lengths <= 1e-30).any():
+                    raise RuntimeError(
+                        "native prepare_quad_pairs accepted an invalid source normal"
+                    )
             unit_normals = np.divide(
                 normals,
                 lengths[:, None],
@@ -453,33 +511,32 @@ def _oriented_quad(first: np.ndarray, second: np.ndarray) -> np.ndarray | None:
 
 def _quad_quality(points: np.ndarray) -> tuple[float, float, float] | None:
     """Return min scaled-Jacobian, aspect, warpage; reject concave cases."""
-    normal = np.cross(points[1] - points[0], points[2] - points[0]) + np.cross(
-        points[2] - points[0], points[3] - points[0]
-    )
-    normal_length = float(np.linalg.norm(normal))
+    normalized = _similarity_normalized_points(points)
+    if normalized is None:
+        return None
+    normal = _cross3(normalized[1], normalized[2]) + _cross3(normalized[2], normalized[3])
+    normal_length = _norm3(normal)
     if normal_length <= 1e-30:
         return None
-    unit_normal = normal / normal_length
-    edges = np.roll(points, -1, axis=0) - points
-    lengths = np.linalg.norm(edges, axis=1)
+    unit_normal = normal * (1.0 / normal_length)
+    edges = np.roll(normalized, -1, axis=0) - normalized
+    lengths = np.asarray([_norm3(edge) for edge in edges], dtype=np.float64)
     if float(lengths.min()) <= 1e-30:
         return None
     scaled: list[float] = []
     for index in range(4):
-        next_edge = points[(index + 1) % 4] - points[index]
-        previous_edge = points[(index - 1) % 4] - points[index]
-        denominator = float(np.linalg.norm(next_edge) * np.linalg.norm(previous_edge))
-        value = float(np.dot(np.cross(next_edge, previous_edge), unit_normal)) / denominator
+        next_edge = normalized[(index + 1) % 4] - normalized[index]
+        previous_edge = normalized[(index - 1) % 4] - normalized[index]
+        denominator = _norm3(next_edge) * _norm3(previous_edge)
+        value = _dot3(_cross3(next_edge, previous_edge), unit_normal) / denominator
         if value <= 1e-12:
             return None
         scaled.append(value)
-    plane_normal = np.cross(points[1] - points[0], points[2] - points[0])
-    plane_length = float(np.linalg.norm(plane_normal))
+    plane_normal = _cross3(normalized[1], normalized[2])
+    plane_length = _norm3(plane_normal)
     if plane_length <= 1e-30:
         return None
-    warpage = abs(float(np.dot(points[3] - points[0], plane_normal / plane_length))) / float(
-        lengths.max()
-    )
+    warpage = abs(_dot3(normalized[3], plane_normal * (1.0 / plane_length))) / float(lengths.max())
     return min(scaled), float(lengths.max() / lengths.min()), warpage
 
 
