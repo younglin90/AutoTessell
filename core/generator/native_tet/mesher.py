@@ -661,6 +661,17 @@ def generate_native_tet(
     if V.size == 0 or F.size == 0:
         return NativeTetResult(False, 0.0, message="빈 입력 mesh")
 
+    # Preserve the caller-visible source before any repair or reconstruction
+    # rebinds ``V``/``F``.  Final shape, topology, and provenance evidence must
+    # certify this immutable input, never a convenient repaired surrogate.
+    # One owning copy per array is intentional: callers may pass writable views,
+    # while later native-tet stages are allowed to mutate or replace working
+    # arrays.  Read-only flags make accidental aliasing fail immediately.
+    _input_source_vertices = np.array(V, dtype=np.float64, order="C", copy=True)
+    _input_source_faces = np.array(F, dtype=np.int64, order="C", copy=True)
+    _input_source_vertices.setflags(write=False)
+    _input_source_faces.setflags(write=False)
+
     # BETA2833 (B-8) — env AUTO_TESSELL_USE_FTETWILD_LOOP=1 시 dedicated
     # ftetwild_main_loop 직접 호출 → 기존 mesher pipeline 우회. wildmesh parity
     # T 94.5% 도달 path. polyMesh write + NativeTetResult 채운 후 즉시 return.
@@ -694,8 +705,8 @@ def generate_native_tet(
                 )
 
                 _ftw_topology_audit = _audit_source_topology_ftw(
-                    np.asarray(V, dtype=np.float64),
-                    np.asarray(F, dtype=np.int64),
+                    _input_source_vertices,
+                    _input_source_faces,
                     np.asarray(_r_ftw.pts, dtype=np.float64),
                     np.asarray(_r_ftw.tets, dtype=np.int64),
                 )
@@ -5535,25 +5546,41 @@ def generate_native_tet(
 
         # T1 — chain-based 검사 (subdivided edge 도 회복으로 인정).
         try:
-            cdt_r = check_edge_recovery_chained(V, F, final_pts, final_tets)
+            cdt_r = check_edge_recovery_chained(
+                _input_source_vertices,
+                _input_source_faces,
+                final_pts,
+                final_tets,
+            )
         except Exception:
-            cdt_r = check_edge_recovery(F, final_tets)
+            cdt_r = check_edge_recovery(_input_source_faces, final_tets)
         cdt_ratio_val = float(_cdt_ratio(cdt_r))
         # face ratio (strict).
-        cdt_strict = check_edge_recovery(F, final_tets)
+        cdt_strict = check_edge_recovery(_input_source_faces, final_tets)
         cdt_face_ratio_val = float(_cdt_face_ratio(cdt_strict))
         # V1 — plane coverage (fTetWild-style).
         try:
-            pc = plane_coverage(V, F, final_pts, final_tets)
+            pc = plane_coverage(
+                _input_source_vertices,
+                _input_source_faces,
+                final_pts,
+                final_tets,
+            )
             plane_cov_val = float(pc.plane_coverage)
             plane_area_cov_val = float(pc.area_coverage)
         except Exception:
             pass
 
         haus = hausdorff_vs_input(
-            V, F, final_pts, final_tets, n_samples_per_tri=2,
+            _input_source_vertices,
+            _input_source_faces,
+            final_pts,
+            final_tets,
+            n_samples_per_tri=2,
         )
-        bbox = V.max(axis=0) - V.min(axis=0)
+        bbox = _input_source_vertices.max(
+            axis=0,
+        ) - _input_source_vertices.min(axis=0)
         diag = float(np.linalg.norm(bbox)) + 1e-30
         haus_rel = float(haus.h_symmetric / diag)
 
@@ -5971,8 +5998,8 @@ def generate_native_tet(
                     _missing_source_vertices,
                     _p4c_topology,
                 ) = _p4c_candidate_meets_acceptance_l0(
-                    V,
-                    F,
+                    _input_source_vertices,
+                    _input_source_faces,
                     _tw_v,
                     _tw_f,
                     old_mean_quality=_mq_old,
@@ -6224,8 +6251,8 @@ def generate_native_tet(
         )
 
         _source_prefix_restore = restore_source_prefix_roundoff(
-            np.asarray(V, dtype=np.float64),
-            np.asarray(F, dtype=np.int64),
+            _input_source_vertices,
+            _input_source_faces,
             np.asarray(final_pts, dtype=np.float64),
             np.asarray(final_tets, dtype=np.int64),
             prefix_contract=not bool(_p4c_rewrote),
@@ -6270,8 +6297,8 @@ def generate_native_tet(
         )
 
         _source_topology_audit = audit_source_topology(
-            np.asarray(V, dtype=np.float64),
-            np.asarray(F, dtype=np.int64),
+            _input_source_vertices,
+            _input_source_faces,
             np.asarray(final_pts, dtype=np.float64),
             np.asarray(final_tets, dtype=np.int64),
         )
@@ -6433,7 +6460,12 @@ def generate_native_tet(
                     plane_cov_val,
                     plane_area_cov_val,
                     haus_rel,
-                ) = _measure_final_shape_evidence_l0(V, F, final_pts, final_tets)
+                ) = _measure_final_shape_evidence_l0(
+                    _input_source_vertices,
+                    _input_source_faces,
+                    final_pts,
+                    final_tets,
+                )
                 debug_info["final_shape_evidence_recomputed"] = True
                 log.info(
                     "native_tet_final_shape_evidence",
