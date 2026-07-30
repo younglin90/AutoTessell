@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from core.generator._tier_native_common import _edge_from_target_cells
 from core.generator.native_tet.harness import (
+    _TET_HARNESS_MAX_NON_ORTHOGONALITY,
     TetHarnessResult,
+    _evaluate_tet_mesh,
     run_native_tet_harness,
 )
 
@@ -47,6 +50,45 @@ def test_harness_empty_input_fails_gracefully(tmp_path: Path) -> None:
     assert isinstance(result, TetHarnessResult)
     assert result.success is False
     assert result.n_cells == 0
+
+
+@pytest.mark.parametrize(
+    ("non_ortho", "expected"),
+    [
+        (89.31439471907049, True),
+        (float(np.nextafter(90.0, 0.0)), True),
+        (90.0, False),
+    ],
+)
+def test_harness_non_ortho_gate_matches_under_90_evaluator_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    non_ortho: float,
+    expected: bool,
+) -> None:
+    """Draft viability accepts values below 90°, never the 90° hard limit."""
+
+    class _Checker:
+        def run(self, _case_dir: Path) -> SimpleNamespace:
+            return SimpleNamespace(
+                cells=763,
+                points=189,
+                max_non_orthogonality=non_ortho,
+                max_skewness=2.569496613554352,
+                negative_volumes=0,
+                mesh_ok=True,
+            )
+
+    monkeypatch.setattr(
+        "core.evaluator.native_checker.NativeMeshChecker",
+        _Checker,
+    )
+
+    passed, metrics = _evaluate_tet_mesh(tmp_path)
+
+    assert _TET_HARNESS_MAX_NON_ORTHOGONALITY == 90.0
+    assert metrics["max_non_orthogonality"] == non_ortho
+    assert passed is expected
 
 
 def test_harness_respects_max_iter_cap(tmp_path: Path) -> None:

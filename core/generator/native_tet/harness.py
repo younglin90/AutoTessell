@@ -35,6 +35,12 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+# Native-tet draft/standard acceptance is a viability gate, not the release
+# quality target.  OpenFOAM reports a 90° non-orthogonality as the geometric
+# limit; the evaluator already uses the same strict-under-90 contract.
+_TET_HARNESS_MAX_NON_ORTHOGONALITY = 90.0
+
+
 @dataclass
 class TetHarnessResult:
     success: bool
@@ -68,7 +74,7 @@ def _evaluate_tet_mesh(case_dir: Path) -> tuple[bool, dict]:
         "negative_volumes": int(r.negative_volumes),
         "mesh_ok": bool(r.mesh_ok),
     }
-    # PASS = negative_volumes == 0 + non_ortho < 89 (tet mesh 구조적 특성 허용)
+    # PASS = negative_volumes == 0 + non_ortho < 90 (tet mesh 구조적 특성 허용)
     # tet mesh 는 boundary sliver cell 로 인해 max_non_ortho 가 88-90° 에 가깝게
     # 나오는 것이 구조적 특성이다. 이전 기준(< 80°)은 너무 엄격해 불필요한
     # harness 재시도를 유발하고 오히려 품질을 악화시켰다.
@@ -76,7 +82,7 @@ def _evaluate_tet_mesh(case_dir: Path) -> tuple[bool, dict]:
     # 임계로 처리한다.
     passed = (
         metrics["negative_volumes"] == 0
-        and metrics["max_non_orthogonality"] < 89.0
+        and metrics["max_non_orthogonality"] < _TET_HARNESS_MAX_NON_ORTHOGONALITY
         and metrics["cells"] > 0
     )
     return passed, metrics
