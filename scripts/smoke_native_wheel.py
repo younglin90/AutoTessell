@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
 """Smoke-test the installed first-party native wheel from outside the repo."""
+
 from __future__ import annotations
 
 import importlib
 import importlib.machinery
 import importlib.metadata
+import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+
+_SOURCE_ROOT = Path(__file__).resolve().parents[1]
+if str(_SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SOURCE_ROOT))
+
+from scripts.native_build_evidence import (  # noqa: E402
+    MANIFEST_FILENAME,
+    WHEEL_CONTRACT_FILENAME,
+    verify_build_evidence,
+)
 
 EXPECTED_MODULES = {
     "native_bl",
@@ -30,7 +43,7 @@ def _extension_stem(path: Path) -> str | None:
     return None
 
 
-def _smoke_kernels(modules: dict[str, object]) -> None:
+def _smoke_kernels(modules: dict[str, Any]) -> None:
     metrics = modules["native_metrics"]
     centres, _, areas = metrics.compute_face_geometry(
         np.asarray([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
@@ -48,9 +61,7 @@ def _smoke_kernels(modules: dict[str, object]) -> None:
     )
     assert np.asarray(mask, dtype=bool).tolist() == [True, True]
 
-    vertices = np.asarray(
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    )
+    vertices = np.asarray([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
     cell_faces = [[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]]]
     topology = modules["native_polymesh"].build_topology(vertices, cell_faces, 1e-30)
     assert int(topology[5]) == 1
@@ -76,10 +87,14 @@ def _smoke_kernels(modules: dict[str, object]) -> None:
 
     cube_points = np.asarray(
         [
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0], [1.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
         ]
     )
     primitives = modules["native_hex_quality"].hex_quality_primitives(
@@ -105,19 +120,27 @@ def main() -> int:
         for item in distribution.files or ()
         if (stem := _extension_stem(Path(str(item)))) is not None
     }
-    assert installed_extensions == EXPECTED_MODULES, (
-        f"installed native module set mismatch: {sorted(installed_extensions)}"
-    )
+    assert (
+        installed_extensions == EXPECTED_MODULES
+    ), f"installed native module set mismatch: {sorted(installed_extensions)}"
     assert not installed_extensions.intersection(FORBIDDEN_MODULES)
 
-    modules: dict[str, object] = {}
+    manifest_path = Path(str(distribution.locate_file(MANIFEST_FILENAME))).resolve()
+    contract_path = Path(str(distribution.locate_file(WHEEL_CONTRACT_FILENAME))).resolve()
+    verify_build_evidence(
+        contract_path=contract_path,
+        build_dir=manifest_path.parent,
+        manifest_path=manifest_path,
+    )
+
+    modules: dict[str, Any] = {}
     for name in sorted(EXPECTED_MODULES):
         module = importlib.import_module(name)
         path = Path(str(module.__file__)).resolve()
         assert _extension_stem(path) == name, f"{name} is not a native extension: {path}"
         modules[name] = module
     _smoke_kernels(modules)
-    print("native-wheel-smoke: modules=8 kernels=8 forbidden=0")
+    print("native-wheel-smoke: modules=8 kernels=8 forbidden=0 evidence=pass")
     return 0
 
 

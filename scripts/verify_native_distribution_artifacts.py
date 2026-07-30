@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -39,6 +40,7 @@ REQUIRED_SOURCE = {
     "NOTICE",
     "pyproject.toml",
     "auto_tessell_core/CMakeLists.txt",
+    "auto_tessell_core/native_build_contract.json",
     "core/utils/_shewchuk/predicates.c",
     "docs/licensing/distribution-dependency-inventory.json",
     "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json",
@@ -46,6 +48,7 @@ REQUIRED_SOURCE = {
     "docs/licensing/mit-core-transition-policy.md",
     "docs/licensing/native-core-provenance-manifest.json",
     "scripts/collect_python_wheel_license_evidence.py",
+    "scripts/native_build_evidence.py",
     "scripts/verify_distribution_dependency_inventory.py",
     *(f"auto_tessell_core/{name}_bind.cpp" for name in EXPECTED_MODULES),
 }
@@ -69,12 +72,55 @@ def _module_name(filename: str) -> str | None:
 def verify_wheel(path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
+        manifest_names = [
+            item
+            for item in names
+            if PurePosixPath(item).name == "autotessell_native_build_manifest.json"
+        ]
+        contract_names = [
+            item
+            for item in names
+            if PurePosixPath(item).name == "autotessell_native_build_contract.json"
+        ]
+        assert len(manifest_names) == 1, "wheel must contain exactly one native build manifest"
+        assert len(contract_names) == 1, "wheel must contain exactly one native build contract"
+        manifest_bytes = archive.read(manifest_names[0])
+        contract_bytes = archive.read(contract_names[0])
+        manifest = json.loads(manifest_bytes)
+        contract = json.loads(contract_bytes)
     modules = {name for item in names if (name := _module_name(item)) is not None}
     assert modules == EXPECTED_MODULES, f"wheel native modules: {sorted(modules)}"
     assert not modules.intersection(FORBIDDEN_MODULES)
     assert not any("/third_party/" in f"/{item}" for item in names)
     assert any(item.endswith(".dist-info/licenses/LICENSE") for item in names)
     assert any(item.endswith(".dist-info/licenses/NOTICE") for item in names)
+    assert manifest["schema"] == 1
+    assert contract["schema"] == 1
+    assert set(manifest["modules"]) == EXPECTED_MODULES
+    assert set(contract["modules"]) == EXPECTED_MODULES
+    assert manifest["contract_sha256"] == hashlib.sha256(contract_bytes).hexdigest()
+    assert manifest["compiler"]["cxx_standard"] == 23
+    assert manifest["compiler"]["id"]
+    assert manifest["compiler"]["version"]
+    assert manifest["python_soabi"]
+    assert manifest["source_identity"]
+    assert manifest["source_tree_clean"] is True
+    assert len(manifest["source_aggregate_sha256"]) == 64
+    binary_members = {
+        name: next(item for item in names if _module_name(item) == name)
+        for name in EXPECTED_MODULES
+    }
+    with zipfile.ZipFile(path) as archive:
+        for name in sorted(EXPECTED_MODULES):
+            evidence = manifest["modules"][name]
+            expected = contract["modules"][name]
+            assert PurePosixPath(binary_members[name]).name == evidence["binary_file"]
+            assert (
+                hashlib.sha256(archive.read(binary_members[name])).hexdigest()
+                == evidence["binary_sha256"]
+            )
+            assert evidence["public_symbols"] == expected["public_symbols"]
+            assert len(evidence["binding_source_sha256"]) == 64
 
 
 def verify_sdist(path: Path) -> None:

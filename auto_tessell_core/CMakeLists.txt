@@ -299,14 +299,62 @@ else()
   endif()
 endif()
 
+option(AUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE
+  "Generate fail-closed identity and ABI evidence for first-party native extensions" OFF)
+set(AUTOTESSELL_SOURCE_IDENTITY "" CACHE STRING
+  "Optional archive content identity; must equal the source-derived identity")
 if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)
+  set(AUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE ON CACHE BOOL "" FORCE)
+endif()
+
+if(AUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE)
   foreach(target_name IN LISTS _AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS)
     if(NOT TARGET ${target_name})
       message(FATAL_ERROR
-        "First-party native wheel target '${target_name}' was not created")
+        "First-party native evidence target '${target_name}' was not created")
     endif()
   endforeach()
+
+  set(_AUTOTESSELL_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+  set(_AUTOTESSELL_NATIVE_CONTRACT
+      "${CMAKE_CURRENT_SOURCE_DIR}/native_build_contract.json")
+  set(_AUTOTESSELL_NATIVE_MANIFEST
+      "${CMAKE_CURRENT_BINARY_DIR}/autotessell_native_build_manifest.json")
+  set(_AUTOTESSELL_IDENTITY_ARGS)
+  if(AUTOTESSELL_SOURCE_IDENTITY)
+    list(APPEND _AUTOTESSELL_IDENTITY_ARGS
+      --source-identity "${AUTOTESSELL_SOURCE_IDENTITY}")
+  endif()
+
+  add_custom_target(native_build_evidence ALL
+    COMMAND "${Python_EXECUTABLE}"
+      "${_AUTOTESSELL_SOURCE_ROOT}/scripts/native_build_evidence.py" generate
+      --contract "${_AUTOTESSELL_NATIVE_CONTRACT}"
+      --source-root "${_AUTOTESSELL_SOURCE_ROOT}"
+      --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+      --output "${_AUTOTESSELL_NATIVE_MANIFEST}"
+      --compiler-id "${CMAKE_CXX_COMPILER_ID}"
+      --compiler-version "${CMAKE_CXX_COMPILER_VERSION}"
+      --cxx-standard 23
+      ${_AUTOTESSELL_IDENTITY_ARGS}
+    DEPENDS
+      ${_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS}
+      "${_AUTOTESSELL_NATIVE_CONTRACT}"
+      "${_AUTOTESSELL_SOURCE_ROOT}/scripts/native_build_evidence.py"
+    COMMENT "Generating first-party native build identity and ABI evidence"
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
+endif()
+
+if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)
   install(TARGETS ${_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS}
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .)
+  install(FILES
+    "${_AUTOTESSELL_NATIVE_MANIFEST}"
+    DESTINATION .)
+  install(FILES
+    "${_AUTOTESSELL_NATIVE_CONTRACT}"
+    DESTINATION .
+    RENAME autotessell_native_build_contract.json)
 endif()

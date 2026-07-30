@@ -1,4 +1,5 @@
 """Static release contract for the isolated first-party native wheel."""
+
 from __future__ import annotations
 
 import json
@@ -56,8 +57,12 @@ def test_cmake_install_contract_and_adapter_exclusion() -> None:
     assert "find_package(Boost REQUIRED)" in cmake
     assert "target_link_libraries(native_tet_predicates PRIVATE Boost::headers)" in cmake
     assert "AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE" in cmake
+    assert "AUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE" in cmake
+    assert "native_build_evidence" in cmake
+    assert "autotessell_native_build_manifest.json" in cmake
+    assert "native_build_contract.json" in cmake
     for option in ("BUILD_CINOLIB_HEX", "BUILD_ROBUSTHEX", "BUILD_FTETWILD", "BUILD_CFMESH"):
-        assert f"set({option} OFF CACHE BOOL \"\" FORCE)" in cmake
+        assert f'set({option} OFF CACHE BOOL "" FORCE)' in cmake
     for module in EXPECTED_MODULES:
         assert module in cmake
     for module in FORBIDDEN_MODULES:
@@ -69,9 +74,7 @@ def test_cmake_install_contract_and_adapter_exclusion() -> None:
 
 def test_distribution_inventory_records_wheel_boundary() -> None:
     inventory = json.loads(
-        (ROOT / "docs/licensing/distribution-dependency-inventory.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "docs/licensing/distribution-dependency-inventory.json").read_text(encoding="utf-8")
     )
     profile = next(
         item for item in inventory["profiles"] if item["id"] == "first-party-native-wheel"
@@ -85,13 +88,9 @@ def test_distribution_inventory_records_wheel_boundary() -> None:
     assert "NOT_YET_RELEASE_AUDITED" in boost["license_assertion"]["status"]
 
     provenance = json.loads(
-        (ROOT / "docs/licensing/native-core-provenance-manifest.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "docs/licensing/native-core-provenance-manifest.json").read_text(encoding="utf-8")
     )
     shipped = {
-        item["module"]
-        for item in provenance["bindings"]
-        if item["classification"] == "native_core"
+        item["module"] for item in provenance["bindings"] if item["classification"] == "native_core"
     }
     assert shipped == EXPECTED_MODULES
