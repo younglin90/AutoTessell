@@ -22,12 +22,31 @@ from __future__ import annotations
 import numpy as np
 
 from core.preprocessor.native_remesh.cvt import lloyd_cvt
+from core.preprocessor.native_remesh.face import (
+    SurfaceRemeshConfig,
+    SurfaceRemeshDiagnostics,
+    SurfaceRemeshResult,
+    native_face_remesh,
+)
 from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 from core.preprocessor.native_remesh.quad_dominant import (
     QuadDominantConfig,
     QuadDominantDiagnostics,
     QuadDominantResult,
     native_quad_dominant_remesh,
+)
+
+__all__ = (
+    "QuadDominantConfig",
+    "QuadDominantDiagnostics",
+    "QuadDominantResult",
+    "SurfaceRemeshConfig",
+    "SurfaceRemeshDiagnostics",
+    "SurfaceRemeshResult",
+    "isotropic_remesh",
+    "lloyd_cvt",
+    "native_face_remesh",
+    "native_quad_dominant_remesh",
 )
 
 _UUU1_SI_DETECT = True
