@@ -71,6 +71,27 @@ def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
         or (triangles >= len(vertices)).any()
     ):
         raise ValueError("surface contains non-finite vertices or invalid triangle indices")
+    seen_faces: set[tuple[int, int, int]] = set()
+    edge_directions: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for triangle in triangles:
+        first, second, third = (int(vertex) for vertex in triangle)
+        face_key = tuple(sorted((first, second, third)))
+        if len(set(face_key)) != 3:
+            raise ValueError("surface contains a degenerate triangle")
+        if face_key in seen_faces:
+            raise ValueError("surface contains a duplicate triangle")
+        seen_faces.add(face_key)
+        points = vertices[np.asarray((first, second, third), dtype=np.int64)]
+        if float(np.linalg.norm(np.cross(points[1] - points[0], points[2] - points[0]))) <= 1e-30:
+            raise ValueError("surface contains a zero-area triangle")
+        for start, end in ((first, second), (second, third), (third, first)):
+            edge = _edge_key(start, end)
+            edge_directions[edge].append(1 if (start, end) == edge else -1)
+    for edge, directions in edge_directions.items():
+        if len(directions) > 2:
+            raise ValueError(f"surface contains non-manifold edge {edge}")
+        if len(directions) == 2 and directions[0] == directions[1]:
+            raise ValueError(f"surface contains inconsistent orientation at edge {edge}")
 
 
 def _edge_faces(triangles: np.ndarray) -> dict[tuple[int, int], list[int]]:
