@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -13,10 +14,33 @@ from core.generator.native_tet.hausdorff import hausdorff_vs_input
 from core.generator.native_tet.mesher import generate_native_tet
 from core.generator.native_tet.quality import snapshot
 from core.generator.native_tet.rescue_gate import audit_tet_boundary
+from core.generator.native_tet.source_facet_provenance import (
+    audit_source_facet_provenance_python,
+)
+from core.utils.polymesh_reader import (
+    parse_foam_faces,
+    parse_foam_labels,
+    parse_foam_points,
+)
 
 CYLINDER = Path(__file__).resolve().parent / "benchmarks" / "cylinder.stl"
 CUBE = Path(__file__).resolve().parent / "benchmarks" / "cube.stl"
 SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
+
+
+def _assert_disk_source_facets(mesh: Any, case_dir: Path) -> None:
+    poly_mesh = case_dir / "constant" / "polyMesh"
+    disk_points = np.asarray(parse_foam_points(poly_mesh / "points"), dtype=np.float64)
+    disk_faces = np.asarray(parse_foam_faces(poly_mesh / "faces"), dtype=np.int64)
+    n_internal = len(parse_foam_labels(poly_mesh / "neighbour"))
+    report = audit_source_facet_provenance_python(
+        np.asarray(mesh.vertices, dtype=np.float64),
+        np.asarray(mesh.faces, dtype=np.int64),
+        disk_points,
+        disk_faces[n_internal:],
+    )
+    assert report["source_faces_preserved"] is True
+    assert report["n_unowned_candidate_faces"] == 0
 
 
 def test_cylinder_boundary_is_locked_and_written_deterministically(
@@ -43,6 +67,7 @@ def test_cylinder_boundary_is_locked_and_written_deterministically(
 
         assert result.success, result.message
         assert (case_dir / "constant" / "polyMesh").exists()
+        _assert_disk_source_facets(mesh, case_dir)
         audit = audit_tet_boundary(result.tet_points, result.tets)
         assert audit.valid
         assert audit.n_inverted_tets == 0
@@ -116,6 +141,7 @@ def test_boundary_lock_preserves_cube_and_sphere_contracts(
     )
 
     assert result.success, result.message
+    _assert_disk_source_facets(mesh, tmp_path / fixture.stem)
     assert result.n_points == expected_points
     assert result.n_cells == expected_cells
     audit = audit_tet_boundary(result.tet_points, result.tets)

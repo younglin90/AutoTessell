@@ -410,6 +410,7 @@ def write_generic_polymesh(
         Callable[[list[int], np.ndarray], str | tuple[str, str] | None] | None
     ) = None,
     strict: bool = False,
+    point_precision: int = 9,
 ) -> dict[str, int]:
     """Generic polyMesh writer — cell → list of face vertex lists.
 
@@ -421,6 +422,8 @@ def write_generic_polymesh(
         case_dir: 결과 case 디렉터리 — ``constant/polyMesh/`` 하위에 쓰기.
         patch_name / patch_type: 단일 boundary patch 설정 (기본 defaultWall/wall).
         strict: reject any cell/face loss or non-manifold face before writing.
+        point_precision: ASCII point-coordinate significant digits.  The
+            historical generic default is 9; binary64 round-trip needs 17.
 
     Returns:
         ``{num_cells, num_points, num_faces, num_internal_faces}``.
@@ -781,7 +784,11 @@ def write_generic_polymesh(
         f"nFaces:{n_faces}  nInternalFaces:{n_internal}"
     )
 
-    _write_points(poly_dir / "points", vertices_arr)
+    _write_points(
+        poly_dir / "points",
+        vertices_arr,
+        precision=point_precision,
+    )
     _write_faces(poly_dir / "faces", final_faces)
     _write_labels(
         poly_dir / "owner",
@@ -831,6 +838,7 @@ class PolyMeshWriter:
         boundary_patch_classifier: (
             Callable[[list[int], np.ndarray], str | tuple[str, str] | None] | None
         ) = None,
+        point_precision: int = 9,
     ) -> dict[str, int]:
         """Write OpenFOAM polyMesh from tet mesh arrays.
 
@@ -843,6 +851,9 @@ class PolyMeshWriter:
         case_dir:
             OpenFOAM case directory.  The ``constant/polyMesh`` sub-directory
             is created automatically.
+        point_precision:
+            ASCII point-coordinate significant digits.  Defaults to the
+            historical 9; pass 17 for binary64 round-trip.
 
         Returns
         -------
@@ -852,6 +863,8 @@ class PolyMeshWriter:
         """
         vertices = np.asarray(vertices, dtype=np.float64)
         tets = np.asarray(tets, dtype=np.int64)
+        if not np.isfinite(vertices).all():
+            raise ValueError("tet point coordinates must be finite")
 
         # Step 0: normalise tet winding so all cells have positive volume.
         # Tets from external tools (pytetwild, Netgen …) may have inconsistent
@@ -885,6 +898,7 @@ class PolyMeshWriter:
             case_dir,
             boundary_patch_classifier=boundary_patch_classifier,
             strict=True,
+            point_precision=point_precision,
         )
 
         # Writer-specific system files (GAMG solver 등 tet 솔루션 설정) 덮어쓰기.

@@ -2004,12 +2004,25 @@ FoamFile
 _FOAM_FOOTER = "\n// ************************************************************************* //\n"
 
 
-def _write_points(path: Path, points: np.ndarray) -> None:
-    """beta85: numpy savetxt → 대형 mesh 에서 10× 빠른 I/O."""
+def _write_points(
+    path: Path,
+    points: np.ndarray,
+    *,
+    precision: int = 9,
+) -> None:
+    """Write ASCII points with an explicit significant-digit contract.
+
+    Nine digits preserve the historical generic-writer byte format.  Callers
+    whose geometry certificate requires binary64 text round-trip may request
+    17 digits (``max_digits10`` for IEEE-754 binary64).
+    """
+    if not isinstance(precision, int) or not 1 <= precision <= 17:
+        raise ValueError("point precision must be an integer in [1, 17]")
     import io  # noqa: PLC0415
     header = _FOAM_HEADER.format(cls="vectorField", obj="points")
     buf = io.StringIO()
-    np.savetxt(buf, points, fmt="(%.9g %.9g %.9g)")
+    fmt = f"(%.{precision}g %.{precision}g %.{precision}g)"
+    np.savetxt(buf, points, fmt=fmt)
     path.write_text(
         f"{header}{len(points)}\n(\n{buf.getvalue()})\n{_FOAM_FOOTER}",
         encoding="utf-8",

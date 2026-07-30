@@ -32,6 +32,10 @@ import pytest
 # so the fix under test cannot apply.
 pytest.importorskip("pytetwild")
 
+from core.analyzer.file_reader import load_mesh  # noqa: E402
+from core.generator.native_tet.source_facet_provenance import (  # noqa: E402
+    audit_source_facet_provenance_python,
+)
 from core.pipeline.orchestrator import PipelineOrchestrator  # noqa: E402
 from core.utils.polymesh_reader import (  # noqa: E402
     parse_foam_faces,
@@ -48,25 +52,44 @@ _Z_SIDE_LIMIT = 0.49  # |z| < this ⇒ curved side wall, not the end caps
 
 
 def _side_wall_radius_deviation(poly_dir: Path) -> tuple[float, float, int]:
-    """Return (max_abs_dev, mean_abs_dev, n_side) for side-wall boundary
-    vertices' radius relative to the true cylinder radius (0.5)."""
+    """Measure vertices owned by side-wall boundary-face topology.
+
+    A conforming cylinder may use only the two source rings, so selecting
+    vertices with ``abs(z) < 0.49`` falsely reports zero side vertices.  Side
+    faces have interior-z centroids even when every one of their vertices lies
+    on an end ring; select those faces first, then measure their vertices.
+    """
     pts = np.asarray(parse_foam_points(poly_dir / "points"), dtype=float)
     faces = [list(f) for f in parse_foam_faces(poly_dir / "faces")]
     neighbour = parse_foam_labels(poly_dir / "neighbour")
     n_internal = len(neighbour)
 
     boundary_verts: set[int] = set()
-    for fi in range(n_internal, len(faces)):
-        boundary_verts.update(faces[fi])
+    for face in faces[n_internal:]:
+        face_points = pts[np.asarray(face, dtype=np.int64)]
+        if abs(float(face_points[:, 2].mean())) < _Z_SIDE_LIMIT:
+            boundary_verts.update(face)
     idx = np.fromiter(sorted(boundary_verts), dtype=np.int64)
     bp = pts[idx]
 
-    side = np.abs(bp[:, 2]) < _Z_SIDE_LIMIT
-    r = np.hypot(bp[side, 0] - _AXIS_XY[0], bp[side, 1] - _AXIS_XY[1])
+    r = np.hypot(bp[:, 0] - _AXIS_XY[0], bp[:, 1] - _AXIS_XY[1])
     dev = np.abs(r - _TRUE_RADIUS)
     if dev.size == 0:
         return 0.0, 0.0, 0
     return float(dev.max()), float(dev.mean()), int(dev.size)
+
+
+def _disk_source_facet_report(poly_dir: Path) -> dict[str, int | bool]:
+    source = load_mesh(_CYLINDER)
+    points = np.asarray(parse_foam_points(poly_dir / "points"), dtype=np.float64)
+    faces = np.asarray(parse_foam_faces(poly_dir / "faces"), dtype=np.int64)
+    n_internal = len(parse_foam_labels(poly_dir / "neighbour"))
+    return audit_source_facet_provenance_python(
+        np.asarray(source.vertices, dtype=np.float64),
+        np.asarray(source.faces, dtype=np.int64),
+        points,
+        faces[n_internal:],
+    )
 
 
 def test_cylinder_side_wall_fidelity(tmp_path, monkeypatch):
@@ -105,6 +128,10 @@ def test_cylinder_side_wall_fidelity(tmp_path, monkeypatch):
         f"cylinder side-wall radius max deviation {max_dev:.4f} exceeds 0.05 "
         f"(mean {mean_dev:.4f}, n_side={n_side}) — curved-wall 찌글거림 regressed"
     )
+
+    source_report = _disk_source_facet_report(poly)
+    assert source_report["source_faces_preserved"] is True
+    assert source_report["n_unowned_candidate_faces"] == 0
 
     # The mesh must also remain solver-valid: the pre-fix behaviour of gating
     # the drop pass off *without* persisting the faithful P4-C mesh left a

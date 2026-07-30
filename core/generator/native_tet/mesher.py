@@ -723,7 +723,12 @@ def generate_native_tet(
                         tets=_r_ftw.tets,
                     )
                 try:
-                    _PMW().write(_r_ftw.pts, _r_ftw.tets, case_dir)
+                    _PMW().write(
+                        _r_ftw.pts,
+                        _r_ftw.tets,
+                        case_dir,
+                        point_precision=17,
+                    )
                 except Exception as _exc_w:
                     log.warning(
                         "ftetwild_polymesh_write_failed",
@@ -6442,6 +6447,7 @@ def generate_native_tet(
             final_tets,
             case_dir,
             boundary_patch_classifier=_get_boundary_patch_classifier(),
+            point_precision=17,
         )
         n_cells = int(final_tets.shape[0])
         n_points = int(final_pts.shape[0])
