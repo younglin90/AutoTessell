@@ -17,6 +17,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 
 import numpy as np
@@ -153,6 +154,11 @@ def run_native_poly_harness(
     best_metrics: dict = {}
     current_seed = int(seed_density)
     tet_cells_by_iteration: list[int] = []
+    min_final_vertices = (
+        max(int(np.asarray(vertices).shape[0]) + 1, int(ceil(int(target_cells) * 0.5)))
+        if target_cells is not None and int(target_cells) > 0
+        else None
+    )
 
     for it in range(1, int(max_iter) + 1):
         log.info(
@@ -169,6 +175,7 @@ def run_native_poly_harness(
                 tmp_tet,
                 target_edge_length=target_edge_length,
                 target_cells=target_cells,
+                min_final_vertices=min_final_vertices,
                 seed_density=current_seed,
             )
             if not tet_res.success or tet_res.tets is None:

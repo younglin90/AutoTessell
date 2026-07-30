@@ -453,6 +453,9 @@ def generate_native_tet(
     # beta330 — volume target: 사용자가 희망 cell 수 지정 시 seed_density
     # 자동 조정 (bbox 기반 heuristic: target_edge = (V_bbox / target_cells)^(1/3)).
     target_cells: int | None = None,
+    # Native-poly opt-in: the dual creates one cell per retained primal point.
+    # Generic tet callers leave this unset and retain the legacy contract.
+    min_final_vertices: int | None = None,
     # beta410 — progress_cb(stage: str, pct: float, info: dict): 진행 보고.
     progress_cb: "Any" = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
@@ -5997,6 +6000,39 @@ def generate_native_tet(
             ratio=round(n_cells / max(1, V.shape[0]), 4),
             message="cells/V_surf ratio < 1/32 — catastrophic collapse",
         )
+
+    if min_final_vertices is not None and int(min_final_vertices) > 0:
+        required_vertices = int(min_final_vertices)
+        if n_points < required_vertices:
+            log.warning(
+                "native_tet_target_primal_vertex_floor_unmet",
+                actual_vertices=int(n_points),
+                required_vertices=required_vertices,
+                target_cells=target_cells,
+            )
+            return NativeTetResult(
+                success=False,
+                elapsed=elapsed,
+                n_cells=n_cells,
+                n_points=n_points,
+                message=(
+                    "target_primal_vertex_floor_unmet: "
+                    f"actual={n_points}, required={required_vertices}"
+                ),
+                tet_points=final_pts,
+                tets=final_tets,
+                quality=final_quality,
+                warnings=warnings_list or None,
+                debug_info=debug_info,
+                quality_grade=grade,
+                cdt_ratio=float(cdt_ratio_val),
+                cdt_face_ratio=float(cdt_face_ratio_val),
+                plane_coverage=float(plane_cov_val),
+                plane_area_coverage=float(plane_area_cov_val),
+                hausdorff_relative=float(haus_rel),
+                n_self_intersect_pre=_pre_mesh_si_count,
+                mesh_integrity_suspect=_mesh_suspect,
+            )
 
     # CYLSKEW1 (beta2822) — offset-ring 삽입점이 최종 boundary 로 새지 않는지
     # 진단 (read-only, 하류 로직 변경 없음). default OFF 경로에서는 no-op.
