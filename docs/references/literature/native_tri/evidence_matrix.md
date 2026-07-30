@@ -415,11 +415,14 @@ two-sided envelope gating, and anisotropic BL intersection remain open.
 ### 2026-07-31 TRI-FLIP-FILTER-CPP23-1 — frozen-state candidate batch
 
 The scalar flip scan built `1,836` full-mesh candidates per cylinder round
-before selecting any edge.  A serial C++23 kernel now constructs topology,
-valence, and boundary counts once and returns the identical Boolean candidate
-mask in edge order.  Python still selects the minimum-length edge and the
-unchanged transaction rebuilds and validates the actual flip.  Filter copy
-pairs fell `1,836 -> 0`; the `46` required real transaction builds remain.
+before selecting any edge.  With the explicit default-OFF
+`AUTO_TESSELL_TRI_FLIP_FILTER_CPP23=1` experiment enabled, a serial C++23
+kernel constructs topology, valence, and boundary counts once and returns the
+identical Boolean candidate mask in edge order.  Python still selects the
+minimum-length edge and the unchanged transaction rebuilds and validates the
+actual flip.  Filter copy pairs fell `1,836 -> 0`; the `46` required real
+transaction builds remain.  Default, `0`, and invalid environment values keep
+the scalar path, so this L1 card does not change production behavior.
 
 The cylinder round improved `0.512485236 -> 0.307059165 s` (`1.669x`) and peak
 RSS decreased `52,224 -> 44,544 KiB`.  Direct filter speedup was `64.99x`.

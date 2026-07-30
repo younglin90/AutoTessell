@@ -9,7 +9,10 @@ same frozen mesh state.  It builds face/edge incidence, valence, and boundary
 counts once, then returns a Boolean mask in the supplied edge order.  Python
 retains candidate ordering, minimum-edge selection, the actual flip builder,
 and all transaction, link, fold-over, exact-orientation, shape, and provenance
-gates.  Extension absence retains the scalar Python oracle.
+gates.  The production default is unchanged: the kernel is used only with the
+explicit `AUTO_TESSELL_TRI_FLIP_FILTER_CPP23=1` experimental opt-in.  Missing,
+empty, `0`, or any other value uses the scalar Python oracle; extension absence
+also falls back to that oracle.
 
 ## Research and provenance
 
@@ -71,7 +74,8 @@ before final validation:
 - edge-by-edge scalar/native parity and exact cube/sphere/cylinder report
   sequence, accepted count, input bytes, output hashes, and three-run
   determinism;
-- strict malformed-ABI failure and extension-absent fallback.
+- default/OFF/invalid-value scalar equivalence, strict malformed-ABI failure
+  while opted in, and extension-absent fallback.
 
 Rollback: any decision, order, hash, topology, shape, feature, boundary,
 provenance, or transaction-gate mismatch; malformed result acceptance;
@@ -110,9 +114,9 @@ flat incidence/count data once and performs constant-size local valence deltas.
 Validation:
 
 - focused parity, fallback, malformed-ABI, allocation, existing-diagonal, and
-  three-run suite: `10 passed`;
+  default/OFF/invalid-value, and three-run suite: `17 passed`;
 - combined native Tri, native Quad, build-evidence, and wheel-contract
-  regression: `249 passed`;
+  regression: `256 passed`;
 - isolated GCC 13.3 `-std=c++23 -O3 -Wall -Wextra -Wpedantic -Werror` Release
   build with `-j1`: zero warnings;
 - new benchmark/test files: Black and Ruff pass;
@@ -122,11 +126,13 @@ Reproduce:
 
 ```bash
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+AUTO_TESSELL_TRI_FLIP_FILTER_CPP23=1 \
 PYTHONPATH=. AUTOTESSELL_EXT_BUILD_DIR=<release-build> \
 python3 tests/stl/bench_native_tri_flip_filter.py \
   --mode scalar --repeats 7
 
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+AUTO_TESSELL_TRI_FLIP_FILTER_CPP23=1 \
 PYTHONPATH=. AUTOTESSELL_EXT_BUILD_DIR=<release-build> \
 python3 tests/stl/bench_native_tri_flip_filter.py \
   --mode native --repeats 7

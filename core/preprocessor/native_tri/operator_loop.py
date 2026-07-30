@@ -30,6 +30,7 @@ from .metric import (
 
 _SHELL_PROVENANCE_ENV = "AUTO_TESSELL_TRI_SHELL_PROVENANCE1"
 _LOCAL_GUARDS_ENV = "AUTO_TESSELL_TRI_LOCAL_GUARDS1"
+_FLIP_FILTER_CPP23_ENV = "AUTO_TESSELL_TRI_FLIP_FILTER_CPP23"
 
 
 def shell_provenance_reporting_enabled() -> bool:
@@ -40,6 +41,12 @@ def shell_provenance_reporting_enabled() -> bool:
 def local_guard_path_enabled() -> bool:
     """Return whether the opt-in local-equivalence guard path is enabled."""
     return os.environ.get(_LOCAL_GUARDS_ENV) == "1"
+
+
+def flip_filter_cpp23_enabled() -> bool:
+    """Return whether the experimental C++23 frozen-state filter is enabled."""
+    return os.environ.get(_FLIP_FILTER_CPP23_ENV) == "1"
+
 
 #: One triangle is three ``float64`` points, i.e. 9 * 8 bytes of coordinates.
 _TRIANGLE_KEY_BYTES = 72
@@ -994,6 +1001,13 @@ class OperatorTransaction:
         """
         if not edges:
             return np.empty(0, dtype=np.bool_)
+
+        if not flip_filter_cpp23_enabled():
+            return np.fromiter(
+                (self.should_flip_edge(edge) for edge in edges),
+                dtype=np.bool_,
+                count=len(edges),
+            )
 
         from core.utils.native_extensions import load_native_metrics
 

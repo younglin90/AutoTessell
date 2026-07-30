@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -12,7 +13,12 @@ import numpy as np
 import pytest
 
 from core.analyzer.readers import read_stl
-from core.preprocessor.native_tri.operator_loop import OperatorTransaction
+from core.preprocessor.native_tri.operator_loop import (
+    OperatorTransaction,
+    flip_filter_cpp23_enabled,
+)
+
+_FLIP_FILTER_ENV = "AUTO_TESSELL_TRI_FLIP_FILTER_CPP23"
 
 
 def _native_flip_filter() -> Any:
@@ -69,6 +75,16 @@ class _WithoutFlipFilter:
         return getattr(self._native, name)
 
 
+class _ExplodingFlipFilter:
+    def __init__(self, native: Any) -> None:
+        self._native = native
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "triangle_flip_candidate_mask":
+            raise AssertionError("default-OFF path selected native flip filter")
+        return getattr(self._native, name)
+
+
 @pytest.mark.parametrize("name", ["cube.stl", "sphere.stl", "cylinder.stl"])
 def test_native_flip_mask_matches_scalar_oracle_on_frozen_state(name: str) -> None:
     native = _native_flip_filter()
@@ -81,7 +97,10 @@ def test_native_flip_mask_matches_scalar_oracle_on_frozen_state(name: str) -> No
         count=len(edges),
     )
 
-    with patch("core.utils.native_extensions.load_native_metrics", return_value=native):
+    with (
+        patch.dict(os.environ, {_FLIP_FILTER_ENV: "1"}),
+        patch("core.utils.native_extensions.load_native_metrics", return_value=native),
+    ):
         actual = transaction._flip_candidate_mask(edges)
 
     np.testing.assert_array_equal(actual, expected)
@@ -96,6 +115,7 @@ def test_native_filter_does_not_build_per_edge_mesh_copies() -> None:
     edges = transaction._unique_edges()
 
     with (
+        patch.dict(os.environ, {_FLIP_FILTER_ENV: "1"}),
         patch("core.utils.native_extensions.load_native_metrics", return_value=native),
         patch.object(
             transaction,
@@ -124,7 +144,10 @@ def test_existing_diagonal_remains_rejected_by_transaction_gate() -> None:
     transaction = OperatorTransaction(vertices, faces)
     assert transaction.should_flip_edge((0, 1))
 
-    with patch("core.utils.native_extensions.load_native_metrics", return_value=native):
+    with (
+        patch.dict(os.environ, {_FLIP_FILTER_ENV: "1"}),
+        patch("core.utils.native_extensions.load_native_metrics", return_value=native),
+    ):
         mask = transaction._flip_candidate_mask(((0, 1),))
 
     assert mask.tolist() == [True]
@@ -161,6 +184,7 @@ def test_python_wrapper_rejects_malformed_native_output() -> None:
     )
 
     with (
+        patch.dict(os.environ, {_FLIP_FILTER_ENV: "1"}),
         patch(
             "core.utils.native_extensions.load_native_metrics",
             return_value=malformed,
@@ -170,15 +194,97 @@ def test_python_wrapper_rejects_malformed_native_output() -> None:
         transaction._flip_candidate_mask(edges)
 
 
+@pytest.mark.parametrize("value", [None, "", "0", "2", "true", "yes"])
+def test_default_off_and_invalid_env_use_scalar_without_selecting_native_filter(
+    value: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = _native_flip_filter()
+    vertices, faces, _ = _fixture("cylinder.stl")
+    transaction = OperatorTransaction(vertices, faces)
+    edges = transaction._unique_edges()
+    expected = np.fromiter(
+        (transaction.should_flip_edge(edge) for edge in edges),
+        dtype=np.bool_,
+        count=len(edges),
+    )
+    monkeypatch.delenv(_FLIP_FILTER_ENV, raising=False)
+    if value is not None:
+        monkeypatch.setenv(_FLIP_FILTER_ENV, value)
+
+    assert not flip_filter_cpp23_enabled()
+    with patch(
+        "core.utils.native_extensions.load_native_metrics",
+        return_value=_ExplodingFlipFilter(native),
+    ):
+        actual = transaction._flip_candidate_mask(edges)
+
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(transaction.state.vertices, vertices)
+    np.testing.assert_array_equal(transaction.state.faces, faces)
+
+
+def test_opt_in_missing_symbol_falls_back_to_scalar_oracle() -> None:
+    native = _native_flip_filter()
+    vertices, faces, _ = _fixture("cylinder.stl")
+    transaction = OperatorTransaction(vertices, faces)
+    edges = transaction._unique_edges()
+    expected = np.fromiter(
+        (transaction.should_flip_edge(edge) for edge in edges),
+        dtype=np.bool_,
+        count=len(edges),
+    )
+
+    with (
+        patch.dict(os.environ, {_FLIP_FILTER_ENV: "1"}),
+        patch(
+            "core.utils.native_extensions.load_native_metrics",
+            return_value=_WithoutFlipFilter(native),
+        ),
+    ):
+        actual = transaction._flip_candidate_mask(edges)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("name", ["cube.stl", "sphere.stl", "cylinder.stl"])
-def test_native_flip_filter_preserves_full_round_signature(name: str) -> None:
+def test_native_flip_filter_preserves_full_round_signature(
+    name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     native = _native_flip_filter()
     vertices, faces, target = _fixture(name)
     signatures: list[tuple[Any, ...]] = []
-    for module in (_WithoutFlipFilter(native), native, native, native):
-        with patch(
-            "core.utils.native_extensions.load_native_metrics",
-            return_value=module,
+    monkeypatch.delenv(_FLIP_FILTER_ENV, raising=False)
+    with patch(
+        "core.utils.native_extensions.load_native_metrics",
+        return_value=native,
+    ):
+        transaction = OperatorTransaction(
+            vertices,
+            faces,
+            target_edge_length=target,
+        )
+        reports = transaction.run_one_round(
+            target_edge_length=target,
+            smooth=False,
+        )
+    signatures.append(_signature(transaction, reports))
+
+    modes = (
+        ("0", native),
+        ("1", _WithoutFlipFilter(native)),
+        ("1", native),
+        ("1", native),
+        ("1", native),
+    )
+    for value, module in modes:
+        with (
+            patch.dict(os.environ, {_FLIP_FILTER_ENV: value}),
+            patch(
+                "core.utils.native_extensions.load_native_metrics",
+                return_value=module,
+            ),
         ):
             transaction = OperatorTransaction(
                 vertices,
@@ -191,4 +297,4 @@ def test_native_flip_filter_preserves_full_round_signature(name: str) -> None:
             )
         signatures.append(_signature(transaction, reports))
 
-    assert signatures[1:] == [signatures[0]] * 3
+    assert signatures[1:] == [signatures[0]] * 5

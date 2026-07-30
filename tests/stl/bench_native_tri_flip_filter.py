@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import resource
 import statistics
 import time
@@ -18,6 +19,8 @@ import numpy as np
 from core.analyzer.readers import read_stl
 from core.preprocessor.native_tri.operator_loop import OperatorTransaction
 from core.utils.native_extensions import load_native_metrics
+
+_FLIP_FILTER_ENV = "AUTO_TESSELL_TRI_FLIP_FILTER_CPP23"
 
 
 class _WithoutFlipFilter:
@@ -89,6 +92,8 @@ def main() -> None:
     arguments = parser.parse_args()
     if arguments.repeats < 3:
         raise SystemExit("repeats must be at least 3")
+    if os.environ.get(_FLIP_FILTER_ENV) != "1":
+        raise SystemExit(f"benchmark requires explicit {_FLIP_FILTER_ENV}=1 opt-in")
 
     native = load_native_metrics()
     if native is None or not hasattr(native, "triangle_flip_candidate_mask"):
