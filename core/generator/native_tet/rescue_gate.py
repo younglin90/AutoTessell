@@ -32,6 +32,27 @@ class TetBoundaryAudit:
         )
 
 
+@dataclass(frozen=True)
+class DuplicateTetGroupRepair:
+    """Result of a fail-closed exact-duplicate tetrahedron cleanup.
+
+    A repeated tetrahedron represents the same closed volume twice.  It can
+    create three-or-more face incidences even when every retained tetrahedron
+    is valid.  The cleanup removes *all* members of a repeated group only if
+    doing so leaves the boundary exactly unchanged and restores the strict
+    topology contract.  Otherwise the original candidate is returned.
+    """
+
+    tets: np.ndarray
+    applied: bool
+    n_duplicate_groups: int
+    n_removed_tets: int
+    reason: str
+    boundary_preserved: bool
+    before_audit: TetBoundaryAudit
+    candidate_audit: TetBoundaryAudit
+
+
 def has_strict_writer_topology(points: np.ndarray, tets: np.ndarray) -> bool:
     """Strict writer face contract; disconnected components remain supported."""
     audit = audit_tet_boundary(points, tets)
@@ -39,6 +60,88 @@ def has_strict_writer_topology(points: np.ndarray, tets: np.ndarray) -> bool:
         audit.n_nonmanifold_faces == 0
         and audit.n_duplicate_tets == 0
         and audit.n_degenerate_tets == 0
+    )
+
+
+def drop_duplicate_tet_groups_if_strict_topology_restored(
+    points: np.ndarray,
+    tets: np.ndarray,
+) -> DuplicateTetGroupRepair:
+    """Remove exact duplicate groups only after full boundary/topology proof.
+
+    Keeping one member of a duplicate group is insufficient when that cell is
+    the extra incidence on a face.  Dropping every member is safe only when
+    the candidate keeps exactly the same exterior boundary and has no open or
+    non-manifold entities.  This is intentionally not a generic non-manifold
+    repair: any residual three-plus face incidence remains a strict failure.
+    """
+    tet = np.asarray(tets, dtype=np.int64)
+    before = audit_tet_boundary(points, tet)
+    if tet.shape[0] == 0:
+        return DuplicateTetGroupRepair(
+            tets=tet,
+            applied=False,
+            n_duplicate_groups=0,
+            n_removed_tets=0,
+            reason="empty_tet_input",
+            boundary_preserved=True,
+            before_audit=before,
+            candidate_audit=before,
+        )
+
+    canonical = np.sort(tet, axis=1)
+    _, inverse, counts = np.unique(
+        canonical,
+        axis=0,
+        return_inverse=True,
+        return_counts=True,
+    )
+    duplicate_groups = int(np.count_nonzero(counts > 1))
+    if duplicate_groups == 0:
+        return DuplicateTetGroupRepair(
+            tets=tet,
+            applied=False,
+            n_duplicate_groups=0,
+            n_removed_tets=0,
+            reason="no_exact_duplicate_tet_groups",
+            boundary_preserved=True,
+            before_audit=before,
+            candidate_audit=before,
+        )
+
+    keep = counts[inverse] == 1
+    candidate = tet[keep]
+    candidate_audit = audit_tet_boundary(points, candidate)
+
+    from core.generator.native_tet.near_wall import boundary_face_keys
+
+    boundary_preserved = bool(
+        boundary_face_keys(tet) == boundary_face_keys(candidate)
+    )
+    topology_restored = bool(
+        candidate_audit.n_tets > 0
+        and candidate_audit.n_open_edges == 0
+        and candidate_audit.n_nonmanifold_edges == 0
+        and candidate_audit.n_nonmanifold_faces == 0
+        and candidate_audit.n_duplicate_tets == 0
+        and candidate_audit.n_degenerate_tets == 0
+    )
+    if not boundary_preserved:
+        reason = "duplicate_group_drop_changes_boundary"
+    elif not topology_restored:
+        reason = "duplicate_group_drop_does_not_restore_strict_topology"
+    else:
+        reason = "exact_duplicate_groups_removed_with_boundary_preserved"
+
+    return DuplicateTetGroupRepair(
+        tets=candidate if boundary_preserved and topology_restored else tet,
+        applied=bool(boundary_preserved and topology_restored),
+        n_duplicate_groups=duplicate_groups,
+        n_removed_tets=int((~keep).sum()),
+        reason=reason,
+        boundary_preserved=boundary_preserved,
+        before_audit=before,
+        candidate_audit=candidate_audit,
     )
 
 
@@ -149,4 +252,10 @@ def audit_tet_boundary(
     )
 
 
-__all__ = ["TetBoundaryAudit", "audit_tet_boundary", "has_strict_writer_topology"]
+__all__ = [
+    "DuplicateTetGroupRepair",
+    "TetBoundaryAudit",
+    "audit_tet_boundary",
+    "drop_duplicate_tet_groups_if_strict_topology_restored",
+    "has_strict_writer_topology",
+]

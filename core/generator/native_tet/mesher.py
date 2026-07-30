@@ -5966,6 +5966,68 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # Strict-topology recovery: repeated tetrahedron groups can add a third
+    # face incidence even though they do not represent distinct volume.  Drop
+    # every member only when the exterior boundary is byte-for-byte equivalent
+    # by face key and the resulting tet complex has no remaining topology
+    # defect.  A true residual non-manifold face still reaches the strict
+    # writer and fails closed below.
+    try:
+        from core.generator.native_tet.rescue_gate import (  # noqa: PLC0415
+            drop_duplicate_tet_groups_if_strict_topology_restored,
+        )
+
+        _duplicate_group_repair = (
+            drop_duplicate_tet_groups_if_strict_topology_restored(
+                final_pts,
+                final_tets,
+            )
+        )
+        debug_info["strict_topology_duplicate_group_repair"] = {
+            "applied": bool(_duplicate_group_repair.applied),
+            "n_duplicate_groups": int(_duplicate_group_repair.n_duplicate_groups),
+            "n_removed_tets": int(_duplicate_group_repair.n_removed_tets),
+            "reason": _duplicate_group_repair.reason,
+            "boundary_preserved": bool(
+                _duplicate_group_repair.boundary_preserved
+            ),
+            "before_nonmanifold_faces": int(
+                _duplicate_group_repair.before_audit.n_nonmanifold_faces
+            ),
+            "after_nonmanifold_faces": int(
+                _duplicate_group_repair.candidate_audit.n_nonmanifold_faces
+            ),
+        }
+        if _duplicate_group_repair.applied:
+            final_tets = _duplicate_group_repair.tets
+            n_cells = int(final_tets.shape[0])
+            debug_info["n_final_tets"] = n_cells
+            warnings_list.append(
+                "native_tet_strict_topology_duplicate_groups_removed: "
+                f"{_duplicate_group_repair.n_removed_tets}"
+            )
+            log.warning(
+                "native_tet_strict_topology_duplicate_groups_removed",
+                n_duplicate_groups=int(_duplicate_group_repair.n_duplicate_groups),
+                n_removed_tets=int(_duplicate_group_repair.n_removed_tets),
+                before_nonmanifold_faces=int(
+                    _duplicate_group_repair.before_audit.n_nonmanifold_faces
+                ),
+                after_nonmanifold_faces=int(
+                    _duplicate_group_repair.candidate_audit.n_nonmanifold_faces
+                ),
+                boundary_preserved=bool(_duplicate_group_repair.boundary_preserved),
+            )
+    except Exception as _duplicate_group_repair_exc:
+        debug_info["strict_topology_duplicate_group_repair_error"] = (
+            f"{type(_duplicate_group_repair_exc).__name__}: "
+            f"{_duplicate_group_repair_exc}"
+        )
+        log.warning(
+            "native_tet_strict_topology_duplicate_group_repair_skipped",
+            reason=str(_duplicate_group_repair_exc)[:160],
+        )
+
     # VAL1 (beta2147) — final orientation validate + auto-flip (default ON).
     # Set env AUTO_TESSELL_VAL1_OFF=1 to disable.
     _val1_n_flipped = 0
