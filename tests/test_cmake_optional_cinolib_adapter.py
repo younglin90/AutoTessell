@@ -14,6 +14,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _SOURCE = _ROOT / "auto_tessell_core"
 _NATIVE_TARGETS = (
     "native_metrics",
+    "native_bl",
     "native_polymesh",
     "native_snap",
     "native_surface_padding",

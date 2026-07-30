@@ -48,6 +48,11 @@ def load_native_metrics() -> Any | None:
     return load_native_extension("native_metrics")
 
 
+def load_native_bl() -> Any | None:
+    """Return the optional ``native_bl`` boundary-layer kernel module."""
+    return load_native_extension("native_bl")
+
+
 def load_native_polymesh() -> Any | None:
     """Return the optional ``native_polymesh`` pybind11 module if available."""
     return load_native_extension("native_polymesh")

@@ -11,6 +11,7 @@ option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR sou
 option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
 option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
 option(BUILD_NATIVE_METRICS "Build native metric kernels for Python checker" ON)
+option(BUILD_NATIVE_BL "Build native boundary-layer search kernels" ON)
 option(BUILD_NATIVE_POLYMESH "Build native polyMesh topology kernel" ON)
 option(BUILD_NATIVE_SNAP "Build native surface snap candidate kernel" ON)
 option(BUILD_NATIVE_SURFACE_PADDING "Build native planar surface padding kernel" ON)
@@ -76,6 +77,17 @@ if(BUILD_NATIVE_METRICS)
 endif()
 
 # ── native polyMesh topology kernel ───────────────────────────────────────
+# Native boundary-layer search kernels.
+if(BUILD_NATIVE_BL)
+  pybind11_add_module(native_bl native_bl_bind.cpp)
+  target_compile_features(native_bl PRIVATE cxx_std_23)
+  if(MSVC)
+    target_compile_options(native_bl PRIVATE /O2 /W4)
+  else()
+    target_compile_options(native_bl PRIVATE -O3 -Wall -Wextra -Wpedantic)
+  endif()
+endif()
+
 if(BUILD_NATIVE_POLYMESH)
   pybind11_add_module(native_polymesh native_polymesh_bind.cpp)
   target_compile_features(native_polymesh PRIVATE cxx_std_23)

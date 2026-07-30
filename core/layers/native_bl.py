@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import os
-
 import shutil
 import struct
 import time
@@ -41,6 +40,7 @@ from typing import Any
 import numpy as np
 
 from core.utils.logging import get_logger
+from core.utils.native_extensions import load_native_bl
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
@@ -86,12 +86,16 @@ def _nearby_opposite_front_mask(
     front_normals: np.ndarray,
     front_points: np.ndarray,
     *,
+    search_radius: float | None = None,
     normal_dot_threshold: float = -0.5,
+    prefer_kdtree: bool = True,
+    max_pair_entries: int = 262_144,
 ) -> np.ndarray:
     """Conservative local opposing-front probe for per-vertex BL caps.
 
     Only local pairs are considered; distant opposing normals on separate
-    components must not shrink an otherwise valid wall layer.
+    components must not shrink an otherwise valid wall layer.  The native
+    kernel uses a uniform spatial hash and never allocates dense N-by-N arrays.
     """
     normals = np.asarray(front_normals, dtype=np.float64)
     points = np.asarray(front_points, dtype=np.float64)
@@ -102,10 +106,72 @@ def _nearby_opposite_front_mask(
     span = float(np.linalg.norm(np.ptp(points, axis=0)))
     if span <= 1.0e-30:
         return np.zeros(len(points), dtype=bool)
-    dot = normals @ normals.T
-    distance = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
-    np.fill_diagonal(distance, np.inf)
-    return ((dot < normal_dot_threshold) & (distance <= span * 0.25)).any(axis=1)
+    radius = span * 0.25 if search_radius is None else float(search_radius)
+    if not np.isfinite(radius) or radius <= 0.0:
+        return np.zeros(len(points), dtype=bool)
+
+    native_bl = load_native_bl()
+    if native_bl is not None:
+        try:
+            return np.asarray(
+                native_bl.nearby_opposite_front_mask(
+                    normals,
+                    points,
+                    radius,
+                    float(normal_dot_threshold),
+                ),
+                dtype=bool,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native_bl_spatial_hash_failed", error=str(exc))
+
+    if prefer_kdtree:
+        try:
+            from scipy.spatial import cKDTree
+
+            pairs = np.asarray(
+                cKDTree(points).query_pairs(radius, output_type="ndarray"),
+                dtype=np.int64,
+            ).reshape(-1, 2)
+            result = np.zeros(len(points), dtype=bool)
+            if pairs.size:
+                pair_dot = np.einsum(
+                    "ij,ij->i",
+                    normals[pairs[:, 0]],
+                    normals[pairs[:, 1]],
+                )
+                opposing = pairs[pair_dot < normal_dot_threshold]
+                if opposing.size:
+                    result[opposing.ravel()] = True
+            return result
+        except (ImportError, TypeError, ValueError) as exc:
+            log.debug("native_bl_kdtree_fallback_failed", error=str(exc))
+
+    pair_budget = max(1, int(max_pair_entries))
+    block_size = max(1, int(np.sqrt(pair_budget)))
+    result = np.zeros(len(points), dtype=bool)
+    radius_squared = radius * radius
+    for row_start in range(0, len(points), block_size):
+        row_stop = min(row_start + block_size, len(points))
+        row_points = points[row_start:row_stop]
+        row_normals = normals[row_start:row_stop]
+        for col_start in range(row_start, len(points), block_size):
+            col_stop = min(col_start + block_size, len(points))
+            col_points = points[col_start:col_stop]
+            col_normals = normals[col_start:col_stop]
+            pair_dot = np.einsum("ik,jk->ij", row_normals, col_normals)
+            delta = row_points[:, None, :] - col_points[None, :, :]
+            distance_squared = np.einsum("ijk,ijk->ij", delta, delta)
+            nearby = (pair_dot < normal_dot_threshold) & (
+                distance_squared <= radius_squared
+            )
+            if row_start == col_start:
+                nearby &= np.triu(np.ones_like(nearby, dtype=bool), k=1)
+            rows, cols = np.nonzero(nearby)
+            if rows.size:
+                result[row_start + rows] = True
+                result[col_start + cols] = True
+    return result
 
 
 def _check_prism_front_collision(
@@ -889,13 +955,12 @@ def _prism_aspect_ratio_stats(
 # projected back along the local extrusion direction (cfMesh BLSmoothing style).
 # Improves prism layer tangential uniformity without disturbing layer thickness.
 # Default ON; disable via env AUTO_TESSELL_BL_TANG_OFF=1.
-import os as _os
-_BL_TANG_SMOOTH_ON: bool = _os.environ.get("AUTO_TESSELL_BL_TANG_OFF", "0") != "1"
+_BL_TANG_SMOOTH_ON: bool = os.environ.get("AUTO_TESSELL_BL_TANG_OFF", "0") != "1"
 # beta2248 — cfMesh/T-Rex 동급 wall preservation 강화. tangent smoothing 이
 # lp_ids[0] (=wall) vertex 를 tangential 로 이동시켜 surface drift 유발 →
 # default OFF. fluid 시뮬에서 wall 위치는 정확해야 하므로 이 trade-off 가 옳음.
 # env AUTO_TESSELL_BL_TANG_PRESERVE_WALL=0 으로 이전 동작 (smoothing 활성) 가능.
-_BL_TANG_PRESERVE_WALL: bool = _os.environ.get(
+_BL_TANG_PRESERVE_WALL: bool = os.environ.get(
     "AUTO_TESSELL_BL_TANG_PRESERVE_WALL", "1"
 ) != "0"
 
@@ -7798,7 +7863,7 @@ def generate_native_bl(
     # inner layer (1..N-1) 의 axial offset 을 Laplacian smoothing → prism
     # aspect ratio 개선 + wall preservation 유지.
     if (
-        _os.environ.get("AUTO_TESSELL_BL_INNER_SMOOTH", "1") != "0"
+        os.environ.get("AUTO_TESSELL_BL_INNER_SMOOTH", "1") != "0"
         and len(wall_vert_indices) >= 10
         and layer_point_ids
         and cfg.num_layers >= 3
@@ -7982,7 +8047,7 @@ def generate_native_bl(
     # tang smoother / collision detection / round-off 등 어떤 이유로든 lp_ids[0]
     # 가 원본 wall 에서 drift 한 경우 강제 snap. polyMesh 쓰기 직전 단계.
     # env AUTO_TESSELL_BL_FORCE_SNAP_WALL=0 으로 비활성 가능.
-    _force_snap_on = _os.environ.get("AUTO_TESSELL_BL_FORCE_SNAP_WALL", "1") != "0"
+    _force_snap_on = os.environ.get("AUTO_TESSELL_BL_FORCE_SNAP_WALL", "1") != "0"
     n_snap = 0
     snap_max_diff = 0.0
     if _force_snap_on and final_points is not None and layer_point_ids:
@@ -8130,7 +8195,9 @@ def generate_native_bl(
         and max_ar > cfg.aspect_ratio_threshold
     ):
         try:
-            from core.layers.aspect_cap_enforcer import enforce_prism_aspect_cap_v2 as enforce_prism_aspect_cap
+            from core.layers.aspect_cap_enforcer import (
+                enforce_prism_aspect_cap_v2 as enforce_prism_aspect_cap,
+            )
             # build prism (P, 6) array from layer_point_ids.
             valid_faces = [fi for fi in wall_face_indices if fi in wall_tri_verts]
             tri_arr_e = np.array(

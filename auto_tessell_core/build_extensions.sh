@@ -64,6 +64,7 @@ cmake "${cmake_args[@]}"
 # successful build proves every Python hot-path wrapper remains buildable.
 native_targets=(
     native_metrics
+    native_bl
     native_polymesh
     native_snap
     native_surface_padding

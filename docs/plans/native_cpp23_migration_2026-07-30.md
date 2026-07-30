@@ -155,6 +155,24 @@ For every C++ port:
 8. keep a Python fallback only while packaging/platform coverage remains
    incomplete, and make fallback use explicit and observable.
 
+## Boundary-layer spatial-search card
+
+The first profiled boundary-layer card replaces two dense `N x N` NumPy
+matrices in `_nearby_opposite_front_mask` with a first-party C++23 uniform-grid
+hash.  Cell size equals the exact query radius, so checking the 27 adjacent
+cells is complete for Euclidean radius pairs.  Flat `point_keys`, `next`, and
+collision arrays retain cache locality; the hash table stores one head per
+occupied cell and reserves capacity before insertion.  Expected complexity is
+`O(N + k)` time and `O(N)` space under ordinary hash occupancy, versus
+`O(N^2)` time and space for the prior dense route.  A bounded block fallback
+and SciPy KD-tree fallback remain for builds without the native module.
+
+On two separated 50-by-50 fronts (`5,000` vertices), the C++ median is
+`0.001875 s` versus `0.362497 s` for the bounded Python fallback (`193.3x`),
+with identical collision masks.  The prior dense route required 25 million
+pair entries and about 1 GB of simultaneous dot/delta/distance/mask storage;
+the native route allocates no dense pair array.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
@@ -167,3 +185,7 @@ For every C++ port:
   <https://pybind11.readthedocs.io/en/stable/upgrade.html>
 - pybind11 NumPy buffer and direct-access guidance:
   <https://pybind11.readthedocs.io/en/stable/advanced/pycpp/numpy.html>
+- Teschner et al., optimized spatial hashing for collision detection:
+  <https://www.research-collection.ethz.ch/entities/publication/f29bfb28-ee5f-4a7e-9905-f787e138bb81>
+- SciPy radius-pair query contract used by the optional fallback:
+  <https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.query_pairs.html>

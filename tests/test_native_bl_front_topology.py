@@ -109,6 +109,7 @@ def test_numpy_front_fallback_respects_pair_budget(
             )
         return real_einsum(subscripts, *operands, **kwargs)
 
+    monkeypatch.setattr(native_bl, "load_native_bl", lambda: None)
     monkeypatch.setattr(native_bl.np, "einsum", recording_einsum)
     collision = native_bl._nearby_opposite_front_mask(
         normals,
