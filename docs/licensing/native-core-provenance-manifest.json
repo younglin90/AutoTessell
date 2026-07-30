@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "scope": "Tracked auto_tessell_core pybind11 bindings. This manifest is a provenance boundary, not a license change.",
+  "bindings": [
+    {
+      "path": "auto_tessell_core/cfmesh_bind.cpp",
+      "module": "cfmesh_native",
+      "classification": "excluded_adapter",
+      "implementation_provenance": "AutoTessell binding glue around vendored cfMesh; not a future MIT-core candidate.",
+      "algorithm_source": "cfMesh/OpenFOAM adapter only; no algorithm claim for native core.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "cfMesh (GPL-3.0-or-later)", "OpenFOAM interface (GPL-family)"],
+      "license_status": "GPL-3.0-or-later adapter; excluded from future MIT core",
+      "mit_core_eligible": false,
+      "tests": ["tests/test_dependency_status.py"]
+    },
+    {
+      "path": "auto_tessell_core/cinolib_hex_bind.cpp",
+      "module": "cinolib_hex",
+      "classification": "excluded_adapter",
+      "implementation_provenance": "AutoTessell binding glue around externally sourced cinolib; not an independent native-core implementation.",
+      "algorithm_source": "cinolib hex-dominant adapter only; no algorithm claim for native core.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "cinolib upstream source (license review required)"],
+      "license_status": "external adapter; excluded pending complete upstream provenance audit",
+      "mit_core_eligible": false,
+      "tests": ["tests/test_native_hex.py"]
+    },
+    {
+      "path": "auto_tessell_core/ftetwild_bind.cpp",
+      "module": "ftetwild",
+      "classification": "excluded_adapter",
+      "implementation_provenance": "AutoTessell binding glue around vendored fTetWild; not a future MIT-core candidate.",
+      "algorithm_source": "fTetWild adapter only; no algorithm claim for native core.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "fTetWild (MPL-2.0)", "Eigen (MPL-2.0/LGPL-2.1+)"],
+      "license_status": "MPL-2.0 adapter; excluded from future MIT core",
+      "mit_core_eligible": false,
+      "tests": ["tests/test_native_tet.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_hex_quality_bind.cpp",
+      "module": "native_hex_quality",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell hexahedral quality kernel; algorithm references tracked in native-hex literature notes.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_hex_quality_extension.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_metrics_bind.cpp",
+      "module": "native_metrics",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell mesh metric kernel; algorithm references tracked with evaluator development evidence.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_metrics_extension.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_polymesh_bind.cpp",
+      "module": "native_polymesh",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell polyMesh topology kernel; algorithm references tracked with native-poly development evidence.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_polymesh_extension.py", "tests/test_native_polymesh_parser_extension.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_snap_bind.cpp",
+      "module": "native_snap",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell surface snap candidate kernel; geometry contract is verified before promotion.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_snap_extension.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_surface_padding_bind.cpp",
+      "module": "native_surface_padding",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell surface-volume padding kernel; no external engine implementation is incorporated.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_surface_volume_padding.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_tet_predicates_bind.cpp",
+      "module": "native_tet_predicates",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell tetrahedral predicate kernel; numerical references are documented separately from implementation provenance.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_tet_predicates_extension.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_tet_qopt_bind.cpp",
+      "module": "native_tet_qopt",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell tetrahedral quality optimization kernel; literature informs design but no implementation source is copied.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_tet_qopt_extension.py", "tests/test_native_tet_qopt_smooth.py"]
+    },
+    {
+      "path": "auto_tessell_core/robusthex_bind.cpp",
+      "module": "robusthex",
+      "classification": "excluded_adapter",
+      "implementation_provenance": "AutoTessell binding glue around externally sourced robust_hex_dominant_meshing; not an independent native-core implementation.",
+      "algorithm_source": "robust_hex_dominant_meshing adapter only; no algorithm claim for native core.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "robust_hex_dominant_meshing upstream source (license review required)", "Eigen (MPL-2.0/LGPL-2.1+)"],
+      "license_status": "external adapter; excluded pending complete upstream provenance audit",
+      "mit_core_eligible": false,
+      "tests": ["tests/test_native_hex.py"]
+    }
+  ]
+}
