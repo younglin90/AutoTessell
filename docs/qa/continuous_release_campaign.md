@@ -6,7 +6,7 @@
 - state: `CAMPAIGN_ACTIVE`
 - cycle: `1`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- current_master: `9d93c7fcf18ab8571832e1f14ba137dced0524df`
+- current_master: `b27f02d867d38ac900275d381214b4b85cc5c0b3`
 - allowed_to_stop: `false`
 - next_action: `TET-WRITER-INCIDENCE-1: eliminate native tet writer incidence defects on NACA without changing boundary provenance.`
 
@@ -29,6 +29,9 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 - Boundary-layer state tests: `21 passed`; guard tests: `24 passed`.
 - Hex source-quad and sparse-chain focused suites: `36 passed`, then `15 passed`.
 - Native tri curvature/provenance focused suite: `23 passed`.
+- Poly target-forward L0 suite: `5 passed` in `12.19 s`; `target_cells` now
+  reaches the BL=0 native-poly harness unchanged. Full native-poly suite timed
+  out after `124 s`; target monotonicity and corpus tolerance remain unverified.
 - Native tet L2 NACA diagnostic (`--native-primal --target-cells 2000`): output
   reported `3` cells without tetrahedron vertex incidence and `13` four-vertex
   cells without complete tetrahedron face encoding. Primary validity defect count: `16`.
@@ -45,7 +48,7 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 | 3 Automated tests | UNVERIFIED | Full suite timed out; all engine/routing/UI coverage missing. |
 | 4 Shape preservation | UNVERIFIED | No campaign corpus result. |
 | 5 Mesh validity | FAIL | Native tet NACA writer incidence defects: `16`. |
-| 6 Cell count | UNVERIFIED | NACA result `1827/2000`; engine corpus/monotonicity missing. |
+| 6 Cell count | UNVERIFIED | Poly BL=0 forward L0 passes; NACA `1827/2000`; engine corpus/monotonicity missing. |
 | 7 Boundary layer | UNVERIFIED | Focused state tests pass; engine corpus missing. |
 | 8 Quality | UNVERIFIED | Campaign quality specifications and corpus missing. |
 | 9 Reproducibility | UNVERIFIED | Three-run engine corpus missing. |
