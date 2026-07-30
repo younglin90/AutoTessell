@@ -1711,10 +1711,42 @@ class LayersPostGenerator:
             )
 
         bl = getattr(strategy, "boundary_layers", None)
-        num_layers = int(params.get(
-            "post_layers_num_layers",
-            getattr(bl, "num_layers", 3) or 3,
-        ))
+        # ``0`` is a complete user request: do not coerce it to the historical
+        # three-layer default, reserve a layer budget, or invoke a BL engine.
+        # Keep the default only when neither the post-layer override nor the
+        # strategy carries a layer count.  Negative counts are invalid input,
+        # never a silent disable.
+        layer_value = (
+            params["post_layers_num_layers"]
+            if "post_layers_num_layers" in params
+            else getattr(bl, "num_layers", None)
+        )
+        if layer_value is None:
+            layer_value = 3
+        try:
+            num_layers = int(layer_value)
+        except (TypeError, ValueError):
+            elapsed = time.monotonic() - t_start
+            return TierAttempt(
+                tier=self.TIER_NAME, status="failed",
+                time_seconds=elapsed,
+                error_message=f"invalid_num_layers:{layer_value!r}",
+            )
+        if num_layers < 0:
+            elapsed = time.monotonic() - t_start
+            return TierAttempt(
+                tier=self.TIER_NAME, status="failed",
+                time_seconds=elapsed,
+                error_message=f"invalid_num_layers:{num_layers}",
+            )
+        if num_layers == 0:
+            elapsed = time.monotonic() - t_start
+            log.info("tier_layers_post_skipped", reason="zero_layers")
+            return TierAttempt(
+                tier=self.TIER_NAME, status="success",
+                time_seconds=elapsed,
+                error_message="layers_post_disabled_zero",
+            )
         growth_ratio = float(params.get(
             "post_layers_growth_ratio",
             getattr(bl, "growth_ratio", 1.2) or 1.2,

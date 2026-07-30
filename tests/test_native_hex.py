@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -187,6 +188,75 @@ def test_native_hex_target_cells_tracks_implicit_cube_budget(tmp_case_dir: Path)
         assert check.negative_volumes == 0
         actual.append(result.n_cells)
     assert actual == sorted(actual)
+
+
+def test_native_hex_explicit_zero_bl_keeps_cell_budget_unreserved(tmp_case_dir: Path) -> None:
+    """Explicit BL=0 must match no-BL target-cell budget exactly."""
+    if not CUBE_STL.exists():
+        pytest.skip()
+    mesh = read_stl(CUBE_STL)
+    common = {
+        "target_cells": 1000,
+        "max_cells": 1000,
+        "seed_density": 16,
+        "adaptive": False,
+    }
+    baseline = generate_native_hex(
+        mesh.vertices, mesh.faces, tmp_case_dir / "baseline", **common,
+    )
+    zero_layers = generate_native_hex(
+        mesh.vertices,
+        mesh.faces,
+        tmp_case_dir / "zero",
+        bl_layers=0,
+        post_layers_num_layers=0,
+        **common,
+    )
+    assert baseline.success and zero_layers.success
+    assert zero_layers.n_cells == baseline.n_cells
+    assert NativeMeshChecker().run(tmp_case_dir / "zero").negative_volumes == 0
+
+
+def test_native_hex_cube_zero_post_layers_preserves_polymesh_bytes(tmp_case_dir: Path) -> None:
+    """Representative native cube keeps exact mesh/provenance bytes for BL=0."""
+    if not CUBE_STL.exists():
+        pytest.skip()
+    from core.generator.tier_layers_post import LayersPostGenerator
+
+    mesh = read_stl(CUBE_STL)
+    case_dir = tmp_case_dir / "cube"
+    result = generate_native_hex(
+        mesh.vertices,
+        mesh.faces,
+        case_dir,
+        target_cells=1000,
+        max_cells=1000,
+        bl_layers=0,
+        post_layers_num_layers=0,
+    )
+    assert result.success, result.message
+    poly_dir = case_dir / "constant" / "polyMesh"
+    names = ("points", "faces", "owner", "neighbour", "boundary")
+    before = {name: (poly_dir / name).read_bytes() for name in names}
+    strategy = SimpleNamespace(
+        tier_specific_params={
+            "post_layers_engine": "native_hex_bl",
+            "post_layers_num_layers": 0,
+        },
+        quality_level="standard",
+        mesh_type="hex_dominant",
+        boundary_layers=SimpleNamespace(
+            num_layers=0,
+            growth_ratio=1.2,
+            first_layer_thickness=0.001,
+        ),
+        surface_mesh=SimpleNamespace(target_cell_size=0.1),
+    )
+    attempt = LayersPostGenerator().run(strategy, CUBE_STL, case_dir)
+    assert attempt.status == "success"
+    assert attempt.error_message == "layers_post_disabled_zero"
+    assert {name: (poly_dir / name).read_bytes() for name in names} == before
+    assert NativeMeshChecker().run(case_dir).negative_volumes == 0
 
 
 def test_native_hex_empty_input_fails(tmp_case_dir: Path) -> None:

@@ -155,6 +155,76 @@ def test_auto_engine_unknown_mesh_type_falls_back_to_native_bl(
     assert captured.get("called") is True
 
 
+@pytest.mark.parametrize("explicit_override", [False, True])
+def test_native_hex_bl_zero_is_successful_noop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit_override: bool,
+) -> None:
+    """BL=0 never reaches the native hex layer writer."""
+    from core.generator import tier_layers_post as tlp
+
+    calls: list[dict[str, object]] = []
+
+    def _stub_native_hex_bl(_case_dir, **kwargs):
+        calls.append(kwargs)
+        return True, "unexpected", 1
+
+    monkeypatch.setattr(tlp, "_run_native_hex_bl", _stub_native_hex_bl)
+    strategy = _make_strategy("hex_dominant", engine="native_hex_bl")
+    strategy.boundary_layers.enabled = False
+    strategy.boundary_layers.num_layers = 0
+    if explicit_override:
+        strategy.tier_specific_params["post_layers_num_layers"] = 0
+    attempt = tlp.LayersPostGenerator().run(
+        strategy, tmp_path / "in.stl", _make_case_with_polymesh(tmp_path),
+    )
+    assert attempt.status == "success"
+    assert attempt.error_message == "layers_post_disabled_zero"
+    assert calls == []
+
+
+def test_native_hex_bl_negative_layers_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative BL count is invalid, not an implicit no-op."""
+    from core.generator import tier_layers_post as tlp
+
+    monkeypatch.setattr(
+        tlp,
+        "_run_native_hex_bl",
+        lambda *_args, **_kwargs: pytest.fail("negative layers reached native hex BL"),
+    )
+    strategy = _make_strategy("hex_dominant", engine="native_hex_bl")
+    strategy.tier_specific_params["post_layers_num_layers"] = -1
+    attempt = tlp.LayersPostGenerator().run(
+        strategy, tmp_path / "in.stl", _make_case_with_polymesh(tmp_path),
+    )
+    assert attempt.status == "failed"
+    assert attempt.error_message == "invalid_num_layers:-1"
+
+
+@pytest.mark.parametrize("num_layers", [1, 3])
+def test_native_hex_bl_positive_layers_still_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, num_layers: int,
+) -> None:
+    """Zero guard must not alter positive native hex BL requests."""
+    from core.generator import tier_layers_post as tlp
+
+    seen: list[int] = []
+
+    def _stub_native_hex_bl(_case_dir, **kwargs):
+        seen.append(int(kwargs["num_layers"]))
+        return True, "stub", 1
+
+    monkeypatch.setattr(tlp, "_run_native_hex_bl", _stub_native_hex_bl)
+    strategy = _make_strategy("hex_dominant", engine="native_hex_bl")
+    strategy.tier_specific_params["post_layers_num_layers"] = num_layers
+    attempt = tlp.LayersPostGenerator().run(
+        strategy, tmp_path / "in.stl", _make_case_with_polymesh(tmp_path),
+    )
+    assert attempt.status == "success"
+    assert seen == [num_layers]
+
+
 def test_native_hex_bl_rewrites_quad_caps_and_preserves_patch_types(
     tmp_path: Path,
 ) -> None:
@@ -217,3 +287,32 @@ def test_native_hex_bl_rewrites_quad_caps_and_preserves_patch_types(
     raw_boundary = (poly_dir / "boundary").read_text(encoding="utf-8")
     assert "inlet\n    {\n        type            patch;" in raw_boundary
     assert "wall\n    {\n        type            wall;" in raw_boundary
+
+
+def test_native_hex_bl_zero_leaves_polymesh_bytes_unchanged(tmp_path: Path) -> None:
+    """BL=0 preserves cells, points, patch names/types, and topology bytes."""
+    from core.generator.polymesh_writer import write_generic_polymesh
+    from core.generator.tier_layers_post import LayersPostGenerator
+
+    points = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    cell_faces = [[
+        [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+        [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+    ]]
+    write_generic_polymesh(points, cell_faces, tmp_path)
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    tracked = ("points", "faces", "owner", "neighbour", "boundary")
+    before = {name: (poly_dir / name).read_bytes() for name in tracked}
+
+    strategy = _make_strategy("hex_dominant", engine="native_hex_bl")
+    strategy.boundary_layers.enabled = False
+    strategy.boundary_layers.num_layers = 0
+    attempt = LayersPostGenerator().run(strategy, tmp_path / "in.stl", tmp_path)
+
+    after = {name: (poly_dir / name).read_bytes() for name in tracked}
+    assert attempt.status == "success"
+    assert attempt.error_message == "layers_post_disabled_zero"
+    assert after == before
