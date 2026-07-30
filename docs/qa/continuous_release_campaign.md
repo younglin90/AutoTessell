@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `31`
+- cycle: `34`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `db48ba4bd2fc1e9e9efe7a11f8baddf3c6622764`
+- last_verified_master: `a1c15a1d1ca3ab487cc30d71908d0064b3dd4796`
 - allowed_to_stop: `false`
-- next_action: `Run the Cycle-32 Tet strict-topology and Poly target-control baselines selected by the parallel audit; keep Tet target count deferred behind topology and preserve the exact input surface.`
+- next_action: `Complete the active Cycle-34 Hex C++23 wall-fit candidate-preparation card, then run the next all-engine validity and packaging evidence scan. Keep target-cell work behind shape, topology, and provenance.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1857,3 +1857,138 @@ scope. Future MIT-core boundary follows
   by the parallel audit.  Tet target count stays deferred until topology and
   validity are truthful.  Do not weaken exact surface, provenance, orientation,
   or positive-volume gates.
+
+## Cycle 32 checkpoint -- 2026-07-31
+
+### Native build identity and ABI evidence
+
+- `9eda50a2` merges a tracked exact public-symbol contract for all eight
+  first-party native modules and a standalone fail-closed manifest generator and
+  verifier.  Evidence records source identity, contract and binding-source
+  hashes, binary hashes, Python SOABI, compiler identity, and C++23 level.
+- The stale repository build now fails deterministically and names five missing
+  symbols.  A clean GCC 13.3 C++23 build passes `8/8`; the prior missing-kernel
+  fixture changes from `34 passed, 2 failed, 21 skipped` to `57 passed`.
+- A no-Git source archive derives a content-addressed `archive:sha256` identity.
+  A normal extracted-sdist wheel build, external install, eight real kernel
+  smokes, and artifact verification pass without a caller-invented identity.
+- Bundle: `native-build-evidence-manifest-1-41417ee5.bundle`, SHA-256
+  `3ba661273b6803318aac686c4f51484ec2103fe0900d877437f65ec37abdb6a9`.
+
+### Tet source-component bijection
+
+- `364d0b68` merges the first-party C++23 source-to-boundary component audit.
+  Exact source-coordinate provenance is recovered independently of candidate
+  point order; flat sorted face/edge records and contiguous disjoint sets replace
+  Python dictionaries on the native path.
+- Exact 1, 2, and 5 component fixtures pass.  Lost, merged, split, unanchored,
+  interiorized, ambiguous, and malformed-native cases fail closed.  The cylinder
+  remains `1495` cells and `353` points with exact pre-card point/tet hashes.
+- A 1,000-component benchmark is `1.781 ms` native versus `52.000 ms` Python
+  (`29.19x`).  Advisor isolated C++23 build and focused post-merge checks pass.
+- Bundle: `native-tet-component-bijection-1-61d91e44.bundle`, SHA-256
+  `6d02384047324eeb7719b39fe805218fc3b1ce54d9fc7a99e099b61ee9bf876d`.
+
+### Poly residual-star refusal
+
+- `3534c748` prevents a residual star-invalid dual from falling through to the
+  writer after both Garimella and centroid candidates fail the existing signed
+  subtet gate.  A frozen 15-point/40-tet cube changes from `3/3` false successes
+  and five artifacts per run to `0/3` false successes and zero artifacts.
+- The valid classified bipyramid retains all five exact file hashes and
+  `source_high:wall` / `source_low:patch` provenance.  Focused isolated-native
+  validation passes `20`; long Poly corpus runs timed out and remain unverified.
+- Bundle: `native-poly-star-fail-closed-1-54a3dcc3-v2.bundle`, SHA-256
+  `58741841b47eb7f5aa5b624e3ce978961c4a55a7f624bde594049d1b174f4604`.
+
+## Cycle 33 checkpoint -- 2026-07-31
+
+### Hex writer strict topology
+
+- `dbc41b40` makes the native-Hex writer use the existing C++23 topology audit
+  in strict mode.  Collapsed cells and faces owned by three or more cells now
+  fail before any polyMesh artifact is created instead of silently dropping or
+  truncating topology.
+- Valid owner/neighbour/connectivity bytes are exact for three runs.  Full Hex
+  validation passes `182` with `9` existing skips.  An 8,000-cell benchmark
+  changes `0.232136 -> 0.238589 s` (`+2.78%`), within the declared card budget.
+- Bundle: `native-hex-strict-topology-1-39264bfe.bundle`, SHA-256
+  `a3d98bc13c27c90cc378e35637f6cf6c057bc9ffb3aa6a44a5fc130e06b478e4`.
+
+### Tri/Quad curvature sizing C++23 kernel
+
+- `b718af05` ports Dunyach curvature sizing to
+  `native_metrics.estimate_triangle_curvature_sizing`: contiguous face normals,
+  `3F` edge records, deterministic sort/run incidence, stable accumulation, and
+  strict C-contiguous `float64`/`int64` ABI.  Python remains the oracle/fallback.
+- On `67,600` vertices and `134,162` faces, median time changes
+  `5.427370 -> 0.058734 s` (`92.41x`) with exact output SHA.  Cube transaction
+  reports, coordinates, connectivity, and hashes remain exact.  Wider validation
+  passes `146`; advisor isolated-native validation passes `32`.
+- Bundle: `native-triquad-curvature-sizing-1-bbe2fec5-v2.bundle`, SHA-256
+  `8b159247aa18fd2eac7a362f5d2a0435a95222cb698b83c96373bcae4436734d`.
+
+### Poly primal conformity C++23 audit
+
+- `d56dd3ae` adds `native_polymesh.audit_tet_primal_conformity`, using flat
+  canonical tetrahedron and face records with deterministic sort/run scans.
+  Duplicate canonical tetrahedra and faces with more than two owners fail before
+  dual construction; negative orientation remains diagnostic rather than an
+  over-strict rejection.
+- A three-owner primal changes from `3/3` false successes and five artifacts to
+  zero false successes/artifacts.  Valid bipyramid bytes and patch provenance are
+  exact.  A 50,000-tet audit changes `0.435978 -> 0.011680 s` (`37.33x`).
+- Bundle: `native-poly-primal-conformity-1-2cd713a5-v2.bundle`, SHA-256
+  `2706304a346d948ab82ce474247b5d0ca5b459637f5f48c9630d1aebbcaa83e6`.
+
+### Source-aware Tet topology and roundoff-safe exact provenance
+
+- `a1c15a1d` redefines local Tet manifold validity to allow any positive number
+  of closed components, while every production P4C, fTetWild, and final-result
+  acceptance uses a composite local-topology plus exact source-component
+  certificate.  Open, non-manifold, duplicate, degenerate, lost, merged, split,
+  or invented components still fail closed.
+- The Poly sphere cross-lane regression was traced to `4.63e-18..1.57e-16`
+  coordinate roundoff, not lost topology: all 42 source-prefix ids remained on
+  the boundary and boundary keys/area were unchanged.  Native-prefix points are
+  restored bitwise only after boundary-membership proof and a finite
+  scale-relative machine-roundoff cap.  Reordered P4C output, meaningful motion,
+  interiorized vertices, cap overflow, and ambiguous provenance are not repaired.
+- Signed zero, subnormal/tiny scale, huge finite scale, and warnings-as-errors
+  cases are covered.  Post-merge Tet/Poly focused validation passes `41` with one
+  unavailable-vendor skip.
+- Bundle: `native-tet-source-topology-cycle33-v2-7d5d513c.bundle`, SHA-256
+  `66d517f038e2d0e460be7b4b3f8b529d0444751ccd8741433ec35fcd8e1246c7`.
+
+### Harness isolation and gate re-evaluation
+
+- `f88dc0c7` isolates the Poly best-candidate byte-restoration unit from the real
+  Tet generator.  It now proves all five iteration-1 polyMesh files are restored
+  after a worse iteration-2 candidate.  Production and geometry thresholds are
+  unchanged; the separate real-sphere star-validity failure remains visible.
+- Current Gate status:
+
+| Gate | Status | Cycle-33 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean, but the tracked installer executable remains and the Cycle-34 Hex worktree is active. |
+| 2 Build | UNVERIFIED | Clean GCC 13.3 C++23 targeted builds pass; supported OS/compiler matrix is incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider suites pass; real Poly sphere star-validity and full-suite evidence remain. |
+| 4 Shape preservation | UNVERIFIED | Exact localized hashes and proof-gated Tet restoration pass; complete corpus remains. |
+| 5 Mesh validity | UNVERIFIED | New Hex/Poly/Tet false-success paths reject; all-engine corpus remains. |
+| 6 Cell count | FAIL | Deferred behind shape/topology as directed; Poly and Tet targets remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | No Cycle-32/33 BL contract change; positive-layer corpus remains. |
+| 8 Quality | UNVERIFIED | Curvature and valid-output parity pass; complete fixture specifications remain. |
+| 9 Reproducibility | FAIL | New kernels are deterministic; independent wheel bytes and external P4C hashes remain unresolved. |
+| 10 Robustness | UNVERIFIED | New malformed topology/ABI cases reject; adverse corpus remains incomplete. |
+| 11 Performance | UNVERIFIED | Card budgets pass; frozen end-to-end engine budgets remain. |
+| 12 Packaging | FAIL | Native build manifest improves evidence; Windows wheel/installer/UI/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | Independent C++23, no third-party code copy; global inventory still has unresolved rows. |
+| 14 Documentation/operations | UNVERIFIED | Research and build-evidence docs improved; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Complete Cycle-34 Hex wall-fit candidate preparation, then run the next
+  all-engine validity, full-test, and packaging evidence scan.  Keep target-cell
+  optimization deferred until shape, topology, validity, and provenance are
+  mechanically stable.
