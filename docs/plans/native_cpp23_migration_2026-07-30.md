@@ -482,6 +482,47 @@ will replace the still-quadratic incident-face mask and the legacy
 `20,000`-triangle fail-open cap with an indexed conservative broad phase; that
 semantic change is intentionally not mixed into this parity card.
 
+## Boundary-layer indexed wall-collision card
+
+The production collision wrapper now passes the original point array, wall
+vertex ids, inward directions, and triangular face connectivity directly to
+`native_bl.indexed_wall_collision_distances`.  C++ excludes incident faces by
+integer id, so Python no longer gathers all triangle coordinates or allocates
+the dense `R x T` exclusion mask.  The legacy `20,000`-triangle fail-open return
+and SciPy per-ray candidate loop are removed.  The extension-absent oracle uses
+bounded ray batches instead of a full dense mask.
+
+For a finite positive search limit, each triangle is stored once in a first-
+party centroid hash.  Its cell width conservatively includes the search limit
+times the maximum direction norm and an epsilon-expanded maximum triangle
+radius.  A two-cell query padding protects cell-boundary quotient rounding.
+Coordinates beyond a conservative exact-quotient range, or any overflow in the
+bound, select the exhaustive indexed loop instead of risking a missed hit.
+Candidates are sorted back into original triangle order before the unchanged
+Moller--Trumbore predicate.  Unlimited search is exhaustive.  Native working
+storage is `O(N + R + T + Cmax)`; typical finite-search work is
+`O(N + R + T + C log C)` and the worst-case remains `O(RT)` without quadratic
+storage.
+
+Finite positive `max_search_distance` now has one size-independent contract:
+hits beyond it are absent.  The previous small path returned far hits while the
+large KD path discarded them.  Production supplies `1.05 * total / safety`, so
+a farther hit cannot reduce the requested layer extent; the change removes a
+diagnostic inconsistency without weakening the extrusion safety limit.
+
+On a sparse `4,096`-ray / `20,001`-triangle corpus, the indexed result reports
+all `4,096` hits at distance `1.0` in `0.005826434 s`; the old path skipped the
+entire calculation above `20,000` triangles.  Unlimited indexed traversal on a
+`512 x 2,048` corpus is `1.181x` the direct dense-mask native kernel because it
+also performs incident-id checks, while producing the same finite results.
+Direct ABI/helper tests pass `60`; boundary topology, layer state, and BL0
+routing pass `98`; representative native-BL and numerical-quality tests pass
+`81` with one known baseline poly-hybrid checker defect deselected.
+
+No input coordinate, face, patch, physical-group meaning, requested layer
+count, geometric epsilon, external dependency, or `third_party/` file changed.
+No fast-math or parallel reduction is used.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

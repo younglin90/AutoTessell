@@ -1694,109 +1694,87 @@ def _compute_collision_distance(
     까지의 거리. 자기 자신이 포함된 face 는 skip.
 
     Args:
-        max_tris: wall triangle 수가 이 값을 초과하면 collision check 를 skip
-            (메모리/시간 폭증 방지). 기본 20000 → R=T=2만 기준 메모리 ~9.6 GB.
+        max_tris: 이전 fail-open cap 과의 호출 호환성만 유지한다. Indexed
+            native 경로와 bounded Python fallback 은 이 값 때문에 검사를
+            생략하지 않는다.
 
     Returns:
-        dict[vertex_id, distance]. 충돌 없거나 skip 시 빈 dict.
+        dict[vertex_id, distance]. 검색 거리 안에 충돌이 없으면 빈 dict.
 
-    beta70 hotfix: exclude mask 를 vectorized 로 구성 + max_tris cap.
+    유한한 ``max_search_distance`` 는 mesh 크기와 무관하게 동일하게
+    적용한다. 더 먼 hit 는 생성 layer 에 영향을 줄 수 없으므로 반환하지
+    않는다.
     """
     tri_indices = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
     if not tri_indices or not wall_vert_indices:
         return {}
     T = len(tri_indices)
     R = len(wall_vert_indices)
-    if T > max_tris:
-        log.info(
-            "native_bl_collision_skipped_large", component="native_bl", phase="Phase2",
-            n_tris=T, cap=max_tris,
-            hint="너무 큰 wall mesh → collision check 생략 (local cell-dist cap 사용)",
-        )
-        return {}
-
-    # tri_verts: (T, 3, 3)
-    tri_arr = np.array(tri_indices, dtype=np.int64)
     tri_face_ids = np.array(
         [[faces[fi][0], faces[fi][1], faces[fi][2]] for fi in tri_indices],
         dtype=np.int64,
     )  # (T, 3)
-    tri_verts = points[tri_face_ids]  # (T, 3, 3)
-
     wall_v_arr = np.array(wall_vert_indices, dtype=np.int64)
-    origins = points[wall_v_arr]                                       # (R, 3)
     dirs = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64)  # (R, 3)
-
-    # cfMesh-style local front collision pruning: for BL safety we only need
-    # intersections closer than the generated layer thickness.  A centroid KDTree
-    # keeps the exact ray-triangle test but avoids the old all-rays × all-faces
-    # matrix on large wall meshes.
-    if max_search_distance is not None and np.isfinite(max_search_distance):
+    search = np.inf
+    if (
+        max_search_distance is not None
+        and np.isfinite(max_search_distance)
+        and float(max_search_distance) > 0.0
+    ):
         search = float(max_search_distance)
-        if search > 0.0 and R * T >= 1_000_000:
-            try:
-                from scipy.spatial import cKDTree  # noqa: PLC0415
 
-                tri_centers = tri_verts.mean(axis=1)
-                tri_radii = np.linalg.norm(
-                    tri_verts - tri_centers[:, None, :], axis=2,
-                ).max(axis=1)
-                radius = search + float(tri_radii.max(initial=0.0))
-                tree = cKDTree(tri_centers)
-                candidate_lists = tree.query_ball_point(origins, r=radius)
-                out: dict[int, float] = {}
-                n_candidates = 0
-                n_nonempty = 0
-                for ri, cand in enumerate(candidate_lists):
-                    if not cand:
-                        continue
-                    cand_arr = np.asarray(cand, dtype=np.int64)
-                    n_candidates += int(cand_arr.size)
-                    n_nonempty += 1
-                    v = int(wall_v_arr[ri])
-                    c_face_ids = tri_face_ids[cand_arr]
-                    exclude = (
-                        (c_face_ids[:, 0] == v)
-                        | (c_face_ids[:, 1] == v)
-                        | (c_face_ids[:, 2] == v)
-                    )[None, :]
-                    t_min = _ray_triangle_min_distance(
-                        origins[ri:ri + 1],
-                        dirs[ri:ri + 1],
-                        tri_verts[cand_arr],
-                        exclude,
-                        chunk_size=1,
-                    )[0]
-                    if np.isfinite(t_min) and float(t_min) <= search:
-                        out[v] = float(t_min)
-                log.info(
-                    "native_bl_collision_local_pruned",
-                    component="native_bl", phase="Phase2",
-                    n_rays=int(R), n_tris=int(T),
-                    n_nonempty=int(n_nonempty),
-                    avg_candidates=round(
-                        float(n_candidates) / max(1, int(R)), 2,
-                    ),
-                    search_distance=round(search, 8),
-                )
-                return out
-            except Exception as _local_exc:
-                log.debug(
-                    "native_bl_collision_local_prune_skipped",
-                    reason=str(_local_exc)[:120],
-                )
+    native_bl = load_native_bl()
+    if native_bl is not None and hasattr(
+        native_bl, "indexed_wall_collision_distances"
+    ):
+        t_min = np.asarray(
+            native_bl.indexed_wall_collision_distances(
+                points,
+                wall_v_arr,
+                dirs,
+                tri_face_ids,
+                search,
+                1e-12,
+            ),
+            dtype=np.float64,
+        )
+        if T > max_tris:
+            log.info(
+                "native_bl_collision_large_indexed",
+                component="native_bl",
+                phase="Phase2",
+                n_rays=int(R),
+                n_tris=int(T),
+                previous_cap=int(max_tris),
+                search_distance=(round(search, 8) if np.isfinite(search) else None),
+            )
+    else:
+        # Extension-absent correctness fallback.  Keep only a bounded batch of
+        # incident flags and NumPy broadcast temporaries alive at once.
+        origins = points[wall_v_arr]
+        tri_verts = points[tri_face_ids]
+        pair_budget = 262_144
+        batch_size = max(1, min(128, pair_budget // max(T, 1)))
+        t_min = np.full((R,), np.inf, dtype=np.float64)
+        for start in range(0, R, batch_size):
+            end = min(start + batch_size, R)
+            wall_col = wall_v_arr[start:end, None]
+            exclude = (
+                (wall_col == tri_face_ids[None, :, 0])
+                | (wall_col == tri_face_ids[None, :, 1])
+                | (wall_col == tri_face_ids[None, :, 2])
+            )
+            t_min[start:end] = _ray_triangle_min_distance(
+                origins[start:end],
+                dirs[start:end],
+                tri_verts,
+                exclude,
+                chunk_size=batch_size,
+            )
+        if np.isfinite(search):
+            t_min[t_min > search] = np.inf
 
-    # exclude: vertex v 가 tri 에 포함되면 True. broadcasting 으로 O(R+T).
-    # (R, 1) == (1, T, 3) → (R, T, 3) — too big? No: R, T up to 2만 → R*T=4e8 bools = 400MB.
-    # 대신 (R,1) 와 각 tri column 3 번 OR 로 메모리 3× 절약.
-    wall_col = wall_v_arr[:, None]  # (R, 1)
-    exclude = (
-        (wall_col == tri_face_ids[None, :, 0])
-        | (wall_col == tri_face_ids[None, :, 1])
-        | (wall_col == tri_face_ids[None, :, 2])
-    )  # (R, T)
-
-    t_min = _ray_triangle_min_distance(origins, dirs, tri_verts, exclude)
     out: dict[int, float] = {}
     for ri, v in enumerate(wall_vert_indices):
         if np.isfinite(t_min[ri]):

@@ -6,11 +6,13 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -49,6 +51,12 @@ struct RayTriangle {
     Point3 edge2;
 };
 
+struct IndexedRayTriangle {
+    RayTriangle geometry;
+    Point3 centroid;
+    std::array<std::int64_t, 3> vertex_ids;
+};
+
 [[nodiscard]] constexpr Point3 subtract(
     const Point3& left, const Point3& right) noexcept
 {
@@ -73,6 +81,37 @@ struct RayTriangle {
     const Point3& left, const Point3& right) noexcept
 {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+[[nodiscard]] double ray_triangle_distance(
+    const Point3& origin,
+    const Point3& direction,
+    const RayTriangle& triangle,
+    const double epsilon) noexcept
+{
+    const Point3 pvec = cross(direction, triangle.edge2);
+    const double determinant = dot(triangle.edge1, pvec);
+    if (!(std::abs(determinant) > epsilon)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double inverse_determinant = 1.0 / determinant;
+    const Point3 tvec = subtract(origin, triangle.vertex0);
+    const double u = dot(tvec, pvec) * inverse_determinant;
+    // Match the long-standing Python oracle exactly.  The u + v test below
+    // supplies the upper barycentric bound.
+    if (u < -epsilon) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const Point3 qvec = cross(tvec, triangle.edge1);
+    const double v = dot(direction, qvec) * inverse_determinant;
+    if (v < -epsilon || u + v > 1.0 + epsilon) {
+        return std::numeric_limits<double>::infinity();
+    }
+    const double distance = dot(triangle.edge2, qvec) * inverse_determinant;
+    if (distance > epsilon) {
+        return distance;
+    }
+    return std::numeric_limits<double>::infinity();
 }
 
 std::int64_t grid_coordinate(double value, double inverse_cell_size)
@@ -270,28 +309,272 @@ py::array_t<double> ray_triangle_min_distance(
                     continue;
                 }
                 const RayTriangle& candidate = triangles[triangle];
-                const Point3 pvec = cross(direction, candidate.edge2);
-                const double determinant = dot(candidate.edge1, pvec);
-                if (!(std::abs(determinant) > epsilon)) {
-                    continue;
-                }
-                const double inverse_determinant = 1.0 / determinant;
-                const Point3 tvec = subtract(origin, candidate.vertex0);
-                const double u = dot(tvec, pvec) * inverse_determinant;
-                // Match the long-standing Python oracle exactly.  The
-                // u + v test below supplies the upper barycentric bound.
-                if (u < -epsilon) {
-                    continue;
-                }
-                const Point3 qvec = cross(tvec, candidate.edge1);
-                const double v = dot(direction, qvec) * inverse_determinant;
-                if (v < -epsilon || u + v > 1.0 + epsilon) {
-                    continue;
-                }
-                const double distance = dot(candidate.edge2, qvec)
-                    * inverse_determinant;
-                if (distance > epsilon && distance < best) {
+                const double distance = ray_triangle_distance(
+                    origin, direction, candidate, epsilon);
+                if (distance < best) {
                     best = distance;
+                }
+            }
+            output[ray] = best;
+        }
+    }
+    return result;
+}
+
+py::array_t<double> indexed_wall_collision_distances(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>&
+        ray_vertex_ids,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& directions,
+    const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>&
+        triangle_vertex_ids,
+    const double max_distance,
+    const double epsilon)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (ray_vertex_ids.ndim() != 1
+        || directions.ndim() != 2 || directions.shape(1) != 3
+        || ray_vertex_ids.shape(0) != directions.shape(0)) {
+        throw std::invalid_argument(
+            "ray_vertex_ids and directions must have shapes (R,) and (R, 3)");
+    }
+    if (triangle_vertex_ids.ndim() != 2
+        || triangle_vertex_ids.shape(1) != 3) {
+        throw std::invalid_argument(
+            "triangle_vertex_ids must have shape (T, 3)");
+    }
+    if (std::isnan(max_distance) || max_distance <= 0.0) {
+        throw std::invalid_argument("max_distance must be positive or infinity");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const size_t ray_count = static_cast<size_t>(ray_vertex_ids.shape(0));
+    const size_t triangle_count = static_cast<size_t>(triangle_vertex_ids.shape(0));
+    const double* const point_data = points.data();
+    const double* const direction_data = directions.data();
+    const std::int64_t* const ray_id_data = ray_vertex_ids.data();
+    const std::int64_t* const triangle_id_data = triangle_vertex_ids.data();
+
+    for (py::ssize_t index = 0; index < points.size(); ++index) {
+        if (!std::isfinite(point_data[index])) {
+            throw std::invalid_argument("points must be finite");
+        }
+    }
+    for (py::ssize_t index = 0; index < directions.size(); ++index) {
+        if (!std::isfinite(direction_data[index])) {
+            throw std::invalid_argument("directions must be finite");
+        }
+    }
+    for (size_t ray = 0U; ray < ray_count; ++ray) {
+        if (ray_id_data[ray] < 0
+            || static_cast<size_t>(ray_id_data[ray]) >= point_count) {
+            throw std::invalid_argument("ray vertex index is out of range");
+        }
+    }
+    for (size_t index = 0U; index < triangle_count * 3U; ++index) {
+        if (triangle_id_data[index] < 0
+            || static_cast<size_t>(triangle_id_data[index]) >= point_count) {
+            throw std::invalid_argument("triangle vertex index is out of range");
+        }
+    }
+
+    py::array_t<double> result({static_cast<py::ssize_t>(ray_count)});
+    double* const output = result.mutable_data();
+    std::vector<IndexedRayTriangle> triangles(triangle_count);
+    std::vector<size_t> next;
+    std::unordered_map<GridKey, size_t, GridKeyHash> cell_heads;
+    std::vector<size_t> candidates;
+
+    {
+        py::gil_scoped_release release;
+        const auto read_point = [point_data](const std::int64_t point_id) {
+            const double* const values = point_data
+                + static_cast<size_t>(point_id) * 3U;
+            return Point3{values[0], values[1], values[2]};
+        };
+
+        double maximum_triangle_radius = 0.0;
+        for (size_t triangle = 0U; triangle < triangle_count; ++triangle) {
+            const std::int64_t* const ids = triangle_id_data + triangle * 3U;
+            const Point3 vertex0 = read_point(ids[0]);
+            const Point3 vertex1 = read_point(ids[1]);
+            const Point3 vertex2 = read_point(ids[2]);
+            Point3 centroid{};
+            for (size_t axis = 0U; axis < 3U; ++axis) {
+                const double minimum = std::min(
+                    vertex0[axis], std::min(vertex1[axis], vertex2[axis]));
+                const double maximum = std::max(
+                    vertex0[axis], std::max(vertex1[axis], vertex2[axis]));
+                centroid[axis] = std::midpoint(minimum, maximum);
+            }
+            double radius = 0.0;
+            const std::array<const Point3*, 3> vertices{
+                &vertex0, &vertex1, &vertex2};
+            for (const Point3* const vertex : vertices) {
+                const Point3 delta = subtract(*vertex, centroid);
+                radius = std::max(
+                    radius, std::hypot(delta[0], delta[1], delta[2]));
+            }
+            maximum_triangle_radius = std::max(
+                maximum_triangle_radius, radius);
+            triangles[triangle] = {
+                {vertex0, subtract(vertex1, vertex0), subtract(vertex2, vertex0)},
+                centroid,
+                {ids[0], ids[1], ids[2]},
+            };
+        }
+
+        double maximum_direction_norm = 0.0;
+        for (size_t ray = 0U; ray < ray_count; ++ray) {
+            const double* const values = direction_data + ray * 3U;
+            maximum_direction_norm = std::max(
+                maximum_direction_norm,
+                std::hypot(values[0], values[1], values[2]));
+        }
+
+        const bool distance_is_bounded = std::isfinite(max_distance);
+        const double radius_inflation = 1.0 + 4.0 * epsilon;
+        double cell_size = std::numeric_limits<double>::infinity();
+        if (distance_is_bounded) {
+            cell_size = max_distance * maximum_direction_norm
+                + radius_inflation * maximum_triangle_radius;
+            if (std::isfinite(cell_size) && cell_size > 0.0) {
+                cell_size = std::nextafter(
+                    cell_size, std::numeric_limits<double>::infinity());
+            }
+        }
+
+        bool use_spatial_hash = distance_is_bounded
+            && std::isfinite(cell_size) && cell_size > 0.0
+            && ray_count > 0U && triangle_count > 0U;
+        Point3 anchor{
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+        };
+        if (use_spatial_hash) {
+            for (const IndexedRayTriangle& triangle : triangles) {
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    anchor[axis] = std::min(anchor[axis], triangle.centroid[axis]);
+                }
+            }
+            for (size_t ray = 0U; ray < ray_count; ++ray) {
+                const Point3 origin = read_point(ray_id_data[ray]);
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    anchor[axis] = std::min(anchor[axis], origin[axis]);
+                }
+            }
+
+            constexpr double maximum_exact_grid_coordinate =
+                static_cast<double>(std::uint64_t{1} << 50U);
+            const double inverse_cell_size = 1.0 / cell_size;
+            const auto coordinate_is_safe = [=](const double value, const double base) {
+                const double shifted = value - base;
+                const double quotient = shifted * inverse_cell_size;
+                return std::isfinite(shifted) && std::isfinite(quotient)
+                    && quotient >= 0.0
+                    && quotient <= maximum_exact_grid_coordinate;
+            };
+            for (const IndexedRayTriangle& triangle : triangles) {
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    use_spatial_hash = use_spatial_hash
+                        && coordinate_is_safe(triangle.centroid[axis], anchor[axis]);
+                }
+            }
+            for (size_t ray = 0U; ray < ray_count; ++ray) {
+                const Point3 origin = read_point(ray_id_data[ray]);
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    use_spatial_hash = use_spatial_hash
+                        && coordinate_is_safe(origin[axis], anchor[axis]);
+                }
+            }
+        }
+
+        double inverse_cell_size = 0.0;
+        if (use_spatial_hash) {
+            inverse_cell_size = 1.0 / cell_size;
+            next.assign(triangle_count, std::numeric_limits<size_t>::max());
+            cell_heads.max_load_factor(0.7F);
+            cell_heads.reserve(triangle_count);
+            for (size_t triangle = 0U; triangle < triangle_count; ++triangle) {
+                const Point3& centroid = triangles[triangle].centroid;
+                const GridKey key{
+                    grid_coordinate(centroid[0] - anchor[0], inverse_cell_size),
+                    grid_coordinate(centroid[1] - anchor[1], inverse_cell_size),
+                    grid_coordinate(centroid[2] - anchor[2], inverse_cell_size),
+                };
+                auto [cell, inserted] = cell_heads.try_emplace(
+                    key, std::numeric_limits<size_t>::max());
+                (void)inserted;
+                next[triangle] = cell->second;
+                cell->second = triangle;
+            }
+            candidates.reserve(std::min<size_t>(triangle_count, 1024U));
+        }
+
+        for (size_t ray = 0U; ray < ray_count; ++ray) {
+            const std::int64_t ray_vertex = ray_id_data[ray];
+            const Point3 origin = read_point(ray_vertex);
+            const double* const direction_values = direction_data + ray * 3U;
+            const Point3 direction{
+                direction_values[0], direction_values[1], direction_values[2]};
+            double best = std::numeric_limits<double>::infinity();
+
+            const auto test_triangle = [&](const size_t triangle) {
+                const IndexedRayTriangle& candidate = triangles[triangle];
+                if (candidate.vertex_ids[0] == ray_vertex
+                    || candidate.vertex_ids[1] == ray_vertex
+                    || candidate.vertex_ids[2] == ray_vertex) {
+                    return;
+                }
+                const double distance = ray_triangle_distance(
+                    origin, direction, candidate.geometry, epsilon);
+                if (distance < best
+                    && (!distance_is_bounded || distance <= max_distance)) {
+                    best = distance;
+                }
+            };
+
+            if (!use_spatial_hash) {
+                for (size_t triangle = 0U; triangle < triangle_count; ++triangle) {
+                    test_triangle(triangle);
+                }
+            } else {
+                const GridKey origin_key{
+                    grid_coordinate(origin[0] - anchor[0], inverse_cell_size),
+                    grid_coordinate(origin[1] - anchor[1], inverse_cell_size),
+                    grid_coordinate(origin[2] - anchor[2], inverse_cell_size),
+                };
+                candidates.clear();
+                // Two-cell padding protects the conservative bound from a
+                // quotient rounding at a hash-cell boundary.
+                for (std::int64_t dx = -2; dx <= 2; ++dx) {
+                    for (std::int64_t dy = -2; dy <= 2; ++dy) {
+                        for (std::int64_t dz = -2; dz <= 2; ++dz) {
+                            const auto cell = cell_heads.find(GridKey{
+                                origin_key.x + dx,
+                                origin_key.y + dy,
+                                origin_key.z + dz,
+                            });
+                            if (cell == cell_heads.end()) {
+                                continue;
+                            }
+                            for (size_t triangle = cell->second;
+                                 triangle != std::numeric_limits<size_t>::max();
+                                 triangle = next[triangle]) {
+                                candidates.push_back(triangle);
+                            }
+                        }
+                    }
+                }
+                std::sort(candidates.begin(), candidates.end());
+                for (const size_t triangle : candidates) {
+                    test_triangle(triangle);
                 }
             }
             output[ray] = best;
@@ -319,5 +602,14 @@ PYBIND11_MODULE(native_bl, module)
         py::arg("directions"),
         py::arg("triangle_vertices"),
         py::arg("exclude_mask") = py::none(),
+        py::arg("epsilon") = 1e-12);
+    module.def(
+        "indexed_wall_collision_distances",
+        &indexed_wall_collision_distances,
+        py::arg("points"),
+        py::arg("ray_vertex_ids"),
+        py::arg("directions"),
+        py::arg("triangle_vertex_ids"),
+        py::arg("max_distance") = std::numeric_limits<double>::infinity(),
         py::arg("epsilon") = 1e-12);
 }
