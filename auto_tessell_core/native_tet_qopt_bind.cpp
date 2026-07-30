@@ -16,6 +16,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace py = pybind11;
@@ -114,12 +115,6 @@ double tet_shape_quality(const std::vector<Point>& points, const Tet& tet)
     };
     const auto dot = [](const Point& left, const Point& right) {
         return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
-    };
-    const auto cross = [](const Point& left, const Point& right) {
-        return Point{
-            left[1] * right[2] - left[2] * right[1],
-            left[2] * right[0] - left[0] * right[2],
-            left[0] * right[1] - left[1] * right[0]};
     };
     const auto norm = [&](const Point& vector) {
         return std::sqrt(dot(vector, vector));
@@ -637,17 +632,15 @@ py::tuple smooth_interior_guarded(
         locked[static_cast<size_t>(vertex)] = 1;
     }
 
-    std::vector<std::vector<long long>> neighbors(points.size());
-    std::vector<std::vector<size_t>> incident(points.size());
+    // Build one flat CSR adjacency.  The previous vector-of-vectors layout
+    // created O(V) heap allocations and duplicated every shared tet edge.
+    std::vector<std::pair<long long, long long>> directed_edges;
+    directed_edges.reserve(tets.size() * 12U);
     const auto add_edge = [&](const long long a, const long long b) {
-        neighbors[static_cast<size_t>(a)].push_back(b);
-        neighbors[static_cast<size_t>(b)].push_back(a);
+        directed_edges.emplace_back(a, b);
+        directed_edges.emplace_back(b, a);
     };
-    for (size_t tet_index = 0; tet_index < tets.size(); ++tet_index) {
-        const Tet& tet = tets[tet_index];
-        for (const long long vertex : tet) {
-            incident[static_cast<size_t>(vertex)].push_back(tet_index);
-        }
+    for (const Tet& tet : tets) {
         add_edge(tet[0], tet[1]);
         add_edge(tet[0], tet[2]);
         add_edge(tet[0], tet[3]);
@@ -655,10 +648,39 @@ py::tuple smooth_interior_guarded(
         add_edge(tet[1], tet[3]);
         add_edge(tet[2], tet[3]);
     }
-    for (auto& row : neighbors) {
-        std::sort(row.begin(), row.end());
-        row.erase(std::unique(row.begin(), row.end()), row.end());
+    std::sort(directed_edges.begin(), directed_edges.end());
+    directed_edges.erase(
+        std::unique(directed_edges.begin(), directed_edges.end()), directed_edges.end());
+
+    std::vector<size_t> neighbor_offsets(points.size() + 1U, 0U);
+    std::vector<long long> neighbors;
+    neighbors.reserve(directed_edges.size());
+    for (const auto& [vertex, neighbor] : directed_edges) {
+        ++neighbor_offsets[static_cast<size_t>(vertex) + 1U];
+        neighbors.push_back(neighbor);
     }
+    for (size_t vertex = 0; vertex < points.size(); ++vertex) {
+        neighbor_offsets[vertex + 1U] += neighbor_offsets[vertex];
+    }
+
+    std::vector<size_t> candidates;
+    candidates.reserve(points.size());
+    for (size_t vertex = 0; vertex < points.size(); ++vertex) {
+        if (!locked[vertex] && neighbor_offsets[vertex] != neighbor_offsets[vertex + 1U]) {
+            candidates.push_back(vertex);
+        }
+    }
+    std::vector<Point> targets(candidates.size());
+    std::vector<Point> old_positions(candidates.size());
+    std::vector<double> old_volumes(tets.size());
+
+    const auto minimum_quality = [&]() {
+        double minimum = 1.0;
+        for (const Tet& tet : tets) {
+            minimum = std::min(minimum, tet_shape_quality(points, tet));
+        }
+        return minimum;
+    };
 
     long long attempted = 0;
     long long accepted = 0;
@@ -668,87 +690,76 @@ py::tuple smooth_interior_guarded(
     int iterations_used = 0;
 
     for (int iter = 0; iter < n_iter; ++iter) {
-        std::vector<long long> candidates;
-        std::vector<Point> targets;
-        candidates.reserve(points.size());
-        targets.reserve(points.size());
-        for (size_t vertex = 0; vertex < points.size(); ++vertex) {
-            if (locked[vertex] || neighbors[vertex].empty()) {
-                continue;
-            }
+        const double previous_minimum_quality = minimum_quality();
+        for (size_t tet_index = 0; tet_index < tets.size(); ++tet_index) {
+            old_volumes[tet_index] = tet_volume6(points, tets[tet_index]);
+        }
+        for (size_t row = 0; row < candidates.size(); ++row) {
+            const size_t vertex = candidates[row];
             Point centroid{0.0, 0.0, 0.0};
-            for (const long long neighbor : neighbors[vertex]) {
-                const Point& p = points[static_cast<size_t>(neighbor)];
+            const size_t begin = neighbor_offsets[vertex];
+            const size_t end = neighbor_offsets[vertex + 1U];
+            for (size_t index = begin; index < end; ++index) {
+                const Point& p = points[static_cast<size_t>(neighbors[index])];
                 centroid[0] += p[0];
                 centroid[1] += p[1];
                 centroid[2] += p[2];
             }
-            const double inv_count = 1.0 / static_cast<double>(neighbors[vertex].size());
+            const double inv_count = 1.0 / static_cast<double>(end - begin);
             centroid[0] *= inv_count;
             centroid[1] *= inv_count;
             centroid[2] *= inv_count;
             const Point& old = points[vertex];
-            targets.push_back(Point{
+            old_positions[row] = old;
+            targets[row] = Point{
                 old[0] + relax * (centroid[0] - old[0]),
                 old[1] + relax * (centroid[1] - old[1]),
-                old[2] + relax * (centroid[2] - old[2])});
-            candidates.push_back(static_cast<long long>(vertex));
+                old[2] + relax * (centroid[2] - old[2])};
         }
 
-        long long accepted_this_iter = 0;
         for (size_t row = 0; row < candidates.size(); ++row) {
-            const long long vertex = candidates[row];
-            const auto& local_incident = incident[static_cast<size_t>(vertex)];
-            if (local_incident.empty()) {
-                continue;
-            }
-            ++attempted;
-            std::vector<double> old_quality;
-            std::vector<double> new_quality;
-            std::vector<double> old_volumes;
-            old_quality.reserve(local_incident.size());
-            new_quality.reserve(local_incident.size());
-            old_volumes.reserve(local_incident.size());
-            for (const size_t tet_index : local_incident) {
-                old_volumes.push_back(tet_volume6(points, tets[tet_index]));
-                old_quality.push_back(tet_shape_quality(points, tets[tet_index]));
-            }
-
-            const Point old_point = points[static_cast<size_t>(vertex)];
-            points[static_cast<size_t>(vertex)] = targets[row];
-            bool valid = true;
-            for (size_t local = 0; local < local_incident.size(); ++local) {
-                const size_t tet_index = local_incident[local];
-                const double new_volume = tet_volume6(points, tets[tet_index]);
-                const double old_volume = old_volumes[local];
-                if (std::abs(new_volume) <= 1e-20
-                    || std::signbit(new_volume) != std::signbit(old_volume)) {
-                    valid = false;
-                    break;
-                }
-                new_quality.push_back(tet_shape_quality(points, tets[tet_index]));
-            }
-            if (!valid) {
-                points[static_cast<size_t>(vertex)] = old_point;
-                ++rejected_volume;
-                continue;
-            }
-            if (compare_sorted_vectors(std::move(old_quality), std::move(new_quality), eps) < 0) {
-                points[static_cast<size_t>(vertex)] = old_point;
-                ++rejected_quality;
-                continue;
-            }
-
-            const Point& target = targets[row];
-            const double dx = target[0] - old_point[0];
-            const double dy = target[1] - old_point[1];
-            const double dz = target[2] - old_point[2];
-            max_displacement = std::max(max_displacement, std::sqrt(dx * dx + dy * dy + dz * dz));
-            ++accepted;
-            ++accepted_this_iter;
+            points[candidates[row]] = targets[row];
         }
+        attempted += static_cast<long long>(candidates.size());
+
+        bool valid_volume = true;
+        for (size_t tet_index = 0; tet_index < tets.size(); ++tet_index) {
+            const double volume = tet_volume6(points, tets[tet_index]);
+            if (std::abs(volume) <= 1e-20
+                || std::signbit(volume) != std::signbit(old_volumes[tet_index])) {
+                valid_volume = false;
+                break;
+            }
+        }
+        const double new_minimum_quality = valid_volume ? minimum_quality() : 0.0;
+        const bool quality_regressed = previous_minimum_quality > 1e-6
+            && new_minimum_quality + eps < previous_minimum_quality * 0.95;
+
+        if (!valid_volume || quality_regressed) {
+            for (size_t row = 0; row < candidates.size(); ++row) {
+                points[candidates[row]] = old_positions[row];
+            }
+            if (!valid_volume) {
+                rejected_volume += static_cast<long long>(candidates.size());
+            } else {
+                rejected_quality += static_cast<long long>(candidates.size());
+            }
+            ++iterations_used;
+            break;
+        }
+
+        for (size_t row = 0; row < candidates.size(); ++row) {
+            const Point& old = old_positions[row];
+            const Point& target = targets[row];
+            const double dx = target[0] - old[0];
+            const double dy = target[1] - old[1];
+            const double dz = target[2] - old[2];
+            max_displacement = std::max(
+                max_displacement, std::sqrt(dx * dx + dy * dy + dz * dz));
+        }
+        accepted += static_cast<long long>(candidates.size());
         ++iterations_used;
-        if (accepted_this_iter == 0) {
+        if (candidates.empty()) {
             break;
         }
     }

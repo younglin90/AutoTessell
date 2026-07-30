@@ -45,12 +45,23 @@ def orientation_signs(
     pts: np.ndarray, tets: np.ndarray, *, tol: float = 1e-14,
 ) -> np.ndarray:
     """predicates.orient3d_batch 위임. 각 tet 부호 (int8)."""
-    from core.utils.predicates import orient3d_batch
-
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return np.zeros(0, dtype=np.int8)
-    v = pts[tets]
+    points = np.asarray(pts, dtype=np.float64)
+    v = points[tets]
+    from core.utils.native_extensions import load_native_tet_predicates
+
+    native = load_native_tet_predicates()
+    kernel = getattr(native, "orient3d_signs", None) if native is not None else None
+    if kernel is not None:
+        # Shewchuk orient3d uses the opposite sign convention from
+        # AutoTessell's signed_volume6.  Negating here preserves the public
+        # native-tet convention while retaining exact near-degenerate signs.
+        return -np.asarray(kernel(v), dtype=np.int8)
+
+    from core.utils.predicates import orient3d_batch
+
     return orient3d_batch(v[:, 0], v[:, 1], v[:, 2], v[:, 3], tol=tol)
 
 
@@ -90,7 +101,8 @@ def drop_extreme_slivers(
         return tets, 0
     # 간단: signed vol 이 거의 0 이거나, dihedral 최소가 threshold 미만인 tet 탈락.
     from core.generator.native_tet.quality import (
-        tet_aspect_ratio, tet_min_dihedral_deg,
+        tet_aspect_ratio,
+        tet_min_dihedral_deg,
     )
 
     dih = tet_min_dihedral_deg(pts, tets)
@@ -143,7 +155,8 @@ def smooth_then_drop_slivers(
     Returns: (pts_new, tets_new, n_smooth_moved, n_dropped).
     """
     from core.generator.native_tet.quality import (
-        tet_aspect_ratio, tet_min_dihedral_deg,
+        tet_aspect_ratio,
+        tet_min_dihedral_deg,
     )
     from core.generator.native_tet.smooth import _build_edge_rows
 

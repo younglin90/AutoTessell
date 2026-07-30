@@ -44,6 +44,10 @@ dev = [
     "black>=24.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    "pybind11>=3.0.4,<4",
+]
+native-build = [
+    "pybind11>=3.0.4,<4",
 ]
 cad = [
     "cadquery>=2.4",

@@ -56,3 +56,13 @@ def load_native_polymesh() -> Any | None:
 def load_native_snap() -> Any | None:
     """Return the optional ``native_snap`` pybind11 module if available."""
     return load_native_extension("native_snap")
+
+
+def load_native_tet_predicates() -> Any | None:
+    """Return the optional exact tetrahedral predicate/metric module."""
+    return load_native_extension("native_tet_predicates")
+
+
+def load_native_tet_qopt() -> Any | None:
+    """Return the optional guarded tetrahedral optimizer module."""
+    return load_native_extension("native_tet_qopt")

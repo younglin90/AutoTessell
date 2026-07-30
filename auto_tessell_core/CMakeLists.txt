@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.20)
 project(auto_tessell_core CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -15,6 +15,8 @@ option(BUILD_NATIVE_POLYMESH "Build native polyMesh topology kernel" ON)
 option(BUILD_NATIVE_SNAP "Build native surface snap candidate kernel" ON)
 option(BUILD_NATIVE_SURFACE_PADDING "Build native planar surface padding kernel" ON)
 option(BUILD_NATIVE_HEX_QUALITY "Build native hex quality kernel" ON)
+option(BUILD_NATIVE_TET_PREDICATES "Build native exact tetrahedral predicate kernel" ON)
+option(BUILD_NATIVE_TET_QOPT "Build native tetrahedral quality-optimizer kernel" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -25,7 +27,9 @@ set(RPLY_DIR        "${ROBUSTHEX_DIR}/ext/rply"                      CACHE PATH 
 set(FAKE_NANOGUI    "${CMAKE_CURRENT_SOURCE_DIR}/fake_nanogui"       CACHE PATH "")
 
 # ── pybind11 ────────────────────────────────────────────────────────────────
-find_package(pybind11 CONFIG REQUIRED)
+set(PYBIND11_FINDPYTHON ON)
+find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
+find_package(pybind11 3.0 CONFIG REQUIRED)
 
 # ── Eigen3 ──────────────────────────────────────────────────────────────────
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -112,6 +116,47 @@ if(BUILD_NATIVE_HEX_QUALITY)
     target_compile_options(native_hex_quality PRIVATE /O2 /W3)
   else()
     target_compile_options(native_hex_quality PRIVATE -O3)
+  endif()
+endif()
+
+# ── native exact tetrahedral predicates ───────────────────────────────────
+# The robust predicate implementation is the public-domain first-party copy
+# already used by AutoTessell's Python predicate wrapper.  It is compiled into
+# this module without modifying or depending on third_party/ source.
+if(BUILD_NATIVE_TET_PREDICATES)
+  set(_SHEWCHUK_PREDICATES
+      "${CMAKE_CURRENT_SOURCE_DIR}/../core/utils/_shewchuk/predicates.c")
+  if(NOT EXISTS "${_SHEWCHUK_PREDICATES}")
+    message(FATAL_ERROR
+      "BUILD_NATIVE_TET_PREDICATES=ON requires ${_SHEWCHUK_PREDICATES}")
+  endif()
+  pybind11_add_module(native_tet_predicates
+      native_tet_predicates_bind.cpp
+      "${_SHEWCHUK_PREDICATES}")
+  target_compile_features(native_tet_predicates PRIVATE cxx_std_23)
+  set_target_properties(native_tet_predicates PROPERTIES CXX_EXTENSIONS OFF)
+  if(MSVC)
+    target_compile_options(native_tet_predicates PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:/O2;/W4>)
+    set_source_files_properties("${_SHEWCHUK_PREDICATES}"
+        PROPERTIES COMPILE_OPTIONS "/O2;/fp:precise")
+  else()
+    target_compile_options(native_tet_predicates PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-O3;-Wall;-Wextra;-Wpedantic>)
+    set_source_files_properties("${_SHEWCHUK_PREDICATES}"
+        PROPERTIES COMPILE_OPTIONS "-O3;-fno-fast-math")
+  endif()
+endif()
+
+# ── native tetrahedral quality optimizer ──────────────────────────────────
+if(BUILD_NATIVE_TET_QOPT)
+  pybind11_add_module(native_tet_qopt native_tet_qopt_bind.cpp)
+  target_compile_features(native_tet_qopt PRIVATE cxx_std_23)
+  set_target_properties(native_tet_qopt PROPERTIES CXX_EXTENSIONS OFF)
+  if(MSVC)
+    target_compile_options(native_tet_qopt PRIVATE /O2 /W4)
+  else()
+    target_compile_options(native_tet_qopt PRIVATE -O3 -Wall -Wextra -Wpedantic)
   endif()
 endif()
 

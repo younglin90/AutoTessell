@@ -16,11 +16,21 @@ import numpy as np
 
 try:
     from core.generator.native_tet._native import (
-        tet_quality_batch as _c_quality_batch,
         tet_aspect_ratio_batch as _c_aspect_ratio_batch,
+    )
+    from core.generator.native_tet._native import (
         tet_min_dihedral_deg_batch as _c_min_dihedral_deg_batch,
+    )
+    from core.generator.native_tet._native import (
         tet_min_solid_angle_sr_batch as _c_min_solid_angle_sr_batch,
+    )
+    from core.generator.native_tet._native import (
+        tet_quality_batch as _c_quality_batch,
+    )
+    from core.generator.native_tet._native import (
         tet_radius_edge_ratio_batch as _c_radius_edge_ratio_batch,
+    )
+    from core.generator.native_tet._native import (
         tet_signed_vol6_batch as _c_signed_vol6_batch,
     )
 except Exception:  # pragma: no cover - optional native extension
@@ -32,7 +42,7 @@ except Exception:  # pragma: no cover - optional native extension
     _c_signed_vol6_batch = None
 
 
-def snapshot_to_dict(snap: "QualitySnapshot | None") -> dict:
+def snapshot_to_dict(snap: QualitySnapshot | None) -> dict:
     """QualitySnapshot → JSON-serializable dict. 로그/리포트/bench 파일 공용."""
     if snap is None:
         return {}
@@ -66,6 +76,29 @@ class QualitySnapshot:
     vol_weighted_mean_q: float = 0.0
     p10_q: float = 0.0             # worst 10% quality (percentile).
     p10_dihedral_deg: float = 0.0
+
+
+def _native_tet_quality_metrics(
+    pts: np.ndarray,
+    tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    """Run the fused C++23 quality kernel when the native module is built."""
+    from core.utils.native_extensions import load_native_tet_predicates
+
+    native = load_native_tet_predicates()
+    kernel = getattr(native, "tet_quality_metrics", None) if native is not None else None
+    if kernel is None:
+        return None
+    shape, aspect, dihedral, volume6 = kernel(
+        np.asarray(pts, dtype=np.float64),
+        np.asarray(tets, dtype=np.int64),
+    )
+    return (
+        np.asarray(shape, dtype=np.float64),
+        np.asarray(aspect, dtype=np.float64),
+        np.asarray(dihedral, dtype=np.float64),
+        np.asarray(volume6, dtype=np.float64),
+    )
 
 
 def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
@@ -191,7 +224,9 @@ def tet_min_solid_angle_sr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     v = pts[tets]
 
     def _sa(o, p1, p2, p3):
-        a = p1 - o; b = p2 - o; c = p3 - o
+        a = p1 - o
+        b = p2 - o
+        c = p3 - o
         na = np.linalg.norm(a, axis=1)
         nb = np.linalg.norm(b, axis=1)
         nc = np.linalg.norm(c, axis=1)
@@ -298,6 +333,27 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     if tets_arr.size == 0:
         return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
 
+    native_metrics = _native_tet_quality_metrics(pts, tets_arr)
+    if native_metrics is not None:
+        q, aspect, dih, vol6 = native_metrics
+        w_sum = float(vol6.sum())
+        vol_weighted_mean_q = float((q * vol6).sum() / w_sum) if w_sum > 0 else 0.0
+        q_p10, q_median = np.percentile(q, [10, 50])
+        dih_p10, dih_median = np.percentile(dih, [10, 50])
+        return QualitySnapshot(
+            n_tets=int(q.size),
+            min_q=float(q.min()),
+            mean_q=float(q.mean()),
+            median_q=float(q_median),
+            max_aspect=float(aspect.max()),
+            mean_aspect=float(aspect.mean()),
+            min_dihedral_deg=float(dih.min()),
+            median_dihedral_deg=float(dih_median),
+            vol_weighted_mean_q=vol_weighted_mean_q,
+            p10_q=float(q_p10),
+            p10_dihedral_deg=float(dih_p10),
+        )
+
     if (
         _c_quality_batch is not None
         and _c_signed_vol6_batch is not None
@@ -333,8 +389,12 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
 
     # --- edge vectors from vertex 0 ---
-    ab = b - a; ac = c - a; ad = d - a
-    bc = c - b; bd = d - b; cd = d - c
+    ab = b - a
+    ac = c - a
+    ad = d - a
+    bc = c - b
+    bd = d - b
+    cd = d - c
 
     # --- 6 edge lengths ---
     e01 = np.linalg.norm(ab, axis=1)

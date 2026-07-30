@@ -10,9 +10,9 @@ quality 가 아닌 "edge (u, v) 가 결과에 존재" 를 기준으로 선택.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from collections import Counter
 import os
+from collections import Counter
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -104,6 +104,33 @@ def recover_edges_via_flip(
     use_candidate_guard = os.environ.get(
         "AUTO_TESSELL_TET_EDGE_FLIP_GUARD", "0",
     ).strip().lower() in {"1", "true", "on", "yes"}
+
+    # The C++23 kernel implements the default deterministic 2→3 route.  Keep
+    # the Python diagnostic/index and extra candidate-guard experiments on
+    # their existing paths until their full contracts are native as well.
+    explicit_diagnostic_route = (
+        "AUTO_TESSELL_TET_EDGE_FLIP_INDEX" in os.environ
+        or "AUTO_TESSELL_TET_EDGE_FLIP_GUARD" in os.environ
+    )
+    if not explicit_diagnostic_route:
+        from core.utils.native_extensions import load_native_tet_predicates
+
+        native = load_native_tet_predicates()
+        kernel = (
+            getattr(native, "recover_targeted_edges_23", None)
+            if native is not None else None
+        )
+        if kernel is not None:
+            edges = np.asarray(
+                sorted((min(int(u), int(v)), max(int(u), int(v))) for u, v in missing_edges),
+                dtype=np.int64,
+            ).reshape(-1, 2)
+            output, stats = kernel(pts, tets_arr, edges, int(max_attempts))
+            native_stats = dict(stats)
+            return np.asarray(output, dtype=np.int64), TargetedFlipResult(
+                n_edges_attempted=int(native_stats["attempted"]),
+                n_edges_recovered=int(native_stats["recovered"]),
+            )
 
     if use_tet_index:
         # Stable row IDs avoid rebuilding a full sorted-tet index after every

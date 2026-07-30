@@ -73,6 +73,30 @@ def smooth_interior(
     """
     pts = np.asarray(pts, dtype=np.float64)
     tets = np.asarray(tets, dtype=np.int64)
+
+    if quality_guard:
+        from core.generator.native_tet.qopt import smooth_interior_guarded_native
+
+        native_result = smooth_interior_guarded_native(
+            pts,
+            tets,
+            np.asarray(locked_vertex_ids, dtype=np.int64),
+            n_iter=int(n_iter),
+            relax=float(relax),
+        )
+        if native_result is not None:
+            native_points, native_stats = native_result
+            pts[:] = native_points
+            return SmoothResult(
+                n_iter=int(n_iter),
+                n_interior_moved=int(native_stats["accepted"]),
+                max_displacement=float(native_stats["max_displacement"]),
+                qopt_attempted=int(native_stats["attempted"]),
+                qopt_accepted=int(native_stats["accepted"]),
+                qopt_rejected_volume=int(native_stats["rejected_volume"]),
+                qopt_rejected_quality=int(native_stats["rejected_quality"]),
+            )
+
     n = pts.shape[0]
     locked_mask = np.zeros(n, dtype=bool)
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
@@ -157,7 +181,7 @@ def smooth_interior_metric(
     locked_vertex_ids: np.ndarray,
     n_iter: int = 1,
     relax: float = 0.4,
-) -> tuple["SmoothResult", np.ndarray]:
+) -> tuple[SmoothResult, np.ndarray]:
     """beta1210 (R121) — metric-aware Laplacian smoothing.
 
     각 interior vertex 의 1-ring 이동 방향을 metric-weighted centroid 로.

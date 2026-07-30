@@ -16,7 +16,10 @@ _NATIVE_TARGETS = (
     "native_metrics",
     "native_polymesh",
     "native_snap",
+    "native_surface_padding",
     "native_hex_quality",
+    "native_tet_predicates",
+    "native_tet_qopt",
 )
 
 
