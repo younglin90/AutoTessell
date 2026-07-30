@@ -16,6 +16,7 @@ def test_expensive_below_floor_target_refuses_before_tet(
     )
     assert r.success is False
     assert r.message.startswith("target_poly_budget_unreachable:")
+    assert r.target_cells_status == "refused_budget_preflight"
 
 
 def test_empty_input_skips_preflight_and_reaches_tet(

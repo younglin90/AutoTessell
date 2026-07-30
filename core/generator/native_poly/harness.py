@@ -179,7 +179,7 @@ def run_native_poly_harness(
                         f"estimated_work={estimated_work}, budget={int(max_tet_cells)}"
                     ),
                     target_cells_requested=int(target_cells),
-                    target_cells_status="reported_not_gated",
+                    target_cells_status="refused_budget_preflight",
                 )
 
     # target_edge_length 하한: bbox_diag / 50 이하로 내려가면 (= seed 가 50+)
