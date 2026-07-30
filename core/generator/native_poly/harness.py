@@ -135,7 +135,30 @@ def run_native_poly_harness(
     # Explicit BL=0 poly targets must not enter a known-unbounded tet path.
     # The uniform floor-grid requires interior work in addition to its nodes;
     # reserve a conservative 2x overhead before generation starts.
-    if target_cells is not None and int(target_cells) > 0 and target_edge_length is not None:
+    vertex_array = np.asarray(vertices)
+    face_array = np.asarray(faces)
+    try:
+        finite_vertices = bool(np.isfinite(vertex_array).all())
+    except (TypeError, ValueError):
+        finite_vertices = False
+    preflight_eligible = (
+        vertex_array.ndim == 2
+        and vertex_array.shape[1:] == (3,)
+        and vertex_array.shape[0] > 0
+        and finite_vertices
+        and face_array.ndim == 2
+        and face_array.shape[1:] == (3,)
+        and face_array.shape[0] > 0
+        and np.issubdtype(face_array.dtype, np.integer)
+        and int(face_array.min()) >= 0
+        and int(face_array.max()) < vertex_array.shape[0]
+    )
+    if (
+        preflight_eligible
+        and target_cells is not None
+        and int(target_cells) > 0
+        and target_edge_length is not None
+    ):
         bmin = np.asarray(vertices).min(axis=0)
         bmax = np.asarray(vertices).max(axis=0)
         diag = float(np.linalg.norm(bmax - bmin))
@@ -159,7 +182,7 @@ def run_native_poly_harness(
 
     # target_edge_length 하한: bbox_diag / 50 이하로 내려가면 (= seed 가 50+)
     # tet mesh cell 수가 폭증하므로 clamp.
-    if target_edge_length is not None:
+    if target_edge_length is not None and preflight_eligible:
         bmin = np.asarray(vertices).min(axis=0)
         bmax = np.asarray(vertices).max(axis=0)
         diag = float(np.linalg.norm(bmax - bmin))
