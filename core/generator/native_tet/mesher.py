@@ -5696,6 +5696,43 @@ def generate_native_tet(
                 raise
 
             _metric_sweep_committed = bool(_mt_res.accepted)
+            if _metric_sweep_committed:
+                from core.generator.native_tet.surface_transaction_gate import (
+                    apply_metric_topology_transaction,
+                )
+
+                _new_pts_m, _new_tets_m, _metric_topology_txn = (
+                    apply_metric_topology_transaction(
+                        V,
+                        F,
+                        _pre_pts_m,
+                        _pre_tets_m,
+                        _new_pts_m,
+                        _new_tets_m,
+                    )
+                )
+                _metric_sweep_committed = _metric_topology_txn.accepted
+                if not _metric_sweep_committed:
+                    _metric_topology_audit = _metric_topology_txn.audit
+                    log.info(
+                        "native_tet_metric_topology_txn_revert",
+                        reason=_metric_topology_txn.reason,
+                        n_nonmanifold_edges=(
+                            _metric_topology_audit.boundary.n_nonmanifold_edges
+                            if _metric_topology_audit is not None
+                            else None
+                        ),
+                        n_open_edges=(
+                            _metric_topology_audit.boundary.n_open_edges
+                            if _metric_topology_audit is not None
+                            else None
+                        ),
+                        component_bijective=(
+                            _metric_topology_audit.components.bijective
+                            if _metric_topology_audit is not None
+                            else None
+                        ),
+                    )
             if _metric_source_txn_enabled:
                 if _metric_sweep_committed:
                     final_pts, final_tets, _metric_surface_txn = apply_metric_surface_transaction(

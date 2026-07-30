@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.generator.native_tet.rescue_gate import SourceTopologyAudit, audit_source_topology
+
 _METRIC_SOURCE_TXN_ENV = "AUTO_TESSELL_TET_METRIC_SOURCE_TXN"
 _SOURCE_METRIC_JITTER_EPSILON = 1e-12
 
@@ -46,6 +48,15 @@ class MetricSurfaceTransactionReport:
     reason: str
     pre: SourceSurfaceMetrics
     post: SourceSurfaceMetrics
+
+
+@dataclass(frozen=True)
+class MetricTopologyTransactionReport:
+    """Source-aware topology decision for one metric-sweep candidate."""
+
+    accepted: bool
+    reason: str
+    audit: SourceTopologyAudit | None
 
 
 def metric_source_transaction_enabled() -> bool:
@@ -194,9 +205,62 @@ def apply_metric_surface_transaction(
     return pre_points, pre_tets, report
 
 
+def apply_metric_topology_transaction(
+    source_vertices: np.ndarray,
+    source_faces: np.ndarray,
+    pre_points: np.ndarray,
+    pre_tets: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, MetricTopologyTransactionReport]:
+    """Commit a metric-sweep candidate only with a source-topology certificate.
+
+    The metric sweep owns distinct candidate arrays, so rejection returns the
+    caller's exact pre-sweep objects without repairing connectivity or moving a
+    source vertex.  Audit failures are deterministic rejections, not silent
+    fallbacks.
+    """
+    try:
+        audit = audit_source_topology(
+            source_vertices,
+            source_faces,
+            candidate_points,
+            candidate_tets,
+        )
+    except Exception:
+        report = MetricTopologyTransactionReport(
+            accepted=False,
+            reason="source_topology_audit_error",
+            audit=None,
+        )
+        return pre_points, pre_tets, report
+
+    failures: list[str] = []
+    if not audit.boundary.valid:
+        failures.append("local_boundary_invalid")
+    if not audit.components.bijective:
+        failures.append("source_component_bijection_invalid")
+    if failures:
+        report = MetricTopologyTransactionReport(
+            accepted=False,
+            reason="+".join(failures),
+            audit=audit,
+        )
+        return pre_points, pre_tets, report
+
+    report = MetricTopologyTransactionReport(
+        accepted=True,
+        reason="ok",
+        audit=audit,
+    )
+    return candidate_points, candidate_tets, report
+
+
 __all__ = [
+    "MetricTopologyTransactionReport",
     "MetricSurfaceTransactionReport",
     "SourceSurfaceMetrics",
+    "apply_metric_topology_transaction",
     "apply_metric_surface_transaction",
     "audit_metric_surface_candidate",
     "measure_source_surface_metrics",
