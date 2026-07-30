@@ -6,14 +6,12 @@ operations should use this shared accept/rollback gate.
 """
 from __future__ import annotations
 
-import importlib
-import sys
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 
+from core.utils.native_extensions import import_native_extension
 
 _NATIVE_QOPT: Any | None = None
 _NATIVE_QOPT_LOADED = False
@@ -25,11 +23,8 @@ def _load_native_tet_qopt() -> Any | None:
     if _NATIVE_QOPT_LOADED:
         return _NATIVE_QOPT
     _NATIVE_QOPT_LOADED = True
-    build_dir = Path(__file__).resolve().parents[3] / "auto_tessell_core" / "build"
-    if build_dir.is_dir() and str(build_dir) not in sys.path:
-        sys.path.insert(0, str(build_dir))
     try:
-        _NATIVE_QOPT = importlib.import_module("native_tet_qopt")
+        _NATIVE_QOPT = import_native_extension("native_tet_qopt")
     except Exception:
         _NATIVE_QOPT = None
     return _NATIVE_QOPT

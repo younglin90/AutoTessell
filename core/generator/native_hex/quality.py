@@ -6,14 +6,12 @@ OpenFOAM checkMesh 의 핵심 메트릭 (non-orthogonality / skewness / aspect)
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from core.utils.native_extensions import import_native_extension
 
 _NATIVE_HEX_QUALITY: Any | None = None
 _NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED = False
@@ -26,19 +24,8 @@ def _load_native_hex_quality() -> Any | None:
         return _NATIVE_HEX_QUALITY
     _NATIVE_HEX_QUALITY_IMPORT_ATTEMPTED = True
 
-    candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
-    candidate_dirs.append(Path(__file__).resolve().parents[3] / "auto_tessell_core" / "build")
-    for candidate in candidate_dirs:
-        if candidate.is_dir():
-            candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
-
     try:
-        _NATIVE_HEX_QUALITY = importlib.import_module("native_hex_quality")
+        _NATIVE_HEX_QUALITY = import_native_extension("native_hex_quality")
     except Exception:  # noqa: BLE001
         _NATIVE_HEX_QUALITY = None
     return _NATIVE_HEX_QUALITY

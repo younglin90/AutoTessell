@@ -21,9 +21,7 @@ No external tools (OpenFOAM, meshio) are required.
 
 from __future__ import annotations
 
-import importlib
 import os
-import sys
 from collections import defaultdict, deque
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -32,6 +30,7 @@ from typing import Any
 import numpy as np
 
 from core.utils.logging import get_logger
+from core.utils.native_extensions import import_native_extension
 
 logger = get_logger(__name__)
 
@@ -46,19 +45,8 @@ def _load_native_polymesh() -> Any | None:
         return _NATIVE_POLYMESH
     _NATIVE_POLYMESH_IMPORT_ATTEMPTED = True
 
-    candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
-    candidate_dirs.append(Path(__file__).resolve().parents[2] / "auto_tessell_core" / "build")
-    for candidate in candidate_dirs:
-        if candidate.is_dir():
-            candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
-
     try:
-        _NATIVE_POLYMESH = importlib.import_module("native_polymesh")
+        _NATIVE_POLYMESH = import_native_extension("native_polymesh")
     except Exception:  # noqa: BLE001
         _NATIVE_POLYMESH = None
     return _NATIVE_POLYMESH

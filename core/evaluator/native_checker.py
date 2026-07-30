@@ -28,9 +28,6 @@ works without neatmesh.
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +39,7 @@ from core.evaluator.poly_quality_metrics import (
 )
 from core.schemas import CheckMeshResult
 from core.utils.logging import get_logger
+from core.utils.native_extensions import import_native_extension
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
@@ -68,21 +66,8 @@ def _load_native_metrics() -> Any | None:
         return _NATIVE_METRICS
     _NATIVE_METRICS_IMPORT_ATTEMPTED = True
 
-    candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
-    repo_root = Path(__file__).resolve().parents[2]
-    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
-
-    for candidate in candidate_dirs:
-        if candidate.is_dir():
-            candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
-
     try:
-        _NATIVE_METRICS = importlib.import_module("native_metrics")
+        _NATIVE_METRICS = import_native_extension("native_metrics")
     except Exception as exc:  # noqa: BLE001
         log.debug("native_metrics extension unavailable", error=str(exc))
         _NATIVE_METRICS = None

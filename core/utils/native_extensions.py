@@ -3,11 +3,15 @@
 The native kernels are release/build-time optional.  Callers should treat a
 missing module as normal and keep their Python fallback path intact.
 """
+
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import sys
+from importlib.machinery import EXTENSION_SUFFIXES
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +19,16 @@ _NATIVE_EXTENSIONS: dict[str, Any | None] = {}
 _NATIVE_ATTEMPTED: set[str] = set()
 
 
+def _configured_build_directory() -> Path | None:
+    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
+    return Path(env_dir) if env_dir else None
+
+
 def _add_native_extension_paths() -> None:
     candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
+    explicit_dir = _configured_build_directory()
+    if explicit_dir is not None:
+        candidate_dirs.append(explicit_dir)
     repo_root = Path(__file__).resolve().parents[2]
     candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
 
@@ -28,8 +37,66 @@ def _add_native_extension_paths() -> None:
     for candidate in reversed(candidate_dirs):
         if candidate.is_dir():
             candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
+            while candidate_s in sys.path:
+                sys.path.remove(candidate_s)
+            sys.path.insert(0, candidate_s)
+
+
+def _native_extension_candidate(directory: Path, module_name: str) -> Path | None:
+    for suffix in (*EXTENSION_SUFFIXES, ".py"):
+        candidate = directory / f"{module_name}{suffix}"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _module_is_from_directory(module: Any, directory: Path) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return False
+    try:
+        return Path(module_file).resolve().parent == directory.resolve()
+    except OSError:
+        return False
+
+
+def _load_explicit_native_extension(module_name: str, candidate: Path) -> Any:
+    digest = hashlib.sha256(str(candidate.resolve()).encode()).hexdigest()[:16]
+    alias = f"_autotessell_native_{digest}.{module_name}"
+    spec = spec_from_file_location(alias, candidate)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load explicit native extension candidate: {candidate}")
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def import_native_extension(module_name: str) -> Any:
+    """Import one first-party native module with explicit-build precedence.
+
+    A candidate present under ``AUTOTESSELL_EXT_BUILD_DIR`` wins even when an
+    older module with the same top-level name is cached in ``sys.modules``.
+    When the explicit directory does not contain the requested module, normal
+    repository/PYTHONPATH fallback behavior remains available.
+    """
+    _add_native_extension_paths()
+    importlib.invalidate_caches()
+
+    explicit_dir = _configured_build_directory()
+    explicit_candidate = (
+        _native_extension_candidate(explicit_dir, module_name)
+        if explicit_dir is not None and explicit_dir.is_dir()
+        else None
+    )
+    if explicit_candidate is not None:
+        assert explicit_dir is not None
+        cached = sys.modules.get(module_name)
+        if cached is not None and _module_is_from_directory(cached, explicit_dir):
+            return cached
+        if cached is not None:
+            return _load_explicit_native_extension(module_name, explicit_candidate)
+
+    return importlib.import_module(module_name)
 
 
 def load_native_extension(module_name: str) -> Any | None:
@@ -37,9 +104,8 @@ def load_native_extension(module_name: str) -> Any | None:
     if module_name in _NATIVE_ATTEMPTED:
         return _NATIVE_EXTENSIONS.get(module_name)
     _NATIVE_ATTEMPTED.add(module_name)
-    _add_native_extension_paths()
     try:
-        _NATIVE_EXTENSIONS[module_name] = importlib.import_module(module_name)
+        _NATIVE_EXTENSIONS[module_name] = import_native_extension(module_name)
     except Exception:  # pragma: no cover - optional extension
         _NATIVE_EXTENSIONS[module_name] = None
     return _NATIVE_EXTENSIONS[module_name]

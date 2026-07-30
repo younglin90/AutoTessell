@@ -14,14 +14,12 @@ flip 은 quality 가 개선될 때 + topology 가 valid 할 때만 수행. 본 �
 """
 from __future__ import annotations
 
-import importlib
-import os
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from core.utils.native_extensions import import_native_extension
 
 # Native C kernels — silent fallback to Python if unavailable.
 try:
@@ -50,21 +48,8 @@ def _load_native_metrics() -> Any | None:
         return _NATIVE_METRICS
     _NATIVE_METRICS_IMPORT_ATTEMPTED = True
 
-    candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AUTOTESSELL_EXT_BUILD_DIR", "").strip()
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
-    repo_root = Path(__file__).resolve().parents[3]
-    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
-
-    for candidate in candidate_dirs:
-        if candidate.is_dir():
-            candidate_s = str(candidate)
-            if candidate_s not in sys.path:
-                sys.path.insert(0, candidate_s)
-
     try:
-        _NATIVE_METRICS = importlib.import_module("native_metrics")
+        _NATIVE_METRICS = import_native_extension("native_metrics")
     except Exception:
         _NATIVE_METRICS = None
     return _NATIVE_METRICS

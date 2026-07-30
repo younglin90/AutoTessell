@@ -7,9 +7,6 @@ surface format calls this module implicitly.
 
 from __future__ import annotations
 
-import importlib
-import os
-import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core.generator.polymesh_writer import write_generic_polymesh
 from core.utils.logging import get_logger
+from core.utils.native_extensions import import_native_extension
 
 log = get_logger(__name__)
 
@@ -69,21 +67,8 @@ def _load_native_surface_padding() -> Any:
         return _NATIVE_MODULE
     _NATIVE_IMPORT_ATTEMPTED = True
 
-    candidates = [
-        (
-            Path(os.environ["AUTOTESSELL_EXT_BUILD_DIR"])
-            if os.environ.get("AUTOTESSELL_EXT_BUILD_DIR")
-            else None
-        ),
-        Path(__file__).resolve().parents[2] / "auto_tessell_core" / "build",
-    ]
-    for candidate in candidates:
-        if candidate is not None and candidate.is_dir():
-            candidate_text = str(candidate)
-            if candidate_text not in sys.path:
-                sys.path.insert(0, candidate_text)
     try:
-        _NATIVE_MODULE = importlib.import_module("native_surface_padding")
+        _NATIVE_MODULE = import_native_extension("native_surface_padding")
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
             "native_surface_padding is unavailable; build auto_tessell_core target "
