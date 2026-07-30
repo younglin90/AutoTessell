@@ -97,12 +97,20 @@ def test_hex_runner_attaches_route_and_contract(monkeypatch):
         fake_generate,
     )
 
-    result = hex_runner(*_mk_mesh(), Path("/tmp/case"), seed_density=11)
+    result = hex_runner(
+        *_mk_mesh(),
+        Path("/tmp/case"),
+        target_edge_length=0.25,
+        seed_density=11,
+        snap_boundary=True,
+    )
 
     assert result.route == "hex_uniform_grid"
     assert result.contract == "native_hex"
     assert result.contract_details == {"seed_density": 11}
     assert seen["kwargs"]["seed_density"] == 11
+    assert seen["kwargs"]["target_edge_length"] == 0.25
+    assert seen["kwargs"]["snap_boundary"] is True
 
 
 def test_poly_runner_boolean_route(monkeypatch):
