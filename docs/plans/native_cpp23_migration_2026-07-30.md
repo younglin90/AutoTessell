@@ -560,6 +560,41 @@ owner-only heuristic with the authoritative signed audit after corpus parity;
 it does not belong in a weaker validity threshold.  Geometry and the release
 gate are unchanged by this evidence card.
 
+## Native boundary-layer lineage guard card
+
+The numerical-quality regression was applying native boundary layers twice:
+once directly and again through `run_poly_bl_transition`.  The first insertion
+on a correctly wound single tetrahedron is valid; the second creates four
+inverted prism cells.  Prism topology, patch names, backup directories, and the
+legacy quality report cannot prove provenance because legitimate bulk meshes
+may contain wedges, hybrid rewriting can remove those wedges, and another
+producer also writes the quality report.
+
+A dedicated versioned `native_bl_state.json` now binds the five authoritative
+polyMesh files (`points`, `faces`, `owner`, `neighbour`, and `boundary`) to
+streamed SHA-256 digests.  Before any mesh read, backup, or mutation, the writer
+atomically records `pending` with the primal digest and normalized request.
+After a successful write it atomically records `completed`, the output digest,
+requested/effective layer counts, and prism count.  The poly transition refreshes
+the output digest after its optional hybrid transform.  A current mesh matching
+a completed output is therefore rejected before writes; a pending state may be
+retried only when the mesh still exactly matches its primal digest; all ambiguous
+lineage fails closed.  This is process-crash protection, not a power-loss
+durability claim because directory and file `fsync` are not performed.
+
+A zero-layer transition bypasses `BLConfig`, all layer allocation, backup, and
+dual logic.  On a pristine primal mesh it is an exact byte-level no-op and
+reports requested/actual zero.  It cannot silently remove an already recorded
+layer stack, so a zero request on completed BL output fails explicitly.  Negative
+layer counts also fail before writes.  A single-tetrahedron transition preserves
+the four input surface coordinates, inserts eight prisms for two requested
+layers, and reports zero negative volumes.  Focused provenance, transition,
+routing, and checker tests report `26 passed, 3 skipped`; the wider boundary-
+layer batch reports `143 passed` plus eight failures reproduced unchanged on the
+pre-card master (three persistence defects and five tet-subdivision contract
+defects).  No geometry threshold, topology contract, dependency, external code,
+or `third_party/` file changed.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

@@ -28,12 +28,13 @@ Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95). 반복
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import struct
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,200 @@ from core.utils.polymesh_reader import (
 )
 
 log = get_logger(__name__)
+
+_NATIVE_BL_STATE_SCHEMA = 1
+_NATIVE_BL_STATE_FILE = "native_bl_state.json"
+_NATIVE_BL_STATE_PRODUCER = "core.layers.native_bl.generate_native_bl"
+_POLYMESH_STATE_FILES = ("points", "faces", "owner", "neighbour", "boundary")
+
+
+def _polymesh_file_hashes(poly_dir: Path) -> dict[str, str]:
+    """Hash the five authoritative polyMesh files with bounded memory."""
+    hashes: dict[str, str] = {}
+    for name in _POLYMESH_STATE_FILES:
+        path = poly_dir / name
+        if not path.is_file():
+            raise FileNotFoundError(f"polyMesh state file missing: {path}")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        hashes[name] = digest.hexdigest()
+    return hashes
+
+
+def _atomic_write_native_bl_state(case_dir: Path, payload: dict[str, Any]) -> None:
+    """Atomically replace the project-local native-BL lineage state."""
+    state_path = case_dir / _NATIVE_BL_STATE_FILE
+    temporary = case_dir / (
+        f".{_NATIVE_BL_STATE_FILE}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        os.replace(temporary, state_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _read_native_bl_state(case_dir: Path) -> dict[str, Any] | None:
+    state_path = case_dir / _NATIVE_BL_STATE_FILE
+    if not state_path.exists():
+        return None
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"native BL state is unreadable: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("native BL state root must be an object")
+    if payload.get("schema") != _NATIVE_BL_STATE_SCHEMA:
+        raise ValueError("native BL state schema is unsupported")
+    if payload.get("producer") != _NATIVE_BL_STATE_PRODUCER:
+        raise ValueError("native BL state producer is invalid")
+    return payload
+
+
+def _begin_native_bl_state(
+    case_dir: Path,
+    poly_dir: Path,
+    cfg: BLConfig,
+    requested_layers: int,
+    engine_tag: str,
+) -> tuple[dict[str, str] | None, str | None]:
+    """Write pending state or return a pre-mutation lineage blocker."""
+    try:
+        current = _polymesh_file_hashes(poly_dir)
+        state = _read_native_bl_state(case_dir)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"native BL provenance validation failed: {exc}"
+    if state is not None:
+        input_hashes = state.get("input_polymesh_sha256")
+        output_hashes = state.get("output_polymesh_sha256")
+        state_name = state.get("state")
+        if state_name == "completed" and current == output_hashes:
+            return None, (
+                "pre_layered_input: current polyMesh exactly matches a prior "
+                "native BL output; restore/regenerate the primal mesh before "
+                "requesting layers again"
+            )
+        if current != input_hashes:
+            return None, (
+                "ambiguous_native_bl_lineage: polyMesh differs from both the "
+                "recorded primal input and safe retry state; mutation refused"
+            )
+
+    pending = {
+        "schema": _NATIVE_BL_STATE_SCHEMA,
+        "producer": _NATIVE_BL_STATE_PRODUCER,
+        "state": "pending",
+        "input_polymesh_sha256": current,
+        "output_polymesh_sha256": None,
+        "request": {
+            "requested_layers": int(requested_layers),
+            "growth_ratio": float(cfg.growth_ratio),
+            "first_thickness": float(cfg.first_thickness),
+            "engine_tag": str(engine_tag),
+            "wall_patch_names": cfg.wall_patch_names,
+            "set_faces": cfg.set_faces,
+            "ignore_faces": cfg.ignore_faces,
+            "ignore_patch_names": cfg.ignore_patch_names,
+            "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
+            "max_total_ratio": float(cfg.max_total_ratio),
+            "collision_safety": bool(cfg.collision_safety),
+            "collision_safety_factor": float(cfg.collision_safety_factor),
+            "feature_lock": bool(cfg.feature_lock),
+            "feature_angle_deg": float(cfg.feature_angle_deg),
+            "feature_reduction_ratio": float(cfg.feature_reduction_ratio),
+        },
+    }
+    try:
+        _atomic_write_native_bl_state(case_dir, pending)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"native BL pending-state write failed: {exc}"
+    return current, None
+
+
+def _complete_native_bl_state(
+    case_dir: Path,
+    input_hashes: dict[str, str],
+    *,
+    requested_layers: int,
+    actual_layers: int,
+    n_prism_cells: int,
+    last_transform: str = "native_bl",
+) -> str | None:
+    try:
+        output_hashes = _polymesh_file_hashes(case_dir / "constant" / "polyMesh")
+        pending = _read_native_bl_state(case_dir)
+        if pending is None or pending.get("state") != "pending":
+            raise ValueError("pending native BL state is missing")
+        if pending.get("input_polymesh_sha256") != input_hashes:
+            raise ValueError("pending native BL input digest changed")
+        _atomic_write_native_bl_state(
+            case_dir,
+            {
+                "schema": _NATIVE_BL_STATE_SCHEMA,
+                "producer": _NATIVE_BL_STATE_PRODUCER,
+                "state": "completed",
+                "input_polymesh_sha256": input_hashes,
+                "output_polymesh_sha256": output_hashes,
+                "requested_layers": int(requested_layers),
+                "actual_layers": int(actual_layers),
+                "n_prism_cells": int(n_prism_cells),
+                "last_transform": last_transform,
+                "request": pending.get("request", {}),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"native BL completed-state write failed: {exc}"
+    return None
+
+
+def _native_bl_zero_request_blocker(case_dir: Path) -> str | None:
+    """Validate that a zero-layer request leaves no existing BL output behind."""
+    try:
+        current = _polymesh_file_hashes(case_dir / "constant" / "polyMesh")
+        state = _read_native_bl_state(case_dir)
+        if state is None:
+            return None
+    except Exception as exc:  # noqa: BLE001
+        return f"native BL provenance validation failed: {exc}"
+
+    input_hashes = state.get("input_polymesh_sha256")
+    output_hashes = state.get("output_polymesh_sha256")
+    state_name = state.get("state")
+    if current == input_hashes:
+        return None
+    if state_name == "completed" and current == output_hashes:
+        return (
+            "zero_layer_request_on_pre_layered_input: current polyMesh contains "
+            "a prior native BL output; restore/regenerate the primal mesh because "
+            "a zero-layer request cannot remove existing layers"
+        )
+    return (
+        "ambiguous_native_bl_lineage: zero-layer request refused because the "
+        "current polyMesh does not match the recorded primal input"
+    )
+
+
+def _refresh_native_bl_state_output(
+    case_dir: Path, *, last_transform: str
+) -> str | None:
+    """Bind a completed native-BL lineage marker to a post-BL transform."""
+    try:
+        state = _read_native_bl_state(case_dir)
+        if state is None or state.get("state") != "completed":
+            raise ValueError("completed native BL state is missing")
+        state["output_polymesh_sha256"] = _polymesh_file_hashes(
+            case_dir / "constant" / "polyMesh"
+        )
+        state["last_transform"] = last_transform
+        _atomic_write_native_bl_state(case_dir, state)
+    except Exception as exc:  # noqa: BLE001
+        return f"native BL state refresh failed: {exc}"
+    return None
 
 # ---------------------------------------------------------------------------
 # QQQ1 — Garimella 2003 §3 front-collision (default OFF, skeleton only)
@@ -5879,6 +6074,17 @@ def generate_native_bl(
             message=f"polyMesh 없음: {poly_dir}",
         )
 
+    input_hashes, state_error = _begin_native_bl_state(
+        case_dir, poly_dir, cfg, requested_layers, engine_tag,
+    )
+    if state_error is not None:
+        return NativeBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t_start,
+            message=state_error,
+        )
+    assert input_hashes is not None
+
     # 1) 읽기
     raw_points = parse_foam_points(poly_dir / "points")
     raw_faces = parse_foam_faces(poly_dir / "faces")
@@ -6014,7 +6220,7 @@ def generate_native_bl(
     # This lets us enable VD per-STL (e.g. multi-patch junctions like
     # hard_100029) without affecting the rest of the 21-STL bench.
     if _vd_should_activate(case_dir):
-        return _generate_native_bl_vd(
+        result = _generate_native_bl_vd(
             case_dir=case_dir,
             cfg=cfg,
             poly_dir=poly_dir,
@@ -6027,6 +6233,17 @@ def generate_native_bl(
             vnorm=vnorm,
             t_start=t_start,
         )
+        if result.success:
+            state_error = _complete_native_bl_state(
+                case_dir,
+                input_hashes,
+                requested_layers=requested_layers,
+                actual_layers=int(cfg.num_layers),
+                n_prism_cells=int(result.n_prism_cells),
+            )
+            if state_error is not None:
+                return replace(result, success=False, message=state_error)
+        return result
 
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
@@ -8420,7 +8637,7 @@ def generate_native_bl(
         log.debug("native_bl_quality_json_skipped", reason=str(exc)[:120])
 
     elapsed = time.perf_counter() - t_start
-    return NativeBLResult(
+    result = NativeBLResult(
         success=True,
         elapsed=elapsed,
         n_wall_faces=n_wall_faces,
@@ -8452,3 +8669,13 @@ def generate_native_bl(
             f"degenerate={n_degen}/{n_prism_total}, max_ar={max_ar:.1f}."
         ),
     )
+    state_error = _complete_native_bl_state(
+        case_dir,
+        input_hashes,
+        requested_layers=requested_layers,
+        actual_layers=int(cfg.num_layers),
+        n_prism_cells=int(result.n_prism_cells),
+    )
+    if state_error is not None:
+        return replace(result, success=False, message=state_error)
+    return result

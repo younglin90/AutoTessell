@@ -191,30 +191,22 @@ def test_tet_bl_subdivide_yields_pure_tet_mesh(
 def test_poly_bl_hybrid_pass_through_preserves_topology(
     sphere_tet_baseline: Path,
 ) -> None:
-    """poly_bl_transition: hybrid (prism+tet) 입력에서 dual skip, mesh 보존.
+    """poly_bl_transition: primal tet 입력에 BL을 정확히 한 번 적용.
 
-    beta13 의 graceful pass-through 가 checkMesh OK 유지하는지.
+    transition 자체가 native BL 삽입을 소유한다. 미리 BL을 넣은 hybrid 입력을
+    다시 전달하는 것은 중복 layer 요청이며 fail-closed 대상이다.
     """
-    from core.layers.native_bl import BLConfig, generate_native_bl
     from core.layers.poly_bl_transition import run_poly_bl_transition
 
     case = Path(shutil.copytree(
         sphere_tet_baseline, sphere_tet_baseline.parent / "work_poly_hybrid",
     ))
 
-    # BL 삽입 → hybrid mesh 생성
-    bl_cfg = BLConfig(num_layers=2, growth_ratio=1.2, first_thickness=0.01,
-                      backup_original=False, max_total_ratio=0.2)
-    bl_res = generate_native_bl(case, bl_cfg)
-    assert bl_res.success
-
-    # poly_bl_transition 호출 — hybrid 라서 dual skip 되지만 success=True
+    # transition 이 BL 삽입과 optional hybrid dual을 한 번만 수행한다.
     res = run_poly_bl_transition(
         case, num_layers=2, growth_ratio=1.2, first_thickness=0.01,
         backup_original=False, apply_bulk_dual=True,
     )
-    # full dual 은 deferred 지만 전체 호출은 success=True 를 돌려야 함.
-    # (bulk_dual_applied=False 는 허용).
     assert res.success
 
     # mesh 가 여전히 valid 한지 NativeMeshChecker 확인

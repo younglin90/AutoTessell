@@ -22,7 +22,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.layers.native_bl import BLConfig, generate_native_bl
+from core.layers.native_bl import (
+    BLConfig,
+    _native_bl_zero_request_blocker,
+    _refresh_native_bl_state_output,
+    generate_native_bl,
+)
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -433,8 +438,31 @@ def run_poly_bl_transition(
         PolyBLResult.
     """
     t0 = time.perf_counter()
+    requested_layers = int(num_layers)
+    if requested_layers < 0:
+        return PolyBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t0,
+            message=f"boundary layer 수는 0 이상이어야 함: {requested_layers}",
+        )
+    if requested_layers == 0:
+        blocker = _native_bl_zero_request_blocker(case_dir)
+        if blocker is not None:
+            return PolyBLResult(
+                success=False,
+                elapsed=time.perf_counter() - t0,
+                message=blocker,
+            )
+        return PolyBLResult(
+            success=True,
+            elapsed=time.perf_counter() - t0,
+            n_prism_cells=0,
+            bulk_dual_applied=False,
+            message="poly_bl_transition no-op — requested_layers=0, actual_layers=0",
+        )
+
     cfg = BLConfig(
-        num_layers=int(num_layers),
+        num_layers=requested_layers,
         growth_ratio=float(growth_ratio),
         first_thickness=float(first_thickness),
         wall_patch_names=wall_patch_names,
@@ -461,6 +489,23 @@ def run_poly_bl_transition(
         bulk_dual_applied = ok
         if not ok:
             log.info("poly_bl_bulk_dual_skipped", reason=dual_msg)
+
+    state_error = _refresh_native_bl_state_output(
+        case_dir,
+        last_transform=(
+            "poly_bl_transition_dual"
+            if bulk_dual_applied
+            else "poly_bl_transition"
+        ),
+    )
+    if state_error is not None:
+        return PolyBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t0,
+            n_prism_cells=int(bl_res.n_prism_cells),
+            bulk_dual_applied=bulk_dual_applied,
+            message=state_error,
+        )
 
     elapsed = time.perf_counter() - t0
     return PolyBLResult(
