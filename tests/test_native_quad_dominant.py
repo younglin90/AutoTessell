@@ -222,3 +222,53 @@ def test_invalid_topology_is_rejected_before_quad_pairing(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         native_quad_dominant_remesh(vertices, triangles)
+
+
+def test_vertex_link_non_manifold_input_fails_closed_without_mutation() -> None:
+    """Two fans at one vertex cannot be emitted as a source-topology-preserving mesh."""
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+        ]
+    )
+    triangles = np.array([[0, 1, 2], [0, 2, 3], [0, 4, 5], [0, 5, 6]], dtype=np.int64)
+    vertices_before = vertices.copy()
+    triangles_before = triangles.copy()
+    errors: list[str] = []
+
+    for _ in range(2):
+        with pytest.raises(ValueError) as caught:
+            native_quad_dominant_remesh(vertices, triangles)
+        errors.append(str(caught.value))
+
+    assert errors == ["surface contains non-manifold vertex 0"] * 2
+    np.testing.assert_equal(vertices, vertices_before)
+    np.testing.assert_equal(triangles, triangles_before)
+
+
+def test_disconnected_manifold_components_remain_valid_and_independent() -> None:
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [4.0, 1.0, 0.0],
+            [3.0, 1.0, 0.0],
+        ]
+    )
+    triangles = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]], dtype=np.int64)
+
+    result = native_quad_dominant_remesh(vertices, triangles)
+
+    assert result.triangles.shape == (0, 3)
+    assert result.quads.shape == (2, 4)
+    np.testing.assert_array_equal(result.vertices, vertices)

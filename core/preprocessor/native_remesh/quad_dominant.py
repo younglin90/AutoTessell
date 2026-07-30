@@ -114,6 +114,34 @@ def _edge_key(first: int, second: int) -> tuple[int, int]:
     return (first, second) if first < second else (second, first)
 
 
+def _validate_vertex_links(triangles: NDArray[np.int64]) -> None:
+    """Reject vertices whose incident-triangle link has multiple components."""
+    links: dict[int, dict[int, set[int]]] = {}
+    for triangle in triangles:
+        first, second, third = (int(vertex) for vertex in triangle)
+        for vertex, left, right in (
+            (first, second, third),
+            (second, third, first),
+            (third, first, second),
+        ):
+            link = links.setdefault(vertex, {})
+            link.setdefault(left, set()).add(right)
+            link.setdefault(right, set()).add(left)
+
+    for vertex in sorted(links):
+        link = links[vertex]
+        visited: set[int] = set()
+        pending = [min(link)]
+        while pending:
+            neighbor = pending.pop()
+            if neighbor in visited:
+                continue
+            visited.add(neighbor)
+            pending.extend(link[neighbor] - visited)
+        if len(visited) != len(link):
+            raise ValueError(f"surface contains non-manifold vertex {vertex}")
+
+
 def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         raise ValueError("vertices must have shape (N, 3)")
@@ -144,6 +172,7 @@ def _validate_input(vertices: np.ndarray, triangles: np.ndarray) -> None:
             raise ValueError(f"surface contains non-manifold edge {edge}")
         if len(directions) == 2 and directions[0] == directions[1]:
             raise ValueError(f"surface contains inconsistent orientation at edge {edge}")
+    _validate_vertex_links(triangles)
 
 
 def _edge_faces(triangles: np.ndarray) -> dict[tuple[int, int], list[int]]:
