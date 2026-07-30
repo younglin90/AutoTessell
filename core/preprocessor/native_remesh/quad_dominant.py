@@ -46,6 +46,90 @@ def _decode_triangle_indices(values: object) -> NDArray[np.int64]:
         raise ValueError("triangle indices exceed signed int64 range") from None
 
 
+def _decode_python_vertex_scalar(value: object) -> float:
+    """Decode one Python/NumPy scalar without allowing coercion to hide loss."""
+    if isinstance(value, (bool, np.bool_)):
+        raise ValueError("vertices must be a real numeric array")
+    if isinstance(value, Integral):
+        integer_value = int(value)
+        try:
+            converted = float(integer_value)
+        except OverflowError:
+            raise ValueError(
+                "vertex coordinates must be exactly representable as float64"
+            ) from None
+        if not math.isfinite(converted) or int(converted) != integer_value:
+            raise ValueError("vertex coordinates must be exactly representable as float64")
+        return converted
+    if not isinstance(value, (float, np.floating)):
+        raise ValueError("vertices must be a real numeric array")
+    if not bool(np.isfinite(value)):
+        raise ValueError("surface contains non-finite vertices")
+    try:
+        converted = float(value)
+    except OverflowError:
+        raise ValueError("vertex coordinates must be exactly representable as float64") from None
+    if not math.isfinite(converted) or value != converted:
+        raise ValueError("vertex coordinates must be exactly representable as float64")
+    return converted
+
+
+def _decode_python_vertex_array(values: object) -> NDArray[np.float64]:
+    """Decode non-ndarray inputs before NumPy may apply a lossy common dtype."""
+    try:
+        raw_vertices = np.asarray(values, dtype=object)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError("vertices must be a real numeric array with shape (N, 3)") from None
+    if raw_vertices.ndim != 2 or raw_vertices.shape[1] != 3:
+        raise ValueError("vertices must have shape (N, 3)")
+    converted = np.empty(raw_vertices.shape, dtype=np.float64, order="C")
+    for index, value in enumerate(raw_vertices.flat):
+        converted.flat[index] = _decode_python_vertex_scalar(value)
+    return converted
+
+
+def _decode_vertex_coordinates(values: object) -> NDArray[np.float64]:
+    """Return float64 coordinates only when conversion preserves every value."""
+    if not isinstance(values, np.ndarray):
+        return _decode_python_vertex_array(values)
+    try:
+        raw_vertices = np.asarray(values)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError("vertices must be a real numeric array with shape (N, 3)") from None
+    if raw_vertices.ndim != 2 or raw_vertices.shape[1] != 3:
+        raise ValueError("vertices must have shape (N, 3)")
+    if raw_vertices.dtype.kind not in {"i", "u", "f"}:
+        raise ValueError("vertices must be a real numeric array")
+    if not np.isfinite(raw_vertices).all():
+        raise ValueError("surface contains non-finite vertices")
+
+    if raw_vertices.dtype.kind == "f" and raw_vertices.dtype.itemsize > 8:
+        float64_limit = np.asarray(np.finfo(np.float64).max, dtype=raw_vertices.dtype)
+        if np.any(np.abs(raw_vertices) > float64_limit):
+            raise ValueError("vertex coordinates must be exactly representable as float64")
+
+    converted = np.asarray(raw_vertices, dtype=np.float64, order="C")
+    if raw_vertices.dtype.kind == "i":
+        bit_count = np.iinfo(raw_vertices.dtype).bits
+        lower_bound = -float(2 ** (bit_count - 1))
+        upper_bound = float(2 ** (bit_count - 1))
+        if np.any(converted < lower_bound) or np.any(converted >= upper_bound):
+            raise ValueError("vertex coordinates must be exactly representable as float64")
+    elif raw_vertices.dtype.kind == "u":
+        bit_count = np.iinfo(raw_vertices.dtype).bits
+        upper_bound = float(2**bit_count)
+        if np.any(converted < 0.0) or np.any(converted >= upper_bound):
+            raise ValueError("vertex coordinates must be exactly representable as float64")
+
+    if raw_vertices.dtype != np.dtype(np.float64):
+        restored = converted.astype(raw_vertices.dtype)
+        if not np.array_equal(restored, raw_vertices):
+            raise ValueError("vertex coordinates must be exactly representable as float64")
+    if np.shares_memory(converted, raw_vertices):
+        return converted.copy(order="C")
+    return converted
+
+
 def _decode_protected_wall_edge(value: object) -> tuple[int, int]:
     """Decode one wall edge without accepting Pydantic/NumPy coercions."""
     if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
@@ -807,7 +891,7 @@ def native_quad_dominant_remesh(
     """Convert safe adjacent triangle pairs into quads without moving vertices."""
     settings = config or QuadDominantConfig()
     input_triangles = _decode_triangle_indices(triangles)
-    output_vertices = np.asarray(vertices, dtype=np.float64).copy()
+    output_vertices = _decode_vertex_coordinates(vertices)
     diagnostics = QuadDominantDiagnostics(input_triangles=int(len(input_triangles)))
     native_transaction = _native_quad_transaction(output_vertices, input_triangles, settings)
     if native_transaction is None:

@@ -33,6 +33,21 @@ Primary metrics: quad fraction, singularity count/type, minimum scaled
 Jacobian, angle/area distortion, maximum bidirectional distance, feature
 coverage, manifold/watertight status, determinism, peak memory, and runtime.
 
+## 2026-07-31 QUAD-VERTEX-IDENTITY-L1 result
+
+The public quad boundary previously cast coordinates to float64 before any
+identity check. A signed-int64 rectangle at `2^53 + {1, 3}` therefore changed
+width from 2 to 4 and false-passed in `3/3` runs. A bounds-aware exact
+round-trip decoder now rejects lossy signed/unsigned integers and extended
+precision floats before native dispatch (`3/3 -> 0/3`, native calls `0`) while
+preserving valid float64 output hashes and diagnostics exactly. Critic review
+then caught pre-check NumPy coercion of mixed Python lists (`3 failed, 15
+passed` baseline); object-first scalar validation closes that ingress without
+slowing the ndarray fast path. The focused native-absent suite passes `18/18`;
+the native-present quad/remesh suite passes `107/107`. See
+`quad_vertex_identity_l1_2026-07-31.md` for provenance, the inaccessible DOI
+ledger, exact hashes, and reproduction evidence.
+
 ## 2026-07-26 QUAD-ROSY1 result (measured, diagnostic only, zero mesh edits)
 
 **Note on "the code audit" above**: `quad_dominant.py` and its test are
