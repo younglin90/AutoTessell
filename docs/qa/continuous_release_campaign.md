@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `22`
+- cycle: `23`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `bacd281a467e56b483d780beb25533e992150be0`
+- last_verified_master: `de5fa5d745632ed88ce54e8fa125d9a23a60bf32`
 - allowed_to_stop: `false`
-- next_action: `Add a first-party indexed native_bl wall-collision kernel with conservative spatial pruning, incident-face exclusion on integer connectivity, deterministic exact narrow tests, and no dense R-by-T mask; then remove the >20k-triangle fail-open path under fixture parity.`
+- next_action: `Reproduce the poly-hybrid NativeMeshChecker negative-volume result/log disagreement, trace the authoritative cell-volume path, and port the validated ragged polyhedral volume audit to first-party C++23 if exact Python-oracle parity can be established.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1243,3 +1243,63 @@ scope. Future MIT-core boundary follows
   search distance is supplied, preserve deterministic triangle order and the
   existing exact narrow predicate, and remove the dense `R x T` mask plus the
   `20,000`-triangle fail-open cap only after direct and downstream parity.
+
+## Cycle 23 checkpoint -- 2026-07-30
+
+### Indexed boundary-layer wall-collision evidence
+
+- `de5fa5d7` adds `native_bl.indexed_wall_collision_distances`.  The C++23 ABI
+  reads original points and integer face connectivity, excludes incident faces
+  without Python masks, and returns nearest positive distance in wall-vertex
+  order.  No triangle-coordinate or origin gather is required.
+- Finite search uses an epsilon-expanded conservative centroid hash, accounts
+  for non-unit direction norms, pads cell queries against quotient rounding,
+  and falls back to exhaustive traversal on unsafe scale/overflow.  Candidate
+  ids are sorted to original triangle order before the unchanged narrow test.
+- The Python wrapper no longer allocates a full `R x T` incident mask, invokes
+  SciPy per ray, or returns an unchecked empty result above `20,000` triangles.
+  Its extension-absent path uses bounded batches.  Finite positive search now
+  has the same capped meaning at every mesh size; unlimited search remains
+  exhaustive.
+- Sparse `4,096` rays / `20,001` triangles: `0.005826434 s`, all `4,096` hits
+  exactly `1.0`; the previous code skipped this input.  Unlimited indexed
+  `512 x 2,048` traversal is `1.181x` direct native cost because it performs
+  mandatory incident-id checks; finite production traversal is the optimized
+  path.
+- Direct ABI/helper tests pass `60`; post-merge boundary topology, layer state,
+  BL0 routing, and wrapper tests pass `98`.  Representative native-BL and
+  numerical-quality tests pass `81` with the already reproduced poly-hybrid
+  checker disagreement deselected.
+- GCC 13.3 C++23 build is warning-free.  No geometry, connectivity, patch,
+  requested layer, epsilon, fast-math, dependency, or `third_party/` change.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-indexed-collision-1-de5fa5d7.bundle`,
+  SHA-256 `6ab50458d8f6cb32a4fb9d95edcd0de17a0d427b6a37bb663f1937444b0c8bce`.
+  Worktree, branch, and isolated build were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-23 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused and representative suites pass; baseline poly-hybrid checker defect and immutable-head full suite remain. |
+| 4 Shape preservation | UNVERIFIED | Wall collision search is conservative and wall coordinates unchanged; full corpus remains. |
+| 5 Mesh validity | FAIL | Poly-hybrid result/log reports `1280/0` negative volumes for one run; authoritative audit must be repaired. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0/positive-layer focused tests pass and >20k skip is closed; full corpus remains. |
+| 8 Quality | UNVERIFIED | No quality threshold changed; complete matrix missing. |
+| 9 Reproducibility | FAIL | Native collision result deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Large-wall collision no longer silently skips; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | Sparse large-wall gain passes; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | CMake native extensions are not yet included in wheel evidence. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Reproduce and isolate the `NativeMeshChecker` poly-hybrid negative-volume
+  result/log disagreement.  Establish one authoritative oriented cell-volume
+  oracle, then move its ragged face/cell traversal to first-party C++23 only if
+  topology, sign, ordering, tolerance, and diagnostic parity are exact.
