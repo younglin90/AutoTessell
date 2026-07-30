@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `16`
+- cycle: `17`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `03ae22b4f5cc01f49a5834cf7ceb25723e0c26bd`
+- last_verified_master: `6ce92dd04a76c4b94e0fcc8b1855c312f521260b`
 - allowed_to_stop: `false`
-- next_action: `Connect the existing C++23 strict Tet topology audit to P4C candidate acceptance and recompute final shape evidence transactionally before any target-cell work.`
+- next_action: `Recompute Tet plane and Hausdorff evidence from the final post-P4C arrays so stale pre-fallback metrics cannot report false shape fidelity.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -917,3 +917,54 @@ scope. Future MIT-core boundary follows
 - Reuse the existing native Tet audit as a mandatory P4C topology prefilter,
   then recompute final source fidelity from the committed arrays.  Do not snap
   missing geometry, edit external fTetWild, or resume target-cell tuning.
+
+## Cycle 17 checkpoint -- 2026-07-30
+
+### Tet P4C native topology transaction evidence
+
+- Eight raw cube P4C candidates reported zero open edges, non-manifold edges,
+  non-manifold faces, duplicates, and degenerate tetrahedra through the C++23
+  audit.  Their point/tet counts still varied, confirming that a clean sample
+  does not make topology deterministic or remove the need for a transaction.
+- `6ce92dd0` makes the existing first-party native audit mandatory for every
+  P4C tier before quality/cell count can authorize replacement.  Empty/open,
+  non-manifold, duplicate, or degenerate candidates fail closed and the next
+  tier is tried.  Boundary component count is logged but not forced to one,
+  because disconnected source components are valid inputs.
+- No topology repair, snapping, threshold relaxation, external implementation,
+  or `third_party/` edit was introduced.  The exact source-vertex gate remains
+  earlier in the same acceptance conjunction.  Target-cell tuning remains
+  deferred behind shape/topology.
+- Focused source/topology tests report `14 passed`; eight independent P4C
+  pipeline runs pass, with one retry; wider strict audit/result suites report
+  `32 passed` before and after merge.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-tet-p4c-topology-gate-1-6ce92dd0.bundle`,
+  SHA-256 `fbfd4f52a196c61ca1ea741673973c5d09d9b4266606b009830d260c10643fe1`.
+  Worktree and branch were removed after verification.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-17 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Existing native audit target is warning-clean on Ubuntu/GCC 13; platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/post-merge Tet suites pass; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Exact source presence and candidate topology are gated; final P4C shape metrics remain stale and full ledger/corpus is missing. |
+| 5 Mesh validity | UNVERIFIED | Invalid P4C topology now rejects before commit; complete strict all-engine corpus missing. |
+| 6 Cell count | FAIL | Deferred Tet target and Poly target following remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | Quality improvement cannot override source/topology gates; complete matrix missing. |
+| 9 Reproducibility | FAIL | External P4C point/tet topology hashes still vary across identical fresh processes. |
+| 10 Robustness | UNVERIFIED | Candidate topology fails closed; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | Native topology audit has prior 6.77x evidence; frozen release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | Existing first-party audit reused; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Acceptance evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Recompute plane coverage, plane area coverage, and Hausdorff evidence after
+  the final P4C/post-validation arrays are fixed.  Do not trust or return the
+  pre-fallback values when `_p4c_rewrote` is true.
