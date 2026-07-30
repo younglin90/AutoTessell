@@ -1857,6 +1857,262 @@ struct TriangleEdgeIncidence {
     std::vector<signed char> directions;
 };
 
+struct CurvatureEdgeRecord {
+    std::array<long long, 2> key;
+    size_t face_index;
+    size_t encounter_order;
+};
+
+struct CurvatureEdgeContribution {
+    size_t encounter_order;
+    long long first_vertex;
+    long long second_vertex;
+    double curvature;
+};
+
+[[nodiscard]] Point3 scale(const Point3& value, double factor) noexcept;
+[[nodiscard]] double dot_product(
+    const Point3& left, const Point3& right) noexcept;
+
+py::dict estimate_triangle_curvature_sizing(
+    const py::array& vertices_input,
+    const py::array& triangles_input,
+    const double epsilon,
+    const std::optional<double> minimum_length,
+    const std::optional<double> maximum_length)
+{
+    if (!vertices_input.dtype().is(py::dtype::of<double>())
+        || (vertices_input.flags() & py::array::c_style) == 0
+        || vertices_input.ndim() != 2 || vertices_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "vertices must be a C-contiguous float64 array with shape (N, 3)");
+    }
+    if (!triangles_input.dtype().is(py::dtype::of<long long>())
+        || (triangles_input.flags() & py::array::c_style) == 0
+        || triangles_input.ndim() != 2 || triangles_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "faces must be a C-contiguous int64 array with shape (M, 3)");
+    }
+    if (!std::isfinite(epsilon) || epsilon <= 0.0) {
+        throw std::invalid_argument("epsilon must be finite and positive");
+    }
+
+    const auto vertices_array =
+        py::reinterpret_borrow<py::array_t<double>>(vertices_input);
+    const auto triangles_array =
+        py::reinterpret_borrow<py::array_t<long long>>(triangles_input);
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto triangles = triangles_array.unchecked<2>();
+    const size_t vertex_count = static_cast<size_t>(vertices.shape(0));
+    const size_t face_count = static_cast<size_t>(triangles.shape(0));
+    std::vector<double> lengths(vertex_count, 0.0);
+    double reference = 0.0;
+    double lower = 0.0;
+    double upper = 0.0;
+
+    {
+        py::gil_scoped_release release;
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            for (size_t axis = 0; axis < 3; ++axis) {
+                if (!std::isfinite(vertices(
+                        static_cast<py::ssize_t>(vertex),
+                        static_cast<py::ssize_t>(axis)))) {
+                    throw std::invalid_argument(
+                        "vertices must be a finite (n, 3) array");
+                }
+            }
+        }
+        for (size_t face = 0; face < face_count; ++face) {
+            for (size_t local = 0; local < 3; ++local) {
+                const long long vertex = triangles(
+                    static_cast<py::ssize_t>(face),
+                    static_cast<py::ssize_t>(local));
+                if (vertex < 0 || vertex >= static_cast<long long>(vertex_count)) {
+                    throw std::invalid_argument(
+                        "faces contain an invalid vertex index");
+                }
+            }
+        }
+
+        std::vector<Point3> face_normals(face_count, Point3{0.0, 0.0, 0.0});
+        std::vector<double> face_areas(face_count, 0.0);
+        std::vector<CurvatureEdgeRecord> edge_records;
+        edge_records.reserve(face_count * 3U);
+        constexpr std::array<std::array<size_t, 2>, 3> local_edges{{
+            {{0, 1}}, {{1, 2}}, {{2, 0}},
+        }};
+        for (size_t face = 0; face < face_count; ++face) {
+            std::array<long long, 3> triangle{
+                triangles(static_cast<py::ssize_t>(face), 0),
+                triangles(static_cast<py::ssize_t>(face), 1),
+                triangles(static_cast<py::ssize_t>(face), 2),
+            };
+            const auto point = [&](const size_t local) {
+                const auto vertex = static_cast<py::ssize_t>(triangle[local]);
+                return Point3{
+                    vertices(vertex, 0), vertices(vertex, 1), vertices(vertex, 2)};
+            };
+            const Point3 first = point(0);
+            const Point3 second = point(1);
+            const Point3 third = point(2);
+            const Point3 normal = cross(sub(second, first), sub(third, first));
+            const double twice_area = norm3(normal);
+            if (twice_area > std::numeric_limits<double>::min()
+                && std::isfinite(twice_area)) {
+                face_normals[face] = scale(normal, 1.0 / twice_area);
+                face_areas[face] = 0.5 * twice_area;
+            }
+            for (size_t local = 0; local < local_edges.size(); ++local) {
+                std::array<long long, 2> key{
+                    triangle[local_edges[local][0]],
+                    triangle[local_edges[local][1]],
+                };
+                if (key[1] < key[0]) {
+                    std::swap(key[0], key[1]);
+                }
+                edge_records.push_back(CurvatureEdgeRecord{
+                    key, face, face * 3U + local});
+            }
+        }
+
+        std::sort(
+            edge_records.begin(), edge_records.end(),
+            [](const CurvatureEdgeRecord& left, const CurvatureEdgeRecord& right) {
+                if (left.key != right.key) {
+                    return left.key < right.key;
+                }
+                if (left.face_index != right.face_index) {
+                    return left.face_index < right.face_index;
+                }
+                return left.encounter_order < right.encounter_order;
+            });
+
+        std::vector<double> positive_edge_lengths;
+        positive_edge_lengths.reserve(edge_records.size() / 2U + 1U);
+        std::vector<CurvatureEdgeContribution> contributions;
+        contributions.reserve(edge_records.size() / 2U + 1U);
+        for (size_t begin = 0; begin < edge_records.size();) {
+            size_t end = begin + 1U;
+            while (end < edge_records.size()
+                   && edge_records[end].key == edge_records[begin].key) {
+                ++end;
+            }
+            const long long first_vertex = edge_records[begin].key[0];
+            const long long second_vertex = edge_records[begin].key[1];
+            const Point3 edge_vector = sub(
+                Point3{
+                    vertices(static_cast<py::ssize_t>(second_vertex), 0),
+                    vertices(static_cast<py::ssize_t>(second_vertex), 1),
+                    vertices(static_cast<py::ssize_t>(second_vertex), 2)},
+                Point3{
+                    vertices(static_cast<py::ssize_t>(first_vertex), 0),
+                    vertices(static_cast<py::ssize_t>(first_vertex), 1),
+                    vertices(static_cast<py::ssize_t>(first_vertex), 2)});
+            const double edge_length = norm3(edge_vector);
+            if (std::isfinite(edge_length) && edge_length > 0.0) {
+                positive_edge_lengths.push_back(edge_length);
+                double turning = 0.0;
+                if (end - begin >= 2U) {
+                    for (size_t left = begin; left + 1U < end; ++left) {
+                        for (size_t right = left + 1U; right < end; ++right) {
+                            const double cosine = std::clamp(
+                                dot_product(
+                                    face_normals[edge_records[left].face_index],
+                                    face_normals[edge_records[right].face_index]),
+                                -1.0, 1.0);
+                            turning = std::max(turning, std::acos(cosine));
+                        }
+                    }
+                }
+                contributions.push_back(CurvatureEdgeContribution{
+                    edge_records[begin].encounter_order,
+                    first_vertex,
+                    second_vertex,
+                    edge_length * turning});
+            }
+            begin = end;
+        }
+        if (positive_edge_lengths.empty()) {
+            throw std::invalid_argument("mesh has no positive-length edge");
+        }
+        std::sort(positive_edge_lengths.begin(), positive_edge_lengths.end());
+        const size_t middle = positive_edge_lengths.size() / 2U;
+        reference = positive_edge_lengths[middle];
+        if (positive_edge_lengths.size() % 2U == 0U) {
+            reference = (
+                positive_edge_lengths[middle - 1U]
+                + positive_edge_lengths[middle]) / 2.0;
+        }
+        lower = minimum_length.value_or(reference * 0.25);
+        upper = maximum_length.value_or(reference * 2.0);
+        if (!std::isfinite(lower) || !std::isfinite(upper)
+            || (lower > 0.0 && lower > upper)) {
+            throw std::invalid_argument(
+                "min_length/max_length must be finite and ordered");
+        }
+        if (lower <= 0.0 || upper <= 0.0) {
+            throw std::invalid_argument(
+                "min_length/max_length must be positive");
+        }
+        upper = std::max(lower, upper);
+
+        std::sort(
+            contributions.begin(), contributions.end(),
+            [](const CurvatureEdgeContribution& left,
+               const CurvatureEdgeContribution& right) {
+                return left.encounter_order < right.encounter_order;
+            });
+        std::vector<double> curvature(vertex_count, 0.0);
+        for (const auto& contribution : contributions) {
+            curvature[static_cast<size_t>(contribution.first_vertex)]
+                += contribution.curvature;
+            curvature[static_cast<size_t>(contribution.second_vertex)]
+                += contribution.curvature;
+        }
+        std::vector<double> vertex_area(vertex_count, 0.0);
+        for (size_t face = 0; face < face_count; ++face) {
+            const double share = face_areas[face] / 3.0;
+            for (size_t local = 0; local < 3; ++local) {
+                const auto vertex = static_cast<size_t>(triangles(
+                    static_cast<py::ssize_t>(face),
+                    static_cast<py::ssize_t>(local)));
+                vertex_area[vertex] += share;
+            }
+        }
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            const bool valid_area =
+                vertex_area[vertex] > std::numeric_limits<double>::min();
+            if (valid_area) {
+                curvature[vertex] /= 4.0 * vertex_area[vertex];
+            }
+            double target = upper;
+            if (valid_area && std::isfinite(curvature[vertex])
+                && curvature[vertex] > 1e-14) {
+                const double radicand =
+                    6.0 * epsilon / curvature[vertex]
+                    - 3.0 * epsilon * epsilon;
+                if (radicand > 0.0 && std::isfinite(radicand)) {
+                    target = std::sqrt(radicand);
+                }
+            }
+            lengths[vertex] = std::clamp(target, lower, upper);
+        }
+    }
+
+    py::array_t<double> lengths_array(
+        {static_cast<py::ssize_t>(lengths.size())});
+    auto lengths_out = lengths_array.mutable_unchecked<1>();
+    for (size_t vertex = 0; vertex < lengths.size(); ++vertex) {
+        lengths_out(static_cast<py::ssize_t>(vertex)) = lengths[vertex];
+    }
+    py::dict result;
+    result["lengths"] = std::move(lengths_array);
+    result["reference_length"] = reference;
+    result["minimum_length"] = lower;
+    result["maximum_length"] = upper;
+    return result;
+}
+
 py::dict validate_triangle_surface_and_build_edge_faces(
     const py::array_t<double, py::array::c_style | py::array::forcecast>& vertices_array,
     const py::array_t<long long, py::array::c_style | py::array::forcecast>& triangles_array)
@@ -2943,6 +3199,11 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("validate_triangle_surface_and_build_edge_faces",
           &validate_triangle_surface_and_build_edge_faces,
           py::arg("vertices"), py::arg("triangles"));
+    m.def("estimate_triangle_curvature_sizing",
+          &estimate_triangle_curvature_sizing,
+          py::arg("vertices"), py::arg("triangles"), py::arg("epsilon"),
+          py::arg("minimum_length") = py::none(),
+          py::arg("maximum_length") = py::none());
     m.def("select_quad_pairs", &select_quad_pairs,
           py::arg("vertices").noconvert(),
           py::arg("triangles").noconvert(),
