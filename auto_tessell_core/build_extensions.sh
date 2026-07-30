@@ -7,7 +7,7 @@
 #   ./auto_tessell_core/build_extensions.sh --clean --native-only
 #
 # Requirements:
-#   - cmake >= 3.15
+#   - cmake >= 3.20
 #   - g++ with C++23 support
 #   - pybind11 (pip install pybind11)
 #   - libeigen3-dev
