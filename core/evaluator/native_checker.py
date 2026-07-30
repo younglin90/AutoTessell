@@ -30,13 +30,16 @@ from __future__ import annotations
 
 import importlib
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from core.evaluator.poly_quality_metrics import compute_poly_phase0_metrics
+from core.evaluator.poly_quality_metrics import (
+    PolyPhase0Metrics,
+    compute_poly_phase0_metrics,
+)
 from core.schemas import CheckMeshResult
 from core.utils.logging import get_logger
 from core.utils.polymesh_reader import (
@@ -403,18 +406,33 @@ class NativeMeshChecker:
         # topology faces only here, after the existing checker calculations,
         # so the report path remains compatible with the optional native
         # topology kernel and existing quality fields.
-        phase0_metrics = compute_poly_phase0_metrics(
-            points,
-            materialize_faces(),
-            owner,
-            neighbour,
-            n_internal,
-            cell_centres,
-            face_centres,
-            face_normals,
-            face_areas,
-            cell_volumes,
-        )
+        phase0_metrics = None
+        if face_topology is not None and bool(face_topology.all_triangles):
+            phase0_metrics = self._compute_triangle_phase0_metrics_topology(
+                points,
+                face_topology,
+                owner,
+                neighbour,
+                n_internal,
+                cell_centres,
+                face_centres,
+                face_normals,
+                face_areas,
+                cell_volumes,
+            )
+        if phase0_metrics is None:
+            phase0_metrics = compute_poly_phase0_metrics(
+                points,
+                materialize_faces(),
+                owner,
+                neighbour,
+                n_internal,
+                cell_centres,
+                face_centres,
+                face_normals,
+                face_areas,
+                cell_volumes,
+            )
 
         # ------------------------------------------------------------------
         # 11. failed_checks / mesh_ok heuristic
@@ -785,6 +803,50 @@ class NativeMeshChecker:
             return NativeMeshChecker._validate_combined_cell_metrics(result, n_cells)
         except Exception as exc:  # noqa: BLE001
             log.debug("native topology combined cell metrics failed", error=str(exc))
+            return None
+
+    @staticmethod
+    def _compute_triangle_phase0_metrics_topology(
+        points: np.ndarray,
+        topology: Any,
+        owner: np.ndarray,
+        neighbour: np.ndarray,
+        n_internal: int,
+        cell_centres: np.ndarray,
+        face_centres: np.ndarray,
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+        cell_volumes: np.ndarray,
+    ) -> PolyPhase0Metrics | None:
+        """Compute triangle-only Phase-0 metrics without face-list materialization."""
+        native_metrics = _load_native_metrics()
+        if native_metrics is None:
+            return None
+        kernel = getattr(
+            native_metrics,
+            "compute_triangle_phase0_metrics_topology",
+            None,
+        )
+        if kernel is None:
+            return None
+        try:
+            values = kernel(
+                points,
+                topology,
+                owner,
+                neighbour,
+                int(n_internal),
+                cell_centres,
+                face_centres,
+                face_normals,
+                face_areas,
+                cell_volumes,
+            )
+            if len(values) != len(PolyPhase0Metrics.__dataclass_fields__):
+                raise ValueError("native triangle Phase-0 metric count mismatch")
+            return PolyPhase0Metrics(*(float(value) for value in values))
+        except Exception as exc:  # noqa: BLE001
+            log.debug("native triangle Phase-0 metrics failed", error=str(exc))
             return None
 
     @staticmethod
@@ -1452,6 +1514,7 @@ class NativeMeshChecker:
 
         try:
             import tempfile
+
             import pyvista as pv
         except ImportError:
             log.debug("pyvista not available for polyMesh→neatmesh conversion")

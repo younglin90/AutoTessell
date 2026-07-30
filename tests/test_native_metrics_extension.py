@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,10 @@ import pytest
 
 from core.evaluator import native_checker as nc
 from core.evaluator.native_checker import NativeMeshChecker
+from core.evaluator.poly_quality_metrics import (
+    PolyPhase0Metrics,
+    compute_poly_phase0_metrics,
+)
 
 
 def _native_metrics_or_skip():
@@ -940,6 +945,32 @@ def test_native_metrics_run_keeps_triangle_topology_native(
                 points, topology, owner, neighbour, n_cells
             )
 
+        @staticmethod
+        def compute_triangle_phase0_metrics_topology(
+            points,
+            _topology,
+            owner,
+            neighbour,
+            n_internal,
+            cell_centres,
+            face_centres,
+            face_normals,
+            face_areas,
+            cell_volumes,
+        ):
+            return module.compute_triangle_phase0_metrics_topology(
+                points,
+                topology,
+                owner,
+                neighbour,
+                n_internal,
+                cell_centres,
+                face_centres,
+                face_normals,
+                face_areas,
+                cell_volumes,
+            )
+
         def __getattr__(self, name: str):
             return getattr(module, name)
 
@@ -968,6 +999,133 @@ def test_native_metrics_run_keeps_triangle_topology_native(
     assert result.faces == 4
     assert result.max_concavity == 0.0
     assert result.max_face_warpage == 0.0
+
+
+def test_native_triangle_phase0_metrics_match_python_tetra(tmp_path: Path) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = tmp_path / "faces"
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]
+    body = "\n".join(f"3({' '.join(str(vertex) for vertex in face)})" for face in faces)
+    faces_file.write_text(f"4\n(\n{body}\n)\n", encoding="utf-8")
+    topology = module.parse_foam_faces_topology_file(faces_file)
+    owner = np.zeros(4, dtype=np.int64)
+    neighbour = np.empty(0, dtype=np.int64)
+    face_centres, face_normals, face_areas = module.compute_face_geometry_topology(
+        points, topology
+    )
+    cell_centres, _, _ = module.compute_cell_centres_and_aspect_ratios_topology(
+        points, topology, owner, neighbour, 1
+    )
+    cell_volumes = np.array([1.0 / 6.0], dtype=np.float64)
+    expected = compute_poly_phase0_metrics(
+        points,
+        faces,
+        owner,
+        neighbour,
+        0,
+        cell_centres,
+        face_centres,
+        face_normals,
+        face_areas,
+        cell_volumes,
+    )
+    actual = PolyPhase0Metrics(
+        *module.compute_triangle_phase0_metrics_topology(
+            points,
+            topology,
+            owner,
+            neighbour,
+            0,
+            cell_centres,
+            face_centres,
+            face_normals,
+            face_areas,
+            cell_volumes,
+        )
+    )
+
+    for field in fields(PolyPhase0Metrics):
+        assert getattr(actual, field.name) == pytest.approx(
+            getattr(expected, field.name), rel=1.0e-12, abs=1.0e-14
+        )
+
+
+def test_native_triangle_phase0_metrics_match_internal_face_pair(
+    tmp_path: Path,
+) -> None:
+    module = _native_metrics_or_skip()
+    faces_file = tmp_path / "faces"
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, -1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 1],
+        [1, 3, 2],
+        [0, 4, 2],
+        [0, 1, 4],
+        [1, 2, 4],
+    ]
+    body = "\n".join(f"3({' '.join(str(vertex) for vertex in face)})" for face in faces)
+    faces_file.write_text(f"7\n(\n{body}\n)\n", encoding="utf-8")
+    topology = module.parse_foam_faces_topology_file(faces_file)
+    owner = np.array([0, 0, 0, 0, 1, 1, 1], dtype=np.int64)
+    neighbour = np.array([1], dtype=np.int64)
+    face_centres, face_normals, face_areas = module.compute_face_geometry_topology(
+        points, topology
+    )
+    cell_centres, _, _ = module.compute_cell_centres_and_aspect_ratios_topology(
+        points, topology, owner, neighbour, 2
+    )
+    cell_volumes = np.full(2, 1.0 / 6.0, dtype=np.float64)
+    expected = compute_poly_phase0_metrics(
+        points,
+        faces,
+        owner,
+        neighbour,
+        1,
+        cell_centres,
+        face_centres,
+        face_normals,
+        face_areas,
+        cell_volumes,
+    )
+    actual = PolyPhase0Metrics(
+        *module.compute_triangle_phase0_metrics_topology(
+            points,
+            topology,
+            owner,
+            neighbour,
+            1,
+            cell_centres,
+            face_centres,
+            face_normals,
+            face_areas,
+            cell_volumes,
+        )
+    )
+
+    for field in fields(PolyPhase0Metrics):
+        assert getattr(actual, field.name) == pytest.approx(
+            getattr(expected, field.name), rel=1.0e-12, abs=1.0e-14
+        )
 
 
 def test_native_metrics_run_materializes_after_topology_kernel_failure(

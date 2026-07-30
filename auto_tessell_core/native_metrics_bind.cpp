@@ -11,15 +11,18 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <limits>
 #include <numeric>
+#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -382,18 +385,6 @@ Point3 cross(const Point3& a, const Point3& b)
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     };
-}
-
-double dot_arr(
-    const py::detail::unchecked_reference<double, 2>& arr_a,
-    py::ssize_t ia,
-    const py::detail::unchecked_reference<double, 2>& arr_b,
-    py::ssize_t ib)
-{
-    return (
-        arr_a(ia, 0) * arr_b(ib, 0)
-        + arr_a(ia, 1) * arr_b(ib, 1)
-        + arr_a(ia, 2) * arr_b(ib, 2));
 }
 
 double norm3(double x, double y, double z)
@@ -909,6 +900,353 @@ py::tuple compute_cell_centres_and_aspect_ratios(
         std::move(neighbour_obj), n_cells);
 }
 
+struct MetricSummary {
+    double min = 0.0;
+    double mean = 0.0;
+    double p95 = 0.0;
+    double max = 0.0;
+};
+
+MetricSummary summarize_finite(std::vector<double>& values)
+{
+    values.erase(
+        std::remove_if(values.begin(), values.end(), [](double value) {
+            return !std::isfinite(value);
+        }),
+        values.end());
+    if (values.empty()) {
+        return {};
+    }
+    std::sort(values.begin(), values.end());
+    const double mean = std::accumulate(values.begin(), values.end(), 0.0)
+        / static_cast<double>(values.size());
+    const double position = 0.95 * static_cast<double>(values.size() - 1);
+    const auto lower = static_cast<size_t>(std::floor(position));
+    const auto upper = static_cast<size_t>(std::ceil(position));
+    const double fraction = position - static_cast<double>(lower);
+    const double p95 = values[lower]
+        + fraction * (values[upper] - values[lower]);
+    return {values.front(), mean, p95, values.back()};
+}
+
+double norm3(const Point3& value)
+{
+    return std::sqrt(
+        value[0] * value[0] + value[1] * value[1]
+        + value[2] * value[2]);
+}
+
+double minimum_pairing_sum(const std::vector<Point3>& vectors)
+{
+    if (vectors.empty()) {
+        return 0.0;
+    }
+    if (vectors.size() >= 64) {
+        throw std::invalid_argument(
+            "native triangle Phase-0 pairing supports fewer than 64 faces per cell");
+    }
+    std::vector<double> norms;
+    norms.reserve(vectors.size());
+    for (const auto& vector : vectors) {
+        norms.push_back(norm3(vector));
+    }
+    std::unordered_map<std::uint64_t, double> memo;
+    const auto solve = [&](auto&& self, std::uint64_t mask) -> double {
+        if (mask == 0) {
+            return 0.0;
+        }
+        if (const auto found = memo.find(mask); found != memo.end()) {
+            return found->second;
+        }
+        const auto first = static_cast<size_t>(std::countr_zero(mask));
+        const std::uint64_t first_bit = std::uint64_t{1} << first;
+        const std::uint64_t rest = mask ^ first_bit;
+        double best = norms[first] + self(self, rest);
+        for (std::uint64_t remaining = rest; remaining != 0;) {
+            const auto second = static_cast<size_t>(std::countr_zero(remaining));
+            const std::uint64_t second_bit = std::uint64_t{1} << second;
+            const Point3 pair{
+                vectors[first][0] + vectors[second][0],
+                vectors[first][1] + vectors[second][1],
+                vectors[first][2] + vectors[second][2]};
+            best = std::min(
+                best, norm3(pair) + self(self, rest ^ second_bit));
+            remaining ^= second_bit;
+        }
+        memo.emplace(mask, best);
+        return best;
+    };
+    return solve(solve, (std::uint64_t{1} << vectors.size()) - 1);
+}
+
+py::tuple compute_triangle_phase0_metrics_topology(
+    py::array_t<double, py::array::c_style | py::array::forcecast> points,
+    const NativeFaceTopology& topology,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> neighbour,
+    long long n_internal,
+    py::array_t<double, py::array::c_style | py::array::forcecast> cell_centres,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_normals,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_areas,
+    py::array_t<double, py::array::c_style | py::array::forcecast> cell_volumes)
+{
+    if (!topology.all_triangles) {
+        throw std::invalid_argument("triangle Phase-0 kernel requires triangle faces");
+    }
+    if (points.ndim() != 2 || points.shape(1) != 3
+        || cell_centres.ndim() != 2 || cell_centres.shape(1) != 3
+        || face_centres.ndim() != 2 || face_centres.shape(1) != 3
+        || face_normals.ndim() != 2 || face_normals.shape(1) != 3
+        || owner.ndim() != 1 || neighbour.ndim() != 1
+        || face_areas.ndim() != 1 || cell_volumes.ndim() != 1) {
+        throw std::invalid_argument("invalid array shape for triangle Phase-0 metrics");
+    }
+
+    const auto n_faces = topology.face_count();
+    const auto n_cells = cell_centres.shape(0);
+    if (owner.shape(0) < n_faces || face_centres.shape(0) < n_faces
+        || face_normals.shape(0) < n_faces || face_areas.shape(0) < n_faces) {
+        throw std::invalid_argument("face arrays must contain every topology face");
+    }
+    validate_topology(topology, static_cast<long long>(points.shape(0)));
+
+    const auto pts = points.unchecked<2>();
+    const auto own = owner.unchecked<1>();
+    const auto nbr = neighbour.unchecked<1>();
+    const auto cc = cell_centres.unchecked<2>();
+    const auto fc = face_centres.unchecked<2>();
+    const auto fn = face_normals.unchecked<2>();
+    const auto fa = face_areas.unchecked<1>();
+    const auto volumes = cell_volumes.unchecked<1>();
+    const auto internal_count = std::max<py::ssize_t>(
+        0, std::min<py::ssize_t>(
+               {static_cast<py::ssize_t>(n_internal), nbr.shape(0), n_faces}));
+
+    std::vector<double> psi_values;
+    std::vector<double> h_values;
+    std::vector<double> circle_ratios;
+    std::vector<double> sphericities;
+    std::vector<double> diameters;
+    std::vector<double> pairing_residuals;
+    std::vector<size_t> cell_face_offsets(static_cast<size_t>(n_cells) + 1, 0);
+    std::vector<long long> cell_faces;
+
+    {
+        py::gil_scoped_release release;
+
+        psi_values.reserve(static_cast<size_t>(internal_count));
+        for (py::ssize_t face_i = 0; face_i < internal_count; ++face_i) {
+            const auto owner_i = own(face_i);
+            const auto neighbour_i = nbr(face_i);
+            if (owner_i < 0 || neighbour_i < 0
+                || owner_i >= n_cells || neighbour_i >= n_cells) {
+                continue;
+            }
+            const Point3 d{
+                cc(neighbour_i, 0) - cc(owner_i, 0),
+                cc(neighbour_i, 1) - cc(owner_i, 1),
+                cc(neighbour_i, 2) - cc(owner_i, 2)};
+            const double d2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            if (d2 <= 1.0e-60) {
+                continue;
+            }
+            const Point3 face_delta{
+                fc(face_i, 0) - cc(owner_i, 0),
+                fc(face_i, 1) - cc(owner_i, 1),
+                fc(face_i, 2) - cc(owner_i, 2)};
+            const double t = (face_delta[0] * d[0] + face_delta[1] * d[1]
+                              + face_delta[2] * d[2])
+                / d2;
+            const Point3 residual{
+                face_delta[0] - t * d[0],
+                face_delta[1] - t * d[1],
+                face_delta[2] - t * d[2]};
+            psi_values.push_back(norm3(residual) / std::sqrt(d2));
+        }
+
+        for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+            const auto owner_i = own(face_i);
+            if (owner_i >= 0 && owner_i < n_cells) {
+                ++cell_face_offsets[static_cast<size_t>(owner_i) + 1];
+            }
+            if (face_i < internal_count) {
+                const auto neighbour_i = nbr(face_i);
+                if (neighbour_i >= 0 && neighbour_i < n_cells) {
+                    ++cell_face_offsets[static_cast<size_t>(neighbour_i) + 1];
+                }
+            }
+        }
+        for (size_t cell_i = 0; cell_i < static_cast<size_t>(n_cells); ++cell_i) {
+            cell_face_offsets[cell_i + 1] += cell_face_offsets[cell_i];
+        }
+        cell_faces.resize(cell_face_offsets.back());
+        std::vector<size_t> write_positions(
+            cell_face_offsets.begin(), cell_face_offsets.end() - 1);
+        for (py::ssize_t face_i = 0; face_i < n_faces; ++face_i) {
+            const auto owner_i = own(face_i);
+            if (owner_i >= 0 && owner_i < n_cells) {
+                cell_faces[write_positions[static_cast<size_t>(owner_i)]++] = face_i;
+            }
+            if (face_i < internal_count) {
+                const auto neighbour_i = nbr(face_i);
+                if (neighbour_i >= 0 && neighbour_i < n_cells) {
+                    cell_faces[write_positions[static_cast<size_t>(neighbour_i)]++] = face_i;
+                }
+            }
+        }
+
+        h_values.reserve(static_cast<size_t>(n_cells));
+        circle_ratios.reserve(static_cast<size_t>(n_cells));
+        sphericities.reserve(static_cast<size_t>(n_cells));
+        diameters.reserve(static_cast<size_t>(n_cells));
+        pairing_residuals.reserve(static_cast<size_t>(n_cells));
+        std::vector<long long> vertex_ids;
+        std::vector<Point3> area_vectors;
+        for (py::ssize_t cell_i = 0; cell_i < n_cells; ++cell_i) {
+            const auto begin = cell_face_offsets[static_cast<size_t>(cell_i)];
+            const auto end = cell_face_offsets[static_cast<size_t>(cell_i) + 1];
+            if (begin == end) {
+                continue;
+            }
+            vertex_ids.clear();
+            vertex_ids.reserve(3 * (end - begin));
+            area_vectors.clear();
+            area_vectors.reserve(end - begin);
+            double total_area = 0.0;
+            double pairing_denominator = 0.0;
+            for (size_t slot = begin; slot < end; ++slot) {
+                const auto face_i = cell_faces[slot];
+                const auto topology_begin = static_cast<size_t>(
+                    topology.offsets[static_cast<size_t>(face_i)]);
+                const auto topology_end = static_cast<size_t>(
+                    topology.offsets[static_cast<size_t>(face_i) + 1]);
+                vertex_ids.insert(
+                    vertex_ids.end(),
+                    topology.indices.begin() + static_cast<std::ptrdiff_t>(topology_begin),
+                    topology.indices.begin() + static_cast<std::ptrdiff_t>(topology_end));
+                total_area += fa(face_i);
+                const double area = fa(face_i);
+                const bool finite_normal = std::isfinite(fn(face_i, 0))
+                    && std::isfinite(fn(face_i, 1))
+                    && std::isfinite(fn(face_i, 2));
+                const Point3 area_vector{
+                    fn(face_i, 0) * area,
+                    fn(face_i, 1) * area,
+                    fn(face_i, 2) * area};
+                const double magnitude = norm3(area_vector);
+                if (finite_normal && std::isfinite(area) && area > 1.0e-30
+                    && std::isfinite(magnitude)) {
+                    area_vectors.push_back(area_vector);
+                    pairing_denominator += magnitude;
+                }
+            }
+            std::sort(vertex_ids.begin(), vertex_ids.end());
+            vertex_ids.erase(
+                std::unique(vertex_ids.begin(), vertex_ids.end()), vertex_ids.end());
+            if (vertex_ids.size() < 4) {
+                continue;
+            }
+
+            const double pairing = pairing_denominator > 1.0e-30
+                ? std::clamp(
+                      minimum_pairing_sum(area_vectors) / pairing_denominator,
+                      0.0, 1.0)
+                : 0.0;
+            pairing_residuals.push_back(pairing);
+
+            double diameter2 = 0.0;
+            for (size_t i = 0; i + 1 < vertex_ids.size(); ++i) {
+                for (size_t j = i + 1; j < vertex_ids.size(); ++j) {
+                    const auto vi = vertex_ids[i];
+                    const auto vj = vertex_ids[j];
+                    const double dx = pts(vi, 0) - pts(vj, 0);
+                    const double dy = pts(vi, 1) - pts(vj, 1);
+                    const double dz = pts(vi, 2) - pts(vj, 2);
+                    diameter2 = std::max(diameter2, dx * dx + dy * dy + dz * dz);
+                }
+            }
+            const double diameter = std::sqrt(diameter2);
+            diameters.push_back(diameter);
+
+            const double volume = cell_i < volumes.shape(0)
+                ? std::abs(volumes(cell_i))
+                : 0.0;
+            if (total_area > 1.0e-30) {
+                h_values.push_back(6.0 * volume / total_area);
+                const double sphericity = std::cbrt(
+                    36.0 * std::numbers::pi * volume * volume) / total_area;
+                sphericities.push_back(std::clamp(sphericity, 0.0, 1.0));
+            } else {
+                h_values.push_back(0.0);
+                sphericities.push_back(0.0);
+            }
+
+            if (diameter <= 1.0e-30) {
+                circle_ratios.push_back(0.0);
+                continue;
+            }
+            double circumradius = 0.0;
+            for (const auto vertex_i : vertex_ids) {
+                const double dx = pts(vertex_i, 0) - cc(cell_i, 0);
+                const double dy = pts(vertex_i, 1) - cc(cell_i, 1);
+                const double dz = pts(vertex_i, 2) - cc(cell_i, 2);
+                circumradius = std::max(
+                    circumradius, std::sqrt(dx * dx + dy * dy + dz * dz));
+            }
+            double inradius = std::numeric_limits<double>::infinity();
+            for (size_t slot = begin; slot < end; ++slot) {
+                const auto face_i = cell_faces[slot];
+                const Point3 normal{fn(face_i, 0), fn(face_i, 1), fn(face_i, 2)};
+                const double normal_magnitude = norm3(normal);
+                if (normal_magnitude <= 1.0e-30) {
+                    continue;
+                }
+                const double distance = std::abs(
+                    (fc(face_i, 0) - cc(cell_i, 0)) * normal[0]
+                    + (fc(face_i, 1) - cc(cell_i, 1)) * normal[1]
+                    + (fc(face_i, 2) - cc(cell_i, 2)) * normal[2])
+                    / normal_magnitude;
+                inradius = std::min(inradius, distance);
+            }
+            circle_ratios.push_back(
+                std::isfinite(inradius) && circumradius > 1.0e-30
+                    ? std::clamp(inradius / circumradius, 0.0, 1.0)
+                    : 0.0);
+        }
+    }
+
+    std::vector<double> uniformity;
+    uniformity.reserve(diameters.size());
+    if (!diameters.empty()) {
+        const double max_diameter = *std::max_element(diameters.begin(), diameters.end());
+        const double denominator = std::max(max_diameter, 1.0e-30);
+        for (const double diameter : diameters) {
+            uniformity.push_back(diameter / denominator);
+        }
+    }
+    const auto psi = summarize_finite(psi_values);
+    const auto h = summarize_finite(h_values);
+    const auto circle = summarize_finite(circle_ratios);
+    const auto sphericity = summarize_finite(sphericities);
+    const auto uniform = summarize_finite(uniformity);
+    const auto pairing = summarize_finite(pairing_residuals);
+    const std::array<double, 29> values{
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        psi.max, psi.mean, psi.p95,
+        h.min, h.mean, h.p95, h.max,
+        circle.min, circle.mean, circle.p95, circle.max,
+        sphericity.min, sphericity.mean, sphericity.p95, sphericity.max,
+        uniform.min, uniform.mean, uniform.p95, uniform.max,
+        pairing.min, pairing.mean, pairing.p95, pairing.max};
+    py::tuple result(values.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+        result[static_cast<py::ssize_t>(i)] = values[i];
+    }
+    return result;
+}
+
 py::tuple compute_non_orthogonality(
     py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
     py::array_t<double, py::array::c_style | py::array::forcecast> face_normals,
@@ -921,7 +1259,7 @@ py::tuple compute_non_orthogonality(
     if (n_internal <= 0) {
         return py::make_tuple(0.0, 0.0, 0);
     }
-    const auto fc = face_centres.unchecked<2>();
+    (void)face_centres;
     const auto fn = face_normals.unchecked<2>();
     const auto cc = cell_centres.unchecked<2>();
     const auto own = owner.unchecked<1>();
@@ -1452,6 +1790,13 @@ PYBIND11_MODULE(native_metrics, m)
           &compute_cell_centres_and_aspect_ratios_topology,
           py::arg("points"), py::arg("topology"), py::arg("owner"),
           py::arg("neighbour"), py::arg("n_cells"));
+    m.def("compute_triangle_phase0_metrics_topology",
+          &compute_triangle_phase0_metrics_topology,
+          py::arg("points"), py::arg("topology"), py::arg("owner"),
+          py::arg("neighbour"), py::arg("n_internal"),
+          py::arg("cell_centres"), py::arg("face_centres"),
+          py::arg("face_normals"), py::arg("face_areas"),
+          py::arg("cell_volumes"));
     m.def("compute_non_orthogonality", &compute_non_orthogonality,
           py::arg("face_centres"), py::arg("face_normals"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
