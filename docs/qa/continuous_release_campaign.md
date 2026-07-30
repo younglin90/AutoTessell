@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `17`
+- cycle: `18`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `6ce92dd04a76c4b94e0fcc8b1855c312f521260b`
+- last_verified_master: `93d1972dc942af80406e3cddf7efce9a8d71e9ae`
 - allowed_to_stop: `false`
-- next_action: `Recompute Tet plane and Hausdorff evidence from the final post-P4C arrays so stale pre-fallback metrics cannot report false shape fidelity.`
+- next_action: `Profile and port native-Poly star-validity audit to a first-party C++23 CSR kernel without weakening invalid-cell detection or changing output.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -968,3 +968,53 @@ scope. Future MIT-core boundary follows
 - Recompute plane coverage, plane area coverage, and Hausdorff evidence after
   the final P4C/post-validation arrays are fixed.  Do not trust or return the
   pre-fallback values when `_p4c_rewrote` is true.
+
+## Cycle 18 checkpoint -- 2026-07-30
+
+### Tet final-array shape evidence
+
+- Baseline cube P4C returned grade `A` with plane coverage, plane-area coverage,
+  and Hausdorff all `-1`; the shape pass had measured no final P4C array.  A
+  non-skip path could instead retain values from a different pre-P4C mesh.
+- `93d1972d` remeasures the final post-orientation/post-cleanup arrays after the
+  writer and quality snapshot.  The direct result now exactly matches an
+  independent remeasurement: plane coverage `1.0`, plane-area coverage `1.0`,
+  relative Hausdorff `0.00045423924592147394`, `recomputed=true`.
+- P4C grade A/B retains the existing realistic 5% relative Hausdorff limit and
+  plane/area thresholds.  If remeasurement fails, all fidelity fields remain
+  `-1`, a warning and error reason are recorded, and grade is `D`; stale values
+  cannot create a success claim.  No mesh coordinate/connectivity is changed.
+- Exact and displaced-corner evidence tests pass.  Focused pre-merge reports
+  `9 passed`, wider strict shape/topology reports `7 passed`, and post-merge
+  repeats `7 passed`.  No `third_party/` file changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-tet-final-shape-evidence-1-93d1972d.bundle`,
+  SHA-256 `4450588858c62f78ecec2bdbcb74bd9a99ec8d0aa86c5e02a87106288dda9e63`.
+  Worktree and branch were removed after verification.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-18 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | No native target changed this card; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/post-merge shape suites pass; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Known P4C final metric gap is closed on cube; exact full surface-ledger corpus remains. |
+| 5 Mesh validity | UNVERIFIED | P4C topology gates remain; complete strict all-engine corpus missing. |
+| 6 Cell count | FAIL | Deferred Tet target and Poly target following remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | P4C grade now includes final shape evidence; complete matrix missing. |
+| 9 Reproducibility | FAIL | External P4C point/tet topology hashes still vary across identical fresh processes. |
+| 10 Robustness | UNVERIFIED | Shape evidence fails closed; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | Final evidence overhead is bounded on cube; frozen release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | First-party measurement only; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Final-evidence contract documented; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Port the profiled Poly star-validity audit (`1.865 s` representative cost)
+  as a read-only C++23 CSR batch.  Preserve exact invalid cell/subtet counts,
+  example ordering, and fail-closed behavior before considering mutable Poly
+  topology work.
