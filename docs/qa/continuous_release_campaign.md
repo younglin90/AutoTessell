@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `2`
+- cycle: `3`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `4cc13ac3e2a11115df667c5d8ee2fd9b2443320a`
+- last_verified_master: `de60438a2ce942365be6c116999d29170356a786`
 - allowed_to_stop: `false`
-- next_action: `HEX-TARGET-CELL-BIDIRECTIONAL-1: make native hex target response monotone without changing user sizing or boundary-layer reserve rules.`
+- next_action: `TET-VVV10-STRICT-TOPOLOGY-GATE1: reject topology-invalid flip_face_23 candidates before native tet writer acceptance.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -48,9 +48,24 @@ ledger commit itself necessarily advances `HEAD`.
   and no `polyMesh`. The guard rolls back a sweep that increases non-manifold
   face count; remaining pre-sweep topology defects are still open.
 - `verify_goal.py` now records selected phase evidence and explicit `NOT_RUN`
-  phases. L0: `3 passed` in `1.77 s`; GUI phase passed. Parameter phase with
-  `target_cells=2000`, `boundary_layer=0` fails because explicit zero is absent
-  from tier-specific params despite the later strategy reporting zero layers.
+  phases. L0: `3 passed` in `1.77 s`; GUI phase passed. After BL0 propagation
+  repair, parameter phase with `target_cells=2000`, `boundary_layer=0` passes:
+  tier params retain both zero values and strategy reports `num_layers=0`,
+  `enabled=False`.
+- Hex implicit cube target contract: actual cells `125,216,1000,2197` for
+  requests `128,256,1000,2000`; max error `15.63%`, monotone, negative volume
+  `0`; focused suite `14 passed` in `37.69 s`. Full solid-volume guard timed
+  out at `120 s` and remains unverified.
+- Poly target observation reports requested/actual/error explicitly. Real cube
+  BL0 probes remain target failures: `50 -> 15`, `100 -> 15`; target rebudget
+  is an active functional card.
+- Native-tri has an opt-in production route only as an explicit unchanged
+  rejection until source certificate exists; three-run cube/sphere route suite
+  passed. Existing isotropic default is unchanged.
+- Fresh wheel smoke passed: wheel build, external fresh virtualenv install,
+  installed CLI help, and copied sphere analysis. SHA256/phase evidence is
+  produced by `scripts/verify_package_wheel.py`; native CMake and installers
+  remain unverified.
 - Same NACA baseline emitted `1827` cells for target `2000`; campaign-wide target
   tolerance is not yet declared or verified.
 - Previous full `python tests/verify_goal.py` timed out after `124 s`; no full-suite claim.
@@ -60,28 +75,28 @@ ledger commit itself necessarily advances `HEAD`.
 | Gate | Status | Evidence / next evidence |
 |---|---|---|
 | 1 Repository | PASS | Cycle-1 checkpoint clean; re-evaluate every cycle. |
-| 2 Build | UNVERIFIED | Fresh clean release build missing. |
+| 2 Build | UNVERIFIED | Python wheel smoke passes; native C++ clean build missing. |
 | 3 Automated tests | UNVERIFIED | Phase-attributed verifier added; full engine/routing/UI suite missing. |
 | 4 Shape preservation | UNVERIFIED | No campaign corpus result. |
-| 5 Mesh validity | UNVERIFIED | Tet NACA strict count `10` now fails closed; full valid-output corpus missing. |
-| 6 Cell count | UNVERIFIED | Poly BL=0 forward L0 passes; NACA `1827/2000`; engine corpus/monotonicity missing. |
-| 7 Boundary layer | FAIL | Parameter-phase BL=0 loses explicit tier parameter; repair card active. |
+| 5 Mesh validity | FAIL | Tet cube harness strict writer still rejects 2–4 non-manifold faces. |
+| 6 Cell count | FAIL | Poly cube target `50/100 -> 15`; tet valid output missing; hex L0 only passes. |
+| 7 Boundary layer | UNVERIFIED | Explicit BL0 propagation passes; positive-layer engine corpus missing. |
 | 8 Quality | UNVERIFIED | Campaign quality specifications and corpus missing. |
 | 9 Reproducibility | UNVERIFIED | Three-run engine corpus missing. |
 | 10 Robustness | UNVERIFIED | Quad invalid topology rejects explicitly; tet NACA/cylinder fail explicitly; matrix missing. |
 | 11 Performance | UNVERIFIED | Baselines and budgets missing. |
-| 12 Packaging | UNVERIFIED | Fresh-install smoke evidence missing. |
+| 12 Packaging | UNVERIFIED | Python wheel clean-install smoke passes; native/installer clean install missing. |
 | 13 License/provenance | UNVERIFIED | GPL policy present; campaign inventory/evidence missing. |
 | 14 Documentation/operations | UNVERIFIED | Release operational checklist missing. |
 | 15 Release candidate | UNVERIFIED | Depends on Gates 1–14. |
 
 ## Active research queue
 
-1. `HEX-TARGET-CELL-BIDIRECTIONAL-1` — target-band failures, lower is better, target `0`.
-2. `BL0-EXPLICIT-PROPAGATION-1` — explicit zero-layer propagation failures, lower is better, target `0`.
-3. `POLY-TARGET-CONTRACT-1` — establish observable target-cell response while preserving source topology.
-4. `TET-MANIFOLD-TOPOLOGY-2` — remaining strict non-manifold face incidences, lower is better, target `0`.
-5. `FULL-VALIDATION-BASELINE-1` — run phase-attributed engine evidence without weakening gates.
+1. `TET-VVV10-STRICT-TOPOLOGY-GATE1` — strict candidate topology defects, lower is better, target `0`.
+2. `POLY-TARGET-REBUDGET-1` — cube BL0 target-band failures, lower is better, target `0`.
+3. `LIC-NATIVE-CORE-PROVENANCE-MANIFEST-1` — unrecorded native bindings, lower is better, target `0`.
+4. `FULL-VALIDATION-BASELINE-1` — run phase-attributed engine evidence without weakening gates.
+5. `TET-VVV12-STRICT-TOPOLOGY-GATE1` — run only after VVV10 retest isolates residual defects.
 
 ## DOI and provenance record
 
