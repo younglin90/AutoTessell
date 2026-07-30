@@ -26,8 +26,8 @@ unknown result classification.
 Primary metric: `accounted collected node IDs / collected node IDs`.  The
 acceptance target is `225 / 225 = 100%` on one immutable HEAD/tree.  Accounting
 success is not release success: `failed`, `timeout`, `runner_error`,
-`process_leak`, `skipped`, or `passed_with_skips` keeps the merged L3 result
-false.  Only all-module `passed` permits `release_pass=true`.
+`process_leak`, `xpassed`, `skipped`, or `passed_with_skips` keeps the merged
+L3 result false.  Only all-module `passed` permits `release_pass=true`.
 
 ## Fail-closed contracts
 
@@ -40,6 +40,9 @@ false.  Only all-module `passed` permits `release_pass=true`.
   than rerunning every node separately.
 - Use a 240-second default module timeout.  This does not weaken a test: any
   timeout is a failing classification and remains visible in merged evidence.
+- Request pytest's exact `-rX` summary and record anchored `XPASS` node IDs.
+  JUnit's normal pass counters alone cannot distinguish a non-strict XPASS;
+  any detected XPASS is therefore a release-failing `xpassed` classification.
 - Store generated manifests and shard evidence only under ignored
   `autoresearch-results/poly-l3/`.
 - Exclude only the runner's own synthetic contract test from the product corpus
@@ -51,8 +54,8 @@ false.  Only all-module `passed` permits `release_pass=true`.
 
 The focused synthetic suite covers clean/dirty/head-move identity checks,
 whole-process-group timeout cleanup, PASS/FAIL/TIMEOUT/SKIP/error
-classification, duplicate and missing shards, duplicate and missing node IDs,
-identity drift, discovery, and collection gaps.
+classification, real non-strict XPASS rejection, duplicate and missing shards,
+duplicate and missing node IDs, identity drift, discovery, and collection gaps.
 
 ```bash
 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \

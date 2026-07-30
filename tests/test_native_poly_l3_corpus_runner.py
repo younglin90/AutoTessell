@@ -184,6 +184,48 @@ def test_result_classification_is_fail_closed() -> None:
     )
 
 
+def test_non_strict_xpass_is_machine_detected_and_never_passes(tmp_path: Path) -> None:
+    test_file = tmp_path / "test_xpass.py"
+    test_file.write_text(
+        "import pytest\n"
+        "@pytest.mark.xfail(reason='synthetic expected failure')\n"
+        "def test_unexpected_pass():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    junit_path = tmp_path / "pytest.xml"
+    process = RUNNER.run_process_group(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-rxX",
+            str(test_file),
+            f"--junitxml={junit_path}",
+        ],
+        cwd=tmp_path,
+        timeout_sec=20.0,
+    )
+    counts = RUNNER.parse_junit_counts(junit_path)
+    xpassed = RUNNER.parse_xpass_nodeids(process.stdout)
+
+    assert process.returncode == 0
+    assert counts == RUNNER.JUnitCounts(tests=1, failures=0, errors=0, skipped=0)
+    assert len(xpassed) == 1
+    assert "test_xpass.py::test_unexpected_pass" in xpassed[0]
+    assert (
+        RUNNER.classify_module_result(
+            process=process,
+            counts=counts,
+            expected_nodeids=1,
+            xpassed_nodeids=xpassed,
+        )
+        == "xpassed"
+    )
+    assert RUNNER.parse_xpass_nodeids("ordinary test passed\n1 passed in 0.01s\n") == ()
+
+
 def test_merge_requires_exact_shards_and_node_accounting() -> None:
     modules = ["tests/test_native_poly_a.py", "tests/test_native_poly_b.py"]
     nodeids = [f"{modules[0]}::test_a", f"{modules[1]}::test_b"]
@@ -241,11 +283,11 @@ def test_merge_refuses_identity_drift_and_nonpass_release() -> None:
         index=1,
         modules=modules,
         nodeids=nodeids,
-        results=[_result(modules[1], [nodeids[1]], "timeout")],
+        results=[_result(modules[1], [nodeids[1]], "xpassed")],
     )
     merged = RUNNER.merge_shard_payloads([shard0, shard1])
     assert merged["release_pass"] is False
-    assert merged["classification_counts"] == {"passed": 1, "timeout": 1}
+    assert merged["classification_counts"] == {"passed": 1, "xpassed": 1}
 
     moved = json.loads(json.dumps(shard1))
     moved["tree"] = "d" * 40

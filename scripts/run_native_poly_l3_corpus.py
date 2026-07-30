@@ -286,8 +286,28 @@ def parse_junit_counts(path: Path) -> JUnitCounts:
     )
 
 
+def parse_xpass_nodeids(output: str) -> tuple[str, ...]:
+    """Read only pytest's ``-rX`` summary records, never ordinary PASS text."""
+    prefix = "XPASS "
+    nodeids: list[str] = []
+    for line in output.splitlines():
+        if not line.startswith(prefix):
+            continue
+        nodeid = line[len(prefix) :].split(" - ", 1)[0].strip()
+        if not nodeid:
+            raise CorpusError("pytest emitted an empty XPASS summary record")
+        nodeids.append(nodeid)
+    if len(nodeids) != len(set(nodeids)):
+        raise CorpusError("pytest emitted duplicate XPASS summary records")
+    return tuple(nodeids)
+
+
 def classify_module_result(
-    *, process: ProcessResult, counts: JUnitCounts | None, expected_nodeids: int
+    *,
+    process: ProcessResult,
+    counts: JUnitCounts | None,
+    expected_nodeids: int,
+    xpassed_nodeids: Sequence[str] = (),
 ) -> str:
     """Classify a module without converting missing evidence into success."""
     if process.process_group_alive:
@@ -296,6 +316,8 @@ def classify_module_result(
         return "timeout"
     if counts is None or counts.tests != expected_nodeids:
         return "runner_error"
+    if xpassed_nodeids:
+        return "xpassed"
     if process.returncode != 0:
         return "failed" if counts.failures or counts.errors else "runner_error"
     if counts.failures or counts.errors:
@@ -334,6 +356,7 @@ def run_module(
             "-m",
             "pytest",
             "-q",
+            "-rxX",
             module,
             f"--junitxml={junit_path}",
         ]
@@ -351,11 +374,19 @@ def run_module(
             except CorpusError as exc:
                 junit_error = str(exc)
     require_git_identity(repository_root, identity)
+    try:
+        xpassed_nodeids = parse_xpass_nodeids(process.stdout)
+    except CorpusError as exc:
+        xpassed_nodeids = ()
+        junit_error = str(exc) if junit_error is None else f"{junit_error}; {exc}"
     classification = classify_module_result(
         process=process,
         counts=counts,
         expected_nodeids=len(nodeids),
+        xpassed_nodeids=xpassed_nodeids,
     )
+    if junit_error is not None and classification not in {"timeout", "process_leak"}:
+        classification = "runner_error"
     return {
         "module": module,
         "nodeids": list(nodeids),
@@ -366,6 +397,8 @@ def run_module(
         "process_group_alive": process.process_group_alive,
         "elapsed_sec": round(process.elapsed_sec, 6),
         "junit_counts": None if counts is None else asdict(counts),
+        "xpassed_nodeids": list(xpassed_nodeids),
+        "xpassed_count": len(xpassed_nodeids),
         "junit_error": junit_error,
         "stdout_tail": process.stdout[-4000:],
         "stderr_tail": process.stderr[-4000:],
@@ -479,6 +512,7 @@ def merge_shard_payloads(payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any
                 "timeout",
                 "runner_error",
                 "process_leak",
+                "xpassed",
             }:
                 raise CorpusError(f"unknown classification in module: {module}")
             seen_modules.add(module)
