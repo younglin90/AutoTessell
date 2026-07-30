@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ── Build options ────────────────────────────────────────────────────────────
+option(BUILD_CINOLIB_HEX "Build optional cinolib_hex adapter (needs CINOLIB_DIR headers)" OFF)
 option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR source)" ON)
 option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
 option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
@@ -42,11 +43,21 @@ else()
   set(_ROBUSTHEX_FLAGS -O2 -w -Wno-changes-meaning)
 endif()
 
-# ── cinolib_hex module ───────────────────────────────────────────────────────
-pybind11_add_module(cinolib_hex cinolib_hex_bind.cpp)
-target_include_directories(cinolib_hex PRIVATE "${CINOLIB_DIR}/include")
-target_compile_options(cinolib_hex PRIVATE ${_CINOLIB_FLAGS})
-target_link_libraries(cinolib_hex PRIVATE Eigen3::Eigen)
+# ── cinolib_hex adapter (optional, external source) ─────────────────────────
+# cinolib is not native-core source.  Keep Release builds independent of a
+# developer-local checkout unless this adapter is explicitly requested.
+if(BUILD_CINOLIB_HEX)
+  if(NOT EXISTS "${CINOLIB_DIR}/include/cinolib/geometry/vec_mat.h")
+    message(FATAL_ERROR
+      "BUILD_CINOLIB_HEX=ON requires cinolib headers at "
+      "CINOLIB_DIR/include/cinolib/geometry/vec_mat.h; "
+      "set -DCINOLIB_DIR=<cinolib source root> or set -DBUILD_CINOLIB_HEX=OFF")
+  endif()
+  pybind11_add_module(cinolib_hex cinolib_hex_bind.cpp)
+  target_include_directories(cinolib_hex PRIVATE "${CINOLIB_DIR}/include")
+  target_compile_options(cinolib_hex PRIVATE ${_CINOLIB_FLAGS})
+  target_link_libraries(cinolib_hex PRIVATE Eigen3::Eigen)
+endif()
 
 # ── native metric kernels ────────────────────────────────────────────────────
 if(BUILD_NATIVE_METRICS)
