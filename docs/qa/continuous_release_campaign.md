@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `21`
+- cycle: `22`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `a29b322a73f97fb222764603a807f77d1201a002`
+- last_verified_master: `bacd281a467e56b483d780beb25533e992150be0`
 - allowed_to_stop: `false`
-- next_action: `Profile boundary-layer ray-triangle collision distance and design a first-party native_bl C++23 exact nearest-positive-hit kernel that removes quadratic Python masks and the >20k-triangle skipped-collision path without changing wall geometry or requested layer semantics.`
+- next_action: `Add a first-party indexed native_bl wall-collision kernel with conservative spatial pruning, incident-face exclusion on integer connectivity, deterministic exact narrow tests, and no dense R-by-T mask; then remove the >20k-triangle fail-open path under fixture parity.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1185,3 +1185,61 @@ scope. Future MIT-core boundary follows
 - Profile boundary-layer ray/triangle collision distance.  Replace quadratic
   Python masks and the large-mesh skipped-collision path with an exact
   first-party `native_bl` kernel only under wall-shape/layer-count parity.
+
+## Cycle 22 checkpoint -- 2026-07-30
+
+### Native boundary-layer ray narrow-phase evidence
+
+- `bacd281a` adds a first-party C++23 exhaustive nearest-positive-hit kernel to
+  `native_bl`.  It preserves the Python oracle's `1e-12` determinant,
+  barycentric, positive-distance, incident exclusion, triangle-order, and
+  nearest-hit rules for finite input.  Non-finite native ABI input now fails
+  validation instead of entering geometric arithmetic.
+- Triangles are converted once to contiguous vertex/edge records.  The GIL is
+  released for fixed-order ray/triangle traversal; stack-resident `Point3`
+  arithmetic removes NumPy `(chunk,T,3)` temporaries.  The caller-owned dense
+  incident mask remains explicit debt for the next indexed card.
+- Deterministic `512`-ray / `2,048`-triangle corpus:
+  `0.199042844 s -> 0.018527825 s` (`10.743x`), identical finite-hit mask and
+  maximum absolute distance error `0`.
+- Focused build and native/helper tests pass `54`; the post-merge boundary,
+  narrow-gap, layer-state, BL0-routing, and topology set passes `92`.
+  The wider set passes `173/174`; its sole poly-hybrid negative-volume failure
+  reproduces unchanged on pre-card `master` (`1280` reported by the result
+  object while the same checker log reports `0`) and is not a ray-kernel
+  regression.
+- GCC 13.3 C++23 build is warning-free.  Geometry, layer request semantics,
+  epsilon, fast-math, parallel reduction, dependencies, and `third_party/`
+  remain unchanged.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-ray-kernel-1-bacd281a.bundle`,
+  SHA-256 `0a0abfd374db02177dabc2e94353334cf155c70fe04207b4ed7317bca9f1b2e6`.
+  Worktree, branch, and isolated build were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-22 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/post-merge suites pass; baseline poly-hybrid checker defect and immutable-head full suite remain. |
+| 4 Shape preservation | UNVERIFIED | Ray hit policy is parity-tested; full wall-envelope corpus remains. |
+| 5 Mesh validity | FAIL | Baseline poly-hybrid result/log negative-volume disagreement is open; strict all-engine corpus incomplete. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0/positive-layer focused tests pass; >20k collision fail-open path remains. |
+| 8 Quality | UNVERIFIED | No quality threshold changed; complete matrix missing. |
+| 9 Reproducibility | FAIL | Native ray traversal deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Finite ABI validation added; large-wall collision checking still skips. |
+| 11 Performance | UNVERIFIED | Narrow kernel gains pass; dense incident mask and frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | CMake native extensions are not yet included in wheel evidence. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Add an indexed native wall-collision entry point.  Exclude incident faces by
+  vertex id inside C++, use conservative spatial pruning only when a finite
+  search distance is supplied, preserve deterministic triangle order and the
+  existing exact narrow predicate, and remove the dense `R x T` mask plus the
+  `20,000`-triangle fail-open cap only after direct and downstream parity.
