@@ -733,6 +733,18 @@ struct SourceComponentAuditResult {
 using EdgeFaceRecord = std::pair<CdtEdge, size_t>;
 using ComponentPair = std::array<size_t, 2>;
 
+struct CdtFaceHash {
+    size_t operator()(const CdtFace& face) const noexcept
+    {
+        size_t hash = 0U;
+        for (const int64_t vertex : face) {
+            hash ^= std::hash<int64_t>{}(vertex) + 0x9e3779b9U + (hash << 6U)
+                + (hash >> 2U);
+        }
+        return hash;
+    }
+};
+
 struct PointRecord {
     std::array<double, 3> coordinates;
     size_t index;
@@ -899,8 +911,8 @@ SourceComponentAuditResult audit_source_component_bijection_impl(
         }
     }
 
-    std::vector<CdtFace> tet_faces;
-    tet_faces.reserve(checked_entity_count(tet_count, 4U, "tets"));
+    std::unordered_map<CdtFace, size_t, CdtFaceHash> tet_face_counts;
+    tet_face_counts.reserve(checked_entity_count(tet_count, 4U, "tets"));
     for (size_t row = 0; row < tet_count; ++row) {
         const int64_t raw_a = tets_flat[4U * row];
         const int64_t raw_b = tets_flat[4U * row + 1U];
@@ -921,25 +933,17 @@ SourceComponentAuditResult audit_source_component_bijection_impl(
         const int64_t b = candidate_provenance[static_cast<size_t>(raw_b)];
         const int64_t c = candidate_provenance[static_cast<size_t>(raw_c)];
         const int64_t d = candidate_provenance[static_cast<size_t>(raw_d)];
-        tet_faces.push_back(face(a, b, c));
-        tet_faces.push_back(face(a, b, d));
-        tet_faces.push_back(face(a, c, d));
-        tet_faces.push_back(face(b, c, d));
+        ++tet_face_counts[face(a, b, c)];
+        ++tet_face_counts[face(a, b, d)];
+        ++tet_face_counts[face(a, c, d)];
+        ++tet_face_counts[face(b, c, d)];
     }
-    std::sort(tet_faces.begin(), tet_faces.end());
     std::vector<CdtFace> boundary_faces;
-    boundary_faces.reserve(tet_faces.size());
-    size_t face_start = 0;
-    while (face_start < tet_faces.size()) {
-        size_t face_end = face_start + 1U;
-        while (face_end < tet_faces.size()
-               && tet_faces[face_end] == tet_faces[face_start]) {
-            ++face_end;
+    boundary_faces.reserve(tet_face_counts.size());
+    for (const auto& [face_key, count] : tet_face_counts) {
+        if (count == 1U) {
+            boundary_faces.push_back(face_key);
         }
-        if (face_end == face_start + 1U) {
-            boundary_faces.push_back(tet_faces[face_start]);
-        }
-        face_start = face_end;
     }
     if (boundary_faces.empty()) {
         return SourceComponentAuditResult{};
