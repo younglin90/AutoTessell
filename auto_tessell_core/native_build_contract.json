@@ -19,10 +19,12 @@
         "generic_cell_signed_volumes",
         "generic_side_metrics",
         "hex_face_nonorthogonality",
-        "hex_quality_primitives"
+        "hex_quality_primitives",
+        "local_front_backtrack_steps"
       ],
       "sources": [
-        "auto_tessell_core/native_hex_quality_bind.cpp"
+        "auto_tessell_core/native_hex_quality_bind.cpp",
+        "auto_tessell_core/native_hex_quality_local_front.hpp"
       ]
     },
     "native_metrics": {

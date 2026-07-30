@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Tracked auto_tessell_core pybind11 bindings. This manifest is a provenance boundary, not a license change.",
+  "scope": "Tracked auto_tessell_core pybind11 bindings and explicitly listed first-party helper sources. This manifest is a provenance boundary, not a license change.",
   "bindings": [
     {
       "path": "auto_tessell_core/cfmesh_bind.cpp",
@@ -55,7 +55,18 @@
       "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
       "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
       "mit_core_eligible": true,
-      "tests": ["tests/test_native_hex_quality_extension.py"]
+      "tests": ["tests/test_native_hex_quality_extension.py", "tests/test_native_hex_local_front_cpp23.py"]
+    },
+    {
+      "path": "auto_tessell_core/native_hex_quality_local_front.hpp",
+      "module": "native_hex_quality",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell C++23 implementation of the frozen behavioral contract at commit 1b4850f3679e6c240a1a6751a3c8ca7d5721ae7f; prototype source and external engine source were not copied.",
+      "algorithm_source": "AutoTessell deterministic incident-hex backtracking contract, archived as bundle SHA-256 5182aab19a85548c4b3f1055b12dd56f057588b19d42068ef41a8e87ef560592; Reberol et al. DOI 10.1145/3577196 informs fixed-boundary acceptance only.",
+      "direct_dependencies": ["C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_hex_local_front_cpp23.py"]
     },
     {
       "path": "auto_tessell_core/native_metrics_bind.cpp",

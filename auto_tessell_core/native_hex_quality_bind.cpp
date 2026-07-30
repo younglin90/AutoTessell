@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "native_hex_quality_local_front.hpp"
+
 namespace py = pybind11;
 
 namespace {
@@ -89,6 +91,130 @@ Point3 cross(const Point3& lhs, const Point3& rhs)
 double norm(const Point3& value)
 {
     return std::sqrt(dot(value, value));
+}
+
+py::dict local_front_backtrack_steps(
+    py::array_t<double, py::array::c_style> outer_points,
+    py::array_t<std::int64_t, py::array::c_style> outer_quads,
+    py::array_t<double, py::array::c_style> unit_inward_normals,
+    double initial_step,
+    double geometry_tolerance,
+    double determinant_tolerance,
+    int maximum_iterations)
+{
+    if (outer_points.ndim() != 2 || outer_points.shape(1) != 3) {
+        throw std::invalid_argument("outer_points must have shape (V, 3)");
+    }
+    if (outer_quads.ndim() != 2 || outer_quads.shape(1) != 4) {
+        throw std::invalid_argument("outer_quads must have shape (H, 4)");
+    }
+    if (unit_inward_normals.ndim() != 2
+        || unit_inward_normals.shape(0) != outer_points.shape(0)
+        || unit_inward_normals.shape(1) != 3) {
+        throw std::invalid_argument("unit_inward_normals must have shape (V, 3)");
+    }
+    if (outer_points.shape(0) <= 0 || outer_quads.shape(0) <= 0) {
+        throw std::invalid_argument("local front requires non-empty vertices and quads");
+    }
+    constexpr std::size_t maximum_size = std::numeric_limits<std::size_t>::max();
+    const auto vertex_count = static_cast<std::size_t>(outer_points.shape(0));
+    const auto hex_count = static_cast<std::size_t>(outer_quads.shape(0));
+    if (vertex_count > maximum_size / 3U || hex_count > maximum_size / 4U) {
+        throw std::overflow_error("local front input shape exceeds addressable size");
+    }
+    if (!std::isfinite(geometry_tolerance) || geometry_tolerance <= 0.0) {
+        throw std::invalid_argument("geometry_tolerance must be finite and positive");
+    }
+    if (!std::isfinite(initial_step) || initial_step <= geometry_tolerance) {
+        throw std::invalid_argument(
+            "initial_step must be finite and greater than geometry_tolerance");
+    }
+    if (!std::isfinite(determinant_tolerance) || determinant_tolerance < 0.0) {
+        throw std::invalid_argument(
+            "determinant_tolerance must be finite and non-negative");
+    }
+    if (maximum_iterations <= 0 || maximum_iterations > 64) {
+        throw std::invalid_argument("maximum_iterations must be in [1, 64]");
+    }
+
+    const double* outer_data = outer_points.data();
+    const double* normal_data = unit_inward_normals.data();
+    const std::int64_t* quad_data = outer_quads.data();
+    constexpr double unit_tolerance =
+        256.0 * std::numeric_limits<double>::epsilon();
+    for (std::size_t vertex = 0; vertex < vertex_count; ++vertex) {
+        double squared_norm = 0.0;
+        for (std::size_t axis = 0; axis < 3U; ++axis) {
+            const std::size_t offset = 3U * vertex + axis;
+            const double coordinate = outer_data[offset];
+            const double normal = normal_data[offset];
+            if (!std::isfinite(coordinate) || !std::isfinite(normal)) {
+                throw std::invalid_argument("outer points and normals must be finite");
+            }
+            if (!std::isfinite(coordinate - initial_step * normal)) {
+                throw std::overflow_error("initial inner-front coordinate is not finite");
+            }
+            squared_norm += normal * normal;
+        }
+        const double normal_length = std::sqrt(squared_norm);
+        if (!std::isfinite(normal_length)
+            || std::abs(normal_length - 1.0) > unit_tolerance) {
+            throw std::invalid_argument(
+                "unit_inward_normals rows must have unit length within 256*epsilon");
+        }
+    }
+    for (std::size_t hex = 0; hex < hex_count; ++hex) {
+        std::array<std::int64_t, 4> quad{};
+        for (std::size_t slot = 0; slot < quad.size(); ++slot) {
+            const std::int64_t vertex = quad_data[4U * hex + slot];
+            if (vertex < 0
+                || static_cast<std::uint64_t>(vertex)
+                    >= static_cast<std::uint64_t>(vertex_count)) {
+                throw py::index_error("outer_quads contains a vertex out of range");
+            }
+            quad[slot] = vertex;
+        }
+        std::sort(quad.begin(), quad.end());
+        if (std::adjacent_find(quad.begin(), quad.end()) != quad.end()) {
+            throw std::invalid_argument("outer_quads rows must contain four unique vertices");
+        }
+    }
+
+    py::array_t<double> local_steps({static_cast<py::ssize_t>(vertex_count)});
+    autotessell::native_hex::LocalFrontResult result;
+    {
+        py::gil_scoped_release release;
+        result = autotessell::native_hex::backtrack_local_front(
+            std::span<const double>(outer_data, 3U * vertex_count),
+            std::span<const std::int64_t>(quad_data, 4U * hex_count),
+            std::span<const double>(normal_data, 3U * vertex_count),
+            std::span<double>(local_steps.mutable_data(), vertex_count),
+            initial_step,
+            geometry_tolerance,
+            determinant_tolerance,
+            static_cast<std::size_t>(maximum_iterations));
+    }
+
+    const auto steps = local_steps.unchecked<1>();
+    double minimum_step = std::numeric_limits<double>::infinity();
+    double maximum_step = 0.0;
+    for (py::ssize_t vertex = 0; vertex < steps.shape(0); ++vertex) {
+        minimum_step = std::min(minimum_step, steps(vertex));
+        maximum_step = std::max(maximum_step, steps(vertex));
+    }
+    py::dict report;
+    report["local_steps"] = std::move(local_steps);
+    report["iterations"] = result.iterations;
+    report["reduced_vertices"] = result.reduced_vertices;
+    report["collapsed_vertices"] = result.collapsed_vertices;
+    report["raw_negative_hexes"] = result.raw_negative_hexes;
+    report["nonpositive_corner_hexes"] = result.nonpositive_corner_hexes;
+    report["minimum_corner_determinant"] = result.minimum_corner_determinant;
+    report["minimum_step"] = minimum_step;
+    report["maximum_step"] = maximum_step;
+    report["converged"] = result.converged;
+    report["unit_normal_tolerance"] = unit_tolerance;
+    return report;
 }
 
 py::dict certify_oriented_box(
@@ -924,6 +1050,16 @@ py::array_t<double> hex_face_nonorthogonality(
 PYBIND11_MODULE(native_hex_quality, module)
 {
     module.doc() = "C++ OpenFOAM-style quality primitives for hexahedral meshes";
+    module.def(
+        "local_front_backtrack_steps",
+        &local_front_backtrack_steps,
+        py::arg("outer_points").noconvert(),
+        py::arg("outer_quads").noconvert(),
+        py::arg("unit_inward_normals").noconvert(),
+        py::arg("initial_step"),
+        py::arg("geometry_tolerance"),
+        py::arg("determinant_tolerance"),
+        py::arg("maximum_iterations") = 32);
     module.def(
         "certify_oriented_box",
         &certify_oriented_box,
