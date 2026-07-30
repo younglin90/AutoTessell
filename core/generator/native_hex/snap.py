@@ -111,19 +111,26 @@ def _load_native_snap() -> Any | None:
     explicit_candidate = _native_snap_candidate(explicit_dir) if explicit_dir is not None else None
     importlib.invalidate_caches()
 
+    if explicit_candidate is not None:
+        assert explicit_dir is not None
+        try:
+            if cached is not None and _module_is_from_directory(cached, explicit_dir):
+                _NATIVE_SNAP = cached
+            elif cached is not None:
+                # CPython caches single-phase extensions by import name even
+                # after sys.modules eviction. A path-stable package alias can
+                # load the explicit binary because its final component remains
+                # native_snap.
+                _NATIVE_SNAP = _load_explicit_native_snap(explicit_candidate)
+            else:
+                _NATIVE_SNAP = importlib.import_module("native_snap")
+        except Exception:
+            _NATIVE_SNAP_IMPORT_ATTEMPTED = False
+            raise
+        return _NATIVE_SNAP
+
     try:
-        if (
-            explicit_dir is not None
-            and explicit_candidate is not None
-            and cached is not None
-            and not _module_is_from_directory(cached, explicit_dir)
-        ):
-            # CPython caches single-phase extensions by import name even after
-            # sys.modules eviction. A path-stable package alias can load the
-            # explicit binary because its final component remains native_snap.
-            _NATIVE_SNAP = _load_explicit_native_snap(explicit_candidate)
-        else:
-            _NATIVE_SNAP = importlib.import_module("native_snap")
+        _NATIVE_SNAP = importlib.import_module("native_snap")
     except Exception:  # noqa: BLE001
         _NATIVE_SNAP = None
     return _NATIVE_SNAP
