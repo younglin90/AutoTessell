@@ -1,0 +1,120 @@
+{
+  "modules": {
+    "native_bl": {
+      "public_symbols": [
+        "indexed_wall_collision_distances",
+        "layer_front_summary",
+        "nearby_opposite_front_mask",
+        "ray_triangle_min_distance"
+      ],
+      "sources": [
+        "auto_tessell_core/native_bl_bind.cpp"
+      ]
+    },
+    "native_hex_quality": {
+      "public_symbols": [
+        "generic_cell_face_signs",
+        "generic_cell_signed_volumes",
+        "generic_side_metrics",
+        "hex_face_nonorthogonality",
+        "hex_quality_primitives"
+      ],
+      "sources": [
+        "auto_tessell_core/native_hex_quality_bind.cpp"
+      ]
+    },
+    "native_metrics": {
+      "public_symbols": [
+        "NativeFaceTopology",
+        "aabb_overlap_pairs",
+        "compute_boundary_skewness",
+        "compute_cell_centres_and_aspect_ratios",
+        "compute_cell_centres_and_aspect_ratios_topology",
+        "compute_cell_centres_from_vertices",
+        "compute_cell_volumes",
+        "compute_face_geometry",
+        "compute_face_geometry_topology",
+        "compute_face_weight_volume_ratio",
+        "compute_non_orthogonality",
+        "compute_oriented_cell_volume_audit",
+        "compute_per_cell_aspect_ratios",
+        "compute_skewness",
+        "compute_triangle_phase0_metrics_topology",
+        "count_faces_not_upper_triangular",
+        "parse_foam_faces_file",
+        "parse_foam_faces_topology_file",
+        "parse_foam_labels_file",
+        "select_quad_pairs",
+        "triangle_intersections_interval",
+        "triangle_intersections_segment",
+        "validate_triangle_surface_and_build_edge_faces"
+      ],
+      "sources": [
+        "auto_tessell_core/native_metrics_bind.cpp"
+      ]
+    },
+    "native_polymesh": {
+      "public_symbols": [
+        "build_tet_incidence_maps",
+        "build_topology",
+        "compute_tet_dual_points",
+        "face_flip_mask",
+        "face_plane_geometry",
+        "star_validity"
+      ],
+      "sources": [
+        "auto_tessell_core/native_polymesh_bind.cpp"
+      ]
+    },
+    "native_snap": {
+      "public_symbols": [
+        "closest_segment_candidates",
+        "closest_triangle_candidates",
+        "extract_feature_edges"
+      ],
+      "sources": [
+        "auto_tessell_core/native_snap_bind.cpp"
+      ]
+    },
+    "native_surface_padding": {
+      "public_symbols": [
+        "pad_axis_aligned_surface_to_volume"
+      ],
+      "sources": [
+        "auto_tessell_core/native_surface_padding_bind.cpp"
+      ]
+    },
+    "native_tet_predicates": {
+      "public_symbols": [
+        "audit_cdt_constraints",
+        "audit_tet_boundary",
+        "flip_44_quality",
+        "insphere_signs",
+        "orient3d_signs",
+        "power_insphere_signs_exact",
+        "recover_targeted_edges_23",
+        "regularize_weighted_23",
+        "regularize_weighted_32",
+        "tet_quality_metrics"
+      ],
+      "sources": [
+        "auto_tessell_core/native_tet_predicates_bind.cpp",
+        "core/utils/_shewchuk/predicates.c"
+      ]
+    },
+    "native_tet_qopt": {
+      "public_symbols": [
+        "apply_guarded_vertex_moves",
+        "apply_guarded_vertex_moves_csr",
+        "compare_quality_vectors",
+        "local_cavity_quality_vectors",
+        "quality_vector_accepts",
+        "smooth_interior_guarded"
+      ],
+      "sources": [
+        "auto_tessell_core/native_tet_qopt_bind.cpp"
+      ]
+    }
+  },
+  "schema": 1
+}

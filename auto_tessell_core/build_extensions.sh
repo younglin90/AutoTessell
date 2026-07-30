@@ -47,6 +47,7 @@ cmake_args=(
     -DCMAKE_BUILD_TYPE=Release
     -Dpybind11_DIR="$PYBIND11_DIR"
     -DPython_EXECUTABLE="$($PYTHON_BIN -c 'import sys; print(sys.executable)')"
+    -DAUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE=ON
     -Wno-dev
 )
 
@@ -76,6 +77,11 @@ for target in "${native_targets[@]}"; do
     cmake --build . --target "$target" -j"$(nproc)"
     echo "$target built: $BUILD_DIR/$target*.so"
 done
+cmake --build . --target native_build_evidence
+$PYTHON_BIN "$SCRIPT_DIR/../scripts/native_build_evidence.py" verify \
+    --contract "$SCRIPT_DIR/native_build_contract.json" \
+    --source-root "$SCRIPT_DIR/.." \
+    --build-dir "$BUILD_DIR"
 
 if [[ "$NATIVE_ONLY" == 1 ]]; then
     echo "Done. Native-only extensions built in $BUILD_DIR"

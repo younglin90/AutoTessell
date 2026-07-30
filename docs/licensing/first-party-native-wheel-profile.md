@@ -32,6 +32,37 @@ contains the Python sources, eight binding sources, predicate source, CMake
 configuration, `LICENSE`, `NOTICE`, and licensing manifests needed to rebuild
 the wheel. Release evidence must record both artifact hashes.
 
+## Build identity and ABI evidence
+
+Native test or release evidence must come from an explicit build directory and
+pass the standalone verifier. The generated
+`autotessell_native_build_manifest.json` records the source identity, aggregate
+and per-module binding-source SHA-256, final binary SHA-256, Python SOABI,
+compiler identity, C++23 level, and the exact public symbols for all eight
+modules. `autotessell_native_build_contract.json` is the tracked ABI contract.
+Both files are installed in the wheel.
+
+From a Git checkout, the source identity is the clean checked-out commit. A
+source archive has no Git metadata, so its identity is derived as
+`archive:sha256:<digest>` from the exact ABI-contract SHA-256 and aggregate
+binding-source SHA-256. This makes a normal source archive rebuildable without
+inventing a commit. If `AUTOTESSELL_SOURCE_IDENTITY` is supplied, it must equal
+that derived content identity exactly; arbitrary labels and placeholders fail.
+A generated manifest is not evidence until verification succeeds:
+
+```bash
+python scripts/native_build_evidence.py verify \
+  --contract auto_tessell_core/native_build_contract.json \
+  --source-root . \
+  --build-dir /absolute/path/to/fresh-build
+```
+
+The verifier rejects a missing or altered manifest, dirty tracked source,
+source/commit mismatch, binary hash mismatch, Python ABI mismatch, non-C++23
+build, or any missing or extra public symbol. An ignored repo-local extension
+without matching evidence may remain as a developer artifact, but it cannot be
+reported as native test or release evidence.
+
 The package `NOTICE` describes optional source-tree integrations as well as
 distributed components. For this profile, the exclusions above are
 authoritative: optional adapter notices do not mean those adapters are present
