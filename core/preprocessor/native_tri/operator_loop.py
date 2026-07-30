@@ -362,6 +362,61 @@ def estimate_curvature_sizing(
     return lengths
 
 
+def _triangle_quality_from_coordinates(triangle: np.ndarray) -> float:
+    edge01 = triangle[1] - triangle[0]
+    edge12 = triangle[2] - triangle[1]
+    edge20 = triangle[0] - triangle[2]
+    denominator = float(
+        np.dot(edge01, edge01) + np.dot(edge12, edge12) + np.dot(edge20, edge20),
+    )
+    area_twice = float(np.linalg.norm(np.cross(edge01, -edge20)))
+    if (
+        denominator <= 0.0
+        or not np.isfinite(denominator)
+        or not np.isfinite(area_twice)
+    ):
+        return 0.0
+    return float((2.0 * np.sqrt(3.0) * area_twice) / denominator)
+
+
+def _triangle_quality_batch_python(triangles: np.ndarray) -> np.ndarray:
+    """Independent scalar oracle for the native local-quality batch."""
+    points = np.asarray(triangles, dtype=np.float64)
+    if points.ndim != 3 or points.shape[1:] != (3, 3):
+        raise ValueError("triangles must have shape (N, 3, 3)")
+    return np.fromiter(
+        (_triangle_quality_from_coordinates(triangle) for triangle in points),
+        dtype=np.float64,
+        count=len(points),
+    )
+
+
+def _triangle_quality_batch(triangles: np.ndarray) -> np.ndarray:
+    """Evaluate local mean-ratio quality with a strict optional native ABI."""
+    points = np.asarray(triangles, dtype=np.float64)
+    if points.ndim != 3 or points.shape[1:] != (3, 3):
+        raise ValueError("triangles must have shape (N, 3, 3)")
+
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "triangle_quality_batch"):
+        return _triangle_quality_batch_python(points)
+    quality = native.triangle_quality_batch(np.ascontiguousarray(points))
+    if (
+        not isinstance(quality, np.ndarray)
+        or quality.dtype != np.dtype(np.float64)
+        or quality.ndim != 1
+        or len(quality) != len(points)
+        or not quality.flags.c_contiguous
+        or not np.isfinite(quality).all()
+        or (quality < 0.0).any()
+        or (quality > 1.0 + 1e-12).any()
+    ):
+        raise RuntimeError("native triangle_quality_batch returned invalid quality")
+    return quality
+
+
 class OperatorTransaction:
     """Transactional boundary for the native-tri local operators.
 
@@ -1759,16 +1814,7 @@ class OperatorTransaction:
     @staticmethod
     def _triangle_quality(vertices: np.ndarray, face: np.ndarray) -> float:
         tri = vertices[np.asarray(face, dtype=np.int64)]
-        edge01 = tri[1] - tri[0]
-        edge12 = tri[2] - tri[1]
-        edge20 = tri[0] - tri[2]
-        denominator = float(
-            np.dot(edge01, edge01) + np.dot(edge12, edge12) + np.dot(edge20, edge20),
-        )
-        area_twice = float(np.linalg.norm(np.cross(edge01, -edge20)))
-        if denominator <= 0.0 or not np.isfinite(denominator) or not np.isfinite(area_twice):
-            return 0.0
-        return float((2.0 * np.sqrt(3.0) * area_twice) / denominator)
+        return _triangle_quality_from_coordinates(tri)
 
     @classmethod
     def _flip_improves(
@@ -1789,17 +1835,27 @@ class OperatorTransaction:
         already decided the answer.
         """
         if face_correspondence:
-            old_quality = min(
-                cls._triangle_quality(before.vertices, before.faces[old_index])
-                for old_index, _ in face_correspondence
+            old_indices = np.fromiter(
+                (old_index for old_index, _ in face_correspondence),
+                dtype=np.int64,
+                count=len(face_correspondence),
             )
-            new_quality = min(
-                cls._triangle_quality(after.vertices, after.faces[new_index])
-                for _, new_index in face_correspondence
+            new_indices = np.fromiter(
+                (new_index for _, new_index in face_correspondence),
+                dtype=np.int64,
+                count=len(face_correspondence),
             )
+            old_triangles = before.vertices[before.faces[old_indices]]
+            new_triangles = after.vertices[after.faces[new_indices]]
         else:
-            old_quality = min(cls._triangle_quality(before.vertices, face) for face in before.faces)
-            new_quality = min(cls._triangle_quality(after.vertices, face) for face in after.faces)
+            old_triangles = before.vertices[before.faces]
+            new_triangles = after.vertices[after.faces]
+        old_count = len(old_triangles)
+        quality = _triangle_quality_batch(
+            np.concatenate((old_triangles, new_triangles), axis=0),
+        )
+        old_quality = float(np.min(quality[:old_count]))
+        new_quality = float(np.min(quality[old_count:]))
 
         if new_quality > old_quality + 1e-12:
             return True
