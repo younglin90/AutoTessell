@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `10`
+- cycle: `11`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `fdd93772e7c528d51a3e74856bde8656fe55aa49`
+- last_verified_master: `f9c163b717866658c834425bfb5c29b0956e75d5`
 - allowed_to_stop: `false`
-- next_action: `Profile representative native boundary-layer and Tet routes, then select one shape-preserving Python kernel for an isolated C++23 port.`
+- next_action: `Profile the next native Poly or tri/quad topology kernel, then port one measured Python hotspot without changing shape or provenance contracts.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -615,3 +615,64 @@ scope. Future MIT-core boundary follows
   shape-preserving Python kernel with a measured dominant cost, freeze parity
   and rollback conditions, then port only that kernel to an isolated C++23
   target or an existing native module.
+
+## Cycle 11 checkpoint -- 2026-07-30
+
+### Native boundary-layer and Tet topology evidence
+
+- `f0c7f07e` adds a first-party C++23 uniform-grid spatial hash for opposite
+  boundary-front proximity.  On 5,000 vertices it matches the bounded Python
+  mask and changes median runtime from `0.362497 s` to `0.001875 s`
+  (`193.33x`).  It removes the old 25-million-entry dense-pair route.  Focused
+  boundary-layer validation reports `84 passed`.
+- `c9bd7867` makes a selected wall front with a true 3-owner edge fail before
+  backup, output, or quality-report writes.  The error records the edge and
+  all incident wall-face IDs.  Input polyMesh bytes remain unchanged.
+- `f9c163b7` ports the repeated Tet strict-topology audit to C++23.  It uses
+  reserved canonical tet/face/edge hash tables plus flat union-find, releases
+  the GIL, and removes NumPy face/edge materialization.  Expected time and
+  auxiliary space are `O(T+B)` under ordinary hash occupancy.
+- On `35,937` points and `196,608` tetrahedra, the native audit takes
+  `0.264357 s` versus `1.789529 s` (`6.77x`).  All eight audit counters match;
+  the Python fallback's traced temporary heap peak is `114.43 MiB`.  Clean
+  native-only Release build compiles all eight first-party modules with GCC
+  13.3.  Post-merge Tet predicate/rescue/Klingner/strict-result suites report
+  `61 passed`.
+- The old cube-10k diagnostic expected writer failure even after current
+  `master` safely removes an exact duplicate tet group.  Baseline reproduces
+  this stale assertion.  The updated test requires pre-repair defect evidence,
+  exact two-cell group removal, unchanged boundary keys, and a strict-valid
+  final audit.  No topology threshold was relaxed.
+- Complete-history bundles pass verification.  SHA-256:
+  `ac05f664dfbf14c2fb045bacd9dd947790a6838501537f0c39c4d65bdd06cf08`,
+  `109057201c762129b791e798c69a2f6f9cf017bf7d744e771287c3598651b40d`,
+  and `c48de3ff8db731b228ddb3721c5d34580a28e88bbfd2e925023f07f41900be85`.
+  The obsolete protected Tet worktree was also proven merged, bundled, and
+  removed.  No `third_party/` file changed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-11 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` clean before ledger commit, integrated research branches removed, `git diff --check` and no-third-party checks pass. |
+| 2 Build | UNVERIFIED | Eight native Release targets build warning-free on Ubuntu/GCC 13; supported OS/compiler matrix is incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused native suites pass; immutable-head full suite remains missing. |
+| 4 Shape preservation | FAIL | Strict topology and BL fail-closed contracts improved; stochastic P4C still has a 7/8-corner case. |
+| 5 Mesh validity | UNVERIFIED | Cube-10k exact duplicate repair is strict-valid; full Tet/all-engine corpus remains incomplete. |
+| 6 Cell count | FAIL | Tet target remains diagnostic/deferred by user priority; poly target following remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0 and front-failure evidence exists; positive-layer corpus is incomplete. |
+| 8 Quality | UNVERIFIED | No complete engine/fixture quality matrix. |
+| 9 Reproducibility | FAIL | P4C cube fallback remains non-deterministic. |
+| 10 Robustness | UNVERIFIED | Non-manifold BL front now fails closed; adverse all-engine matrix is incomplete. |
+| 11 Performance | UNVERIFIED | Three native kernels exceed local leverage thresholds; frozen end-to-end budgets remain missing. |
+| 12 Packaging | UNVERIFIED | Native modules build locally; clean installer/artifact proof remains missing. |
+| 13 License/provenance | UNVERIFIED | New code is first-party, GPL remains, third-party is untouched; release inventory remains incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Migration evidence updated; complete release operations proof is missing. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile native Poly and tri/quad representative topology routes.  Select one
+  Python allocation/search hotspot with measurable production cost.  Preserve
+  exact input coordinates, topology, physical groups, and provenance while
+  porting one kernel to an existing first-party C++23 module.
