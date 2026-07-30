@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `5`
+- cycle: `6`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `7c8713fee81f92a5e9b2094aeef96a4768fa1822`
+- last_verified_master: `a1be3c4761a6e21a38b84be52bf0f804f59cd56d`
 - allowed_to_stop: `false`
-- next_action: `FACE-REMESH-TYPEERROR-ROOTCAUSE-1: make the explicit native-face path either pass its shape gates or reject with exact evidence.`
+- next_action: `parallel lanes: CMAKE-NATIVE-SURFACE-PADDING-TARGET-1, FACE-REMESH-EXPLICIT-ROUTING-1, TET-INPUT-VERTEX-L0-HELPER-RESTORE-1.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -215,3 +215,95 @@ Supplied PDFs indexed in `papers/PAPER_INDEX.md` and
 ideas only; no external implementation code is copied. `third_party/` is out of
 scope. Future MIT-core boundary follows
 `docs/licensing/mit-core-transition-policy.md`.
+
+## Cycle 6 checkpoint — 2026-07-30
+
+### Integration, recovery, and cleanup evidence
+
+- `1a8d892a` was merged through `d3c87f57`. The native-hex tier now forwards
+  `target_edge_length`, `seed_density`, and other quality-aware arguments through
+  a typed `_runner`, then attaches only route/contract provenance
+  (`hex_uniform_grid`, `native_hex`). Focused wrapper plus native-hex suite:
+  `17 passed in 26.25 s` after merge. Existing route-contract file lint has two
+  baseline violations; the changed module passes isolated strict mypy and ruff.
+  Archive: `hex-runner-contract-1a8d892a/0001-fix.patch`
+  (`sha256:69bcd5b9d3be4f7b6ec711fb363264aa21b5e8028d27fe45796e063822693f0a`).
+- `3d0a9b0d` was merged through `c316de12`. The public planar-surface export now
+  delegates unchanged inputs to the existing native padding writer. Collection now
+  finds `11` surface-padding tests; its isolated delegation test passes in
+  `2.18 s`. The native module target is absent, so the full surface-padding suite
+  honestly reports `10 failed, 1 passed` with
+  `native_surface_padding is unavailable; build ... target ... first`. No Python
+  fallback was added. Archive:
+  `surface-planar-padding-export-3d0a9b0d/0001-fix-surface-expose-planar-padding-export.patch`
+  (`sha256:526dd66afd09ae08c3b4344cc3cc46ba809c73db89a271adeba35f6fcbb9adfc`).
+- `b3bc437f` was merged through `a1be3c47`. Optional
+  `AUTO_TESSELL_TET_METRIC_SOURCE_TXN=1` adds an exact pre-sweep snapshot and
+  source-metric transaction around only the metric-tensor sweep. It rejects any
+  non-finite or worsened normalized symmetric Hausdorff, plane coverage, or area
+  coverage result and returns the original arrays. Default remains OFF. L0 plus
+  metric-sweep tests: `4 passed in 2.23 s`; isolated strict mypy passes. Cube
+  `target=2000` OFF and ON both retain the same known strict-topology rejection
+  (`4` non-manifold references) followed by the pre-existing rebudget
+  `max_cells` keyword error; this is not a new success or regression. Archive:
+  `tet-metric-source-transaction-b3bc437f/0001-feat-native-tet-guard-metric-sweep-source-fidelity.patch`
+  (`sha256:0fcb08aaaee95ce9d57a8b7f62579bce84c9e79e00f33cd20fc37dac6ac03f0a`).
+- A failed first hex merge left only empty Git merge metadata. Staged, unstaged,
+  and conflict diffs were all zero before the metadata was removed and the merge
+  retried successfully. No user source file was reset, checked out, or deleted.
+- Before next-card creation, `master` had one clean primary worktree, branch
+  `master` only, no dirty or untracked files, no submodule change, no
+  `third_party/` diff, and `git diff --check` passed. Archived clean recovery
+  worktrees and merged branches were removed exactly. New cycle worktrees are
+  limited to the three active cards below.
+
+### Automated-test baseline
+
+- Full unskipped collection after the three integrations: `3938 tests collected,
+  1 error in 5.21 s`. The remaining collector error is a missing native-tet L0
+  helper: `_input_vertices_exactly_present_l0`.
+- This is an improvement from the prior three collection errors. It is not a
+  full-test PASS; native surface padding still lacks a built target and native-tet
+  target/validity failures remain.
+
+### Active parallel lanes
+
+1. `CMAKE-NATIVE-SURFACE-PADDING-TARGET-1` — branch
+   `codex/cmake-native-surface-padding-1`; only CMake/build-script wiring for the
+   already tracked, self-contained pybind target. No external dependency or
+   routing change.
+2. `FACE-REMESH-EXPLICIT-ROUTING-1` — branch
+   `codex/face-explicit-routing-1`; accept explicit native face/quad names only,
+   preserving default routing and current shape gates.
+3. `TET-INPUT-VERTEX-L0-HELPER-RESTORE-1` — branch
+   `codex/tet-input-vertex-contract-1`; restore or truthfully relocate the missing
+   test-only input-vertex certificate before the later tet target contract card.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-6 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | Clean one-worktree scan passed before the three active isolated lanes; final closure waits for their merge/cleanup. |
+| 2 Build | UNVERIFIED | Fresh partial native Release evidence exists; native surface-padding target is not wired. |
+| 3 Automated tests | FAIL | Full collection has one missing tet helper; surface-padding full suite has `10` native-target failures. |
+| 4 Shape preservation | UNVERIFIED | Tet transaction adds a default-OFF rollback guard; campaign corpus absent. |
+| 5 Mesh validity | FAIL | Native tet target route still rejects strict non-manifold topology. |
+| 6 Cell count | FAIL | Native tet target route fails before rebudget (`max_cells` keyword) after strict writer rejection; poly target control remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0 evidence only; positive-layer corpus absent. |
+| 8 Quality | UNVERIFIED | No complete engine/fixture quality specification matrix. |
+| 9 Reproducibility | UNVERIFIED | No complete three-run engine corpus. |
+| 10 Robustness | UNVERIFIED | Explicit native face route and input-vertex contracts still incomplete. |
+| 11 Performance | UNVERIFIED | No frozen Release benchmark budgets. |
+| 12 Packaging | UNVERIFIED | Wheel smoke only; native module/installer clean-install proof absent. |
+| 13 License/provenance | UNVERIFIED | Existing inventory and manifest are partial; no resolved artifact proof. |
+| 14 Documentation/operations | UNVERIFIED | Release operations/checklist evidence absent. |
+| 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
+
+### Next automatic actions
+
+- Verify and integrate passing isolated lanes in campaign order; archive before
+  exact worktree and merged-branch removal.
+- Re-run full collection after the tet L0 helper card. If it clears, schedule a
+  classified full-test baseline rather than treating collection as a test pass.
+- Follow tet helper cleanup with the separate `TET-TARGET-MAX-CELLS-CONTRACT-1`
+  card. It may not overlap another `mesher.py` mutation.
