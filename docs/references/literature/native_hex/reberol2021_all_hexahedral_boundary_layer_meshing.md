@@ -2,11 +2,11 @@
 
 ## Access and scope
 
-- Status: FULL_READ, 17 pages, author-hosted public PDF.
+- Status: FULL_READ, 17-page 2021 preprint; journal version published in 2023.
 - Authors: Maxence Reberol, Kilian Verhetsel, Francois Henrotte, David Bommes,
   Jean-Francois Remacle.
 - Public source: `https://raw.githubusercontent.com/mxncr/mxncr.github.io/master/pdf/hexbl_2021.pdf`
-- DOI: unverified from the accessible preprint; do not invent one.
+- DOI: `10.1145/3577196`, confirmed by the ACM/AlgoHex publication page.
 
 The method begins with a watertight all-quad (or practical quad-dominant)
 surface and creates a **single** all-hex boundary layer. It keeps the boundary

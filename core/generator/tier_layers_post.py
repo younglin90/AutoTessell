@@ -166,6 +166,26 @@ def _run_native_hex_bl(
     if result.n_hex_cells <= 0:
         return False, "native_hex_bl_created_no_cells", 0
 
+    # The selected source wall is the authoritative geometry.  The current
+    # extrusion primitive appends its outer layer along averaged outward
+    # normals, so accepting it would silently replace the source wall with a
+    # displaced surface while turning the original quads into internal caps.
+    # Refuse before the generic writer touches any authoritative polyMesh file.
+    layer_count = int(num_layers)
+    outer_hexes = hexes[layer_count - 1::layer_count]
+    candidate_outer = new_points[outer_hexes[:, 4:8]]
+    source_outer = points[wall_quads]
+    if not np.array_equal(candidate_outer, source_outer):
+        deviation = np.linalg.norm(candidate_outer - source_outer, axis=2)
+        max_source_deviation = float(np.max(deviation, initial=0.0))
+        return (
+            False,
+            "native_hex_bl_source_surface_not_preserved:"
+            f"requested_layers={int(num_layers)},actual_layers=0,"
+            f"max_deviation={max_source_deviation:.17g}",
+            0,
+        )
+
     patch_by_face_key: dict[tuple[int, ...], tuple[str, str]] = {}
     for fi, patch in face_patch.items():
         if 0 <= fi < len(faces):

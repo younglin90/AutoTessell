@@ -1,7 +1,7 @@
 """beta34 — LayersPostGenerator auto-engine 라우팅 회귀 테스트.
 
 engine="auto" + mesh_type 조합에 따라 올바른 BL 엔진이 선택되는지 (tet →
-native_bl, hex_dominant → native_bl, poly → poly_bl_transition) 검증.
+native_bl, hex_dominant → native_hex_bl, poly → poly_bl_transition) 검증.
 
 실제 엔진 실행은 비용이 커서 logic 만 검증 — monkeypatch 로 각 runner 를
 capture.
@@ -225,17 +225,18 @@ def test_native_hex_bl_positive_layers_still_route(
     assert seen == [num_layers]
 
 
-def test_native_hex_bl_rewrites_quad_caps_and_preserves_patch_types(
+@pytest.mark.parametrize(
+    ("num_layers", "expected_deviation"),
+    [(1, 0.05), (3, 0.05 * (1.0 + 1.2 + 1.2**2))],
+)
+def test_native_hex_bl_refuses_displaced_source_surface_before_write(
     tmp_path: Path,
+    num_layers: int,
+    expected_deviation: float,
 ) -> None:
-    """Quad caps become bulk/BL internal faces; top walls retain patch types."""
+    """Positive outward extrusion cannot replace the authoritative wall."""
     from core.generator.polymesh_writer import write_generic_polymesh
     from core.generator.tier_layers_post import _run_native_hex_bl
-    from core.utils.polymesh_reader import (
-        parse_foam_boundary,
-        parse_foam_faces,
-        parse_foam_labels,
-    )
 
     points = np.array([
         [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
@@ -255,38 +256,80 @@ def test_native_hex_bl_rewrites_quad_caps_and_preserves_patch_types(
     write_generic_polymesh(
         points, cell_faces, tmp_path, boundary_patch_classifier=_classify,
     )
-    ok, msg, n_quad = _run_native_hex_bl(
-        tmp_path,
-        num_layers=2,
-        growth_ratio=1.2,
-        first_thickness=0.05,
-        params={},
-    )
-    assert ok, msg
-    assert n_quad == 5
-
     poly_dir = tmp_path / "constant" / "polyMesh"
-    faces = parse_foam_faces(poly_dir / "faces")
-    owner = parse_foam_labels(poly_dir / "owner")
-    neighbour = parse_foam_labels(poly_dir / "neighbour")
-    assert max(owner) + 1 == 11  # 1 bulk + 5 quads * 2 layers
-    assert len(owner) == len(faces)
-    assert len(neighbour) < len(faces)
+    authoritative = ("points", "faces", "owner", "neighbour", "boundary")
+    before = {name: (poly_dir / name).read_bytes() for name in authoritative}
 
-    # Each original wall quad is now an internal bulk/BL cap.  The inlet
-    # remains boundary because patch type is not wall.
-    for face in cell_faces[0][1:]:
-        cap_key = tuple(sorted(face))
-        fi = next(i for i, out_face in enumerate(faces) if tuple(sorted(out_face)) == cap_key)
-        assert fi < len(neighbour)
-        assert owner[fi] == 0
-        assert neighbour[fi] > 0
+    messages: list[str] = []
+    for _ in range(3):
+        ok, msg, actual = _run_native_hex_bl(
+            tmp_path,
+            num_layers=num_layers,
+            growth_ratio=1.2,
+            first_thickness=0.05,
+            params={},
+        )
+        assert not ok
+        assert actual == 0
+        assert msg.startswith(
+            "native_hex_bl_source_surface_not_preserved:"
+            f"requested_layers={num_layers},actual_layers=0,max_deviation="
+        )
+        measured = float(msg.rsplit("=", maxsplit=1)[1])
+        assert measured == pytest.approx(expected_deviation)
+        messages.append(msg)
+        after = {
+            name: (poly_dir / name).read_bytes() for name in authoritative
+        }
+        assert after == before
 
-    boundary = parse_foam_boundary(poly_dir / "boundary")
-    assert {entry["name"] for entry in boundary} == {"inlet", "wall"}
-    raw_boundary = (poly_dir / "boundary").read_text(encoding="utf-8")
-    assert "inlet\n    {\n        type            patch;" in raw_boundary
-    assert "wall\n    {\n        type            wall;" in raw_boundary
+    assert messages[0] == messages[1] == messages[2]
+
+
+def test_native_hex_bl_shape_refusal_has_no_silent_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shape hard gate reports failure instead of changing engine family."""
+    import core.layers.native_bl as native_bl
+    from core.generator.polymesh_writer import write_generic_polymesh
+    from core.generator.tier_layers_post import LayersPostGenerator
+
+    points = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    cell_faces = [[
+        [0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
+        [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+    ]]
+    write_generic_polymesh(points, cell_faces, tmp_path)
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    authoritative = ("points", "faces", "owner", "neighbour", "boundary")
+    before = {name: (poly_dir / name).read_bytes() for name in authoritative}
+
+    monkeypatch.setattr(
+        native_bl,
+        "generate_native_bl",
+        lambda *_args, **_kwargs: pytest.fail("silent native_bl fallback"),
+    )
+    strategy = _make_strategy("hex_dominant", engine="native_hex_bl")
+    strategy.tier_specific_params.update({
+        "post_layers_num_layers": 1,
+        "post_layers_first_thickness": 0.05,
+        "post_layers_growth_ratio": 1.2,
+    })
+    attempt = LayersPostGenerator().run(
+        strategy, tmp_path / "in.stl", tmp_path,
+    )
+
+    assert attempt.status == "failed"
+    assert (attempt.error_message or "").startswith(
+        "native_hex_bl: native_hex_bl_source_surface_not_preserved:"
+        "requested_layers=1,actual_layers=0,max_deviation="
+    )
+    after = {name: (poly_dir / name).read_bytes() for name in authoritative}
+    assert after == before
 
 
 def test_native_hex_bl_zero_leaves_polymesh_bytes_unchanged(tmp_path: Path) -> None:
