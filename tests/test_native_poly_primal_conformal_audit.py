@@ -173,12 +173,37 @@ def test_native_primal_conformity_matches_python_oracle(
     expected = dual._audit_tet_primal_conformity_python(points, tets)
     actual = dual._normalise_tet_primal_conformity_audit(
         native.audit_tet_primal_conformity(points, tets),
+        n_points=int(points.shape[0]),
         n_tets=int(tets.shape[0]),
     )
     monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: native)
 
     assert actual == expected
     assert dual._audit_tet_primal_conformity(points, tets) == expected
+
+
+def test_native_orphan_rows_match_python_oracle() -> None:
+    native = _native_or_skip()
+    points, tets, _entities = _valid_classified_bipyramid()
+    points = np.vstack((points, np.array([[9.0, 9.0, 9.0], [10.0, 10.0, 10.0]], dtype=np.float64)))
+
+    expected = dual._audit_tet_primal_conformity_python(points, tets)
+    raw = native.audit_tet_primal_conformity(points, tets)
+    raw_orphans = raw[3]
+    actual = dual._normalise_tet_primal_conformity_audit(
+        raw,
+        n_points=int(points.shape[0]),
+        n_tets=int(tets.shape[0]),
+    )
+
+    assert isinstance(raw_orphans, np.ndarray)
+    assert raw_orphans.dtype == np.dtype(np.int64)
+    assert raw_orphans.ndim == 1
+    assert raw_orphans.flags.c_contiguous
+    assert np.array_equal(raw_orphans, np.array([5, 6], dtype=np.int64))
+    assert expected.orphan_vertex_rows == (5, 6)
+    assert actual == expected
+    assert not actual.conformal
 
 
 def test_native_primal_conformity_strict_abi() -> None:
@@ -201,13 +226,90 @@ def test_malformed_present_native_audit_fails_closed(
 
     points, tets, _entities = _valid_classified_bipyramid()
     malformed = types.SimpleNamespace(
-        audit_tet_primal_conformity=lambda *_args: ((), ((((0, 1, 2), (0,))),), ())
+        audit_tet_primal_conformity=lambda *_args: ((), ((((0, 1, 2), (0,))),), (), ())
     )
     monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: malformed)
 
     with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
         dual._audit_tet_primal_conformity(points, tets)
 
-    malformed.audit_tet_primal_conformity = lambda *_args: ((), (), (0.5,))
+    malformed.audit_tet_primal_conformity = lambda *_args: ((), (), (0.5,), ())
+    with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
+        dual._audit_tet_primal_conformity(points, tets)
+
+
+def test_malformed_native_orphan_result_writes_zero_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import native_extensions
+
+    points, tets, _entities = _valid_classified_bipyramid()
+    malformed = types.SimpleNamespace(
+        audit_tet_primal_conformity=lambda *_args: ((), (), (), (1, 0))
+    )
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: malformed)
+    case_dir = tmp_path / "malformed-native"
+
+    with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
+        tet_to_poly_dual(points, tets, case_dir)
+    assert not case_dir.exists()
+
+
+def test_orphan_primal_vertex_is_rejected_before_writing(tmp_path: Path) -> None:
+    points, tets, _entities = _valid_classified_bipyramid()
+    points = np.vstack((points, np.array([[9.0, 9.0, 9.0]], dtype=np.float64)))
+    points_before = points.copy()
+    tets_before = tets.copy()
+
+    results = []
+    for run in range(3):
+        case_dir = tmp_path / f"orphan-{run}"
+        results.append(tet_to_poly_dual(points, tets, case_dir))
+        assert not case_dir.exists()
+
+    assert all(not result.success for result in results)
+    assert {result.message for result in results} == {
+        "invalid tet dual input: tet point array contains vertices with zero "
+        "tetrahedron incidence: (5,)"
+    }
+    assert np.array_equal(points, points_before)
+    assert np.array_equal(tets, tets_before)
+
+
+def test_python_oracle_orphan_rejection_writes_zero_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core.utils import native_extensions
+
+    points, tets, _entities = _valid_classified_bipyramid()
+    points = np.vstack((points, np.array([[9.0, 9.0, 9.0]], dtype=np.float64)))
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: None)
+    case_dir = tmp_path / "python-oracle-orphan"
+
+    result = tet_to_poly_dual(points, tets, case_dir)
+
+    assert not result.success
+    assert result.message.endswith("zero tetrahedron incidence: (5,)")
+    assert not case_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "orphan_rows",
+    ((5, 4), (5, 5), (-1,), (6,), (True,), (5.0,)),
+)
+def test_malformed_native_orphan_rows_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    orphan_rows: tuple[object, ...],
+) -> None:
+    from core.utils import native_extensions
+
+    points, tets, _entities = _valid_classified_bipyramid()
+    malformed = types.SimpleNamespace(
+        audit_tet_primal_conformity=lambda *_args: ((), (), (), orphan_rows)
+    )
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: malformed)
+
     with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
         dual._audit_tet_primal_conformity(points, tets)

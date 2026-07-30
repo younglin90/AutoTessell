@@ -1020,6 +1020,7 @@ py::tuple audit_tet_primal_conformity(
     canonical_faces.reserve(tet_count * 4U);
     std::vector<Label> negative_orientation_rows;
     negative_orientation_rows.reserve(tet_count / 8U);
+    std::vector<unsigned char> incident_vertices(point_count, 0U);
 
     constexpr std::array<std::array<size_t, 3>, 4> local_faces{{
         {{1, 2, 3}}, {{0, 3, 2}}, {{0, 1, 3}}, {{0, 2, 1}},
@@ -1048,6 +1049,7 @@ py::tuple audit_tet_primal_conformity(
                     }
                 }
                 tet[local] = vertex;
+                incident_vertices[static_cast<size_t>(vertex)] = 1U;
             }
 
             std::array<Label, 4> canonical_tet = tet;
@@ -1133,6 +1135,14 @@ py::tuple audit_tet_primal_conformity(
         begin = end;
     }
 
+    std::vector<Label> orphan_vertex_rows;
+    orphan_vertex_rows.reserve(point_count);
+    for (size_t point_index = 0U; point_index < point_count; ++point_index) {
+        if (incident_vertices[point_index] == 0U) {
+            orphan_vertex_rows.push_back(static_cast<Label>(point_index));
+        }
+    }
+
     py::tuple python_duplicates(duplicate_groups.size());
     for (size_t index = 0U; index < duplicate_groups.size(); ++index) {
         const auto& [key, owners] = duplicate_groups[index];
@@ -1147,10 +1157,17 @@ py::tuple audit_tet_primal_conformity(
             py::make_tuple(key[0], key[1], key[2]),
             py::cast(owners));
     }
+    py::array_t<Label> python_orphans({
+        static_cast<py::ssize_t>(orphan_vertex_rows.size())});
+    auto orphan_output = python_orphans.mutable_unchecked<1>();
+    for (size_t index = 0U; index < orphan_vertex_rows.size(); ++index) {
+        orphan_output(static_cast<py::ssize_t>(index)) = orphan_vertex_rows[index];
+    }
     return py::make_tuple(
         std::move(python_duplicates),
         std::move(python_nonmanifold),
-        py::cast(negative_orientation_rows));
+        py::cast(negative_orientation_rows),
+        std::move(python_orphans));
 }
 
 py::tuple build_tet_incidence_maps(
